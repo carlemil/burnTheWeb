@@ -84,10 +84,10 @@
   <input id="points" type="range" min="100" max="4000" step="50" value="1500">
 
   <label>Drift speed <span class="val" id="vSpeed"></span></label>
-  <input id="speed" type="range" min="0" max="300" step="1" value="15">
+  <input id="speed" type="range" min="0" max="300" step="1" value="92">
 
   <label>Flame rise <span class="val" id="vRise"></span></label>
-  <input id="rise" type="range" min="3" max="120" step="1" value="80">
+  <input id="rise" type="range" min="3" max="200" step="1" value="130">
 
   <label>Resolution <span class="val" id="vRes"></span></label>
   <input id="res" type="range" min="1" max="6" step="1" value="2">
@@ -105,7 +105,7 @@
   const off = document.createElement("canvas");
   const offCtx = off.getContext("2d");
 
-  const cfg = { points: 1500, speed: 0.15, decay: 130, scale: 2, burn: 60 };
+  const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 2, burn: 60 };
 
   // Deterministic PRNG (mulberry32). Re-seeded to the same value every frame so
   // the chaos game draws the identical point sequence each time — only the
