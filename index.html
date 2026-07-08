@@ -57,6 +57,20 @@
     cursor: pointer;
   }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
+  #reset {
+    margin-top: 14px;
+    width: 100%;
+    padding: 7px 0;
+    background: rgba(255, 122, 26, 0.15);
+    border: 1px solid rgba(255, 140, 40, 0.5);
+    border-radius: 8px;
+    color: #ffcf87;
+    font: 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  #reset:hover { background: rgba(255, 122, 26, 0.3); }
   #fps {
     position: fixed;
     top: 14px;
@@ -92,6 +106,8 @@
   <label>Resolution <span class="val" id="vRes"></span></label>
   <input id="res" type="range" min="1" max="6" step="1" value="2">
 
+  <button id="reset" type="button">Reset to defaults</button>
+
   <p class="hint">Press <b>H</b> to hide panel · click canvas to pause</p>
 </div>
 <div id="toggle">☰</div>
@@ -105,7 +121,7 @@
   const off = document.createElement("canvas");
   const offCtx = off.getContext("2d");
 
-  const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 2, burn: 60 };
+  const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 2, burn: 120 };
 
   // Deterministic PRNG (mulberry32). Re-seeded to the same value every frame so
   // the chaos game draws the identical point sequence each time — only the
@@ -189,20 +205,21 @@
     }
 
     // 2) stamp the Sierpiński triangle as fresh heat (chaos game)
-    const cx = fw * 0.5;
-    const ax = fw * 0.34;
-    // Keep corners in the bottom 80% of the screen: map each vertical wave
-    // (-1..1) into [0.2*height .. height] so no corner rises into the top 20%.
-    const yTop = fh * 0.2;
-    const vy = w => yTop + (w + 1) * (fh - yTop) * 0.5;
+    // Keep the corners inside a safe box so the triangle never touches the
+    // screen edges: banned from the top 20% and from the left/right/bottom 5%.
+    // Each wave (-1..1) is mapped into the allowed range on its axis.
+    const xL = fw * 0.05, xR = fw * 0.95;
+    const yT = fh * 0.20, yB = fh * 0.95;
+    const hx = w => xL + (w + 1) * (xR - xL) * 0.5;
+    const vy = w => yT + (w + 1) * (yB - yT) * 0.5;
     // three corners, each drifting on its own sin/cos mix
     const corners = [
-      [cx + ax * Math.sin(t * 0.70),        vy(Math.cos(t * 0.90))],
-      [cx + ax * Math.sin(t * 1.10 + 2.10), vy(Math.cos(t * 0.50 + 1.30))],
-      [cx + ax * Math.cos(t * 0.60 + 4.20), vy(Math.sin(t * 0.80 + 0.70))],
+      [hx(Math.sin(t * 0.70)),        vy(Math.cos(t * 0.90))],
+      [hx(Math.sin(t * 1.10 + 2.10)), vy(Math.cos(t * 0.50 + 1.30))],
+      [hx(Math.cos(t * 0.60 + 4.20)), vy(Math.sin(t * 0.80 + 0.70))],
     ];
     rngState = SEED;               // reset: same point sequence every frame
-    let px = cx, py = fh * 0.6;
+    let px = fw * 0.5, py = fh * 0.575;
     const n = cfg.points;
     for (let i = 0; i < n + 16; i++) {
       const c = corners[(rnd() * 3) | 0];
@@ -220,6 +237,15 @@
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
     ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+
+    // subtle glow: an additive, blurred copy blooms the brightest pixels —
+    // which are the white-hot triangle points — into a soft halo.
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.35;
+    ctx.filter = "blur(4px)";
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
   }
 
   const fpsEl = document.getElementById("fps");
@@ -272,6 +298,18 @@
   bind("rise", "vRise", v => v, v => cfg.decay = 128 * v / (v - 1));
   bind("res", "vRes", v => v, v => {
     cfg.scale = +v; resize();
+  });
+
+  // Reset: snapshot each slider's default (its load-time value) and restore it.
+  const sliderIds = ["points", "speed", "rise", "res"];
+  const defaults = {};
+  sliderIds.forEach(id => { defaults[id] = el(id).value; });
+  el("reset").addEventListener("click", () => {
+    sliderIds.forEach(id => {
+      const input = el(id);
+      input.value = defaults[id];
+      input.dispatchEvent(new Event("input"));
+    });
   });
 
   function setPanel(hidden) {

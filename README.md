@@ -19,10 +19,13 @@ morphs continuously.
   into the fire buffer as maximum heat, so flames rise out of the fractal.
 - **Moving corners** — each of the three triangle corners drifts on its own mix
   of `sin`/`cos` waves at different frequencies, so the fractal morphs and wanders.
+  The corners are confined to a safe box (clear of the top 20% and the
+  left/right/bottom 5%) so the triangle never runs off the edges.
 - **Deterministic point cloud** — the chaos game uses a seeded PRNG (mulberry32)
   that resets to the same value every frame, so the point *sequence* is identical
   each frame. Only the moving corners reshape the triangle — no random shimmer.
-- **Palette** — a classic fire ramp built in HSL: black → red → orange → yellow → white.
+- **Palette & glow** — a classic fire ramp built in HSL (black → red → orange →
+  yellow → white), with a subtle additive bloom that makes the white-hot points glow.
 - **Timing** — the simulation advances on a slow fixed tick rate, decoupled from
   the render frame rate, so the burn stays smooth and controllable.
 
