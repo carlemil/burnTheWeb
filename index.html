@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>burnTheWeb — Sierpiński Fire</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #fire {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    image-rendering: auto;
+  }
+  #panel {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    padding: 14px 16px;
+    width: 250px;
+    background: rgba(10, 6, 4, 0.55);
+    border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #ffdcb0;
+    font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    user-select: none;
+    transition: opacity .3s, transform .3s;
+  }
+  #panel h1 {
+    margin: 0 0 2px;
+    font-size: 14px;
+    letter-spacing: .04em;
+    color: #ffb15a;
+    text-shadow: 0 0 12px rgba(255, 120, 20, .8);
+  }
+  #panel .sub { margin: 0 0 12px; opacity: .6; font-size: 11px; }
+  #panel label { display: block; margin: 10px 0 3px; opacity: .85; }
+  #panel .val { float: right; color: #ffcf87; opacity: 1; }
+  #panel input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
+  #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; }
+  #toggle {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: 34px; height: 34px;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(10, 6, 4, 0.55);
+    border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 8px;
+    color: #ffb15a;
+    font: 16px/1 monospace;
+    cursor: pointer;
+  }
+  .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
+</style>
+</head>
+<body>
+<canvas id="fire"></canvas>
+
+<div id="panel">
+  <h1>burnTheWeb</h1>
+  <p class="sub">Sierpiński triangle · classic fire</p>
+
+  <label>Points <span class="val" id="vPoints"></span></label>
+  <input id="points" type="range" min="1000" max="60000" step="500" value="10000">
+
+  <label>Speed <span class="val" id="vSpeed"></span></label>
+  <input id="speed" type="range" min="0" max="300" step="1" value="100">
+
+  <label>Flame rise <span class="val" id="vRise"></span></label>
+  <input id="rise" type="range" min="128" max="140" step="1" value="131">
+
+  <label>Resolution <span class="val" id="vRes"></span></label>
+  <input id="res" type="range" min="1" max="6" step="1" value="3">
+
+  <p class="hint">Press <b>H</b> to hide · click canvas to hide panel</p>
+</div>
+<div id="toggle">☰</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("fire");
+  const ctx = canvas.getContext("2d");
+  const off = document.createElement("canvas");
+  const offCtx = off.getContext("2d");
+
+  const cfg = { points: 10000, speed: 1.0, decay: 131, scale: 3 };
+
+  // ---- classic fire palette: black -> red -> orange -> yellow -> white ----
+  const palette = new Uint32Array(256);
+  function hue2rgb(p, q, t) {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+  function buildPalette() {
+    for (let x = 0; x < 256; x++) {
+      const h = (x / 3) / 255;              // hue: red -> toward yellow
+      const l = Math.min(255, x * 2) / 255; // lightness climbs to white
+      const s = 1;
+      let r, g, b;
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1 / 3);
+      // little-endian ABGR for the Uint32 view
+      palette[x] = (255 << 24) | ((b * 255) << 16) | ((g * 255) << 8) | (r * 255);
+    }
+    palette[0] = 0xFF000000; // opaque black
+  }
+  buildPalette();
+
+  // ---- buffers ----
+  let fw = 0, fh = 0, fire = null, img = null, buf32 = null;
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    canvas.width = w;
+    canvas.height = h;
+    fw = Math.max(4, Math.floor(w / cfg.scale));
+    fh = Math.max(4, Math.floor(h / cfg.scale));
+    off.width = fw;
+    off.height = fh;
+    fire = new Uint8Array(fw * fh);
+    img = offCtx.createImageData(fw, fh);
+    buf32 = new Uint32Array(img.data.buffer);
+    ctx.imageSmoothingEnabled = true;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---- animation ----
+  function frame(now) {
+    const t = now * 0.001 * cfg.speed;
+
+    // 1) propagate existing fire upward (cgtutor averaging, with decay)
+    const decay = cfg.decay;
+    for (let x = 0; x < fw; x++) {
+      const xl = (x - 1 + fw) % fw;
+      const xr = (x + 1) % fw;
+      for (let y = 0; y < fh; y++) {
+        const y1 = (y + 1 < fh ? y + 1 : fh - 1) * fw;
+        const y2 = (y + 2 < fh ? y + 2 : fh - 1) * fw;
+        const y3 = (y + 3 < fh ? y + 3 : fh - 1) * fw;
+        const sum = fire[y1 + xl] + fire[y2 + x] + fire[y1 + xr] + fire[y3 + x];
+        let v = (sum * 32 / decay) | 0;
+        fire[y * fw + x] = v > 255 ? 255 : v;
+      }
+    }
+
+    // 2) stamp the Sierpiński triangle as fresh heat (chaos game)
+    const cx = fw * 0.5, cy = fh * 0.5;
+    const ax = fw * 0.34, ay = fh * 0.34;
+    // three corners, each drifting on its own sin/cos mix
+    const corners = [
+      [cx + ax * Math.sin(t * 0.70),        cy + ay * Math.cos(t * 0.90)],
+      [cx + ax * Math.sin(t * 1.10 + 2.10), cy + ay * Math.cos(t * 0.50 + 1.30)],
+      [cx + ax * Math.cos(t * 0.60 + 4.20), cy + ay * Math.sin(t * 0.80 + 0.70)],
+    ];
+    let px = cx, py = cy;
+    const n = cfg.points;
+    for (let i = 0; i < n + 16; i++) {
+      const c = corners[(Math.random() * 3) | 0];
+      px = (px + c[0]) * 0.5;
+      py = (py + c[1]) * 0.5;
+      if (i > 15) {
+        const xi = px | 0, yi = py | 0;
+        if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) fire[yi * fw + xi] = 255;
+      }
+    }
+
+    // 3) render through the palette
+    for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
+    offCtx.putImageData(img, 0, 0);
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---- controls ----
+  const panel = document.getElementById("panel");
+  const toggle = document.getElementById("toggle");
+  const el = id => document.getElementById(id);
+
+  function bind(id, valId, fmt, onChange) {
+    const input = el(id), out = el(valId);
+    const update = () => { out.textContent = fmt(input.value); onChange(input.value); };
+    input.addEventListener("input", update);
+    update();
+  }
+  bind("points", "vPoints", v => (+v).toLocaleString(), v => cfg.points = +v);
+  bind("speed", "vSpeed", v => (v / 100).toFixed(2) + "×", v => cfg.speed = v / 100);
+  bind("rise", "vRise",
+    v => v <= 130 ? "tall" : v >= 137 ? "low" : "med",
+    v => cfg.decay = +v);
+  bind("res", "vRes", v => ["ultra", "high", "std", "soft", "chunky", "blocky"][v - 1], v => {
+    cfg.scale = +v; resize();
+  });
+
+  function setPanel(hidden) {
+    panel.classList.toggle("hidden", hidden);
+    toggle.style.display = hidden ? "flex" : "none";
+  }
+  toggle.addEventListener("click", () => setPanel(false));
+  canvas.addEventListener("click", () => setPanel(true));
+  window.addEventListener("keydown", e => {
+    if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
+  });
+})();
+</script>
+</body>
+</html>
