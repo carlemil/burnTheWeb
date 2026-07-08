@@ -237,13 +237,11 @@
     input.addEventListener("input", update);
     update();
   }
-  bind("points", "vPoints", v => (+v).toLocaleString(), v => cfg.points = +v);
-  bind("burn", "vBurn", v => v + "/s", v => cfg.burn = +v);
-  bind("speed", "vSpeed", v => (v / 100).toFixed(2) + "×", v => cfg.speed = v / 100);
-  bind("rise", "vRise",
-    v => v <= 130 ? "tall" : v >= 137 ? "low" : "med",
-    v => cfg.decay = +v);
-  bind("res", "vRes", v => ["ultra", "high", "std", "soft", "chunky", "blocky"][v - 1], v => {
+  bind("points", "vPoints", v => v, v => cfg.points = +v);
+  bind("burn", "vBurn", v => v, v => cfg.burn = +v);
+  bind("speed", "vSpeed", v => v, v => cfg.speed = v / 100);
+  bind("rise", "vRise", v => v, v => cfg.decay = +v);
+  bind("res", "vRes", v => v, v => {
     cfg.scale = +v; resize();
   });
 
