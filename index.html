@@ -57,10 +57,24 @@
     cursor: pointer;
   }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
+  #fps {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    padding: 6px 10px;
+    background: rgba(10, 6, 4, 0.55);
+    border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 8px;
+    color: #ffcf87;
+    font: 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    user-select: none;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
 <canvas id="fire"></canvas>
+<div id="fps">— fps</div>
 
 <div id="panel">
   <h1>burnTheWeb</h1>
@@ -211,13 +225,23 @@
     ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
   }
 
-  let last = 0, acc = 0;
+  const fpsEl = document.getElementById("fps");
+  let last = 0, acc = 0, fpsLast = 0, fpsFrames = 0;
   function frame(now) {
     if (!last) last = now;
     let dt = (now - last) / 1000;
     last = now;
     if (dt > 0.25) dt = 0.25;         // clamp after tab switches
     acc += dt;
+
+    // fps counter (measured over ~0.5s windows)
+    if (!fpsLast) fpsLast = now;
+    fpsFrames++;
+    if (now - fpsLast >= 500) {
+      fpsEl.textContent = Math.round((fpsFrames * 1000) / (now - fpsLast)) + " fps";
+      fpsFrames = 0;
+      fpsLast = now;
+    }
     const step = 1 / cfg.burn;        // seconds between simulation ticks
     let ticks = 0;
     while (acc >= step && ticks < 4) {
