@@ -26,7 +26,9 @@ morphs continuously.
   each frame. Only the moving corners reshape the triangle — no random shimmer.
 - **Palettes & glow** — eight classic demoscene-style palettes to choose from
   (Fire, Ice, Toxic, Copper, Purple, Rainbow, Grayscale, Electric), plus a subtle
-  additive bloom that makes the white-hot points glow.
+  additive bloom that makes the white-hot points glow. An optional auto-morph mode
+  continuously blends from the current palette to a random next one over 8 seconds,
+  on repeat.
 - **Timing** — the simulation advances on a slow fixed tick rate, decoupled from
   the render frame rate, so the burn stays smooth and controllable.
 
