@@ -95,7 +95,7 @@
   <label>Resolution <span class="val" id="vRes"></span></label>
   <input id="res" type="range" min="1" max="6" step="1" value="2">
 
-  <p class="hint">Press <b>H</b> to hide · click canvas to hide panel</p>
+  <p class="hint">Press <b>H</b> to hide panel · click canvas to pause</p>
 </div>
 <div id="toggle">☰</div>
 
@@ -226,11 +226,15 @@
   }
 
   const fpsEl = document.getElementById("fps");
-  let last = 0, acc = 0, fpsLast = 0, fpsFrames = 0;
+  let last = 0, acc = 0, fpsLast = 0, fpsFrames = 0, paused = false;
   function frame(now) {
+    requestAnimationFrame(frame);
     if (!last) last = now;
     let dt = (now - last) / 1000;
     last = now;
+
+    if (paused) { fpsEl.textContent = "paused"; return; }
+
     if (dt > 0.25) dt = 0.25;         // clamp after tab switches
     acc += dt;
 
@@ -250,7 +254,6 @@
       ticks++;
     }
     render();
-    requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
@@ -278,7 +281,7 @@
     toggle.style.display = hidden ? "flex" : "none";
   }
   toggle.addEventListener("click", () => setPanel(false));
-  canvas.addEventListener("click", () => setPanel(true));
+  canvas.addEventListener("click", () => { paused = !paused; });
   window.addEventListener("keydown", e => {
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
   });
