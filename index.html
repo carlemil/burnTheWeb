@@ -178,16 +178,20 @@
     }
 
     // 2) stamp the Sierpiński triangle as fresh heat (chaos game)
-    const cx = fw * 0.5, cy = fh * 0.5;
-    const ax = fw * 0.34, ay = fh * 0.34;
+    const cx = fw * 0.5;
+    const ax = fw * 0.34;
+    // Keep corners in the bottom 80% of the screen: map each vertical wave
+    // (-1..1) into [0.2*height .. height] so no corner rises into the top 20%.
+    const yTop = fh * 0.2;
+    const vy = w => yTop + (w + 1) * (fh - yTop) * 0.5;
     // three corners, each drifting on its own sin/cos mix
     const corners = [
-      [cx + ax * Math.sin(t * 0.70),        cy + ay * Math.cos(t * 0.90)],
-      [cx + ax * Math.sin(t * 1.10 + 2.10), cy + ay * Math.cos(t * 0.50 + 1.30)],
-      [cx + ax * Math.cos(t * 0.60 + 4.20), cy + ay * Math.sin(t * 0.80 + 0.70)],
+      [cx + ax * Math.sin(t * 0.70),        vy(Math.cos(t * 0.90))],
+      [cx + ax * Math.sin(t * 1.10 + 2.10), vy(Math.cos(t * 0.50 + 1.30))],
+      [cx + ax * Math.cos(t * 0.60 + 4.20), vy(Math.sin(t * 0.80 + 0.70))],
     ];
     rngState = SEED;               // reset: same point sequence every frame
-    let px = cx, py = cy;
+    let px = cx, py = fh * 0.6;
     const n = cfg.points;
     for (let i = 0; i < n + 16; i++) {
       const c = corners[(rnd() * 3) | 0];
