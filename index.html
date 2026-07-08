@@ -67,9 +67,12 @@
   <p class="sub">Sierpiński triangle · classic fire</p>
 
   <label>Points <span class="val" id="vPoints"></span></label>
-  <input id="points" type="range" min="1000" max="60000" step="500" value="10000">
+  <input id="points" type="range" min="100" max="4000" step="50" value="2000">
 
-  <label>Speed <span class="val" id="vSpeed"></span></label>
+  <label>Burn speed <span class="val" id="vBurn"></span></label>
+  <input id="burn" type="range" min="2" max="60" step="1" value="8">
+
+  <label>Drift speed <span class="val" id="vSpeed"></span></label>
   <input id="speed" type="range" min="0" max="300" step="1" value="100">
 
   <label>Flame rise <span class="val" id="vRise"></span></label>
@@ -91,7 +94,21 @@
   const off = document.createElement("canvas");
   const offCtx = off.getContext("2d");
 
-  const cfg = { points: 10000, speed: 1.0, decay: 131, scale: 3 };
+  const cfg = { points: 2000, speed: 1.0, decay: 131, scale: 3, burn: 8 };
+
+  // Deterministic PRNG (mulberry32). Re-seeded to the same value every frame so
+  // the chaos game draws the identical point sequence each time — only the
+  // moving corners change the shape, not the random noise.
+  const SEED = 0x9e3779b9;
+  let rngState = SEED;
+  function rnd() {
+    rngState |= 0;
+    rngState = (rngState + 0x6D2B79F5) | 0;
+    let z = rngState;
+    z = Math.imul(z ^ (z >>> 15), z | 1);
+    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  }
 
   // ---- classic fire palette: black -> red -> orange -> yellow -> white ----
   const palette = new Uint32Array(256);
@@ -139,7 +156,10 @@
   resize();
 
   // ---- animation ----
-  function frame(now) {
+  // The fire simulation advances at a fixed (slow) tick rate, decoupled from
+  // the render frame rate, so the burn can be as slow as we like while the
+  // canvas still repaints smoothly.
+  function simulate(now) {
     const t = now * 0.001 * cfg.speed;
 
     // 1) propagate existing fire upward (cgtutor averaging, with decay)
@@ -166,10 +186,11 @@
       [cx + ax * Math.sin(t * 1.10 + 2.10), cy + ay * Math.cos(t * 0.50 + 1.30)],
       [cx + ax * Math.cos(t * 0.60 + 4.20), cy + ay * Math.sin(t * 0.80 + 0.70)],
     ];
+    rngState = SEED;               // reset: same point sequence every frame
     let px = cx, py = cy;
     const n = cfg.points;
     for (let i = 0; i < n + 16; i++) {
-      const c = corners[(Math.random() * 3) | 0];
+      const c = corners[(rnd() * 3) | 0];
       px = (px + c[0]) * 0.5;
       py = (py + c[1]) * 0.5;
       if (i > 15) {
@@ -178,11 +199,29 @@
       }
     }
 
-    // 3) render through the palette
+  }
+
+  function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
     ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  }
 
+  let last = 0, acc = 0;
+  function frame(now) {
+    if (!last) last = now;
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.25) dt = 0.25;         // clamp after tab switches
+    acc += dt;
+    const step = 1 / cfg.burn;        // seconds between simulation ticks
+    let ticks = 0;
+    while (acc >= step && ticks < 4) {
+      simulate(now);
+      acc -= step;
+      ticks++;
+    }
+    render();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -199,6 +238,7 @@
     update();
   }
   bind("points", "vPoints", v => (+v).toLocaleString(), v => cfg.points = +v);
+  bind("burn", "vBurn", v => v + "/s", v => cfg.burn = +v);
   bind("speed", "vSpeed", v => (v / 100).toFixed(2) + "×", v => cfg.speed = v / 100);
   bind("rise", "vRise",
     v => v <= 130 ? "tall" : v >= 137 ? "low" : "med",
