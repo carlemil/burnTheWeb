@@ -33,12 +33,11 @@ An on-screen panel (top-left) lets you tune the effect live:
 | Control | What it does |
 | --- | --- |
 | **Points** | Number of chaos-game points per frame (100–4000). |
-| **Burn speed** | Simulation ticks per second — how fast the fire evolves. |
 | **Drift speed** | How fast the triangle's corners move around the screen. |
-| **Flame rise** | How tall the flames climb before fading. |
+| **Flame rise** | How tall the flames climb before fading (linear in height). |
 | **Resolution** | Fire buffer scale — sharper vs. chunkier/softer flames. |
 
-Press **H** or click the canvas to hide/show the panel.
+Press **H** to hide the panel; click the canvas to pause.
 
 ## Running locally
 
