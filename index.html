@@ -97,24 +97,10 @@
     transition: background .15s;
   }
   #reset:hover { background: rgba(255, 122, 26, 0.3); }
-  #fps {
-    position: fixed;
-    top: 14px;
-    right: 14px;
-    padding: 6px 10px;
-    background: rgba(10, 6, 4, 0.55);
-    border: 1px solid rgba(255, 140, 40, 0.35);
-    border-radius: 8px;
-    color: #ffcf87;
-    font: 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    user-select: none;
-    pointer-events: none;
-  }
 </style>
 </head>
 <body>
 <canvas id="fire"></canvas>
-<div id="fps">— fps</div>
 
 <div id="panel">
   <h1>burnTheWeb</h1>
@@ -376,27 +362,18 @@
     ctx.restore();
   }
 
-  const fpsEl = document.getElementById("fps");
-  let last = 0, acc = 0, fpsLast = 0, fpsFrames = 0, paused = false;
+  let last = 0, acc = 0, paused = false;
   function frame(now) {
     requestAnimationFrame(frame);
     if (!last) last = now;
     let dt = (now - last) / 1000;
     last = now;
 
-    if (paused) { fpsEl.textContent = "paused"; return; }
+    if (paused) return;
 
     if (dt > 0.25) dt = 0.25;         // clamp after tab switches
     acc += dt;
 
-    // fps counter (measured over ~0.5s windows)
-    if (!fpsLast) fpsLast = now;
-    fpsFrames++;
-    if (now - fpsLast >= 500) {
-      fpsEl.textContent = Math.round((fpsFrames * 1000) / (now - fpsLast)) + " fps";
-      fpsFrames = 0;
-      fpsLast = now;
-    }
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
     const step = 1 / cfg.burn;        // seconds between simulation ticks
