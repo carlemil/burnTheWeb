@@ -16,7 +16,7 @@
   }
   #panel {
     position: fixed;
-    top: 14px;
+    top: 58px;
     left: 14px;
     padding: 14px 16px;
     width: 250px;
@@ -67,8 +67,9 @@
     position: fixed;
     top: 14px;
     left: 14px;
+    z-index: 10;
     width: 34px; height: 34px;
-    display: none;
+    display: flex;
     align-items: center; justify-content: center;
     background: rgba(10, 6, 4, 0.55);
     border: 1px solid rgba(255, 140, 40, 0.35);
@@ -76,7 +77,11 @@
     color: #ffb15a;
     font: 16px/1 monospace;
     cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: background .15s;
   }
+  #toggle:hover { background: rgba(255, 122, 26, 0.3); }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
   #reset {
     margin-top: 14px;
@@ -142,7 +147,7 @@
 
   <button id="reset" type="button">Reset to defaults</button>
 
-  <p class="hint">Press <b>H</b> to hide panel · click canvas to pause</p>
+  <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause</p>
 </div>
 <div id="toggle">☰</div>
 
@@ -456,9 +461,8 @@
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);
-    toggle.style.display = hidden ? "flex" : "none";
   }
-  toggle.addEventListener("click", () => setPanel(false));
+  toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
   canvas.addEventListener("click", () => { paused = !paused; });
   window.addEventListener("keydown", e => {
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
