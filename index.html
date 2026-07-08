@@ -251,11 +251,14 @@
     const n = (Math.random() * (PALETTES.length - 1)) | 0;
     return n >= cur ? n + 1 : n;
   }
+  // reflect the palette we're heading toward in the dropdown
+  function showMorphTarget() { el("palette").value = morphTargetIndex; }
   function startMorph(fromIndex) {
     morphFrom = paletteRGB(fromIndex);
     morphTargetIndex = pickOther(fromIndex);
     morphTo = paletteRGB(morphTargetIndex);
     morphInit = true;                       // capture start time on next frame
+    showMorphTarget();
   }
   function morphStep(now) {
     if (morphInit) { morphStart = now; morphInit = false; }
@@ -266,6 +269,7 @@
       morphTo = paletteRGB(morphTargetIndex);
       morphStart = now;
       f = 0;
+      showMorphTarget();
     }
     const from = morphFrom, to = morphTo;
     for (let x = 0; x < 256; x++) {
@@ -418,9 +422,10 @@
     morphing = morphChk.checked;
     if (morphing) startMorph(+paletteSel.value);
   });
-  if (morphChk.checked) morphChk.dispatchEvent(new Event("change")); // start if on by default
 
   // Reset: snapshot each control's default (its load-time value) and restore it.
+  // Snapshot before the initial auto-morph runs, since morphing mutates the
+  // palette dropdown to show its current target.
   const sliderIds = ["points", "speed", "rise", "res"];
   const defaults = {};
   sliderIds.forEach(id => { defaults[id] = el(id).value; });
@@ -436,6 +441,8 @@
     morphChk.checked = true;
     morphChk.dispatchEvent(new Event("change"));
   });
+
+  if (morphChk.checked) morphChk.dispatchEvent(new Event("change")); // start if on by default
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);
