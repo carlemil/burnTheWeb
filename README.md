@@ -23,8 +23,10 @@ morphs continuously.
   that resets to the same value every frame, so the point *sequence* is identical
   each frame. Only the moving corners reshape the triangle — no random shimmer.
 - **Palette** — a classic fire ramp built in HSL: black → red → orange → yellow → white.
-- **Timing** — the simulation advances on a slow fixed tick rate, decoupled from
-  the render frame rate, so the burn stays smooth and controllable.
+- **Two layers** — the triangle and the fire are rendered independently. The
+  fire simulation advances only on a slow fixed tick (Burn speed), while the
+  Sierpiński overlay is recomputed and drawn every frame — so the triangle moves
+  at full frame rate on top of the slowly-burning fire it also seeds.
 
 ## Controls
 

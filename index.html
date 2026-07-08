@@ -105,8 +105,13 @@
 
   const canvas = document.getElementById("fire");
   const ctx = canvas.getContext("2d");
-  const off = document.createElement("canvas");
+  const off = document.createElement("canvas");        // fire layer
   const offCtx = off.getContext("2d");
+  const offTri = document.createElement("canvas");     // triangle overlay layer
+  const offTriCtx = offTri.getContext("2d");
+
+  // colour of the triangle overlay points (little-endian ABGR, opaque)
+  const TRI_COLOR = 0xFF96E6FF; // warm white-yellow sparks
 
   const cfg = { points: 1500, speed: 0.15, decay: 120, scale: 2, burn: 8 };
 
@@ -153,6 +158,7 @@
 
   // ---- buffers ----
   let fw = 0, fh = 0, fire = null, img = null, buf32 = null;
+  let triImg = null, tri32 = null;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     canvas.width = w;
@@ -161,22 +167,60 @@
     fh = Math.max(4, Math.floor(h / cfg.scale));
     off.width = fw;
     off.height = fh;
+    offTri.width = fw;
+    offTri.height = fh;
     fire = new Uint8Array(fw * fh);
     img = offCtx.createImageData(fw, fh);
     buf32 = new Uint32Array(img.data.buffer);
+    triImg = offTriCtx.createImageData(fw, fh);
+    tri32 = new Uint32Array(triImg.data.buffer);
     ctx.imageSmoothingEnabled = true;
   }
   window.addEventListener("resize", resize);
   resize();
 
   // ---- animation ----
-  // The fire simulation advances at a fixed (slow) tick rate, decoupled from
-  // the render frame rate, so the burn can be as slow as we like while the
-  // canvas still repaints smoothly.
-  function simulate(now) {
-    const t = now * 0.001 * cfg.speed;
+  // The triangle and the fire are rendered as two independent layers:
+  //   * the fire simulation advances only on a slow fixed tick (cfg.burn),
+  //   * the triangle overlay is recomputed and drawn every render frame,
+  // so the triangle can move at full frame rate while the fire burns slowly.
 
-    // 1) propagate existing fire upward (cgtutor averaging, with decay)
+  // Positions of the three triangle corners at time t. Each drifts on its own
+  // sin/cos mix; the vertical wave (-1..1) is mapped into [0.2*height..height]
+  // so no corner rises into the top 20% of the screen.
+  function computeCorners(t) {
+    const cx = fw * 0.5;
+    const ax = fw * 0.34;
+    const yTop = fh * 0.2;
+    const vy = w => yTop + (w + 1) * (fh - yTop) * 0.5;
+    return [
+      [cx + ax * Math.sin(t * 0.70),        vy(Math.cos(t * 0.90))],
+      [cx + ax * Math.sin(t * 1.10 + 2.10), vy(Math.cos(t * 0.50 + 1.30))],
+      [cx + ax * Math.cos(t * 0.60 + 4.20), vy(Math.sin(t * 0.80 + 0.70))],
+    ];
+  }
+
+  // Chaos-game Sierpiński triangle. Re-seeds the PRNG so the point sequence is
+  // identical every call; `plot(index)` receives each buffer cell that a point
+  // lands on. Used both to seed the fire and to draw the overlay.
+  function chaosGame(corners, plot) {
+    rngState = SEED;
+    let px = fw * 0.5, py = fh * 0.6;
+    const n = cfg.points;
+    for (let i = 0; i < n + 16; i++) {
+      const c = corners[(rnd() * 3) | 0];
+      px = (px + c[0]) * 0.5;
+      py = (py + c[1]) * 0.5;
+      if (i > 15) {
+        const xi = px | 0, yi = py | 0;
+        if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) plot(yi * fw + xi);
+      }
+    }
+  }
+
+  // One slow fire tick: propagate the heat upward, then re-seed it with the
+  // triangle at this instant's corner positions.
+  function tickFire(now) {
     const decay = cfg.decay;
     for (let x = 0; x < fw; x++) {
       const xl = (x - 1 + fw) % fw;
@@ -190,39 +234,23 @@
         fire[y * fw + x] = v > 255 ? 255 : v;
       }
     }
-
-    // 2) stamp the Sierpiński triangle as fresh heat (chaos game)
-    const cx = fw * 0.5;
-    const ax = fw * 0.34;
-    // Keep corners in the bottom 80% of the screen: map each vertical wave
-    // (-1..1) into [0.2*height .. height] so no corner rises into the top 20%.
-    const yTop = fh * 0.2;
-    const vy = w => yTop + (w + 1) * (fh - yTop) * 0.5;
-    // three corners, each drifting on its own sin/cos mix
-    const corners = [
-      [cx + ax * Math.sin(t * 0.70),        vy(Math.cos(t * 0.90))],
-      [cx + ax * Math.sin(t * 1.10 + 2.10), vy(Math.cos(t * 0.50 + 1.30))],
-      [cx + ax * Math.cos(t * 0.60 + 4.20), vy(Math.sin(t * 0.80 + 0.70))],
-    ];
-    rngState = SEED;               // reset: same point sequence every frame
-    let px = cx, py = fh * 0.6;
-    const n = cfg.points;
-    for (let i = 0; i < n + 16; i++) {
-      const c = corners[(rnd() * 3) | 0];
-      px = (px + c[0]) * 0.5;
-      py = (py + c[1]) * 0.5;
-      if (i > 15) {
-        const xi = px | 0, yi = py | 0;
-        if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) fire[yi * fw + xi] = 255;
-      }
-    }
-
+    const corners = computeCorners(now * 0.001 * cfg.speed);
+    chaosGame(corners, idx => { fire[idx] = 255; });
   }
 
-  function render() {
+  function renderFire() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
     ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  }
+
+  // The triangle overlay, drawn every frame on top of the fire.
+  function renderTriangle(now) {
+    tri32.fill(0); // clear to transparent
+    const corners = computeCorners(now * 0.001 * cfg.speed);
+    chaosGame(corners, idx => { tri32[idx] = TRI_COLOR; });
+    offTriCtx.putImageData(triImg, 0, 0);
+    ctx.drawImage(offTri, 0, 0, canvas.width, canvas.height);
   }
 
   const fpsEl = document.getElementById("fps");
@@ -246,14 +274,18 @@
       fpsFrames = 0;
       fpsLast = now;
     }
-    const step = 1 / cfg.burn;        // seconds between simulation ticks
+    // fire: advance only on the slow burn tick
+    const step = 1 / cfg.burn;        // seconds between fire ticks
     let ticks = 0;
     while (acc >= step && ticks < 4) {
-      simulate(now);
+      tickFire(now);
       acc -= step;
       ticks++;
     }
-    render();
+
+    // draw the fire base, then the triangle overlay at full frame rate
+    renderFire();
+    renderTriangle(now);
   }
   requestAnimationFrame(frame);
 
