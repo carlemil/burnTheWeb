@@ -37,6 +37,7 @@ An on-screen panel (top-left) lets you tune the effect live:
 | Control | What it does |
 | --- | --- |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
+| **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **Points** | Number of chaos-game points per frame (100–4000). |
 | **Drift speed** | How fast the triangle's corners move around the screen. |
 | **Flame rise** | How tall the flames climb before fading (linear in height). |

@@ -53,6 +53,15 @@
     cursor: pointer;
   }
   #panel select option { background: #1a0f08; color: #ffcf87; }
+  #panel .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 0;
+    cursor: pointer;
+    opacity: .9;
+  }
+  #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; }
   #toggle {
     position: fixed;
@@ -117,6 +126,7 @@
     <option value="6">Grayscale</option>
     <option value="7">Electric</option>
   </select>
+  <label class="check"><input type="checkbox" id="morph"> Auto-morph palettes</label>
 
   <label>Points <span class="val" id="vPoints"></span></label>
   <input id="points" type="range" min="100" max="4000" step="50" value="1500">
@@ -232,6 +242,51 @@
   }
   setPalette(0);
 
+  // ---- auto-morph: continuously blend to a random palette over 8s ----
+  const MORPH_MS = 8000;
+  let morphing = false, morphFrom = null, morphTo = null, morphStart = 0,
+    morphTargetIndex = 0, morphInit = false;
+
+  function paletteRGB(i) {
+    const fn = PALETTES[i].fn, arr = new Float32Array(256 * 3);
+    for (let x = 0; x < 256; x++) {
+      const c = fn(x);
+      arr[x * 3] = clamp(c[0]); arr[x * 3 + 1] = clamp(c[1]); arr[x * 3 + 2] = clamp(c[2]);
+    }
+    arr[0] = arr[1] = arr[2] = 0; // index 0 black
+    return arr;
+  }
+  function pickOther(cur) {                 // random palette index != cur
+    const n = (Math.random() * (PALETTES.length - 1)) | 0;
+    return n >= cur ? n + 1 : n;
+  }
+  function startMorph(fromIndex) {
+    morphFrom = paletteRGB(fromIndex);
+    morphTargetIndex = pickOther(fromIndex);
+    morphTo = paletteRGB(morphTargetIndex);
+    morphInit = true;                       // capture start time on next frame
+  }
+  function morphStep(now) {
+    if (morphInit) { morphStart = now; morphInit = false; }
+    let f = (now - morphStart) / MORPH_MS;
+    if (f >= 1) {                           // arrived: target becomes current, pick a new one
+      morphFrom = morphTo;
+      morphTargetIndex = pickOther(morphTargetIndex);
+      morphTo = paletteRGB(morphTargetIndex);
+      morphStart = now;
+      f = 0;
+    }
+    const from = morphFrom, to = morphTo;
+    for (let x = 0; x < 256; x++) {
+      const i = x * 3;
+      const r = from[i] + (to[i] - from[i]) * f;
+      const g = from[i + 1] + (to[i + 1] - from[i + 1]) * f;
+      const b = from[i + 2] + (to[i + 2] - from[i + 2]) * f;
+      palette[x] = (255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r);
+    }
+    palette[0] = 0xFF000000;
+  }
+
   // ---- buffers ----
   let fw = 0, fh = 0, fire = null, img = null, buf32 = null;
   function resize() {
@@ -337,6 +392,8 @@
       fpsFrames = 0;
       fpsLast = now;
     }
+    if (morphing) morphStep(now);     // blend palettes while auto-morph is on
+
     const step = 1 / cfg.burn;        // seconds between simulation ticks
     let ticks = 0;
     while (acc >= step && ticks < 4) {
@@ -369,7 +426,16 @@
   });
 
   const paletteSel = el("palette");
-  paletteSel.addEventListener("change", () => setPalette(+paletteSel.value));
+  const morphChk = el("morph");
+  paletteSel.addEventListener("change", () => {
+    // while morphing, a manual pick restarts the blend from that palette
+    if (morphing) startMorph(+paletteSel.value);
+    else setPalette(+paletteSel.value);
+  });
+  morphChk.addEventListener("change", () => {
+    morphing = morphChk.checked;
+    if (morphing) startMorph(+paletteSel.value);
+  });
 
   // Reset: snapshot each control's default (its load-time value) and restore it.
   const sliderIds = ["points", "speed", "rise", "res"];
@@ -382,6 +448,8 @@
       input.value = defaults[id];
       input.dispatchEvent(new Event("input"));
     });
+    morphing = false;
+    morphChk.checked = false;
     paletteSel.value = paletteDefault;
     setPalette(+paletteDefault);
   });
