@@ -117,7 +117,7 @@
     <option value="6">Grayscale</option>
     <option value="7">Electric</option>
   </select>
-  <label class="check"><input type="checkbox" id="morph"> Auto-morph palettes</label>
+  <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
 
   <label>Points <span class="val" id="vPoints"></span></label>
   <input id="points" type="range" min="100" max="4000" step="50" value="1500">
@@ -418,6 +418,7 @@
     morphing = morphChk.checked;
     if (morphing) startMorph(+paletteSel.value);
   });
+  if (morphChk.checked) morphChk.dispatchEvent(new Event("change")); // start if on by default
 
   // Reset: snapshot each control's default (its load-time value) and restore it.
   const sliderIds = ["points", "speed", "rise", "res"];
@@ -430,10 +431,10 @@
       input.value = defaults[id];
       input.dispatchEvent(new Event("input"));
     });
-    morphing = false;
-    morphChk.checked = false;
     paletteSel.value = paletteDefault;
     setPalette(+paletteDefault);
+    morphChk.checked = true;
+    morphChk.dispatchEvent(new Event("change"));
   });
 
   function setPanel(hidden) {
