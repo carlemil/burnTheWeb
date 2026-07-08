@@ -41,6 +41,18 @@
   #panel label { display: block; margin: 10px 0 3px; opacity: .85; }
   #panel .val { float: right; color: #ffcf87; opacity: 1; }
   #panel input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
+  #panel select {
+    width: 100%;
+    margin: 0;
+    padding: 5px 7px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 140, 40, 0.5);
+    border-radius: 6px;
+    color: #ffcf87;
+    font: 12px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    cursor: pointer;
+  }
+  #panel select option { background: #1a0f08; color: #ffcf87; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; }
   #toggle {
     position: fixed;
@@ -94,6 +106,18 @@
   <h1>burnTheWeb</h1>
   <p class="sub">Sierpiński triangle · classic fire</p>
 
+  <label>Palette</label>
+  <select id="palette">
+    <option value="0">Fire</option>
+    <option value="1">Ice</option>
+    <option value="2">Toxic</option>
+    <option value="3">Copper</option>
+    <option value="4">Purple</option>
+    <option value="5">Rainbow</option>
+    <option value="6">Grayscale</option>
+    <option value="7">Electric</option>
+  </select>
+
   <label>Points <span class="val" id="vPoints"></span></label>
   <input id="points" type="range" min="100" max="4000" step="50" value="1500">
 
@@ -137,8 +161,13 @@
     return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
   }
 
-  // ---- classic fire palette: black -> red -> orange -> yellow -> white ----
+  // ---- palettes (classic demoscene style) ----
+  // Each entry maps a heat index 0..255 to [r,g,b]; index 0 is forced to black
+  // so unlit areas stay dark. The active one is baked into `palette` (ABGR).
   const palette = new Uint32Array(256);
+  const clamp = v => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
+
+  // The original HSL fire ramp: black -> red -> orange -> yellow -> white.
   function hue2rgb(p, q, t) {
     if (t < 0) t += 1; if (t > 1) t -= 1;
     if (t < 1 / 6) return p + (q - p) * 6 * t;
@@ -146,23 +175,62 @@
     if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
     return p;
   }
-  function buildPalette() {
+  function fireColor(x) {
+    const h = (x / 3) / 255, l = Math.min(255, x * 2) / 255, s = 1;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [hue2rgb(p, q, h + 1 / 3) * 255, hue2rgb(p, q, h) * 255, hue2rgb(p, q, h - 1 / 3) * 255];
+  }
+
+  // Piecewise-linear gradient through colour stops [pos(0..1), [r,g,b]].
+  function grad(stops) {
+    return x => {
+      const t = x / 255;
+      for (let i = 1; i < stops.length; i++) {
+        if (t <= stops[i][0]) {
+          const a = stops[i - 1], b = stops[i];
+          const f = (t - a[0]) / ((b[0] - a[0]) || 1);
+          return [
+            a[1][0] + (b[1][0] - a[1][0]) * f,
+            a[1][1] + (b[1][1] - a[1][1]) * f,
+            a[1][2] + (b[1][2] - a[1][2]) * f,
+          ];
+        }
+      }
+      return stops[stops.length - 1][1];
+    };
+  }
+
+  // Rainbow plasma: three phase-shifted sines, faded to black at the low end.
+  function rainbowColor(x) {
+    const t = x / 255, k = Math.PI * 2 * t, dim = Math.min(1, t * 2);
+    return [
+      (Math.sin(k) * 0.5 + 0.5) * 255 * dim,
+      (Math.sin(k + 2.094) * 0.5 + 0.5) * 255 * dim,
+      (Math.sin(k + 4.188) * 0.5 + 0.5) * 255 * dim,
+    ];
+  }
+
+  const PALETTES = [
+    { name: "Fire", fn: fireColor },
+    { name: "Ice", fn: grad([[0, [0, 0, 0]], [0.35, [0, 0, 80]], [0.6, [0, 90, 200]], [0.8, [90, 205, 255]], [1, [230, 250, 255]]]) },
+    { name: "Toxic", fn: grad([[0, [0, 0, 0]], [0.35, [0, 60, 0]], [0.6, [45, 180, 0]], [0.8, [165, 240, 40]], [1, [240, 255, 200]]]) },
+    { name: "Copper", fn: grad([[0, [0, 0, 0]], [0.3, [70, 30, 10]], [0.55, [170, 90, 40]], [0.75, [230, 150, 90]], [0.9, [255, 210, 170]], [1, [255, 245, 230]]]) },
+    { name: "Purple", fn: grad([[0, [0, 0, 0]], [0.35, [40, 0, 60]], [0.6, [140, 0, 180]], [0.8, [240, 60, 220]], [1, [255, 220, 255]]]) },
+    { name: "Rainbow", fn: rainbowColor },
+    { name: "Grayscale", fn: x => [x, x, x] },
+    { name: "Electric", fn: grad([[0, [0, 0, 0]], [0.3, [0, 40, 120]], [0.55, [0, 200, 220]], [0.75, [180, 120, 255]], [0.9, [255, 120, 240]], [1, [255, 240, 255]]]) },
+  ];
+
+  function setPalette(i) {
+    const fn = PALETTES[i].fn;
     for (let x = 0; x < 256; x++) {
-      const h = (x / 3) / 255;              // hue: red -> toward yellow
-      const l = Math.min(255, x * 2) / 255; // lightness climbs to white
-      const s = 1;
-      let r, g, b;
-      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1 / 3);
-      g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1 / 3);
-      // little-endian ABGR for the Uint32 view
-      palette[x] = (255 << 24) | ((b * 255) << 16) | ((g * 255) << 8) | (r * 255);
+      const c = fn(x);
+      palette[x] = (255 << 24) | (clamp(c[2]) << 16) | (clamp(c[1]) << 8) | clamp(c[0]);
     }
     palette[0] = 0xFF000000; // opaque black
   }
-  buildPalette();
+  setPalette(0);
 
   // ---- buffers ----
   let fw = 0, fh = 0, fire = null, img = null, buf32 = null;
@@ -300,16 +368,22 @@
     cfg.scale = +v; resize();
   });
 
-  // Reset: snapshot each slider's default (its load-time value) and restore it.
+  const paletteSel = el("palette");
+  paletteSel.addEventListener("change", () => setPalette(+paletteSel.value));
+
+  // Reset: snapshot each control's default (its load-time value) and restore it.
   const sliderIds = ["points", "speed", "rise", "res"];
   const defaults = {};
   sliderIds.forEach(id => { defaults[id] = el(id).value; });
+  const paletteDefault = paletteSel.value;
   el("reset").addEventListener("click", () => {
     sliderIds.forEach(id => {
       const input = el(id);
       input.value = defaults[id];
       input.dispatchEvent(new Event("input"));
     });
+    paletteSel.value = paletteDefault;
+    setPalette(+paletteDefault);
   });
 
   function setPanel(hidden) {

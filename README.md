@@ -24,8 +24,9 @@ morphs continuously.
 - **Deterministic point cloud** — the chaos game uses a seeded PRNG (mulberry32)
   that resets to the same value every frame, so the point *sequence* is identical
   each frame. Only the moving corners reshape the triangle — no random shimmer.
-- **Palette & glow** — a classic fire ramp built in HSL (black → red → orange →
-  yellow → white), with a subtle additive bloom that makes the white-hot points glow.
+- **Palettes & glow** — eight classic demoscene-style palettes to choose from
+  (Fire, Ice, Toxic, Copper, Purple, Rainbow, Grayscale, Electric), plus a subtle
+  additive bloom that makes the white-hot points glow.
 - **Timing** — the simulation advances on a slow fixed tick rate, decoupled from
   the render frame rate, so the burn stays smooth and controllable.
 
@@ -35,6 +36,7 @@ An on-screen panel (top-left) lets you tune the effect live:
 
 | Control | What it does |
 | --- | --- |
+| **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Points** | Number of chaos-game points per frame (100–4000). |
 | **Drift speed** | How fast the triangle's corners move around the screen. |
 | **Flame rise** | How tall the flames climb before fading (linear in height). |
