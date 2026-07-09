@@ -148,10 +148,11 @@
 
   const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 2, burn: 120 };
 
-  // Deterministic PRNG (mulberry32). Re-seeded to the same value every frame so
-  // the chaos game draws the identical point sequence each time — only the
-  // moving corners change the shape, not the random noise.
-  const SEED = 0x9e3779b9;
+  // Deterministic PRNG (mulberry32). Seeded once from unix time at load, then
+  // re-seeded to that same value every frame so the chaos game draws the
+  // identical point sequence each time — only the moving corners change the
+  // shape, not the random noise. Different page loads get a different seed.
+  const SEED = Date.now() | 0;
   let rngState = SEED;
   function rnd() {
     rngState |= 0;
