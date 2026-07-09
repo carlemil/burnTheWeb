@@ -28,7 +28,7 @@
     color: #ffdcb0;
     font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     user-select: none;
-    transition: opacity .3s, transform .3s;
+    transition: opacity .3s, transform .3s, visibility .3s;
   }
   #panel h1 {
     margin: 0 0 2px;
@@ -62,7 +62,7 @@
     opacity: .9;
   }
   #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
-  #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; }
+  #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
   #toggle {
     position: fixed;
     top: 14px;
