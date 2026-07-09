@@ -306,7 +306,10 @@
   // the render frame rate, so the burn can be as slow as we like while the
   // canvas still repaints smoothly.
   function simulate(now) {
-    const t = now * 0.001 * cfg.speed;
+    // Drift phase is driven by absolute unix time (timeOrigin + the RAF
+    // timestamp), so the corners keep moving on the wall clock and a reload
+    // continues where real time is rather than restarting from phase 0.
+    const t = (performance.timeOrigin + now) * 0.001 * cfg.speed;
 
     // 1) propagate existing fire upward (cgtutor averaging, with decay)
     const decay = cfg.decay;
