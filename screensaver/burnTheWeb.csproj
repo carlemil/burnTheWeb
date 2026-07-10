@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>burnTheWeb</AssemblyName>
+    <RootNamespace>BurnTheWebSaver</RootNamespace>
+    <Product>burnTheWeb Screen Saver</Product>
+    <AssemblyTitle>burnTheWeb Screen Saver</AssemblyTitle>
+    <Version>1.0.0</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+  </ItemGroup>
+
+  <!-- Embed the site's single index.html straight from the repo root, so the
+       screen saver always hosts the exact same visual as the web version. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\index.html">
+      <LogicalName>index.html</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>
