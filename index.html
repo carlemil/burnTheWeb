@@ -104,12 +104,13 @@
 
 <div id="panel" class="hidden">
   <h1>burnTheWeb</h1>
-  <p class="sub" id="sub">Sierpiński tetrahedron · classic fire</p>
+  <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
   <label>Effect</label>
   <select id="effect">
     <option value="0">Sirpinfyer</option>
-    <option value="1">AnimeJulia</option>
+    <option value="1">Tetrafyer</option>
+    <option value="2">AnimeJulia</option>
   </select>
 
   <label>Palette</label>
@@ -165,9 +166,10 @@
 
   const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 2, burn: 120 };
 
-  // Active effect: 0 = Sirpinfyer (Sierpiński fire), 1 = AnimeJulia (animated
-  // Julia set). Both write heat into the shared `fire` buffer, so palettes,
-  // auto-morph and the render/glow pipeline are identical for either.
+  // Active effect: 0 = Sirpinfyer (2D Sierpiński triangle fire), 1 = Tetrafyer
+  // (3D Sierpiński tetrahedron fire), 2 = AnimeJulia (animated Julia set). All
+  // write heat into the shared `fire` buffer, so palettes, auto-morph and the
+  // render/glow pipeline are identical for every mode.
   let effect = 0;
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
@@ -368,44 +370,63 @@
       }
     }
 
-    // 2) stamp the Sierpiński tetrahedron as fresh heat (3D chaos game).
-    // Four vertices of a regular tetrahedron tumble in 3D on the wall clock;
-    // the chaos game (jump halfway toward a random vertex) runs in 3D and each
-    // point is perspective-projected into a safe box, so the fractal never
-    // touches the edges (top 20% and left/right/bottom 5% excluded).
+    // 2) stamp the Sierpiński fractal as fresh heat via the chaos game.
+    // Keep it inside a safe box (top 20% and left/right/bottom 5% excluded) so
+    // it never touches the screen edges. Effect 0 is the 2D triangle; effect 1
+    // is the 3D tetrahedron. Both re-seed the PRNG to SEED each frame, so only
+    // the moving geometry reshapes the fractal — no random shimmer.
     const xL = fw * 0.05, xR = fw * 0.95;
     const yT = fh * 0.20, yB = fh * 0.95;
-    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
-    const scale = Math.min(xR - xL, yB - yT) * 0.5 / 2.1;
-
-    // tumble the tetrahedron: rotate about the Y axis then the X axis
-    const a = t * 0.55, b = t * 0.37;
-    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
-    const F = 3.4;                 // perspective focal distance (> vertex radius)
-    // regular-tetrahedron vertices centred at the origin, rotated per frame
-    const base = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
-    const vX = [0, 0, 0, 0], vY = [0, 0, 0, 0], vZ = [0, 0, 0, 0];
-    for (let k = 0; k < 4; k++) {
-      const x = base[k][0], y = base[k][1], z = base[k][2];
-      const x1 = x * ca + z * sa, z1 = z * ca - x * sa;   // rotate about Y
-      vX[k] = x1;
-      vY[k] = y * cb - z1 * sb;                            // rotate about X
-      vZ[k] = y * sb + z1 * cb;
-    }
-
-    rngState = SEED;               // reset: same point sequence every frame
-    let px = 0, py = 0, pz = 0;    // walk the chaos game in 3D
     const n = cfg.points;
-    for (let i = 0; i < n + 16; i++) {
-      const k = (rnd() * 4) | 0;
-      px = (px + vX[k]) * 0.5;
-      py = (py + vY[k]) * 0.5;
-      pz = (pz + vZ[k]) * 0.5;
-      if (i > 15) {
-        const persp = F / (F - pz);                       // nearer points larger
-        const sx = (cx + px * persp * scale) | 0;
-        const sy = (cy - py * persp * scale) | 0;         // world up = screen up
-        if (sx >= 0 && sx < fw && sy >= 0 && sy < fh) fire[sy * fw + sx] = 255;
+    rngState = SEED;               // reset: same point sequence every frame
+
+    if (effect === 0) {
+      // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix.
+      const hx = w => xL + (w + 1) * (xR - xL) * 0.5;
+      const vy = w => yT + (w + 1) * (yB - yT) * 0.5;
+      const corners = [
+        [hx(Math.sin(t * 0.70)),        vy(Math.cos(t * 0.90))],
+        [hx(Math.sin(t * 1.10 + 2.10)), vy(Math.cos(t * 0.50 + 1.30))],
+        [hx(Math.cos(t * 0.60 + 4.20)), vy(Math.sin(t * 0.80 + 0.70))],
+      ];
+      let px = fw * 0.5, py = fh * 0.575;
+      for (let i = 0; i < n + 16; i++) {
+        const c = corners[(rnd() * 3) | 0];
+        px = (px + c[0]) * 0.5;
+        py = (py + c[1]) * 0.5;
+        if (i > 15) {
+          const xi = px | 0, yi = py | 0;
+          if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) fire[yi * fw + xi] = 255;
+        }
+      }
+    } else {
+      // Tetrafyer — 3D tetrahedron tumbling on the wall clock, then projected.
+      const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+      const scale = Math.min(xR - xL, yB - yT) * 0.5 / 2.1;
+      const a = t * 0.55, b = t * 0.37;          // rotate about Y then X
+      const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+      const F = 3.4;                             // perspective focal distance
+      const base = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
+      const vX = [0, 0, 0, 0], vY = [0, 0, 0, 0], vZ = [0, 0, 0, 0];
+      for (let k = 0; k < 4; k++) {
+        const x = base[k][0], y = base[k][1], z = base[k][2];
+        const x1 = x * ca + z * sa, z1 = z * ca - x * sa;
+        vX[k] = x1;
+        vY[k] = y * cb - z1 * sb;
+        vZ[k] = y * sb + z1 * cb;
+      }
+      let px = 0, py = 0, pz = 0;                // walk the chaos game in 3D
+      for (let i = 0; i < n + 16; i++) {
+        const k = (rnd() * 4) | 0;
+        px = (px + vX[k]) * 0.5;
+        py = (py + vY[k]) * 0.5;
+        pz = (pz + vZ[k]) * 0.5;
+        if (i > 15) {
+          const persp = F / (F - pz);            // nearer points larger
+          const sx = (cx + px * persp * scale) | 0;
+          const sy = (cy - py * persp * scale) | 0;   // world up = screen up
+          if (sx >= 0 && sx < fw && sy >= 0 && sy < fh) fire[sy * fw + sx] = 255;
+        }
       }
     }
   }
@@ -479,10 +500,10 @@
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
 
-    // AnimeJulia zooms via its complex-plane span, so only the fire scales the
-    // rendered image here. Scale about the canvas centre; clear first when zoomed
-    // out so no smeared border remains.
-    const z = effect === 0 ? zoom : 1;
+    // AnimeJulia zooms via its complex-plane span, so only the fire modes scale
+    // the rendered image here. Scale about the canvas centre; clear first when
+    // zoomed out so no smeared border remains.
+    const z = effect === 2 ? 1 : zoom;
     ctx.save();
     if (z !== 1) {
       ctx.fillStyle = "#000";
@@ -516,7 +537,7 @@
 
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
-    if (effect === 1) {
+    if (effect === 2) {
       julia(now);                     // recomputed whole each frame from the seed
     } else {
       const step = 1 / cfg.burn;      // seconds between fire simulation ticks
@@ -557,13 +578,18 @@
   const sub = el("sub");
   const grpSirp = el("grp-sirp");
   const grpJulia = el("grp-julia");
-  const SUBTITLES = ["Sierpiński tetrahedron · classic fire", "Julia set · animated seed"];
+  const SUBTITLES = [
+    "Sierpiński triangle · classic fire",
+    "Sierpiński tetrahedron · classic fire",
+    "Julia set · animated seed",
+  ];
   function setEffect(i) {
     effect = i;
     sub.textContent = SUBTITLES[i];
-    // only show the sliders that affect the selected mode
-    grpSirp.style.display = i === 0 ? "" : "none";
-    grpJulia.style.display = i === 1 ? "" : "none";
+    // only show the sliders that affect the selected mode: the fire controls
+    // apply to both Sirpinfyer and Tetrafyer (0/1); Cardioid RPM only to Julia.
+    grpSirp.style.display = i === 2 ? "none" : "";
+    grpJulia.style.display = i === 2 ? "" : "none";
     if (fire) fire.fill(0);           // drop leftover heat when switching
   }
   effectSel.addEventListener("change", () => setEffect(+effectSel.value));

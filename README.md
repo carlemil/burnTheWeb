@@ -1,19 +1,20 @@
 # burnTheWeb
 
 A classic demoscene **fire effect** whose flames are seeded by an animated
-**Sierpiński tetrahedron**. The tetrahedron's four vertices tumble in 3D, and a
-chaos-game point cloud — run in 3D and perspective-projected — stamps the fractal
-into the fire as fresh heat every tick, so the whole thing burns, flickers, and
-morphs continuously.
+**Sierpiński fractal** — either a 2D triangle or a 3D tetrahedron. A chaos-game
+point cloud stamps the fractal into the fire as fresh heat every tick, so the
+whole thing burns, flickers, and morphs continuously.
 
 🔥 **Live demo:** https://carlemil.github.io/burnTheWeb/
 
 ## Effects
 
-An **Effect** selector at the top of the panel switches between two visuals that
-share the same palette, auto-morph and glow pipeline:
+An **Effect** selector at the top of the panel switches between three visuals
+that share the same palette, auto-morph and glow pipeline:
 
-- **Sirpinfyer** — the Sierpiński-tetrahedron fire described below.
+- **Sirpinfyer** — the classic 2D Sierpiński-**triangle** fire described below.
+- **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** whose
+  four vertices tumble in space, the chaos game run in 3D and perspective-projected.
 - **AnimeJulia** — an animated Julia set. The seed `c` is orbited around the
   Mandelbrot plane along two stacked loops: a large slow loop tracing just
   outside the inner bound (the main cardioid, pushed slightly outward) so the
@@ -28,18 +29,19 @@ share the same palette, auto-morph and glow pipeline:
 - **Fire** — a low-resolution heat buffer where each cell averages the pixels
   below it with a slight decay, so heat rises and flickers. This is the classic
   algorithm from [Lode's computer graphics tutorial](https://lodev.org/cgtutor/fire.html).
-- **Sierpiński seed** — the fractal is generated with the 3D
+- **Sierpiński seed** — the fractal is generated with the
   [chaos game](https://en.wikipedia.org/wiki/Sierpi%C5%84ski_triangle): repeatedly
-  jump halfway toward a randomly chosen one of the tetrahedron's four vertices.
-  Each resulting point is perspective-projected and stamped into the fire buffer
-  as maximum heat, so flames rise out of the fractal.
-- **Tumbling in 3D** — the four vertices of a regular tetrahedron rotate about
-  two axes on the wall clock, so the fractal turns and reshapes. The projection is
-  fit into a safe box (clear of the top 20% and the left/right/bottom 5%) so it
-  never runs off the edges.
+  jump halfway toward a randomly chosen corner. **Sirpinfyer** uses a 2D triangle
+  (three corners); **Tetrafyer** uses a 3D tetrahedron (four vertices), running the
+  walk in 3D and perspective-projecting each point. Each point is stamped into the
+  fire buffer as maximum heat, so flames rise out of the fractal.
+- **Moving geometry** — the triangle's corners drift on their own `sin`/`cos`
+  mixes, while the tetrahedron tumbles about two axes; either way it's driven by
+  the wall clock and fit into a safe box (clear of the top 20% and the
+  left/right/bottom 5%) so the fractal never runs off the edges.
 - **Deterministic point cloud** — the chaos game uses a seeded PRNG (mulberry32)
   that resets to the same value every frame, so the point *sequence* is identical
-  each frame. Only the tumbling vertices reshape the fractal — no random shimmer.
+  each frame. Only the moving geometry reshapes the fractal — no random shimmer.
 - **Palettes & glow** — eight classic demoscene-style palettes to choose from
   (Fire, Ice, Toxic, Copper, Purple, Rainbow, Grayscale, Electric), plus a subtle
   additive bloom that makes the white-hot points glow. An optional auto-morph mode
