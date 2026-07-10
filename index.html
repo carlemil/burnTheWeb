@@ -289,7 +289,7 @@
   // ---- auto-morph: continuously blend to a random palette over 8s ----
   const MORPH_MS = 8000;
   let morphing = false, morphFrom = null, morphTo = null, morphStart = 0,
-    morphTargetIndex = 0, morphInit = false;
+    morphTargetIndex = 0, morphFromIndex = 0, morphInit = false;
 
   function paletteRGB(i) {
     const fn = PALETTES[i].fn, arr = new Float32Array(256 * 3);
@@ -310,6 +310,7 @@
   function showMorphTarget() { el("palette").value = morphTargetIndex; }
   function startMorph(fromIndex) {
     morphFrom = paletteRGB(fromIndex);
+    morphFromIndex = fromIndex;
     morphTargetIndex = pickOther(fromIndex);
     morphTo = paletteRGB(morphTargetIndex);
     morphInit = true;                       // capture start time on next frame
@@ -320,6 +321,7 @@
     let f = (now - morphStart) / MORPH_MS;
     if (f >= 1) {                           // arrived: target becomes current, pick a new one
       morphFrom = morphTo;
+      morphFromIndex = morphTargetIndex;
       morphTargetIndex = pickOther(morphTargetIndex);
       morphTo = paletteRGB(morphTargetIndex);
       morphStart = now;
@@ -611,13 +613,21 @@
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
     // The Banded palette is AnimeJulia-only: hide it in the fire modes, and if
-    // it was active there, fall back to Fire.
+    // Banded touches the current colours there — as the active palette, or as
+    // either end of an in-flight morph — fall back to Fire so it never bleeds
+    // into Sirpinfyer/Tetrafyer.
     const bandedOK = i === 2;
     bandedOption.hidden = !bandedOK;
     bandedOption.disabled = !bandedOK;
-    if (!bandedOK && +paletteSel.value === BANDED) {
-      paletteSel.value = "0";
-      if (morphing) startMorph(0); else setPalette(0);
+    if (!bandedOK) {
+      if (morphing && (morphFromIndex === BANDED || morphTargetIndex === BANDED)) {
+        let from = +paletteSel.value;
+        if (from === BANDED) from = 0;       // never restart a blend from Banded
+        startMorph(from);
+      } else if (!morphing && +paletteSel.value === BANDED) {
+        paletteSel.value = "0";
+        setPalette(0);
+      }
     }
     if (fire) fire.fill(0);           // drop leftover heat when switching
   }
