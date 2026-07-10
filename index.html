@@ -137,6 +137,9 @@
   <label>Resolution <span class="val" id="vRes"></span></label>
   <input id="res" type="range" min="2" max="6" step="1" value="2">
 
+  <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
+  <input id="rpm" type="range" min="0.01" max="2" step="0.01" value="0.05">
+
   <button id="reset" type="button">Reset to defaults</button>
 
   <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause</p>
@@ -383,7 +386,7 @@
   const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
   const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
   const JULIA_SMALL_R = 0.03;          // small circle radius (< margin ⇒ stays outside)
-  const JULIA_BIG_RPM = 0.05;          // slow outer spin
+  let juliaBigRpm = 0.05;              // slow outer spin (live-tunable via slider)
   const JULIA_SMALL_RPM = 0.75;        // faster inner spin
   const JULIA_MAX_ITER = 160;
   const JULIA_SPAN = 2.8;              // vertical extent of the complex view
@@ -394,7 +397,7 @@
     const t = (performance.timeOrigin + now) * 0.001;
     // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
     // scaled outward by the margin so it sits just outside the inner bound.
-    const th = t * JULIA_BIG_RPM * RPM, s = 1 + JULIA_MARGIN;
+    const th = t * juliaBigRpm * RPM, s = 1 + JULIA_MARGIN;
     let cx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
     let cy = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
     // small fast circle riding on top
@@ -494,6 +497,7 @@
   bind("res", "vRes", v => v, v => {
     cfg.scale = +v; resize();
   });
+  bind("rpm", "vRpm", v => (+v).toFixed(2), v => juliaBigRpm = +v);
 
   const effectSel = el("effect");
   const sub = el("sub");
@@ -520,7 +524,7 @@
   // Reset: snapshot each control's default (its load-time value) and restore it.
   // Snapshot before the initial auto-morph runs, since morphing mutates the
   // palette dropdown to show its current target.
-  const sliderIds = ["points", "speed", "rise", "res"];
+  const sliderIds = ["points", "speed", "rise", "res", "rpm"];
   const defaults = {};
   sliderIds.forEach(id => { defaults[id] = el(id).value; });
   const paletteDefault = paletteSel.value;

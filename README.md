@@ -60,6 +60,7 @@ An on-screen panel (top-left) lets you tune the effect live:
 | **Drift speed** | How fast the triangle's corners move around the screen. |
 | **Flame rise** | How tall the flames climb before fading (linear in height). |
 | **Resolution** | Fire buffer scale — sharper vs. chunkier/softer flames. |
+| **Cardioid RPM** | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid (0.01–2 rpm). |
 
 Press **H** to hide the panel; click the canvas to pause.
 
