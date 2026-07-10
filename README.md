@@ -75,13 +75,6 @@ python -m http.server
 # then open http://localhost:8000
 ```
 
-## Windows screen saver
-
-There's a native Windows screen saver (`.scr`) in [`screensaver/`](screensaver/)
-that hosts this same `index.html` in an embedded Edge (WebView2) surface, so it
-renders identically to the web version. See its
-[README](screensaver/README.md) to build and install it.
-
 ## Tech
 
 Plain HTML5 `<canvas>` and vanilla JavaScript. Hosted on GitHub Pages.
