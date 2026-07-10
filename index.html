@@ -125,20 +125,24 @@
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
 
-  <label>Points <span class="val" id="vPoints"></span></label>
-  <input id="points" type="range" min="100" max="4000" step="50" value="1500">
+  <div id="grp-sirp">
+    <label>Points <span class="val" id="vPoints"></span></label>
+    <input id="points" type="range" min="100" max="4000" step="50" value="1500">
 
-  <label>Drift speed <span class="val" id="vSpeed"></span></label>
-  <input id="speed" type="range" min="10" max="300" step="1" value="92">
+    <label>Drift speed <span class="val" id="vSpeed"></span></label>
+    <input id="speed" type="range" min="10" max="300" step="1" value="92">
 
-  <label>Flame rise <span class="val" id="vRise"></span></label>
-  <input id="rise" type="range" min="3" max="200" step="1" value="130">
+    <label>Flame rise <span class="val" id="vRise"></span></label>
+    <input id="rise" type="range" min="3" max="200" step="1" value="130">
+  </div>
 
   <label>Resolution <span class="val" id="vRes"></span></label>
   <input id="res" type="range" min="2" max="6" step="1" value="2">
 
-  <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
-  <input id="rpm" type="range" min="0.01" max="2" step="0.01" value="0.05">
+  <div id="grp-julia">
+    <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
+    <input id="rpm" type="range" min="0.01" max="2" step="0.01" value="0.05">
+  </div>
 
   <button id="reset" type="button">Reset to defaults</button>
 
@@ -501,13 +505,19 @@
 
   const effectSel = el("effect");
   const sub = el("sub");
+  const grpSirp = el("grp-sirp");
+  const grpJulia = el("grp-julia");
   const SUBTITLES = ["Sierpiński triangle · classic fire", "Julia set · animated seed"];
   function setEffect(i) {
     effect = i;
     sub.textContent = SUBTITLES[i];
+    // only show the sliders that affect the selected mode
+    grpSirp.style.display = i === 0 ? "" : "none";
+    grpJulia.style.display = i === 1 ? "" : "none";
     if (fire) fire.fill(0);           // drop leftover heat when switching
   }
   effectSel.addEventListener("change", () => setEffect(+effectSel.value));
+  setEffect(+effectSel.value);        // apply initial visibility for the default mode
 
   const paletteSel = el("palette");
   const morphChk = el("morph");
