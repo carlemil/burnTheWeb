@@ -8,6 +8,21 @@ morphs continuously.
 
 🔥 **Live demo:** https://carlemil.github.io/burnTheWeb/
 
+## Effects
+
+An **Effect** selector at the top of the panel switches between two visuals that
+share the same palette, auto-morph and glow pipeline:
+
+- **Sirpinfyer** — the Sierpiński-triangle fire described below.
+- **AnimeJulia** — an animated Julia set. The seed `c` is orbited around the
+  Mandelbrot plane along two stacked loops: a large slow loop tracing just
+  outside the inner bound (the main cardioid, pushed slightly outward) so the
+  Julia set stays intricate, plus a much smaller, faster circle riding on top
+  that only ever nudges the seed further out — never into the interior. The big
+  loop turns at ~0.05 rpm, the small one a fair bit faster, so the fractal
+  reshapes continuously. Per-pixel escape time is written as heat and coloured
+  through the same fire palettes.
+
 ## How it works
 
 - **Fire** — a low-resolution heat buffer where each cell averages the pixels
@@ -38,6 +53,7 @@ An on-screen panel (top-left) lets you tune the effect live:
 
 | Control | What it does |
 | --- | --- |
+| **Effect** | Switch between **Sirpinfyer** (Sierpiński fire) and **AnimeJulia** (animated Julia set). |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **Points** | Number of chaos-game points per frame (100–4000). |

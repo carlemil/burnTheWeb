@@ -104,7 +104,13 @@
 
 <div id="panel" class="hidden">
   <h1>burnTheWeb</h1>
-  <p class="sub">Sierpiński triangle · classic fire</p>
+  <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
+
+  <label>Effect</label>
+  <select id="effect">
+    <option value="0">Sirpinfyer</option>
+    <option value="1">AnimeJulia</option>
+  </select>
 
   <label>Palette</label>
   <select id="palette">
@@ -147,6 +153,11 @@
   const offCtx = off.getContext("2d");
 
   const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 2, burn: 120 };
+
+  // Active effect: 0 = Sirpinfyer (Sierpiński fire), 1 = AnimeJulia (animated
+  // Julia set). Both write heat into the shared `fire` buffer, so palettes,
+  // auto-morph and the render/glow pipeline are identical for either.
+  let effect = 0;
 
   // Deterministic PRNG (mulberry32). Seeded once from unix time at load, then
   // re-seeded to that same value every frame so the chaos game draws the
@@ -355,6 +366,71 @@
 
   }
 
+  // ---- AnimeJulia: animated Julia set ----
+  // z_{n+1} = z^2 + c with z0 = pixel; the seed c is a point in the Mandelbrot
+  // plane that we orbit. c is the sum of two loops:
+  //  · a large slow loop tracing just outside the inner bound of the Mandelbrot
+  //    set. That inner bound is the main cardioid (cusp at only +0.25 real),
+  //    NOT a circle — so we follow the cardioid boundary itself, scaled outward
+  //    by a small margin. This keeps c right at the frontier where Julia sets
+  //    are most intricate instead of dead dust or a solid blob.
+  //  · a much smaller, faster circle riding on top. Its radius is under the
+  //    outward margin, so it only ever wobbles the seed further out — never
+  //    deep enough to touch the interior.
+  // The big loop turns at ~0.05 rpm, the small one a fair bit faster, so the
+  // fractal reshapes continuously. Escape time is written as heat into `fire`
+  // and rendered through the same palette/glow pipeline as the fire.
+  const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
+  const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
+  const JULIA_SMALL_R = 0.03;          // small circle radius (< margin ⇒ stays outside)
+  const JULIA_BIG_RPM = 0.05;          // slow outer spin
+  const JULIA_SMALL_RPM = 0.75;        // faster inner spin
+  const JULIA_MAX_ITER = 160;
+  const JULIA_SPAN = 2.8;              // vertical extent of the complex view
+  const JULIA_INV_LN2 = 1 / Math.LN2;
+  function julia(now) {
+    // Absolute unix time in seconds, so the seed keeps orbiting on the wall
+    // clock and a reload resumes where real time is (matching the fire drift).
+    const t = (performance.timeOrigin + now) * 0.001;
+    // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
+    // scaled outward by the margin so it sits just outside the inner bound.
+    const th = t * JULIA_BIG_RPM * RPM, s = 1 + JULIA_MARGIN;
+    let cx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
+    let cy = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
+    // small fast circle riding on top
+    const a2 = t * JULIA_SMALL_RPM * RPM;
+    cx += JULIA_SMALL_R * Math.cos(a2);
+    cy += JULIA_SMALL_R * Math.sin(a2);
+
+    const spanY = JULIA_SPAN, spanX = spanY * (fw / fh);
+    const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const zy0 = (y / fh - 0.5) * spanY;
+      for (let x = 0; x < fw; x++) {
+        let zx = (x / fw - 0.5) * spanX, zy = zy0;
+        let zx2 = zx * zx, zy2 = zy * zy, i = 0;
+        while (zx2 + zy2 <= 4 && i < maxIter) {
+          zy = 2 * zx * zy + cy;
+          zx = zx2 - zy2 + cx;
+          zx2 = zx * zx; zy2 = zy * zy;
+          i++;
+        }
+        let v;
+        if (i >= maxIter) {
+          v = 255;                     // inside the set: hottest
+        } else {
+          // smooth (fractional) escape count kills the concentric banding,
+          // then a sqrt gamma lifts the thin filaments into a visible glow.
+          const nu = Math.log(0.5 * Math.log(zx2 + zy2) * invLn2) * invLn2;
+          let f = (i + 1 - nu) / maxIter;
+          v = f <= 0 ? 0 : 255 * Math.sqrt(f);
+        }
+        fire[idx++] = v;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -384,12 +460,16 @@
 
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
-    const step = 1 / cfg.burn;        // seconds between simulation ticks
-    let ticks = 0;
-    while (acc >= step && ticks < 4) {
-      simulate(now);
-      acc -= step;
-      ticks++;
+    if (effect === 1) {
+      julia(now);                     // recomputed whole each frame from the seed
+    } else {
+      const step = 1 / cfg.burn;      // seconds between fire simulation ticks
+      let ticks = 0;
+      while (acc >= step && ticks < 4) {
+        simulate(now);
+        acc -= step;
+        ticks++;
+      }
     }
     render();
   }
@@ -415,6 +495,16 @@
     cfg.scale = +v; resize();
   });
 
+  const effectSel = el("effect");
+  const sub = el("sub");
+  const SUBTITLES = ["Sierpiński triangle · classic fire", "Julia set · animated seed"];
+  function setEffect(i) {
+    effect = i;
+    sub.textContent = SUBTITLES[i];
+    if (fire) fire.fill(0);           // drop leftover heat when switching
+  }
+  effectSel.addEventListener("change", () => setEffect(+effectSel.value));
+
   const paletteSel = el("palette");
   const morphChk = el("morph");
   paletteSel.addEventListener("change", () => {
@@ -434,12 +524,15 @@
   const defaults = {};
   sliderIds.forEach(id => { defaults[id] = el(id).value; });
   const paletteDefault = paletteSel.value;
+  const effectDefault = effectSel.value;
   el("reset").addEventListener("click", () => {
     sliderIds.forEach(id => {
       const input = el(id);
       input.value = defaults[id];
       input.dispatchEvent(new Event("input"));
     });
+    effectSel.value = effectDefault;
+    setEffect(+effectDefault);
     paletteSel.value = paletteDefault;
     setPalette(+paletteDefault);
     morphChk.checked = true;
