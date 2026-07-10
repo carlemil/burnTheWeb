@@ -14,7 +14,8 @@ that share the same palette, auto-morph and glow pipeline:
 
 - **Sirpinfyer** — the classic 2D Sierpiński-**triangle** fire described below.
 - **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** whose
-  four vertices tumble in space, the chaos game run in 3D and perspective-projected.
+  four vertices tumble in space while an animated camera dollies, zooms and pans;
+  the chaos game runs in 3D and is perspective-projected.
 - **AnimeJulia** — an animated Julia set. The seed `c` is orbited around the
   Mandelbrot plane along two stacked loops: a large slow loop tracing just
   outside the inner bound (the main cardioid, pushed slightly outward) so the

@@ -406,16 +406,23 @@
         }
       }
     } else {
-      // Tetrafyer — 3D tetrahedron tumbling on the wall clock, then projected.
-      const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
-      const scale = Math.min(xR - xL, yB - yT) * 0.5 / 2.1;
-      const a = t * 0.55, b = t * 0.37;          // rotate about Y then X
+      // Tetrafyer — a 3D tetrahedron tumbles while an animated camera reframes it:
+      // the viewpoint dollies (focal distance F), zooms (scale) and pans (cx/cy)
+      // on their own slow cycles, so the fractal drifts through the frame
+      // cinematically. Points pushed past the edges are simply clipped.
+      const halfW = (xR - xL) * 0.5, halfH = (yB - yT) * 0.5;
+      const camZoom = 1.05 + 0.55 * Math.sin(t * 0.23);         // zoom in / out
+      const scale = Math.min(halfW, halfH) / 2.1 * camZoom;
+      const F = 3.6 + 1.3 * Math.sin(t * 0.17 + 1.0);           // dolly nearer / farther
+      const cx = (xL + xR) * 0.5 + halfW * 0.12 * Math.sin(t * 0.13 + 2.0);  // pan
+      const cy = (yT + yB) * 0.5 + halfH * 0.10 * Math.cos(t * 0.19 + 0.5);
+
+      const a = t * 0.55, b = t * 0.37;          // tetrahedron rotation (Y then X)
       const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
-      const F = 3.4;                             // perspective focal distance
-      const base = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
+      const verts = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
       const vX = [0, 0, 0, 0], vY = [0, 0, 0, 0], vZ = [0, 0, 0, 0];
       for (let k = 0; k < 4; k++) {
-        const x = base[k][0], y = base[k][1], z = base[k][2];
+        const x = verts[k][0], y = verts[k][1], z = verts[k][2];
         const x1 = x * ca + z * sa, z1 = z * ca - x * sa;
         vX[k] = x1;
         vY[k] = y * cb - z1 * sb;
