@@ -123,9 +123,9 @@
     <option value="5">Rainbow</option>
     <option value="6">Grayscale</option>
     <option value="7">Electric</option>
-    <option value="8">Banded</option>
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
+  <label class="check"><input type="checkbox" id="banded"> Banded stripes</label>
 
   <div id="grp-sirp">
     <label>Points <span class="val" id="vPoints"></span></label>
@@ -195,7 +195,8 @@
   // ---- palettes (classic demoscene style) ----
   // Each entry maps a heat index 0..255 to [r,g,b]; index 0 is forced to black
   // so unlit areas stay dark. The active one is baked into `palette` (ABGR).
-  const palette = new Uint32Array(256);
+  const palette = new Uint32Array(256);       // final ABGR pixels the render reads
+  const paletteBase = new Float32Array(256 * 3);   // the smooth, unbanded RGB ramp
   const clamp = v => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
 
   // The original HSL fire ramp: black -> red -> orange -> yellow -> white.
@@ -242,24 +243,6 @@
     ];
   }
 
-  // Banded: hard stripes cycling three light colours then the same three at
-  // 50% brightness, tiled across the range so the heat ramp reads as crisp
-  // contour bands (especially striking on the Julia set).
-  const BAND_LIGHT = [
-    [255, 245, 210], [190, 230, 255], [225, 255, 210],  // three light
-  ];
-  const BAND_DIM = 0.5;                                   // dark = light * 50%
-  const BAND_CYCLE = [
-    ...BAND_LIGHT,
-    ...BAND_LIGHT.map(c => c.map(v => v * BAND_DIM)),     // same hues, dimmed
-  ];
-  const BAND_COUNT = 18;                                 // 3 full light/dark cycles
-  function bandedColor(x) {
-    let b = (x / 256 * BAND_COUNT) | 0;
-    if (b >= BAND_COUNT) b = BAND_COUNT - 1;
-    return BAND_CYCLE[b % BAND_CYCLE.length];
-  }
-
   const PALETTES = [
     { name: "Fire", fn: fireColor },
     { name: "Ice", fn: grad([[0, [0, 0, 0]], [0.35, [0, 0, 80]], [0.6, [0, 90, 200]], [0.8, [90, 205, 255]], [1, [230, 250, 255]]]) },
@@ -269,18 +252,55 @@
     { name: "Rainbow", fn: rainbowColor },
     { name: "Grayscale", fn: x => [x, x, x] },
     { name: "Electric", fn: grad([[0, [0, 0, 0]], [0.3, [0, 40, 120]], [0.55, [0, 200, 220]], [0.75, [180, 120, 255]], [0.9, [255, 120, 240]], [1, [255, 240, 255]]]) },
-    { name: "Banded", fn: bandedColor },
   ];
 
-  // The Banded palette is reserved for AnimeJulia; the fire modes never use it,
-  // whether picked manually or by auto-morph.
-  const BANDED = PALETTES.findIndex(p => p.name === "Banded");
+  // ---- Banded stripes: a *filter* over whatever palette is active, not a
+  // palette of its own. It dims alternating groups of heat bands (three light,
+  // three dark, repeating) so any ramp reads as crisp contour stripes. The
+  // strength is a per-colour amount that eases in/out with the toggle and, once
+  // on, breathes as a slow wave travelling along the ramp — so it can be off,
+  // fully on, or anywhere between, and animates how much it hits each colour.
+  const BAND_COUNT = 18;          // 18 bands = three light / three dark, ×3
+  const BAND_DIM = 0.35;          // dark bands fall to 35% brightness at full amount
+  let bandedOn = false;           // the toggle
+  let bandLevel = 0;              // eased 0..1 follow of the toggle
+  let bandLive = false;           // is the currently-baked palette banded?
 
-  function setPalette(i) {
+  // setPalette / morphStep fill this smooth base ramp; composePalette() then
+  // bakes it (with the live banding filter) into the ABGR `palette` each frame.
+  function setBase(i) {
     const fn = PALETTES[i].fn;
     for (let x = 0; x < 256; x++) {
       const c = fn(x);
-      palette[x] = (255 << 24) | (clamp(c[2]) << 16) | (clamp(c[1]) << 8) | clamp(c[0]);
+      paletteBase[x * 3] = clamp(c[0]);
+      paletteBase[x * 3 + 1] = clamp(c[1]);
+      paletteBase[x * 3 + 2] = clamp(c[2]);
+    }
+  }
+  function setPalette(i) { setBase(i); composePalette(0); }
+
+  // Fold the banding filter over paletteBase into the final ABGR palette. For
+  // each band we take a single flat colour (the band's centre of the smooth
+  // ramp) and dim alternating groups of three, so any palette turns into hard
+  // light/dark contour stripes. The applied amount per index = bandLevel · a
+  // travelling wave, so the stripes fade in with the toggle and shimmer along
+  // the ramp while on — off, fully on, or anywhere between.
+  function composePalette(now) {
+    const t = now * 0.001;
+    const on = bandLevel > 0.001;
+    for (let x = 0; x < 256; x++) {
+      let r = paletteBase[x * 3], g = paletteBase[x * 3 + 1], b = paletteBase[x * 3 + 2];
+      if (on) {
+        const band = (x / 256 * BAND_COUNT) | 0;
+        const ci = (((band + 0.5) / BAND_COUNT) * 256) | 0;       // flat band colour
+        const dim = ((band / 3) | 0) % 2 === 0 ? 1 : BAND_DIM;    // light vs dark group
+        const wave = 0.6 + 0.4 * Math.sin(t * 0.9 - x * 0.05);    // breathe along ramp
+        const amt = bandLevel * wave;
+        r += (paletteBase[ci * 3] * dim - r) * amt;               // blend toward the
+        g += (paletteBase[ci * 3 + 1] * dim - g) * amt;           // flat, dimmed band
+        b += (paletteBase[ci * 3 + 2] * dim - b) * amt;
+      }
+      palette[x] = (255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r);
     }
     palette[0] = 0xFF000000; // opaque black
   }
@@ -289,7 +309,7 @@
   // ---- auto-morph: continuously blend to a random palette over 8s ----
   const MORPH_MS = 8000;
   let morphing = false, morphFrom = null, morphTo = null, morphStart = 0,
-    morphTargetIndex = 0, morphFromIndex = 0, morphInit = false;
+    morphTargetIndex = 0, morphInit = false;
 
   function paletteRGB(i) {
     const fn = PALETTES[i].fn, arr = new Float32Array(256 * 3);
@@ -300,17 +320,15 @@
     arr[0] = arr[1] = arr[2] = 0; // index 0 black
     return arr;
   }
-  function pickOther(cur) {                 // random allowed palette index != cur
+  function pickOther(cur) {                 // random palette index != cur
     let n;
-    do { n = (Math.random() * PALETTES.length) | 0; }
-    while (n === cur || (n === BANDED && effect !== 2));
+    do { n = (Math.random() * PALETTES.length) | 0; } while (n === cur);
     return n;
   }
   // reflect the palette we're heading toward in the dropdown
   function showMorphTarget() { el("palette").value = morphTargetIndex; }
   function startMorph(fromIndex) {
     morphFrom = paletteRGB(fromIndex);
-    morphFromIndex = fromIndex;
     morphTargetIndex = pickOther(fromIndex);
     morphTo = paletteRGB(morphTargetIndex);
     morphInit = true;                       // capture start time on next frame
@@ -321,7 +339,6 @@
     let f = (now - morphStart) / MORPH_MS;
     if (f >= 1) {                           // arrived: target becomes current, pick a new one
       morphFrom = morphTo;
-      morphFromIndex = morphTargetIndex;
       morphTargetIndex = pickOther(morphTargetIndex);
       morphTo = paletteRGB(morphTargetIndex);
       morphStart = now;
@@ -329,14 +346,10 @@
       showMorphTarget();
     }
     const from = morphFrom, to = morphTo;
-    for (let x = 0; x < 256; x++) {
-      const i = x * 3;
-      const r = from[i] + (to[i] - from[i]) * f;
-      const g = from[i + 1] + (to[i + 1] - from[i + 1]) * f;
-      const b = from[i + 2] + (to[i + 2] - from[i + 2]) * f;
-      palette[x] = (255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r);
+    for (let i = 0, len = 256 * 3; i < len; i++) {
+      paletteBase[i] = from[i] + (to[i] - from[i]) * f;   // blend into the base ramp
     }
-    palette[0] = 0xFF000000;
+    composePalette(now);                    // then apply the live banding filter
   }
 
   // ---- buffers ----
@@ -356,6 +369,92 @@
   }
   window.addEventListener("resize", resize);
   resize();
+
+  // ---- Tetrafyer rigid-body physics ---------------------------------------
+  // A Sierpiński tetrahedron bounces inside a rubbery box floating in front of
+  // the camera. The four vertices are perfectly symmetric, so the inertia
+  // tensor is isotropic (I = 2·m·s² about every axis). That collapses the
+  // rigid-body maths to one impulse per contacting vertex: clip a corner on a
+  // wall and the single impulse updates both the travel *and* the spin the way
+  // a real tumbling solid would — nick an edge and it visibly kicks into a roll.
+  const v3 = {
+    add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+    scale: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
+    dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+    cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  };
+  // Rodrigues rotation of v about unit axis u (ct = cos θ, st = sin θ).
+  function rotAxis(v, u, ct, st) {
+    const d = v3.dot(u, v) * (1 - ct), cr = v3.cross(u, v);
+    return [v[0] * ct + cr[0] * st + u[0] * d,
+            v[1] * ct + cr[1] * st + u[1] * d,
+            v[2] * ct + cr[2] * st + u[2] * d];
+  }
+  const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
+  const TETRA = {
+    s: 0.42,                       // vertex scale — corner reach = s·√3
+    e: 0.985,                      // wall restitution (rubbery ⇒ very bouncy)
+    box: [1.0, 1.05, 1.0],         // half-extents [x,y,z]; x is retuned to aspect
+    P: [0, 0, 0],                  // centre of mass
+    V: [0.95, 0.62, 0.78],         // linear velocity (world units / s)
+    W: [1.1, 0.7, 1.4],            // angular velocity (rad / s)
+    rv: null,                      // the four oriented vertex offsets from the COM
+    E0: 0,                         // reference kinetic energy (keeps motion alive)
+    impacts: [],                   // recent wall hits, driving the rubbery ripple
+  };
+  function tetraInit() {
+    TETRA.rv = TETRA_UNIT.map(u => v3.scale(u, TETRA.s));
+    TETRA.E0 = 0.5 * v3.dot(TETRA.V, TETRA.V)
+             + 0.5 * (2 * TETRA.s * TETRA.s) * v3.dot(TETRA.W, TETRA.W);
+  }
+  tetraInit();
+  // Advance the rigid body one fixed timestep and resolve vertex/wall hits.
+  function tetraStep(dt, t) {
+    const T = TETRA, box = T.box, e = T.e;
+    const Iinv = 1 / (2 * T.s * T.s);           // isotropic inverse inertia (m = 1)
+
+    T.P = v3.add(T.P, v3.scale(T.V, dt));        // integrate translation
+
+    const wl = Math.hypot(T.W[0], T.W[1], T.W[2]);   // integrate orientation
+    if (wl > 1e-9) {
+      const u = v3.scale(T.W, 1 / wl), ang = wl * dt;
+      const ct = Math.cos(ang), st = Math.sin(ang);
+      T.rv = T.rv.map(r => rotAxis(r, u, ct, st));    // one rotation for all ⇒ rigid
+    }
+
+    for (let k = 0; k < 4; k++) {                // resolve each vertex against 6 walls
+      const r = T.rv[k];
+      for (let ax = 0; ax < 3; ax++) {
+        for (let sgn = -1; sgn <= 1; sgn += 2) {
+          const pax = T.P[ax] + r[ax];
+          const beyond = sgn > 0 ? pax - box[ax] : -box[ax] - pax;
+          if (beyond <= 0) continue;             // vertex still inside this wall
+          const n = [0, 0, 0]; n[ax] = -sgn;     // inward wall normal
+          const vp = v3.add(T.V, v3.cross(T.W, r));   // contact-point velocity
+          const vn = v3.dot(vp, n);
+          if (vn < 0) {                          // moving into the wall ⇒ impulse
+            const rxn = v3.cross(r, n);
+            const j = -(1 + e) * vn / (1 + Iinv * v3.dot(rxn, rxn));
+            T.V = v3.add(T.V, v3.scale(n, j));                       // /m = ·1
+            T.W = v3.add(T.W, v3.scale(v3.cross(r, v3.scale(n, j)), Iinv));
+            T.impacts.push({ ax, sgn, u: T.P[(ax + 1) % 3] + r[(ax + 1) % 3],
+                             v: T.P[(ax + 2) % 3] + r[(ax + 2) % 3],
+                             t0: t, str: Math.min(1, -vn * 0.8) });
+            if (T.impacts.length > 20) T.impacts.shift();
+          }
+          T.P[ax] += n[ax] * beyond;             // positional push-out, no penetration
+        }
+      }
+    }
+
+    // Keep the box lively forever: gently renormalise energy back to E0 if the
+    // near-elastic losses (or a rare correction) drift it out of a sane band.
+    const KE = 0.5 * v3.dot(T.V, T.V) + 0.5 * (2 * T.s * T.s) * v3.dot(T.W, T.W);
+    if (T.E0 > 0 && KE > 1e-6 && (KE < 0.5 * T.E0 || KE > 2 * T.E0)) {
+      const f = Math.sqrt(T.E0 / KE);
+      T.V = v3.scale(T.V, f); T.W = v3.scale(T.W, f);
+    }
+  }
 
   // ---- animation ----
   // The fire simulation advances at a fixed (slow) tick rate, decoupled from
@@ -412,40 +511,81 @@
         }
       }
     } else {
-      // Tetrafyer — a 3D tetrahedron tumbles while an animated camera reframes it:
-      // the viewpoint dollies (focal distance F), zooms (scale) and pans (cx/cy)
-      // on their own slow cycles, so the fractal drifts through the frame
-      // cinematically. Points pushed past the edges are simply clipped.
+      // Tetrafyer — the Sierpiński tetrahedron is a rigid body bouncing inside a
+      // rubbery box a fixed camera looks into. Physics advances one fixed tick
+      // (Drift speed sets the tempo); then the box, its impact ripples and the
+      // fractal itself are projected through the same pin-hole camera. A slow
+      // view rotation orbits the whole scene so the box reads as solid 3D.
       const halfW = (xR - xL) * 0.5, halfH = (yB - yT) * 0.5;
-      const camZoom = 1.05 + 0.55 * Math.sin(t * 0.23);         // zoom in / out
-      const scale = Math.min(halfW, halfH) / 2.1 * camZoom;
-      const F = 3.6 + 1.3 * Math.sin(t * 0.17 + 1.0);           // dolly nearer / farther
-      const cx = (xL + xR) * 0.5 + halfW * 0.12 * Math.sin(t * 0.13 + 2.0);  // pan
-      const cy = (yT + yB) * 0.5 + halfH * 0.10 * Math.cos(t * 0.19 + 0.5);
+      TETRA.box[0] = TETRA.box[1] * (fw / fh);   // widen the box to the frame aspect
+      tetraStep(cfg.speed / cfg.burn, t);
 
-      const a = t * 0.55, b = t * 0.37;          // tetrahedron rotation (Y then X)
-      const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
-      const verts = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
-      const vX = [0, 0, 0, 0], vY = [0, 0, 0, 0], vZ = [0, 0, 0, 0];
-      for (let k = 0; k < 4; k++) {
-        const x = verts[k][0], y = verts[k][1], z = verts[k][2];
-        const x1 = x * ca + z * sa, z1 = z * ca - x * sa;
-        vX[k] = x1;
-        vY[k] = y * cb - z1 * sb;
-        vZ[k] = y * sb + z1 * cb;
+      const F = 6.0;                             // camera distance (pin-hole focal)
+      const yaw = t * 0.20, pitch = 0.30 * Math.sin(t * 0.12);
+      const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
+      const cpit = Math.cos(pitch), spit = Math.sin(pitch);
+      const viewRot = p => {                     // yaw about Y, then pitch about X
+        const x = p[0] * cyaw + p[2] * syaw, z = p[2] * cyaw - p[0] * syaw;
+        return [x, p[1] * cpit - z * spit, p[1] * spit + z * cpit];
+      };
+      const bx = TETRA.box[0], by = TETRA.box[1], bz = TETRA.box[2];
+      const perspMax = F / (F - Math.hypot(bx, by, bz));   // nearest possible corner
+      const scale = Math.min(halfW, halfH) * 0.92 / (Math.max(bx, by) * perspMax);
+      const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+      const project = p => {                     // view-space → screen; z<F always
+        const persp = F / (F - p[2]);
+        return [cx + p[0] * persp * scale, cy - p[1] * persp * scale];
+      };
+      const stamp = (sx, sy, val) => {
+        const xi = sx | 0, yi = sy | 0;
+        if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) {
+          const idx = yi * fw + xi;
+          if (val > fire[idx]) fire[idx] = val;
+        }
+      };
+      const drawLine = (A, B, val) => {          // stamp a projected 3D segment
+        const steps = Math.max(2, (Math.hypot(B[0] - A[0], B[1] - A[1])) | 0);
+        for (let s = 0; s <= steps; s++) {
+          const f = s / steps;
+          stamp(A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, val);
+        }
+      };
+
+      // box wireframe (12 edges) — the container the fractal ricochets around
+      const bc = [[-bx, -by, -bz], [bx, -by, -bz], [bx, by, -bz], [-bx, by, -bz],
+                  [-bx, -by, bz], [bx, -by, bz], [bx, by, bz], [-bx, by, bz]]
+                 .map(c => project(viewRot(c)));
+      const edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4],
+                     [0, 4], [1, 5], [2, 6], [3, 7]];
+      for (const [a, b] of edges) drawLine(bc[a], bc[b], 140);
+
+      // rubbery ripples: each recent hit sends a fading ring across its wall,
+      // so the wall visibly gives and springs back where a corner struck it.
+      const RTTL = 0.5;
+      TETRA.impacts = TETRA.impacts.filter(im => t - im.t0 < RTTL);
+      for (const im of TETRA.impacts) {
+        const age = t - im.t0, rad = age * 2.4, bright = 255 * (1 - age / RTTL);
+        const ua = (im.ax + 1) % 3, ub = (im.ax + 2) % 3;
+        for (let ri = 0; ri < 20; ri++) {
+          const ang = ri / 20 * Math.PI * 2, P3 = [0, 0, 0];
+          P3[im.ax] = im.sgn * TETRA.box[im.ax];
+          P3[ua] = im.u + Math.cos(ang) * rad;
+          P3[ub] = im.v + Math.sin(ang) * rad;
+          const pr = project(viewRot(P3));
+          stamp(pr[0], pr[1], bright);
+        }
       }
-      let px = 0, py = 0, pz = 0;                // walk the chaos game in 3D
+
+      // the tetrahedron itself: chaos game between the four physics-driven world
+      // vertices, walked in 3D and projected so perspective stays correct.
+      const wv = TETRA.rv.map(r => viewRot(v3.add(TETRA.P, r)));
+      let cur = wv[0].slice();
       for (let i = 0; i < n + 16; i++) {
         const k = (rnd() * 4) | 0;
-        px = (px + vX[k]) * 0.5;
-        py = (py + vY[k]) * 0.5;
-        pz = (pz + vZ[k]) * 0.5;
-        if (i > 15) {
-          const persp = F / (F - pz);            // nearer points larger
-          const sx = (cx + px * persp * scale) | 0;
-          const sy = (cy - py * persp * scale) | 0;   // world up = screen up
-          if (sx >= 0 && sx < fw && sy >= 0 && sy < fh) fire[sy * fw + sx] = 255;
-        }
+        cur[0] = (cur[0] + wv[k][0]) * 0.5;
+        cur[1] = (cur[1] + wv[k][1]) * 0.5;
+        cur[2] = (cur[2] + wv[k][2]) * 0.5;
+        if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], 255); }
       }
     }
   }
@@ -556,6 +696,19 @@
 
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
+    // Banded filter: ease its strength toward the toggle, then (when not
+    // morphing, which already rebakes) refresh the palette while it's live so
+    // the stripes fade in/out and shimmer along the ramp.
+    const bandTarget = bandedOn ? 1 : 0;
+    if (bandLevel !== bandTarget) {
+      const d = bandTarget - bandLevel;
+      bandLevel += Math.sign(d) * Math.min(Math.abs(d), dt / 0.6);   // ~0.6s ease
+    }
+    if (!morphing && (bandLevel > 0.001 || bandLive)) {
+      composePalette(now);
+      bandLive = bandLevel > 0.001;
+    }
+
     if (effect === 2) {
       julia(now);                     // recomputed whole each frame from the seed
     } else {
@@ -599,7 +752,7 @@
   const grpJulia = el("grp-julia");
   const paletteSel = el("palette");
   const morphChk = el("morph");
-  const bandedOption = paletteSel.querySelector('option[value="8"]');
+  const bandedChk = el("banded");
   const SUBTITLES = [
     "Sierpiński triangle · classic fire",
     "Sierpiński tetrahedron · classic fire",
@@ -612,23 +765,6 @@
     // apply to both Sirpinfyer and Tetrafyer (0/1); Cardioid RPM only to Julia.
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
-    // The Banded palette is AnimeJulia-only: hide it in the fire modes, and if
-    // Banded touches the current colours there — as the active palette, or as
-    // either end of an in-flight morph — fall back to Fire so it never bleeds
-    // into Sirpinfyer/Tetrafyer.
-    const bandedOK = i === 2;
-    bandedOption.hidden = !bandedOK;
-    bandedOption.disabled = !bandedOK;
-    if (!bandedOK) {
-      if (morphing && (morphFromIndex === BANDED || morphTargetIndex === BANDED)) {
-        let from = +paletteSel.value;
-        if (from === BANDED) from = 0;       // never restart a blend from Banded
-        startMorph(from);
-      } else if (!morphing && +paletteSel.value === BANDED) {
-        paletteSel.value = "0";
-        setPalette(0);
-      }
-    }
     if (fire) fire.fill(0);           // drop leftover heat when switching
   }
   effectSel.addEventListener("change", () => setEffect(+effectSel.value));
@@ -641,6 +777,7 @@
     morphing = morphChk.checked;
     if (morphing) startMorph(+paletteSel.value);
   });
+  bandedChk.addEventListener("change", () => { bandedOn = bandedChk.checked; });
   setEffect(+effectSel.value);        // apply initial visibility for the default mode
 
   // Reset: snapshot each control's default (its load-time value) and restore it.
@@ -663,6 +800,8 @@
     setPalette(+paletteDefault);
     morphChk.checked = true;
     morphChk.dispatchEvent(new Event("change"));
+    bandedChk.checked = false;
+    bandedChk.dispatchEvent(new Event("change"));
   });
 
   if (morphChk.checked) morphChk.dispatchEvent(new Event("change")); // start if on by default

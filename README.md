@@ -13,9 +13,13 @@ An **Effect** selector at the top of the panel switches between three visuals
 that share the same palette, auto-morph and glow pipeline:
 
 - **Sirpinfyer** — the classic 2D Sierpiński-**triangle** fire described below.
-- **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** whose
-  four vertices tumble in space while an animated camera dollies, zooms and pans;
-  the chaos game runs in 3D and is perspective-projected.
+- **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** that
+  is a rigid body **bouncing inside a rubbery box** in front of a fixed camera.
+  Each of the four corners collides with the walls under impulse-based physics
+  (isotropic inertia, near-elastic restitution), so a corner-hit realistically
+  kicks the solid into a tumble; hits send a fading ripple across the wall they
+  struck. The chaos game runs in 3D between the physics-driven vertices and is
+  perspective-projected, and a slow orbit shows the box as solid 3D.
 - **AnimeJulia** — an animated Julia set. The seed `c` is orbited around the
   Mandelbrot plane along two stacked loops: a large slow loop tracing just
   outside the inner bound (the main cardioid, pushed slightly outward) so the
@@ -37,9 +41,10 @@ that share the same palette, auto-morph and glow pipeline:
   walk in 3D and perspective-projecting each point. Each point is stamped into the
   fire buffer as maximum heat, so flames rise out of the fractal.
 - **Moving geometry** — the triangle's corners drift on their own `sin`/`cos`
-  mixes, while the tetrahedron tumbles about two axes; either way it's driven by
-  the wall clock and fit into a safe box (clear of the top 20% and the
-  left/right/bottom 5%) so the fractal never runs off the edges.
+  mixes driven by the wall clock, fit into a safe box (clear of the top 20% and
+  the left/right/bottom 5%) so the fractal never runs off the edges. The
+  tetrahedron instead moves under the rigid-body physics described above,
+  ricocheting off the walls of its container.
 - **Deterministic point cloud** — the chaos game uses a seeded PRNG (mulberry32)
   that resets to the same value every frame, so the point *sequence* is identical
   each frame. Only the moving geometry reshapes the fractal — no random shimmer.
@@ -48,6 +53,11 @@ that share the same palette, auto-morph and glow pipeline:
   additive bloom that makes the white-hot points glow. An optional auto-morph mode
   continuously blends from the current palette to a random next one over 8 seconds,
   on repeat.
+- **Banded stripes** — an optional *filter* over whichever palette is active
+  (not a palette of its own). It posterises the heat ramp into bands and dims
+  alternating groups of three, turning any palette into crisp light/dark contour
+  stripes. It eases in and out with the toggle, and while on its strength runs as
+  a slow wave along the ramp, so the stripes gently shimmer.
 - **Timing** — the simulation advances on a slow fixed tick rate, decoupled from
   the render frame rate, so the burn stays smooth and controllable.
 
@@ -57,9 +67,10 @@ An on-screen panel (top-left) lets you tune the effect live:
 
 | Control | What it does |
 | --- | --- |
-| **Effect** | Switch between **Sirpinfyer** (Sierpiński fire) and **AnimeJulia** (animated Julia set). |
+| **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
+| **Banded stripes** | Toggle a filter that turns the active palette into light/dark contour stripes (eases in/out and shimmers). |
 | **Points** | Number of chaos-game points per frame (100–4000). |
 | **Drift speed** | How fast the triangle's corners move around the screen. |
 | **Flame rise** | How tall the flames climb before fading (linear in height). |
