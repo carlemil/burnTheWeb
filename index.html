@@ -104,7 +104,7 @@
 
 <div id="panel" class="hidden">
   <h1>burnTheWeb</h1>
-  <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
+  <p class="sub" id="sub">Sierpiński tetrahedron · classic fire</p>
 
   <label>Effect</label>
   <select id="effect">
@@ -368,33 +368,46 @@
       }
     }
 
-    // 2) stamp the Sierpiński triangle as fresh heat (chaos game)
-    // Keep the corners inside a safe box so the triangle never touches the
-    // screen edges: banned from the top 20% and from the left/right/bottom 5%.
-    // Each wave (-1..1) is mapped into the allowed range on its axis.
+    // 2) stamp the Sierpiński tetrahedron as fresh heat (3D chaos game).
+    // Four vertices of a regular tetrahedron tumble in 3D on the wall clock;
+    // the chaos game (jump halfway toward a random vertex) runs in 3D and each
+    // point is perspective-projected into a safe box, so the fractal never
+    // touches the edges (top 20% and left/right/bottom 5% excluded).
     const xL = fw * 0.05, xR = fw * 0.95;
     const yT = fh * 0.20, yB = fh * 0.95;
-    const hx = w => xL + (w + 1) * (xR - xL) * 0.5;
-    const vy = w => yT + (w + 1) * (yB - yT) * 0.5;
-    // three corners, each drifting on its own sin/cos mix
-    const corners = [
-      [hx(Math.sin(t * 0.70)),        vy(Math.cos(t * 0.90))],
-      [hx(Math.sin(t * 1.10 + 2.10)), vy(Math.cos(t * 0.50 + 1.30))],
-      [hx(Math.cos(t * 0.60 + 4.20)), vy(Math.sin(t * 0.80 + 0.70))],
-    ];
-    rngState = SEED;               // reset: same point sequence every frame
-    let px = fw * 0.5, py = fh * 0.575;
-    const n = cfg.points;
-    for (let i = 0; i < n + 16; i++) {
-      const c = corners[(rnd() * 3) | 0];
-      px = (px + c[0]) * 0.5;
-      py = (py + c[1]) * 0.5;
-      if (i > 15) {
-        const xi = px | 0, yi = py | 0;
-        if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) fire[yi * fw + xi] = 255;
-      }
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const scale = Math.min(xR - xL, yB - yT) * 0.5 / 2.1;
+
+    // tumble the tetrahedron: rotate about the Y axis then the X axis
+    const a = t * 0.55, b = t * 0.37;
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+    const F = 3.4;                 // perspective focal distance (> vertex radius)
+    // regular-tetrahedron vertices centred at the origin, rotated per frame
+    const base = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
+    const vX = [0, 0, 0, 0], vY = [0, 0, 0, 0], vZ = [0, 0, 0, 0];
+    for (let k = 0; k < 4; k++) {
+      const x = base[k][0], y = base[k][1], z = base[k][2];
+      const x1 = x * ca + z * sa, z1 = z * ca - x * sa;   // rotate about Y
+      vX[k] = x1;
+      vY[k] = y * cb - z1 * sb;                            // rotate about X
+      vZ[k] = y * sb + z1 * cb;
     }
 
+    rngState = SEED;               // reset: same point sequence every frame
+    let px = 0, py = 0, pz = 0;    // walk the chaos game in 3D
+    const n = cfg.points;
+    for (let i = 0; i < n + 16; i++) {
+      const k = (rnd() * 4) | 0;
+      px = (px + vX[k]) * 0.5;
+      py = (py + vY[k]) * 0.5;
+      pz = (pz + vZ[k]) * 0.5;
+      if (i > 15) {
+        const persp = F / (F - pz);                       // nearer points larger
+        const sx = (cx + px * persp * scale) | 0;
+        const sy = (cy - py * persp * scale) | 0;         // world up = screen up
+        if (sx >= 0 && sx < fw && sy >= 0 && sy < fh) fire[sy * fw + sx] = 255;
+      }
+    }
   }
 
   // ---- AnimeJulia: animated Julia set ----
@@ -544,7 +557,7 @@
   const sub = el("sub");
   const grpSirp = el("grp-sirp");
   const grpJulia = el("grp-julia");
-  const SUBTITLES = ["Sierpiński triangle · classic fire", "Julia set · animated seed"];
+  const SUBTITLES = ["Sierpiński tetrahedron · classic fire", "Julia set · animated seed"];
   function setEffect(i) {
     effect = i;
     sub.textContent = SUBTITLES[i];
