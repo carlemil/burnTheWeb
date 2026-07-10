@@ -53,31 +53,38 @@ that share the same palette, auto-morph and glow pipeline:
   additive bloom that makes the white-hot points glow. An optional auto-morph mode
   continuously blends from the current palette to a random next one over 8 seconds,
   on repeat.
-- **Banded stripes** — an optional *filter* over whichever palette is active
-  (not a palette of its own). It posterises the heat ramp into bands and dims
+- **Banding** — an optional *filter* over whichever palette is active (not a
+  palette of its own). It posterises the heat ramp into bands and dims
   alternating groups of three, turning any palette into crisp light/dark contour
-  stripes. It eases in and out with the toggle, and while on its strength runs as
-  a slow wave along the ramp, so the stripes gently shimmer.
+  stripes. Its strength is set by a ranged slider (see below), so it can sit at a
+  fixed level or wander between two bounds; while on it also shimmers as a slow
+  wave along the ramp.
 - **Timing** — the simulation advances on a slow fixed tick rate, decoupled from
   the render frame rate, so the burn stays smooth and controllable.
 
 ## Controls
 
-An on-screen panel (top-left) lets you tune the effect live:
+An on-screen panel (top-left) lets you tune the effect live. Most controls are
+**ranged sliders**: two thumbs set a lower and upper bound, and the live value
+then wanders *erratically* between them (a random target reached over a random
+time, eased, on repeat). Collapse the two thumbs together to pin a constant
+value, so a ranged slider also works as an ordinary one.
 
 | Control | What it does |
 | --- | --- |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
-| **Banded stripes** | Toggle a filter that turns the active palette into light/dark contour stripes (eases in/out and shimmers). |
+| **Banding** *(ranged)* | Strength of the light/dark contour-stripe filter over the active palette. |
 | **Points** | Number of chaos-game points per frame (100–4000). |
-| **Drift speed** | How fast the triangle's corners move around the screen. |
-| **Flame rise** | How tall the flames climb before fading (linear in height). |
-| **Resolution** | Fire buffer scale — sharper vs. chunkier/softer flames. |
+| **Drift speed** *(ranged)* | How fast the triangle's corners move around the screen. |
+| **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). |
+| **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Cardioid RPM** | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid (0.01–2 rpm). |
+| **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
 
-Press **H** to hide the panel; click the canvas to pause.
+The fire runs at full resolution (there is no resolution control). Press **H** to
+hide the panel; click the canvas to pause.
 
 ## Running locally
 

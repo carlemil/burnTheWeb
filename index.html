@@ -41,6 +41,28 @@
   #panel label { display: block; margin: 10px 0 3px; opacity: .85; }
   #panel .val { float: right; color: #ffcf87; opacity: 1; }
   #panel input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
+  /* dual-thumb range: two overlaid sliders set a [lo,hi] band */
+  #panel .dual { position: relative; height: 22px; }
+  #panel .dual .track, #panel .dual .fill {
+    position: absolute; top: 9px; height: 4px; border-radius: 2px; pointer-events: none;
+  }
+  #panel .dual .track { left: 0; right: 0; background: rgba(255, 140, 40, 0.22); }
+  #panel .dual .fill { background: #ff7a1a; }
+  #panel .dual input[type=range] {
+    position: absolute; top: 0; left: 0; width: 100%; height: 22px; margin: 0;
+    -webkit-appearance: none; appearance: none; background: transparent; pointer-events: none;
+  }
+  #panel .dual input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
+  #panel .dual input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; pointer-events: auto; margin-top: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
+  }
+  #panel .dual input[type=range]::-moz-range-track { background: transparent; height: 22px; }
+  #panel .dual input[type=range]::-moz-range-thumb {
+    pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+    background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
+  }
   #panel select {
     width: 100%;
     margin: 0;
@@ -125,28 +147,40 @@
     <option value="7">Electric</option>
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
-  <label class="check"><input type="checkbox" id="banded"> Banded stripes</label>
+
+  <label>Banding <span class="val" id="vBand"></span></label>
+  <div class="dual"><div class="track"></div><div class="fill"></div>
+    <input type="range" id="band-lo" min="0" max="100" step="1" value="0">
+    <input type="range" id="band-hi" min="0" max="100" step="1" value="0"></div>
 
   <div id="grp-sirp">
     <label>Points <span class="val" id="vPoints"></span></label>
     <input id="points" type="range" min="100" max="4000" step="50" value="1500">
 
     <label>Drift speed <span class="val" id="vSpeed"></span></label>
-    <input id="speed" type="range" min="10" max="300" step="1" value="92">
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="speed-lo" min="10" max="300" step="1" value="92">
+      <input type="range" id="speed-hi" min="10" max="300" step="1" value="92"></div>
 
     <label>Flame rise <span class="val" id="vRise"></span></label>
-    <input id="rise" type="range" min="3" max="200" step="1" value="130">
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="rise-lo" min="3" max="200" step="1" value="130">
+      <input type="range" id="rise-hi" min="3" max="200" step="1" value="130"></div>
   </div>
 
-  <label>Resolution <span class="val" id="vRes"></span></label>
-  <input id="res" type="range" min="2" max="6" step="1" value="2">
-
   <label>Zoom <span class="val" id="vZoom"></span></label>
-  <input id="zoom" type="range" min="0.5" max="4" step="0.05" value="1">
+  <div class="dual"><div class="track"></div><div class="fill"></div>
+    <input type="range" id="zoom-lo" min="0.5" max="4" step="0.05" value="1">
+    <input type="range" id="zoom-hi" min="0.5" max="4" step="0.05" value="1"></div>
 
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
     <input id="rpm" type="range" min="0.01" max="2" step="0.01" value="0.05">
+
+    <label>Inner : outer ratio <span class="val" id="vRatio"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="ratio-lo" min="1" max="60" step="0.5" value="21.5">
+      <input type="range" id="ratio-hi" min="1" max="60" step="0.5" value="21.5"></div>
   </div>
 
   <button id="reset" type="button">Reset to defaults</button>
@@ -164,7 +198,7 @@
   const off = document.createElement("canvas");
   const offCtx = off.getContext("2d");
 
-  const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 2, burn: 120 };
+  const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 };
 
   // Active effect: 0 = Sirpinfyer (2D Sierpiński triangle fire), 1 = Tetrafyer
   // (3D Sierpiński tetrahedron fire), 2 = AnimeJulia (animated Julia set). All
@@ -256,14 +290,12 @@
 
   // ---- Banded stripes: a *filter* over whatever palette is active, not a
   // palette of its own. It dims alternating groups of heat bands (three light,
-  // three dark, repeating) so any ramp reads as crisp contour stripes. The
-  // strength is a per-colour amount that eases in/out with the toggle and, once
-  // on, breathes as a slow wave travelling along the ramp — so it can be off,
-  // fully on, or anywhere between, and animates how much it hits each colour.
+  // three dark, repeating) so any ramp reads as crisp contour stripes. Its
+  // strength (bandLevel, 0..1) is driven by the ranged Banding slider — so it
+  // can sit anywhere, or wander erratically between two bounds.
   const BAND_COUNT = 18;          // 18 bands = three light / three dark, ×3
-  const BAND_DIM = 0.35;          // dark bands fall to 35% brightness at full amount
-  let bandedOn = false;           // the toggle
-  let bandLevel = 0;              // eased 0..1 follow of the toggle
+  const BAND_DIM = 0.35;          // dark bands fall to 35% brightness at full strength
+  let bandLevel = 0;              // 0..1 actual strength (set by its ranged slider)
   let bandLive = false;           // is the currently-baked palette banded?
 
   // setPalette / morphStep fill this smooth base ramp; composePalette() then
@@ -457,14 +489,19 @@
   }
 
   // ---- animation ----
+  // Drift/physics phase is *accumulated* per fire tick (dt = 1/burn) scaled by
+  // the live drift speed, instead of read straight off the wall clock. That lets
+  // the (now erratically animated) speed change smoothly frame to frame without
+  // teleporting the phase — while still seeding from unix time at load so each
+  // reload starts somewhere different.
+  const T0 = performance.timeOrigin * 0.001;       // load time in seconds
+  let simT = T0 * cfg.speed;
   // The fire simulation advances at a fixed (slow) tick rate, decoupled from
   // the render frame rate, so the burn can be as slow as we like while the
   // canvas still repaints smoothly.
   function simulate(now) {
-    // Drift phase is driven by absolute unix time (timeOrigin + the RAF
-    // timestamp), so the corners keep moving on the wall clock and a reload
-    // continues where real time is rather than restarting from phase 0.
-    const t = (performance.timeOrigin + now) * 0.001 * cfg.speed;
+    simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
+    const t = simT;
 
     // 1) propagate existing fire upward (cgtutor averaging, with decay)
     const decay = cfg.decay;
@@ -608,21 +645,35 @@
   const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
   const JULIA_SMALL_R = 0.03;          // small circle radius (< margin ⇒ stays outside)
   let juliaBigRpm = 0.05;              // slow outer spin (live-tunable via slider)
-  const JULIA_SMALL_RPM = 0.75;        // faster inner spin
   const JULIA_MAX_ITER = 160;
   const JULIA_SPAN = 2.8;              // vertical extent of the complex view
   const JULIA_INV_LN2 = 1 / Math.LN2;
-  function julia(now) {
-    // Absolute unix time in seconds, so the seed keeps orbiting on the wall
-    // clock and a reload resumes where real time is (matching the fire drift).
-    const t = (performance.timeOrigin + now) * 0.001;
+
+  // Inner spin is a *multiple* of the outer spin, like a small gear rolling
+  // inside the big loop: the number of small-circle turns per outer lap is the
+  // difference in circumference divided by the small circumference (hypocycloid
+  // ratio). The scaled main cardioid c=0.5·e^{iθ}−0.25·e^{2iθ} has perimeter
+  // 4·(1+margin); the small circle's is 2π·r. That value is the ratio slider's
+  // natural centre; the slider (with animated bounds) tunes it live.
+  const JULIA_C_BIG = 4 * (1 + JULIA_MARGIN);            // scaled cardioid perimeter
+  const JULIA_C_SMALL = 2 * Math.PI * JULIA_SMALL_R;     // small-circle circumference
+  const JULIA_RATIO_DEFAULT = (JULIA_C_BIG - JULIA_C_SMALL) / JULIA_C_SMALL; // ≈ 21.5
+  let juliaRatio = JULIA_RATIO_DEFAULT;                  // inner : outer spin multiple
+
+  // Orbit phases accumulate per frame from the live rpm/ratio (seeded on the
+  // wall clock), so tuning or animating either never teleports the seed.
+  let juliaOuter = T0 * juliaBigRpm * RPM;
+  let juliaInner = T0 * juliaBigRpm * juliaRatio * RPM;
+  function julia(dt) {
+    juliaOuter += dt * juliaBigRpm * RPM;                 // outer lap
+    juliaInner += dt * juliaBigRpm * juliaRatio * RPM;    // inner = ratio × outer
     // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
     // scaled outward by the margin so it sits just outside the inner bound.
-    const th = t * juliaBigRpm * RPM, s = 1 + JULIA_MARGIN;
+    const th = juliaOuter, s = 1 + JULIA_MARGIN;
     let cx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
     let cy = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
-    // small fast circle riding on top
-    const a2 = t * JULIA_SMALL_RPM * RPM;
+    // small circle riding on top, spinning ratio× faster than the big loop
+    const a2 = juliaInner;
     cx += JULIA_SMALL_R * Math.cos(a2);
     cy += JULIA_SMALL_R * Math.sin(a2);
 
@@ -696,21 +747,18 @@
 
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
-    // Banded filter: ease its strength toward the toggle, then (when not
-    // morphing, which already rebakes) refresh the palette while it's live so
-    // the stripes fade in/out and shimmer along the ramp.
-    const bandTarget = bandedOn ? 1 : 0;
-    if (bandLevel !== bandTarget) {
-      const d = bandTarget - bandLevel;
-      bandLevel += Math.sign(d) * Math.min(Math.abs(d), dt / 0.6);   // ~0.6s ease
-    }
+    updateAnims(now, dt);             // drive the ranged sliders' erratic values
+
+    // Banding strength (0..1) is set by its ranged slider each frame. When not
+    // morphing (which already rebakes), refresh the palette while it's live so
+    // the stripes appear/shimmer/vanish as the value wanders.
     if (!morphing && (bandLevel > 0.001 || bandLive)) {
       composePalette(now);
       bandLive = bandLevel > 0.001;
     }
 
     if (effect === 2) {
-      julia(now);                     // recomputed whole each frame from the seed
+      julia(dt);                      // recomputed whole each frame from the seed
     } else {
       const step = 1 / cfg.burn;      // seconds between fire simulation ticks
       let ticks = 0;
@@ -736,15 +784,54 @@
     update();
   }
   bind("points", "vPoints", v => v, v => cfg.points = +v);
-  bind("speed", "vSpeed", v => v, v => cfg.speed = v / 100);
+  bind("rpm", "vRpm", v => (+v).toFixed(2), v => juliaBigRpm = +v);
+
+  // Ranged (dual-thumb) sliders: the two thumbs set a [lo,hi] band and the live
+  // value wanders erratically inside it — a random target reached over a random
+  // duration, eased, repeating. Collapse the thumbs (lo==hi) to pin a constant
+  // value, so a ranged slider still works as an ordinary one.
+  const anims = {};
+  function bindRange(id, valId, fmt, apply) {
+    const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
+    const fill = lo.closest(".dual").querySelector(".fill");
+    const mn = +lo.min, mx = +lo.max;
+    const a = anims[id] = { lo, hi, apply, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1 };
+    function ui() {
+      const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
+      fill.style.left = (A - mn) / (mx - mn) * 100 + "%";
+      fill.style.width = (B - A) / (mx - mn) * 100 + "%";
+      out.textContent = A === B ? fmt(A) : fmt(A) + "–" + fmt(B);
+    }
+    lo.addEventListener("input", () => { if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
+    hi.addEventListener("input", () => { if (+hi.value < +lo.value) lo.value = hi.value; ui(); });
+    ui(); apply(a.val);
+  }
   // Flame rise is linear in flame height: decay = 128*R/(R-1) so each step of
   // the slider changes the flame height by a roughly constant amount.
-  bind("rise", "vRise", v => v, v => cfg.decay = 128 * v / (v - 1));
-  bind("res", "vRes", v => v, v => {
-    cfg.scale = +v; resize();
-  });
-  bind("zoom", "vZoom", v => (+v).toFixed(2) + "×", v => zoom = +v);
-  bind("rpm", "vRpm", v => (+v).toFixed(2), v => juliaBigRpm = +v);
+  bindRange("band", "vBand", v => Math.round(v) + "%", v => bandLevel = v / 100);
+  bindRange("speed", "vSpeed", v => Math.round(v), v => cfg.speed = v / 100);
+  bindRange("rise", "vRise", v => Math.round(v), v => cfg.decay = 128 * v / (v - 1));
+  bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v);
+  bindRange("ratio", "vRatio", v => v.toFixed(1) + "×", v => juliaRatio = v);
+
+  function updateAnims(now) {
+    for (const id in anims) {
+      const a = anims[id];
+      const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
+      if (mx - mn < 1e-9) { a.val = mn; a.apply(a.val); continue; }   // pinned ⇒ constant
+      let f = (now - a.t0) / a.dur;
+      if (f >= 1) {                        // begin a fresh erratic segment
+        a.from = a.val;
+        a.to = mn + Math.random() * (mx - mn);
+        a.t0 = now; a.dur = 350 + Math.random() * 1650;
+        f = 0;
+      }
+      const s = f * f * (3 - 2 * f);       // smoothstep between targets
+      a.val = a.from + (a.to - a.from) * s;
+      a.val = a.val < mn ? mn : a.val > mx ? mx : a.val;
+      a.apply(a.val);
+    }
+  }
 
   const effectSel = el("effect");
   const sub = el("sub");
@@ -752,7 +839,6 @@
   const grpJulia = el("grp-julia");
   const paletteSel = el("palette");
   const morphChk = el("morph");
-  const bandedChk = el("banded");
   const SUBTITLES = [
     "Sierpiński triangle · classic fire",
     "Sierpiński tetrahedron · classic fire",
@@ -777,22 +863,30 @@
     morphing = morphChk.checked;
     if (morphing) startMorph(+paletteSel.value);
   });
-  bandedChk.addEventListener("change", () => { bandedOn = bandedChk.checked; });
   setEffect(+effectSel.value);        // apply initial visibility for the default mode
 
   // Reset: snapshot each control's default (its load-time value) and restore it.
-  // Snapshot before the initial auto-morph runs, since morphing mutates the
-  // palette dropdown to show its current target.
-  const sliderIds = ["points", "speed", "rise", "res", "zoom", "rpm"];
+  // Simple sliders restore by value; ranged ones restore both thumbs.
+  const simpleIds = ["points", "rpm"];
+  const rangeIds = ["band", "speed", "rise", "zoom", "ratio"];
   const defaults = {};
-  sliderIds.forEach(id => { defaults[id] = el(id).value; });
+  simpleIds.forEach(id => { defaults[id] = el(id).value; });
+  rangeIds.forEach(id => {
+    defaults[id + "-lo"] = el(id + "-lo").value;
+    defaults[id + "-hi"] = el(id + "-hi").value;
+  });
   const paletteDefault = paletteSel.value;
   const effectDefault = effectSel.value;
   el("reset").addEventListener("click", () => {
-    sliderIds.forEach(id => {
+    simpleIds.forEach(id => {
       const input = el(id);
       input.value = defaults[id];
       input.dispatchEvent(new Event("input"));
+    });
+    rangeIds.forEach(id => {
+      el(id + "-lo").value = defaults[id + "-lo"];
+      el(id + "-hi").value = defaults[id + "-hi"];
+      el(id + "-lo").dispatchEvent(new Event("input"));   // refresh fill + label
     });
     effectSel.value = effectDefault;
     setEffect(+effectDefault);
@@ -800,8 +894,6 @@
     setPalette(+paletteDefault);
     morphChk.checked = true;
     morphChk.dispatchEvent(new Event("change"));
-    bandedChk.checked = false;
-    bandedChk.dispatchEvent(new Event("change"));
   });
 
   if (morphChk.checked) morphChk.dispatchEvent(new Event("change")); // start if on by default
