@@ -268,6 +268,10 @@
     { name: "Banded", fn: bandedColor },
   ];
 
+  // The Banded palette is reserved for AnimeJulia; the fire modes never use it,
+  // whether picked manually or by auto-morph.
+  const BANDED = PALETTES.findIndex(p => p.name === "Banded");
+
   function setPalette(i) {
     const fn = PALETTES[i].fn;
     for (let x = 0; x < 256; x++) {
@@ -292,9 +296,11 @@
     arr[0] = arr[1] = arr[2] = 0; // index 0 black
     return arr;
   }
-  function pickOther(cur) {                 // random palette index != cur
-    const n = (Math.random() * (PALETTES.length - 1)) | 0;
-    return n >= cur ? n + 1 : n;
+  function pickOther(cur) {                 // random allowed palette index != cur
+    let n;
+    do { n = (Math.random() * PALETTES.length) | 0; }
+    while (n === cur || (n === BANDED && effect !== 2));
+    return n;
   }
   // reflect the palette we're heading toward in the dropdown
   function showMorphTarget() { el("palette").value = morphTargetIndex; }
@@ -578,6 +584,9 @@
   const sub = el("sub");
   const grpSirp = el("grp-sirp");
   const grpJulia = el("grp-julia");
+  const paletteSel = el("palette");
+  const morphChk = el("morph");
+  const bandedOption = paletteSel.querySelector('option[value="8"]');
   const SUBTITLES = [
     "Sierpiński triangle · classic fire",
     "Sierpiński tetrahedron · classic fire",
@@ -590,13 +599,18 @@
     // apply to both Sirpinfyer and Tetrafyer (0/1); Cardioid RPM only to Julia.
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
+    // The Banded palette is AnimeJulia-only: hide it in the fire modes, and if
+    // it was active there, fall back to Fire.
+    const bandedOK = i === 2;
+    bandedOption.hidden = !bandedOK;
+    bandedOption.disabled = !bandedOK;
+    if (!bandedOK && +paletteSel.value === BANDED) {
+      paletteSel.value = "0";
+      if (morphing) startMorph(0); else setPalette(0);
+    }
     if (fire) fire.fill(0);           // drop leftover heat when switching
   }
   effectSel.addEventListener("change", () => setEffect(+effectSel.value));
-  setEffect(+effectSel.value);        // apply initial visibility for the default mode
-
-  const paletteSel = el("palette");
-  const morphChk = el("morph");
   paletteSel.addEventListener("change", () => {
     // while morphing, a manual pick restarts the blend from that palette
     if (morphing) startMorph(+paletteSel.value);
@@ -606,6 +620,7 @@
     morphing = morphChk.checked;
     if (morphing) startMorph(+paletteSel.value);
   });
+  setEffect(+effectSel.value);        // apply initial visibility for the default mode
 
   // Reset: snapshot each control's default (its load-time value) and restore it.
   // Snapshot before the initial auto-morph runs, since morphing mutates the
@@ -639,6 +654,28 @@
   window.addEventListener("keydown", e => {
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
   });
+
+  // ---- auto-reload on new deploy ----
+  // Poll our own document's version tag (the server's ETag, or Last-Modified as
+  // a fallback). GitHub Pages changes it whenever a new build is published, so
+  // when it differs from the tag we loaded with, a newer version is live and we
+  // reload once to pick it up. Cheap HEAD request; failures are ignored.
+  (function autoReload() {
+    let known = null;
+    async function check() {
+      try {
+        const res = await fetch(location.pathname + "?_=" + Date.now(),
+          { method: "HEAD", cache: "no-store" });
+        if (!res.ok) return;
+        const tag = res.headers.get("etag") || res.headers.get("last-modified");
+        if (!tag) return;
+        if (known === null) known = tag;
+        else if (tag !== known) location.reload();
+      } catch (e) { /* offline / transient — try again next tick */ }
+    }
+    check();
+    setInterval(check, 60000);            // check every 60s
+  })();
 })();
 </script>
 </body>
