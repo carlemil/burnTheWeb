@@ -242,12 +242,16 @@
     ];
   }
 
-  // Banded: hard stripes cycling three light colours then three dark ones,
-  // tiled across the range so the heat ramp reads as crisp contour bands
-  // (especially striking on the Julia set).
-  const BAND_CYCLE = [
+  // Banded: hard stripes cycling three light colours then the same three at
+  // 50% brightness, tiled across the range so the heat ramp reads as crisp
+  // contour bands (especially striking on the Julia set).
+  const BAND_LIGHT = [
     [255, 245, 210], [190, 230, 255], [225, 255, 210],  // three light
-    [90, 25, 25], [25, 25, 80], [20, 60, 50],           // three dark
+  ];
+  const BAND_DIM = 0.5;                                   // dark = light * 50%
+  const BAND_CYCLE = [
+    ...BAND_LIGHT,
+    ...BAND_LIGHT.map(c => c.map(v => v * BAND_DIM)),     // same hues, dimmed
   ];
   const BAND_COUNT = 18;                                 // 3 full light/dark cycles
   function bandedColor(x) {
