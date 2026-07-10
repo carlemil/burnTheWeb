@@ -122,6 +122,7 @@
     <option value="5">Rainbow</option>
     <option value="6">Grayscale</option>
     <option value="7">Electric</option>
+    <option value="8">Banded</option>
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
 
@@ -138,6 +139,9 @@
 
   <label>Resolution <span class="val" id="vRes"></span></label>
   <input id="res" type="range" min="2" max="6" step="1" value="2">
+
+  <label>Zoom <span class="val" id="vZoom"></span></label>
+  <input id="zoom" type="range" min="0.5" max="4" step="0.05" value="1">
 
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
@@ -165,6 +169,11 @@
   // Julia set). Both write heat into the shared `fire` buffer, so palettes,
   // auto-morph and the render/glow pipeline are identical for either.
   let effect = 0;
+
+  // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
+  // by shrinking the complex-plane span (revealing real fractal detail); the fire
+  // has no sub-pixel detail, so it zooms by scaling the rendered image.
+  let zoom = 1;
 
   // Deterministic PRNG (mulberry32). Seeded once from unix time at load, then
   // re-seeded to that same value every frame so the chaos game draws the
@@ -231,6 +240,20 @@
     ];
   }
 
+  // Banded: hard stripes cycling three light colours then three dark ones,
+  // tiled across the range so the heat ramp reads as crisp contour bands
+  // (especially striking on the Julia set).
+  const BAND_CYCLE = [
+    [255, 245, 210], [190, 230, 255], [225, 255, 210],  // three light
+    [90, 25, 25], [25, 25, 80], [20, 60, 50],           // three dark
+  ];
+  const BAND_COUNT = 18;                                 // 3 full light/dark cycles
+  function bandedColor(x) {
+    let b = (x / 256 * BAND_COUNT) | 0;
+    if (b >= BAND_COUNT) b = BAND_COUNT - 1;
+    return BAND_CYCLE[b % BAND_CYCLE.length];
+  }
+
   const PALETTES = [
     { name: "Fire", fn: fireColor },
     { name: "Ice", fn: grad([[0, [0, 0, 0]], [0.35, [0, 0, 80]], [0.6, [0, 90, 200]], [0.8, [90, 205, 255]], [1, [230, 250, 255]]]) },
@@ -240,6 +263,7 @@
     { name: "Rainbow", fn: rainbowColor },
     { name: "Grayscale", fn: x => [x, x, x] },
     { name: "Electric", fn: grad([[0, [0, 0, 0]], [0.3, [0, 40, 120]], [0.55, [0, 200, 220]], [0.75, [180, 120, 255]], [0.9, [255, 120, 240]], [1, [255, 240, 255]]]) },
+    { name: "Banded", fn: bandedColor },
   ];
 
   function setPalette(i) {
@@ -409,7 +433,7 @@
     cx += JULIA_SMALL_R * Math.cos(a2);
     cy += JULIA_SMALL_R * Math.sin(a2);
 
-    const spanY = JULIA_SPAN, spanX = spanY * (fw / fh);
+    const spanY = JULIA_SPAN / zoom, spanX = spanY * (fw / fh);
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
@@ -441,11 +465,23 @@
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
+
+    // AnimeJulia zooms via its complex-plane span, so only the fire scales the
+    // rendered image here. Scale about the canvas centre; clear first when zoomed
+    // out so no smeared border remains.
+    const z = effect === 0 ? zoom : 1;
+    ctx.save();
+    if (z !== 1) {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.scale(z, z);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+    }
     ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
 
     // subtle glow: an additive, blurred copy blooms the brightest pixels —
     // which are the white-hot triangle points — into a soft halo.
-    ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.35;
     ctx.filter = "blur(4px)";
@@ -501,6 +537,7 @@
   bind("res", "vRes", v => v, v => {
     cfg.scale = +v; resize();
   });
+  bind("zoom", "vZoom", v => (+v).toFixed(2) + "×", v => zoom = +v);
   bind("rpm", "vRpm", v => (+v).toFixed(2), v => juliaBigRpm = +v);
 
   const effectSel = el("effect");
@@ -534,7 +571,7 @@
   // Reset: snapshot each control's default (its load-time value) and restore it.
   // Snapshot before the initial auto-morph runs, since morphing mutates the
   // palette dropdown to show its current target.
-  const sliderIds = ["points", "speed", "rise", "res", "rpm"];
+  const sliderIds = ["points", "speed", "rise", "res", "zoom", "rpm"];
   const defaults = {};
   sliderIds.forEach(id => { defaults[id] = el(id).value; });
   const paletteDefault = paletteSel.value;
