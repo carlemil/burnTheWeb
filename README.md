@@ -76,6 +76,16 @@ AnimeJulia and back, and Tetrafyer's settings are still there. Everything is
 fall outside a slider's current range are ignored, so updates can't load junk).
 A small **frame counter + rolling FPS** sits in the top-right corner.
 
+**React to music** — click **Capture** to tap system/tab audio (so it reacts to
+whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
+audio", or a *tab* + "share tab audio"), or **Mic** for the microphone. The
+audio is split into **low / mid / high** bands with per-band beat detection (the
+3-bar meter shows it working). Each ranged slider has three tiny **L / M / H**
+toggle chips: turn one on and a strong beat in that band gives the slider's
+animated value a bidirectional kick within its range, decaying back. The chips
+are remembered per effect and persisted. Pinned sliders (thumbs together) have
+no room to kick, so widen a slider to make it react.
+
 | Control | What it does |
 | --- | --- |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |

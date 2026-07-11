@@ -136,6 +136,26 @@
     transition: background .15s;
   }
   #reset:hover { background: rgba(255, 122, 26, 0.3); }
+  /* ---- music beat reactivity ---- */
+  #panel .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  #panel .audbtn {
+    padding: 4px 8px; background: rgba(255, 122, 26, 0.15);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 6px;
+    color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #panel .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
+  #panel .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  #panel .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
+  #panel .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
+  #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
+  .bandchips { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+  .bandchips button {
+    width: 18px; height: 15px; padding: 0; font: 9px/13px ui-monospace, monospace;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 4px; color: #ffb15a; cursor: pointer;
+  }
+  .bandchips button.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  #panel.audio-off .bandchips { opacity: .4; }
 </style>
 </head>
 <body>
@@ -169,6 +189,15 @@
     <option value="7">Electric</option>
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
+
+  <label>React to music <span class="val" id="vAudio">off</span></label>
+  <div class="audiorow">
+    <button id="audCapture" class="audbtn" type="button" title="Capture system / tab audio (e.g. Spotify)">Capture</button>
+    <button id="audMic" class="audbtn" type="button" title="Capture microphone">Mic</button>
+    <button id="audStop" class="audbtn" type="button" title="Stop">Stop</button>
+    <div class="meter" title="low · mid · high"><i></i><i></i><i></i></div>
+  </div>
+  <p id="audMsg" class="hint"></p>
 
   <label>Banding <span class="val" id="vBand"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1182,6 +1211,7 @@
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
     cycleEffects(now);                // auto-switch effects on the Effect TTL timer
+    if (audio.on) analyzeAudio(now, dt);   // band energies + beats, before updateAnims
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
 
     // Banding strength (0..1) is set by its ranged slider each frame. When not
@@ -1225,6 +1255,98 @@
   const toggle = document.getElementById("toggle");
   const el = id => document.getElementById(id);
 
+  // ---- music beat reactivity ----
+  // Analyse captured audio into low/mid/high bands, detect a beat per band, and
+  // let sliders opt in (via their L/M/H chips) to a bidirectional kick on beat.
+  // The five constants are hand-tuned; retune to taste.
+  const BEAT_THRESH = 1.4;    // band energy must exceed its rolling baseline × this
+  const BEAT_FLOOR = 0.12;    // ...and be above this absolute level (ignores silence)
+  const BEAT_REFRACT = 110;   // ms minimum gap between beats within one band
+  const AVG_ALPHA = 0.08;     // EMA speed of the rolling baseline
+  const PULSE_TAU = 0.12;     // s; beat-pulse decay (drives the level meter)
+  const audio = {
+    ctx: null, analyser: null, freq: null, stream: null, on: false, src: "off",
+    bins: [[1, 11], [11, 85], [85, 683]],   // [start,end] FFT bin per band; set from sampleRate
+    energy: [0, 0, 0], avg: [0, 0, 0], pulse: [0, 0, 0],
+    beatNow: [false, false, false], lastBeat: [0, 0, 0],
+  };
+  const meterBars = panel.querySelectorAll(".meter i");
+  function computeBins() {
+    const hz = audio.ctx.sampleRate / audio.analyser.fftSize;   // Hz per bin
+    const N = audio.freq.length - 1;
+    const R = (f0, f1) => [Math.max(1, Math.round(f0 / hz)), Math.min(N, Math.round(f1 / hz))];
+    audio.bins = [R(20, 250), R(250, 2000), R(2000, 16000)];    // low / mid / high
+  }
+  function audioMsg(m) { const e = el("audMsg"); e.textContent = m || ""; e.style.display = m ? "block" : "none"; }
+  function setAudioUI() {
+    el("vAudio").textContent = audio.on ? audio.src : "off";
+    el("audCapture").classList.toggle("on", audio.on && audio.src === "capture");
+    el("audMic").classList.toggle("on", audio.on && audio.src === "mic");
+    panel.classList.toggle("audio-off", !audio.on);
+  }
+  function stopStream() { if (audio.stream) { audio.stream.getTracks().forEach(t => t.stop()); audio.stream = null; } }
+  function stopAudio() {
+    stopStream();
+    audio.on = false; audio.src = "off";
+    for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
+    updateMeter(); setAudioUI();
+  }
+  async function startAudio(kind) {
+    try {
+      audioMsg("");
+      if (!audio.ctx) audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      await audio.ctx.resume();                          // must be inside the click gesture
+      const stream = kind === "capture"
+        ? await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
+        : await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (stream.getAudioTracks().length === 0) {        // shared a tab/screen without audio
+        stream.getTracks().forEach(t => t.stop());
+        audioMsg("No audio track — tick “Share audio” in the picker.");
+        return;
+      }
+      stopStream();                                      // replace any prior stream
+      audio.stream = stream;
+      const node = audio.ctx.createMediaStreamSource(stream);
+      audio.analyser = audio.ctx.createAnalyser();
+      audio.analyser.fftSize = 2048;
+      audio.analyser.smoothingTimeConstant = 0.5;
+      node.connect(audio.analyser);                      // NOT connected to destination — no echo
+      audio.freq = new Uint8Array(audio.analyser.frequencyBinCount);
+      computeBins();
+      audio.on = true; audio.src = kind;
+      stream.getAudioTracks()[0].onended = stopAudio;    // user revokes the share
+      setAudioUI();
+    } catch (err) {
+      audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
+    }
+  }
+  function analyzeAudio(now, dt) {
+    audio.analyser.getByteFrequencyData(audio.freq);
+    for (let b = 0; b < 3; b++) {
+      audio.beatNow[b] = false;
+      const i0 = audio.bins[b][0], i1 = audio.bins[b][1];
+      let s = 0; for (let i = i0; i <= i1; i++) s += audio.freq[i];
+      const e = s / ((i1 - i0 + 1) * 255);               // mean band level, 0..1
+      audio.energy[b] = e;
+      audio.avg[b] += (e - audio.avg[b]) * AVG_ALPHA;
+      if (e > audio.avg[b] * BEAT_THRESH && e > BEAT_FLOOR && now - audio.lastBeat[b] > BEAT_REFRACT) {
+        audio.beatNow[b] = true; audio.pulse[b] = 1; audio.lastBeat[b] = now;
+      }
+      audio.pulse[b] *= Math.exp(-dt / PULSE_TAU);
+    }
+    updateMeter();
+  }
+  function updateMeter() {
+    for (let b = 0; b < 3; b++) {
+      meterBars[b].style.height = (2 + audio.energy[b] * 16).toFixed(1) + "px";
+      meterBars[b].style.background = audio.pulse[b] > 0.4 ? "#ff7a1a" : "#ffcf87";
+    }
+  }
+  el("audCapture").addEventListener("click", () => startAudio("capture"));
+  el("audMic").addEventListener("click", () => startAudio("mic"));
+  el("audStop").addEventListener("click", stopAudio);
+  setAudioUI();
+
   function bind(id, valId, fmt, onChange) {
     const input = el(id), out = el(valId);
     const update = () => { out.textContent = fmt(input.value); onChange(input.value); };
@@ -1238,11 +1360,35 @@
   // duration, eased, repeating. Collapse the thumbs (lo==hi) to pin a constant
   // value, so a ranged slider still works as an ordinary one.
   const anims = {};
-  function bindRange(id, valId, fmt, apply, durScale) {
+  const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
+  const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
+  const KICK = 0.6, KICK_TAU = 0.14;   // kick reach (× band width) and decay (s)
+  // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
+  function makeChips(id, label) {
+    beatReact[id] = { low: false, mid: false, high: false };
+    chipEls[id] = {};
+    const wrap = document.createElement("span");
+    wrap.className = "bandchips";
+    for (const k of ["low", "mid", "high"]) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = k[0].toUpperCase();
+      btn.title = k + " beat";
+      btn.addEventListener("click", () => {
+        beatReact[id][k] = !beatReact[id][k];
+        btn.classList.toggle("on", beatReact[id][k]);
+        persist();               // clicks aren't caught by the delegated input/change listener
+      });
+      wrap.appendChild(btn);
+      chipEls[id][k] = btn;
+    }
+    label.appendChild(wrap);
+  }
+  function bindRange(id, valId, fmt, apply, durScale, beat) {
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     const mn = +lo.min, mx = +lo.max;
-    const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1 };
+    const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, kick: 0 };
     function ui() {
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
       fill.style.left = (A - mn) / (mx - mn) * 100 + "%";
@@ -1251,6 +1397,7 @@
     }
     lo.addEventListener("input", () => { if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
     hi.addEventListener("input", () => { if (+hi.value < +lo.value) lo.value = hi.value; ui(); });
+    if (beat !== false) makeChips(id, lo.closest(".dual").previousElementSibling);
     ui(); apply(a.val);
   }
   // Flame rise is linear in flame height: decay = 128*R/(R-1) so each step of
@@ -1266,13 +1413,13 @@
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
-  bindRange("ttl", "vTtl", v => Math.round(v) + "s", () => {});
+  bindRange("ttl", "vTtl", v => Math.round(v) + "s", () => {}, 1, false);   // no chips
 
-  function updateAnims(now) {
+  function updateAnims(now, dt) {
     for (const id in anims) {
       const a = anims[id];
       const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
-      if (mx - mn < 1e-9) { a.val = mn; a.apply(a.val); continue; }   // pinned ⇒ constant
+      if (mx - mn < 1e-9) { a.val = mn; a.apply(a.val); continue; }   // pinned ⇒ inert (no kick)
       let f = (now - a.t0) / a.dur;
       if (f >= 1) {                        // begin a fresh erratic segment
         a.from = a.val;
@@ -1282,8 +1429,17 @@
       }
       const s = f * f * (3 - 2 * f);       // smoothstep between targets
       a.val = a.from + (a.to - a.from) * s;
-      a.val = a.val < mn ? mn : a.val > mx ? mx : a.val;
-      a.apply(a.val);
+      a.val = a.val < mn ? mn : a.val > mx ? mx : a.val;   // erratic base
+
+      // bidirectional beat kick: on a beat in an enabled band, shove the applied
+      // value up or down (random sign) within [mn,mx]; it decays back to the base.
+      a.kick *= Math.exp(-dt / KICK_TAU);
+      const br = beatReact[id];
+      if (audio.on && br && (br.low && audio.beatNow[0] || br.mid && audio.beatNow[1] || br.high && audio.beatNow[2])) {
+        a.kick = Math.random() < 0.5 ? -1 : 1;
+      }
+      let out = a.val + a.kick * KICK * (mx - mn);
+      a.apply(out < mn ? mn : out > mx ? mx : out);
     }
   }
 
@@ -1344,14 +1500,32 @@
     suppressPersist = false;
   }
 
+  // Per-effect beat-toggle state, parallel to `states`. beatStates[effect][id] =
+  // {low,mid,high}; the live `beatReact` reflects the current effect and drives
+  // updateAnims. Switching saves/loads it just like the slider values.
+  const beatStates = {};
+  function initBeatStates() {
+    for (const k in PRESETS) {
+      beatStates[k] = {};
+      for (const id in beatReact) beatStates[k][id] = { low: false, mid: false, high: false };
+    }
+  }
+  initBeatStates();
+  function saveBeat(e) { for (const id in beatReact) beatStates[e][id] = { ...beatReact[id] }; }
+  function loadBeat(e) { for (const id in beatReact) beatReact[id] = { ...beatStates[e][id] }; syncChips(); }
+  function syncChips() {
+    for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", beatReact[id][k]);
+  }
+
   const STORE_KEY = "burnTheWeb.v1";
   let persistReady = false, suppressPersist = false;
   function persist() {
     if (!persistReady || suppressPersist) return;
     saveState(effect);                // fold the live sliders into the current effect
+    saveBeat(effect);                 // ...and the live beat toggles
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        states, effect,
+        states, beats: beatStates, effect,
         palette: paletteSel.value,
         morph: morphChk.checked,
         ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
@@ -1378,6 +1552,15 @@
       el("ttl-lo").value = saved.ttl[0]; el("ttl-hi").value = saved.ttl[1];
       el("ttl-lo").dispatchEvent(new Event("input"));
     }
+    if (saved.beats) {
+      for (const k in beatStates) {
+        const bs = saved.beats[k]; if (!bs) continue;
+        for (const id in beatStates[k]) {
+          const b = bs[id]; if (!b) continue;
+          for (const band of ["low", "mid", "high"]) if (typeof b[band] === "boolean") beatStates[k][id][band] = b[band];
+        }
+      }
+    }
     if (typeof saved.palette === "string" && paletteSel.querySelector('option[value="' + saved.palette + '"]')) paletteSel.value = saved.palette;
     if (typeof saved.morph === "boolean") morphChk.checked = saved.morph;
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
@@ -1385,7 +1568,7 @@
   restore();
 
   function setEffect(i, save = true) {
-    if (save && i !== effect && states[effect]) saveState(effect);  // remember outgoing
+    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); }  // remember outgoing
     effect = i;
     sub.textContent = SUBTITLES[i];
     // only show the sliders that affect the selected mode: fire controls for
@@ -1393,6 +1576,7 @@
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
     loadState(i);                     // restore this effect's remembered sliders
+    loadBeat(i);                      // ...and its beat-toggle selection
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
     if (fireNext) fireNext.fill(0);
     if (useGL && glReady) glClearHeat();
@@ -1438,6 +1622,8 @@
   // defaults for the default effect, plus the default TTL, palette and morph.
   el("reset").addEventListener("click", () => {
     initStates();
+    initBeatStates();                 // clear all beat toggles
+    stopAudio();
     effectSel.value = 0;
     setEffect(0, false);              // load preset[0] without saving current sliders
     el("ttl-lo").value = 30; el("ttl-hi").value = 90;
