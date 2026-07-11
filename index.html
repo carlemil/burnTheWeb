@@ -153,6 +153,16 @@
     <input type="range" id="band-lo" min="0" max="100" step="1" value="0">
     <input type="range" id="band-hi" min="0" max="100" step="1" value="0"></div>
 
+  <label>Band size <span class="val" id="vBandSize"></span></label>
+  <div class="dual"><div class="track"></div><div class="fill"></div>
+    <input type="range" id="bandsize-lo" min="1" max="9" step="1" value="3">
+    <input type="range" id="bandsize-hi" min="1" max="9" step="1" value="3"></div>
+
+  <label>Dark strength <span class="val" id="vBandDim"></span></label>
+  <div class="dual"><div class="track"></div><div class="fill"></div>
+    <input type="range" id="banddim-lo" min="0" max="100" step="1" value="65">
+    <input type="range" id="banddim-hi" min="0" max="100" step="1" value="65"></div>
+
   <div id="grp-sirp">
     <label>Points <span class="val" id="vPoints"></span></label>
     <input id="points" type="range" min="100" max="4000" step="50" value="1500">
@@ -319,9 +329,10 @@
   // three dark, repeating) so any ramp reads as crisp contour stripes. Its
   // strength (bandLevel, 0..1) is driven by the ranged Banding slider — so it
   // can sit anywhere, or wander erratically between two bounds.
-  const BAND_COUNT = 18;          // 18 bands = three light / three dark, ×3
-  const BAND_DIM = 0.35;          // dark bands fall to 35% brightness at full strength
-  let bandLevel = 0;              // 0..1 actual strength (set by its ranged slider)
+  const BAND_COUNT = 18;          // number of posterized flat colours across the ramp
+  let bandLevel = 0;              // 0..1 filter amount (set by the Banding slider)
+  let bandGroup = 3;              // colours per light (and per dark) run — Band size slider
+  let bandDim = 0.35;             // dark-run brightness — Dark strength slider (1 = none)
   let bandLive = false;           // is the currently-baked palette banded?
 
   // setPalette / morphStep fill this smooth base ramp; composePalette() then
@@ -350,8 +361,8 @@
       let r = paletteBase[x * 3], g = paletteBase[x * 3 + 1], b = paletteBase[x * 3 + 2];
       if (on) {
         const band = (x / 256 * BAND_COUNT) | 0;
-        const ci = (((band + 0.5) / BAND_COUNT) * 256) | 0;       // flat band colour
-        const dim = ((band / 3) | 0) % 2 === 0 ? 1 : BAND_DIM;    // light vs dark group
+        const ci = (((band + 0.5) / BAND_COUNT) * 256) | 0;          // flat band colour
+        const dim = ((band / bandGroup) | 0) % 2 === 0 ? 1 : bandDim; // light vs dark run
         const wave = 0.6 + 0.4 * Math.sin(t * 0.9 - x * 0.05);    // breathe along ramp
         const amt = bandLevel * wave;
         r += (paletteBase[ci * 3] * dim - r) * amt;               // blend toward the
@@ -1206,6 +1217,8 @@
   // Flame rise is linear in flame height: decay = 128*R/(R-1) so each step of
   // the slider changes the flame height by a roughly constant amount.
   bindRange("band", "vBand", v => Math.round(v) + "%", v => bandLevel = v / 100);
+  bindRange("bandsize", "vBandSize", v => Math.round(v), v => bandGroup = v);
+  bindRange("banddim", "vBandDim", v => Math.round(v) + "%", v => bandDim = 1 - v / 100);
   bindRange("speed", "vSpeed", v => Math.round(v), v => cfg.speed = v / 100);
   bindRange("rise", "vRise", v => Math.round(v), v => cfg.decay = 128 * v / (v - 1));
   bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v, 10);   // wanders 10× slower
@@ -1267,7 +1280,7 @@
   // Reset: snapshot each control's default (its load-time value) and restore it.
   // Simple sliders restore by value; ranged ones restore both thumbs.
   const simpleIds = ["points", "rpm"];
-  const rangeIds = ["band", "speed", "rise", "zoom", "ratio"];
+  const rangeIds = ["band", "bandsize", "banddim", "speed", "rise", "zoom", "ratio"];
   const defaults = {};
   simpleIds.forEach(id => { defaults[id] = el(id).value; });
   rangeIds.forEach(id => {
