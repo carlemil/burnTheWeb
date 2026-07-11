@@ -11,6 +11,10 @@ test suite, or dependencies — the entire app is inline HTML/CSS/JS in `index.h
 
 ## Workflow
 
+- **Always commit and push after a change.** Once a change is complete and
+  verified, commit it with a descriptive message and `git push origin main` as
+  the final step — do not ask "want me to deploy?" first. Pushing to `main`
+  auto-deploys the live site.
 - **Edit** `index.html` (all code lives there; `README.md` documents it).
 - **Preview locally**: open `index.html` directly in a browser, or `python -m http.server` and visit `http://localhost:8000`.
 - **Deploy**: GitHub Pages serves `main` at the root path. Every push to `main` auto-deploys; the live site updates ~1 minute later (hard-refresh to bypass cache).
