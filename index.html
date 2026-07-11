@@ -791,11 +791,11 @@
   // duration, eased, repeating. Collapse the thumbs (lo==hi) to pin a constant
   // value, so a ranged slider still works as an ordinary one.
   const anims = {};
-  function bindRange(id, valId, fmt, apply) {
+  function bindRange(id, valId, fmt, apply, durScale) {
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     const mn = +lo.min, mx = +lo.max;
-    const a = anims[id] = { lo, hi, apply, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1 };
+    const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1 };
     function ui() {
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
       fill.style.left = (A - mn) / (mx - mn) * 100 + "%";
@@ -811,7 +811,7 @@
   bindRange("band", "vBand", v => Math.round(v) + "%", v => bandLevel = v / 100);
   bindRange("speed", "vSpeed", v => Math.round(v), v => cfg.speed = v / 100);
   bindRange("rise", "vRise", v => Math.round(v), v => cfg.decay = 128 * v / (v - 1));
-  bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v);
+  bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v, 10);   // wanders 10× slower
   bindRange("ratio", "vRatio", v => v.toFixed(1) + "×", v => juliaRatio = v);
 
   function updateAnims(now) {
@@ -823,7 +823,7 @@
       if (f >= 1) {                        // begin a fresh erratic segment
         a.from = a.val;
         a.to = mn + Math.random() * (mx - mn);
-        a.t0 = now; a.dur = 350 + Math.random() * 1650;
+        a.t0 = now; a.dur = (350 + Math.random() * 1650) * a.durScale;
         f = 0;
       }
       const s = f * f * (3 - 2 * f);       // smoothstep between targets
