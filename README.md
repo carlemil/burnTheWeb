@@ -101,6 +101,7 @@ no room to kick, so widen a slider to make it react.
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid (0.01–2 rpm). |
 | **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
+| **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). Its L/M/H beat chips *step it forward by 0.05 per beat* instead of the usual kick. |
 
 The fire runs at full resolution (there is no resolution control). Press **H** to
 hide the panel; click the canvas to pause.

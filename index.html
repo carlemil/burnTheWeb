@@ -244,6 +244,11 @@
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="ratio-lo" min="1" max="60" step="0.5" value="21.5">
       <input type="range" id="ratio-hi" min="1" max="60" step="0.5" value="21.5"></div>
+
+    <label>Cardioid start <span class="val" id="vPhase"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="phase-lo" min="0" max="1" step="0.01" value="0">
+      <input type="range" id="phase-hi" min="0" max="1" step="0.01" value="0"></div>
   </div>
 
   <button id="reset" type="button">Reset to defaults</button>
@@ -1107,6 +1112,7 @@
   const JULIA_C_SMALL = 2 * Math.PI * JULIA_SMALL_R;     // small-circle circumference
   const JULIA_RATIO_DEFAULT = (JULIA_C_BIG - JULIA_C_SMALL) / JULIA_C_SMALL; // ≈ 21.5
   let juliaRatio = JULIA_RATIO_DEFAULT;                  // inner : outer spin multiple
+  let juliaPhase = 0;                                    // start-position offset, in laps (0=1 wrap)
 
   // Orbit phases accumulate per frame from the live rpm/ratio (seeded on the
   // wall clock), so tuning or animating either never teleports the seed.
@@ -1120,7 +1126,7 @@
     juliaInner += dt * juliaBigRpm * juliaRatio * RPM;    // inner = ratio × outer
     // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
     // scaled outward by the margin so it sits just outside the inner bound.
-    const th = juliaOuter, s = (1 + JULIA_MARGIN) * CARDIOID_SIZE;
+    const th = juliaOuter + juliaPhase * Math.PI * 2, s = (1 + JULIA_MARGIN) * CARDIOID_SIZE;
     let cx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
     let cy = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
     // small circle riding on top, spinning ratio× faster than the big loop
@@ -1388,7 +1394,7 @@
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     const mn = +lo.min, mx = +lo.max;
-    const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, kick: 0 };
+    const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, kick: 0, step: 0 };
     function ui() {
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
       fill.style.left = (A - mn) / (mx - mn) * 100 + "%";
@@ -1410,6 +1416,8 @@
   bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v, 10);   // wanders 10× slower
   bindRange("rpm", "vRpm", v => v.toFixed(2), v => juliaBigRpm = v, 10);    // slow rpm drift
   bindRange("ratio", "vRatio", v => v.toFixed(1) + "×", v => juliaRatio = v);
+  bindRange("phase", "vPhase", v => v.toFixed(2), v => juliaPhase = v, 10);
+  anims.phase.stepAmt = 0.05;   // its beat chips step the value forward 0.05/beat (not a kick)
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
@@ -1419,27 +1427,39 @@
     for (const id in anims) {
       const a = anims[id];
       const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
-      if (mx - mn < 1e-9) { a.val = mn; a.apply(a.val); continue; }   // pinned ⇒ inert (no kick)
-      let f = (now - a.t0) / a.dur;
-      if (f >= 1) {                        // begin a fresh erratic segment
-        a.from = a.val;
-        a.to = mn + Math.random() * (mx - mn);
-        a.t0 = now; a.dur = (350 + Math.random() * 1650) * a.durScale;
-        f = 0;
-      }
-      const s = f * f * (3 - 2 * f);       // smoothstep between targets
-      a.val = a.from + (a.to - a.from) * s;
-      a.val = a.val < mn ? mn : a.val > mx ? mx : a.val;   // erratic base
+      const pinned = mx - mn < 1e-9;
 
-      // bidirectional beat kick: on a beat in an enabled band, shove the applied
-      // value up or down (random sign) within [mn,mx]; it decays back to the base.
-      a.kick *= Math.exp(-dt / KICK_TAU);
-      const br = beatReact[id];
-      if (audio.on && br && (br.low && audio.beatNow[0] || br.mid && audio.beatNow[1] || br.high && audio.beatNow[2])) {
-        a.kick = Math.random() < 0.5 ? -1 : 1;
+      // base value: erratic wander within [mn,mx], or the pinned constant
+      if (pinned) {
+        a.val = mn;
+      } else {
+        let f = (now - a.t0) / a.dur;
+        if (f >= 1) {                      // begin a fresh erratic segment
+          a.from = a.val;
+          a.to = mn + Math.random() * (mx - mn);
+          a.t0 = now; a.dur = (350 + Math.random() * 1650) * a.durScale;
+          f = 0;
+        }
+        const s = f * f * (3 - 2 * f);     // smoothstep between targets
+        a.val = a.from + (a.to - a.from) * s;
+        a.val = a.val < mn ? mn : a.val > mx ? mx : a.val;
       }
-      let out = a.val + a.kick * KICK * (mx - mn);
-      a.apply(out < mn ? mn : out > mx ? mx : out);
+
+      // did an enabled band beat this frame?
+      const br = beatReact[id];
+      const beat = audio.on && br && (br.low && audio.beatNow[0] || br.mid && audio.beatNow[1] || br.high && audio.beatNow[2]);
+
+      if (a.stepAmt) {                      // step-forward-on-beat (Cardioid start)
+        if (beat) a.step = (a.step + a.stepAmt) % 1;   // advance, wrap in [0,1)
+        a.apply(a.val + a.step);
+      } else if (pinned) {                  // no range to kick within ⇒ inert
+        a.apply(a.val);
+      } else {                             // bidirectional kick, decaying back to the base
+        a.kick *= Math.exp(-dt / KICK_TAU);
+        if (beat) a.kick = Math.random() < 0.5 ? -1 : 1;
+        const out = a.val + a.kick * KICK * (mx - mn);
+        a.apply(out < mn ? mn : out > mx ? mx : out);
+      }
     }
   }
 
@@ -1458,9 +1478,9 @@
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
   const PRESETS = {
-    0: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [92, 92], rise: [130, 130], zoom: [1, 1], rpm: [0.5, 0.8], ratio: [21.5, 21.5], points: 2500 },
-    1: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [5, 15],  rise: [130, 130], zoom: [1, 1], rpm: [0.5, 0.8], ratio: [21.5, 21.5], points: 1500 },
-    2: { band: [0, 70], bandsize: [1, 1], banddim: [65, 65], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.5, 0.8], ratio: [21.5, 21.5], points: 1500 },
+    0: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [92, 92], rise: [130, 130], zoom: [1, 1], rpm: [0.5, 0.8], ratio: [21.5, 21.5], phase: [0, 0], points: 2500 },
+    1: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [5, 15],  rise: [130, 130], zoom: [1, 1], rpm: [0.5, 0.8], ratio: [21.5, 21.5], phase: [0, 0], points: 1500 },
+    2: { band: [0, 70], bandsize: [1, 1], banddim: [65, 65], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.5, 0.8], ratio: [21.5, 21.5], phase: [0, 0], points: 1500 },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
