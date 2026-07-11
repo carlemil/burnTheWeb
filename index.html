@@ -385,7 +385,11 @@
   }
 
   // ---- buffers ----
-  let fw = 0, fh = 0, fire = null, img = null, buf32 = null;
+  // Propagation double-buffers: reading `fire` and writing `fireNext` (then
+  // swapping) keeps the cgtutor average left/right symmetric. Updating in place
+  // would read the already-rewritten left column but the old right column,
+  // biasing heat slightly leftward.
+  let fw = 0, fh = 0, fire = null, fireNext = null, img = null, buf32 = null;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     canvas.width = w;
@@ -395,6 +399,7 @@
     off.width = fw;
     off.height = fh;
     fire = new Uint8Array(fw * fh);
+    fireNext = new Uint8Array(fw * fh);
     img = offCtx.createImageData(fw, fh);
     buf32 = new Uint32Array(img.data.buffer);
     ctx.imageSmoothingEnabled = true;
@@ -503,7 +508,9 @@
     simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
     const t = simT;
 
-    // 1) propagate existing fire upward (cgtutor averaging, with decay)
+    // 1) propagate existing fire upward (cgtutor averaging, with decay).
+    // Read `fire`, write `fireNext`, then swap — a true double buffer so the
+    // average stays left/right symmetric (flames rise straight up).
     const decay = cfg.decay;
     for (let x = 0; x < fw; x++) {
       const xl = (x - 1 + fw) % fw;
@@ -514,9 +521,10 @@
         const y3 = (y + 3 < fh ? y + 3 : fh - 1) * fw;
         const sum = fire[y1 + xl] + fire[y2 + x] + fire[y1 + xr] + fire[y3 + x];
         let v = (sum * 32 / decay) | 0;
-        fire[y * fw + x] = v > 255 ? 255 : v;
+        fireNext[y * fw + x] = v > 255 ? 255 : v;
       }
     }
+    const swap = fire; fire = fireNext; fireNext = swap;
 
     // 2) stamp the Sierpiński fractal as fresh heat via the chaos game.
     // Keep it inside a safe box (top 20% and left/right/bottom 5% excluded) so
