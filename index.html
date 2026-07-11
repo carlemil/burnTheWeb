@@ -1152,10 +1152,10 @@
 
   let last = 0, acc = 0, paused = false;
   const framesEl = document.getElementById("frames");
-  let frameCount = 0;
+  let frameCount = 0, fps = 0;
+  const fpsWin = [];                          // timestamps of recently rendered frames
   function frame(now) {
     requestAnimationFrame(frame);
-    framesEl.textContent = ++frameCount;      // running frame count, top-right
     if (!last) last = now;
     let dt = (now - last) / 1000;
     last = now;
@@ -1198,6 +1198,15 @@
     }
     if (useGL) glRender();
     else render();
+
+    // Count only rendered frames (paused frames returned early above). FPS is a
+    // sliding average over the last 3s: frames span (n-1) intervals across the
+    // window, so fps = (n-1) / windowSeconds.
+    frameCount++;
+    fpsWin.push(now);
+    while (fpsWin.length && now - fpsWin[0] > 3000) fpsWin.shift();
+    if (fpsWin.length > 1) fps = (fpsWin.length - 1) * 1000 / (now - fpsWin[0]);
+    framesEl.textContent = frameCount + " · " + Math.round(fps) + " fps";
   }
   requestAnimationFrame(frame);
 
