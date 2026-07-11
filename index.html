@@ -194,9 +194,35 @@
   "use strict";
 
   const canvas = document.getElementById("fire");
-  const ctx = canvas.getContext("2d");
-  const off = document.createElement("canvas");
-  const offCtx = off.getContext("2d");
+
+  // Prefer a WebGL2 renderer (the whole fire/Julia/palette/glow pipeline runs on
+  // the GPU); fall back to the original Canvas2D path when WebGL2 is missing. A
+  // canvas can only ever hold ONE context type, so we try webgl2 first and only
+  // ask for "2d" if that fails.
+  let gl = null, ctx = null, useGL = false, glReady = false;
+  try {
+    gl = canvas.getContext("webgl2", {
+      antialias: false, depth: false, stencil: false,
+      alpha: false, premultipliedAlpha: false, preserveDrawingBuffer: false,
+    });
+  } catch (e) { gl = null; }
+  let off = null, offCtx = null;
+  if (gl) {
+    useGL = true;
+  } else {
+    ctx = canvas.getContext("2d");
+    off = document.createElement("canvas");
+    offCtx = off.getContext("2d");
+  }
+
+  // ---- GL resource handles (populated by initGL) ----
+  const glProg = {};          // compiled/linked programs { p, u:{uniformLocs} }
+  const glTex = {};           // textures (heat pair + colour/blur/palette)
+  const glFbo = {};           // framebuffers matching the textures
+  let quadVao = null, ptVao = null, ptVbo = null, ptVboCap = 0;
+  let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
+  const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
+  let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
 
   const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 };
 
@@ -385,10 +411,10 @@
   }
 
   // ---- buffers ----
-  // Propagation double-buffers: reading `fire` and writing `fireNext` (then
-  // swapping) keeps the cgtutor average left/right symmetric. Updating in place
-  // would read the already-rewritten left column but the old right column,
-  // biasing heat slightly leftward.
+  // `fire` is the heat buffer; `fireNext` is the propagation write target (the
+  // CPU path double-buffers so propagation is left/right symmetric — reading a
+  // single in-place buffer in column order would bias heat leftward and the
+  // flames would lean, diverging from the symmetric GPU shader).
   let fw = 0, fh = 0, fire = null, fireNext = null, img = null, buf32 = null;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
@@ -396,16 +422,363 @@
     canvas.height = h;
     fw = Math.max(4, Math.floor(w / cfg.scale));
     fh = Math.max(4, Math.floor(h / cfg.scale));
-    off.width = fw;
-    off.height = fh;
-    fire = new Uint8Array(fw * fh);
-    fireNext = new Uint8Array(fw * fh);
-    img = offCtx.createImageData(fw, fh);
-    buf32 = new Uint32Array(img.data.buffer);
-    ctx.imageSmoothingEnabled = true;
+    if (useGL) {
+      if (glReady) { glResize(); glClearHeat(); }
+    } else {
+      off.width = fw;
+      off.height = fh;
+      fire = new Uint8Array(fw * fh);
+      fireNext = new Uint8Array(fw * fh);
+      img = offCtx.createImageData(fw, fh);
+      buf32 = new Uint32Array(img.data.buffer);
+      ctx.imageSmoothingEnabled = true;
+    }
   }
+  if (useGL) initGL();          // compile programs + allocate GL objects first
   window.addEventListener("resize", resize);
   resize();
+
+  // -----------------------------------------------------------------------
+  //  WebGL2 renderer — mirrors the CPU pipeline exactly (see initGL shaders).
+  //  Heat lives in a ping-ponged R8 texture at fw×fh; propagation is a fragment
+  //  shader; the CPU chaos game is uploaded as GL_POINTS (MAX-blended); Julia is
+  //  a fragment shader; the display maps heat→palette and adds a blurred glow.
+  // -----------------------------------------------------------------------
+  function glCompile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      throw new Error("shader: " + gl.getShaderInfoLog(s) + "\n" + src);
+    return s;
+  }
+  function glLink(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, vs); gl.attachShader(p, fs);
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+      throw new Error("link: " + gl.getProgramInfoLog(p));
+    return p;
+  }
+  function makeProg(vsSrc, fsSrc, names) {
+    const p = glLink(glCompile(gl.VERTEX_SHADER, vsSrc), glCompile(gl.FRAGMENT_SHADER, fsSrc));
+    const u = {};
+    for (const n of names) u[n] = gl.getUniformLocation(p, n);
+    return { p, u };
+  }
+  function createTex(internal, format, type, filter, wrap) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internal, 1, 1, 0, format, type, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+    t._i = internal; t._f = format; t._t = type;
+    return t;
+  }
+  function resizeTex(t, w, h) {
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, t._i, w, h, 0, t._f, t._t, null);
+  }
+  function createFbo(tex) {
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    return f;
+  }
+  function bindFbo(f, w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.viewport(0, 0, w, h); }
+  function bindDefault(w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); }
+  function bindTexUnit(unit, tex) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); }
+  function drawQuad() { gl.bindVertexArray(quadVao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+
+  function initGL() {
+    // full-screen triangle (no vertex buffer; positions from gl_VertexID)
+    const VS_QUAD = `#version 300 es
+    out vec2 vUv;
+    void main(){
+      vec2 p = vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2));
+      vUv = p;
+      gl_Position = vec4(p*2.0-1.0, 0.0, 1.0);
+    }`;
+    // propagation — cgtutor averaging, integer-exact vs the CPU (recover the
+    // stored byte, sum the 4 taps below, *32/decay, floor, clamp 255).
+    const FS_PROP = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat;
+    uniform vec2 uSize;
+    uniform float uDecay;
+    out vec4 o;
+    void main(){
+      int fw = int(uSize.x), fh = int(uSize.y);
+      int x = int(gl_FragCoord.x), y = int(gl_FragCoord.y);
+      int xl = (x - 1 + fw) % fw;
+      int xr = (x + 1) % fw;
+      int y1 = min(y+1, fh-1);
+      int y2 = min(y+2, fh-1);
+      int y3 = min(y+3, fh-1);
+      float a = floor(texelFetch(uHeat, ivec2(xl, y1), 0).r*255.0 + 0.5);
+      float b = floor(texelFetch(uHeat, ivec2(x , y2), 0).r*255.0 + 0.5);
+      float c = floor(texelFetch(uHeat, ivec2(xr, y1), 0).r*255.0 + 0.5);
+      float d = floor(texelFetch(uHeat, ivec2(x , y3), 0).r*255.0 + 0.5);
+      float v = floor((a+b+c+d) * 32.0 / uDecay);
+      v = min(v, 255.0);
+      o = vec4(v/255.0, 0.0, 0.0, 1.0);
+    }`;
+    // chaos-game point stamps (MAX-blended into the heat texture)
+    const VS_PTS = `#version 300 es
+    layout(location=0) in vec3 aPt;   // x, y, value(0..255) in fire-pixel space
+    uniform vec2 uSize;
+    out float vVal;
+    void main(){
+      vVal = aPt.z / 255.0;
+      vec2 c = (aPt.xy + 0.5) / uSize * 2.0 - 1.0;
+      gl_Position = vec4(c, 0.0, 1.0);
+      gl_PointSize = 1.0;
+    }`;
+    const FS_PTS = `#version 300 es
+    precision highp float;
+    in float vVal; out vec4 o;
+    void main(){ o = vec4(vVal, 0.0, 0.0, 1.0); }`;
+    // Julia escape-time, ported 1:1 from julia()
+    const FS_JULIA = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform vec2 uC; uniform vec2 uSpan;
+    out vec4 o;
+    const float INVLN2 = 1.4426950408889634;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float xx = floor(gl_FragCoord.x), yy = floor(gl_FragCoord.y);
+      float zx = (xx/fw - 0.5) * uSpan.x;
+      float zy = (yy/fh - 0.5) * uSpan.y;
+      float zx2 = zx*zx, zy2 = zy*zy;
+      int i = 0;
+      for (int k = 0; k < 160; k++) {
+        if (zx2 + zy2 > 4.0) break;
+        zy = 2.0*zx*zy + uC.y;
+        zx = zx2 - zy2 + uC.x;
+        zx2 = zx*zx; zy2 = zy*zy;
+        i++;
+      }
+      float v;
+      if (i >= 160) { v = 255.0; }
+      else {
+        float nu = log(0.5 * log(zx2 + zy2) * INVLN2) * INVLN2;
+        float f = (float(i) + 1.0 - nu) / 160.0;
+        v = f <= 0.0 ? 0.0 : 255.0 * sqrt(f);
+      }
+      o = vec4(clamp(v, 0.0, 255.0)/255.0, 0.0, 0.0, 1.0);
+    }`;
+    // heat → palette colour (fire-oriented, no flip yet)
+    const FS_PAL = `#version 300 es
+    precision highp float;
+    uniform sampler2D uHeat; uniform sampler2D uPal;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float h = texture(uHeat, vUv).r;
+      float idx = (floor(h*255.0 + 0.5) + 0.5) / 256.0;
+      o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, 1.0);
+    }`;
+    // zoom about centre (fire modes); Julia passes zoom=1
+    const FS_ZOOM = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 uv = (vUv - 0.5) / uZoom + 0.5;
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { o = vec4(0.0,0.0,0.0,1.0); return; }
+      o = vec4(texture(uSrc, uv).rgb, 1.0);
+    }`;
+    // separable Gaussian (sigma≈4px ⇒ 2*sigma^2=32), matches CSS blur(4px)
+    const FS_BLUR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uDir;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 acc = vec3(0.0); float wsum = 0.0;
+      for (int i = -12; i <= 12; i++) {
+        float w = exp(-float(i*i)/32.0);
+        acc += texture(uSrc, vUv + uDir*float(i)).rgb * w;
+        wsum += w;
+      }
+      o = vec4(acc/wsum, 1.0);
+    }`;
+    // composite: base + 0.35*glow (additive), flip v so fire row 0 is on top
+    const FS_COMP = `#version 300 es
+    precision highp float;
+    uniform sampler2D uScene; uniform sampler2D uGlow;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+      vec3 base = texture(uScene, uv).rgb;
+      vec3 glow = texture(uGlow, uv).rgb;
+      o = vec4(base + glow*0.35, 1.0);
+    }`;
+
+    glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
+    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize"]);
+    glProg.julia = makeProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
+    glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
+    glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
+    glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
+    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow"]);
+
+    glTex.heat = [
+      createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE),
+      createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.heat = [createFbo(glTex.heat[0]), createFbo(glTex.heat[1])];
+    glTex.native = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.native = createFbo(glTex.native);
+    glTex.scene = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.scene = createFbo(glTex.scene);
+    glTex.blur1 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.blur1 = createFbo(glTex.blur1);
+    glTex.blur2 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.blur2 = createFbo(glTex.blur2);
+
+    glTex.pal = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, glTex.pal);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+    quadVao = gl.createVertexArray();
+    ptVao = gl.createVertexArray();
+    ptVbo = gl.createBuffer();
+    gl.bindVertexArray(ptVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, ptVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, glPts.byteLength, gl.DYNAMIC_DRAW);
+    ptVboCap = glPts.byteLength;
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    glReady = true;
+  }
+
+  function glResize() {
+    resizeTex(glTex.heat[0], fw, fh);
+    resizeTex(glTex.heat[1], fw, fh);
+    resizeTex(glTex.native, fw, fh);
+    resizeTex(glTex.scene, fw, fh);
+    resizeTex(glTex.blur1, fw, fh);
+    resizeTex(glTex.blur2, fw, fh);
+  }
+  function glClearHeat() {
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 1);
+    for (let i = 0; i < 2; i++) { bindFbo(glFbo.heat[i], fw, fh); gl.clear(gl.COLOR_BUFFER_BIT); }
+    curHeat = 0;
+  }
+  function uploadPalette() {
+    for (let i = 0; i < 256; i++) {
+      const p = palette[i], j = i * 4;
+      palBytes[j] = p & 255; palBytes[j + 1] = (p >> 8) & 255;
+      palBytes[j + 2] = (p >> 16) & 255; palBytes[j + 3] = 255;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, glTex.pal);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palBytes);
+  }
+
+  // one propagation tick: src heat → dst heat (points get MAX-blended after)
+  function glPropagate() {
+    const src = curHeat, dst = 1 - curHeat;
+    bindFbo(glFbo.heat[dst], fw, fh);
+    gl.disable(gl.BLEND);
+    gl.useProgram(glProg.prop.p);
+    bindTexUnit(0, glTex.heat[src]);
+    gl.uniform1i(glProg.prop.u.uHeat, 0);
+    gl.uniform2f(glProg.prop.u.uSize, fw, fh);
+    gl.uniform1f(glProg.prop.u.uDecay, cfg.decay);
+    drawQuad();
+    pendingDst = dst;             // FBO stays bound; points draw into it next
+  }
+  function glDrawPoints() {
+    if (glPtCount > 0) {
+      gl.useProgram(glProg.pts.p);
+      gl.uniform2f(glProg.pts.u.uSize, fw, fh);
+      gl.bindVertexArray(ptVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, ptVbo);
+      const need = glPtCount * 3 * 4;
+      if (need > ptVboCap) { gl.bufferData(gl.ARRAY_BUFFER, glPts.byteLength, gl.DYNAMIC_DRAW); ptVboCap = glPts.byteLength; }
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, glPts, 0, glPtCount * 3);
+      gl.enable(gl.BLEND);
+      gl.blendEquation(gl.MAX);      // heat = max(existing, stamp)
+      gl.drawArrays(gl.POINTS, 0, glPtCount);
+      gl.disable(gl.BLEND);
+      gl.blendEquation(gl.FUNC_ADD);
+    }
+    curHeat = pendingDst;
+  }
+  function glJulia(s) {
+    bindFbo(glFbo.heat[curHeat], fw, fh);   // Julia replaces the current heat
+    gl.disable(gl.BLEND);
+    gl.useProgram(glProg.julia.p);
+    gl.uniform2f(glProg.julia.u.uSize, fw, fh);
+    gl.uniform2f(glProg.julia.u.uC, s.cx, s.cy);
+    gl.uniform2f(glProg.julia.u.uSpan, s.spanX, s.spanY);
+    drawQuad();
+  }
+
+  // display: heat→palette, optional zoom, blurred additive glow, to the screen
+  function glRender() {
+    // A) heat → palette colour (native fire resolution)
+    bindFbo(glFbo.native, fw, fh);
+    gl.disable(gl.BLEND);
+    gl.useProgram(glProg.pal.p);
+    bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
+    bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
+    drawQuad();
+    // B) zoom about centre (Julia keeps its optical zoom, so display zoom = 1)
+    const z = effect === 2 ? 1 : zoom;
+    bindFbo(glFbo.scene, fw, fh);
+    gl.useProgram(glProg.zoom.p);
+    bindTexUnit(0, glTex.native); gl.uniform1i(glProg.zoom.u.uSrc, 0);
+    gl.uniform1f(glProg.zoom.u.uZoom, z);
+    drawQuad();
+    // C) horizontal blur
+    bindFbo(glFbo.blur1, fw, fh);
+    gl.useProgram(glProg.blur.p);
+    bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 1 / fw, 0);
+    drawQuad();
+    // D) vertical blur
+    bindFbo(glFbo.blur2, fw, fh);
+    bindTexUnit(0, glTex.blur1); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 0, 1 / fh);
+    drawQuad();
+    // E) composite to the screen
+    bindDefault(canvas.width, canvas.height);
+    gl.useProgram(glProg.comp.p);
+    bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
+    bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
+    drawQuad();
+  }
+
+  // ---- WebGL context loss: pause GL work, rebuild on restore ----
+  if (useGL) {
+    canvas.addEventListener("webglcontextlost", e => { e.preventDefault(); glReady = false; }, false);
+    canvas.addEventListener("webglcontextrestored", () => {
+      try { initGL(); glResize(); glClearHeat(); }
+      catch (err) { glReady = false; }
+    }, false);
+  }
+
+  // Append one chaos-game stamp for the GPU (fire-pixel space, value 0..255).
+  function pushPt(x, y, v) {
+    const i = glPtCount * 3;
+    if (i + 3 > glPts.length) { const n = new Float32Array(glPts.length * 2); n.set(glPts); glPts = n; }
+    glPts[i] = x; glPts[i + 1] = y; glPts[i + 2] = v; glPtCount++;
+  }
+  // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
+  function plot(x, y, v) {
+    const xi = x | 0, yi = y | 0;
+    if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
+    if (useGL) { pushPt(xi, yi, v); }
+    else { const idx = yi * fw + xi; if (v > fire[idx]) fire[idx] = v; }
+  }
 
   // ---- Tetrafyer rigid-body physics ---------------------------------------
   // A Sierpiński tetrahedron bounces inside a rubbery box floating in front of
@@ -508,23 +881,27 @@
     simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
     const t = simT;
 
-    // 1) propagate existing fire upward (cgtutor averaging, with decay).
-    // Read `fire`, write `fireNext`, then swap — a true double buffer so the
-    // average stays left/right symmetric (flames rise straight up).
-    const decay = cfg.decay;
-    for (let x = 0; x < fw; x++) {
-      const xl = (x - 1 + fw) % fw;
-      const xr = (x + 1) % fw;
-      for (let y = 0; y < fh; y++) {
-        const y1 = (y + 1 < fh ? y + 1 : fh - 1) * fw;
-        const y2 = (y + 2 < fh ? y + 2 : fh - 1) * fw;
-        const y3 = (y + 3 < fh ? y + 3 : fh - 1) * fw;
-        const sum = fire[y1 + xl] + fire[y2 + x] + fire[y1 + xr] + fire[y3 + x];
-        let v = (sum * 32 / decay) | 0;
-        fireNext[y * fw + x] = v > 255 ? 255 : v;
+    // 1) propagate existing fire upward (cgtutor averaging, with decay). On the
+    // GPU this is a fragment shader; the CPU double loop is the fallback path.
+    if (useGL) {
+      glPropagate();
+      glPtCount = 0;             // start a fresh stamp list for this tick
+    } else {
+      const decay = cfg.decay, src = fire, dst = fireNext;
+      for (let x = 0; x < fw; x++) {
+        const xl = (x - 1 + fw) % fw;
+        const xr = (x + 1) % fw;
+        for (let y = 0; y < fh; y++) {
+          const y1 = (y + 1 < fh ? y + 1 : fh - 1) * fw;
+          const y2 = (y + 2 < fh ? y + 2 : fh - 1) * fw;
+          const y3 = (y + 3 < fh ? y + 3 : fh - 1) * fw;
+          const sum = src[y1 + xl] + src[y2 + x] + src[y1 + xr] + src[y3 + x];
+          let v = (sum * 32 / decay) | 0;
+          dst[y * fw + x] = v > 255 ? 255 : v;
+        }
       }
+      fire = fireNext; fireNext = src;   // swap: `fire` now holds the new frame
     }
-    const swap = fire; fire = fireNext; fireNext = swap;
 
     // 2) stamp the Sierpiński fractal as fresh heat via the chaos game.
     // Keep it inside a safe box (top 20% and left/right/bottom 5% excluded) so
@@ -550,10 +927,7 @@
         const c = corners[(rnd() * 3) | 0];
         px = (px + c[0]) * 0.5;
         py = (py + c[1]) * 0.5;
-        if (i > 15) {
-          const xi = px | 0, yi = py | 0;
-          if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) fire[yi * fw + xi] = 255;
-        }
+        if (i > 15) plot(px, py, 255);
       }
     } else {
       // Tetrafyer — the Sierpiński tetrahedron is a rigid body bouncing inside a
@@ -581,13 +955,7 @@
         const persp = F / (F - p[2]);
         return [cx + p[0] * persp * scale, cy - p[1] * persp * scale];
       };
-      const stamp = (sx, sy, val) => {
-        const xi = sx | 0, yi = sy | 0;
-        if (xi >= 0 && xi < fw && yi >= 0 && yi < fh) {
-          const idx = yi * fw + xi;
-          if (val > fire[idx]) fire[idx] = val;
-        }
-      };
+      const stamp = (sx, sy, val) => plot(sx, sy, val);
       const drawLine = (A, B, val) => {          // stamp a projected 3D segment
         const steps = Math.max(2, (Math.hypot(B[0] - A[0], B[1] - A[1])) | 0);
         for (let s = 0; s <= steps; s++) {
@@ -633,6 +1001,10 @@
         if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], 255); }
       }
     }
+
+    // On the GPU, the tick's collected stamps are MAX-blended into the freshly
+    // propagated heat texture (same order as the CPU stamps after propagation).
+    if (useGL) glDrawPoints();
   }
 
   // ---- AnimeJulia: animated Julia set ----
@@ -673,7 +1045,10 @@
   // wall clock), so tuning or animating either never teleports the seed.
   let juliaOuter = T0 * juliaBigRpm * RPM;
   let juliaInner = T0 * juliaBigRpm * juliaRatio * RPM;
-  function julia(dt) {
+  // Advance the two orbit phases one frame and return the seed c plus the
+  // complex-plane span. Shared by the CPU loop and the GPU Julia shader so the
+  // seed animation is identical on either path.
+  function juliaSeed(dt) {
     juliaOuter += dt * juliaBigRpm * RPM;                 // outer lap
     juliaInner += dt * juliaBigRpm * juliaRatio * RPM;    // inner = ratio × outer
     // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
@@ -685,8 +1060,12 @@
     const a2 = juliaInner;
     cx += JULIA_SMALL_R * Math.cos(a2);
     cy += JULIA_SMALL_R * Math.sin(a2);
-
     const spanY = JULIA_SPAN / zoom, spanX = spanY * (fw / fh);
+    return { cx, cy, spanX, spanY };
+  }
+  function julia(dt) {
+    const seed = juliaSeed(dt);
+    const cx = seed.cx, cy = seed.cy, spanX = seed.spanX, spanY = seed.spanY;
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
@@ -749,7 +1128,12 @@
     let dt = (now - last) / 1000;
     last = now;
 
-    if (paused) return;
+    // When paused we still re-present the last GPU frame (WebGL clears the
+    // drawing buffer after compositing, so a skipped frame would flash black);
+    // the Canvas2D path retains its pixels, so it just freezes.
+    if (paused) { if (useGL && glReady) glRender(); return; }
+
+    if (useGL && !glReady) return;    // context lost / not yet restored
 
     if (dt > 0.25) dt = 0.25;         // clamp after tab switches
     acc += dt;
@@ -766,8 +1150,11 @@
       bandLive = bandLevel > 0.001;
     }
 
+    if (useGL) uploadPalette();       // push the (possibly morphed) palette
+
     if (effect === 2) {
-      julia(dt);                      // recomputed whole each frame from the seed
+      if (useGL) glJulia(juliaSeed(dt));   // fragment shader writes the heat tex
+      else julia(dt);                      // recomputed whole each frame from the seed
     } else {
       const step = 1 / cfg.burn;      // seconds between fire simulation ticks
       let ticks = 0;
@@ -777,7 +1164,8 @@
         ticks++;
       }
     }
-    render();
+    if (useGL) glRender();
+    else render();
   }
   requestAnimationFrame(frame);
 
@@ -860,7 +1248,9 @@
     // apply to both Sirpinfyer and Tetrafyer (0/1); Cardioid RPM only to Julia.
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
-    if (fire) fire.fill(0);           // drop leftover heat when switching
+    if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
+    if (fireNext) fireNext.fill(0);
+    if (useGL && glReady) glClearHeat();
   }
   effectSel.addEventListener("change", () => setEffect(+effectSel.value));
   paletteSel.addEventListener("change", () => {
