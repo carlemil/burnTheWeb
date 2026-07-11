@@ -152,7 +152,7 @@
   .bandchips button {
     width: 18px; height: 15px; padding: 0; font: 9px/13px ui-monospace, monospace;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.45);
-    border-radius: 4px; color: #ffb15a; cursor: pointer;
+    border-radius: 4px; color: #ffb15a; cursor: pointer; transition: box-shadow .08s;
   }
   .bandchips button.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
   #panel.audio-off .bandchips { opacity: .4; }
@@ -1295,7 +1295,7 @@
     stopStream();
     audio.on = false; audio.src = "off";
     for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
-    updateMeter(); setAudioUI();
+    updateMeter(); flashChips(); setAudioUI();
   }
   async function startAudio(kind) {
     try {
@@ -1341,11 +1341,23 @@
       audio.pulse[b] *= Math.exp(-dt / PULSE_TAU);
     }
     updateMeter();
+    flashChips();
   }
   function updateMeter() {
     for (let b = 0; b < 3; b++) {
       meterBars[b].style.height = (2 + audio.energy[b] * 16).toFixed(1) + "px";
       meterBars[b].style.background = audio.pulse[b] > 0.4 ? "#ff7a1a" : "#ffcf87";
+    }
+  }
+  // Light up each enabled L/M/H chip when its band beats — a glow that tracks
+  // the band's decaying beat pulse (only chips actually triggered light up).
+  const BANDIDX = { low: 0, mid: 1, high: 2 };
+  function flashChips() {
+    for (const id in chipEls) {
+      for (const k in chipEls[id]) {
+        const lit = audio.on && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
+        chipEls[id][k].style.boxShadow = lit > 0.05 ? "0 0 " + (lit * 7).toFixed(1) + "px #ffd089" : "";
+      }
     }
   }
   el("audCapture").addEventListener("click", () => startAudio("capture"));
