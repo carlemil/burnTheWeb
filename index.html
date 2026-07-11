@@ -152,6 +152,11 @@
     <option value="2">AnimeJulia</option>
   </select>
 
+  <label>Effect TTL <span class="val" id="vTtl"></span></label>
+  <div class="dual"><div class="track"></div><div class="fill"></div>
+    <input type="range" id="ttl-lo" min="0" max="180" step="1" value="30">
+    <input type="range" id="ttl-hi" min="0" max="180" step="1" value="90"></div>
+
   <label>Palette</label>
   <select id="palette">
     <option value="0">Fire</option>
@@ -168,12 +173,12 @@
   <label>Banding <span class="val" id="vBand"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
     <input type="range" id="band-lo" min="0" max="100" step="1" value="0">
-    <input type="range" id="band-hi" min="0" max="100" step="1" value="40"></div>
+    <input type="range" id="band-hi" min="0" max="100" step="1" value="0"></div>
 
   <label>Band size <span class="val" id="vBandSize"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
-    <input type="range" id="bandsize-lo" min="1" max="9" step="1" value="3">
-    <input type="range" id="bandsize-hi" min="1" max="9" step="1" value="3"></div>
+    <input type="range" id="bandsize-lo" min="1" max="9" step="1" value="1">
+    <input type="range" id="bandsize-hi" min="1" max="9" step="1" value="1"></div>
 
   <label>Dark strength <span class="val" id="vBandDim"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -182,12 +187,12 @@
 
   <div id="grp-sirp">
     <label>Points <span class="val" id="vPoints"></span></label>
-    <input id="points" type="range" min="100" max="4000" step="50" value="1500">
+    <input id="points" type="range" min="100" max="8000" step="50" value="2500">
 
     <label>Drift speed <span class="val" id="vSpeed"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="speed-lo" min="10" max="300" step="1" value="92">
-      <input type="range" id="speed-hi" min="10" max="300" step="1" value="92"></div>
+      <input type="range" id="speed-lo" min="1" max="300" step="1" value="92">
+      <input type="range" id="speed-hi" min="1" max="300" step="1" value="92"></div>
 
     <label>Flame rise <span class="val" id="vRise"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -202,7 +207,9 @@
 
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
-    <input id="rpm" type="range" min="0.01" max="2" step="0.01" value="0.66">
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="rpm-lo" min="0.01" max="2" step="0.01" value="0.5">
+      <input type="range" id="rpm-hi" min="0.01" max="2" step="0.01" value="0.8"></div>
 
     <label>Inner : outer ratio <span class="val" id="vRatio"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1001,19 +1008,21 @@
                      [0, 4], [1, 5], [2, 6], [3, 7]];
       for (const [a, b] of edges) drawLine(bc[a], bc[b], 140);
 
-      // rubbery ripples: each recent hit sends a fading ring across its wall,
-      // so the wall visibly gives and springs back where a corner struck it.
-      const RTTL = 0.5;
+      // rubbery ripples: each recent hit sends a fading *sphere* of points
+      // swelling outward from the impact point on the wall.
+      const RTTL = 0.5, RN = 48, GOLD = 2.399963229728653;   // golden angle
       TETRA.impacts = TETRA.impacts.filter(im => t - im.t0 < RTTL);
       for (const im of TETRA.impacts) {
         const age = t - im.t0, rad = age * 2.4, bright = 255 * (1 - age / RTTL);
-        const ua = (im.ax + 1) % 3, ub = (im.ax + 2) % 3;
-        for (let ri = 0; ri < 20; ri++) {
-          const ang = ri / 20 * Math.PI * 2, P3 = [0, 0, 0];
-          P3[im.ax] = im.sgn * TETRA.box[im.ax];
-          P3[ua] = im.u + Math.cos(ang) * rad;
-          P3[ub] = im.v + Math.sin(ang) * rad;
-          const pr = project(viewRot(P3));
+        const c0 = [0, 0, 0];                        // impact centre on the wall
+        c0[im.ax] = im.sgn * TETRA.box[im.ax];
+        c0[(im.ax + 1) % 3] = im.u;
+        c0[(im.ax + 2) % 3] = im.v;
+        for (let s = 0; s < RN; s++) {               // fibonacci sphere of points
+          const y = 1 - (s + 0.5) / RN * 2, rr = Math.sqrt(1 - y * y), phi = s * GOLD;
+          const pr = project(viewRot([c0[0] + Math.cos(phi) * rr * rad,
+                                      c0[1] + y * rad,
+                                      c0[2] + Math.sin(phi) * rr * rad]));
           stamp(pr[0], pr[1], bright);
         }
       }
@@ -1172,6 +1181,7 @@
 
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
+    cycleEffects(now);                // auto-switch effects on the Effect TTL timer
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
 
     // Banding strength (0..1) is set by its ranged slider each frame. When not
@@ -1222,7 +1232,6 @@
     update();
   }
   bind("points", "vPoints", v => v, v => cfg.points = +v);
-  bind("rpm", "vRpm", v => (+v).toFixed(2), v => juliaBigRpm = +v);
 
   // Ranged (dual-thumb) sliders: the two thumbs set a [lo,hi] band and the live
   // value wanders erratically inside it — a random target reached over a random
@@ -1252,7 +1261,12 @@
   bindRange("speed", "vSpeed", v => Math.round(v), v => cfg.speed = v / 100);
   bindRange("rise", "vRise", v => Math.round(v), v => cfg.decay = 128 * v / (v - 1));
   bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v, 10);   // wanders 10× slower
+  bindRange("rpm", "vRpm", v => v.toFixed(2), v => juliaBigRpm = v, 10);    // slow rpm drift
   bindRange("ratio", "vRatio", v => v.toFixed(1) + "×", v => juliaRatio = v);
+  // Effect TTL is a range in *seconds*, not an animated value: each effect is
+  // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
+  // switch. No-op apply; its thumbs are read directly by the cycler.
+  bindRange("ttl", "vTtl", v => Math.round(v) + "s", () => {});
 
   function updateAnims(now) {
     for (const id in anims) {
@@ -1284,18 +1298,128 @@
     "Sierpiński tetrahedron · classic fire",
     "Julia set · animated seed",
   ];
-  function setEffect(i) {
+  // Per-effect slider presets, loaded whenever an effect becomes active (manual
+  // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
+  // bare number is a simple slider. Each effect gets its own tuned look.
+  const PRESETS = {
+    0: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [92, 92], rise: [130, 130], zoom: [1, 1], rpm: [0.5, 0.8], ratio: [21.5, 21.5], points: 2500 },
+    1: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [5, 15],  rise: [130, 130], zoom: [1, 1], rpm: [0.5, 0.8], ratio: [21.5, 21.5], points: 1500 },
+    2: { band: [0, 70], bandsize: [1, 1], banddim: [65, 65], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.5, 0.8], ratio: [21.5, 21.5], points: 1500 },
+  };
+  // Each effect keeps its own slider values, seeded from PRESETS. Switching
+  // saves the outgoing effect's sliders and restores the incoming effect's, so
+  // per-effect tweaks are kept. The whole thing is mirrored to localStorage and
+  // restored next visit — values outside a slider's current bounds are ignored,
+  // so changing a slider's range can never load stale/junk values.
+  const states = {};
+  function initStates() {
+    for (const k in PRESETS) {
+      states[k] = {};
+      for (const id in PRESETS[k]) {
+        const v = PRESETS[k][id];
+        states[k][id] = Array.isArray(v) ? v.slice() : v;
+      }
+    }
+  }
+  initStates();
+  function saveState(e) {
+    const st = states[e];
+    for (const id in st) {
+      st[id] = Array.isArray(st[id])
+        ? [+el(id + "-lo").value, +el(id + "-hi").value]
+        : +el(id).value;
+    }
+  }
+  function loadState(e) {
+    suppressPersist = true;           // the per-slider input events below would
+    const st = states[e];             // otherwise persist a half-loaded state
+    for (const id in st) {
+      const v = st[id];
+      if (Array.isArray(v)) {
+        el(id + "-lo").value = v[0]; el(id + "-hi").value = v[1];
+        el(id + "-lo").dispatchEvent(new Event("input"));
+        el(id + "-hi").dispatchEvent(new Event("input"));
+      } else { el(id).value = v; el(id).dispatchEvent(new Event("input")); }
+    }
+    suppressPersist = false;
+  }
+
+  const STORE_KEY = "burnTheWeb.v1";
+  let persistReady = false, suppressPersist = false;
+  function persist() {
+    if (!persistReady || suppressPersist) return;
+    saveState(effect);                // fold the live sliders into the current effect
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        states, effect,
+        palette: paletteSel.value,
+        morph: morphChk.checked,
+        ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
+      }));
+    } catch (e) { /* storage full / disabled — ignore */ }
+  }
+  function restore() {
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
+    if (!saved) return;
+    const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
+    if (saved.states) {
+      for (const k in states) {
+        const ss = saved.states[k]; if (!ss) continue;
+        for (const id in states[k]) {
+          const v = ss[id]; if (v === undefined) continue;
+          if (Array.isArray(states[k][id])) {                 // ranged: both thumbs in bounds
+            if (Array.isArray(v) && ok(id + "-lo", v[0]) && ok(id + "-lo", v[1])) states[k][id] = [v[0], v[1]];
+          } else if (ok(id, v)) states[k][id] = v;             // simple: in bounds
+        }
+      }
+    }
+    if (Array.isArray(saved.ttl) && ok("ttl-lo", saved.ttl[0]) && ok("ttl-lo", saved.ttl[1])) {
+      el("ttl-lo").value = saved.ttl[0]; el("ttl-hi").value = saved.ttl[1];
+      el("ttl-lo").dispatchEvent(new Event("input"));
+    }
+    if (typeof saved.palette === "string" && paletteSel.querySelector('option[value="' + saved.palette + '"]')) paletteSel.value = saved.palette;
+    if (typeof saved.morph === "boolean") morphChk.checked = saved.morph;
+    if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
+  }
+  restore();
+
+  function setEffect(i, save = true) {
+    if (save && i !== effect && states[effect]) saveState(effect);  // remember outgoing
     effect = i;
     sub.textContent = SUBTITLES[i];
-    // only show the sliders that affect the selected mode: the fire controls
-    // apply to both Sirpinfyer and Tetrafyer (0/1); Cardioid RPM only to Julia.
+    // only show the sliders that affect the selected mode: fire controls for
+    // Sirpinfyer/Tetrafyer (0/1); Cardioid RPM + ratio only for Julia.
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
+    loadState(i);                     // restore this effect's remembered sliders
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
     if (fireNext) fireNext.fill(0);
     if (useGL && glReady) glClearHeat();
+    persist();
   }
-  effectSel.addEventListener("change", () => setEffect(+effectSel.value));
+
+  // Auto-cycle: hold each effect for a random time drawn from the Effect TTL
+  // range, then switch to a random *different* effect (which reloads its preset).
+  let nextSwitch = 0;
+  function ttlMs() {
+    const a = Math.min(+el("ttl-lo").value, +el("ttl-hi").value);
+    const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
+    return (a + Math.random() * (b - a)) * 1000;
+  }
+  function cycleEffects(now) {
+    if (Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
+    if (!nextSwitch) { nextSwitch = now + ttlMs(); return; }
+    if (now >= nextSwitch) {
+      let n; do { n = (Math.random() * 3) | 0; } while (n === effect);
+      effectSel.value = n;
+      setEffect(n);
+      nextSwitch = now + ttlMs();
+    }
+  }
+  el("ttl-lo").addEventListener("input", () => nextSwitch = 0);   // reschedule on retune
+  el("ttl-hi").addEventListener("input", () => nextSwitch = 0);
+  effectSel.addEventListener("change", () => { setEffect(+effectSel.value); nextSwitch = 0; });
   paletteSel.addEventListener("change", () => {
     // while morphing, a manual pick restarts the blend from that palette
     if (morphing) startMorph(+paletteSel.value);
@@ -1305,40 +1429,33 @@
     morphing = morphChk.checked;
     if (morphing) startMorph(+paletteSel.value);
   });
-  setEffect(+effectSel.value);        // apply initial visibility for the default mode
+  // Persist any control change (slider drag, select, checkbox) — one delegated
+  // listener over the whole panel covers them all.
+  panel.addEventListener("input", persist);
+  panel.addEventListener("change", persist);
 
-  // Reset: snapshot each control's default (its load-time value) and restore it.
-  // Simple sliders restore by value; ranged ones restore both thumbs.
-  const simpleIds = ["points", "rpm"];
-  const rangeIds = ["band", "bandsize", "banddim", "speed", "rise", "zoom", "ratio"];
-  const defaults = {};
-  simpleIds.forEach(id => { defaults[id] = el(id).value; });
-  rangeIds.forEach(id => {
-    defaults[id + "-lo"] = el(id + "-lo").value;
-    defaults[id + "-hi"] = el(id + "-hi").value;
-  });
-  const paletteDefault = paletteSel.value;
-  const effectDefault = effectSel.value;
+  // Reset: forget all remembered/persisted tweaks and go back to the preset
+  // defaults for the default effect, plus the default TTL, palette and morph.
   el("reset").addEventListener("click", () => {
-    simpleIds.forEach(id => {
-      const input = el(id);
-      input.value = defaults[id];
-      input.dispatchEvent(new Event("input"));
-    });
-    rangeIds.forEach(id => {
-      el(id + "-lo").value = defaults[id + "-lo"];
-      el(id + "-hi").value = defaults[id + "-hi"];
-      el(id + "-lo").dispatchEvent(new Event("input"));   // refresh fill + label
-    });
-    effectSel.value = effectDefault;
-    setEffect(+effectDefault);
-    paletteSel.value = paletteDefault;
-    setPalette(+paletteDefault);
+    initStates();
+    effectSel.value = 0;
+    setEffect(0, false);              // load preset[0] without saving current sliders
+    el("ttl-lo").value = 30; el("ttl-hi").value = 90;
+    el("ttl-lo").dispatchEvent(new Event("input"));
+    el("ttl-hi").dispatchEvent(new Event("input"));
+    nextSwitch = 0;
+    paletteSel.value = 0;
     morphChk.checked = true;
-    morphChk.dispatchEvent(new Event("change"));
+    morphChk.dispatchEvent(new Event("change"));   // sets morphing + startMorph
+    persist();
   });
 
-  if (morphChk.checked) morphChk.dispatchEvent(new Event("change")); // start if on by default
+  // Initial paint: load the restored effect's sliders, start palette/morph, then
+  // arm persistence (so none of this setup writes back over the restored state).
+  setEffect(+effectSel.value, false);
+  morphing = morphChk.checked;
+  if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
+  persistReady = true;
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);

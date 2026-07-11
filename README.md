@@ -17,9 +17,9 @@ that share the same palette, auto-morph and glow pipeline:
   is a rigid body **bouncing inside a rubbery box** in front of a fixed camera.
   Each of the four corners collides with the walls under impulse-based physics
   (isotropic inertia, near-elastic restitution), so a corner-hit realistically
-  kicks the solid into a tumble; hits send a fading ripple across the wall they
-  struck. The chaos game runs in 3D between the physics-driven vertices and is
-  perspective-projected, and a slow orbit shows the box as solid 3D.
+  kicks the solid into a tumble; each hit bursts a fading sphere of points out
+  from the impact point. The chaos game runs in 3D between the physics-driven
+  vertices and is perspective-projected, and a slow orbit shows the box as solid 3D.
 - **AnimeJulia** — an animated Julia set. The seed `c` is orbited around the
   Mandelbrot plane along two stacked loops: a large slow loop tracing just
   outside the inner bound (the main cardioid, pushed slightly outward) so the
@@ -70,17 +70,26 @@ then wanders *erratically* between them (a random target reached over a random
 time, eased, on repeat). Collapse the two thumbs together to pin a constant
 value, so a ranged slider also works as an ordinary one.
 
+**Each effect keeps its own slider values** — tweak Tetrafyer, switch to
+AnimeJulia and back, and Tetrafyer's settings are still there. Everything is
+**saved to your browser** and restored on your next visit (persisted values that
+fall outside a slider's current range are ignored, so updates can't load junk).
+A small **frame counter + rolling FPS** sits in the top-right corner.
+
 | Control | What it does |
 | --- | --- |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
+| **Effect TTL** *(ranged, seconds)* | Auto-cycle: each effect is held for a random time drawn from this range, then a random other effect takes over. Set both thumbs to **0** to never switch. |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **Banding** *(ranged)* | Strength of the light/dark contour-stripe filter over the active palette. |
-| **Points** | Number of chaos-game points per frame (100–4000). |
-| **Drift speed** *(ranged)* | How fast the triangle's corners move around the screen. |
+| **Band size** *(ranged)* | Colours per light (and per dark) run in the banding pattern. |
+| **Dark strength** *(ranged)* | How far the banding's dark runs are darkened. |
+| **Points** | Number of chaos-game points per frame (100–8000). |
+| **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
-| **Cardioid RPM** | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid (0.01–2 rpm). |
+| **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid (0.01–2 rpm). |
 | **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
 
 The fire runs at full resolution (there is no resolution control). Press **H** to
