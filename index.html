@@ -104,6 +104,23 @@
     transition: background .15s;
   }
   #toggle:hover { background: rgba(255, 122, 26, 0.3); }
+  #frames {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 10;
+    padding: 6px 10px;
+    background: rgba(10, 6, 4, 0.55);
+    border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 8px;
+    color: #ffcf87;
+    font: 13px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
   #reset {
     margin-top: 14px;
@@ -198,6 +215,7 @@
   <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause</p>
 </div>
 <div id="toggle">☰</div>
+<div id="frames">0</div>
 
 <script>
 (() => {
@@ -1133,8 +1151,11 @@
   }
 
   let last = 0, acc = 0, paused = false;
+  const framesEl = document.getElementById("frames");
+  let frameCount = 0;
   function frame(now) {
     requestAnimationFrame(frame);
+    framesEl.textContent = ++frameCount;      // running frame count, top-right
     if (!last) last = now;
     let dt = (now - last) / 1000;
     last = now;
@@ -1320,25 +1341,32 @@
   });
 
   // ---- auto-reload on new deploy ----
-  // Poll our own document's version tag (the server's ETag, or Last-Modified as
-  // a fallback). GitHub Pages changes it whenever a new build is published, so
-  // when it differs from the tag we loaded with, a newer version is live and we
-  // reload once to pick it up. Cheap HEAD request; failures are ignored.
+  // Ask the host what version is live by fetching our own document fresh (cache
+  // busted) and deriving a version fingerprint from its actual bytes — content
+  // length plus an FNV-1a hash — rather than trusting server headers. The first
+  // probe records the running version; whenever a later probe differs, a new
+  // build is deployed and we reload once to pick it up. Failures are ignored.
   (function autoReload() {
-    let known = null;
+    function version(text) {
+      let h = 0x811c9dc5;                          // FNV-1a 32-bit
+      for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = (h * 0x01000193) >>> 0;
+      }
+      return text.length + ":" + h.toString(16);   // length guards against collisions
+    }
+    let running = null;
     async function check() {
       try {
-        const res = await fetch(location.pathname + "?_=" + Date.now(),
-          { method: "HEAD", cache: "no-store" });
+        const res = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" });
         if (!res.ok) return;
-        const tag = res.headers.get("etag") || res.headers.get("last-modified");
-        if (!tag) return;
-        if (known === null) known = tag;
-        else if (tag !== known) location.reload();
+        const deployed = version(await res.text());
+        if (running === null) running = deployed;   // baseline = what we're running
+        else if (deployed !== running) location.reload();
       } catch (e) { /* offline / transient — try again next tick */ }
     }
-    check();
-    setInterval(check, 60000);            // check every 60s
+    check();                               // capture the running version now
+    setInterval(check, 60000);             // then ask the host every 60s
   })();
 })();
 </script>
