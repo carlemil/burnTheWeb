@@ -643,6 +643,7 @@
   // and rendered through the same palette/glow pipeline as the fire.
   const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
   const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
+  const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
   const JULIA_SMALL_R = 0.03;          // small circle radius (< margin ⇒ stays outside)
   let juliaBigRpm = 0.05;              // slow outer spin (live-tunable via slider)
   const JULIA_MAX_ITER = 160;
@@ -655,7 +656,7 @@
   // ratio). The scaled main cardioid c=0.5·e^{iθ}−0.25·e^{2iθ} has perimeter
   // 4·(1+margin); the small circle's is 2π·r. That value is the ratio slider's
   // natural centre; the slider (with animated bounds) tunes it live.
-  const JULIA_C_BIG = 4 * (1 + JULIA_MARGIN);            // scaled cardioid perimeter
+  const JULIA_C_BIG = 4 * (1 + JULIA_MARGIN) * CARDIOID_SIZE; // scaled cardioid perimeter
   const JULIA_C_SMALL = 2 * Math.PI * JULIA_SMALL_R;     // small-circle circumference
   const JULIA_RATIO_DEFAULT = (JULIA_C_BIG - JULIA_C_SMALL) / JULIA_C_SMALL; // ≈ 21.5
   let juliaRatio = JULIA_RATIO_DEFAULT;                  // inner : outer spin multiple
@@ -669,7 +670,7 @@
     juliaInner += dt * juliaBigRpm * juliaRatio * RPM;    // inner = ratio × outer
     // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
     // scaled outward by the margin so it sits just outside the inner bound.
-    const th = juliaOuter, s = 1 + JULIA_MARGIN;
+    const th = juliaOuter, s = (1 + JULIA_MARGIN) * CARDIOID_SIZE;
     let cx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
     let cy = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
     // small circle riding on top, spinning ratio× faster than the big loop
