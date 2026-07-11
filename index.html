@@ -151,7 +151,7 @@
   <label>Banding <span class="val" id="vBand"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
     <input type="range" id="band-lo" min="0" max="100" step="1" value="0">
-    <input type="range" id="band-hi" min="0" max="100" step="1" value="0"></div>
+    <input type="range" id="band-hi" min="0" max="100" step="1" value="40"></div>
 
   <label>Band size <span class="val" id="vBandSize"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -185,7 +185,7 @@
 
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
-    <input id="rpm" type="range" min="0.01" max="2" step="0.01" value="0.05">
+    <input id="rpm" type="range" min="0.01" max="2" step="0.01" value="0.66">
 
     <label>Inner : outer ratio <span class="val" id="vRatio"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1036,7 +1036,7 @@
   const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
   const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
   const JULIA_SMALL_R = 0.03;          // small circle radius (< margin ⇒ stays outside)
-  let juliaBigRpm = 0.05;              // slow outer spin (live-tunable via slider)
+  let juliaBigRpm = 0.66;              // outer spin (live-tunable via slider)
   const JULIA_MAX_ITER = 160;
   const JULIA_SPAN = 2.8;              // vertical extent of the complex view
   const JULIA_INV_LN2 = 1 / Math.LN2;
