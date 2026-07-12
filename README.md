@@ -1,16 +1,19 @@
 # burnTheWeb
 
-A classic demoscene **fire effect** whose flames are seeded by an animated
-**Sierpiński fractal** — either a 2D triangle or a 3D tetrahedron. A chaos-game
-point cloud stamps the fractal into the fire as fresh heat every tick, so the
-whole thing burns, flickers, and morphs continuously.
+A GPU demoscene visual built around a classic **fire effect**: flames seeded by
+an animated **Sierpiński fractal** (2D triangle or bouncing 3D tetrahedron) or an
+**animated Julia set**, all coloured through the same palette + glow pipeline. A
+chaos-game point cloud stamps the fractal into the fire as fresh heat every tick,
+so the whole thing burns, flickers, and morphs continuously — and it can **react
+to whatever music you're playing**.
 
 🔥 **Live demo:** https://carlemil.github.io/burnTheWeb/
 
 ## Effects
 
 An **Effect** selector at the top of the panel switches between three visuals
-that share the same palette, auto-morph and glow pipeline:
+that share the same palette, glow and music-reactivity pipeline — but each is an
+independent "scene" that remembers its own settings (see Controls):
 
 - **Sirpinfyer** — the classic 2D Sierpiński-**triangle** fire described below.
 - **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** that
@@ -25,9 +28,9 @@ that share the same palette, auto-morph and glow pipeline:
   outside the inner bound (the main cardioid, pushed slightly outward) so the
   Julia set stays intricate, plus a much smaller, faster circle riding on top
   that only ever nudges the seed further out — never into the interior. The big
-  loop turns at ~0.05 rpm, the small one a fair bit faster, so the fractal
-  reshapes continuously. Per-pixel escape time is written as heat and coloured
-  through the same fire palettes.
+  loop turns slowly (a few hundredths of an rpm) and the small one a fair bit
+  faster, so the fractal reshapes continuously. Per-pixel escape time is written
+  as heat and coloured through the same fire palettes.
 
 ## How it works
 
@@ -70,11 +73,14 @@ then wanders *erratically* between them (a random target reached over a random
 time, eased, on repeat). Collapse the two thumbs together to pin a constant
 value, so a ranged slider also works as an ordinary one.
 
-**Each effect keeps its own slider values** — tweak Tetrafyer, switch to
-AnimeJulia and back, and Tetrafyer's settings are still there. Everything is
-**saved to your browser** and restored on your next visit (persisted values that
-fall outside a slider's current range are ignored, so updates can't load junk).
-A small **frame counter + rolling FPS** sits in the top-right corner.
+**Each effect is a fully independent scene** — its sliders, beat chips, palette,
+auto-morph, show-box and hold time are all remembered *separately per effect*, so
+tweaking Tetrafyer never touches AnimeJulia. Only auto-cycle on/off and the
+panel's open/closed state are shared. Everything is **saved to your browser** and
+restored on your next visit (persisted values that fall outside a slider's
+current range are ignored, so updates can't load junk). The **?** by the title
+opens an effect-aware help panel; a small **frame counter + rolling FPS** sits in
+the top-right corner.
 
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
@@ -87,25 +93,33 @@ band and dropping back within 0.2s (so the range width sets how big the pulse
 is). The chips are remembered per effect and persisted. Pinned sliders (thumbs
 together) have no range to pulse within, so widen a slider to make it react.
 
+*(ranged)* controls are the two-thumb sliders described above; the rest are
+single sliders, dropdowns or toggles. Everything except auto-cycle and panel
+visibility is remembered per effect.
+
 | Control | What it does |
 | --- | --- |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
-| **Effect TTL** *(ranged, seconds)* | Auto-cycle: each effect is held for a random time drawn from this range, then a random other effect takes over. Set both thumbs to **0** to never switch. |
+| **Auto-cycle effects** | When on, the effect switches on its own after each effect's hold time; off to stay put. *(Shared, not per-effect.)* |
+| **Effect TTL** *(ranged, seconds)* | How long auto-cycle holds this effect before switching to a random other one — a random time drawn from this range. |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
+| **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
 | **Banding** *(ranged)* | Strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Colours per light (and per dark) run in the banding pattern. |
-| **Dark strength** *(ranged)* | How far the banding's dark runs are darkened. |
-| **Points** | Number of chaos-game points per frame (100–8000). |
-| **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. |
-| **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). |
+| **Darkness** *(ranged)* | How far the banding's dark runs are darkened. |
+| **Points** | Number of chaos-game points per frame (100–8000). *(Sirpinfyer / Tetrafyer.)* |
+| **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
+| **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). *(Sirpinfyer / Tetrafyer.)* |
+| **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in. *(Tetrafyer.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
-| **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid (0.01–2 rpm). |
+| **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid. |
 | **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
-| **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). Its L/M/H beat chips *step it forward by 0.05 per beat* instead of the usual kick. |
+| **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
+| **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
 
-The fire runs at full resolution (there is no resolution control). Press **H** to
-hide the panel; click the canvas to pause.
+The fire runs at full resolution (there is no resolution control). Press **H** or
+**☰** to toggle the panel, **F11** for fullscreen, and click the canvas to pause.
 
 ## Running locally
 
@@ -119,4 +133,9 @@ python -m http.server
 
 ## Tech
 
-Plain HTML5 `<canvas>` and vanilla JavaScript. Hosted on GitHub Pages.
+A single self-contained `index.html` — vanilla JavaScript, no build step, no
+dependencies. The per-pixel work (fire propagation, palette + glow, and the Julia
+escape-time) runs on the GPU via **WebGL2**, with a Canvas2D fallback if WebGL2
+is unavailable. The deterministic chaos game stays on the CPU and is drawn as
+additive GL points. Hosted on GitHub Pages; the page auto-reloads when a new
+version is deployed. Settings persist in `localStorage`.
