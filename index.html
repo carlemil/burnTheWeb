@@ -138,6 +138,7 @@
   #reset:hover { background: rgba(255, 122, 26, 0.3); }
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
+  #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
   /* ---- music beat reactivity ---- */
   #panel .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #panel .audbtn {
@@ -160,6 +161,13 @@
     background: #ffb84d; color: #140a03; border-color: #ffe0a0;
     box-shadow: 0 0 5px rgba(255, 176, 77, 0.75);
   }
+  /* per-band colours: L (low) blue · M (mid) green · H (high) red */
+  .bandchips button:nth-child(1) { color: #8ab4ff; border-color: rgba(90, 150, 255, 0.5); }
+  .bandchips button:nth-child(2) { color: #7ddc8a; border-color: rgba(80, 210, 120, 0.5); }
+  .bandchips button:nth-child(3) { color: #ff9a8a; border-color: rgba(255, 100, 90, 0.5); }
+  .bandchips button:nth-child(1).on { background: #5a9cff; border-color: #b0d0ff; color: #05101f; box-shadow: 0 0 6px rgba(90, 156, 255, 0.85); }
+  .bandchips button:nth-child(2).on { background: #45cf62; border-color: #aef0bc; color: #041505; box-shadow: 0 0 6px rgba(69, 207, 98, 0.85); }
+  .bandchips button:nth-child(3).on { background: #ff5f4d; border-color: #ffb4aa; color: #1f0603; box-shadow: 0 0 6px rgba(255, 95, 77, 0.85); }
   #panel.audio-off .bandchips { opacity: .4; }
   /* ---- help popup ---- */
   #panel #help-btn {
@@ -209,6 +217,8 @@
     <button id="createpreset" class="audbtn" type="button" title="Save as a new preset">Create</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
+
+  <hr class="sep">
 
   <label>Effect</label>
   <select id="effect">
@@ -285,8 +295,8 @@
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="rpm-lo" min="0" max="0.2" step="0.01" value="0.03">
-      <input type="range" id="rpm-hi" min="0" max="0.2" step="0.01" value="0.15"></div>
+      <input type="range" id="rpm-lo" min="0" max="0.5" step="0.01" value="0.03">
+      <input type="range" id="rpm-hi" min="0" max="0.5" step="0.01" value="0.15"></div>
 
     <label>Inner : outer ratio <span class="val" id="vRatio"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -295,15 +305,17 @@
 
     <label>Cardioid start <span class="val" id="vPhase"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="phase-lo" min="0" max="1" step="0.01" value="0">
-      <input type="range" id="phase-hi" min="0" max="1" step="0.01" value="0"></div>
+      <input type="range" id="phase-lo" min="0" max="0.2" step="0.01" value="0">
+      <input type="range" id="phase-hi" min="0" max="0.2" step="0.01" value="0"></div>
   </div>
 
-  <div class="presetrow">
-    <button id="copy" class="audbtn" type="button" style="flex:1">Export settings</button>
-    <button id="import" class="audbtn" type="button" style="flex:1">Import settings</button>
-  </div>
+  <hr class="sep">
   <button id="reset" type="button">Reset this effect</button>
+  <div class="presetrow">
+    <button id="copy" class="audbtn" type="button" title="Copy this effect's settings as text">Export</button>
+    <button id="import" class="audbtn" type="button" title="Paste settings to apply them">Import</button>
+    <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
+  </div>
 
   <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>F11</b> for fullscreen</p>
 </div>
@@ -1410,11 +1422,12 @@
   // Light up each enabled L/M/H chip when its band beats — a glow that tracks
   // the band's decaying beat pulse (only chips actually triggered light up).
   const BANDIDX = { low: 0, mid: 1, high: 2 };
+  const BANDCOLOR = { low: "#5a9cff", mid: "#45cf62", high: "#ff5f4d" };   // L blue · M green · H red
   function flashChips() {
     for (const id in chipEls) {
       for (const k in chipEls[id]) {
         const lit = audio.on && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
-        chipEls[id][k].style.boxShadow = lit > 0.05 ? "0 0 " + (lit * 7).toFixed(1) + "px #ffd089" : "";
+        chipEls[id][k].style.boxShadow = lit > 0.05 ? "0 0 " + (lit * 8).toFixed(1) + "px " + BANDCOLOR[k] : "";
       }
     }
   }
@@ -1658,9 +1671,10 @@
       }));
     } catch (e) { /* storage full / disabled — ignore */ }
   }
-  function restore() {
-    let saved;
-    try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
+  // Apply a settings blob (from localStorage or a shared URL). `sharing` skips the
+  // browser-local bits (saved presets, panel state) so a shared link only carries
+  // the settings themselves.
+  function applyBlob(saved, sharing) {
     if (!saved) return;
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
@@ -1694,13 +1708,30 @@
       if (typeof ex.showBox === "boolean") extras[k].showBox = ex.showBox;
       if (Array.isArray(ex.ttl) && ok("ttl-lo", ex.ttl[0]) && ok("ttl-lo", ex.ttl[1])) extras[k].ttl = [ex.ttl[0], ex.ttl[1]];
     }
-    if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra);
-    curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length) ? saved.curPreset : -1;
     if (typeof saved.cycle === "boolean") { cycleChk.checked = saved.cycle; cycleOn = saved.cycle; }
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
-    if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
+    if (!sharing) {   // browser-local: saved presets + panel visibility
+      if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra);
+      curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length) ? saved.curPreset : -1;
+      if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
+    }
+  }
+  function restore() {
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
+    applyBlob(saved, false);
+  }
+  function applyShared() {           // ?s=... link carries the settings (not presets)
+    const m = location.search.match(/[?&]s=([^&#]+)/);
+    if (!m) return;
+    let d = null;
+    try { d = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { return; }
+    applyBlob(d, true);
+    curPreset = lastPreset = -1;     // a shared scene isn't one of your saved presets
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
   }
   restore();
+  applyShared();
 
   function setEffect(i, save = true) {
     if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); saveExtra(effect); }  // remember outgoing
@@ -1792,7 +1823,7 @@
   }
   el("copy").addEventListener("click", () => {
     const text = currentSettingsText(), btn = el("copy");
-    const done = okState => { btn.textContent = okState ? "Copied!" : "Copy failed"; setTimeout(() => btn.textContent = "Export settings", 1300); };
+    const done = okState => { btn.textContent = okState ? "Copied!" : "Copy failed"; setTimeout(() => btn.textContent = "Export", 1300); };
     const fallback = () => {
       try {
         const ta = document.createElement("textarea");
@@ -1826,6 +1857,26 @@
       applyingPreset = false;
       persist();
     } catch (err) { alert("Couldn't import settings: " + err.message); }
+  });
+
+  // Share: copy a link that opens with the current settings (all effects' values,
+  // but not the browser-local saved presets). Decoded by applyShared() on load.
+  el("share").addEventListener("click", () => {
+    saveState(effect); saveBeat(effect); saveExtra(effect);
+    const blob = { states, beats: beatStates, extras, effect, cycle: cycleChk.checked };
+    const url = location.origin + location.pathname + "?s=" + btoa(unescape(encodeURIComponent(JSON.stringify(blob))));
+    const btn = el("share");
+    const done = okState => { btn.textContent = okState ? "Link copied!" : "Copy failed"; setTimeout(() => btn.textContent = "Share", 1400); };
+    const fallback = () => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = url; ta.style.cssText = "position:fixed;opacity:0";
+        document.body.appendChild(ta); ta.select();
+        const okc = document.execCommand("copy"); document.body.removeChild(ta); done(okc);
+      } catch (e) { done(false); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(() => done(true), fallback);
+    else fallback();
   });
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
@@ -1910,25 +1961,25 @@
     effects: {
       0: { name: "Sirpinfyer", text: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer." },
       1: { name: "Tetrafyer", text: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks." },
-      2: { name: "AnimeJulia", text: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the fire palette." },
+      2: { name: "AnimeJulia", text: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette." },
     },
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1)
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; editing anything marks it “— custom —”. Save preset snapshots the current look; Delete removes the selected one. Export/Import (bottom) copy the current effect's settings as text you can share or paste back." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; editing marks it “— custom —”. Create saves the current look as a new preset, Save overwrites the selected one, Delete removes it. At the bottom: Export/Import copy or paste settings as text, and Share makes a link that opens with the current settings." },
       { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
-      { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL). Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
+      { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside." },
       { n: "Banding", w: "all", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
       { n: "Band size", w: "all", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "all", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
-      { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
       { n: "Drift speed", w: "fire", t: "Sirpinfyer: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
       { n: "Flame rise", w: "fire", t: "How tall flames climb before fading — linear in height." },
+      { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
@@ -1950,35 +2001,6 @@
   function closeHelp() { helpEl.classList.add("hidden"); }
   el("help-btn").addEventListener("click", openHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
-
-  // ---- auto-reload on new deploy ----
-  // Ask the host what version is live by fetching our own document fresh (cache
-  // busted) and deriving a version fingerprint from its actual bytes — content
-  // length plus an FNV-1a hash — rather than trusting server headers. The first
-  // probe records the running version; whenever a later probe differs, a new
-  // build is deployed and we reload once to pick it up. Failures are ignored.
-  (function autoReload() {
-    function version(text) {
-      let h = 0x811c9dc5;                          // FNV-1a 32-bit
-      for (let i = 0; i < text.length; i++) {
-        h ^= text.charCodeAt(i);
-        h = (h * 0x01000193) >>> 0;
-      }
-      return text.length + ":" + h.toString(16);   // length guards against collisions
-    }
-    let running = null;
-    async function check() {
-      try {
-        const res = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" });
-        if (!res.ok) return;
-        const deployed = version(await res.text());
-        if (running === null) running = deployed;   // baseline = what we're running
-        else if (deployed !== running) location.reload();
-      } catch (e) { /* offline / transient — try again next tick */ }
-    }
-    check();                               // capture the running version now
-    setInterval(check, 60000);             // then ask the host every 60s
-  })();
 })();
 </script>
 </body>

@@ -139,5 +139,4 @@ A single self-contained `index.html` — vanilla JavaScript, no build step, no
 dependencies. The per-pixel work (fire propagation, palette + glow, and the Julia
 escape-time) runs on the GPU via **WebGL2**, with a Canvas2D fallback if WebGL2
 is unavailable. The deterministic chaos game stays on the CPU and is drawn as
-additive GL points. Hosted on GitHub Pages; the page auto-reloads when a new
-version is deployed. Settings persist in `localStorage`.
+additive GL points. Hosted on GitHub Pages. Settings persist in `localStorage`.
