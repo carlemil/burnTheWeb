@@ -213,8 +213,7 @@
   <label>Presets</label>
   <select id="preset"></select>
   <div class="presetrow">
-    <button id="savepreset" class="audbtn" type="button" title="Overwrite the selected preset">Save</button>
-    <button id="createpreset" class="audbtn" type="button" title="Save as a new preset">Create</button>
+    <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
 
@@ -1783,10 +1782,10 @@
     if (morphing) startMorph(+paletteSel.value);
   });
   // Persist any control change (slider drag, select, checkbox) — one delegated
-  // listener over the whole panel covers them all. Editing a control also breaks
-  // the link to the selected preset (marks it "custom").
+  // listener over the whole panel covers them all. When a preset is selected the
+  // edit is auto-saved into it; in "— custom —" it just updates the working scene.
   function onEdit(e) {
-    if (persistReady && !applyingPreset && e.target.id !== "preset") { curPreset = -1; presetSel.value = "-1"; }
+    if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }
   panel.addEventListener("input", onEdit);
@@ -1918,15 +1917,13 @@
     rebuildPresetOptions();
     persist();
   }
-  el("createpreset").addEventListener("click", createPreset);
-  el("savepreset").addEventListener("click", () => {   // overwrite the preset we're based on
-    if (lastPreset >= 0 && presets[lastPreset]) {
-      presets[lastPreset] = { name: presets[lastPreset].name, ...snapshotScene() };
-      curPreset = lastPreset;
-      rebuildPresetOptions();
-      persist();
-    } else createPreset();            // nothing to overwrite ⇒ create a new one
-  });
+  el("newpreset").addEventListener("click", createPreset);
+  // When a preset is selected, edits flow straight back into it (auto-save); this
+  // writes the current scene over the selected preset, keeping its name.
+  function autosavePreset() {
+    if (curPreset >= 0 && curPreset < presets.length)
+      presets[curPreset] = { name: presets[curPreset].name, ...snapshotScene() };
+  }
   el("delpreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
     presets.splice(curPreset, 1);
@@ -1965,7 +1962,7 @@
     },
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1)
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; editing marks it “— custom —”. Create saves the current look as a new preset, Save overwrites the selected one, Delete removes it. At the bottom: Export/Import copy or paste settings as text, and Share makes a link that opens with the current settings." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. At the bottom: Export/Import copy or paste settings as text, and Share makes a link that opens with the current settings." },
       { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL). Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
