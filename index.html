@@ -294,8 +294,8 @@
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="rpm-lo" min="0" max="0.5" step="0.01" value="0.03">
-      <input type="range" id="rpm-hi" min="0" max="0.5" step="0.01" value="0.15"></div>
+      <input type="range" id="rpm-lo" min="0" max="4" step="0.01" value="0.03">
+      <input type="range" id="rpm-hi" min="0" max="4" step="0.01" value="0.15"></div>
 
     <label>Inner : outer ratio <span class="val" id="vRatio"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1364,7 +1364,7 @@
     stopStream();
     audio.on = false; audio.src = "off";
     for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
-    updateMeter(); flashChips(); setAudioUI();
+    updateMeter(); flashChips(); setAudioUI(); persist();
   }
   async function startAudio(kind) {
     try {
@@ -1390,7 +1390,7 @@
       computeBins();
       audio.on = true; audio.src = kind;
       stream.getAudioTracks()[0].onended = stopAudio;    // user revokes the share
-      setAudioUI();
+      setAudioUI(); persist();
     } catch (err) {
       audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
     }
@@ -1432,6 +1432,24 @@
   }
   el("audCapture").addEventListener("click", () => startAudio("capture"));
   el("audMic").addEventListener("click", () => startAudio("mic"));
+
+  // Browsers won't silently re-grab tab/screen (or mic) audio after a reload — it
+  // needs a fresh user gesture. So remember the last live source and re-open it on
+  // the very first interaction. Skip if that gesture lands on the audio buttons
+  // themselves (their own handlers start it) so we don't double-open the picker.
+  function armAudioResume(kind) {
+    const cleanup = () => {
+      document.removeEventListener("pointerdown", resume, true);
+      document.removeEventListener("keydown", resume, true);
+    };
+    function resume(e) {
+      if (e.target && e.target.closest && e.target.closest("#audCapture, #audMic")) { cleanup(); return; }
+      cleanup();
+      if (!audio.on) startAudio(kind);
+    }
+    document.addEventListener("pointerdown", resume, true);
+    document.addEventListener("keydown", resume, true);
+  }
   el("audStop").addEventListener("click", stopAudio);
   setAudioUI();
 
@@ -1667,6 +1685,7 @@
         presets, curPreset,
         cycle: cycleChk.checked,                       // shared (session controls)
         panelOpen: !panel.classList.contains("hidden"),
+        audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
       }));
     } catch (e) { /* storage full / disabled — ignore */ }
   }
@@ -1713,6 +1732,7 @@
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra);
       curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length) ? saved.curPreset : -1;
       if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
+      if (saved.audio === "capture" || saved.audio === "mic") armAudioResume(saved.audio);
     }
   }
   function restore() {
