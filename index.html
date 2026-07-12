@@ -1740,7 +1740,7 @@
   const PRESETS = {
     0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], size: [1, 1], rot: [0, 0],  layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
     1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
-    2: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 3], size: [1, 1], rot: [0, 0],  layers: 1, rpm: [0.03, 0.15], ratio: [8, 13.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    2: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 2.1], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.69, 2.08], ratio: [5.5, 37], inrad: [0.03, 0.08], outrad: [0.95, 1.05], phase: [0.01, 0.03], points: 1500 },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
@@ -1787,7 +1787,7 @@
   // Default beat-chip selections per effect (slider id -> bands). Everything not
   // listed starts off.
   const BEAT_PRESETS = {
-    2: { zoom: ["low"], band: ["mid"], ratio: ["high"] },   // AnimeJulia
+    2: { banddim: ["low", "high"], zoom: ["mid"], phase: ["high"] },   // AnimeJulia
   };
   function presetBeat(e) {            // a fresh copy of effect e's default chip selection
     const bt = {};
