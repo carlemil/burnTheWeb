@@ -121,6 +121,14 @@
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
+  #paused {
+    position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 10px; color: #ffdcb0; font: 13px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .05em; user-select: none; pointer-events: none;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  #paused.hidden { display: none; }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
   #reset {
     margin-top: 8px;
@@ -284,6 +292,15 @@
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
 
+  <label>Resolution</label>
+  <select id="res" title="Render resolution — lower it if the frame rate is low">
+    <option value="1">Full</option>
+    <option value="1.5">High</option>
+    <option value="2">Medium</option>
+    <option value="3">Low</option>
+    <option value="4">Potato</option>
+  </select>
+
   <label>React to music <span class="val" id="vAudio">off</span></label>
   <div class="audiorow">
     <button id="audCapture" class="audbtn" type="button" title="Capture system / tab audio (e.g. Spotify)">Capture</button>
@@ -407,6 +424,7 @@
 </div>
 <div id="toggle">☰</div>
 <div id="frames">0</div>
+<div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
 
 <div id="syncpop" class="hidden">
@@ -473,7 +491,7 @@
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
   let cycleOn = true;        // auto-cycle saved presets on the TTL timer (toggle)
-  let presets = [], curPreset = -1, lastPreset = -1, applyingPreset = false;   // named full-scene snapshots
+  let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
   // by shrinking the complex-plane span (revealing real fractal detail); the fire
@@ -579,6 +597,7 @@
       paletteBase[x * 3 + 2] = clamp(c[2]);
     }
   }
+  let paletteDirty = true;   // gate GL palette re-upload to frames where it changed
   function setPalette(i) { setBase(i); composePalette(0); }
 
   // Fold the banding filter over paletteBase into the final ABGR palette. For
@@ -605,6 +624,7 @@
       palette[x] = (255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r);
     }
     palette[0] = 0xFF000000; // opaque black
+    paletteDirty = true;      // composePalette is the only writer ⇒ flag GL re-upload
   }
   setPalette(0);
 
@@ -944,6 +964,7 @@
     curHeat = 0;
   }
   function uploadPalette() {
+    if (!paletteDirty) return;   // skip the repack+upload when the palette is unchanged
     for (let i = 0; i < 256; i++) {
       const p = palette[i], j = i * 4;
       palBytes[j] = p & 255; palBytes[j + 1] = (p >> 8) & 255;
@@ -951,6 +972,7 @@
     }
     gl.bindTexture(gl.TEXTURE_2D, glTex.pal);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palBytes);
+    paletteDirty = false;
   }
 
   // one propagation tick: src heat → dst heat (points get MAX-blended after)
@@ -1043,7 +1065,7 @@
   if (useGL) {
     canvas.addEventListener("webglcontextlost", e => { e.preventDefault(); glReady = false; }, false);
     canvas.addEventListener("webglcontextrestored", () => {
-      try { initGL(); glResize(); glClearHeat(); }
+      try { initGL(); glResize(); glClearHeat(); paletteDirty = true; }   // re-upload palette to the fresh texture
       catch (err) { glReady = false; }
     }, false);
   }
@@ -1203,7 +1225,7 @@
     const xL = fw * 0.05, xR = fw * 0.95;
     const yT = fh * 0.20, yB = fh * 0.95;
     const n = cfg.points;
-    rngState = SEED;               // reset: same point sequence every frame
+    // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
     if (effect === 0) {
       // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix,
@@ -1737,12 +1759,12 @@
     if (beat !== false) makeChips(id, lo.closest(".dual").previousElementSibling);
     ui(); apply(a.val);
   }
-  // Flame rise is linear in flame height: decay = 128*R/(R-1) so each step of
-  // the slider changes the flame height by a roughly constant amount.
   bindRange("band", "vBand", v => Math.round(v) + "%", v => bandLevel = v / 100);
   bindRange("bandsize", "vBandSize", v => Math.round(v), v => bandGroup = v);
   bindRange("banddim", "vBandDim", v => Math.round(v) + "%", v => bandDim = 1 - v / 100);
   bindRange("speed", "vSpeed", v => Math.round(v), v => cfg.speed = v / 100);
+  // Flame rise is linear in flame height: decay = 128*R/(R-1) so each step of
+  // the slider changes the flame height by a roughly constant amount.
   bindRange("rise", "vRise", v => Math.round(v), v => cfg.decay = 128 * v / (v - 1));
   bindRange("size", "vSize", v => v.toFixed(2) + "×", v => fractalSize = v, 10);
   bindRange("rot", "vRot", v => Math.round(v) + "°/s", v => rotSpeed = v * Math.PI / 180, 10);
@@ -1817,6 +1839,10 @@
   const morphChk = el("morph");
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
+  // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
+  // Global (not per-effect); reallocates buffers via resize().
+  const resSel = el("res");
+  resSel.addEventListener("change", () => { cfg.scale = +resSel.value; resize(); persist(); });
   const cycleChk = el("cycle");
   const presetSel = el("preset");
   const SUBTITLES = [
@@ -1937,6 +1963,7 @@
         states, beats: beatStates, extras, effect,
         presets, curPreset,
         cycle: cycleChk.checked,                       // shared (session controls)
+        scale: cfg.scale,                              // render resolution (global)
         panelOpen: !panel.classList.contains("hidden"),
         audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
       }));
@@ -1980,6 +2007,7 @@
       if (Array.isArray(ex.ttl) && ok("ttl-lo", ex.ttl[0]) && ok("ttl-lo", ex.ttl[1])) extras[k].ttl = [ex.ttl[0], ex.ttl[1]];
     }
     if (typeof saved.cycle === "boolean") { cycleChk.checked = saved.cycle; cycleOn = saved.cycle; }
+    if ([1, 1.5, 2, 3, 4].includes(saved.scale)) { cfg.scale = saved.scale; resSel.value = String(saved.scale); }
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra);
@@ -1999,11 +2027,12 @@
     let d = null;
     try { d = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { return; }
     applyBlob(d, true);
-    curPreset = lastPreset = -1;     // a shared scene isn't one of your saved presets
+    curPreset = -1;                  // a shared scene isn't one of your saved presets
     try { history.replaceState(null, "", location.pathname); } catch (e) {}
   }
   restore();
   applyShared();
+  resize();          // re-apply the restored render resolution (cfg.scale)
 
   function setEffect(i, save = true) {
     if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); saveExtra(effect); }  // remember outgoing
@@ -2126,7 +2155,7 @@
       beatStates[e] = nb;
       if (X) extras[e] = X.obj;
       applyingPreset = true;
-      effectSel.value = e; curPreset = lastPreset = -1;
+      effectSel.value = e; curPreset = -1;
       setEffect(e, false);
       presetSel.value = "-1";
       applyingPreset = false;
@@ -2191,7 +2220,7 @@
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene
-    curPreset = lastPreset = i; presetSel.value = String(i);
+    curPreset = i; presetSel.value = String(i);
     applyingPreset = false;
     persist();
   }
@@ -2199,7 +2228,7 @@
     const name = (prompt("Preset name:", "Preset " + (presets.length + 1)) || "").trim();
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
-    curPreset = lastPreset = presets.length - 1;
+    curPreset = presets.length - 1;
     rebuildPresetOptions();
     persist();
   }
@@ -2213,7 +2242,7 @@
   el("delpreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
     presets.splice(curPreset, 1);
-    curPreset = lastPreset = -1;
+    curPreset = -1;
     rebuildPresetOptions();
     persist();
   });
@@ -2223,7 +2252,6 @@
   // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
   setEffect(+effectSel.value, false);
   if (presets.length === 0) { presets = defaultPresets(); curPreset = effect; }   // first visit: one preset per effect
-  lastPreset = curPreset;
   rebuildPresetOptions();
   syncTtlEnabled();                   // match the Preset TTL enabled-state to the restored cycle toggle
   persistReady = true;
@@ -2233,7 +2261,9 @@
     persist();                          // remember panel open/closed across reloads
   }
   toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
-  canvas.addEventListener("click", () => { paused = !paused; });
+  const pausedEl = el("paused");
+  function setPaused(p) { paused = p; pausedEl.classList.toggle("hidden", !paused); }
+  canvas.addEventListener("click", () => setPaused(!paused));
   window.addEventListener("keydown", e => {
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
     else if (e.key === "Escape") closeHelp();
