@@ -152,11 +152,14 @@
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
   .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
   .bandchips button {
-    width: 18px; height: 15px; padding: 0; font: 9px/13px ui-monospace, monospace;
+    width: 18px; height: 15px; padding: 0; font: bold 9px/13px ui-monospace, monospace;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.45);
-    border-radius: 4px; color: #ffb15a; cursor: pointer; transition: box-shadow .08s;
+    border-radius: 4px; color: #ffb15a; cursor: pointer; transition: box-shadow .08s, background .1s;
   }
-  .bandchips button.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  .bandchips button.on {
+    background: #ffb84d; color: #140a03; border-color: #ffe0a0;
+    box-shadow: 0 0 5px rgba(255, 176, 77, 0.75);
+  }
   #panel.audio-off .bandchips { opacity: .4; }
   /* ---- help popup ---- */
   #panel #help-btn {
@@ -202,8 +205,9 @@
   <label>Presets</label>
   <select id="preset"></select>
   <div class="presetrow">
-    <button id="savepreset" class="audbtn" type="button">Save preset</button>
-    <button id="delpreset" class="audbtn" type="button">Delete</button>
+    <button id="savepreset" class="audbtn" type="button" title="Overwrite the selected preset">Save</button>
+    <button id="createpreset" class="audbtn" type="button" title="Save as a new preset">Create</button>
+    <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
 
   <label>Effect</label>
@@ -351,7 +355,7 @@
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
   let cycleOn = true;        // auto-cycle saved presets on the TTL timer (toggle)
-  let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
+  let presets = [], curPreset = -1, lastPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
   // by shrinking the complex-plane span (revealing real fractal detail); the fire
@@ -1816,7 +1820,7 @@
       beatStates[e] = nb;
       if (X) extras[e] = X.obj;
       applyingPreset = true;
-      effectSel.value = e; curPreset = -1;
+      effectSel.value = e; curPreset = lastPreset = -1;
       setEffect(e, false);
       presetSel.value = "-1";
       applyingPreset = false;
@@ -1851,22 +1855,31 @@
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene
-    curPreset = i; presetSel.value = String(i);
+    curPreset = lastPreset = i; presetSel.value = String(i);
     applyingPreset = false;
     persist();
   }
-  el("savepreset").addEventListener("click", () => {
+  function createPreset() {           // save the current scene as a new preset
     const name = (prompt("Preset name:", "Preset " + (presets.length + 1)) || "").trim();
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
-    curPreset = presets.length - 1;
+    curPreset = lastPreset = presets.length - 1;
     rebuildPresetOptions();
     persist();
+  }
+  el("createpreset").addEventListener("click", createPreset);
+  el("savepreset").addEventListener("click", () => {   // overwrite the preset we're based on
+    if (lastPreset >= 0 && presets[lastPreset]) {
+      presets[lastPreset] = { name: presets[lastPreset].name, ...snapshotScene() };
+      curPreset = lastPreset;
+      rebuildPresetOptions();
+      persist();
+    } else createPreset();            // nothing to overwrite ⇒ create a new one
   });
   el("delpreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
     presets.splice(curPreset, 1);
-    curPreset = -1;
+    curPreset = lastPreset = -1;
     rebuildPresetOptions();
     persist();
   });
@@ -1876,6 +1889,7 @@
   // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
   setEffect(+effectSel.value, false);
   if (presets.length === 0) { presets = defaultPresets(); curPreset = effect; }   // first visit: one preset per effect
+  lastPreset = curPreset;
   rebuildPresetOptions();
   persistReady = true;
 
