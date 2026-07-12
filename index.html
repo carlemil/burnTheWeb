@@ -122,7 +122,7 @@
     -webkit-backdrop-filter: blur(6px);
   }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
-  #reset, #copy {
+  #reset {
     margin-top: 8px;
     width: 100%;
     padding: 7px 0;
@@ -135,8 +135,9 @@
     cursor: pointer;
     transition: background .15s;
   }
-  #copy { margin-top: 14px; }
-  #reset:hover, #copy:hover { background: rgba(255, 122, 26, 0.3); }
+  #reset:hover { background: rgba(255, 122, 26, 0.3); }
+  #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
+  #panel .presetrow .audbtn { flex: 1; text-align: center; }
   /* ---- music beat reactivity ---- */
   #panel .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #panel .audbtn {
@@ -198,15 +199,22 @@
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
+  <label>Presets</label>
+  <select id="preset"></select>
+  <div class="presetrow">
+    <button id="savepreset" class="audbtn" type="button">Save preset</button>
+    <button id="delpreset" class="audbtn" type="button">Delete</button>
+  </div>
+
   <label>Effect</label>
   <select id="effect">
     <option value="0">Sirpinfyer</option>
     <option value="1">Tetrafyer</option>
     <option value="2">AnimeJulia</option>
   </select>
-  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle effects</label>
+  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
 
-  <label>Effect TTL <span class="val" id="vTtl"></span></label>
+  <label>Preset TTL <span class="val" id="vTtl"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
     <input type="range" id="ttl-lo" min="0" max="180" step="1" value="30">
     <input type="range" id="ttl-hi" min="0" max="180" step="1" value="90"></div>
@@ -287,7 +295,10 @@
       <input type="range" id="phase-hi" min="0" max="1" step="0.01" value="0"></div>
   </div>
 
-  <button id="copy" type="button">Copy settings</button>
+  <div class="presetrow">
+    <button id="copy" class="audbtn" type="button" style="flex:1">Export settings</button>
+    <button id="import" class="audbtn" type="button" style="flex:1">Import settings</button>
+  </div>
   <button id="reset" type="button">Reset this effect</button>
 
   <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>F11</b> for fullscreen</p>
@@ -339,7 +350,8 @@
   // render/glow pipeline are identical for every mode.
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
-  let cycleOn = true;        // auto-switch between effects on the TTL timer (toggle)
+  let cycleOn = true;        // auto-cycle saved presets on the TTL timer (toggle)
+  let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
   // by shrinking the complex-plane span (revealing real fractal detail); the fire
@@ -1258,7 +1270,7 @@
 
     if (morphing) morphStep(now);     // blend palettes while auto-morph is on
 
-    cycleEffects(now);                // auto-switch effects on the Effect TTL timer
+    cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     if (audio.on) analyzeAudio(now, dt);   // band energies + beats, before updateAnims
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
 
@@ -1523,6 +1535,7 @@
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
   const cycleChk = el("cycle");
+  const presetSel = el("preset");
   const SUBTITLES = [
     "Sierpiński triangle · classic fire",
     "Sierpiński tetrahedron · classic fire",
@@ -1635,6 +1648,7 @@
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         states, beats: beatStates, extras, effect,
+        presets, curPreset,
         cycle: cycleChk.checked,                       // shared (session controls)
         panelOpen: !panel.classList.contains("hidden"),
       }));
@@ -1676,6 +1690,8 @@
       if (typeof ex.showBox === "boolean") extras[k].showBox = ex.showBox;
       if (Array.isArray(ex.ttl) && ok("ttl-lo", ex.ttl[0]) && ok("ttl-lo", ex.ttl[1])) extras[k].ttl = [ex.ttl[0], ex.ttl[1]];
     }
+    if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra);
+    curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length) ? saved.curPreset : -1;
     if (typeof saved.cycle === "boolean") { cycleChk.checked = saved.cycle; cycleOn = saved.cycle; }
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
     if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
@@ -1700,8 +1716,9 @@
     persist();
   }
 
-  // Auto-cycle: hold each effect for a random time drawn from the Effect TTL
-  // range, then switch to a random *different* effect (which reloads its preset).
+  // A preset is a named full scene (effect + all its settings). Auto-cycle holds
+  // each for a random time drawn from the Preset TTL range, then applies a random
+  // *different* saved preset.
   let nextSwitch = 0;
   cycleChk.addEventListener("change", () => { cycleOn = cycleChk.checked; nextSwitch = 0; });
   function ttlMs() {
@@ -1709,13 +1726,12 @@
     const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
     return (a + Math.random() * (b - a)) * 1000;
   }
-  function cycleEffects(now) {
-    if (!cycleOn || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
+  function cyclePresets(now) {
+    if (!cycleOn || presets.length < 2 || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
     if (!nextSwitch) { nextSwitch = now + ttlMs(); return; }
     if (now >= nextSwitch) {
-      let n; do { n = (Math.random() * 3) | 0; } while (n === effect);
-      effectSel.value = n;
-      setEffect(n);
+      let n; do { n = (Math.random() * presets.length) | 0; } while (n === curPreset && presets.length > 1);
+      applyPreset(n);
       nextSwitch = now + ttlMs();
     }
   }
@@ -1732,9 +1748,14 @@
     if (morphing) startMorph(+paletteSel.value);
   });
   // Persist any control change (slider drag, select, checkbox) — one delegated
-  // listener over the whole panel covers them all.
-  panel.addEventListener("input", persist);
-  panel.addEventListener("change", persist);
+  // listener over the whole panel covers them all. Editing a control also breaks
+  // the link to the selected preset (marks it "custom").
+  function onEdit(e) {
+    if (persistReady && !applyingPreset && e.target.id !== "preset") { curPreset = -1; presetSel.value = "-1"; }
+    persist();
+  }
+  panel.addEventListener("input", onEdit);
+  panel.addEventListener("change", onEdit);
 
   // Reset: restore *only the current effect's* settings (sliders, beat chips,
   // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
@@ -1767,7 +1788,7 @@
   }
   el("copy").addEventListener("click", () => {
     const text = currentSettingsText(), btn = el("copy");
-    const done = okState => { btn.textContent = okState ? "Copied!" : "Copy failed"; setTimeout(() => btn.textContent = "Copy settings", 1300); };
+    const done = okState => { btn.textContent = okState ? "Copied!" : "Copy failed"; setTimeout(() => btn.textContent = "Export settings", 1300); };
     const fallback = () => {
       try {
         const ta = document.createElement("textarea");
@@ -1780,9 +1801,82 @@
     else fallback();
   });
 
+  // Import a pasted "Export settings" string and apply it to its effect.
+  el("import").addEventListener("click", () => {
+    const text = prompt("Paste exported settings:");
+    if (!text) return;
+    try {
+      const grab = key => { const m = text.match(new RegExp("\\b" + key + "\\[(\\d)\\]:\\s*(\\{[\\s\\S]*?\\})")); return m ? { e: +m[1], obj: (new Function("return (" + m[2] + ")"))() } : null; };
+      const P = grab("PRESETS"); if (!P || !PRESETS[P.e]) throw new Error("no valid PRESETS line");
+      const B = grab("BEAT_PRESETS"), X = grab("EXTRA_PRESETS"), e = P.e;
+      states[e] = P.obj;
+      const bd = B ? B.obj : {};
+      const nb = {};
+      for (const id in beatReact) { const bands = bd[id] || []; nb[id] = { low: bands.indexOf("low") >= 0, mid: bands.indexOf("mid") >= 0, high: bands.indexOf("high") >= 0 }; }
+      beatStates[e] = nb;
+      if (X) extras[e] = X.obj;
+      applyingPreset = true;
+      effectSel.value = e; curPreset = -1;
+      setEffect(e, false);
+      presetSel.value = "-1";
+      applyingPreset = false;
+      persist();
+    } catch (err) { alert("Couldn't import settings: " + err.message); }
+  });
+
+  // ---- presets: named full-scene snapshots (effect + all its settings) ----
+  function snapshotScene() {
+    saveState(effect); saveBeat(effect); saveExtra(effect);
+    return {
+      effect,
+      state: JSON.parse(JSON.stringify(states[effect])),
+      beat: JSON.parse(JSON.stringify(beatStates[effect])),
+      extra: JSON.parse(JSON.stringify(extras[effect])),
+    };
+  }
+  function defaultPresets() {
+    return [0, 1, 2].map(e => ({ name: effectSel.options[e].text, effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
+  }
+  function rebuildPresetOptions() {
+    presetSel.innerHTML = "";
+    presetSel.appendChild(new Option("— custom —", "-1"));
+    presets.forEach((p, i) => presetSel.appendChild(new Option(p.name, String(i))));
+    presetSel.value = curPreset < 0 ? "-1" : String(curPreset);
+  }
+  function applyPreset(i) {
+    const p = presets[i]; if (!p) return;
+    applyingPreset = true;
+    states[p.effect] = JSON.parse(JSON.stringify(p.state));
+    beatStates[p.effect] = JSON.parse(JSON.stringify(p.beat));
+    extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
+    effectSel.value = p.effect;
+    setEffect(p.effect, false);       // loads the just-installed scene
+    curPreset = i; presetSel.value = String(i);
+    applyingPreset = false;
+    persist();
+  }
+  el("savepreset").addEventListener("click", () => {
+    const name = (prompt("Preset name:", "Preset " + (presets.length + 1)) || "").trim();
+    if (!name) return;
+    presets.push({ name, ...snapshotScene() });
+    curPreset = presets.length - 1;
+    rebuildPresetOptions();
+    persist();
+  });
+  el("delpreset").addEventListener("click", () => {
+    if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
+    presets.splice(curPreset, 1);
+    curPreset = -1;
+    rebuildPresetOptions();
+    persist();
+  });
+  presetSel.addEventListener("change", () => { const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1; });
+
   // Initial paint: setEffect → loadExtra applies the restored effect's palette,
   // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
   setEffect(+effectSel.value, false);
+  if (presets.length === 0) { presets = defaultPresets(); curPreset = effect; }   // first visit: one preset per effect
+  rebuildPresetOptions();
   persistReady = true;
 
   function setPanel(hidden) {
@@ -1806,10 +1900,11 @@
     },
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1)
     sliders: [
-      { n: "Effect", w: "all", t: "Which visual is running. Auto-cycle can switch it for you (see Effect TTL)." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; editing anything marks it “— custom —”. Save preset snapshots the current look; Delete removes the selected one. Export/Import (bottom) copy the current effect's settings as text you can share or paste back." },
+      { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
       { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside." },
-      { n: "Auto-cycle effects", w: "all", t: "When on, the effect switches on its own (see Effect TTL). Turn off to stay on the current effect." },
-      { n: "Effect TTL", w: "all", t: "How long auto-cycle holds each effect: a random time in this range (seconds) before switching to a random other one." },
+      { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL). Turn off to stay put. Needs at least two saved presets." },
+      { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },

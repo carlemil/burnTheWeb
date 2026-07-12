@@ -99,9 +99,10 @@ visibility is remembered per effect.
 
 | Control | What it does |
 | --- | --- |
+| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; **Save preset** snapshots the current look, **Delete** removes the selected one. Editing anything marks it "— custom —". |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
-| **Auto-cycle effects** | When on, the effect switches on its own after each effect's hold time; off to stay put. *(Shared, not per-effect.)* |
-| **Effect TTL** *(ranged, seconds)* | How long auto-cycle holds this effect before switching to a random other one — a random time drawn from this range. |
+| **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
+| **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
@@ -117,6 +118,7 @@ visibility is remembered per effect.
 | **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
 | **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
+| **Export / Import settings** | Copy the current effect's settings to the clipboard as text (also handy to paste to Claude to bake in as new defaults), or paste such a string back to apply it. |
 
 The fire runs at full resolution (there is no resolution control). Press **H** or
 **☰** to toggle the panel, **F11** for fullscreen, and click the canvas to pause.
