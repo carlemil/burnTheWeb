@@ -106,9 +106,9 @@ visibility is remembered per effect.
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
-| **Banding** *(ranged)* | Strength of the light/dark contour-stripe filter over the active palette. |
-| **Band size** *(ranged)* | Colours per light (and per dark) run in the banding pattern. |
-| **Darkness** *(ranged)* | How far the banding's dark runs are darkened. |
+| **Banding** *(ranged)* | AnimeJulia only — strength of the light/dark contour-stripe filter over the active palette. |
+| **Band size** *(ranged)* | AnimeJulia only — colours per light (and per dark) run in the banding pattern. |
+| **Darkness** *(ranged)* | AnimeJulia only — how far the banding's dark runs are darkened. |
 | **Points** | Number of chaos-game points per frame (100–8000). *(Sirpinfyer / Tetrafyer.)* |
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). *(Sirpinfyer / Tetrafyer.)* |
