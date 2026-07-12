@@ -11,7 +11,7 @@ to whatever music you're playing**.
 
 ## Effects
 
-An **Effect** selector at the top of the panel switches between three visuals
+An **Effect** selector at the top of the panel switches between four visuals
 that share the same palette, glow and music-reactivity pipeline — but each is an
 independent "scene" that remembers its own settings (see Controls):
 
@@ -31,6 +31,11 @@ independent "scene" that remembers its own settings (see Controls):
   loop turns slowly (a few hundredths of an rpm) and the small one a fair bit
   faster, so the fractal reshapes continuously. Per-pixel escape time is written
   as heat and coloured through the same palettes.
+- **Plasma** — a classic old-school demoscene plasma: several sine/cosine waves
+  (plus a domain-warp for swirl) interfere across the screen and animate over
+  time, then the summed value is wrapped through a final sine so the palette
+  cycles into smooth colour bands. Sliders tune the animation **Speed**, spatial
+  **Scale** and **Warp**; **Banding** works here too (as in AnimeJulia).
 
 ## How it works
 
@@ -109,9 +114,9 @@ visibility is remembered per effect.
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
-| **Banding** *(ranged)* | AnimeJulia only — strength of the light/dark contour-stripe filter over the active palette. |
-| **Band size** *(ranged)* | AnimeJulia only — colours per light (and per dark) run in the banding pattern. |
-| **Darkness** *(ranged)* | AnimeJulia only — how far the banding's dark runs are darkened. |
+| **Banding** *(ranged)* | AnimeJulia / Plasma — strength of the light/dark contour-stripe filter over the active palette. |
+| **Band size** *(ranged)* | AnimeJulia / Plasma — colours per light (and per dark) run in the banding pattern. |
+| **Darkness** *(ranged)* | AnimeJulia / Plasma — how far the banding's dark runs are darkened. |
 | **Points** | Number of chaos-game points per frame (100–8000). *(Sirpinfyer / Tetrafyer.)* |
 | **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sirpinfyer / Tetrafyer.)* |
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
@@ -125,6 +130,9 @@ visibility is remembered per effect.
 | **Inner radius** *(ranged)* | AnimeJulia only — the size of the small circle riding on the seed. Small values keep the seed just outside the cardioid; large values can dip it inside. |
 | **Outer radius** *(ranged)* | AnimeJulia only — the scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward. |
 | **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
+| **Speed** *(ranged)* | Plasma only — how fast the waves animate (0 freezes the field). |
+| **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
+| **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
 | **Export / Import / Share** | **Export** copies the current effect's settings as text (handy to paste to Claude to bake in as new defaults); **Import** pastes such a string back; **Share** copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
 

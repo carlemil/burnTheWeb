@@ -5,9 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A single self-contained demoscene visual published as a GitHub Pages site at
-https://carlemil.github.io/burnTheWeb/. Three fire-based effects (Sirpinfyer 2D
-Sierpiński triangle, Tetrafyer 3D bouncing tetrahedron, AnimeJulia animated Julia
-set) share one palette + glow pipeline and can react to the user's music. There
+https://carlemil.github.io/burnTheWeb/. Four effects — Sirpinfyer (2D Sierpiński
+triangle) and Tetrafyer (3D bouncing tetrahedron) are fire/chaos-game based;
+AnimeJulia (animated Julia set) and Plasma (animated sin/cos interference) are
+per-pixel shaders — all share one palette + glow pipeline and can react to the
+user's music. There
 is **no build system, package manager, test framework, or dependency** — the
 entire app is inline HTML/CSS/JS in `index.html`. `README.md` documents it for
 end users; keep it in sync when behaviour changes.
@@ -37,9 +39,13 @@ different rates.
 - **Chaos-game points** stay on the **CPU** (deterministic — see below) and are
   drawn as additive GL points via `pushPt()`/`glDrawPoints()`, or stamped into the
   heat grid with `plot()` on the CPU path.
-- **Julia** (effect 2) is a fragment shader (`glJulia()`) writing per-pixel escape
-  time as heat, or `julia()` recomputed every frame on CPU. Both consume the same
-  `juliaSeed(dt)` so the seed animation is identical on either path.
+- **Julia** (effect 2) and **Plasma** (effect 3) are fragment shaders
+  (`glJulia()`/`glPlasma()`) writing per-pixel heat, or `julia()`/`plasma()`
+  recomputed every frame on CPU. Each consumes a `*Seed(dt)` that advances its
+  animation phase (identical on GL/CPU). Both bake their own zoom into the shader
+  (so `glRender`/`render` force display-zoom to 1 for effects 2 & 3). **Adding a
+  Plasma-like effect = mirror the Julia path** + register the effect index (see
+  below).
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 

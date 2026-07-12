@@ -268,6 +268,7 @@
     <option value="0">Sirpinfyer</option>
     <option value="1">Tetrafyer</option>
     <option value="2">AnimeJulia</option>
+    <option value="3">Plasma</option>
   </select>
 
   <label>Palette</label>
@@ -375,6 +376,23 @@
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="phase-lo" min="0" max="0.2" step="0.01" value="0">
       <input type="range" id="phase-hi" min="0" max="0.2" step="0.01" value="0"></div>
+  </div>
+
+  <div id="grp-plasma">
+    <label>Speed <span class="val" id="vPspeed"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="pspeed-lo" min="0" max="3" step="0.05" value="1">
+      <input type="range" id="pspeed-hi" min="0" max="3" step="0.05" value="1"></div>
+
+    <label>Scale <span class="val" id="vPscale"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="pscale-lo" min="0.3" max="3" step="0.05" value="1">
+      <input type="range" id="pscale-hi" min="0.3" max="3" step="0.05" value="1"></div>
+
+    <label>Warp <span class="val" id="vPwarp"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="pwarp-lo" min="0" max="2" step="0.05" value="0.5">
+      <input type="range" id="pwarp-hi" min="0" max="2" step="0.05" value="0.5"></div>
   </div>
 
   <hr class="sep">
@@ -798,6 +816,29 @@
       }
       o = vec4(clamp(v, 0.0, 255.0)/255.0, 0.0, 0.0, 1.0);
     }`;
+    // old-school plasma: overloaded sin/cos interference, animated by uTime, with
+    // an optional domain warp for swirl. Writes heat in .r like FS_JULIA.
+    const FS_PLASMA = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uScale; uniform float uWarp; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw / fh;
+      float k = uScale / uZoom * 6.2831853;
+      float x = (gl_FragCoord.x/fw - 0.5) * ar * k;
+      float y = (gl_FragCoord.y/fh - 0.5) * k;
+      float t = uTime;
+      float wx = x + uWarp * sin(y*0.5 + t*0.7);      // domain warp ⇒ swirl
+      float wy = y + uWarp * cos(x*0.5 + t*0.9);
+      float v = sin(wx + t)
+              + sin(wy*1.3 - t*0.8)
+              + sin((wx + wy)*0.7 + t*1.1)
+              + sin(length(vec2(wx, wy))*0.9 - t*1.3);
+      // wrap the summed value through a final sine ⇒ classic full-range plasma
+      // colour-cycling (distinct bands incl. darks) instead of a washed-out blob.
+      o = vec4(0.5 + 0.5 * sin(v * 1.6), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -847,6 +888,7 @@
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize"]);
     glProg.julia = makeProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
+    glProg.plasma = makeProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -950,6 +992,17 @@
     gl.uniform2f(glProg.julia.u.uSpan, s.spanX, s.spanY);
     drawQuad();
   }
+  function glPlasma(s) {
+    bindFbo(glFbo.heat[curHeat], fw, fh);   // plasma replaces the current heat
+    gl.disable(gl.BLEND);
+    gl.useProgram(glProg.plasma.p);
+    gl.uniform2f(glProg.plasma.u.uSize, fw, fh);
+    gl.uniform1f(glProg.plasma.u.uTime, s.t);
+    gl.uniform1f(glProg.plasma.u.uScale, s.scale);
+    gl.uniform1f(glProg.plasma.u.uWarp, s.warp);
+    gl.uniform1f(glProg.plasma.u.uZoom, s.zoom);
+    drawQuad();
+  }
 
   // display: heat→palette, optional zoom, blurred additive glow, to the screen
   function glRender() {
@@ -960,8 +1013,8 @@
     bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
     bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
     drawQuad();
-    // B) zoom about centre (Julia keeps its optical zoom, so display zoom = 1)
-    const z = effect === 2 ? 1 : zoom;
+    // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
+    const z = (effect === 2 || effect === 3) ? 1 : zoom;
     bindFbo(glFbo.scene, fw, fh);
     gl.useProgram(glProg.zoom.p);
     bindTexUnit(0, glTex.native); gl.uniform1i(glProg.zoom.u.uSrc, 0);
@@ -1365,14 +1418,44 @@
     }
   }
 
+  // ---- Plasma: old-school sin/cos interference field ----
+  // A sum of phase-animated sinusoids (plus a domain warp) over aspect-corrected,
+  // zoomed coords, written as heat every frame — same direct-heat model as Julia,
+  // so it rides the shared palette/banding/glow pipeline. Live-tunable via sliders.
+  // NB: start the phase at 0, not the unix-time T0 — a ~1.7e9 value passed to the
+  // shader's float32 uTime collapses sin() precision and flattens the field.
+  let plasmaSpeed = 1, plasmaScale = 1, plasmaWarp = 0.5, plasmaTime = 0;
+  function plasmaSeed(dt) {
+    plasmaTime += dt * plasmaSpeed;      // phase advances at the live Speed
+    return { t: plasmaTime, scale: plasmaScale, warp: plasmaWarp, zoom };
+  }
+  function plasma(dt) {                   // CPU fallback — mirrors FS_PLASMA
+    const s = plasmaSeed(dt);
+    const ar = fw / fh, k = s.scale / s.zoom * 6.2831853, t = s.t, warp = s.warp;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const yy = (y / fh - 0.5) * k;
+      for (let x = 0; x < fw; x++) {
+        const xx = (x / fw - 0.5) * ar * k;
+        const wx = xx + warp * Math.sin(yy * 0.5 + t * 0.7);
+        const wy = yy + warp * Math.cos(xx * 0.5 + t * 0.9);
+        const v = Math.sin(wx + t)
+                + Math.sin(wy * 1.3 - t * 0.8)
+                + Math.sin((wx + wy) * 0.7 + t * 1.1)
+                + Math.sin(Math.hypot(wx, wy) * 0.9 - t * 1.3);
+        fire[idx++] = (0.5 + 0.5 * Math.sin(v * 1.6)) * 255;   // full-range plasma cycling
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
 
-    // AnimeJulia zooms via its complex-plane span, so only the fire modes scale
-    // the rendered image here. Scale about the canvas centre; clear first when
-    // zoomed out so no smeared border remains.
-    const z = effect === 2 ? 1 : zoom;
+    // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes
+    // scale the rendered image here. Scale about the canvas centre; clear first
+    // when zoomed out so no smeared border remains.
+    const z = (effect === 2 || effect === 3) ? 1 : zoom;
     ctx.save();
     if (z !== 1) {
       ctx.fillStyle = "#000";
@@ -1431,6 +1514,9 @@
     if (effect === 2) {
       if (useGL) glJulia(juliaSeed(dt));   // fragment shader writes the heat tex
       else julia(dt);                      // recomputed whole each frame from the seed
+    } else if (effect === 3) {
+      if (useGL) glPlasma(plasmaSeed(dt)); // plasma shader writes the heat tex
+      else plasma(dt);                     // recomputed whole each frame
     } else {
       const step = 1 / cfg.burn;      // seconds between fire simulation ticks
       let ticks = 0;
@@ -1666,6 +1752,9 @@
   bindRange("inrad", "vInRad", v => v.toFixed(2), v => juliaInnerR = v, 10);
   bindRange("outrad", "vOutRad", v => v.toFixed(2) + "×", v => juliaOuterR = v, 10);
   bindRange("phase", "vPhase", v => v.toFixed(2), v => juliaPhase = v, 10);
+  bindRange("pspeed", "vPspeed", v => v.toFixed(2) + "×", v => plasmaSpeed = v, 10);
+  bindRange("pscale", "vPscale", v => v.toFixed(2) + "×", v => plasmaScale = v, 10);
+  bindRange("pwarp", "vPwarp", v => v.toFixed(2), v => plasmaWarp = v, 10);
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
@@ -1715,6 +1804,7 @@
   const grpTetra = el("grp-tetra");
   const grpBand = el("grp-band");
   const grpRot = el("grp-rot");
+  const grpPlasma = el("grp-plasma");
   const grpTtl = el("grp-ttl");
   // Preset TTL only matters while auto-cycle is on — gray it out and block input
   // (plus disable the thumbs for keyboard) when the cycle toggle is off.
@@ -1733,6 +1823,7 @@
     "Sierpiński triangle · classic fire",
     "Sierpiński tetrahedron · classic fire",
     "Julia set · animated seed",
+    "Plasma · sinusoidal interference",
   ];
   // Per-effect slider presets, loaded whenever an effect becomes active (manual
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
@@ -1741,6 +1832,7 @@
     0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], size: [1, 1], rot: [0, 0],  layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
     1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
     2: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 2.1], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.69, 2.08], ratio: [5.5, 37], inrad: [0.03, 0.08], outrad: [0.95, 1.05], phase: [0.01, 0.03], points: 1500 },
+    3: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.8, 1.6], pwarp: [0.3, 0.9] },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
@@ -1788,6 +1880,7 @@
   // listed starts off.
   const BEAT_PRESETS = {
     2: { banddim: ["low", "high"], zoom: ["mid"], phase: ["high"] },   // AnimeJulia
+    3: { pscale: ["low"], band: ["mid"], pwarp: ["high"] },            // Plasma
   };
   function presetBeat(e) {            // a fresh copy of effect e's default chip selection
     const bt = {};
@@ -1811,6 +1904,7 @@
     0: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
     1: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
     2: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
+    3: { palette: "7", morph: true, showBox: true, ttl: [30, 90] },
   };
   function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, ttl: x.ttl.slice() }; }
   function initExtras() { for (const k in PRESETS) extras[k] = presetExtra(k); }
@@ -1916,10 +2010,11 @@
     effect = i;
     sub.textContent = SUBTITLES[i];
     // only show the sliders that affect the selected mode: fire controls for
-    // Sirpinfyer/Tetrafyer (0/1); Cardioid RPM + ratio only for Julia.
-    grpSirp.style.display = i === 2 ? "none" : "";
+    // Sirpinfyer/Tetrafyer (0/1); Julia / Plasma have their own groups.
+    grpSirp.style.display = (i === 0 || i === 1) ? "" : "none";   // fire controls
     grpJulia.style.display = i === 2 ? "" : "none";
-    grpBand.style.display = i === 2 ? "" : "none";    // banding is AnimeJulia-only
+    grpPlasma.style.display = i === 3 ? "" : "none";  // Plasma-only sliders
+    grpBand.style.display = (i === 2 || i === 3) ? "" : "none";   // banding: Julia + Plasma
     grpRot.style.display = i === 1 ? "" : "none";     // Rotation is Tetrafyer-only
     grpTetra.style.display = i === 1 ? "" : "none";   // "Show box" is Tetrafyer-only
     loadState(i);                     // restore this effect's remembered sliders
@@ -2070,7 +2165,7 @@
     };
   }
   function defaultPresets() {
-    return [0, 1, 2].map(e => ({ name: effectSel.options[e].text, effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
+    return [0, 1, 2, 3].map(e => ({ name: effectSel.options[e].text, effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -2151,8 +2246,9 @@
       0: { name: "Sirpinfyer", text: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer." },
       1: { name: "Tetrafyer", text: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks." },
       2: { name: "AnimeJulia", text: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette." },
+      3: { name: "Plasma", text: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes." },
     },
-    // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1)
+    // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1) | "plasma" (3) | "band" (2,3)
     sliders: [
       { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. At the bottom: Export/Import copy or paste settings as text, and Share makes a link that opens with the current settings." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets." },
@@ -2162,9 +2258,9 @@
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
       { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
-      { n: "Banding", w: "julia", t: "AnimeJulia only — strength of a filter that posterises the palette into hard light/dark contour stripes." },
-      { n: "Band size", w: "julia", t: "How many palette colours make up each light (and each dark) stripe." },
-      { n: "Darkness", w: "julia", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
+      { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
+      { n: "Band size", w: "band", t: "How many palette colours make up each light (and each dark) stripe." },
+      { n: "Darkness", w: "band", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
       { n: "Layers", w: "fire", t: "− / + stack extra copies of the fractal (up to 6). Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own." },
       { n: "Drift speed", w: "fire", t: "Sirpinfyer: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
@@ -2177,12 +2273,15 @@
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
       { n: "Outer radius", w: "julia", t: "Scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
+      { n: "Speed", w: "plasma", t: "How fast the plasma's waves animate. 0 freezes the field." },
+      { n: "Scale", w: "plasma", t: "Spatial frequency of the waves — how fine or coarse the interference pattern is." },
+      { n: "Warp", w: "plasma", t: "Domain warp: bends the waves into swirls. 0 = clean straight interference; higher = turbulent." },
     ],
   };
   const helpEl = el("help");
   function renderHelp() {
     const e = HELP.effects[effect];
-    const applies = { all: true, fire: effect !== 2, julia: effect === 2, tetra: effect === 1 };
+    const applies = { all: true, fire: effect === 0 || effect === 1, julia: effect === 2, tetra: effect === 1, plasma: effect === 3, band: effect === 2 || effect === 3 };
     const rel = HELP.sliders.filter(s => applies[s.w]);
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
     html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.text + "</p>";
