@@ -1214,10 +1214,11 @@
       }
 
       // rubbery ripples: each recent hit sends a fading *sphere* of points
-      // swelling outward from the impact point on the wall.
+      // swelling outward from the impact point on the wall. Tied to "Show box" —
+      // they visualise the container, so they hide with the wireframe.
       const RTTL = 0.5, RN = 48, GOLD = 2.399963229728653;   // golden angle
-      TETRA.impacts = TETRA.impacts.filter(im => t - im.t0 < RTTL);
-      for (const im of TETRA.impacts) {
+      TETRA.impacts = TETRA.impacts.filter(im => t - im.t0 < RTTL);   // prune regardless
+      if (showBox) for (const im of TETRA.impacts) {
         const age = t - im.t0, rad = age * 2.4, bright = 255 * (1 - age / RTTL);
         const c0 = [0, 0, 0];                        // impact centre on the wall
         c0[im.ax] = im.sgn * TETRA.box[im.ax];
@@ -2121,7 +2122,7 @@
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
-      { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside." },
+      { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
       { n: "Banding", w: "julia", t: "AnimeJulia only — strength of a filter that posterises the palette into hard light/dark contour stripes." },
       { n: "Band size", w: "julia", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "julia", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },

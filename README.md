@@ -117,7 +117,7 @@ visibility is remembered per effect.
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). *(Sirpinfyer / Tetrafyer.)* |
 | **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sirpinfyer / Tetrafyer.)* |
 | **Rotation** *(ranged)* | Spin rate in degrees/second: turns the triangle, or orbits the tetrahedron's scene. 0 holds still. *(Sirpinfyer / Tetrafyer.)* |
-| **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in. *(Tetrafyer.)* |
+| **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in, along with the spark-sphere burst each wall hit throws off. *(Tetrafyer.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid. |
 | **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
