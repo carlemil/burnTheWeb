@@ -729,8 +729,11 @@
     void main(){
       int fw = int(uSize.x), fh = int(uSize.y);
       int x = int(gl_FragCoord.x), y = int(gl_FragCoord.y);
-      int xl = (x - 1 + fw) % fw;
-      int xr = (x + 1) % fw;
+      // crop a 1px black border so heat can't smear a bright trail along the
+      // edges (the wrapped/clamped boundary rows used to accumulate one).
+      if (x == 0 || x == fw-1 || y == 0 || y == fh-1) { o = vec4(0.0); return; }
+      int xl = x - 1;   // clamp horizontally (was wrap, which trailed the sides)
+      int xr = x + 1;
       int y1 = min(y+1, fh-1);
       int y2 = min(y+2, fh-1);
       int y3 = min(y+3, fh-1);
@@ -1112,9 +1115,11 @@
     } else {
       const decay = cfg.decay, src = fire, dst = fireNext;
       for (let x = 0; x < fw; x++) {
-        const xl = (x - 1 + fw) % fw;
-        const xr = (x + 1) % fw;
+        const edgeX = x === 0 || x === fw - 1;
+        const xl = x > 0 ? x - 1 : 0;          // clamp horizontally (was wrap)
+        const xr = x < fw - 1 ? x + 1 : fw - 1;
         for (let y = 0; y < fh; y++) {
+          if (edgeX || y === 0 || y === fh - 1) { dst[y * fw + x] = 0; continue; }   // 1px black crop
           const y1 = (y + 1 < fh ? y + 1 : fh - 1) * fw;
           const y2 = (y + 2 < fh ? y + 2 : fh - 1) * fw;
           const y3 = (y + 3 < fh ? y + 3 : fh - 1) * fw;
