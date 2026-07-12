@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>burnTheWeb — Sierpiński Fire</title>
 <style>
   :root { color-scheme: dark; }
@@ -20,6 +20,9 @@
     left: 14px;
     padding: 14px 16px;
     width: 250px;
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background: rgba(10, 6, 4, 0.55);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px;
@@ -85,12 +88,13 @@
   }
   #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
-  #toggle {
+  #toggle, #fs {
     position: fixed;
     top: 14px;
     left: 14px;
     z-index: 10;
     width: 34px; height: 34px;
+    padding: 0; appearance: none; -webkit-appearance: none;
     display: flex;
     align-items: center; justify-content: center;
     background: rgba(10, 6, 4, 0.55);
@@ -103,7 +107,12 @@
     -webkit-backdrop-filter: blur(6px);
     transition: background .15s;
   }
-  #toggle:hover { background: rgba(255, 122, 26, 0.3); }
+  #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
+  #toggle:hover, #fs:hover { background: rgba(255, 122, 26, 0.3); }
+  /* keyboard focus rings (a11y) */
+  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible,
+  #panel select:focus-visible, #panel input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs { transition: none !important; } }
   #frames {
     position: fixed;
     top: 14px;
@@ -251,7 +260,7 @@
 <canvas id="fire"></canvas>
 
 <div id="panel" class="hidden">
-  <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do">?</button></h1>
+  <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
   <label>Presets</label>
@@ -340,8 +349,8 @@
 
     <label>Layers <span class="val" id="vLayers"></span></label>
     <div class="presetrow">
-      <button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy">−</button>
-      <button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed">+</button>
+      <button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer layers">−</button>
+      <button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More layers">+</button>
     </div>
     <input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none">
 
@@ -425,9 +434,10 @@
     <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
   </div>
 
-  <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>F11</b> for fullscreen</p>
+  <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>⛶</b> for fullscreen</p>
 </div>
-<div id="toggle">☰</div>
+<button id="toggle" type="button" aria-label="Toggle controls (H)">☰</button>
+<button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
@@ -1676,6 +1686,13 @@
   }
   el("audCapture").addEventListener("click", () => { track("capture_click"); startAudio("capture"); });
   el("audMic").addEventListener("click", () => { track("mic_click"); startAudio("mic"); });
+  // Screen/tab audio capture is desktop-only — hide it (and Mic too if there's no
+  // media at all, e.g. insecure origin) rather than throwing a generic error.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    el("audCapture").style.display = "none";
+    audioMsg("Tab/screen audio isn't available on this device — use Mic.");
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) el("audMic").style.display = "none";
 
   // Browsers won't silently re-grab tab/screen (or mic) audio after a reload — it
   // needs a fresh user gesture. So remember the last live source and re-open it on
@@ -1752,6 +1769,11 @@
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     const mn = +lo.min, mx = +lo.max;
+    // a11y: each dual slider is two anonymous inputs — name the low/high thumbs.
+    const lbl = lo.closest(".dual").previousElementSibling;
+    const nm = (lbl && lbl.childNodes[0] ? lbl.childNodes[0].nodeValue : id).trim();
+    lo.setAttribute("aria-label", nm + " (low)");
+    hi.setAttribute("aria-label", nm + " (high)");
     const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, pulse: 0 };
     function ui() {
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
@@ -2304,9 +2326,20 @@
     persist();                          // remember panel open/closed across reloads
   }
   toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
+  // Fullscreen toggle (works on mobile too, where F11 doesn't exist).
+  el("fs").addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
+    else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  });
   const pausedEl = el("paused");
   function setPaused(p) { paused = p; pausedEl.classList.toggle("hidden", !paused); }
   canvas.addEventListener("click", () => setPaused(!paused));
+  // Respect reduced-motion: render a frame or two, then freeze so motion is
+  // opt-in (click the canvas to animate).
+  try {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches)
+      requestAnimationFrame(() => requestAnimationFrame(() => setPaused(true)));
+  } catch (e) {}
   window.addEventListener("keydown", e => {
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
     else if (e.key === "Escape") closeHelp();
