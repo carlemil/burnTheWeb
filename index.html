@@ -1568,6 +1568,7 @@
         palette: paletteSel.value,
         morph: morphChk.checked,
         ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
+        panelOpen: !panel.classList.contains("hidden"),
       }));
     } catch (e) { /* storage full / disabled — ignore */ }
   }
@@ -1603,6 +1604,7 @@
     if (typeof saved.palette === "string" && paletteSel.querySelector('option[value="' + saved.palette + '"]')) paletteSel.value = saved.palette;
     if (typeof saved.morph === "boolean") morphChk.checked = saved.morph;
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
+    if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
   }
   restore();
 
@@ -1684,6 +1686,7 @@
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);
+    persist();                          // remember panel open/closed across reloads
   }
   toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
   canvas.addEventListener("click", () => { paused = !paused; });
