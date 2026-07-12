@@ -156,13 +156,44 @@
   }
   .bandchips button.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
   #panel.audio-off .bandchips { opacity: .4; }
+  /* ---- help popup ---- */
+  #panel h1 #help-btn {
+    margin-left: 7px; width: 18px; height: 18px; padding: 0; vertical-align: middle;
+    border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.5);
+    background: rgba(255, 122, 26, 0.15); color: #ffb15a; font: bold 11px/1 ui-monospace, monospace;
+    cursor: pointer; text-shadow: none;
+  }
+  #panel h1 #help-btn:hover { background: rgba(255, 122, 26, 0.35); }
+  #help {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #help.hidden { display: none; }
+  #help .help-box {
+    position: relative; max-width: 470px; max-height: 82vh; overflow-y: auto; margin: 16px;
+    padding: 18px 20px; background: rgba(14, 8, 5, 0.97);
+    border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #help h2 { margin: 0 24px 8px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #help p { margin: 0 0 10px; opacity: .9; }
+  #help .help-intro { opacity: .68; font-size: 11.5px; }
+  #help dl { margin: 4px 0 0; }
+  #help dt { color: #ffcf87; margin-top: 11px; }
+  #help dd { margin: 2px 0 0; opacity: .82; }
+  #help .help-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #help .help-close:hover { background: rgba(255, 122, 26, 0.25); }
 </style>
 </head>
 <body>
 <canvas id="fire"></canvas>
 
 <div id="panel" class="hidden">
-  <h1>burnTheWeb</h1>
+  <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
   <label>Effect</label>
@@ -209,7 +240,7 @@
     <input type="range" id="bandsize-lo" min="1" max="9" step="1" value="1">
     <input type="range" id="bandsize-hi" min="1" max="9" step="1" value="1"></div>
 
-  <label>Dark strength <span class="val" id="vBandDim"></span></label>
+  <label>Darkness <span class="val" id="vBandDim"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
     <input type="range" id="banddim-lo" min="0" max="100" step="1" value="65">
     <input type="range" id="banddim-hi" min="0" max="100" step="1" value="65"></div>
@@ -237,8 +268,8 @@
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="rpm-lo" min="0" max="0.2" step="0.01" value="0.01">
-      <input type="range" id="rpm-hi" min="0" max="0.2" step="0.01" value="0.01"></div>
+      <input type="range" id="rpm-lo" min="0" max="0.2" step="0.01" value="0.03">
+      <input type="range" id="rpm-hi" min="0" max="0.2" step="0.01" value="0.15"></div>
 
     <label>Inner : outer ratio <span class="val" id="vRatio"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -257,6 +288,7 @@
 </div>
 <div id="toggle">☰</div>
 <div id="frames">0</div>
+<div id="help" class="hidden"></div>
 
 <script>
 (() => {
@@ -1097,7 +1129,7 @@
   const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
   const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
   const JULIA_SMALL_R = 0.03;          // small circle radius (< margin ⇒ stays outside)
-  let juliaBigRpm = 0.01;              // outer spin (live-tunable via slider)
+  let juliaBigRpm = 0.03;              // outer spin (live-tunable via slider)
   const JULIA_MAX_ITER = 160;
   const JULIA_SPAN = 2.8;              // vertical extent of the complex view
   const JULIA_INV_LN2 = 1 / Math.LN2;
@@ -1490,9 +1522,9 @@
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
   const PRESETS = {
-    0: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [92, 92], rise: [130, 130], zoom: [1, 1], rpm: [0.01, 0.01], ratio: [21.5, 21.5], phase: [0, 0], points: 2500 },
-    1: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [5, 15],  rise: [130, 130], zoom: [1, 1], rpm: [0.01, 0.01], ratio: [21.5, 21.5], phase: [0, 0], points: 1500 },
-    2: { band: [0, 70], bandsize: [1, 1], banddim: [80, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.01, 0.01], ratio: [8, 13.5], phase: [0, 0], points: 1500 },
+    0: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [20, 50], rise: [105, 150], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [21.5, 21.5], phase: [0, 0], points: 2500 },
+    1: { band: [0, 0],  bandsize: [1, 1], banddim: [65, 65], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], rpm: [0.03, 0.15], ratio: [21.5, 21.5], phase: [0, 0], points: 1500 },
+    2: { band: [0, 70], bandsize: [1, 1], banddim: [80, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [8, 13.5], phase: [0, 0], points: 1500 },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
@@ -1692,7 +1724,51 @@
   canvas.addEventListener("click", () => { paused = !paused; });
   window.addEventListener("keydown", e => {
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
+    else if (e.key === "Escape") closeHelp();
   });
+
+  // ---- help popup: effect-aware explanation of every control ----
+  const HELP = {
+    intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats. Every setting is saved in your browser, separately per effect.",
+    effects: {
+      0: { name: "Sirpinfyer", text: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer." },
+      1: { name: "Tetrafyer", text: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks." },
+      2: { name: "AnimeJulia", text: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the fire palette." },
+    },
+    // when: "all" | "fire" (0,1) | "julia" (2)
+    sliders: [
+      { n: "Effect", w: "all", t: "Which visual is running. Auto-cycle can switch it for you (see Effect TTL)." },
+      { n: "Effect TTL", w: "all", t: "Auto-cycle: holds each effect a random time in this range (seconds), then switches to a random other one. Set both thumbs to 0 to stay on one effect." },
+      { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
+      { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
+      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. A slider's L/M/H chips kick it on beats in that band (Cardioid start steps forward instead); chips glow on the beats that drive them." },
+      { n: "Banding", w: "all", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
+      { n: "Band size", w: "all", t: "How many palette colours make up each light (and each dark) stripe." },
+      { n: "Darkness", w: "all", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
+      { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
+      { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
+      { n: "Drift speed", w: "fire", t: "Sirpinfyer: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
+      { n: "Flame rise", w: "fire", t: "How tall flames climb before fading — linear in height." },
+      { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
+      { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
+      { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). Its beat chips step it forward 0.05 per beat instead of kicking." },
+    ],
+  };
+  const helpEl = el("help");
+  function renderHelp() {
+    const e = HELP.effects[effect];
+    const rel = HELP.sliders.filter(s => s.w === "all" || (s.w === "fire" ? effect !== 2 : effect === 2));
+    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
+    html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.text + "</p>";
+    html += '<p class="help-intro">' + HELP.intro + "</p><dl>";
+    for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
+    html += "</dl></div>";
+    helpEl.innerHTML = html;
+  }
+  function openHelp() { renderHelp(); helpEl.classList.remove("hidden"); }
+  function closeHelp() { helpEl.classList.add("hidden"); }
+  el("help-btn").addEventListener("click", openHelp);
+  helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
 
   // ---- auto-reload on new deploy ----
   // Ask the host what version is live by fetching our own document fresh (cache
