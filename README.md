@@ -144,3 +144,11 @@ dependencies. The per-pixel work (fire propagation, palette + glow, and the Juli
 escape-time) runs on the GPU via **WebGL2**, with a Canvas2D fallback if WebGL2
 is unavailable. The deterministic chaos game stays on the CPU and is drawn as
 additive GL points. Hosted on GitHub Pages. Settings persist in `localStorage`.
+
+A first-run **"Sync with your music"** nudge explains the Capture/Mic audio
+buttons to visitors who haven't tried them yet — shown at three growing gaps of
+active time (30s, 5min, 1h), at most three times, never again once an audio
+source has been used. An optional **Google Analytics 4** hook (page views plus
+custom events like Capture-button clicks) is wired in but stays completely
+inert — no script loaded, nothing sent — until a `G-…` Measurement ID is set in
+the `GA_MEASUREMENT_ID` constant.

@@ -202,6 +202,41 @@
     color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
   }
   #help .help-close:hover { background: rgba(255, 122, 26, 0.25); }
+
+  /* "Sync with your music" nudge popup */
+  #syncpop {
+    position: fixed; inset: 0; z-index: 25; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #syncpop.hidden { display: none; }
+  #syncpop .sync-box {
+    position: relative; max-width: 440px; max-height: 82vh; overflow-y: auto; margin: 16px;
+    padding: 20px 22px; background: rgba(14, 8, 5, 0.98);
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #syncpop h2 { margin: 0 26px 10px 0; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #syncpop p { margin: 0 0 10px; opacity: .9; }
+  #syncpop .sync-note { opacity: .62; font-size: 11.5px; }
+  #syncpop dl { margin: 4px 0 12px; }
+  #syncpop dt { color: #ffcf87; margin-top: 10px; font-weight: 600; }
+  #syncpop dd { margin: 2px 0 0; opacity: .82; }
+  #syncpop .sync-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #syncpop .sync-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #syncpop .sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  #syncpop .sync-actions button {
+    flex: 1 1 auto; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
+    font: 12px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #syncpop .sync-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #syncpop .sync-actions #sync-capture { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  #syncpop .sync-actions .ghost { flex: 0 0 auto; background: transparent; opacity: .75; }
 </style>
 </head>
 <body>
@@ -346,6 +381,26 @@
 <div id="toggle">☰</div>
 <div id="frames">0</div>
 <div id="help" class="hidden"></div>
+
+<div id="syncpop" class="hidden">
+  <div class="sync-box">
+    <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
+    <h2>🔊 Sync with your music</h2>
+    <p>burnTheWeb can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
+    <dl>
+      <dt>Capture</dt>
+      <dd>Shares the sound of your screen or a browser tab — e.g. Spotify or YouTube. In the picker that opens, pick a screen/tab and tick “Share audio”.</dd>
+      <dt>Mic</dt>
+      <dd>Listens through your microphone instead — good for music playing in the room.</dd>
+    </dl>
+    <p class="sync-note">The audio is analysed only in your browser to find low/mid/high beats — nothing is recorded, stored or uploaded. Once it's on, arm any slider's L/M/H chips to make it jump on the beat.</p>
+    <div class="sync-actions">
+      <button id="sync-capture" type="button">Capture audio</button>
+      <button id="sync-mic" type="button">Use microphone</button>
+      <button id="sync-later" type="button" class="ghost">Maybe later</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (() => {
@@ -1436,6 +1491,8 @@
       audio.on = true; audio.src = kind;
       stream.getAudioTracks()[0].onended = stopAudio;    // user revokes the share
       setAudioUI(); persist();
+      track("audio_started", { source: kind });          // conversion: a source is live
+      markAudioUsed();                                   // satisfy the sync nudge for good
     } catch (err) {
       audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
     }
@@ -1475,8 +1532,8 @@
       }
     }
   }
-  el("audCapture").addEventListener("click", () => startAudio("capture"));
-  el("audMic").addEventListener("click", () => startAudio("mic"));
+  el("audCapture").addEventListener("click", () => { track("capture_click"); startAudio("capture"); });
+  el("audMic").addEventListener("click", () => { track("mic_click"); startAudio("mic"); });
 
   // Browsers won't silently re-grab tab/screen (or mic) audio after a reload — it
   // needs a fresh user gesture. So remember the last live source and re-open it on
@@ -2092,6 +2149,71 @@
   function closeHelp() { helpEl.classList.add("hidden"); }
   el("help-btn").addEventListener("click", openHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
+
+  // ---- analytics (Google Analytics 4) ----
+  // Inert until GA_MEASUREMENT_ID is set to a real "G-XXXXXXXXXX" web-stream id:
+  // no gtag script is loaded and track() is a no-op, so nothing is sent. Once set,
+  // page views are counted automatically and track() fires custom events.
+  const GA_MEASUREMENT_ID = "";
+  function track(name, params) {
+    try { if (window.gtag) window.gtag("event", name, params || {}); } catch (e) {}
+  }
+  (function initAnalytics() {
+    if (!GA_MEASUREMENT_ID) return;
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function () { window.dataLayer.push(arguments); };
+    window.gtag("js", new Date());
+    window.gtag("config", GA_MEASUREMENT_ID);
+    const s = document.createElement("script");
+    s.async = true;
+    s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_MEASUREMENT_ID;
+    document.head.appendChild(s);
+  })();
+
+  // ---- "Sync with your music" nudge ----
+  // Shown only to users who haven't successfully started an audio source, at three
+  // growing gaps of *active* (tab-visible) time — 30s, then 5min, then 1h — and
+  // never more than three times, ever. State persists across reloads.
+  const SYNC_KEY = "burnTheWeb.sync.v1";
+  const SYNC_DELAYS = [30000, 300000, 3600000];
+  let syncState = { shows: 0, sinceLast: 0, used: false };
+  try {
+    const s = JSON.parse(localStorage.getItem(SYNC_KEY) || "null");
+    if (s && typeof s === "object") syncState = { shows: s.shows | 0, sinceLast: s.sinceLast | 0, used: !!s.used };
+  } catch (e) {}
+  function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); } catch (e) {} }
+
+  const syncPop = el("syncpop");
+  function hideSyncPopup() { syncPop.classList.add("hidden"); }
+  function dismissSync() { hideSyncPopup(); track("sync_popup_dismiss"); }
+  function showSyncPopup() {
+    syncPop.classList.remove("hidden");
+    track("sync_popup_shown", { shows: syncState.shows + 1 });
+  }
+  function markAudioUsed() {          // a source is live — satisfy the nudge permanently
+    if (!syncState.used) { syncState.used = true; saveSync(); }
+    hideSyncPopup();
+  }
+  el("sync-close").addEventListener("click", dismissSync);
+  el("sync-later").addEventListener("click", dismissSync);
+  syncPop.addEventListener("click", e => { if (e.target === syncPop) dismissSync(); });
+  el("sync-capture").addEventListener("click", () => { track("sync_popup_capture"); startAudio("capture"); });
+  el("sync-mic").addEventListener("click", () => { track("sync_popup_mic"); startAudio("mic"); });
+
+  if (!syncState.used && syncState.shows < 3) {
+    const syncTimer = setInterval(() => {
+      if (syncState.used || syncState.shows >= 3) { clearInterval(syncTimer); return; }
+      if (document.hidden) return;              // only count time while the tab is visible
+      syncState.sinceLast += 1000;
+      if (syncState.sinceLast >= SYNC_DELAYS[syncState.shows]) {
+        showSyncPopup();
+        syncState.shows += 1;
+        syncState.sinceLast = 0;
+        if (syncState.shows >= 3) clearInterval(syncTimer);
+      }
+      saveSync();
+    }, 1000);
+  }
 })();
 </script>
 </body>
