@@ -148,7 +148,7 @@
   #panel .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
   #panel .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
-  .bandchips { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+  .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
   .bandchips button {
     width: 18px; height: 15px; padding: 0; font: 9px/13px ui-monospace, monospace;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.45);
@@ -229,6 +229,8 @@
     <div class="meter" title="low · mid · high"><i></i><i></i><i></i></div>
   </div>
   <p id="audMsg" class="hint"></p>
+
+  <label class="check" id="grp-tetra"><input type="checkbox" id="showbox" checked> Show box</label>
 
   <label>Banding <span class="val" id="vBand"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -332,6 +334,7 @@
   // write heat into the shared `fire` buffer, so palettes, auto-morph and the
   // render/glow pipeline are identical for every mode.
   let effect = 0;
+  let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
   // by shrinking the complex-plane span (revealing real fractal detail); the fire
@@ -1067,12 +1070,14 @@
       };
 
       // box wireframe (12 edges) — the container the fractal ricochets around
-      const bc = [[-bx, -by, -bz], [bx, -by, -bz], [bx, by, -bz], [-bx, by, -bz],
-                  [-bx, -by, bz], [bx, -by, bz], [bx, by, bz], [-bx, by, bz]]
-                 .map(c => project(viewRot(c)));
-      const edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4],
-                     [0, 4], [1, 5], [2, 6], [3, 7]];
-      for (const [a, b] of edges) drawLine(bc[a], bc[b], 140);
+      if (showBox) {
+        const bc = [[-bx, -by, -bz], [bx, -by, -bz], [bx, by, -bz], [-bx, by, -bz],
+                    [-bx, -by, bz], [bx, -by, bz], [bx, by, bz], [-bx, by, bz]]
+                   .map(c => project(viewRot(c)));
+        const edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4],
+                       [0, 4], [1, 5], [2, 6], [3, 7]];
+        for (const [a, b] of edges) drawLine(bc[a], bc[b], 140);
+      }
 
       // rubbery ripples: each recent hit sends a fading *sphere* of points
       // swelling outward from the impact point on the wall.
@@ -1432,7 +1437,7 @@
       wrap.appendChild(btn);
       chipEls[id][k] = btn;
     }
-    label.appendChild(wrap);
+    label.insertBefore(wrap, label.querySelector(".val"));   // right-edge column (before the value)
   }
   function bindRange(id, valId, fmt, apply, durScale, beat) {
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
@@ -1511,8 +1516,11 @@
   const sub = el("sub");
   const grpSirp = el("grp-sirp");
   const grpJulia = el("grp-julia");
+  const grpTetra = el("grp-tetra");
   const paletteSel = el("palette");
   const morphChk = el("morph");
+  const showBoxChk = el("showbox");
+  showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
   const SUBTITLES = [
     "Sierpiński triangle · classic fire",
     "Sierpiński tetrahedron · classic fire",
@@ -1599,6 +1607,7 @@
         states, beats: beatStates, effect,
         palette: paletteSel.value,
         morph: morphChk.checked,
+        showBox: showBoxChk.checked,
         ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
         panelOpen: !panel.classList.contains("hidden"),
       }));
@@ -1635,6 +1644,7 @@
     }
     if (typeof saved.palette === "string" && paletteSel.querySelector('option[value="' + saved.palette + '"]')) paletteSel.value = saved.palette;
     if (typeof saved.morph === "boolean") morphChk.checked = saved.morph;
+    if (typeof saved.showBox === "boolean") { showBoxChk.checked = saved.showBox; showBox = saved.showBox; }
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
     if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
   }
@@ -1648,6 +1658,7 @@
     // Sirpinfyer/Tetrafyer (0/1); Cardioid RPM + ratio only for Julia.
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
+    grpTetra.style.display = i === 1 ? "" : "none";   // "Show box" is Tetrafyer-only
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...and its beat-toggle selection
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
@@ -1704,6 +1715,7 @@
     el("ttl-hi").dispatchEvent(new Event("input"));
     nextSwitch = 0;
     paletteSel.value = 0;
+    showBoxChk.checked = true; showBox = true;
     morphChk.checked = true;
     morphChk.dispatchEvent(new Event("change"));   // sets morphing + startMorph
     persist();
@@ -1735,9 +1747,10 @@
       1: { name: "Tetrafyer", text: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks." },
       2: { name: "AnimeJulia", text: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the fire palette." },
     },
-    // when: "all" | "fire" (0,1) | "julia" (2)
+    // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1)
     sliders: [
       { n: "Effect", w: "all", t: "Which visual is running. Auto-cycle can switch it for you (see Effect TTL)." },
+      { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside." },
       { n: "Effect TTL", w: "all", t: "Auto-cycle: holds each effect a random time in this range (seconds), then switches to a random other one. Set both thumbs to 0 to stay on one effect." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
@@ -1757,7 +1770,8 @@
   const helpEl = el("help");
   function renderHelp() {
     const e = HELP.effects[effect];
-    const rel = HELP.sliders.filter(s => s.w === "all" || (s.w === "fire" ? effect !== 2 : effect === 2));
+    const applies = { all: true, fire: effect !== 2, julia: effect === 2, tetra: effect === 1 };
+    const rel = HELP.sliders.filter(s => applies[s.w]);
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
     html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.text + "</p>";
     html += '<p class="help-intro">' + HELP.intro + "</p><dl>";
