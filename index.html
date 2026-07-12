@@ -157,13 +157,14 @@
   .bandchips button.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
   #panel.audio-off .bandchips { opacity: .4; }
   /* ---- help popup ---- */
-  #panel h1 #help-btn {
-    margin-left: 7px; width: 18px; height: 18px; padding: 0; vertical-align: middle;
+  #panel #help-btn {
+    position: absolute; top: 14px; right: 14px;
+    width: 20px; height: 20px; padding: 0;
     border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.5);
-    background: rgba(255, 122, 26, 0.15); color: #ffb15a; font: bold 11px/1 ui-monospace, monospace;
+    background: rgba(255, 122, 26, 0.15); color: #ffb15a; font: bold 12px/1 ui-monospace, monospace;
     cursor: pointer; text-shadow: none;
   }
-  #panel h1 #help-btn:hover { background: rgba(255, 122, 26, 0.35); }
+  #panel #help-btn:hover { background: rgba(255, 122, 26, 0.35); }
   #help {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
@@ -1417,7 +1418,7 @@
   const anims = {};
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
-  const KICK = 0.6, KICK_TAU = 0.14;   // kick reach (× band width) and decay (s)
+  const PULSE_DROP = 0.2;   // s for a beat pulse to fall from the high thumb back to the low
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
   function makeChips(id, label) {
     beatReact[id] = { low: false, mid: false, high: false };
@@ -1443,7 +1444,7 @@
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     const mn = +lo.min, mx = +lo.max;
-    const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, kick: 0, step: 0 };
+    const a = anims[id] = { lo, hi, apply, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, pulse: 0 };
     function ui() {
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
       fill.style.left = (A - mn) / (mx - mn) * 100 + "%";
@@ -1466,7 +1467,6 @@
   bindRange("rpm", "vRpm", v => v.toFixed(2), v => juliaBigRpm = v, 10);    // slow rpm drift
   bindRange("ratio", "vRatio", v => v.toFixed(1) + "×", v => juliaRatio = v);
   bindRange("phase", "vPhase", v => v.toFixed(2), v => juliaPhase = v, 10);
-  anims.phase.stepAmt = 0.05;   // its beat chips step the value forward 0.05/beat (not a kick)
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
@@ -1476,10 +1476,22 @@
     for (const id in anims) {
       const a = anims[id];
       const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
-      const pinned = mx - mn < 1e-9;
+      const br = beatReact[id];
+      // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
+      // drifting and only move on a beat — snap to the high thumb, drop back to
+      // the low thumb over PULSE_DROP seconds.
+      const armed = audio.on && br && (br.low || br.mid || br.high);
 
-      // base value: erratic wander within [mn,mx], or the pinned constant
-      if (pinned) {
+      if (armed) {
+        const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
+        if (beat) a.pulse = 1;                                   // immediate, significant
+        else a.pulse = a.pulse - dt / PULSE_DROP > 0 ? a.pulse - dt / PULSE_DROP : 0;
+        a.apply(mn + a.pulse * (mx - mn));                       // rest at mn, snap to mx, decay back
+        continue;
+      }
+
+      // otherwise: erratic wander between [mn,mx] (pinned ⇒ constant)
+      if (mx - mn < 1e-9) {
         a.val = mn;
       } else {
         let f = (now - a.t0) / a.dur;
@@ -1493,22 +1505,7 @@
         a.val = a.from + (a.to - a.from) * s;
         a.val = a.val < mn ? mn : a.val > mx ? mx : a.val;
       }
-
-      // did an enabled band beat this frame?
-      const br = beatReact[id];
-      const beat = audio.on && br && (br.low && audio.beatNow[0] || br.mid && audio.beatNow[1] || br.high && audio.beatNow[2]);
-
-      if (a.stepAmt) {                      // step-forward-on-beat (Cardioid start)
-        if (beat) a.step = (a.step + a.stepAmt) % 1;   // advance, wrap in [0,1)
-        a.apply(a.val + a.step);
-      } else if (pinned) {                  // no range to kick within ⇒ inert
-        a.apply(a.val);
-      } else {                             // bidirectional kick, decaying back to the base
-        a.kick *= Math.exp(-dt / KICK_TAU);
-        if (beat) a.kick = Math.random() < 0.5 ? -1 : 1;
-        const out = a.val + a.kick * KICK * (mx - mn);
-        a.apply(out < mn ? mn : out > mx ? mx : out);
-      }
+      a.apply(a.val);
     }
   }
 
@@ -1754,7 +1751,7 @@
       { n: "Effect TTL", w: "all", t: "Auto-cycle: holds each effect a random time in this range (seconds), then switches to a random other one. Set both thumbs to 0 to stay on one effect." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
-      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. A slider's L/M/H chips kick it on beats in that band (Cardioid start steps forward instead); chips glow on the beats that drive them." },
+      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
       { n: "Banding", w: "all", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
       { n: "Band size", w: "all", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "all", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
@@ -1764,7 +1761,7 @@
       { n: "Flame rise", w: "fire", t: "How tall flames climb before fading — linear in height." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
-      { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). Its beat chips step it forward 0.05 per beat instead of kicking." },
+      { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
     ],
   };
   const helpEl = el("help");

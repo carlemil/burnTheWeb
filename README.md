@@ -81,10 +81,11 @@ whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
 audio", or a *tab* + "share tab audio"), or **Mic** for the microphone. The
 audio is split into **low / mid / high** bands with per-band beat detection (the
 3-bar meter shows it working). Each ranged slider has three tiny **L / M / H**
-toggle chips: turn one on and a strong beat in that band gives the slider's
-animated value a bidirectional kick within its range, decaying back. The chips
-are remembered per effect and persisted. Pinned sliders (thumbs together) have
-no room to kick, so widen a slider to make it react.
+toggle chips: arm one and — while audio is on — the slider stops drifting and
+instead rests at its low thumb, snapping to its high thumb on each beat in that
+band and dropping back within 0.2s (so the range width sets how big the pulse
+is). The chips are remembered per effect and persisted. Pinned sliders (thumbs
+together) have no range to pulse within, so widen a slider to make it react.
 
 | Control | What it does |
 | --- | --- |
