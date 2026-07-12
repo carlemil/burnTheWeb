@@ -216,6 +216,12 @@
     <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
+  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
+
+  <label>Preset TTL <span class="val" id="vTtl"></span></label>
+  <div class="dual"><div class="track"></div><div class="fill"></div>
+    <input type="range" id="ttl-lo" min="0" max="180" step="1" value="30">
+    <input type="range" id="ttl-hi" min="0" max="180" step="1" value="90"></div>
 
   <hr class="sep">
 
@@ -225,12 +231,6 @@
     <option value="1">Tetrafyer</option>
     <option value="2">AnimeJulia</option>
   </select>
-  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
-
-  <label>Preset TTL <span class="val" id="vTtl"></span></label>
-  <div class="dual"><div class="track"></div><div class="fill"></div>
-    <input type="range" id="ttl-lo" min="0" max="180" step="1" value="30">
-    <input type="range" id="ttl-hi" min="0" max="180" step="1" value="90"></div>
 
   <label>Palette</label>
   <select id="palette">
@@ -1992,9 +1992,9 @@
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1)
     sliders: [
       { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. At the bottom: Export/Import copy or paste settings as text, and Share makes a link that opens with the current settings." },
-      { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
-      { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL). Turn off to stay put. Needs at least two saved presets." },
+      { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
+      { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
