@@ -116,7 +116,8 @@ visibility is remembered per effect.
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid. |
 | **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
-| **Inner : outer radius** *(ranged)* | AnimeJulia only — the size of the small riding circle relative to the big loop. Small values keep the seed just outside the cardioid; large values can dip it inside. |
+| **Inner radius** *(ranged)* | AnimeJulia only — the size of the small circle riding on the seed. Small values keep the seed just outside the cardioid; large values can dip it inside. |
+| **Outer radius** *(ranged)* | AnimeJulia only — the scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward. |
 | **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
 | **Export / Import settings** | Copy the current effect's settings to the clipboard as text (also handy to paste to Claude to bake in as new defaults), or paste such a string back to apply it. |

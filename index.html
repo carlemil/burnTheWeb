@@ -304,10 +304,15 @@
       <input type="range" id="ratio-lo" min="1" max="60" step="0.5" value="21.5">
       <input type="range" id="ratio-hi" min="1" max="60" step="0.5" value="21.5"></div>
 
-    <label>Inner : outer radius <span class="val" id="vRadius"></span></label>
+    <label>Inner radius <span class="val" id="vInRad"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="radius-lo" min="0" max="0.5" step="0.01" value="0.06">
-      <input type="range" id="radius-hi" min="0" max="0.5" step="0.01" value="0.06"></div>
+      <input type="range" id="inrad-lo" min="0" max="0.5" step="0.01" value="0.03">
+      <input type="range" id="inrad-hi" min="0" max="0.5" step="0.01" value="0.03"></div>
+
+    <label>Outer radius <span class="val" id="vOutRad"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="outrad-lo" min="0.5" max="2.5" step="0.05" value="1.05">
+      <input type="range" id="outrad-hi" min="0.5" max="2.5" step="0.05" value="1.05"></div>
 
     <label>Cardioid start <span class="val" id="vPhase"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1172,9 +1177,9 @@
   const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
   const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
   const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
-  const JULIA_SMALL_R = 0.03;          // reference small-circle radius (< margin ⇒ stays outside)
-  const JULIA_OUTER_R = 0.5;           // reference "outer" radius the small circle is sized against
-  let juliaRadius = JULIA_SMALL_R / JULIA_OUTER_R;   // inner:outer radius (live-tunable via slider)
+  const JULIA_SMALL_R = 0.03;          // reference small-circle radius (for the ratio-default calc)
+  let juliaInnerR = JULIA_SMALL_R;     // small riding-circle radius (live-tunable via slider)
+  let juliaOuterR = CARDIOID_SIZE;     // big cardioid-loop scale (live-tunable via slider)
   let juliaBigRpm = 0.03;              // outer spin (live-tunable via slider)
   const JULIA_MAX_ITER = 160;
   const JULIA_SPAN = 2.8;              // vertical extent of the complex view
@@ -1204,12 +1209,12 @@
     juliaInner += dt * juliaBigRpm * juliaRatio * RPM;    // inner = ratio × outer
     // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
     // scaled outward by the margin so it sits just outside the inner bound.
-    const th = juliaOuter + juliaPhase * Math.PI * 2, s = (1 + JULIA_MARGIN) * CARDIOID_SIZE;
+    const th = juliaOuter + juliaPhase * Math.PI * 2, s = (1 + JULIA_MARGIN) * juliaOuterR;
     let cx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
     let cy = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
     // small circle riding on top, spinning ratio× faster than the big loop; its
     // radius is the inner:outer slider × the reference outer radius.
-    const a2 = juliaInner, r = juliaRadius * JULIA_OUTER_R;
+    const a2 = juliaInner, r = juliaInnerR;
     cx += r * Math.cos(a2);
     cy += r * Math.sin(a2);
     const spanY = JULIA_SPAN / zoom, spanX = spanY * (fw / fh);
@@ -1526,7 +1531,8 @@
   bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v, 10);   // wanders 10× slower
   bindRange("rpm", "vRpm", v => v.toFixed(2), v => juliaBigRpm = v, 10);    // slow rpm drift
   bindRange("ratio", "vRatio", v => v.toFixed(1) + "×", v => juliaRatio = v);
-  bindRange("radius", "vRadius", v => v.toFixed(2), v => juliaRadius = v, 10);
+  bindRange("inrad", "vInRad", v => v.toFixed(2), v => juliaInnerR = v, 10);
+  bindRange("outrad", "vOutRad", v => v.toFixed(2) + "×", v => juliaOuterR = v, 10);
   bindRange("phase", "vPhase", v => v.toFixed(2), v => juliaPhase = v, 10);
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
@@ -1591,9 +1597,9 @@
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
   const PRESETS = {
-    0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [21.5, 21.5], radius: [0.06, 0.06], phase: [0, 0], points: 2500 },
-    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], rpm: [0.03, 0.15], ratio: [21.5, 21.5], radius: [0.06, 0.06], phase: [0, 0], points: 1500 },
-    2: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [8, 13.5], radius: [0.06, 0.06], phase: [0, 0], points: 1500 },
+    0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
+    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    2: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [8, 13.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
@@ -1930,10 +1936,20 @@
     presets.forEach((p, i) => presetSel.appendChild(new Option(p.name, String(i))));
     presetSel.value = curPreset < 0 ? "-1" : String(curPreset);
   }
+  // Normalize a saved state to the current slider set: keep only keys that still
+  // exist (drops retired ones like `radius`) and default any newly-added keys.
+  function mergeState(e, saved) {
+    const base = presetState(e);
+    if (saved) for (const id in base) {
+      const v = saved[id]; if (v === undefined) continue;
+      base[id] = Array.isArray(base[id]) ? (Array.isArray(v) ? v.slice() : base[id]) : v;
+    }
+    return base;
+  }
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;
     applyingPreset = true;
-    states[p.effect] = JSON.parse(JSON.stringify(p.state));
+    states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = JSON.parse(JSON.stringify(p.beat));
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
@@ -2012,7 +2028,8 @@
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
-      { n: "Inner : outer radius", w: "julia", t: "How big that small riding circle is relative to the big loop. Small values keep the seed just outside the cardioid (intricate fractals); large ones swing it further, and can dip it inside for solid-blob frames." },
+      { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
+      { n: "Outer radius", w: "julia", t: "Scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
     ],
   };
