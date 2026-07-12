@@ -30,7 +30,7 @@ independent "scene" that remembers its own settings (see Controls):
   that only ever nudges the seed further out — never into the interior. The big
   loop turns slowly (a few hundredths of an rpm) and the small one a fair bit
   faster, so the fractal reshapes continuously. Per-pixel escape time is written
-  as heat and coloured through the same fire palettes.
+  as heat and coloured through the same palettes.
 
 ## How it works
 
@@ -92,6 +92,9 @@ instead rests at its low thumb, snapping to its high thumb on each beat in that
 band and dropping back within 0.2s (so the range width sets how big the pulse
 is). The chips are remembered per effect and persisted. Pinned sliders (thumbs
 together) have no range to pulse within, so widen a slider to make it react.
+Browsers can't silently re-grab tab/screen (or mic) audio after a reload, so the
+last source is remembered and re-opened on your **first click/keypress** after
+the page loads.
 
 *(ranged)* controls are the two-thumb sliders described above; the rest are
 single sliders, dropdowns or toggles. Everything except auto-cycle and panel
@@ -102,7 +105,7 @@ visibility is remembered per effect.
 | **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
-| **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. |
+| **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
@@ -122,7 +125,7 @@ visibility is remembered per effect.
 | **Outer radius** *(ranged)* | AnimeJulia only — the scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward. |
 | **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
-| **Export / Import settings** | Copy the current effect's settings to the clipboard as text (also handy to paste to Claude to bake in as new defaults), or paste such a string back to apply it. |
+| **Export / Import / Share** | **Export** copies the current effect's settings as text (handy to paste to Claude to bake in as new defaults); **Import** pastes such a string back; **Share** copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
 
 The fire runs at full resolution (there is no resolution control). Press **H** or
 **☰** to toggle the panel, **F11** for fullscreen, and click the canvas to pause.
