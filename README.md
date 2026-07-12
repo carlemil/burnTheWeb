@@ -112,6 +112,8 @@ visibility is remembered per effect.
 | **Points** | Number of chaos-game points per frame (100–8000). *(Sirpinfyer / Tetrafyer.)* |
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). *(Sirpinfyer / Tetrafyer.)* |
+| **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sirpinfyer / Tetrafyer.)* |
+| **Rotation** *(ranged)* | Spin rate in degrees/second: turns the triangle, or orbits the tetrahedron's scene. 0 holds still. *(Sirpinfyer / Tetrafyer.)* |
 | **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in. *(Tetrafyer.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid. |

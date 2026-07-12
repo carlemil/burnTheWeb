@@ -289,6 +289,16 @@
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="rise-lo" min="3" max="200" step="1" value="130">
       <input type="range" id="rise-hi" min="3" max="200" step="1" value="130"></div>
+
+    <label>Size <span class="val" id="vSize"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="size-lo" min="0.3" max="2" step="0.05" value="1">
+      <input type="range" id="size-hi" min="0.3" max="2" step="0.05" value="1"></div>
+
+    <label>Rotation <span class="val" id="vRot"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="rot-lo" min="-180" max="180" step="1" value="0">
+      <input type="range" id="rot-hi" min="-180" max="180" step="1" value="0"></div>
   </div>
 
   <label>Zoom <span class="val" id="vZoom"></span></label>
@@ -952,6 +962,11 @@
             v[1] * ct + cr[1] * st + u[1] * d,
             v[2] * ct + cr[2] * st + u[2] * d];
   }
+  // Fire-fractal size & rotation (Sirpinfyer/Tetrafyer). `fractalSize` scales the
+  // geometry; `rotSpeed` (rad/s) spins it — accumulated into `spinAngle` per tick
+  // so the rate is independent of drift speed and the burn tick rate.
+  let fractalSize = 1, rotSpeed = 0, spinAngle = 0;
+  const TETRA_BASE_S = 0.42;           // tetra vertex scale at Size 1×
   const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
   const TETRA = {
     s: 0.42,                       // vertex scale — corner reach = s·√3
@@ -1032,6 +1047,7 @@
   function simulate(now) {
     simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
     const t = simT;
+    spinAngle += rotSpeed / cfg.burn;  // rotation phase — 1/burn s per tick, so rad/s
 
     // 1) propagate existing fire upward (cgtutor averaging, with decay). On the
     // GPU this is a fragment shader; the CPU double loop is the fallback path.
@@ -1066,13 +1082,18 @@
     rngState = SEED;               // reset: same point sequence every frame
 
     if (effect === 0) {
-      // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix.
+      // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix,
+      // then are scaled (Size) and spun (Rotation) about the safe-box centre.
       const hx = w => xL + (w + 1) * (xR - xL) * 0.5;
       const vy = w => yT + (w + 1) * (yB - yT) * 0.5;
+      const ccx = (xL + xR) * 0.5, ccy = (yT + yB) * 0.5;
+      const cs = Math.cos(spinAngle) * fractalSize, sn = Math.sin(spinAngle) * fractalSize;
+      const place = (X, Y) => [ccx + (X - ccx) * cs - (Y - ccy) * sn,
+                               ccy + (X - ccx) * sn + (Y - ccy) * cs];
       const corners = [
-        [hx(Math.sin(t * 0.70)),        vy(Math.cos(t * 0.90))],
-        [hx(Math.sin(t * 1.10 + 2.10)), vy(Math.cos(t * 0.50 + 1.30))],
-        [hx(Math.cos(t * 0.60 + 4.20)), vy(Math.sin(t * 0.80 + 0.70))],
+        place(hx(Math.sin(t * 0.70)),        vy(Math.cos(t * 0.90))),
+        place(hx(Math.sin(t * 1.10 + 2.10)), vy(Math.cos(t * 0.50 + 1.30))),
+        place(hx(Math.cos(t * 0.60 + 4.20)), vy(Math.sin(t * 0.80 + 0.70))),
       ];
       let px = fw * 0.5, py = fh * 0.575;
       for (let i = 0; i < n + 16; i++) {
@@ -1089,10 +1110,16 @@
       // view rotation orbits the whole scene so the box reads as solid 3D.
       const halfW = (xR - xL) * 0.5, halfH = (yB - yT) * 0.5;
       TETRA.box[0] = TETRA.box[1] * (fw / fh);   // widen the box to the frame aspect
+      const targetS = TETRA_BASE_S * fractalSize;   // Size scales the whole tetrahedron
+      if (TETRA.s > 1e-6 && Math.abs(TETRA.s - targetS) > 1e-6) {
+        const k = targetS / TETRA.s;              // rescale the oriented vertex offsets,
+        TETRA.rv = TETRA.rv.map(r => v3.scale(r, k));  // keeping orientation; physics follows
+        TETRA.s = targetS;
+      }
       tetraStep(cfg.speed / cfg.burn, t);
 
       const F = 6.0;                             // camera distance (pin-hole focal)
-      const yaw = t * 0.20, pitch = 0.30 * Math.sin(t * 0.12);
+      const yaw = spinAngle, pitch = 0.30 * Math.sin(t * 0.12);   // Rotation orbits the scene
       const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
       const cpit = Math.cos(pitch), spit = Math.sin(pitch);
       const viewRot = p => {                     // yaw about Y, then pitch about X
@@ -1531,6 +1558,8 @@
   bindRange("banddim", "vBandDim", v => Math.round(v) + "%", v => bandDim = 1 - v / 100);
   bindRange("speed", "vSpeed", v => Math.round(v), v => cfg.speed = v / 100);
   bindRange("rise", "vRise", v => Math.round(v), v => cfg.decay = 128 * v / (v - 1));
+  bindRange("size", "vSize", v => v.toFixed(2) + "×", v => fractalSize = v, 10);
+  bindRange("rot", "vRot", v => Math.round(v) + "°/s", v => rotSpeed = v * Math.PI / 180, 10);
   bindRange("zoom", "vZoom", v => v.toFixed(2) + "×", v => zoom = v, 10);   // wanders 10× slower
   bindRange("rpm", "vRpm", v => v.toFixed(2), v => juliaBigRpm = v, 10);    // slow rpm drift
   bindRange("ratio", "vRatio", v => v.toFixed(1) + "×", v => juliaRatio = v);
@@ -1608,9 +1637,9 @@
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
   const PRESETS = {
-    0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
-    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
-    2: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 3], rpm: [0.03, 0.15], ratio: [8, 13.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], size: [1, 1], rot: [0, 0],  rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
+    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    2: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 3], size: [1, 1], rot: [0, 0],  rpm: [0.03, 0.15], ratio: [8, 13.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
@@ -2037,6 +2066,8 @@
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
       { n: "Drift speed", w: "fire", t: "Sirpinfyer: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
       { n: "Flame rise", w: "fire", t: "How tall flames climb before fading — linear in height." },
+      { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sirpinfyer's triangle or Tetrafyer's tetrahedron (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
+      { n: "Rotation", w: "fire", t: "Spin rate in degrees per second. Sirpinfyer turns the whole triangle; Tetrafyer orbits the scene around the box. 0 holds still." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
