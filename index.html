@@ -315,6 +315,13 @@
     <label>Points <span class="val" id="vPoints"></span></label>
     <input id="points" type="range" min="100" max="8000" step="50" value="2500">
 
+    <label>Layers <span class="val" id="vLayers"></span></label>
+    <div class="presetrow">
+      <button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy">−</button>
+      <button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed">+</button>
+    </div>
+    <input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none">
+
     <label>Drift speed <span class="val" id="vSpeed"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="speed-lo" min="1" max="300" step="1" value="92">
@@ -329,7 +336,9 @@
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="size-lo" min="0.3" max="2" step="0.05" value="1">
       <input type="range" id="size-hi" min="0.3" max="2" step="0.05" value="1"></div>
+  </div>
 
+  <div id="grp-rot">
     <label>Rotation <span class="val" id="vRot"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="rot-lo" min="-180" max="180" step="1" value="0">
@@ -1023,29 +1032,31 @@
   // Fire-fractal size & rotation (Sirpinfyer/Tetrafyer). `fractalSize` scales the
   // geometry; `rotSpeed` (rad/s) spins it — accumulated into `spinAngle` per tick
   // so the rate is independent of drift speed and the burn tick rate.
-  let fractalSize = 1, rotSpeed = 0, spinAngle = 0;
+  let fractalSize = 1, rotSpeed = 0, spinAngle = 0, layerCount = 1;
   const TETRA_BASE_S = 0.42;           // tetra vertex scale at Size 1×
   const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
-  const TETRA = {
-    s: 0.42,                       // vertex scale — corner reach = s·√3
-    e: 0.985,                      // wall restitution (rubbery ⇒ very bouncy)
-    box: [1.0, 1.05, 1.0],         // half-extents [x,y,z]; x is retuned to aspect
-    P: [0, 0, 0],                  // centre of mass
-    V: [0.95, 0.62, 0.78],         // linear velocity (world units / s)
-    W: [1.1, 0.7, 1.4],            // angular velocity (rad / s)
-    rv: null,                      // the four oriented vertex offsets from the COM
-    E0: 0,                         // reference kinetic energy (keeps motion alive)
-    impacts: [],                   // recent wall hits, driving the rubbery ripple
-  };
-  function tetraInit() {
-    TETRA.rv = TETRA_UNIT.map(u => v3.scale(u, TETRA.s));
-    TETRA.E0 = 0.5 * v3.dot(TETRA.V, TETRA.V)
-             + 0.5 * (2 * TETRA.s * TETRA.s) * v3.dot(TETRA.W, TETRA.W);
+  const TETRA_BOX = [1.0, 1.05, 1.0];    // shared container half-extents; x retuned to aspect
+  // The Layers control stacks independent tetrahedra bouncing in the shared box.
+  // Instance k is half the size (and later half the points) of k-1, with its own
+  // seed and start state; sin(k·…) offsets are 0 at k=0, so instance 0 reproduces
+  // the original solo tetra exactly.
+  function makeTetra(k) {
+    const bs = Math.pow(0.5, k), s = TETRA_BASE_S * bs;
+    const V = [0.95 + 0.35 * Math.sin(k * 1.7), 0.62 + 0.35 * Math.sin(k * 2.9), 0.78 + 0.35 * Math.sin(k * 3.7)];
+    const W = [1.1 + 0.5 * Math.sin(k * 2.3), 0.7 + 0.5 * Math.sin(k * 1.3), 1.4 + 0.5 * Math.sin(k * 3.1)];
+    const P = [0.3 * Math.sin(k * 2.1), 0.3 * Math.sin(k * 1.9), 0.3 * Math.sin(k * 2.7)];
+    const rv = TETRA_UNIT.map(u => v3.scale(u, s));
+    const E0 = 0.5 * v3.dot(V, V) + 0.5 * (2 * s * s) * v3.dot(W, W);
+    return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs, seed: (SEED + k * 0x9E3779B1) >>> 0 };
   }
-  tetraInit();
-  // Advance the rigid body one fixed timestep and resolve vertex/wall hits.
-  function tetraStep(dt, t) {
-    const T = TETRA, box = T.box, e = T.e;
+  let tetras = [];
+  function ensureTetras(count) {         // grow/shrink the body list to `count`
+    while (tetras.length < count) tetras.push(makeTetra(tetras.length));
+    if (tetras.length > count) tetras.length = count;
+  }
+  // Advance one rigid body one fixed timestep and resolve vertex/wall hits.
+  function tetraStep(T, dt, t) {
+    const box = TETRA_BOX, e = T.e;
     const Iinv = 1 / (2 * T.s * T.s);           // isotropic inverse inertia (m = 1)
 
     T.P = v3.add(T.P, v3.scale(T.V, dt));        // integrate translation
@@ -1143,40 +1154,40 @@
 
     if (effect === 0) {
       // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix,
-      // then are scaled (Size) and spun (Rotation) about the safe-box centre.
+      // scaled (Size) about the safe-box centre. Layers stacks progressively
+      // smaller, fewer-point, differently-seeded copies.
       const hx = w => xL + (w + 1) * (xR - xL) * 0.5;
       const vy = w => yT + (w + 1) * (yB - yT) * 0.5;
       const ccx = (xL + xR) * 0.5, ccy = (yT + yB) * 0.5;
-      const cs = Math.cos(spinAngle) * fractalSize, sn = Math.sin(spinAngle) * fractalSize;
-      const place = (X, Y) => [ccx + (X - ccx) * cs - (Y - ccy) * sn,
-                               ccy + (X - ccx) * sn + (Y - ccy) * cs];
-      const corners = [
-        place(hx(Math.sin(t * 0.70)),        vy(Math.cos(t * 0.90))),
-        place(hx(Math.sin(t * 1.10 + 2.10)), vy(Math.cos(t * 0.50 + 1.30))),
-        place(hx(Math.cos(t * 0.60 + 4.20)), vy(Math.sin(t * 0.80 + 0.70))),
-      ];
-      let px = fw * 0.5, py = fh * 0.575;
-      for (let i = 0; i < n + 16; i++) {
-        const c = corners[(rnd() * 3) | 0];
-        px = (px + c[0]) * 0.5;
-        py = (py + c[1]) * 0.5;
-        if (i > 15) plot(px, py, 255);
+      for (let li = 0; li < layerCount; li++) {
+        const bs = Math.pow(0.5, li);              // half size & points each layer
+        const nk = Math.max(1, Math.round(n * bs));
+        const sf = fractalSize * bs;
+        const place = (X, Y) => [ccx + (X - ccx) * sf, ccy + (Y - ccy) * sf];
+        const ph = li * 2.2;                       // phase offset ⇒ each copy drifts differently
+        const corners = [
+          place(hx(Math.sin(t * 0.70 + ph)),        vy(Math.cos(t * 0.90 + ph))),
+          place(hx(Math.sin(t * 1.10 + 2.10 + ph)), vy(Math.cos(t * 0.50 + 1.30 + ph))),
+          place(hx(Math.cos(t * 0.60 + 4.20 + ph)), vy(Math.sin(t * 0.80 + 0.70 + ph))),
+        ];
+        rngState = (SEED + li * 0x9E3779B1) >>> 0; // distinct chaos sequence per copy
+        let px = fw * 0.5, py = fh * 0.575;
+        for (let i = 0; i < nk + 16; i++) {
+          const c = corners[(rnd() * 3) | 0];
+          px = (px + c[0]) * 0.5;
+          py = (py + c[1]) * 0.5;
+          if (i > 15) plot(px, py, 255);
+        }
       }
     } else {
-      // Tetrafyer — the Sierpiński tetrahedron is a rigid body bouncing inside a
-      // rubbery box a fixed camera looks into. Physics advances one fixed tick
-      // (Drift speed sets the tempo); then the box, its impact ripples and the
-      // fractal itself are projected through the same pin-hole camera. A slow
-      // view rotation orbits the whole scene so the box reads as solid 3D.
+      // Tetrafyer — Sierpiński tetrahedra bouncing inside a shared rubbery box a
+      // fixed camera looks into. Physics advances one fixed tick (Drift speed sets
+      // the tempo); then the box, impact ripples and each tetra are projected
+      // through the same pin-hole camera. Rotation orbits the whole scene. Layers
+      // adds smaller, fewer-point, independently-seeded tetrahedra in the same box.
       const halfW = (xR - xL) * 0.5, halfH = (yB - yT) * 0.5;
-      TETRA.box[0] = TETRA.box[1] * (fw / fh);   // widen the box to the frame aspect
-      const targetS = TETRA_BASE_S * fractalSize;   // Size scales the whole tetrahedron
-      if (TETRA.s > 1e-6 && Math.abs(TETRA.s - targetS) > 1e-6) {
-        const k = targetS / TETRA.s;              // rescale the oriented vertex offsets,
-        TETRA.rv = TETRA.rv.map(r => v3.scale(r, k));  // keeping orientation; physics follows
-        TETRA.s = targetS;
-      }
-      tetraStep(cfg.speed / cfg.burn, t);
+      TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // widen the box to the frame aspect
+      ensureTetras(layerCount);
 
       const F = 6.0;                             // camera distance (pin-hole focal)
       const yaw = spinAngle, pitch = 0.30 * Math.sin(t * 0.12);   // Rotation orbits the scene
@@ -1186,7 +1197,7 @@
         const x = p[0] * cyaw + p[2] * syaw, z = p[2] * cyaw - p[0] * syaw;
         return [x, p[1] * cpit - z * spit, p[1] * spit + z * cpit];
       };
-      const bx = TETRA.box[0], by = TETRA.box[1], bz = TETRA.box[2];
+      const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
       const perspMax = F / (F - Math.hypot(bx, by, bz));   // nearest possible corner
       const scale = Math.min(halfW, halfH) * 0.92 / (Math.max(bx, by) * perspMax);
       const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
@@ -1203,7 +1214,7 @@
         }
       };
 
-      // box wireframe (12 edges) — the container the fractal ricochets around
+      // box wireframe (12 edges) — the shared container the fractals ricochet in
       if (showBox) {
         const bc = [[-bx, -by, -bz], [bx, -by, -bz], [bx, by, -bz], [-bx, by, -bz],
                     [-bx, -by, bz], [bx, -by, bz], [bx, by, bz], [-bx, by, bz]]
@@ -1213,36 +1224,48 @@
         for (const [a, b] of edges) drawLine(bc[a], bc[b], 140);
       }
 
-      // rubbery ripples: each recent hit sends a fading *sphere* of points
-      // swelling outward from the impact point on the wall. Tied to "Show box" —
-      // they visualise the container, so they hide with the wireframe.
       const RTTL = 0.5, RN = 48, GOLD = 2.399963229728653;   // golden angle
-      TETRA.impacts = TETRA.impacts.filter(im => t - im.t0 < RTTL);   // prune regardless
-      if (showBox) for (const im of TETRA.impacts) {
-        const age = t - im.t0, rad = age * 2.4, bright = 255 * (1 - age / RTTL);
-        const c0 = [0, 0, 0];                        // impact centre on the wall
-        c0[im.ax] = im.sgn * TETRA.box[im.ax];
-        c0[(im.ax + 1) % 3] = im.u;
-        c0[(im.ax + 2) % 3] = im.v;
-        for (let s = 0; s < RN; s++) {               // fibonacci sphere of points
-          const y = 1 - (s + 0.5) / RN * 2, rr = Math.sqrt(1 - y * y), phi = s * GOLD;
-          const pr = project(viewRot([c0[0] + Math.cos(phi) * rr * rad,
-                                      c0[1] + y * rad,
-                                      c0[2] + Math.sin(phi) * rr * rad]));
-          stamp(pr[0], pr[1], bright);
+      for (let li = 0; li < tetras.length; li++) {
+        const T = tetras[li];
+        const targetS = TETRA_BASE_S * fractalSize * T.baseScale;   // Size × per-layer half
+        if (T.s > 1e-6 && Math.abs(T.s - targetS) > 1e-6) {
+          const kf = targetS / T.s;               // rescale vertex offsets, keep orientation
+          T.rv = T.rv.map(r => v3.scale(r, kf));
+          T.s = targetS;
         }
-      }
+        tetraStep(T, cfg.speed / cfg.burn, t);
 
-      // the tetrahedron itself: chaos game between the four physics-driven world
-      // vertices, walked in 3D and projected so perspective stays correct.
-      const wv = TETRA.rv.map(r => viewRot(v3.add(TETRA.P, r)));
-      let cur = wv[0].slice();
-      for (let i = 0; i < n + 16; i++) {
-        const k = (rnd() * 4) | 0;
-        cur[0] = (cur[0] + wv[k][0]) * 0.5;
-        cur[1] = (cur[1] + wv[k][1]) * 0.5;
-        cur[2] = (cur[2] + wv[k][2]) * 0.5;
-        if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], 255); }
+        // rubbery ripples: each recent hit sends a fading *sphere* of points
+        // swelling outward from the impact point — tied to "Show box".
+        T.impacts = T.impacts.filter(im => t - im.t0 < RTTL);   // prune regardless
+        if (showBox) for (const im of T.impacts) {
+          const age = t - im.t0, rad = age * 2.4, bright = 255 * (1 - age / RTTL);
+          const c0 = [0, 0, 0];                        // impact centre on the wall
+          c0[im.ax] = im.sgn * TETRA_BOX[im.ax];
+          c0[(im.ax + 1) % 3] = im.u;
+          c0[(im.ax + 2) % 3] = im.v;
+          for (let s = 0; s < RN; s++) {               // fibonacci sphere of points
+            const y = 1 - (s + 0.5) / RN * 2, rr = Math.sqrt(1 - y * y), phi = s * GOLD;
+            const pr = project(viewRot([c0[0] + Math.cos(phi) * rr * rad,
+                                        c0[1] + y * rad,
+                                        c0[2] + Math.sin(phi) * rr * rad]));
+            stamp(pr[0], pr[1], bright);
+          }
+        }
+
+        // the tetrahedron itself: chaos game between the four physics-driven world
+        // vertices, with this body's own seed and point budget.
+        rngState = T.seed;
+        const nk = Math.max(1, Math.round(n * T.baseScale));
+        const wv = T.rv.map(r => viewRot(v3.add(T.P, r)));
+        let cur = wv[0].slice();
+        for (let i = 0; i < nk + 16; i++) {
+          const kk = (rnd() * 4) | 0;
+          cur[0] = (cur[0] + wv[kk][0]) * 0.5;
+          cur[1] = (cur[1] + wv[kk][1]) * 0.5;
+          cur[2] = (cur[2] + wv[kk][2]) * 0.5;
+          if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], 255); }
+        }
       }
     }
 
@@ -1569,6 +1592,20 @@
   }
   bind("points", "vPoints", v => v, v => cfg.points = +v);
 
+  // Layers: the −/+ buttons drive a hidden number input (so it rides the normal
+  // per-effect state/persist/preset machinery); each layer adds a smaller,
+  // fewer-point, differently-seeded copy of the fractal.
+  const LAYER_MAX = 6;
+  function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); el("vLayers").textContent = layerCount; }
+  el("layers").addEventListener("input", () => applyLayers(+el("layers").value));
+  function stepLayers(d) {
+    const v = Math.max(1, Math.min(LAYER_MAX, (+el("layers").value | 0) + d));
+    el("layers").value = v;
+    el("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
+  }
+  el("layer-plus").addEventListener("click", () => stepLayers(1));
+  el("layer-minus").addEventListener("click", () => stepLayers(-1));
+
   // Ranged (dual-thumb) sliders: the two thumbs set a [lo,hi] band and the live
   // value wanders erratically inside it — a random target reached over a random
   // duration, eased, repeating. Collapse the thumbs (lo==hi) to pin a constant
@@ -1677,6 +1714,7 @@
   const grpJulia = el("grp-julia");
   const grpTetra = el("grp-tetra");
   const grpBand = el("grp-band");
+  const grpRot = el("grp-rot");
   const grpTtl = el("grp-ttl");
   // Preset TTL only matters while auto-cycle is on — gray it out and block input
   // (plus disable the thumbs for keyboard) when the cycle toggle is off.
@@ -1700,9 +1738,9 @@
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
   const PRESETS = {
-    0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], size: [1, 1], rot: [0, 0],  rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
-    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
-    2: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 3], size: [1, 1], rot: [0, 0],  rpm: [0.03, 0.15], ratio: [8, 13.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], size: [1, 1], rot: [0, 0],  layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
+    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    2: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 3], size: [1, 1], rot: [0, 0],  layers: 1, rpm: [0.03, 0.15], ratio: [8, 13.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
@@ -1882,6 +1920,7 @@
     grpSirp.style.display = i === 2 ? "none" : "";
     grpJulia.style.display = i === 2 ? "" : "none";
     grpBand.style.display = i === 2 ? "" : "none";    // banding is AnimeJulia-only
+    grpRot.style.display = i === 1 ? "" : "none";     // Rotation is Tetrafyer-only
     grpTetra.style.display = i === 1 ? "" : "none";   // "Show box" is Tetrafyer-only
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
@@ -2127,10 +2166,11 @@
       { n: "Band size", w: "julia", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "julia", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
+      { n: "Layers", w: "fire", t: "− / + stack extra copies of the fractal (up to 6). Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own." },
       { n: "Drift speed", w: "fire", t: "Sirpinfyer: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
       { n: "Flame rise", w: "fire", t: "How tall flames climb before fading — linear in height." },
       { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sirpinfyer's triangle or Tetrafyer's tetrahedron (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
-      { n: "Rotation", w: "fire", t: "Spin rate in degrees per second. Sirpinfyer turns the whole triangle; Tetrafyer orbits the scene around the box. 0 holds still." },
+      { n: "Rotation", w: "tetra", t: "Tetrafyer only — spin rate in degrees per second for the scene orbit around the box. 0 holds still." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },

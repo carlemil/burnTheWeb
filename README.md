@@ -113,10 +113,11 @@ visibility is remembered per effect.
 | **Band size** *(ranged)* | AnimeJulia only — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | AnimeJulia only — how far the banding's dark runs are darkened. |
 | **Points** | Number of chaos-game points per frame (100–8000). *(Sirpinfyer / Tetrafyer.)* |
+| **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sirpinfyer / Tetrafyer.)* |
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). *(Sirpinfyer / Tetrafyer.)* |
 | **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sirpinfyer / Tetrafyer.)* |
-| **Rotation** *(ranged)* | Spin rate in degrees/second: turns the triangle, or orbits the tetrahedron's scene. 0 holds still. *(Sirpinfyer / Tetrafyer.)* |
+| **Rotation** *(ranged)* | Tetrafyer only — spin rate in degrees/second for the scene orbit around the box. 0 holds still. |
 | **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in, along with the spark-sphere burst each wall hit throws off. *(Tetrafyer.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid. |
