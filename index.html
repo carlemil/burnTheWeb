@@ -139,6 +139,7 @@
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
   #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
+  #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
   /* ---- music beat reactivity ---- */
   #panel .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #panel .audbtn {
@@ -218,10 +219,12 @@
   </div>
   <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
 
-  <label>Preset TTL <span class="val" id="vTtl"></span></label>
-  <div class="dual"><div class="track"></div><div class="fill"></div>
-    <input type="range" id="ttl-lo" min="0" max="180" step="1" value="30">
-    <input type="range" id="ttl-hi" min="0" max="180" step="1" value="90"></div>
+  <div id="grp-ttl">
+    <label>Preset TTL <span class="val" id="vTtl"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="ttl-lo" min="0" max="180" step="1" value="30">
+      <input type="range" id="ttl-hi" min="0" max="180" step="1" value="90"></div>
+  </div>
 
   <hr class="sep">
 
@@ -1582,6 +1585,14 @@
   const grpJulia = el("grp-julia");
   const grpTetra = el("grp-tetra");
   const grpBand = el("grp-band");
+  const grpTtl = el("grp-ttl");
+  // Preset TTL only matters while auto-cycle is on — gray it out and block input
+  // (plus disable the thumbs for keyboard) when the cycle toggle is off.
+  function syncTtlEnabled() {
+    const on = cycleChk.checked;
+    grpTtl.classList.toggle("ctl-off", !on);
+    el("ttl-lo").disabled = el("ttl-hi").disabled = !on;
+  }
   const paletteSel = el("palette");
   const morphChk = el("morph");
   const showBoxChk = el("showbox");
@@ -1793,7 +1804,7 @@
   // each for a random time drawn from the Preset TTL range, then applies a random
   // *different* saved preset.
   let nextSwitch = 0;
-  cycleChk.addEventListener("change", () => { cycleOn = cycleChk.checked; nextSwitch = 0; });
+  cycleChk.addEventListener("change", () => { cycleOn = cycleChk.checked; nextSwitch = 0; syncTtlEnabled(); });
   function ttlMs() {
     const a = Math.min(+el("ttl-lo").value, +el("ttl-hi").value);
     const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
@@ -1988,6 +1999,7 @@
   if (presets.length === 0) { presets = defaultPresets(); curPreset = effect; }   // first visit: one preset per effect
   lastPreset = curPreset;
   rebuildPresetOptions();
+  syncTtlEnabled();                   // match the Preset TTL enabled-state to the restored cycle toggle
   persistReady = true;
 
   function setPanel(hidden) {
