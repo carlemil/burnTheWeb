@@ -1596,20 +1596,44 @@
     for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", beatReact[id][k]);
   }
 
+  // Per-effect "extras": palette, auto-morph, show-box and Effect TTL are also
+  // remembered per effect, so each effect is a fully independent scene.
+  const extras = {};
+  const EXTRA_PRESETS = {
+    0: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
+    1: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
+    2: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
+  };
+  function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, ttl: x.ttl.slice() }; }
+  function initExtras() { for (const k in PRESETS) extras[k] = presetExtra(k); }
+  initExtras();
+  function saveExtra(e) {
+    extras[e] = { palette: paletteSel.value, morph: morphChk.checked, showBox: showBoxChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value] };
+  }
+  function loadExtra(e) {
+    const x = extras[e];
+    suppressPersist = true;
+    showBoxChk.checked = x.showBox; showBox = x.showBox;
+    el("ttl-lo").value = x.ttl[0]; el("ttl-hi").value = x.ttl[1];
+    el("ttl-lo").dispatchEvent(new Event("input")); el("ttl-hi").dispatchEvent(new Event("input"));
+    nextSwitch = 0;
+    paletteSel.value = x.palette;
+    morphChk.checked = x.morph; morphing = x.morph;
+    if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
+    suppressPersist = false;
+  }
+
   const STORE_KEY = "burnTheWeb.v1";
   let persistReady = false, suppressPersist = false;
   function persist() {
     if (!persistReady || suppressPersist) return;
     saveState(effect);                // fold the live sliders into the current effect
-    saveBeat(effect);                 // ...and the live beat toggles
+    saveBeat(effect);                 // ...the live beat toggles
+    saveExtra(effect);                // ...and palette/morph/show-box/TTL
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        states, beats: beatStates, effect,
-        palette: paletteSel.value,
-        morph: morphChk.checked,
-        showBox: showBoxChk.checked,
-        cycle: cycleChk.checked,
-        ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
+        states, beats: beatStates, extras, effect,
+        cycle: cycleChk.checked,                       // shared (session controls)
         panelOpen: !panel.classList.contains("hidden"),
       }));
     } catch (e) { /* storage full / disabled — ignore */ }
@@ -1630,10 +1654,6 @@
         }
       }
     }
-    if (Array.isArray(saved.ttl) && ok("ttl-lo", saved.ttl[0]) && ok("ttl-lo", saved.ttl[1])) {
-      el("ttl-lo").value = saved.ttl[0]; el("ttl-hi").value = saved.ttl[1];
-      el("ttl-lo").dispatchEvent(new Event("input"));
-    }
     if (saved.beats) {
       for (const k in beatStates) {
         const bs = saved.beats[k]; if (!bs) continue;
@@ -1643,9 +1663,17 @@
         }
       }
     }
-    if (typeof saved.palette === "string" && paletteSel.querySelector('option[value="' + saved.palette + '"]')) paletteSel.value = saved.palette;
-    if (typeof saved.morph === "boolean") morphChk.checked = saved.morph;
-    if (typeof saved.showBox === "boolean") { showBoxChk.checked = saved.showBox; showBox = saved.showBox; }
+    // Per-effect extras (palette / morph / show-box / TTL). Migrate a legacy blob
+    // that stored these once at the root into every effect's extras.
+    const legacy = saved.extras ? null : saved;
+    const paletteOK = p => typeof p === "string" && paletteSel.querySelector('option[value="' + p + '"]');
+    for (const k in extras) {
+      const ex = saved.extras ? saved.extras[k] : legacy; if (!ex) continue;
+      if (paletteOK(ex.palette)) extras[k].palette = ex.palette;
+      if (typeof ex.morph === "boolean") extras[k].morph = ex.morph;
+      if (typeof ex.showBox === "boolean") extras[k].showBox = ex.showBox;
+      if (Array.isArray(ex.ttl) && ok("ttl-lo", ex.ttl[0]) && ok("ttl-lo", ex.ttl[1])) extras[k].ttl = [ex.ttl[0], ex.ttl[1]];
+    }
     if (typeof saved.cycle === "boolean") { cycleChk.checked = saved.cycle; cycleOn = saved.cycle; }
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
     if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
@@ -1653,7 +1681,7 @@
   restore();
 
   function setEffect(i, save = true) {
-    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); }  // remember outgoing
+    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
     sub.textContent = SUBTITLES[i];
     // only show the sliders that affect the selected mode: fire controls for
@@ -1662,7 +1690,8 @@
     grpJulia.style.display = i === 2 ? "" : "none";
     grpTetra.style.display = i === 1 ? "" : "none";   // "Show box" is Tetrafyer-only
     loadState(i);                     // restore this effect's remembered sliders
-    loadBeat(i);                      // ...and its beat-toggle selection
+    loadBeat(i);                      // ...its beat-toggle selection
+    loadExtra(i);                     // ...and palette/morph/show-box/TTL
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
     if (fireNext) fireNext.fill(0);
     if (useGL && glReady) glClearHeat();
@@ -1705,22 +1734,22 @@
   panel.addEventListener("input", persist);
   panel.addEventListener("change", persist);
 
-  // Reset: restore *only the current effect's* sliders and beat chips to their
-  // preset defaults. It doesn't change the effect, other effects, or globals
-  // (palette, morph, TTL, auto-cycle, show-box, panel).
+  // Reset: restore *only the current effect's* settings (sliders, beat chips,
+  // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
+  // change the effect, other effects, or the shared controls (auto-cycle, panel).
   el("reset").addEventListener("click", () => {
     states[effect] = presetState(effect);
     beatStates[effect] = presetBeat(effect);
+    extras[effect] = presetExtra(effect);
     loadState(effect);                // apply to the live sliders
-    loadBeat(effect);                 // ...and the live chips
+    loadBeat(effect);                 // ...the live chips
+    loadExtra(effect);                // ...and palette/morph/show-box/TTL
     persist();
   });
 
-  // Initial paint: load the restored effect's sliders, start palette/morph, then
-  // arm persistence (so none of this setup writes back over the restored state).
+  // Initial paint: setEffect → loadExtra applies the restored effect's palette,
+  // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
   setEffect(+effectSel.value, false);
-  morphing = morphChk.checked;
-  if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
   persistReady = true;
 
   function setPanel(hidden) {
