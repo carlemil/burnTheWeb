@@ -203,6 +203,7 @@
     <option value="1">Tetrafyer</option>
     <option value="2">AnimeJulia</option>
   </select>
+  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle effects</label>
 
   <label>Effect TTL <span class="val" id="vTtl"></span></label>
   <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -285,7 +286,7 @@
       <input type="range" id="phase-hi" min="0" max="1" step="0.01" value="0"></div>
   </div>
 
-  <button id="reset" type="button">Reset to defaults</button>
+  <button id="reset" type="button">Reset this effect</button>
 
   <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>F11</b> for fullscreen</p>
 </div>
@@ -336,6 +337,7 @@
   // render/glow pipeline are identical for every mode.
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
+  let cycleOn = true;        // auto-switch between effects on the TTL timer (toggle)
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
   // by shrinking the complex-plane span (revealing real fractal detail); the fire
@@ -1518,6 +1520,7 @@
   const morphChk = el("morph");
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
+  const cycleChk = el("cycle");
   const SUBTITLES = [
     "Sierpiński triangle · classic fire",
     "Sierpiński tetrahedron · classic fire",
@@ -1537,15 +1540,15 @@
   // restored next visit — values outside a slider's current bounds are ignored,
   // so changing a slider's range can never load stale/junk values.
   const states = {};
-  function initStates() {
-    for (const k in PRESETS) {
-      states[k] = {};
-      for (const id in PRESETS[k]) {
-        const v = PRESETS[k][id];
-        states[k][id] = Array.isArray(v) ? v.slice() : v;
-      }
+  function presetState(e) {           // a fresh copy of effect e's preset slider values
+    const st = {};
+    for (const id in PRESETS[e]) {
+      const v = PRESETS[e][id];
+      st[id] = Array.isArray(v) ? v.slice() : v;
     }
+    return st;
   }
+  function initStates() { for (const k in PRESETS) states[k] = presetState(k); }
   initStates();
   function saveState(e) {
     const st = states[e];
@@ -1578,14 +1581,14 @@
   const BEAT_PRESETS = {
     2: { zoom: ["low"], band: ["mid"], ratio: ["high"] },   // AnimeJulia
   };
-  function initBeatStates() {
-    for (const k in PRESETS) {
-      beatStates[k] = {};
-      for (const id in beatReact) beatStates[k][id] = { low: false, mid: false, high: false };
-      const bp = BEAT_PRESETS[k];
-      if (bp) for (const id in bp) if (beatStates[k][id]) for (const band of bp[id]) beatStates[k][id][band] = true;
-    }
+  function presetBeat(e) {            // a fresh copy of effect e's default chip selection
+    const bt = {};
+    for (const id in beatReact) bt[id] = { low: false, mid: false, high: false };
+    const bp = BEAT_PRESETS[e];
+    if (bp) for (const id in bp) if (bt[id]) for (const band of bp[id]) bt[id][band] = true;
+    return bt;
   }
+  function initBeatStates() { for (const k in PRESETS) beatStates[k] = presetBeat(k); }
   initBeatStates();
   function saveBeat(e) { for (const id in beatReact) beatStates[e][id] = { ...beatReact[id] }; }
   function loadBeat(e) { for (const id in beatReact) beatReact[id] = { ...beatStates[e][id] }; syncChips(); }
@@ -1605,6 +1608,7 @@
         palette: paletteSel.value,
         morph: morphChk.checked,
         showBox: showBoxChk.checked,
+        cycle: cycleChk.checked,
         ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
         panelOpen: !panel.classList.contains("hidden"),
       }));
@@ -1642,6 +1646,7 @@
     if (typeof saved.palette === "string" && paletteSel.querySelector('option[value="' + saved.palette + '"]')) paletteSel.value = saved.palette;
     if (typeof saved.morph === "boolean") morphChk.checked = saved.morph;
     if (typeof saved.showBox === "boolean") { showBoxChk.checked = saved.showBox; showBox = saved.showBox; }
+    if (typeof saved.cycle === "boolean") { cycleChk.checked = saved.cycle; cycleOn = saved.cycle; }
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
     if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
   }
@@ -1667,13 +1672,14 @@
   // Auto-cycle: hold each effect for a random time drawn from the Effect TTL
   // range, then switch to a random *different* effect (which reloads its preset).
   let nextSwitch = 0;
+  cycleChk.addEventListener("change", () => { cycleOn = cycleChk.checked; nextSwitch = 0; });
   function ttlMs() {
     const a = Math.min(+el("ttl-lo").value, +el("ttl-hi").value);
     const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
     return (a + Math.random() * (b - a)) * 1000;
   }
   function cycleEffects(now) {
-    if (Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
+    if (!cycleOn || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
     if (!nextSwitch) { nextSwitch = now + ttlMs(); return; }
     if (now >= nextSwitch) {
       let n; do { n = (Math.random() * 3) | 0; } while (n === effect);
@@ -1699,22 +1705,14 @@
   panel.addEventListener("input", persist);
   panel.addEventListener("change", persist);
 
-  // Reset: forget all remembered/persisted tweaks and go back to the preset
-  // defaults for the default effect, plus the default TTL, palette and morph.
+  // Reset: restore *only the current effect's* sliders and beat chips to their
+  // preset defaults. It doesn't change the effect, other effects, or globals
+  // (palette, morph, TTL, auto-cycle, show-box, panel).
   el("reset").addEventListener("click", () => {
-    initStates();
-    initBeatStates();                 // clear all beat toggles
-    stopAudio();
-    effectSel.value = 0;
-    setEffect(0, false);              // load preset[0] without saving current sliders
-    el("ttl-lo").value = 30; el("ttl-hi").value = 90;
-    el("ttl-lo").dispatchEvent(new Event("input"));
-    el("ttl-hi").dispatchEvent(new Event("input"));
-    nextSwitch = 0;
-    paletteSel.value = 0;
-    showBoxChk.checked = true; showBox = true;
-    morphChk.checked = true;
-    morphChk.dispatchEvent(new Event("change"));   // sets morphing + startMorph
+    states[effect] = presetState(effect);
+    beatStates[effect] = presetBeat(effect);
+    loadState(effect);                // apply to the live sliders
+    loadBeat(effect);                 // ...and the live chips
     persist();
   });
 
@@ -1748,7 +1746,8 @@
     sliders: [
       { n: "Effect", w: "all", t: "Which visual is running. Auto-cycle can switch it for you (see Effect TTL)." },
       { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside." },
-      { n: "Effect TTL", w: "all", t: "Auto-cycle: holds each effect a random time in this range (seconds), then switches to a random other one. Set both thumbs to 0 to stay on one effect." },
+      { n: "Auto-cycle effects", w: "all", t: "When on, the effect switches on its own (see Effect TTL). Turn off to stay on the current effect." },
+      { n: "Effect TTL", w: "all", t: "How long auto-cycle holds each effect: a random time in this range (seconds) before switching to a random other one." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
