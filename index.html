@@ -260,6 +260,11 @@
     <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
+  <div class="presetrow">
+    <button id="exportpresets" class="audbtn" type="button" title="Download all your saved presets as a .json backup">Backup</button>
+    <button id="importpresets" class="audbtn" type="button" title="Load presets from a .json backup (adds to your set)">Restore</button>
+  </div>
+  <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
   <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
 
   <div id="grp-ttl">
@@ -2145,10 +2150,15 @@
     const text = prompt("Paste exported settings:");
     if (!text) return;
     try {
-      const grab = key => { const m = text.match(new RegExp("\\b" + key + "\\[(\\d)\\]:\\s*(\\{[\\s\\S]*?\\})")); return m ? { e: +m[1], obj: (new Function("return (" + m[2] + ")"))() } : null; };
+      // parse without eval: quote the (known, identifier) keys → valid JSON.
+      const grab = key => {
+        const m = text.match(new RegExp("\\b" + key + "\\[(\\d)\\]:\\s*(\\{[\\s\\S]*?\\})"));
+        if (!m) return null;
+        return { e: +m[1], obj: JSON.parse(m[2].replace(/([a-zA-Z_]\w*)\s*:/g, '"$1":')) };
+      };
       const P = grab("PRESETS"); if (!P || !PRESETS[P.e]) throw new Error("no valid PRESETS line");
       const B = grab("BEAT_PRESETS"), X = grab("EXTRA_PRESETS"), e = P.e;
-      states[e] = P.obj;
+      states[e] = mergeState(e, P.obj);   // normalize to the current slider set
       const bd = B ? B.obj : {};
       const nb = {};
       for (const id in beatReact) { const bands = bd[id] || []; nb[id] = { low: bands.indexOf("low") >= 0, mid: bands.indexOf("mid") >= 0, high: bands.indexOf("high") >= 0 }; }
@@ -2248,6 +2258,39 @@
   });
   presetSel.addEventListener("change", () => { const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1; });
 
+  // Backup / Restore the whole preset library (they're browser-local otherwise).
+  el("exportpresets").addEventListener("click", () => {
+    autosavePreset();                 // fold pending edits into the selected preset first
+    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "burnTheWeb-presets.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  el("importpresets").addEventListener("click", () => el("presetsfile").click());
+  el("presetsfile").addEventListener("change", ev => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";             // allow re-picking the same file later
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const arr = JSON.parse(reader.result);
+        if (!Array.isArray(arr)) throw new Error("not a preset list");
+        const valid = arr
+          .filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra)
+          .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
+                       state: mergeState(p.effect, p.state), beat: p.beat, extra: p.extra }));
+        if (!valid.length) throw new Error("no valid presets in file");
+        presets = presets.concat(valid);   // append (non-destructive)
+        rebuildPresetOptions();
+        persist();
+      } catch (err) { alert("Couldn't restore presets: " + err.message); }
+    };
+    reader.readAsText(file);
+  });
+
   // Initial paint: setEffect → loadExtra applies the restored effect's palette,
   // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
   setEffect(+effectSel.value, false);
@@ -2280,7 +2323,7 @@
     },
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1) | "plasma" (3) | "band" (2,3)
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. At the bottom: Export/Import copy or paste settings as text, and Share makes a link that opens with the current settings." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. Backup downloads all your presets as a file; Restore loads them back (they're otherwise browser-local). At the bottom: Export/Import copy or paste one effect's settings as text, and Share makes a link that opens with the current settings." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
