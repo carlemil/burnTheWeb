@@ -308,9 +308,10 @@
   </div>
   <div class="presetrow">
     <button id="exportpresets" class="audbtn" type="button" title="Download all your saved presets as a .json backup">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Load presets from a .json backup (adds to your set)">Restore</button>
+    <button id="importpresets" class="audbtn" type="button" title="Load presets from a .json backup: adds new ones, overwrites same-named ones, keeps everything else">Restore</button>
   </div>
   <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
+  <p id="presetMsg" class="hint"></p>
   <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
 
   <div id="grp-ttl">
@@ -2517,6 +2518,14 @@
   presetSel.addEventListener("change", () => { const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1; });
 
   // Backup / Restore the whole preset library (they're browser-local otherwise).
+  let presetMsgT = 0;
+  function presetMsg(m) {
+    const e = el("presetMsg");
+    e.textContent = m || "";
+    e.style.display = m ? "block" : "none";
+    clearTimeout(presetMsgT);
+    if (m) presetMsgT = setTimeout(() => presetMsg(""), 6000);
+  }
   el("exportpresets").addEventListener("click", () => {
     autosavePreset();                 // fold pending edits into the selected preset first
     const blob = new Blob([JSON.stringify(presets, null, 2)], { type: "application/json" });
@@ -2541,9 +2550,25 @@
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
                        state: mergeState(p.effect, p.state), beat: p.beat, extra: p.extra }));
         if (!valid.length) throw new Error("no valid presets in file");
-        presets = presets.concat(valid);   // append (non-destructive)
+        autosavePreset();                  // fold pending live edits in before the file can overwrite them
+        const curName = curPreset >= 0 && presets[curPreset] ? presets[curPreset].name : null;
+        // Merge by name, never destructive: a preset in the file replaces the one
+        // with the same name (so re-restoring a backup updates rather than
+        // duplicates), a new name is appended, and anything you have that the file
+        // doesn't mention is left untouched.
+        let added = 0, updated = 0;
+        for (const p of valid) {
+          const at = presets.findIndex(q => q.name === p.name);
+          if (at >= 0) { presets[at] = p; updated++; } else { presets.push(p); added++; }
+        }
         rebuildPresetOptions();
+        // If the file overwrote the preset you're sitting on, load it — otherwise the
+        // live scene still holds the old values and the next edit would autosave them
+        // straight back over the one you just restored.
+        if (curName !== null && valid.some(p => p.name === curName)) applyPreset(curPreset);
         persist();
+        presetMsg(added + " added · " + updated + " overwritten · " +
+                  (presets.length - added - updated) + " of yours kept");
       } catch (err) { alert("Couldn't restore presets: " + err.message); }
     };
     reader.readAsText(file);
