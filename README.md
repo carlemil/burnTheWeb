@@ -91,7 +91,13 @@ the top-right corner.
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
 audio", or a *tab* + "share tab audio"), or **Mic** for the microphone. The
 audio is split into **low / mid / high** bands with per-band beat detection (the
-3-bar meter shows it working). Each ranged slider has three tiny **L / M / H**
+3-bar meter shows it working). Detection is **onset-based**: each band watches its
+*spectral flux* — how much the spectrum jumped **up** since the last look — so it
+fires on the attack of a kick or a hi-hat rather than on loudness, and a sustained
+bass line no longer masks the kick riding on top of it. The bar it has to clear
+adapts to the mix (it follows the recent flux, so a quiet verse still triggers),
+and the analysis runs on its own **100 Hz clock**, independent of the framerate,
+so beats stay in time even when the visual is working hard. Each ranged slider has three tiny **L / M / H**
 toggle chips: arm one and — while audio is on — the slider stops drifting and
 instead rests at its low thumb, snapping to its high thumb on each beat in that
 band and dropping back within 0.2s (so the range width sets how big the pulse
@@ -142,6 +148,21 @@ too), and click the canvas to pause. A **Resolution** control drops the render
 resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
 tab/screen audio capture isn't available, so only **Mic** is shown.
+
+## Dev overlays
+
+Two tuning tools, off by default and outside the normal settings (nothing they
+show is saved, shared or put in a preset):
+
+- **D** (or `?debug=1`) — **beat trace**. A scrolling plot per band of the
+  spectral flux, the adaptive threshold it has to clear, and a tick on every
+  detected beat, plus a rough BPM. This is how you see *why* a beat was missed:
+  the flux never rose, or it rose but stayed under the threshold.
+- **R** (or `?ranges=1`) — **slider range editor**. The min/max/step of every
+  slider is hardcoded in `index.html`; this lists the sliders of the currently
+  selected effect and lets you edit their bounds **live**, against the running
+  visual. **Copy changed** puts the new attributes on the clipboard to paste back
+  into `index.html`; **Reset** restores the shipped bounds.
 
 ## Running locally
 
