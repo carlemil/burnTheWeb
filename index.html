@@ -1301,7 +1301,11 @@
       TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // widen the box to the frame aspect
       ensureTetras(layerCount);
 
-      const F = 6.0;                             // camera distance (pin-hole focal)
+      const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
+      // Camera distance (pin-hole focal) set relative to the box's corner radius,
+      // so it stays a fixed *closeness* as Box size changes (and never falls inside
+      // the box, which would break the projection). Smaller factor = closer camera.
+      const F = Math.hypot(bx, by, bz) * 1.8;
       const yaw = spinAngle, pitch = 0.30 * Math.sin(t * 0.12);   // Rotation orbits the scene
       const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
       const cpit = Math.cos(pitch), spit = Math.sin(pitch);
@@ -1309,7 +1313,6 @@
         const x = p[0] * cyaw + p[2] * syaw, z = p[2] * cyaw - p[0] * syaw;
         return [x, p[1] * cpit - z * spit, p[1] * spit + z * cpit];
       };
-      const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
       const perspMax = F / (F - Math.hypot(bx, by, bz));   // nearest possible corner
       const scale = Math.min(halfW, halfH) * 0.92 / (Math.max(bx, by) * perspMax);
       const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
