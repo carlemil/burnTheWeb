@@ -2127,10 +2127,10 @@
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
   const PRESETS = {
-    0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], size: [1, 1], rot: [0, 0],  layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
-    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], boxsize: [2, 2], layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
-    2: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 2.1], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.69, 2.08], ratio: [5.5, 37], inrad: [0.03, 0.08], outrad: [0.95, 1.05], phase: [0.01, 0.03], points: 1500 },
-    3: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.8, 1.6], pwarp: [0.3, 0.9] },
+    0: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2],  layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
+    1: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    2: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], points: 1500 },
+    3: { band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
   };
   // Each effect keeps its own slider values, seeded from PRESETS. Switching
   // saves the outgoing effect's sliders and restores the incoming effect's, so
@@ -2177,8 +2177,10 @@
   // Default beat-chip selections per effect (slider id -> bands). Everything not
   // listed starts off.
   const BEAT_PRESETS = {
-    2: { banddim: ["low", "high"], zoom: ["mid"], phase: ["high"] },   // AnimeJulia
-    3: { pscale: ["low"], band: ["mid"], pwarp: ["high"] },            // Plasma
+    0: { speed: ["high"], size: ["low"] },                             // Sirpinfyer
+    1: { speed: ["low"], rise: ["high"], size: ["mid"] },              // Tetrafyer
+    2: { banddim: ["low"], zoom: ["mid"], phase: ["high"] },           // AnimeJulia
+    3: { band: ["low"], banddim: ["high"], pscale: ["low"] },          // Plasma
   };
   function presetBeat(e) {            // a fresh copy of effect e's default chip selection
     const bt = {};
@@ -2199,10 +2201,10 @@
   // remembered per effect, so each effect is a fully independent scene.
   const extras = {};
   const EXTRA_PRESETS = {
-    0: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
-    1: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
-    2: { palette: "0", morph: true, showBox: true, ttl: [30, 90] },
-    3: { palette: "7", morph: true, showBox: true, ttl: [30, 90] },
+    0: { palette: "7", morph: true, showBox: true, ttl: [10, 30] },
+    1: { palette: "1", morph: true, showBox: false, ttl: [10, 30] },
+    2: { palette: "2", morph: true, showBox: true, ttl: [10, 30] },
+    3: { palette: "0", morph: true, showBox: true, ttl: [10, 30] },
   };
   function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, ttl: x.ttl.slice() }; }
   function initExtras() { for (const k in PRESETS) extras[k] = presetExtra(k); }
@@ -2516,7 +2518,8 @@
     };
   }
   function defaultPresets() {
-    return [0, 1, 2, 3].map(e => ({ name: effectSel.options[e].text, effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
+    const names = ["Sirpinfyer", "Tetrafyer", "Phat julia", "Plasma 1"];
+    return [0, 1, 2, 3].map(e => ({ name: names[e], effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
