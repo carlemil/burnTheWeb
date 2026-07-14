@@ -302,6 +302,37 @@
   #syncpop .sync-actions button:hover { background: rgba(255, 122, 26, 0.3); }
   #syncpop .sync-actions #sync-capture { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
   #syncpop .sync-actions .ghost { flex: 0 0 auto; background: transparent; opacity: .75; }
+
+  /* Restore-from-backup dialog */
+  #restoredlg {
+    position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #restoredlg.hidden { display: none; }
+  #restoredlg .rst-box {
+    position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
+    padding: 20px 22px; background: rgba(14, 8, 5, 0.98);
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #restoredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #restoredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
+  #restoredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; }
+  #restoredlg label.rst-opt { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; cursor: pointer; }
+  #restoredlg label.rst-opt.disabled { opacity: .35; cursor: default; }
+  #restoredlg .rst-opt input { margin-top: 2px; flex: none; }
+  #restoredlg .rst-opt small { display: block; opacity: .6; font-size: 10.5px; }
+  #restoredlg .rst-mode { margin: 2px 0 4px 26px; }
+  #restoredlg .rst-mode.disabled { opacity: .35; }
+  #restoredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
+  #restoredlg .rst-actions button {
+    flex: 1; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
+    font: 12px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #restoredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
 </style>
 </head>
 <body>
@@ -311,17 +342,20 @@
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
+  <label>Backup &amp; restore</label>
+  <div class="presetrow">
+    <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, beat-detection tuning — everything the app remembers">Backup</button>
+    <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup — choose which parts to bring back, and whether to merge or replace">Restore</button>
+  </div>
+  <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
+  <hr class="sep">
+
   <label>Presets</label>
   <select id="preset"></select>
   <div class="presetrow">
     <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
-  <div class="presetrow">
-    <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, active effect, resolution — everything the app remembers">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup: merges presets (adds new, overwrites same-named, keeps the rest) and restores all saved settings. Reloads the page.">Restore</button>
-  </div>
-  <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
   <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
 
   <div id="grp-ttl">
@@ -483,19 +517,43 @@
   <hr class="sep">
   <button id="reset" type="button">Reset this effect</button>
   <div class="presetrow">
-    <button id="copy" class="audbtn" type="button" title="Copy this effect's settings as text">Export</button>
-    <button id="import" class="audbtn" type="button" title="Paste settings to apply them">Import</button>
     <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
   </div>
 
-  <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>F</b> or <b>⛶</b> for fullscreen</p>
-  <p class="hint">Dev: <b>D</b> — beat trace (L/M/H) · <b>B</b> — tune beat detection · <b>R</b> — edit sliders' min/max/step</p>
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> toggle panel/fullscreen</p>
+  <p class="hint">Keys:<br>
+    <b>H</b> — show/hide this panel<br>
+    <b>F</b> — fullscreen<br>
+    <b>D</b> — beat-detection trace<br>
+    <b>B</b> — tune beat detection<br>
+    <b>R</b> — edit sliders' min/max/step</p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (H)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
+
+<div id="restoredlg" class="hidden">
+  <div class="rst-box">
+    <h2>Restore from backup</h2>
+    <p class="rst-sub" id="rst-sub"></p>
+    <div class="rst-grp">What to restore</div>
+    <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Presets <small id="rst-presets-n"></small></span></label>
+    <div class="rst-mode" id="rst-mode">
+      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-merge" checked><span>Merge — add new &amp; overwrite same-named, keep the rest</span></label>
+      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-replace"><span>Replace — delete my presets, use only the backup's</span></label>
+    </div>
+    <label class="rst-opt" id="rst-opt-settings"><input type="checkbox" id="rst-settings" checked><span>Effect settings <small>each effect's sliders, beats &amp; palette; active effect, resolution, auto-cycle</small></span></label>
+    <label class="rst-opt" id="rst-opt-ranges"><input type="checkbox" id="rst-ranges" checked><span>Custom slider ranges</span></label>
+    <label class="rst-opt" id="rst-opt-beat"><input type="checkbox" id="rst-beat" checked><span>Beat-detection tuning</span></label>
+    <div class="rst-actions">
+      <button type="button" id="rst-go">Restore</button>
+      <button type="button" id="rst-cancel">Cancel</button>
+    </div>
+    <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
+  </div>
+</div>
 
 <div id="syncpop" class="hidden">
   <div class="sync-box">
@@ -2470,65 +2528,6 @@
     persist();
   });
 
-  // Copy the current effect's settings as ready-to-paste preset lines (so they
-  // can be handed back to bake in as this effect's new defaults).
-  function currentSettingsText() {
-    saveState(effect); saveBeat(effect); saveExtra(effect);   // capture the live values
-    const e = effect, st = states[e], ex = extras[e];
-    const fv = v => Array.isArray(v) ? "[" + v.join(", ") + "]" : v;
-    const sliders = Object.keys(st).map(id => id + ": " + fv(st[id])).join(", ");
-    const beat = Object.keys(beatStates[e]).map(id => {
-      const on = ["low", "mid", "high"].filter(b => beatStates[e][id][b]);
-      return on.length ? id + ': ["' + on.join('", "') + '"]' : null;
-    }).filter(Boolean).join(", ");
-    return "burnTheWeb — " + effectSel.options[e].text + " (effect " + e + ") — paste to Claude to set as this effect's defaults\n\n" +
-      "PRESETS[" + e + "]: { " + sliders + " }\n" +
-      "BEAT_PRESETS[" + e + "]: { " + beat + " }\n" +
-      'EXTRA_PRESETS[' + e + ']: { palette: "' + ex.palette + '", morph: ' + ex.morph + ', showBox: ' + ex.showBox + ", ttl: [" + ex.ttl.join(", ") + "] }";
-  }
-  el("copy").addEventListener("click", () => {
-    const text = currentSettingsText(), btn = el("copy");
-    const done = okState => { btn.textContent = okState ? "Copied!" : "Copy failed"; setTimeout(() => btn.textContent = "Export", 1300); };
-    const fallback = () => {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text; ta.style.cssText = "position:fixed;opacity:0";
-        document.body.appendChild(ta); ta.select();
-        const okc = document.execCommand("copy"); document.body.removeChild(ta); done(okc);
-      } catch (e) { done(false); }
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => done(true), fallback);
-    else fallback();
-  });
-
-  // Import a pasted "Export settings" string and apply it to its effect.
-  el("import").addEventListener("click", () => {
-    const text = prompt("Paste exported settings:");
-    if (!text) return;
-    try {
-      // parse without eval: quote the (known, identifier) keys → valid JSON.
-      const grab = key => {
-        const m = text.match(new RegExp("\\b" + key + "\\[(\\d)\\]:\\s*(\\{[\\s\\S]*?\\})"));
-        if (!m) return null;
-        return { e: +m[1], obj: JSON.parse(m[2].replace(/([a-zA-Z_]\w*)\s*:/g, '"$1":')) };
-      };
-      const P = grab("PRESETS"); if (!P || !PRESETS[P.e]) throw new Error("no valid PRESETS line");
-      const B = grab("BEAT_PRESETS"), X = grab("EXTRA_PRESETS"), e = P.e;
-      states[e] = mergeState(e, P.obj);   // normalize to the current slider set
-      const bd = B ? B.obj : {};
-      const nb = {};
-      for (const id in beatReact) { const bands = bd[id] || []; nb[id] = { low: bands.indexOf("low") >= 0, mid: bands.indexOf("mid") >= 0, high: bands.indexOf("high") >= 0 }; }
-      beatStates[e] = nb;
-      if (X) extras[e] = X.obj;
-      applyingPreset = true;
-      effectSel.value = e; curPreset = -1;
-      setEffect(e, false);
-      presetSel.value = "-1";
-      applyingPreset = false;
-      persist();
-    } catch (err) { alert("Couldn't import settings: " + err.message); }
-  });
-
   // Share: copy a link that opens with the current settings (all effects' values,
   // but not the browser-local saved presets). Decoded by applyShared() on load.
   el("share").addEventListener("click", () => {
@@ -2652,39 +2651,73 @@
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
                        state: mergeState(p.effect, p.state), beat: p.beat, extra: p.extra }));
         if (!valid.length) throw new Error("no valid presets in file");
-        const hasSettings = !Array.isArray(parsed) && parsed.states;   // a full snapshot?
-        if (!confirm("Restore " + valid.length + " preset(s)" +
-            (hasSettings ? " and all saved settings" : "") +
-            " from this backup? The page will reload.")) return;
-        autosavePreset();                  // fold pending live edits in before the merge
-        // Merge presets by name, never destructive: a preset in the file replaces the
-        // one with the same name (re-restoring updates rather than duplicates), a new
-        // name is appended, and anything you have the file doesn't mention is kept.
-        for (const p of valid) {
-          const at = presets.findIndex(q => q.name === p.name);
-          if (at >= 0) presets[at] = p; else presets.push(p);
-        }
-        // Write the full restored state to localStorage and reload, so the normal,
-        // battle-tested load path (restore → applyBlob → setEffect → resize) applies
-        // every setting exactly — resolution, active effect, custom ranges and all.
-        let blob;
-        if (hasSettings) {
-          blob = { ...fullSnapshot(), ...parsed, presets };   // backup settings win; use the MERGED library
-          // curPreset in the file indexes the file's list — re-point it by name.
-          const selName = (parsed.curPreset >= 0 && parsed.presets && parsed.presets[parsed.curPreset])
-            ? parsed.presets[parsed.curPreset].name : null;
-          blob.curPreset = selName ? presets.findIndex(p => p.name === selName) : -1;
-        } else {
-          blob = fullSnapshot();                              // legacy: keep current settings...
-          if (parsed && parsed.ranges) blob.ranges = parsed.ranges;   // ...but take saved ranges if present
-          blob.presets = presets;                             // ...with the merged library
-        }
-        localStorage.setItem(STORE_KEY, JSON.stringify(blob));
-        location.reload();
-      } catch (err) { alert("Couldn't restore backup: " + err.message); }
+        openRestore(parsed, valid, file.name);   // let the user pick what to restore + how
+      } catch (err) { alert("Couldn't read backup: " + err.message); }
     };
     reader.readAsText(file);
   });
+
+  // ---- Restore dialog: choose which parts to bring back, and merge vs replace ----
+  let pendingRestore = null;
+  function openRestore(parsed, valid, fileName) {
+    const hasSettings = !Array.isArray(parsed) && !!parsed.states;
+    const hasRanges = !Array.isArray(parsed) && parsed.ranges && typeof parsed.ranges === "object";
+    const hasBeat = !Array.isArray(parsed) && parsed.beatTune && typeof parsed.beatTune === "object";
+    pendingRestore = { parsed, valid, hasSettings, hasRanges, hasBeat };
+    const bits = [valid.length + " preset" + (valid.length === 1 ? "" : "s")];
+    if (hasSettings) bits.push("settings"); if (hasRanges) bits.push("ranges"); if (hasBeat) bits.push("beat tuning");
+    el("rst-sub").textContent = (fileName || "backup") + " — " + bits.join(", ");
+    el("rst-presets-n").textContent = "(" + valid.length + ")";
+    // Enable only the parts the file actually contains; check the available ones.
+    const opt = (wrapId, cbId, avail) => {
+      const cb = el(cbId); cb.checked = avail; cb.disabled = !avail;
+      el(wrapId).classList.toggle("disabled", !avail);
+    };
+    opt("rst-opt-presets", "rst-presets", true);
+    opt("rst-opt-settings", "rst-settings", hasSettings);
+    opt("rst-opt-ranges", "rst-ranges", hasRanges);
+    opt("rst-opt-beat", "rst-beat", hasBeat);
+    el("rst-merge").checked = true;
+    el("restoredlg").classList.remove("hidden");
+  }
+  function closeRestore() { el("restoredlg").classList.add("hidden"); pendingRestore = null; }
+  function applyRestore() {
+    const p = pendingRestore; if (!p) return;
+    autosavePreset();                          // fold pending live edits before snapshotting
+    const out = fullSnapshot();                // current everything is the base; override chosen parts
+    if (el("rst-presets").checked) {
+      let lib;
+      if (el("rst-replace").checked) {
+        lib = p.valid.slice();                 // Replace: only the backup's presets
+      } else {                                 // Merge: overwrite same-named, keep the rest, append new
+        lib = out.presets.slice();
+        for (const q of p.valid) { const at = lib.findIndex(x => x.name === q.name); if (at >= 0) lib[at] = q; else lib.push(q); }
+      }
+      out.presets = lib;
+      const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
+        ? p.parsed.presets[p.parsed.curPreset].name : null;
+      out.curPreset = sel ? lib.findIndex(x => x.name === sel) : -1;
+    }
+    if (p.hasSettings && el("rst-settings").checked) {
+      const s = p.parsed;
+      out.states = s.states; out.beats = s.beats; out.extras = s.extras;
+      if (Number.isInteger(s.effect)) out.effect = s.effect;
+      if (typeof s.cycle === "boolean") out.cycle = s.cycle;
+      if (s.scale) out.scale = s.scale;
+      if (typeof s.panelOpen === "boolean") out.panelOpen = s.panelOpen;
+      if (!el("rst-presets").checked) out.curPreset = -1;   // live values came from the file; don't claim a preset
+    }
+    if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
+    if (p.hasBeat && el("rst-beat").checked) out.beatTune = p.parsed.beatTune;
+    // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
+    localStorage.setItem(STORE_KEY, JSON.stringify(out));
+    location.reload();
+  }
+  el("rst-go").addEventListener("click", applyRestore);
+  el("rst-cancel").addEventListener("click", closeRestore);
+  el("restoredlg").addEventListener("click", e => { if (e.target === el("restoredlg")) closeRestore(); });   // backdrop
+  // Merge/Replace only matters when Presets is being restored — dim it otherwise.
+  el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
 
   // Initial paint: setEffect → loadExtra applies the restored effect's palette,
   // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
@@ -2911,7 +2944,7 @@
     else if (e.key === "d" || e.key === "D") dbgToggle();      // beat-detection trace
     else if (e.key === "r" || e.key === "R") rngToggle();      // slider min/max editor
     else if (e.key === "b" || e.key === "B") beatToggle();     // beat-detection tuning
-    else if (e.key === "Escape") closeHelp();
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
@@ -2925,7 +2958,7 @@
     },
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1) | "plasma" (3) | "band" (2,3)
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. Backup downloads all your presets as a file; Restore loads them back (they're otherwise browser-local). At the bottom: Export/Import copy or paste one effect's settings as text, and Share makes a link that opens with the current settings." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. At the top, Backup downloads everything (all presets and settings) as a file and Restore loads a backup back, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },

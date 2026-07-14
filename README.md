@@ -113,7 +113,7 @@ visibility is remembered per effect.
 
 | Control | What it does |
 | --- | --- |
-| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. **Backup** downloads a full `.json` snapshot — every preset **plus** all your saved settings (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution, everything the app remembers). **Restore** loads it back and reloads the page: your presets are **merged** (a preset in the file overwrites the one with the same name, new names are added, anything the file doesn't mention is kept — never deletes, never duplicates) and all the other settings are restored. |
+| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. At the top of the panel, **Backup** downloads a full `.json` snapshot — every preset **plus** all your saved settings (each effect's current values, custom slider ranges, beat-detection tuning, the active effect, auto-cycle, render resolution — everything the app remembers). **Restore** loads it back: a dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. |
@@ -141,7 +141,7 @@ visibility is remembered per effect.
 | **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
-| **Export / Import / Share** | **Export** copies the current effect's settings as text (handy to paste to Claude to bake in as new defaults); **Import** pastes such a string back; **Share** copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
+| **Share** | Copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
 
 Press **H** or **☰** to toggle the panel, **F** or **⛶** for fullscreen (works on
 mobile too), and click the canvas to pause. A **Resolution** control drops the render

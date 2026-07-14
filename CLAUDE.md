@@ -88,13 +88,16 @@ slider set changes (call it whenever you add/remove/rename a `PRESETS` key).
   Backup file. The `rng` editor (below) writes them live via the normal persist path.
 - **Share** encodes `{states, beats, extras, effect, cycle, ranges}` (NOT presets)
   as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
-- **Backup** file is the full `fullSnapshot()` blob (every preset + all settings).
-  **Restore** merges presets by name (non-destructive: adds new, overwrites
-  same-named, keeps the rest), remaps `curPreset` by name, writes the merged full blob
-  to `localStorage`, and **reloads** — so the normal load path (`restore` → `applyBlob`
-  → `setEffect` → `resize`) reapplies every setting exactly (resolution included).
-  Older `{presets, ranges}` objects and bare-array backups still restore (their
-  presets merge; current settings are kept).
+- **Backup** file (top of panel) is the full `fullSnapshot()` blob (every preset + all
+  settings). **Restore** opens the `#restoredlg` dialog: `openRestore(parsed, valid,
+  name)` shows a checkbox per part the file actually contains (presets / effect settings
+  / ranges / beat tuning) plus a merge-vs-replace radio for presets. `applyRestore()`
+  starts from the current `fullSnapshot()` and overrides only the ticked parts — presets
+  merge by name or fully replace, `curPreset` is remapped by name — then writes to
+  `localStorage` and **reloads**, so the normal load path (`restore` → `applyBlob` →
+  `setEffect` → `resize`) reapplies it exactly. Older `{presets, ranges}` objects and
+  bare-array backups still load (only the parts they carry are offered). There is no
+  per-effect text Export/Import — removed; **Share** is the only text-export path.
 
 ### Audio & beat reactivity
 `audio` holds the WebAudio graph; `startAudio("capture"|"mic")` grabs
