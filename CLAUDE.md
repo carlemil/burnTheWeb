@@ -72,10 +72,15 @@ writes the current scene straight back into the selected preset (no manual save)
 retired keys and defaults new ones, so old saved presets keep loading after the
 slider set changes (call it whenever you add/remove/rename a `PRESETS` key).
 - Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, extras, effect,
-  ranges, presets, curPreset, cycle, panelOpen, audio}`. `applyBlob(saved, sharing)`
+  ranges, presets, curPreset, cycle, scale, panelOpen, audio}` — built by the single
+  helper **`fullSnapshot()`**, which is *the* definition of "everything we remember."
+  `persist()` and the Backup file both serialize exactly `fullSnapshot()`, so a newly
+  saved setting can never land in one but not the other. `applyBlob(saved, sharing)`
   is shared by `restore()` and `applyShared()`; it applies `ranges` **first** (so the
   live slider bounds are the custom ones) then validates every value against those
-  bounds so a changed range can never load junk.
+  bounds so a changed range can never load junk. Anything a user can change that is
+  *not* in `fullSnapshot()` is deliberately transient: pause, fullscreen, and the
+  `dbg`/`rng` overlay visibility.
 - **Custom slider ranges** (min/max/step) are saved, not just live. `RNG_ORIG`
   captures the shipped bounds up top (before `restore()` can overwrite them);
   `collectRanges()` stores only sliders whose bounds differ from shipped and
@@ -83,8 +88,13 @@ slider set changes (call it whenever you add/remove/rename a `PRESETS` key).
   Backup file. The `rng` editor (below) writes them live via the normal persist path.
 - **Share** encodes `{states, beats, extras, effect, cycle, ranges}` (NOT presets)
   as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
-- **Backup** file is `{presets, ranges}` (a bare-array backup from before ranges is
-  still accepted on Restore).
+- **Backup** file is the full `fullSnapshot()` blob (every preset + all settings).
+  **Restore** merges presets by name (non-destructive: adds new, overwrites
+  same-named, keeps the rest), remaps `curPreset` by name, writes the merged full blob
+  to `localStorage`, and **reloads** — so the normal load path (`restore` → `applyBlob`
+  → `setEffect` → `resize`) reapplies every setting exactly (resolution included).
+  Older `{presets, ranges}` objects and bare-array backups still restore (their
+  presets merge; current settings are kept).
 
 ### Audio & beat reactivity
 `audio` holds the WebAudio graph; `startAudio("capture"|"mic")` grabs

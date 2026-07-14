@@ -307,11 +307,10 @@
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
   <div class="presetrow">
-    <button id="exportpresets" class="audbtn" type="button" title="Download all your saved presets (and any custom slider ranges) as a .json backup">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Load presets from a .json backup: adds new ones, overwrites same-named ones, keeps everything else — and restores any custom slider ranges">Restore</button>
+    <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, active effect, resolution — everything the app remembers">Backup</button>
+    <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup: merges presets (adds new, overwrites same-named, keeps the rest) and restores all saved settings. Reloads the page.">Restore</button>
   </div>
   <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
-  <p id="presetMsg" class="hint"></p>
   <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
 
   <div id="grp-ttl">
@@ -2264,22 +2263,28 @@
 
   const STORE_KEY = "burnTheWeb.v1";
   let persistReady = false, suppressPersist = false;
-  function persist() {
-    if (!persistReady || suppressPersist) return;
+  // The single source of truth for "everything the user can change and we remember":
+  // both localStorage (persist) and the Backup file are this exact object, so a new
+  // saved setting can never end up in one but not the other. Anything NOT here is
+  // deliberately transient (pause, fullscreen, the dev overlays) — see the Backup docs.
+  function fullSnapshot() {
     saveState(effect);                // fold the live sliders into the current effect
     saveBeat(effect);                 // ...the live beat toggles
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({
-        states, beats: beatStates, extras, effect,
-        ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
-        presets, curPreset,
-        cycle: cycleChk.checked,                       // shared (session controls)
-        scale: cfg.scale,                              // render resolution (global)
-        panelOpen: !panel.classList.contains("hidden"),
-        audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
-      }));
-    } catch (e) { /* storage full / disabled — ignore */ }
+    return {
+      states, beats: beatStates, extras, effect,
+      ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
+      presets, curPreset,
+      cycle: cycleChk.checked,                       // auto-cycle presets
+      scale: cfg.scale,                              // render resolution (global)
+      panelOpen: !panel.classList.contains("hidden"),
+      audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
+    };
+  }
+  function persist() {
+    if (!persistReady || suppressPersist) return;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(fullSnapshot())); }
+    catch (e) { /* storage full / disabled — ignore */ }
   }
   // Apply a settings blob (from localStorage or a shared URL). `sharing` skips the
   // browser-local bits (saved presets, panel state) so a shared link only carries
@@ -2573,20 +2578,14 @@
   });
   presetSel.addEventListener("change", () => { const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1; });
 
-  // Backup / Restore the whole preset library (they're browser-local otherwise).
-  let presetMsgT = 0;
-  function presetMsg(m) {
-    const e = el("presetMsg");
-    e.textContent = m || "";
-    e.style.display = m ? "block" : "none";
-    clearTimeout(presetMsgT);
-    if (m) presetMsgT = setTimeout(() => presetMsg(""), 6000);
-  }
+  // Backup / Restore the whole saved state (it's browser-local otherwise).
   el("exportpresets").addEventListener("click", () => {
     autosavePreset();                 // fold pending edits into the selected preset first
-    // { presets, ranges } — the preset library plus any custom slider bounds. (A bare
-    // array is still accepted on Restore for backups made before ranges were saved.)
-    const blob = new Blob([JSON.stringify({ presets, ranges: collectRanges() }, null, 2)], { type: "application/json" });
+    // Full snapshot: every saved value (all presets, all per-effect scenes, custom
+    // slider ranges, active effect, auto-cycle, resolution, panel state, ...) — the
+    // same object persist() writes, so Restore brings the app back exactly. (A bare
+    // array or a { presets, ranges } object from older builds still restores.)
+    const blob = new Blob([JSON.stringify(fullSnapshot(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "burnTheWeb-presets.json";
@@ -2602,35 +2601,45 @@
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result);
-        // Accept both the current { presets, ranges } object and a legacy bare array.
+        // Accept a full snapshot (current), a legacy { presets, ranges } object, or a
+        // bare presets array (oldest). `arr` is the preset list in every shape.
         const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.presets);
-        if (!Array.isArray(arr)) throw new Error("not a preset backup");
-        if (parsed && parsed.ranges) { applyRanges(parsed.ranges); refreshRangeUI(); }
+        if (!Array.isArray(arr)) throw new Error("not a burnTheWeb backup");
         const valid = arr
           .filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra)
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
                        state: mergeState(p.effect, p.state), beat: p.beat, extra: p.extra }));
         if (!valid.length) throw new Error("no valid presets in file");
-        autosavePreset();                  // fold pending live edits in before the file can overwrite them
-        const curName = curPreset >= 0 && presets[curPreset] ? presets[curPreset].name : null;
-        // Merge by name, never destructive: a preset in the file replaces the one
-        // with the same name (so re-restoring a backup updates rather than
-        // duplicates), a new name is appended, and anything you have that the file
-        // doesn't mention is left untouched.
-        let added = 0, updated = 0;
+        const hasSettings = !Array.isArray(parsed) && parsed.states;   // a full snapshot?
+        if (!confirm("Restore " + valid.length + " preset(s)" +
+            (hasSettings ? " and all saved settings" : "") +
+            " from this backup? The page will reload.")) return;
+        autosavePreset();                  // fold pending live edits in before the merge
+        // Merge presets by name, never destructive: a preset in the file replaces the
+        // one with the same name (re-restoring updates rather than duplicates), a new
+        // name is appended, and anything you have the file doesn't mention is kept.
         for (const p of valid) {
           const at = presets.findIndex(q => q.name === p.name);
-          if (at >= 0) { presets[at] = p; updated++; } else { presets.push(p); added++; }
+          if (at >= 0) presets[at] = p; else presets.push(p);
         }
-        rebuildPresetOptions();
-        // If the file overwrote the preset you're sitting on, load it — otherwise the
-        // live scene still holds the old values and the next edit would autosave them
-        // straight back over the one you just restored.
-        if (curName !== null && valid.some(p => p.name === curName)) applyPreset(curPreset);
-        persist();
-        presetMsg(added + " added · " + updated + " overwritten · " +
-                  (presets.length - added - updated) + " of yours kept");
-      } catch (err) { alert("Couldn't restore presets: " + err.message); }
+        // Write the full restored state to localStorage and reload, so the normal,
+        // battle-tested load path (restore → applyBlob → setEffect → resize) applies
+        // every setting exactly — resolution, active effect, custom ranges and all.
+        let blob;
+        if (hasSettings) {
+          blob = { ...fullSnapshot(), ...parsed, presets };   // backup settings win; use the MERGED library
+          // curPreset in the file indexes the file's list — re-point it by name.
+          const selName = (parsed.curPreset >= 0 && parsed.presets && parsed.presets[parsed.curPreset])
+            ? parsed.presets[parsed.curPreset].name : null;
+          blob.curPreset = selName ? presets.findIndex(p => p.name === selName) : -1;
+        } else {
+          blob = fullSnapshot();                              // legacy: keep current settings...
+          if (parsed && parsed.ranges) blob.ranges = parsed.ranges;   // ...but take saved ranges if present
+          blob.presets = presets;                             // ...with the merged library
+        }
+        localStorage.setItem(STORE_KEY, JSON.stringify(blob));
+        location.reload();
+      } catch (err) { alert("Couldn't restore backup: " + err.message); }
     };
     reader.readAsText(file);
   });
