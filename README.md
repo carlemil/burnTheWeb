@@ -143,8 +143,8 @@ visibility is remembered per effect.
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
 | **Export / Import / Share** | **Export** copies the current effect's settings as text (handy to paste to Claude to bake in as new defaults); **Import** pastes such a string back; **Share** copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
 
-Press **H** or **☰** to toggle the panel, **⛶** for fullscreen (works on mobile
-too), and click the canvas to pause. A **Resolution** control drops the render
+Press **H** or **☰** to toggle the panel, **F** or **⛶** for fullscreen (works on
+mobile too), and click the canvas to pause. A **Resolution** control drops the render
 resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
 tab/screen audio capture isn't available, so only **Mic** is shown.

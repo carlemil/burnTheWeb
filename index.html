@@ -478,7 +478,7 @@
     <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
   </div>
 
-  <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>⛶</b> for fullscreen</p>
+  <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>F</b> or <b>⛶</b> for fullscreen</p>
   <p class="hint">Dev: <b>D</b> — beat-detection trace for the L/M/H bands · <b>R</b> — edit the sliders' min/max/step ranges</p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (H)">☰</button>
@@ -2645,11 +2645,12 @@
     persist();                          // remember panel open/closed across reloads
   }
   toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
-  // Fullscreen toggle (works on mobile too, where F11 doesn't exist).
-  el("fs").addEventListener("click", () => {
+  // Fullscreen toggle (works on mobile too, where F11 doesn't exist; also the "f" key).
+  function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
     else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
-  });
+  }
+  el("fs").addEventListener("click", toggleFullscreen);
   const pausedEl = el("paused");
   function setPaused(p) { paused = p; pausedEl.classList.toggle("hidden", !paused); }
   canvas.addEventListener("click", () => setPaused(!paused));
@@ -2777,6 +2778,7 @@
   window.addEventListener("keydown", e => {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in the range editor
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
+    else if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "d" || e.key === "D") dbgToggle();      // beat-detection trace
     else if (e.key === "r" || e.key === "R") rngToggle();      // slider min/max editor
     else if (e.key === "Escape") closeHelp();
