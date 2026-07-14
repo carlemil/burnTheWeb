@@ -366,8 +366,8 @@
     <label class="check"><input type="checkbox" id="showbox" checked> Show box</label>
     <label>Box size <span class="val" id="vBoxSize"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="boxsize-lo" min="0.8" max="3" step="0.05" value="1">
-      <input type="range" id="boxsize-hi" min="0.8" max="3" step="0.05" value="1"></div>
+      <input type="range" id="boxsize-lo" min="0.8" max="4" step="0.05" value="2">
+      <input type="range" id="boxsize-hi" min="0.8" max="4" step="0.05" value="2"></div>
   </div>
 
   <div id="grp-band">
@@ -479,6 +479,7 @@
   </div>
 
   <p class="hint">Press <b>H</b> or <b>☰</b> to toggle panel · click canvas to pause · <b>⛶</b> for fullscreen</p>
+  <p class="hint">Dev: <b>D</b> — beat-detection trace for the L/M/H bands · <b>R</b> — edit the sliders' min/max/step ranges</p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (H)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
@@ -1320,15 +1321,15 @@
       // through the same pin-hole camera. Rotation orbits the whole scene. Layers
       // adds smaller, fewer-point, independently-seeded tetrahedra in the same box.
       const halfW = (xR - xL) * 0.5, halfH = (yB - yT) * 0.5;
-      TETRA_BOX[1] = 1.05 * boxSize;             // Box size scales the container (y,z;
-      TETRA_BOX[2] = 1.0 * boxSize;              // x follows from the frame aspect below)
-      TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // widen the box to the frame aspect
-      ensureTetras(layerCount);
+      TETRA_BOX[1] = 1.05;                        // fixed container half-extents (y,z);
+      TETRA_BOX[2] = 1.0;                         // x follows from the frame aspect below.
+      TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // Box size is a whole-scene zoom (below),
+      ensureTetras(layerCount);                  // not a world resize, so physics room is fixed.
 
       const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
       // Camera distance (pin-hole focal) set relative to the box's corner radius,
-      // so it stays a fixed *closeness* as Box size changes (and never falls inside
-      // the box, which would break the projection). Smaller factor = closer camera.
+      // so it never falls inside the box (which would break the projection).
+      // Smaller factor = closer camera.
       const F = Math.hypot(bx, by, bz) * 1.8;
       const yaw = spinAngle, pitch = 0.30 * Math.sin(t * 0.12);   // Rotation orbits the scene
       const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
@@ -1338,8 +1339,10 @@
         return [x, p[1] * cpit - z * spit, p[1] * spit + z * cpit];
       };
       const perspMax = F / (F - Math.hypot(bx, by, bz));   // nearest possible corner
-      const scale = Math.min(halfW, halfH) * 0.92 / (Math.max(bx, by) * perspMax);
-      const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+      // Box size zooms the whole scene (box + tetrahedra) about the frame centre;
+      // 2x sends the box corners past the frame edges (intended).
+      const scale = Math.min(halfW, halfH) * 0.92 / (Math.max(bx, by) * perspMax) * boxSize;
+      const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5 - (yB - yT) * 0.20;   // lift the scene up 20%
       const project = p => {                     // view-space → screen; z<F always
         const persp = F / (F - p[2]);
         return [cx + p[0] * persp * scale, cy - p[1] * persp * scale];
@@ -1830,8 +1833,19 @@
   function flashChips() {
     for (const id in chipEls) {
       for (const k in chipEls[id]) {
+        const el = chipEls[id][k];
         const lit = audio.on && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
-        chipEls[id][k].style.boxShadow = lit > 0.05 ? "0 0 " + (lit * 8).toFixed(1) + "px " + BANDCOLOR[k] : "";
+        if (lit > 0.05) {
+          // punchy flash: a bright halo that snaps on the beat and a quick scale pop,
+          // both riding the band's decaying pulse.
+          const col = BANDCOLOR[k];
+          el.style.boxShadow = "0 0 " + (5 + lit * 18).toFixed(1) + "px " + col +
+                               ", 0 0 " + (lit * 7).toFixed(1) + "px " + col;
+          el.style.transform = "scale(" + (1 + lit * 0.35).toFixed(3) + ")";
+        } else {
+          el.style.boxShadow = "";
+          el.style.transform = "";
+        }
       }
     }
   }
@@ -2114,7 +2128,7 @@
   // bare number is a simple slider. Each effect gets its own tuned look.
   const PRESETS = {
     0: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [20, 50], rise: [105, 150], zoom: [1, 3], size: [1, 1], rot: [0, 0],  layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 2500 },
-    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], boxsize: [1, 1], layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+    1: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [5, 15],  rise: [130, 130], zoom: [2, 2], size: [1, 1], rot: [11, 11], boxsize: [2, 2], layers: 1, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
     2: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 2.1], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.69, 2.08], ratio: [5.5, 37], inrad: [0.03, 0.08], outrad: [0.95, 1.05], phase: [0.01, 0.03], points: 1500 },
     3: { band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.8, 1.6], pwarp: [0.3, 0.9] },
   };
@@ -2743,7 +2757,7 @@
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
       { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
-      { n: "Box size", w: "tetra", t: "Tetrafyer only — how large the box the tetrahedra bounce inside is. Bigger gives them more room to roam (and they appear smaller as the scene scales to fit)." },
+      { n: "Box size", w: "tetra", t: "Tetrafyer only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
       { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
       { n: "Band size", w: "band", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "band", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
