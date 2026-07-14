@@ -307,8 +307,8 @@
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
   <div class="presetrow">
-    <button id="exportpresets" class="audbtn" type="button" title="Download all your saved presets as a .json backup">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Load presets from a .json backup: adds new ones, overwrites same-named ones, keeps everything else">Restore</button>
+    <button id="exportpresets" class="audbtn" type="button" title="Download all your saved presets (and any custom slider ranges) as a .json backup">Backup</button>
+    <button id="importpresets" class="audbtn" type="button" title="Load presets from a .json backup: adds new ones, overwrites same-named ones, keeps everything else — and restores any custom slider ranges">Restore</button>
   </div>
   <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
   <p id="presetMsg" class="hint"></p>
@@ -2223,6 +2223,43 @@
     suppressPersist = false;
   }
 
+  // ---- custom slider ranges (min/max/step) — persisted, shared and backed up ----
+  // The sliders' bounds ship as HTML attributes; capture them once, pristine, so we
+  // can store only the ones the user actually retunes (and let a changed shipped
+  // default flow through to sliders they never touched). This must run before the
+  // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
+  const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
+  panel.querySelectorAll("input[type=range]").forEach(inp => {
+    RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
+  });
+  function collectRanges() {              // { id: {min,max,step} } for bounds that differ from shipped
+    const out = {};
+    for (const id in RNG_ORIG) {
+      const inp = el(id), o = RNG_ORIG[id];
+      if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
+        out[id] = { min: inp.min, max: inp.max, step: inp.step };
+    }
+    return out;
+  }
+  function applyRanges(r) {               // set custom bounds onto the slider elements (validated)
+    if (!r || typeof r !== "object") return;
+    for (const id in r) {
+      const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
+      const mn = +v.min, mx = +v.max, sp = +v.step;
+      if (!isFinite(mn) || !isFinite(mx) || !isFinite(sp) || mx <= mn || sp <= 0) continue;
+      inp.min = String(mn); inp.max = String(mx); inp.step = String(sp);
+    }
+  }
+  // After bounds change mid-session, re-clamp stray values and re-run each slider's
+  // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
+  function refreshRangeUI() {
+    panel.querySelectorAll("input[type=range]").forEach(inp => {
+      const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
+      if (c !== +inp.value) inp.value = String(c);
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
   const STORE_KEY = "burnTheWeb.v1";
   let persistReady = false, suppressPersist = false;
   function persist() {
@@ -2233,6 +2270,7 @@
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         states, beats: beatStates, extras, effect,
+        ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
         presets, curPreset,
         cycle: cycleChk.checked,                       // shared (session controls)
         scale: cfg.scale,                              // render resolution (global)
@@ -2246,6 +2284,7 @@
   // the settings themselves.
   function applyBlob(saved, sharing) {
     if (!saved) return;
+    if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
@@ -2445,7 +2484,7 @@
   // but not the browser-local saved presets). Decoded by applyShared() on load.
   el("share").addEventListener("click", () => {
     saveState(effect); saveBeat(effect); saveExtra(effect);
-    const blob = { states, beats: beatStates, extras, effect, cycle: cycleChk.checked };
+    const blob = { states, beats: beatStates, extras, effect, cycle: cycleChk.checked, ranges: collectRanges() };
     const s = btoa(unescape(encodeURIComponent(JSON.stringify(blob))));
     // Point at the current effect's static landing page (s/<effect>/) so social
     // unfurls show that effect's preview image; its redirect forwards ?s= to the
@@ -2542,7 +2581,9 @@
   }
   el("exportpresets").addEventListener("click", () => {
     autosavePreset();                 // fold pending edits into the selected preset first
-    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: "application/json" });
+    // { presets, ranges } — the preset library plus any custom slider bounds. (A bare
+    // array is still accepted on Restore for backups made before ranges were saved.)
+    const blob = new Blob([JSON.stringify({ presets, ranges: collectRanges() }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "burnTheWeb-presets.json";
@@ -2557,8 +2598,11 @@
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const arr = JSON.parse(reader.result);
-        if (!Array.isArray(arr)) throw new Error("not a preset list");
+        const parsed = JSON.parse(reader.result);
+        // Accept both the current { presets, ranges } object and a legacy bare array.
+        const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.presets);
+        if (!Array.isArray(arr)) throw new Error("not a preset backup");
+        if (parsed && parsed.ranges) { applyRanges(parsed.ranges); refreshRangeUI(); }
         const valid = arr
           .filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra)
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
@@ -2616,16 +2660,16 @@
       requestAnimationFrame(() => requestAnimationFrame(() => setPaused(true)));
   } catch (e) {}
   // ---- slider range editor (dev overlay: the "r" key, or ?ranges=1) ----
-  // Every slider's min/max/step is a hardcoded HTML attribute, so re-tuning a
-  // range normally means edit → reload → lose the scene. This overlay makes the
-  // bounds editable *live*, against the running visual, and lists only the
-  // sliders of the currently selected effect (it rebuilds on every setEffect).
+  // Sliders ship their min/max/step as HTML attributes; this overlay makes the
+  // bounds editable *live*, against the running visual, and lists only the sliders
+  // of the currently selected effect (it rebuilds on every setEffect).
   //
-  // It is a dev tool, deliberately kept outside the normal settings machinery:
-  // bounds are NOT persisted, NOT saved into presets and NOT shared in the ?s=
-  // URL — they are properties of the app, not of a scene. Dial a range in, hit
-  // Copy, paste the attributes into index.html. Reset restores the shipped bounds.
-  const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
+  // Retuned bounds now ARE persisted (localStorage), shared in the ?s= URL and
+  // written into preset backups — so a customized range survives a reload and
+  // travels with a shared/backed-up scene (see collectRanges/applyRanges above).
+  // "Copy changed" still exists to bake a range into index.html as a new shipped
+  // default; Reset restores the shipped bounds. RNG_ORIG (the pristine shipped
+  // bounds) is captured up top, before restore() can overwrite the live bounds.
   // `var`, not `const`: setEffect() calls rngRefresh() during startup, before this
   // line has run — a const would be in its temporal dead zone and throw.
   var rng = { on: false, box: null, body: null };
@@ -2709,7 +2753,7 @@
       '<div id="rngBody"></div>' +
       '<div class="rng-btns"><button type="button" id="rngCopy">Copy changed</button>' +
       '<button type="button" id="rngReset">Reset</button></div>' +
-      '<p id="rngMsg">Live only — not saved, not shared. Copy the attributes into index.html to keep them.</p>';
+      '<p id="rngMsg">Saved in your browser, shared in ?s= links and written to backups. Copy bakes them into index.html as shipped defaults.</p>';
     document.body.appendChild(box);
     rng.body = box.querySelector("#rngBody");
     box.querySelector("#rngCopy").addEventListener("click", rngCopy);

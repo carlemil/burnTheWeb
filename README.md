@@ -113,7 +113,7 @@ visibility is remembered per effect.
 
 | Control | What it does |
 | --- | --- |
-| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. **Backup** downloads all your presets as a `.json` file and **Restore** loads them back (they're otherwise local to this browser). Restore **merges**: a preset in the file overwrites the one with the same name, new names are added, and anything you have that the file doesn't mention is kept — so it never deletes and never duplicates. |
+| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. **Backup** downloads all your presets (and any custom slider ranges) as a `.json` file and **Restore** loads them back (they're otherwise local to this browser). Restore **merges**: a preset in the file overwrites the one with the same name, new names are added, and anything you have that the file doesn't mention is kept — so it never deletes and never duplicates. |
 | **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. |
@@ -151,18 +151,21 @@ tab/screen audio capture isn't available, so only **Mic** is shown.
 
 ## Dev overlays
 
-Two tuning tools, off by default and outside the normal settings (nothing they
-show is saved, shared or put in a preset):
+Two tuning tools, off by default and never put in a preset (their on/off state
+isn't saved). A hint at the bottom of the panel points at both:
 
 - **D** (or `?debug=1`) — **beat trace**. A scrolling plot per band of the
   spectral flux, the adaptive threshold it has to clear, and a tick on every
   detected beat, plus a rough BPM. This is how you see *why* a beat was missed:
-  the flux never rose, or it rose but stayed under the threshold.
-- **R** (or `?ranges=1`) — **slider range editor**. The min/max/step of every
-  slider is hardcoded in `index.html`; this lists the sliders of the currently
-  selected effect and lets you edit their bounds **live**, against the running
-  visual. **Copy changed** puts the new attributes on the clipboard to paste back
-  into `index.html`; **Reset** restores the shipped bounds.
+  the flux never rose, or it rose but stayed under the threshold. (Shows nothing
+  that gets saved.)
+- **R** (or `?ranges=1`) — **slider range editor**. Ships each slider's
+  min/max/step as an attribute, but lets you retune the bounds **live** for the
+  currently selected effect. Unlike the beat trace, **the bounds you set are
+  saved** — they persist in your browser, travel in a **Share** link and go into
+  your **Backup** — so you can fully customize each slider's input range. **Copy
+  changed** puts the new attributes on the clipboard for baking into `index.html`
+  as new shipped defaults; **Reset** restores those defaults.
 
 ## Running locally
 

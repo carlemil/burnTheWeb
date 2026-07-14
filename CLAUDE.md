@@ -72,11 +72,19 @@ writes the current scene straight back into the selected preset (no manual save)
 retired keys and defaults new ones, so old saved presets keep loading after the
 slider set changes (call it whenever you add/remove/rename a `PRESETS` key).
 - Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, extras, effect,
-  presets, curPreset, cycle, panelOpen, audio}`. `applyBlob(saved, sharing)` is
-  shared by `restore()` and `applyShared()`; it validates every value against the
-  live slider bounds so a changed range can never load junk.
-- **Share** encodes `{states, beats, extras, effect, cycle}` (NOT presets) as a
-  `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
+  ranges, presets, curPreset, cycle, panelOpen, audio}`. `applyBlob(saved, sharing)`
+  is shared by `restore()` and `applyShared()`; it applies `ranges` **first** (so the
+  live slider bounds are the custom ones) then validates every value against those
+  bounds so a changed range can never load junk.
+- **Custom slider ranges** (min/max/step) are saved, not just live. `RNG_ORIG`
+  captures the shipped bounds up top (before `restore()` can overwrite them);
+  `collectRanges()` stores only sliders whose bounds differ from shipped and
+  `applyRanges()` sets them back. They ride in `localStorage`, the `?s=` URL and the
+  Backup file. The `rng` editor (below) writes them live via the normal persist path.
+- **Share** encodes `{states, beats, extras, effect, cycle, ranges}` (NOT presets)
+  as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
+- **Backup** file is `{presets, ranges}` (a bare-array backup from before ranges is
+  still accepted on Restore).
 
 ### Audio & beat reactivity
 `audio` holds the WebAudio graph; `startAudio("capture"|"mic")` grabs
@@ -111,15 +119,20 @@ otherwise collapse into one. Beats found between frames are **latched** in
 a fake clock.
 
 ### Dev overlays (not user settings)
-Both are off by default, persist nothing and never enter presets/share:
+Both are off by default and never enter presets. Their on/off state is never saved.
+The `d`/`r` keys are surfaced to users in a hint line at the bottom of the panel.
 - **`dbg` — beat trace** (`d` key / `?debug=1`): scrolling flux + adaptive threshold
-  + beat ticks per band. The tool for diagnosing a missed beat.
-- **`rng` — slider range editor** (`r` key / `?ranges=1`): the sliders' `min`/`max`/
-  `step` are hardcoded HTML attributes; this edits them live (for the *current
-  effect* only — `setEffect` calls `rngRefresh`) and copies the changed attributes
-  out for pasting into `index.html`. Because of it, `bindRange`'s `ui()` reads
-  `lo.min`/`lo.max` **live** rather than closing over them, and `rng` is declared
-  with `var` (`setEffect` runs before its declaration is evaluated).
+  + beat ticks per band. The tool for diagnosing a missed beat. Persists nothing.
+- **`rng` — slider range editor** (`r` key / `?ranges=1`): the sliders' shipped
+  `min`/`max`/`step` are HTML attributes; this edits them live (for the *current
+  effect* only — `setEffect` calls `rngRefresh`). Unlike `dbg`, the **bounds it sets
+  now persist** — a range edit dispatches `input`, which the delegated `onEdit` turns
+  into a `persist()` (see Custom slider ranges above), so they save to `localStorage`,
+  ride the `?s=` share URL and go in the Backup file. "Copy changed" still emits the
+  attributes for baking into `index.html` as new shipped defaults; Reset restores
+  those defaults. Because of the editor, `bindRange`'s `ui()` reads `lo.min`/`lo.max`
+  **live** rather than closing over them, and `rng` is declared with `var` (`setEffect`
+  runs before its declaration is evaluated).
 
 ### "Sync with your music" nudge + analytics
 `#syncpop` is shown to users who haven't successfully started audio, at growing
