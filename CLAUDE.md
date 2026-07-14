@@ -72,15 +72,15 @@ writes the current scene straight back into the selected preset (no manual save)
 retired keys and defaults new ones, so old saved presets keep loading after the
 slider set changes (call it whenever you add/remove/rename a `PRESETS` key).
 - Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, extras, effect,
-  ranges, presets, curPreset, cycle, scale, panelOpen, audio}` — built by the single
-  helper **`fullSnapshot()`**, which is *the* definition of "everything we remember."
-  `persist()` and the Backup file both serialize exactly `fullSnapshot()`, so a newly
-  saved setting can never land in one but not the other. `applyBlob(saved, sharing)`
-  is shared by `restore()` and `applyShared()`; it applies `ranges` **first** (so the
-  live slider bounds are the custom ones) then validates every value against those
-  bounds so a changed range can never load junk. Anything a user can change that is
-  *not* in `fullSnapshot()` is deliberately transient: pause, fullscreen, and the
-  `dbg`/`rng` overlay visibility.
+  ranges, beatTune, presets, curPreset, cycle, scale, panelOpen, audio}` — built by the
+  single helper **`fullSnapshot()`**, which is *the* definition of "everything we
+  remember." `persist()` and the Backup file both serialize exactly `fullSnapshot()`, so
+  a newly saved setting can never land in one but not the other. `applyBlob(saved,
+  sharing)` is shared by `restore()` and `applyShared()`; it applies `ranges` +
+  `beatTune` **first** (so the live slider bounds / detector thresholds are the custom
+  ones) then validates every value against those bounds so a changed range can never
+  load junk. Anything a user can change that is *not* in `fullSnapshot()` is
+  deliberately transient: pause, fullscreen, and the `dbg`/`beat`/`rng` overlay visibility.
 - **Custom slider ranges** (min/max/step) are saved, not just live. `RNG_ORIG`
   captures the shipped bounds up top (before `restore()` can overwrite them);
   `collectRanges()` stores only sliders whose bounds differ from shipped and
@@ -113,13 +113,20 @@ bin-to-bin changes since the previous tick. Four properties are load-bearing:
 - **`smoothingTimeConstant = 0`.** The analyser's smoothing is a low-pass *across
   frames*: it smears the transients and adds ~2 frames of lag.
 - **Adaptive threshold + peak picking.** A beat is a *local maximum* of flux above
-  `median(last ~1s of flux) × FLUX_K` and above `FLUX_FLOOR × recent peak flux`,
-  with a per-band refractory (`BEAT_REFRACT`). The median tracks the band's noise
-  floor (beats are sparse), so the bar follows the mix. Peak-picking is causal and
-  inspects the *previous* tick, so detection costs one hop (10ms) of latency.
-- **Bands are narrow on purpose** (`computeBins`: 30–150 / 150–2500 / 2500–12000 Hz)
-  — a wide low band dilutes the kick, and 2k–16k averaged over ~680 near-empty bins
-  is too quiet to ever clear a floor.
+  `median(last ~1s of flux) × beatCfg.fluxK[b]` and above `beatCfg.floor × recent peak
+  flux`, with a per-band refractory (`beatCfg.refract[b]`). The median tracks the
+  band's noise floor (beats are sparse), so the bar follows the mix. Peak-picking is
+  causal and inspects the *previous* tick, so detection costs one hop (10ms) of latency.
+- **Bands are narrow on purpose** (`beatCfg.bands`, default 30–150 / 150–2500 /
+  2500–12000 Hz; `computeBins` maps them to FFT bins) — a wide low band dilutes the
+  kick, and 2k–16k averaged over ~680 near-empty bins is too quiet to ever clear a floor.
+- **The thresholds are live-tunable, not consts.** `beatCfg` (defaults in
+  `BEAT_DEFAULTS`, both in the detector constants block) holds per-band `fluxK`, global
+  `floor`, per-band `refract`, and per-band `bands`; `audioTick`/`computeBins` read it
+  live. The **`b` overlay** edits it (see Dev overlays). It persists to `localStorage`
+  and the Backup file (via `collectBeatTune`/`applyBeatTune` in `fullSnapshot`/
+  `applyBlob`) but is **not** in Share links or presets. `beatprobe` still slices the
+  same markers and gets `beatCfg` because it lives in the sliced constants block.
 
 `audioTick` runs on a **fixed `setInterval(HOP_MS)` (100Hz), not on rAF** — beat
 timing must not jitter with framerate, and two beats inside one slow frame would
@@ -129,10 +136,18 @@ otherwise collapse into one. Beats found between frames are **latched** in
 a fake clock.
 
 ### Dev overlays (not user settings)
-Both are off by default and never enter presets. Their on/off state is never saved.
-The `d`/`r` keys are surfaced to users in a hint line at the bottom of the panel.
+Three overlays, off by default; they never enter presets and their on/off state is
+never saved. The `d`/`b`/`r` keys are surfaced in a hint line at the bottom of the panel.
 - **`dbg` — beat trace** (`d` key / `?debug=1`): scrolling flux + adaptive threshold
-  + beat ticks per band. The tool for diagnosing a missed beat. Persists nothing.
+  + beat ticks per band. The tool for diagnosing a missed beat. Persists nothing. Its
+  lane labels read `beatCfg.bands` live, so they track band edits from the `b` overlay.
+- **`beat` — detection tuning** (`b` key / `?beat=1`): live sliders/fields for
+  `beatCfg` (per-band `fluxK`, `floor`, per-band `refract`, per-band `bands` Hz),
+  meant to sit beside the `d` trace. Edits write into `beatCfg`, `persist()`, and
+  re-run `computeBins()` when a band edge moves. **Unlike its on/off state, the values
+  persist** (localStorage + Backup, not Share/presets — see the detector section).
+  Reset restores `BEAT_DEFAULTS`. `beatUi` (the overlay object) is separate from the
+  many `beat*`/`BEAT_*` scene-audio names.
 - **`rng` — slider range editor** (`r` key / `?ranges=1`): the sliders' shipped
   `min`/`max`/`step` are HTML attributes; this edits them live (for the *current
   effect* only — `setEffect` calls `rngRefresh`). Unlike `dbg`, the **bounds it sets

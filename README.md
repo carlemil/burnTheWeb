@@ -159,6 +159,11 @@ isn't saved). A hint at the bottom of the panel points at both:
   detected beat, plus a rough BPM. This is how you see *why* a beat was missed:
   the flux never rose, or it rose but stayed under the threshold. (Shows nothing
   that gets saved.)
+- **B** (or `?beat=1`) — **beat-detection tuning**. Live sliders for the detector,
+  meant to sit beside the D trace: per-band **sensitivity** (lower = more beats),
+  the **relative floor**, per-band **refractory** gap, and each band's **frequency
+  range**. Unlike the trace, the values you set **are saved** (in your browser and in
+  Backups — not in Share links or presets); **Reset** restores the shipped defaults.
 - **R** (or `?ranges=1`) — **slider range editor**. Ships each slider's
   min/max/step as an attribute, but lets you retune the bounds **live** for the
   currently selected effect. Unlike the beat trace, **the bounds you set are

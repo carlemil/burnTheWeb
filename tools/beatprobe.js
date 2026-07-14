@@ -18,8 +18,14 @@ const code =
   cut("const HOP_MS", "const meterBars") +
   cut("const medBuf", "function audioMsg") +
   cut("function audioTick", "function clearBeats") +
-  "\nreturn { audio, audioTick, HOP_MS, WARMUP };";
-const { audio, audioTick, HOP_MS, WARMUP } = new Function("dbg", code)({ on: false });
+  "\nreturn { audio, audioTick, HOP_MS, WARMUP, beatCfg, BEAT_DEFAULTS };";
+const { audio, audioTick, HOP_MS, WARMUP, beatCfg, BEAT_DEFAULTS } = new Function("dbg", code)({ on: false });
+const resetBeatCfg = () => {   // restore shipped detector thresholds between scenes
+  beatCfg.fluxK = BEAT_DEFAULTS.fluxK.slice();
+  beatCfg.floor = BEAT_DEFAULTS.floor;
+  beatCfg.refract = BEAT_DEFAULTS.refract.slice();
+  beatCfg.bands = BEAT_DEFAULTS.bands.map(b => b.slice());
+};
 
 // --- stub analyser: 2048-point FFT @48kHz -> 1024 bins of 23.4Hz ---
 const BINS = 1024, HZ = 48000 / 2048;
@@ -121,6 +127,16 @@ const check = (name, ok, detail) => out.push({ name, ok, detail });
   const gaps = beats[0].slice(1).map((t, i) => t - beats[0][i]);
   check("refractory: no two low beats closer than 110ms", gaps.every(g => g >= 110),
     "min gap " + (gaps.length ? Math.min(...gaps) : "n/a") + "ms");
+}
+
+// 7. Live tuning is wired: audioTick reads beatCfg, not the old consts. A 90ms-spaced
+//    fill collapses under the default 110ms refractory but comes through when it's low.
+{
+  const scene = t => { spec.fill(-95); band(30, 150, -40); if (t >= 90) band(35, 140, hit(t % 90, -16, -40)); };
+  resetBeatCfg();                     const dflt = run(scene, 3000)[0].length;   // refract 110ms
+  resetBeatCfg(); beatCfg.refract[0] = 20; const loose = run(scene, 3000)[0].length;
+  resetBeatCfg();
+  check("beatCfg wired: lower refractory detects more low beats", loose > dflt, loose + " vs " + dflt + " beats");
 }
 
 let bad = 0;
