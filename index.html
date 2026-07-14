@@ -1342,7 +1342,7 @@
       // Box size zooms the whole scene (box + tetrahedra) about the frame centre;
       // 2x sends the box corners past the frame edges (intended).
       const scale = Math.min(halfW, halfH) * 0.92 / (Math.max(bx, by) * perspMax) * boxSize;
-      const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5 - (yB - yT) * 0.20;   // lift the scene up 20%
+      const cx = (xL + xR) * 0.5, cy = fh * 0.5;   // centre the scene on the canvas
       const project = p => {                     // view-space → screen; z<F always
         const persp = F / (F - p[2]);
         return [cx + p[0] * persp * scale, cy - p[1] * persp * scale];
