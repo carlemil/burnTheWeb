@@ -1935,7 +1935,7 @@
   // section's banding block (`band`), and setEffect shows only the keys listed in the
   // current effect's `params`. Adding a slider to a new effect = add a CONTROLS entry
   // and list its key in the descriptor's `params` — no hand-written HTML. Defaults for
-  // the lo/hi thumbs are cosmetic (loadState overwrites them from PRESETS/states).
+  // the lo/hi thumbs are cosmetic (loadState overwrites them from the effect's defaults).
   const CONTROLS = [
     { key: "showbox", host: "fx", type: "check", label: "Show box" },
     { key: "boxsize", host: "fx", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => v.toFixed(2) + "×", apply: v => boxSize = v, durScale: 10 },
@@ -2137,20 +2137,39 @@
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sirpinfyer", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
-      params: ["points", "layers", "speed", "rise", "size", "zoom"], helpTags: ["all", "fire"], fractal2d: true },
+      params: ["points", "layers", "speed", "rise", "size", "zoom"], helpTags: ["all", "fire"], fractal2d: true,
+      defaults: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
+      beat: { speed: ["high"], size: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks.",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "rise", "size", "rot", "zoom"], helpTags: ["all", "fire", "tetra"] },
+      params: ["showbox", "boxsize", "points", "layers", "speed", "rise", "size", "rot", "zoom"], helpTags: ["all", "fire", "tetra"],
+      defaults: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+      beat: { speed: ["low"], rise: ["high"], size: ["mid"] }, extras: { palette: "1", morph: true, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
-      bakesOwnZoom: true, onEnter: () => reseedJulia(), draw: dt => { if (useGL) glJulia(juliaSeed(dt)); else julia(dt); } },
+      bakesOwnZoom: true, onEnter: () => reseedJulia(), draw: dt => { if (useGL) glJulia(juliaSeed(dt)); else julia(dt); },
+      defaults: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], points: 1500 },
+      beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
       params: ["pspeed", "pscale", "pwarp", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
-      bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); } },
+      bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); },
+      defaults: { band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
+      beat: { band: ["low"], banddim: ["high"], pscale: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
+  // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
+  // isn't a real control) at load instead of as a silent runtime break. Warns only.
+  (function assertRegistry() {
+    const ctlKeys = new Set(CONTROLS.map(c => c.key)), seen = new Set();
+    EFFECTS.forEach((f, i) => {
+      if (!f.id || seen.has(f.id)) console.warn("EFFECTS[" + i + "]: missing or duplicate id:", f.id);
+      seen.add(f.id);
+      (f.params || []).forEach(k => { if (!ctlKeys.has(k)) console.warn(f.id + ": params references unknown control '" + k + "'"); });
+      for (const k in (f.defaults || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": defaults references unknown control '" + k + "'");
+    });
+  })();
 
   // Effect identity in *saved* blobs is a stable string id, not the volatile numeric
   // index — so reordering/removing effects never silently remaps or drops saved
@@ -2182,27 +2201,20 @@
   // Per-effect slider presets, loaded whenever an effect becomes active (manual
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
-  const PRESETS = {
-    0: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2],  layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
-    1: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
-    2: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], points: 1500 },
-    3: { band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
-  };
-  // Each effect keeps its own slider values, seeded from PRESETS. Switching
-  // saves the outgoing effect's sliders and restores the incoming effect's, so
-  // per-effect tweaks are kept. The whole thing is mirrored to localStorage and
-  // restored next visit — values outside a slider's current bounds are ignored,
-  // so changing a slider's range can never load stale/junk values.
+  // Each effect keeps its own slider values, seeded from its descriptor's `defaults`.
+  // Switching saves the outgoing effect's sliders and restores the incoming effect's,
+  // so per-effect tweaks are kept. The whole thing is mirrored to localStorage and
+  // restored next visit — values outside a slider's current bounds are ignored, so
+  // changing a slider's range can never load stale/junk values. `defaults` includes a
+  // few render-affecting keys the effect doesn't display (e.g. band) at safe values so
+  // switching to it resets them rather than inheriting the previous effect's.
   const states = {};
-  function presetState(e) {           // a fresh copy of effect e's preset slider values
-    const st = {};
-    for (const id in PRESETS[e]) {
-      const v = PRESETS[e][id];
-      st[id] = Array.isArray(v) ? v.slice() : v;
-    }
+  function presetState(e) {           // a fresh copy of effect e's default slider values
+    const st = {}, d = EFFECTS[e].defaults;
+    for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
-  function initStates() { for (const k in PRESETS) states[k] = presetState(k); }
+  function initStates() { EFFECTS.forEach((_, k) => states[k] = presetState(k)); }
   initStates();
   function saveState(e) {
     const st = states[e];
@@ -2230,22 +2242,14 @@
   // {low,mid,high}; the live `beatReact` reflects the current effect and drives
   // updateAnims. Switching saves/loads it just like the slider values.
   const beatStates = {};
-  // Default beat-chip selections per effect (slider id -> bands). Everything not
-  // listed starts off.
-  const BEAT_PRESETS = {
-    0: { speed: ["high"], size: ["low"] },                             // Sirpinfyer
-    1: { speed: ["low"], rise: ["high"], size: ["mid"] },              // Tetrafyer
-    2: { banddim: ["low"], zoom: ["mid"], phase: ["high"] },           // AnimeJulia
-    3: { band: ["low"], banddim: ["high"], pscale: ["low"] },          // Plasma
-  };
-  function presetBeat(e) {            // a fresh copy of effect e's default chip selection
+  function presetBeat(e) {            // a fresh copy of effect e's default chip selection (descriptor `beat`)
     const bt = {};
     for (const id in beatReact) bt[id] = { low: false, mid: false, high: false };
-    const bp = BEAT_PRESETS[e];
+    const bp = EFFECTS[e].beat;
     if (bp) for (const id in bp) if (bt[id]) for (const band of bp[id]) bt[id][band] = true;
     return bt;
   }
-  function initBeatStates() { for (const k in PRESETS) beatStates[k] = presetBeat(k); }
+  function initBeatStates() { EFFECTS.forEach((_, k) => beatStates[k] = presetBeat(k)); }
   initBeatStates();
   function saveBeat(e) { for (const id in beatReact) beatStates[e][id] = { ...beatReact[id] }; }
   function loadBeat(e) { for (const id in beatReact) beatReact[id] = { ...beatStates[e][id] }; syncChips(); }
@@ -2256,14 +2260,8 @@
   // Per-effect "extras": palette, auto-morph, show-box and Effect TTL are also
   // remembered per effect, so each effect is a fully independent scene.
   const extras = {};
-  const EXTRA_PRESETS = {
-    0: { palette: "7", morph: true, showBox: true, randSeed: true },
-    1: { palette: "1", morph: true, showBox: false, randSeed: true },
-    2: { palette: "5", morph: true, showBox: true, randSeed: true },   // AnimeJulia uses randSeed
-    3: { palette: "3", morph: true, showBox: true, randSeed: true },
-  };
-  function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed }; }
-  function initExtras() { for (const k in PRESETS) extras[k] = presetExtra(k); }
+  function presetExtra(e) { const x = EFFECTS[e].extras; return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed }; }
+  function initExtras() { EFFECTS.forEach((_, k) => extras[k] = presetExtra(k)); }
   initExtras();
   function saveExtra(e) {
     extras[e] = { palette: paletteSel.value, morph: morphChk.checked, showBox: showBoxChk.checked, randSeed: randSeedChk.checked };
@@ -2418,9 +2416,9 @@
       el("ttl-lo").dispatchEvent(new Event("input")); el("ttl-hi").dispatchEvent(new Event("input"));
     }
     if ([1, 1.5, 2, 3, 4].includes(saved.scale)) { cfg.scale = saved.scale; resSel.value = String(saved.scale); }
-    if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
+    if (Number.isInteger(saved.effect) && EFFECTS[saved.effect]) effectSel.value = saved.effect;
     if (!sharing) {   // browser-local: saved presets + panel visibility
-      if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra);
+      if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);
       curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length) ? saved.curPreset : -1;
       if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
       if (saved.audio === "capture" || saved.audio === "mic") armAudioResume(saved.audio);
@@ -2642,7 +2640,7 @@
         const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.presets);
         if (!Array.isArray(arr)) throw new Error("not a burnTheWeb backup");
         const valid = arr
-          .filter(p => p && PRESETS[p.effect] && p.state && p.beat && p.extra)
+          .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
                        state: mergeState(p.effect, p.state), beat: p.beat, extra: p.extra }));
         if (!valid.length) throw new Error("no valid presets in file");

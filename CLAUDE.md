@@ -44,30 +44,40 @@ different rates.
   recomputed every frame on CPU. Each consumes a `*Seed(dt)` that advances its
   animation phase (identical on GL/CPU). Both bake their own zoom into the shader,
   declared as `bakesOwnZoom: true` on their descriptor (so `glRender`/`render` force
-  display-zoom to 1). **Adding a shader effect = append an EFFECTS descriptor** with a
-  `draw(dt)` hook (see the registry below); its presence routes `frame()` past the fire
-  sim. (Control generation from a param schema is the remaining refactor phase.)
+  display-zoom to 1). **Adding a shader effect = append one EFFECTS descriptor** with a
+  `draw(dt)` hook + `params`/`defaults` (see the registry below); its presence routes
+  `frame()` past the fire sim, and its sliders generate from the `CONTROLS` schema.
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
 ### Effects & per-effect "scenes"
 **The `EFFECTS` registry is the single source of truth per effect** — an array of
-descriptors `{id, name, presetName?, subtitle, help, controls, helpTags, draw?/
-fractal2d, bakesOwnZoom?, onEnter?}`. The Effect dropdown, subtitle, help blurb,
-default-preset names, group visibility, render dispatch and zoom-bake all derive from
-it, so *adding an effect = append a descriptor* (control generation from a param
-schema is the remaining phase; slider controls are still static `grp-*` HTML for now).
-Persistence uses each descriptor's **stable string `id`**, not the numeric index —
-`serializeBlob`/`deserializeBlob` convert at the storage edge and `LEGACY_EFFECT_IDS`
-migrates pre-id blobs — so reordering/removing effects never corrupts saved presets.
-`effect` is still the runtime numeric index (registry position).
+descriptors `{id, name, presetName?, subtitle, help, params, helpTags, draw?/fractal2d,
+bakesOwnZoom?, onEnter?, defaults, beat, extras}`. *Adding an effect = append one
+descriptor*, nothing else (a dev `assertRegistry()` warns on a dup id or a
+param/default that isn't a real control). Everything derives from the registry:
+- **Dropdown / subtitle / help / default-preset name** — from `name`/`subtitle`/`help`.
+- **Controls** — each effect's sliders are **generated from the shared `CONTROLS`
+  schema** (one entry per slider/checkbox: type, label, range, `fmt`, `apply`,
+  `durScale`, host). `buildControls()` renders them into `#fxctl`/`#bandctl`; `setEffect`
+  shows only the keys in the descriptor's ordered `params`. No hand-written control HTML.
+- **Defaults** — `defaults` (slider values), `beat` (chip selections), `extras`
+  (palette/morph/showBox/randSeed) seed `states[e]`/`beatStates[e]`/`extras[e]` via
+  `presetState`/`presetBeat`/`presetExtra`. `defaults` includes a few render-affecting
+  keys the effect doesn't display (e.g. `band` at 0) so switching to it resets them.
+- **Render** — `frame()` runs the effect's `draw(dt)` (shader) or the fire-sim
+  accumulator; `simulate()` stamps 2D when `fractal2d`; `glRender/render` force display
+  zoom to 1 when `bakesOwnZoom`; `setEffect` runs `onEnter`; `renderHelp` filters by `helpTags`.
+- **Identity** — persistence uses the **stable string `id`**, not the numeric index:
+  `serializeBlob`/`deserializeBlob` convert at the storage edge and `LEGACY_EFFECT_IDS`
+  migrates pre-id blobs, so reordering/removing effects never corrupts saved presets.
+  `effect` stays the runtime numeric index (registry position).
 
-`setEffect(i, save)` hides `ALL_GROUPS` then shows the descriptor's `controls`, runs
-its `onEnter`, and swaps three parallel per-effect state maps:
-- `states[e]` — slider values (keys come from `PRESETS[e]`, e.g. band, speed,
-  rise, size, rot, rpm, ratio, inrad, outrad, phase, points).
-- `beatStates[e]` — the L/M/H beat-chip selections.
-- `extras[e]` — palette, auto-morph, show-box, random-seed (AnimeJulia).
+`setEffect(i, save)` shows the descriptor's `params` controls, runs `onEnter`, and swaps
+three parallel per-effect state maps:
+- `states[e]` — slider values (seeded from the descriptor's `defaults`).
+- `beatStates[e]` — the L/M/H beat-chip selections (seeded from `beat`).
+- `extras[e]` — palette, auto-morph, show-box, random-seed (seeded from `extras`).
 
 Switching effects calls `saveState/saveBeat/saveExtra` for the outgoing effect and
 `loadState/loadBeat/loadExtra` for the incoming one, so each effect is a fully
@@ -82,8 +92,9 @@ A **preset** is a named full-scene snapshot `{name, effect, state, beat, extra}`
 **local to the browser**. Selecting one links edits to it: `onEdit` → `autosavePreset()`
 writes the current scene straight back into the selected preset (no manual save).
 `mergeState()` normalizes a loaded preset to the current slider set — it drops
-retired keys and defaults new ones, so old saved presets keep loading after the
-slider set changes (call it whenever you add/remove/rename a `PRESETS` key).
+retired keys and defaults new ones, so old saved presets keep loading after an
+effect's `defaults` change (it validates against `presetState(e)`, i.e. the
+descriptor's `defaults`). `effect` in a saved preset is the stable string `id`.
 - Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, extras, effect,
   ranges, beatTune, presets, curPreset, cycle, ttl, scale, panelOpen, audio}` — built by the
   single helper **`fullSnapshot()`**, which is *the* definition of "everything we
