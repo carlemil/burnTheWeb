@@ -205,8 +205,10 @@ never saved. The `d`/`b`/`r` keys are surfaced in a hint line at the bottom of t
 gaps of active (tab-visible) time (`SYNC_DELAYS` = 30s, 5min, 1h), capped at 3
 showings ever; state in `localStorage["burnTheWeb.sync.v1"]`, satisfied for good
 once any source goes live. `track(name, params)` is a provider-agnostic event
-hook; the GA4 gtag scaffold stays **completely inert** (no script, no requests)
-until `GA_MEASUREMENT_ID` is set to a real `G-…` id.
+hook; the GA4 gtag scaffold is **live** — `GA_MEASUREMENT_ID` is set to the real
+`G-…` id, so `initAnalytics()` loads gtag.js and page views + `track()` events
+flow. Clearing `GA_MEASUREMENT_ID` back to `""` makes it **completely inert**
+again (no script, no requests).
 
 ### Timing model (important)
 `frame()` runs every `requestAnimationFrame`. The **fire sim is decoupled** from

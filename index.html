@@ -3579,7 +3579,7 @@
   // Inert until GA_MEASUREMENT_ID is set to a real "G-XXXXXXXXXX" web-stream id:
   // no gtag script is loaded and track() is a no-op, so nothing is sent. Once set,
   // page views are counted automatically and track() fires custom events.
-  const GA_MEASUREMENT_ID = "";
+  const GA_MEASUREMENT_ID = "G-7CMDJP72N7";
   function track(name, params) {
     try { if (window.gtag) window.gtag("event", name, params || {}); } catch (e) {}
   }
