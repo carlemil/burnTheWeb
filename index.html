@@ -1028,26 +1028,21 @@
     }
     curHeat = pendingDst;
   }
-  function glJulia(s) {
-    bindFbo(glFbo.heat[curHeat], fw, fh);   // Julia replaces the current heat
+  // Generic per-effect fragment-shader pass: replace the current heat by running
+  // glProg[name] over a fullscreen quad. Every effect shader takes uSize; `setU` sets
+  // the rest. A shader effect = an FS_* source + `glProg.<id>` registered in initGL +
+  // a descriptor `draw` hook that calls this (see glJulia/glPlasma below for the shape).
+  function glShaderDraw(name, setU) {
+    bindFbo(glFbo.heat[curHeat], fw, fh);   // the shader replaces the current heat
     gl.disable(gl.BLEND);
-    gl.useProgram(glProg.julia.p);
-    gl.uniform2f(glProg.julia.u.uSize, fw, fh);
-    gl.uniform2f(glProg.julia.u.uC, s.cx, s.cy);
-    gl.uniform2f(glProg.julia.u.uSpan, s.spanX, s.spanY);
+    const P = glProg[name];
+    gl.useProgram(P.p);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    setU(P.u);
     drawQuad();
   }
-  function glPlasma(s) {
-    bindFbo(glFbo.heat[curHeat], fw, fh);   // plasma replaces the current heat
-    gl.disable(gl.BLEND);
-    gl.useProgram(glProg.plasma.p);
-    gl.uniform2f(glProg.plasma.u.uSize, fw, fh);
-    gl.uniform1f(glProg.plasma.u.uTime, s.t);
-    gl.uniform1f(glProg.plasma.u.uScale, s.scale);
-    gl.uniform1f(glProg.plasma.u.uWarp, s.warp);
-    gl.uniform1f(glProg.plasma.u.uZoom, s.zoom);
-    drawQuad();
-  }
+  function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }
+  function glPlasma(s) { glShaderDraw("plasma", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); }
 
   // display: heat→palette, optional zoom, blurred additive glow, to the screen
   function glRender() {
