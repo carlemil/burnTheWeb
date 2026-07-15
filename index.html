@@ -672,13 +672,22 @@
   }
   // reflect the palette we're heading toward in the dropdown
   function showMorphTarget() { el("palette").value = morphTargetIndex; }
-  function startMorph(fromIndex) {
-    morphFrom = paletteRGB(fromIndex);
-    morphTargetIndex = pickOther(fromIndex);
-    morphTo = paletteRGB(morphTargetIndex);
+  // Start a morph FROM an explicit base ramp (a live snapshot of what's on
+  // screen) TO a target palette index — so the blend begins exactly where we
+  // are, with no snap. We paint the start frame immediately so a switch made
+  // mid-frame (auto-cycle) doesn't flash the raw target for one frame before
+  // morphStep takes over. startMorph() is the common case: blend from a
+  // discrete palette, picking a fresh random destination.
+  function beginMorph(fromRGB, targetIndex) {
+    morphFrom = fromRGB;
+    morphTargetIndex = targetIndex;
+    morphTo = paletteRGB(targetIndex);
     morphInit = true;                       // capture start time on next frame
+    paletteBase.set(fromRGB);               // start exactly where we were
+    composePalette(0);
     showMorphTarget();
   }
+  function startMorph(fromIndex) { beginMorph(paletteRGB(fromIndex), pickOther(fromIndex)); }
   function morphStep(now) {
     if (morphInit) { morphStart = now; morphInit = false; }
     let f = (now - morphStart) / MORPH_MS;
@@ -3102,15 +3111,17 @@
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;
     applyingPreset = true;
+    const fromRamp = paletteBase.slice();   // the palette on screen right now — blend away from it
     states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = JSON.parse(JSON.stringify(p.beat));
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
-    setEffect(p.effect, false);       // loads the just-installed scene
-    // Switching preset always morphs the palette to a fresh random one. When auto-morph
-    // is on, loadExtra already started a morph toward a random palette; when it's off,
-    // run a one-shot morph (a single transition that then settles on the new palette).
-    if (!morphing) { morphOnce = true; startMorph(+paletteSel.value); }
+    setEffect(p.effect, false);       // loads the just-installed scene (may snap the palette)
+    // Switching preset always morphs the palette to a fresh random one — but blend it in
+    // from whatever was on screen (fromRamp) rather than snapping there first. When
+    // auto-morph is on the blend keeps cycling; when off it's a one-shot that then settles.
+    morphOnce = !morphing;
+    beginMorph(fromRamp, pickOther(+paletteSel.value));
     curPreset = i; presetSel.value = String(i);
     applyingPreset = false;
     persist();
