@@ -144,6 +144,7 @@
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
+  #frames.hidden { display: none; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -174,7 +175,7 @@
   /* ---- dev overlays: slider range editor ("r" / ?ranges=1) + beat tuning ("b" / ?beat=1) ---- */
   #rngbox, #beatbox {
     position: fixed; z-index: 60; width: 300px; overflow: auto;
-    padding: 10px; background: rgba(0, 0, 0, 0.82); border: 1px solid #333;
+    padding: 10px; background: rgba(0, 0, 0, 0.97); border: 1px solid #333;
     border-radius: 6px; color: #cfd3d8; font: 11px/1.5 ui-monospace, Consolas, monospace;
   }
   #rngbox { top: 58px; left: 278px; max-height: calc(100vh - 70px); }
@@ -246,7 +247,7 @@
   #panel #help-btn:hover { background: rgba(255, 122, 26, 0.35); }
   #help {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #help.hidden { display: none; }
   #help .help-box {
@@ -276,7 +277,7 @@
   #syncpop.hidden { display: none; }
   #syncpop .sync-box {
     position: relative; max-width: 440px; max-height: 82vh; overflow-y: auto; margin: 16px;
-    padding: 20px 22px; background: rgba(14, 8, 5, 0.98);
+    padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
     border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -311,7 +312,7 @@
   #restoredlg.hidden { display: none; }
   #restoredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
-    padding: 20px 22px; background: rgba(14, 8, 5, 0.98);
+    padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
     border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -418,6 +419,7 @@
   <p class="hint">Keys:<br>
     <b>H</b> — show/hide this panel<br>
     <b>F</b> — fullscreen<br>
+    <b>C</b> — show/hide the frame + fps counter<br>
     <b>D</b> — beat-detection trace<br>
     <b>B</b> — tune beat detection<br>
     <b>R</b> — edit sliders' min/max/step</p>
@@ -3483,6 +3485,7 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in the overlays
     if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
+    else if (e.key === "c" || e.key === "C") framesEl.classList.toggle("hidden");   // frame + fps counter
     else if (e.key === "d" || e.key === "D") dbgToggle();      // beat-detection trace
     else if (e.key === "r" || e.key === "R") rngToggle();      // slider min/max editor
     else if (e.key === "b" || e.key === "B") beatToggle();     // beat-detection tuning

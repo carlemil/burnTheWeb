@@ -117,7 +117,8 @@ descriptor's `defaults`). `effect` in a saved preset is the stable string `id`.
   `beatTune` **first** (so the live slider bounds / detector thresholds are the custom
   ones) then validates every value against those bounds so a changed range can never
   load junk. Anything a user can change that is *not* in `fullSnapshot()` is
-  deliberately transient: pause, fullscreen, and the `dbg`/`beat`/`rng` overlay visibility.
+  deliberately transient: pause, fullscreen, the `dbg`/`beat`/`rng` overlay visibility, and
+  the frame+fps counter's visibility (the `c` key toggles `#frames`'s `.hidden`).
 - **Custom slider ranges** (min/max/step) are saved, not just live. `RNG_ORIG`
   captures the shipped bounds up top (before `restore()` can overwrite them);
   `collectRanges()` stores only sliders whose bounds differ from shipped and

@@ -163,7 +163,8 @@ visibility is remembered per effect.
 | **Share** | Copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
 
 Press **H** or **☰** to toggle the panel, **F** or **⛶** for fullscreen (works on
-mobile too), and click the canvas to pause. A **Resolution** control drops the render
+mobile too), **C** to show/hide the frame + FPS counter, and click the canvas to
+pause. A **Resolution** control drops the render
 resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
 tab/screen audio capture isn't available, so only **Mic** is shown.
