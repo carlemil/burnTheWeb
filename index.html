@@ -983,6 +983,22 @@
       int val = ((xi ^ yi) + ti) & m;
       o = vec4(float(val)/float(m), 0.0, 0.0, 1.0);
     }`;
+    // Moiré: two drifting concentric-ring sets, blended multiply↔add for shimmer.
+    const FS_MOIRE = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uFreq; uniform float uMix; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw=uSize.x, fh=uSize.y;
+      vec2 p = vec2((gl_FragCoord.x/fw-0.5)*(fw/fh), gl_FragCoord.y/fh-0.5) / uZoom;
+      float t=uTime;
+      vec2 c1 = vec2(0.3*sin(t*0.6), 0.3*cos(t*0.5));
+      vec2 c2 = vec2(0.3*cos(t*0.4), 0.3*sin(t*0.7));
+      float a = 0.5 + 0.5*sin(length(p-c1)*uFreq*6.2831853);
+      float b = 0.5 + 0.5*sin(length(p-c2)*uFreq*6.2831853);
+      float heat = mix(a*b, 0.5*(a+b), uMix);
+      o = vec4(heat, 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -1039,6 +1055,7 @@
     glProg.kaleido = makeProg(VS_QUAD, FS_KALEIDO, ["uSize", "uTime", "uSeg", "uRot", "uZoom"]);
     glProg.rotozoom = makeProg(VS_QUAD, FS_ROTOZOOM, ["uSize", "uAngle", "uScale", "uTile", "uZoom"]);
     glProg.munch = makeProg(VS_QUAD, FS_MUNCH, ["uSize", "uTime", "uScale", "uMask", "uZoom"]);
+    glProg.moire = makeProg(VS_QUAD, FS_MOIRE, ["uSize", "uTime", "uFreq", "uMix", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1743,6 +1760,29 @@
     }
   }
 
+  // ---- Moiré: two drifting concentric-ring sets, added/multiplied (shader effect) ----
+  let moFreq = 10, moDrift = 1, moMix = 0.3, moTime = 0;
+  function moireSeed(dt) {
+    moTime += dt * moDrift;
+    return { t: moTime, freq: moFreq, mix: moMix, zoom };
+  }
+  function moire(dt) {                     // CPU fallback — mirrors FS_MOIRE
+    const s = moireSeed(dt), ar = fw / fh, t = s.t, TAU = 6.2831853;
+    const c1x = 0.3 * Math.sin(t * 0.6), c1y = 0.3 * Math.cos(t * 0.5);
+    const c2x = 0.3 * Math.cos(t * 0.4), c2y = 0.3 * Math.sin(t * 0.7);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const py = (y / fh - 0.5) / s.zoom;
+      for (let x = 0; x < fw; x++) {
+        const px = (x / fw - 0.5) * ar / s.zoom;
+        const a = 0.5 + 0.5 * Math.sin(Math.hypot(px - c1x, py - c1y) * s.freq * TAU);
+        const b = 0.5 + 0.5 * Math.sin(Math.hypot(px - c2x, py - c2y) * s.freq * TAU);
+        const heat = a * b * (1 - s.mix) + 0.5 * (a + b) * s.mix;
+        fire[idx++] = heat * 255;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -2207,6 +2247,9 @@
     { key: "xorspeed", host: "fx", type: "dual", label: "Munch speed", valId: "vXorSpeed", min: 0, max: 80, step: 1, lo: 20, hi: 20, fmt: v => Math.round(v), apply: v => xorSpeed = v, durScale: 10 },
     { key: "xorscale", host: "fx", type: "dual", label: "Square size", valId: "vXorScale", min: 0.1, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => (1 / v).toFixed(1) + "px", apply: v => xorScale = v, durScale: 10 },
     { key: "xormask", host: "fx", type: "dual", label: "Detail", valId: "vXorMask", min: 15, max: 255, step: 1, lo: 255, hi: 255, fmt: v => Math.round(v), apply: v => xorMask = Math.round(v), durScale: 10 },
+    { key: "mofreq", host: "fx", type: "dual", label: "Ring frequency", valId: "vMoFreq", min: 2, max: 40, step: 0.5, lo: 10, hi: 10, fmt: v => v.toFixed(1), apply: v => moFreq = v, durScale: 10 },
+    { key: "modrift", host: "fx", type: "dual", label: "Drift speed", valId: "vMoDrift", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => moDrift = v, durScale: 10 },
+    { key: "momix", host: "fx", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => v.toFixed(2), apply: v => moMix = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2447,6 +2490,12 @@
       draw: dt => { const s = munchSeed(dt); if (useGL) glShaderDraw("munch", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uMask, s.mask); gl.uniform1f(u.uZoom, s.zoom); }); else munch(dt); },
       defaults: { xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { xorspeed: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
+    { id: "moire", name: "Moiré", subtitle: "Moiré · interference shimmer",
+      help: "Two sets of concentric rings drift over each other and interfere into shimmering moiré bands. Ring frequency sets how tight the rings are, Drift speed how fast the centres move, Blend fades between multiply and add.",
+      params: ["mofreq", "modrift", "momix", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = moireSeed(dt); if (useGL) glShaderDraw("moire", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uZoom, s.zoom); }); else moire(dt); },
+      defaults: { mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: { mofreq: ["low"] }, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3289,6 +3338,9 @@
       { n: "Munch speed", w: "xor", t: "Munching squares only — how fast the XOR pattern churns (0 freezes a still frame)." },
       { n: "Square size", w: "xor", t: "Munching squares only — the pixel-block size; bigger blocks read as chunkier retro squares." },
       { n: "Detail", w: "xor", t: "Munching squares only — the bit mask the value wraps at; higher = finer nested detail." },
+      { n: "Ring frequency", w: "moire", t: "Moiré only — how tightly packed the concentric rings are; higher = finer, more shimmer." },
+      { n: "Drift speed", w: "moire", t: "Moiré only — how fast the two ring centres wander over each other (0 holds still)." },
+      { n: "Blend", w: "moire", t: "Moiré only — fades the two ring sets between multiply (0, dark webs) and add (1, bright overlaps)." },
     ],
   };
   const helpEl = el("help");
