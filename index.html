@@ -369,12 +369,7 @@
 
   <!-- Effect: pick the visual, then its shape / motion controls and the view zoom -->
   <label>Effect</label>
-  <select id="effect">
-    <option value="0">Sirpinfyer</option>
-    <option value="1">Tetrafyer</option>
-    <option value="2">AnimeJulia</option>
-    <option value="3">Plasma</option>
-  </select>
+  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
 
   <div id="grp-tetra">
     <label class="check"><input type="checkbox" id="showbox" checked> Show box</label>
@@ -2207,12 +2202,22 @@
   resSel.addEventListener("change", () => { cfg.scale = +resSel.value; resize(); persist(); });
   const cycleChk = el("cycle");
   const presetSel = el("preset");
-  const SUBTITLES = [
-    "Sierpiński triangle · classic fire",
-    "Sierpiński tetrahedron · classic fire",
-    "Julia set · animated seed",
-    "Plasma · sinusoidal interference",
+  // ---- effect registry: the single source of truth for each effect. Adding an
+  // effect = append a descriptor here. (Phase 0 holds metadata — name/subtitle/help
+  // and the default-preset name; dispatch, controls and persistence move here next.)
+  // `name` is the dropdown/help name; `presetName` (optional) is the default preset's
+  // name when it differs. Order = the current numeric effect index.
+  const EFFECTS = [
+    { id: "sirpinfyer", name: "Sirpinfyer", subtitle: "Sierpiński triangle · classic fire",
+      help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer." },
+    { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
+      help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks." },
+    { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
+      help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette." },
+    { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
+      help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes." },
   ];
+  EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Per-effect slider presets, loaded whenever an effect becomes active (manual
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
@@ -2480,7 +2485,7 @@
   function setEffect(i, save = true) {
     if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
-    sub.textContent = SUBTITLES[i];
+    sub.textContent = EFFECTS[i].subtitle;
     // only show the sliders that affect the selected mode: fire controls for
     // Sirpinfyer/Tetrafyer (0/1); Julia / Plasma have their own groups.
     grpSirp.style.display = (i === 0 || i === 1) ? "" : "none";   // fire controls
@@ -2590,8 +2595,7 @@
     };
   }
   function defaultPresets() {
-    const names = ["Sirpinfyer", "Tetrafyer", "Phat julia", "Plasma 1"];
-    return [0, 1, 2, 3].map(e => ({ name: names[e], effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -2981,12 +2985,7 @@
   // ---- help popup: effect-aware explanation of every control ----
   const HELP = {
     intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats. Every setting is saved in your browser, separately per effect.",
-    effects: {
-      0: { name: "Sirpinfyer", text: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer." },
-      1: { name: "Tetrafyer", text: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks." },
-      2: { name: "AnimeJulia", text: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette." },
-      3: { name: "Plasma", text: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes." },
-    },
+    // Per-effect names/blurbs come from the EFFECTS registry (see renderHelp).
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1) | "plasma" (3) | "band" (2,3)
     sliders: [
       { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. At the top, Backup downloads everything (all presets and settings) as a file and Restore loads a backup back, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
@@ -3021,11 +3020,11 @@
   };
   const helpEl = el("help");
   function renderHelp() {
-    const e = HELP.effects[effect];
+    const e = EFFECTS[effect];
     const applies = { all: true, fire: effect === 0 || effect === 1, julia: effect === 2, tetra: effect === 1, plasma: effect === 3, band: effect === 2 || effect === 3 };
     const rel = HELP.sliders.filter(s => applies[s.w]);
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.text + "</p>";
+    html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.help + "</p>";
     html += '<p class="help-intro">' + HELP.intro + "</p><dl>";
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
