@@ -1047,6 +1047,23 @@
       else { float nu = log(0.5 * log(mag2) * INVLN2) * INVLN2; float f = (float(i) + 1.0 - nu) / 160.0; v = f <= 0.0 ? 0.0 : 255.0 * sqrt(f); }
       o = vec4(clamp(v, 0.0, 255.0)/255.0, 0.0, 0.0, 1.0);
     }`;
+    // Copper bars: horizontal gradient bars sliding up/down on sine motion.
+    const FS_COPPER = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCount; uniform float uWidth; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float y = (gl_FragCoord.y/uSize.y - 0.5)/uZoom + 0.5;
+      float heat = 0.0; int n = int(uCount);
+      for (int i=0;i<12;i++){
+        if (i>=n) break;
+        float fi = float(i);
+        float by = 0.5 + 0.4*sin(uTime*(0.6+fi*0.13) + fi*1.7);
+        float bar = max(0.0, 1.0 - abs(y - by)/uWidth);
+        heat = max(heat, bar*bar);
+      }
+      o = vec4(heat, 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -1106,6 +1123,7 @@
     glProg.moire = makeProg(VS_QUAD, FS_MOIRE, ["uSize", "uTime", "uFreq", "uMix", "uZoom"]);
     glProg.newton = makeProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = makeProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
+    glProg.copper = makeProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1886,6 +1904,24 @@
     }
   }
 
+  // ---- Copper bars: horizontal gradient bars sliding on sine motion (shader effect) ----
+  let cbCount = 5, cbSpeed = 1, cbWidth = 0.12, cbTime = 0;
+  function copperSeed(dt) {
+    cbTime += dt * cbSpeed;
+    return { t: cbTime, count: cbCount, width: cbWidth, zoom };
+  }
+  function copperbars(dt) {                // CPU fallback — mirrors FS_COPPER
+    const s = copperSeed(dt), n = Math.round(s.count), w = s.width, bys = [];
+    for (let i = 0; i < n; i++) bys.push(0.5 + 0.4 * Math.sin(s.t * (0.6 + i * 0.13) + i * 1.7));
+    for (let y = 0; y < fh; y++) {
+      const yy = (y / fh - 0.5) / s.zoom + 0.5;
+      let heat = 0;
+      for (let i = 0; i < n; i++) { const bar = Math.max(0, 1 - Math.abs(yy - bys[i]) / w); if (bar * bar > heat) heat = bar * bar; }
+      const v = heat * 255, row = y * fw;
+      for (let x = 0; x < fw; x++) fire[row + x] = v;   // horizontal bars: constant across a row
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -2356,6 +2392,9 @@
     { key: "nwspin", host: "fx", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => v.toFixed(2), apply: v => nwSpin = v, durScale: 10 },
     { key: "nwrelax", host: "fx", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => v.toFixed(2), apply: v => nwRelax = v, durScale: 10 },
     { key: "mbexp", host: "fx", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 3.5, fmt: v => v.toFixed(2), apply: v => mbPower = v, durScale: 10 },
+    { key: "cbcount", host: "fx", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => Math.round(v), apply: v => cbCount = Math.round(v), durScale: 10 },
+    { key: "cbspeed", host: "fx", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => cbSpeed = v, durScale: 10 },
+    { key: "cbwidth", host: "fx", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => v.toFixed(3), apply: v => cbWidth = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2615,6 +2654,12 @@
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(dt); },
       defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052] },
       beat: { mbexp: ["low"], banddim: ["high"] }, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
+    { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
+      help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
+      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = copperSeed(dt); if (useGL) glShaderDraw("copper", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); else copperbars(dt); },
+      defaults: { cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: { cbwidth: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3463,6 +3508,9 @@
       { n: "Root spin", w: "newton", t: "Newton only — rotates the whole basin structure; negative spins the other way." },
       { n: "Relaxation", w: "newton", t: "Newton only — the Newton step size (1 = standard). Away from 1 warps and swirls the basin boundaries." },
       { n: "Power", w: "multibrot", t: "Multibrot only — the exponent in z^power + c. 2 is the Julia set; sweep up for more symmetric bulbs (3, 4, …), with smooth shapes at fractional values." },
+      { n: "Bar count", w: "copper", t: "Copper bars only — how many horizontal bars slide up and down (1–12)." },
+      { n: "Bar speed", w: "copper", t: "Copper bars only — how fast the bars bob on their sine paths (0 holds them still)." },
+      { n: "Bar width", w: "copper", t: "Copper bars only — the thickness of each gradient bar." },
     ],
   };
   const helpEl = el("help");
