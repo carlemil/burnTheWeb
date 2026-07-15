@@ -2218,6 +2218,34 @@
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes." },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
+
+  // Effect identity in *saved* blobs is a stable string id, not the volatile numeric
+  // index — so reordering/removing effects never silently remaps or drops saved
+  // presets. Everything in memory stays a numeric index; convert only at the
+  // serialize/deserialize edge (persist/backup/share out, applyBlob/restore in).
+  const LEGACY_EFFECT_IDS = ["sirpinfyer", "tetrafyer", "animejulia", "plasma"];   // old index → id, for blobs saved before ids existed
+  const effectId = idx => (EFFECTS[idx] || EFFECTS[0]).id;
+  function effectIndexFromId(v) {                 // id (or a legacy number) → current numeric index, or -1
+    if (typeof v === "number") v = LEGACY_EFFECT_IDS[v];
+    return EFFECTS.findIndex(f => f.id === v);
+  }
+  function serializeBlob(b) {                      // numeric effect indices → ids, for storage
+    const out = { ...b };
+    if (typeof b.effect === "number") out.effect = effectId(b.effect);
+    if (Array.isArray(b.presets)) out.presets = b.presets.map(p => (p && typeof p.effect === "number" ? { ...p, effect: effectId(p.effect) } : p));
+    return out;
+  }
+  function deserializeBlob(b) {                    // ids (or legacy numbers) → numeric indices; drops unknown-effect presets
+    if (!b || typeof b !== "object") return b;
+    const out = { ...b };
+    if (b.effect !== undefined) { const i = effectIndexFromId(b.effect); if (i >= 0) out.effect = i; else delete out.effect; }
+    if (Array.isArray(b.presets)) out.presets = b.presets.map(p => {
+      if (!p || typeof p !== "object") return null;
+      const i = effectIndexFromId(p.effect);
+      return i >= 0 ? { ...p, effect: i } : null;
+    }).filter(Boolean);
+    return out;
+  }
   // Per-effect slider presets, loaded whenever an effect becomes active (manual
   // pick, Reset, or the auto-cycle). Arrays are [lo,hi] for ranged sliders; a
   // bare number is a simple slider. Each effect gets its own tuned look.
@@ -2403,7 +2431,7 @@
   }
   function persist() {
     if (!persistReady || suppressPersist) return;
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(fullSnapshot())); }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(fullSnapshot()))); }
     catch (e) { /* storage full / disabled — ignore */ }
   }
   // Apply a settings blob (from localStorage or a shared URL). `sharing` skips the
@@ -2411,6 +2439,7 @@
   // the settings themselves.
   function applyBlob(saved, sharing) {
     if (!saved) return;
+    saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
     if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
@@ -2564,7 +2593,8 @@
   el("share").addEventListener("click", () => {
     saveState(effect); saveBeat(effect); saveExtra(effect);
     const blob = { states, beats: beatStates, extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
-    const s = btoa(unescape(encodeURIComponent(JSON.stringify(blob))));
+    const s = btoa(unescape(encodeURIComponent(JSON.stringify(serializeBlob(blob)))));   // effect stored as a stable id
+    // (the s/<effect>/ path below stays numeric — it's just the static unfurl page)
     // Point at the current effect's static landing page (s/<effect>/) so social
     // unfurls show that effect's preview image; its redirect forwards ?s= to the
     // app. dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/
@@ -2660,7 +2690,7 @@
     // slider ranges, active effect, auto-cycle, resolution, panel state, ...) — the
     // same object persist() writes, so Restore brings the app back exactly. (A bare
     // array or a { presets, ranges } object from older builds still restores.)
-    const blob = new Blob([JSON.stringify(fullSnapshot(), null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(serializeBlob(fullSnapshot()), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "burnTheWeb-presets.json";
@@ -2675,9 +2705,11 @@
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(reader.result);
+        const raw = JSON.parse(reader.result);
         // Accept a full snapshot (current), a legacy { presets, ranges } object, or a
-        // bare presets array (oldest). `arr` is the preset list in every shape.
+        // bare presets array (oldest). deserializeBlob maps stable effect ids (or legacy
+        // numbers) back to numeric indices in every shape. `arr` is the preset list.
+        const parsed = Array.isArray(raw) ? deserializeBlob({ presets: raw }).presets : deserializeBlob(raw);
         const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.presets);
         if (!Array.isArray(arr)) throw new Error("not a burnTheWeb backup");
         const valid = arr
@@ -2745,7 +2777,7 @@
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
     if (p.hasBeat && el("rst-beat").checked) out.beatTune = p.parsed.beatTune;
     // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
-    localStorage.setItem(STORE_KEY, JSON.stringify(out));
+    localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
     location.reload();
   }
   el("rst-go").addEventListener("click", applyRestore);
