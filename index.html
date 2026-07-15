@@ -1022,6 +1022,31 @@
       float heat = (root + 1.0 - float(iter)/40.0)/3.0;
       o = vec4(clamp(heat,0.0,1.0), 0.0, 0.0, 1.0);
     }`;
+    // Multibrot: Julia-orbit z^d + c (polar power); animate d to morph the bulb count.
+    const FS_MULTIBROT = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform vec2 uC; uniform vec2 uSpan; uniform float uPower;
+    out vec4 o;
+    const float INVLN2 = 1.4426950408889634;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float zx = (floor(gl_FragCoord.x)/fw - 0.5) * uSpan.x;
+      float zy = (floor(gl_FragCoord.y)/fh - 0.5) * uSpan.y;
+      float mag2 = zx*zx + zy*zy; int i = 0;
+      for (int k = 0; k < 160; k++) {
+        if (mag2 > 4.0) break;
+        float r = pow(sqrt(mag2), uPower);
+        float th = atan(zy, zx) * uPower;
+        zx = r*cos(th) + uC.x;
+        zy = r*sin(th) + uC.y;
+        mag2 = zx*zx + zy*zy;
+        i++;
+      }
+      float v;
+      if (i >= 160) { v = 255.0; }
+      else { float nu = log(0.5 * log(mag2) * INVLN2) * INVLN2; float f = (float(i) + 1.0 - nu) / 160.0; v = f <= 0.0 ? 0.0 : 255.0 * sqrt(f); }
+      o = vec4(clamp(v, 0.0, 255.0)/255.0, 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -1080,6 +1105,7 @@
     glProg.munch = makeProg(VS_QUAD, FS_MUNCH, ["uSize", "uTime", "uScale", "uMask", "uZoom"]);
     glProg.moire = makeProg(VS_QUAD, FS_MOIRE, ["uSize", "uTime", "uFreq", "uMix", "uZoom"]);
     glProg.newton = makeProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
+    glProg.multibrot = makeProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1836,6 +1862,30 @@
     }
   }
 
+  // ---- Multibrot: Julia-orbit z^d + c with an animatable exponent (shader effect) ----
+  let mbPower = 2.5;
+  function multibrot(dt) {                 // CPU fallback — mirrors FS_MULTIBROT
+    const seed = juliaSeed(dt);
+    const cx = seed.cx, cy = seed.cy, spanX = seed.spanX, spanY = seed.spanY, d = mbPower;
+    const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const zy0 = (y / fh - 0.5) * spanY;
+      for (let x = 0; x < fw; x++) {
+        let zx = (x / fw - 0.5) * spanX, zy = zy0, i = 0, mag2 = zx * zx + zy * zy;
+        while (mag2 <= 4 && i < maxIter) {
+          const r = Math.pow(Math.sqrt(mag2), d), th = Math.atan2(zy, zx) * d;
+          zx = r * Math.cos(th) + cx; zy = r * Math.sin(th) + cy;
+          mag2 = zx * zx + zy * zy; i++;
+        }
+        let v;
+        if (i >= maxIter) v = 255;
+        else { const nu = Math.log(0.5 * Math.log(mag2) * invLn2) * invLn2; const f = (i + 1 - nu) / maxIter; v = f <= 0 ? 0 : 255 * Math.sqrt(f); }
+        fire[idx++] = v;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -2305,6 +2355,7 @@
     { key: "momix", host: "fx", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => v.toFixed(2), apply: v => moMix = v, durScale: 10 },
     { key: "nwspin", host: "fx", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => v.toFixed(2), apply: v => nwSpin = v, durScale: 10 },
     { key: "nwrelax", host: "fx", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => v.toFixed(2), apply: v => nwRelax = v, durScale: 10 },
+    { key: "mbexp", host: "fx", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 3.5, fmt: v => v.toFixed(2), apply: v => mbPower = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2557,6 +2608,13 @@
       draw: dt => { const s = newtonSeed(dt); if (useGL) glShaderDraw("newton", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uRelax, s.relax); gl.uniform1f(u.uZoom, s.zoom); }); else newton(dt); },
       defaults: { nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { nwspin: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
+    { id: "multibrot", name: "Multibrot", presetName: "Multibrot", subtitle: "Multibrot · power sweep",
+      help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
+      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band", "multibrot"],
+      bakesOwnZoom: true, onEnter: () => reseedJulia(),
+      draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(dt); },
+      defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052] },
+      beat: { mbexp: ["low"], banddim: ["high"] }, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3404,6 +3462,7 @@
       { n: "Blend", w: "moire", t: "Moiré only — fades the two ring sets between multiply (0, dark webs) and add (1, bright overlaps)." },
       { n: "Root spin", w: "newton", t: "Newton only — rotates the whole basin structure; negative spins the other way." },
       { n: "Relaxation", w: "newton", t: "Newton only — the Newton step size (1 = standard). Away from 1 warps and swirls the basin boundaries." },
+      { n: "Power", w: "multibrot", t: "Multibrot only — the exponent in z^power + c. 2 is the Julia set; sweep up for more symmetric bulbs (3, 4, …), with smooth shapes at fractional values." },
     ],
   };
   const helpEl = el("help");
