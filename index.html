@@ -1437,7 +1437,9 @@
     const n = cfg.points;
     // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
-    if (EFFECTS[effect].fractal2d) {
+    if (EFFECTS[effect].stamp) {
+      EFFECTS[effect].stamp(xL, xR, yT, yB, n);   // point-accumulation effect (e.g. attractors)
+    } else if (EFFECTS[effect].fractal2d) {
       // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix,
       // scaled (Size) about the safe-box centre. Layers stacks progressively
       // smaller, fewer-point, differently-seeded copies.
@@ -1922,6 +1924,20 @@
     }
   }
 
+  // ---- Strange attractors: de Jong map stamped into the fire heat grid (point effect) ----
+  let atA = 1.4, atB = -2.3, atC = 2.4, atD = -2.1;
+  function attractorStamp(xL, xR, yT, yB, n) {
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.22, sy = (yB - yT) * 0.22;   // map de Jong's ±2 range into the safe box
+    let x = 0.1, y = 0.1;
+    for (let i = 0; i < n; i++) {
+      const nx = Math.sin(atA * y) - Math.cos(atB * x);
+      const ny = Math.sin(atC * x) - Math.cos(atD * y);
+      x = nx; y = ny;
+      if (i > 20) plot(cx + x * sx, cy + y * sy, 255);    // skip the transient, then plot the attractor
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -2395,6 +2411,10 @@
     { key: "cbcount", host: "fx", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => Math.round(v), apply: v => cbCount = Math.round(v), durScale: 10 },
     { key: "cbspeed", host: "fx", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => cbSpeed = v, durScale: 10 },
     { key: "cbwidth", host: "fx", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => v.toFixed(3), apply: v => cbWidth = v, durScale: 10 },
+    { key: "ata", host: "fx", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => v.toFixed(2), apply: v => atA = v, durScale: 10 },
+    { key: "atb", host: "fx", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => v.toFixed(2), apply: v => atB = v, durScale: 10 },
+    { key: "atc", host: "fx", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => v.toFixed(2), apply: v => atC = v, durScale: 10 },
+    { key: "atd", host: "fx", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => v.toFixed(2), apply: v => atD = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2660,6 +2680,12 @@
       draw: dt => { const s = copperSeed(dt); if (useGL) glShaderDraw("copper", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); else copperbars(dt); },
       defaults: { cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { cbwidth: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
+    { id: "attractor", name: "Attractor", presetName: "Attractor", subtitle: "Strange attractor · de Jong",
+      help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow.",
+      params: ["ata", "atb", "atc", "atd", "points", "rise", "zoom"], helpTags: ["all", "attractor"],
+      stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
+      defaults: { ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: { ata: ["low"], atc: ["high"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3511,6 +3537,10 @@
       { n: "Bar count", w: "copper", t: "Copper bars only — how many horizontal bars slide up and down (1–12)." },
       { n: "Bar speed", w: "copper", t: "Copper bars only — how fast the bars bob on their sine paths (0 holds them still)." },
       { n: "Bar width", w: "copper", t: "Copper bars only — the thickness of each gradient bar." },
+      { n: "Coeff a", w: "attractor", t: "Attractor only — the a coefficient of the de Jong map; one of the four shape knobs. Arm its L/M/H chips to morph on the beat." },
+      { n: "Coeff b", w: "attractor", t: "Attractor only — the b coefficient of the de Jong map." },
+      { n: "Coeff c", w: "attractor", t: "Attractor only — the c coefficient of the de Jong map." },
+      { n: "Coeff d", w: "attractor", t: "Attractor only — the d coefficient of the de Jong map." },
     ],
   };
   const helpEl = el("help");
