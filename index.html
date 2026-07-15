@@ -1164,7 +1164,7 @@
     bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
     drawQuad();
     // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
-    const z = (effect === 2 || effect === 3) ? 1 : zoom;
+    const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
     bindFbo(glFbo.scene, fw, fh);
     gl.useProgram(glProg.zoom.p);
     bindTexUnit(0, glTex.native); gl.uniform1i(glProg.zoom.u.uSrc, 0);
@@ -1355,7 +1355,7 @@
     const n = cfg.points;
     // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
-    if (effect === 0) {
+    if (EFFECTS[effect].fractal2d) {
       // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix,
       // scaled (Size) about the safe-box centre. Layers stacks progressively
       // smaller, fewer-point, differently-seeded copies.
@@ -1618,7 +1618,7 @@
     // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes
     // scale the rendered image here. Scale about the canvas centre; clear first
     // when zoomed out so no smeared border remains.
-    const z = (effect === 2 || effect === 3) ? 1 : zoom;
+    const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
     ctx.save();
     if (z !== 1) {
       ctx.fillStyle = "#000";
@@ -1678,14 +1678,11 @@
 
     if (useGL) uploadPalette();       // push the (possibly morphed) palette
 
-    if (effect === 2) {
-      if (useGL) glJulia(juliaSeed(dt));   // fragment shader writes the heat tex
-      else julia(dt);                      // recomputed whole each frame from the seed
-    } else if (effect === 3) {
-      if (useGL) glPlasma(plasmaSeed(dt)); // plasma shader writes the heat tex
-      else plasma(dt);                     // recomputed whole each frame
+    const fx = EFFECTS[effect];
+    if (fx.draw) {
+      fx.draw(dt);                    // shader effect: writes the heat tex directly from its seed
     } else {
-      const step = 1 / cfg.burn;      // seconds between fire simulation ticks
+      const step = 1 / cfg.burn;      // fire effect: advance the decoupled sim accumulator
       let ticks = 0;
       while (acc >= step && ticks < 4) {
         simulate(now);
@@ -2175,13 +2172,7 @@
 
   const effectSel = el("effect");
   const sub = el("sub");
-  const grpSirp = el("grp-sirp");
-  const grpJulia = el("grp-julia");
-  const grpTetra = el("grp-tetra");
-  const grpBand = el("grp-band");
-  const grpRot = el("grp-rot");
-  const grpPlasma = el("grp-plasma");
-  const grpTtl = el("grp-ttl");
+  const grpTtl = el("grp-ttl");   // effect-specific groups are shown/hidden via each descriptor's `controls`
   // Preset TTL only matters while auto-cycle is on — gray it out and block input
   // (plus disable the thumbs for keyboard) when the cycle toggle is off.
   function syncTtlEnabled() {
@@ -2207,16 +2198,29 @@
   // and the default-preset name; dispatch, controls and persistence move here next.)
   // `name` is the dropdown/help name; `presetName` (optional) is the default preset's
   // name when it differs. Order = the current numeric effect index.
+  // Fields per descriptor (Phase 2 adds render/dispatch): `controls` = the control
+  // groups this effect shows; `helpTags` = which HELP.sliders `w:` tags apply;
+  // `draw(dt)` = a shader effect that writes heat directly (its presence routes
+  // frame() away from the fire sim); `fractal2d` = fire-sim effect stamps the 2D
+  // chaos game (else the 3D tetra); `bakesOwnZoom` = zoom is baked into the shader
+  // so display zoom is forced to 1; `onEnter()` = run on switching to this effect.
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sirpinfyer", subtitle: "Sierpiński triangle · classic fire",
-      help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer." },
+      help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
+      controls: ["grp-sirp"], helpTags: ["all", "fire"], fractal2d: true },
     { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
-      help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks." },
+      help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks.",
+      controls: ["grp-sirp", "grp-rot", "grp-tetra"], helpTags: ["all", "fire", "tetra"] },
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
-      help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette." },
+      help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
+      controls: ["grp-julia", "grp-band"], helpTags: ["all", "julia", "band"], bakesOwnZoom: true,
+      onEnter: () => reseedJulia(), draw: dt => { if (useGL) glJulia(juliaSeed(dt)); else julia(dt); } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
-      help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes." },
+      help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
+      controls: ["grp-plasma", "grp-band"], helpTags: ["all", "plasma", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); } },
   ];
+  const ALL_GROUPS = ["grp-sirp", "grp-rot", "grp-tetra", "grp-julia", "grp-plasma", "grp-band"];  // every effect-specific group
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
 
   // Effect identity in *saved* blobs is a stable string id, not the volatile numeric
@@ -2514,19 +2518,15 @@
   function setEffect(i, save = true) {
     if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
-    sub.textContent = EFFECTS[i].subtitle;
-    // only show the sliders that affect the selected mode: fire controls for
-    // Sirpinfyer/Tetrafyer (0/1); Julia / Plasma have their own groups.
-    grpSirp.style.display = (i === 0 || i === 1) ? "" : "none";   // fire controls
-    grpJulia.style.display = i === 2 ? "" : "none";
-    grpPlasma.style.display = i === 3 ? "" : "none";  // Plasma-only sliders
-    grpBand.style.display = (i === 2 || i === 3) ? "" : "none";   // banding: Julia + Plasma
-    grpRot.style.display = i === 1 ? "" : "none";     // Rotation is Tetrafyer-only
-    grpTetra.style.display = i === 1 ? "" : "none";   // "Show box" is Tetrafyer-only
+    const fx = EFFECTS[i];
+    sub.textContent = fx.subtitle;
+    // show only this effect's control groups (declared in its descriptor)
+    ALL_GROUPS.forEach(g => el(g).style.display = "none");
+    fx.controls.forEach(g => el(g).style.display = "");
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
     loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
-    if (i === 2) reseedJulia();       // AnimeJulia: re-roll its start on entry (incl. first load & preset apply)
+    if (fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
     if (fireNext) fireNext.fill(0);
     if (useGL && glReady) glClearHeat();
@@ -3053,8 +3053,7 @@
   const helpEl = el("help");
   function renderHelp() {
     const e = EFFECTS[effect];
-    const applies = { all: true, fire: effect === 0 || effect === 1, julia: effect === 2, tetra: effect === 1, plasma: effect === 3, band: effect === 2 || effect === 3 };
-    const rel = HELP.sliders.filter(s => applies[s.w]);
+    const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
     html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.help + "</p>";
     html += '<p class="help-intro">' + HELP.intro + "</p><dl>";
