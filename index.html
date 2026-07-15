@@ -2293,8 +2293,8 @@
   const EXTRA_PRESETS = {
     0: { palette: "7", morph: true, showBox: true, randSeed: true },
     1: { palette: "1", morph: true, showBox: false, randSeed: true },
-    2: { palette: "2", morph: true, showBox: true, randSeed: true },   // AnimeJulia uses randSeed
-    3: { palette: "0", morph: true, showBox: true, randSeed: true },
+    2: { palette: "5", morph: true, showBox: true, randSeed: true },   // AnimeJulia uses randSeed
+    3: { palette: "3", morph: true, showBox: true, randSeed: true },
   };
   function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed }; }
   function initExtras() { for (const k in PRESETS) extras[k] = presetExtra(k); }
