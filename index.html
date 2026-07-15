@@ -898,6 +898,25 @@
       float heat = dep * (0.55 + 0.45*ang) * clamp(r/0.5, 0.0, 1.0);
       o = vec4(clamp(heat,0.0,1.0), 0.0, 0.0, 1.0);
     }`;
+    // Metaballs: sum of inverse-square fields from moving centres, soft-saturated.
+    const FS_METABALL = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCount; uniform float uRadius; uniform float uGain; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw=uSize.x, fh=uSize.y;
+      vec2 p = vec2((gl_FragCoord.x/fw-0.5)*(fw/fh), gl_FragCoord.y/fh-0.5) / uZoom;
+      float t=uTime, field=0.0; int n=int(uCount);
+      for (int i=0;i<8;i++){
+        if (i>=n) break;
+        float fi=float(i);
+        vec2 c = vec2(0.32*sin(t*(0.5+fi*0.17)+fi*2.1), 0.32*cos(t*(0.4+fi*0.23)+fi*1.3));
+        vec2 d = p-c;
+        field += exp(-dot(d,d)/(uRadius*uRadius));   // wide Gaussian blob ⇒ smooth merging
+      }
+      float heat = 1.0 - exp(-field*uGain);
+      o = vec4(clamp(heat,0.0,1.0),0.0,0.0,1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -949,6 +968,7 @@
     glProg.julia = makeProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
     glProg.plasma = makeProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
     glProg.tunnel = makeProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
+    glProg.metaball = makeProg(VS_QUAD, FS_METABALL, ["uSize", "uTime", "uCount", "uRadius", "uGain", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1543,6 +1563,31 @@
     }
   }
 
+  // ---- Metaballs: summed radial fields, soft-saturated (shader effect) ----
+  let mbCount = 4, mbRadius = 0.12, mbSpeed = 1, mbGain = 1, mbTime = 0;
+  function metaSeed(dt) {
+    mbTime += dt * mbSpeed;
+    return { t: mbTime, count: mbCount, radius: mbRadius, gain: mbGain, zoom };
+  }
+  function metaCenter(i, t) {              // shared by shader/CPU: Lissajous path
+    return [0.32 * Math.sin(t * (0.5 + i * 0.17) + i * 2.1), 0.32 * Math.cos(t * (0.4 + i * 0.23) + i * 1.3)];
+  }
+  function metaballs(dt) {                 // CPU fallback — mirrors FS_METABALL
+    const s = metaSeed(dt), ar = fw / fh, n = Math.round(s.count), rr = s.radius * s.radius, g = s.gain;
+    const cs = []; for (let i = 0; i < n; i++) cs.push(metaCenter(i, s.t));
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const py = (y / fh - 0.5) / s.zoom;
+      for (let x = 0; x < fw; x++) {
+        const px = (x / fw - 0.5) * ar / s.zoom;
+        let field = 0;
+        for (let i = 0; i < n; i++) { const dx = px - cs[i][0], dy = py - cs[i][1]; field += Math.exp(-(dx * dx + dy * dy) / rr); }
+        const heat = 1 - Math.exp(-field * g);
+        fire[idx++] = Math.max(0, Math.min(1, heat)) * 255;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -1994,6 +2039,10 @@
     { key: "tunspeed", host: "fx", type: "dual", label: "Fly speed", valId: "vTunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => tunSpeed = v, durScale: 10 },
     { key: "tuntwist", host: "fx", type: "dual", label: "Twist", valId: "vTunTwist", min: -2, max: 2, step: 0.05, lo: 0.3, hi: 0.3, fmt: v => v.toFixed(2), apply: v => tunTwist = v, durScale: 10 },
     { key: "tunrings", host: "fx", type: "dual", label: "Ring density", valId: "vTunRings", min: 1, max: 30, step: 0.5, lo: 10, hi: 10, fmt: v => v.toFixed(1), apply: v => tunRings = v, durScale: 10 },
+    { key: "mbcount", host: "fx", type: "dual", label: "Ball count", valId: "vMbCount", min: 2, max: 8, step: 1, lo: 4, hi: 4, fmt: v => Math.round(v), apply: v => mbCount = Math.round(v), durScale: 10 },
+    { key: "mbradius", host: "fx", type: "dual", label: "Ball size", valId: "vMbRadius", min: 0.04, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => v.toFixed(3), apply: v => mbRadius = v, durScale: 10 },
+    { key: "mbspeed", host: "fx", type: "dual", label: "Ball speed", valId: "vMbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => mbSpeed = v, durScale: 10 },
+    { key: "mbgain", host: "fx", type: "dual", label: "Gain", valId: "vMbGain", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2), apply: v => mbGain = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2203,6 +2252,12 @@
       draw: dt => { const s = tunnelSeed(dt); if (useGL) glShaderDraw("tunnel", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uRings, s.rings); gl.uniform1f(u.uZoom, s.zoom); }); else tunnel(dt); },
       defaults: { tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { tunspeed: ["low"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
+    { id: "metaballs", name: "Metaballs", subtitle: "Metaballs · gooey blobs",
+      help: "Blobby fields that merge and split like lava-lamp goo — a sum of inverse-square fields from moving centres, soft-saturated. Turn up Banding for hard iso-contour shells.",
+      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = metaSeed(dt); if (useGL) glShaderDraw("metaball", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRadius, s.radius); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); else metaballs(dt); },
+      defaults: { mbcount: [5, 5], mbradius: [0.16, 0.2], mbspeed: [0.6, 1.2], mbgain: [0.8, 1.5], zoom: [1, 1], band: [40, 70], bandsize: [1, 3], banddim: [15, 40] },
+      beat: { mbradius: ["low"], mbgain: ["mid"] }, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3024,6 +3079,10 @@
       { n: "Fly speed", w: "tunnel", t: "Tunnel only — how fast you fly down the pipe toward the vanishing point (0 freezes)." },
       { n: "Twist", w: "tunnel", t: "Tunnel only — how fast the pipe rotates around you; negative spins the other way." },
       { n: "Ring density", w: "tunnel", t: "Tunnel only — how many rings are packed along the depth of the tunnel." },
+      { n: "Ball count", w: "meta", t: "Metaballs only — how many blobs (2–8). Spread the thumbs to make the count pulse." },
+      { n: "Ball size", w: "meta", t: "Metaballs only — each blob's radius; bigger blobs merge into larger gooey masses." },
+      { n: "Ball speed", w: "meta", t: "Metaballs only — how fast the blobs drift along their paths (0 freezes them)." },
+      { n: "Gain", w: "meta", t: "Metaballs only — overall field strength: raises the threshold so blobs fill more of the screen." },
     ],
   };
   const helpEl = el("help");
