@@ -342,14 +342,16 @@
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
-  <label>Backup &amp; restore</label>
+  <label>Backup, restore &amp; share</label>
   <div class="presetrow">
     <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, beat-detection tuning — everything the app remembers">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup — choose which parts to bring back, and whether to merge or replace">Restore</button>
+    <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
   </div>
   <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
   <hr class="sep">
 
+  <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
   <label>Presets</label>
   <select id="preset"></select>
   <div class="presetrow">
@@ -357,16 +359,15 @@
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
   <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
-
   <div id="grp-ttl">
     <label>Preset TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="ttl-lo" min="0" max="180" step="1" value="10">
       <input type="range" id="ttl-hi" min="0" max="180" step="1" value="30"></div>
   </div>
-
   <hr class="sep">
 
+  <!-- Effect: pick the visual, then its shape / motion controls and the view zoom -->
   <label>Effect</label>
   <select id="effect">
     <option value="0">Sirpinfyer</option>
@@ -375,60 +376,12 @@
     <option value="3">Plasma</option>
   </select>
 
-  <label>Palette</label>
-  <select id="palette">
-    <option value="0">Fire</option>
-    <option value="1">Ice</option>
-    <option value="2">Toxic</option>
-    <option value="3">Copper</option>
-    <option value="4">Purple</option>
-    <option value="5">Rainbow</option>
-    <option value="6">Grayscale</option>
-    <option value="7">Electric</option>
-  </select>
-  <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
-
-  <label>Resolution</label>
-  <select id="res" title="Render resolution — lower it if the frame rate is low">
-    <option value="1">Full</option>
-    <option value="1.5">High</option>
-    <option value="2">Medium</option>
-    <option value="3">Low</option>
-    <option value="4">Potato</option>
-  </select>
-
-  <label>React to music <span class="val" id="vAudio">off</span></label>
-  <div class="audiorow">
-    <button id="audCapture" class="audbtn" type="button" title="Capture system / tab audio (e.g. Spotify)">Capture</button>
-    <button id="audMic" class="audbtn" type="button" title="Capture microphone">Mic</button>
-    <button id="audStop" class="audbtn" type="button" title="Stop">Stop</button>
-    <div class="meter" title="low · mid · high"><i></i><i></i><i></i></div>
-  </div>
-  <p id="audMsg" class="hint"></p>
-
   <div id="grp-tetra">
     <label class="check"><input type="checkbox" id="showbox" checked> Show box</label>
     <label>Box size <span class="val" id="vBoxSize"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="boxsize-lo" min="0.8" max="5" step="0.05" value="2">
       <input type="range" id="boxsize-hi" min="0.8" max="5" step="0.05" value="2"></div>
-  </div>
-
-  <div id="grp-band">
-    <label>Banding <span class="val" id="vBand"></span></label>
-    <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="band-lo" min="0" max="100" step="1" value="0">
-      <input type="range" id="band-hi" min="0" max="100" step="1" value="0"></div>
-
-    <label>Band size <span class="val" id="vBandSize"></span></label>
-    <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="bandsize-lo" min="1" max="9" step="1" value="1">
-      <input type="range" id="bandsize-hi" min="1" max="9" step="1" value="1"></div>
-
-    <label>Darkness <span class="val" id="vBandDim"></span></label>
-    <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="banddim-lo" min="0" max="100" step="1" value="0">
-      <input type="range" id="banddim-hi" min="0" max="100" step="1" value="0"></div>
   </div>
 
   <div id="grp-sirp">
@@ -464,11 +417,6 @@
       <input type="range" id="rot-lo" min="-180" max="180" step="1" value="0">
       <input type="range" id="rot-hi" min="-180" max="180" step="1" value="0"></div>
   </div>
-
-  <label>Zoom <span class="val" id="vZoom"></span></label>
-  <div class="dual"><div class="track"></div><div class="fill"></div>
-    <input type="range" id="zoom-lo" min="0.5" max="4" step="0.05" value="1">
-    <input type="range" id="zoom-hi" min="0.5" max="4" step="0.05" value="1"></div>
 
   <div id="grp-julia">
     <label>Cardioid RPM <span class="val" id="vRpm"></span></label>
@@ -515,11 +463,65 @@
       <input type="range" id="pwarp-hi" min="0" max="2" step="0.05" value="0.5"></div>
   </div>
 
+  <label>Zoom <span class="val" id="vZoom"></span></label>
+  <div class="dual"><div class="track"></div><div class="fill"></div>
+    <input type="range" id="zoom-lo" min="0.5" max="4" step="0.05" value="1">
+    <input type="range" id="zoom-hi" min="0.5" max="4" step="0.05" value="1"></div>
   <hr class="sep">
-  <button id="reset" type="button">Reset this effect</button>
-  <div class="presetrow">
-    <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
+
+  <!-- Colour: the palette, its auto-morph, and the AnimeJulia/Plasma banding filter -->
+  <label>Palette</label>
+  <select id="palette">
+    <option value="0">Fire</option>
+    <option value="1">Ice</option>
+    <option value="2">Toxic</option>
+    <option value="3">Copper</option>
+    <option value="4">Purple</option>
+    <option value="5">Rainbow</option>
+    <option value="6">Grayscale</option>
+    <option value="7">Electric</option>
+  </select>
+  <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
+
+  <div id="grp-band">
+    <label>Banding <span class="val" id="vBand"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="band-lo" min="0" max="100" step="1" value="0">
+      <input type="range" id="band-hi" min="0" max="100" step="1" value="0"></div>
+
+    <label>Band size <span class="val" id="vBandSize"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="bandsize-lo" min="1" max="9" step="1" value="1">
+      <input type="range" id="bandsize-hi" min="1" max="9" step="1" value="1"></div>
+
+    <label>Darkness <span class="val" id="vBandDim"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="banddim-lo" min="0" max="100" step="1" value="0">
+      <input type="range" id="banddim-hi" min="0" max="100" step="1" value="0"></div>
   </div>
+
+  <button id="reset" type="button">Reset this effect</button>
+  <hr class="sep">
+
+  <!-- Sound &amp; quality: music reactivity and the global render resolution -->
+  <label>React to music <span class="val" id="vAudio">off</span></label>
+  <div class="audiorow">
+    <button id="audCapture" class="audbtn" type="button" title="Capture system / tab audio (e.g. Spotify)">Capture</button>
+    <button id="audMic" class="audbtn" type="button" title="Capture microphone">Mic</button>
+    <button id="audStop" class="audbtn" type="button" title="Stop">Stop</button>
+    <div class="meter" title="low · mid · high"><i></i><i></i><i></i></div>
+  </div>
+  <p id="audMsg" class="hint"></p>
+
+  <label>Resolution</label>
+  <select id="res" title="Render resolution — lower it if the frame rate is low">
+    <option value="1">Full</option>
+    <option value="1.5">High</option>
+    <option value="2">Medium</option>
+    <option value="3">Low</option>
+    <option value="4">Potato</option>
+  </select>
+  <hr class="sep">
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> toggle panel/fullscreen</p>
   <p class="hint">Keys:<br>
