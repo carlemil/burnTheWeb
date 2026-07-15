@@ -999,6 +999,29 @@
       float heat = mix(a*b, 0.5*(a+b), uMix);
       o = vec4(heat, 0.0, 0.0, 1.0);
     }`;
+    // Newton fractal: basins of z³−1 under Newton's method, coloured by root + iters.
+    const FS_NEWTON = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uSpin; uniform float uRelax; uniform float uZoom;
+    out vec4 o;
+    vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x-a.y*b.y, a.x*b.y+a.y*b.x); }
+    void main(){
+      float fw=uSize.x, fh=uSize.y;
+      vec2 z = vec2((gl_FragCoord.x/fw-0.5)*(fw/fh), gl_FragCoord.y/fh-0.5) * 3.0 / uZoom;
+      float c=cos(uSpin), s=sin(uSpin); z = mat2(c,-s,s,c)*z;
+      int iter=0;
+      for (int k=0;k<40;k++){
+        vec2 z2=cmul(z,z);
+        vec2 f = cmul(z2,z) - vec2(1.0,0.0);
+        if (dot(f,f) < 1e-6) break;
+        vec2 fp = 3.0*z2; float dd = dot(fp,fp)+1e-9;
+        z -= uRelax*vec2(f.x*fp.x+f.y*fp.y, f.y*fp.x-f.x*fp.y)/dd;
+        iter++;
+      }
+      float root = floor(mod(atan(z.y,z.x)/6.2831853*3.0 + 3.0, 3.0));
+      float heat = (root + 1.0 - float(iter)/40.0)/3.0;
+      o = vec4(clamp(heat,0.0,1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -1056,6 +1079,7 @@
     glProg.rotozoom = makeProg(VS_QUAD, FS_ROTOZOOM, ["uSize", "uAngle", "uScale", "uTile", "uZoom"]);
     glProg.munch = makeProg(VS_QUAD, FS_MUNCH, ["uSize", "uTime", "uScale", "uMask", "uZoom"]);
     glProg.moire = makeProg(VS_QUAD, FS_MOIRE, ["uSize", "uTime", "uFreq", "uMix", "uZoom"]);
+    glProg.newton = makeProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1783,6 +1807,35 @@
     }
   }
 
+  // ---- Newton fractal: basins of z³−1 under Newton's method (shader effect) ----
+  let nwSpin = 0.15, nwRelax = 1, nwPhase = 0;
+  function newtonSeed(dt) {
+    nwPhase += dt * nwSpin;
+    return { spin: nwPhase, relax: nwRelax, zoom };
+  }
+  function newton(dt) {                    // CPU fallback — mirrors FS_NEWTON
+    const s = newtonSeed(dt), ar = fw / fh, c = Math.cos(s.spin), sn = Math.sin(s.spin), TAU = 6.2831853;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const py0 = (y / fh - 0.5) * 3 / s.zoom;
+      for (let x = 0; x < fw; x++) {
+        const px0 = (x / fw - 0.5) * ar * 3 / s.zoom;
+        let zx = c * px0 - sn * py0, zy = sn * px0 + c * py0, iter = 0;
+        for (let k = 0; k < 40; k++) {
+          const zx2 = zx * zx - zy * zy, zy2 = 2 * zx * zy;          // z²
+          const fx = zx2 * zx - zy2 * zy - 1, fy = zx2 * zy + zy2 * zx;   // z³ − 1
+          if (fx * fx + fy * fy < 1e-6) break;
+          const dpx = 3 * zx2, dpy = 3 * zy2, dd = dpx * dpx + dpy * dpy + 1e-9;   // f' = 3z²
+          zx -= s.relax * (fx * dpx + fy * dpy) / dd;
+          zy -= s.relax * (fy * dpx - fx * dpy) / dd;
+          iter++;
+        }
+        const root = Math.floor((Math.atan2(zy, zx) / TAU * 3 + 3) % 3);
+        fire[idx++] = Math.max(0, Math.min(1, (root + 1 - iter / 40) / 3)) * 255;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -2250,6 +2303,8 @@
     { key: "mofreq", host: "fx", type: "dual", label: "Ring frequency", valId: "vMoFreq", min: 2, max: 40, step: 0.5, lo: 10, hi: 10, fmt: v => v.toFixed(1), apply: v => moFreq = v, durScale: 10 },
     { key: "modrift", host: "fx", type: "dual", label: "Drift speed", valId: "vMoDrift", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => moDrift = v, durScale: 10 },
     { key: "momix", host: "fx", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => v.toFixed(2), apply: v => moMix = v, durScale: 10 },
+    { key: "nwspin", host: "fx", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => v.toFixed(2), apply: v => nwSpin = v, durScale: 10 },
+    { key: "nwrelax", host: "fx", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => v.toFixed(2), apply: v => nwRelax = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2496,6 +2551,12 @@
       draw: dt => { const s = moireSeed(dt); if (useGL) glShaderDraw("moire", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uZoom, s.zoom); }); else moire(dt); },
       defaults: { mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { mofreq: ["low"] }, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
+    { id: "newton", name: "Newton", subtitle: "Newton fractal · root basins",
+      help: "The Newton fractal: each pixel is coloured by which root of z³−1 Newton's method converges to, plus how many steps it took, giving three interlocking basins with fractal borders. Root spin rotates it; Relaxation warps the convergence.",
+      params: ["nwspin", "nwrelax", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = newtonSeed(dt); if (useGL) glShaderDraw("newton", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uRelax, s.relax); gl.uniform1f(u.uZoom, s.zoom); }); else newton(dt); },
+      defaults: { nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: { nwspin: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3341,6 +3402,8 @@
       { n: "Ring frequency", w: "moire", t: "Moiré only — how tightly packed the concentric rings are; higher = finer, more shimmer." },
       { n: "Drift speed", w: "moire", t: "Moiré only — how fast the two ring centres wander over each other (0 holds still)." },
       { n: "Blend", w: "moire", t: "Moiré only — fades the two ring sets between multiply (0, dark webs) and add (1, bright overlaps)." },
+      { n: "Root spin", w: "newton", t: "Newton only — rotates the whole basin structure; negative spins the other way." },
+      { n: "Relaxation", w: "newton", t: "Newton only — the Newton step size (1 = standard). Away from 1 warps and swirls the basin boundaries." },
     ],
   };
   const helpEl = el("help");
