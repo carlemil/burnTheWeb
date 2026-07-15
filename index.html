@@ -356,6 +356,7 @@
   <select id="preset"></select>
   <div class="presetrow">
     <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
+    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
   <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
@@ -2890,6 +2891,14 @@
     if (curPreset >= 0 && curPreset < presets.length)
       presets[curPreset] = { name: presets[curPreset].name, ...snapshotScene() };
   }
+  el("renamepreset").addEventListener("click", () => {
+    if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
+    const name = (prompt("Rename preset:", presets[curPreset].name) || "").trim();
+    if (!name) return;
+    presets[curPreset].name = name;
+    rebuildPresetOptions();
+    persist();
+  });
   el("delpreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
     presets.splice(curPreset, 1);
@@ -3236,7 +3245,7 @@
     // Per-effect names/blurbs come from the EFFECTS registry (see renderHelp).
     // when: "all" | "fire" (0,1) | "julia" (2) | "tetra" (1) | "plasma" (3) | "band" (2,3)
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Delete removes the selected one. Choose “— custom —” to tweak freely without touching any saved preset. At the top, Backup downloads everything (all presets and settings) as a file and Restore loads a backup back, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Rename renames the selected one; Delete removes it. Choose “— custom —” to tweak freely without touching any saved preset. At the top, Backup downloads everything (all presets and settings) as a file and Restore loads a backup back, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
