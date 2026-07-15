@@ -1,17 +1,22 @@
 # burnTheWeb
 
-A GPU demoscene visual built around a classic **fire effect**: flames seeded by
-an animated **Sierpiński fractal** (2D triangle or bouncing 3D tetrahedron) or an
-**animated Julia set**, all coloured through the same palette + glow pipeline. A
-chaos-game point cloud stamps the fractal into the fire as fresh heat every tick,
-so the whole thing burns, flickers, and morphs continuously — and it can **react
-to whatever music you're playing**.
+A GPU demoscene visual: a collection of **fifteen effects** in three families,
+all sharing one palette + glow + banding pipeline —
+
+- **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, or a de
+  Jong strange attractor stamped as fresh heat into a classic rising-fire buffer.
+- **Shader fractals** — animated Julia, Burning Ship, Multibrot and Newton.
+- **Coordinate / pattern classics** — plasma, tunnel, metaballs, kaleidoscope,
+  rotozoomer, moiré, munching squares and copper bars.
+
+The whole thing burns, flickers, and morphs continuously — and every effect can
+**react to whatever music you're playing**.
 
 🔥 **Live demo:** https://carlemil.github.io/burnTheWeb/
 
 ## Effects
 
-An **Effect** selector at the top of the panel switches between four visuals
+An **Effect** selector at the top of the panel switches between fifteen visuals
 that share the same palette, glow and music-reactivity pipeline — but each is an
 independent "scene" that remembers its own settings (see Controls):
 
@@ -127,15 +132,15 @@ visibility is remembered per effect.
 | Control | What it does |
 | --- | --- |
 | **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset (and selects it), **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. Switching to a preset also morphs the palette to a fresh random one. At the top of the panel, **Backup** downloads a full `.json` snapshot — every preset **plus** all your saved settings (each effect's current values, custom slider ranges, beat-detection tuning, the active effect, auto-cycle, render resolution — everything the app remembers). **Restore** loads it back: a dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. |
-| **Effect** | Switch between all the effects listed above (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching Squares, Copper Bars, Burning Ship, Multibrot, Newton, Attractor). Each shows its own sliders. |
+| **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
-| **Banding** *(ranged)* | AnimeJulia / Plasma — strength of the light/dark contour-stripe filter over the active palette. |
-| **Band size** *(ranged)* | AnimeJulia / Plasma — colours per light (and per dark) run in the banding pattern. |
-| **Darkness** *(ranged)* | AnimeJulia / Plasma — how far the banding's dark runs are darkened. |
+| **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
+| **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
+| **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
 | **Points** | Number of chaos-game points per frame (100–8000). *(Sirpinfyer / Tetrafyer.)* |
 | **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sirpinfyer / Tetrafyer.)* |
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
@@ -165,8 +170,8 @@ tab/screen audio capture isn't available, so only **Mic** is shown.
 
 ## Dev overlays
 
-Two tuning tools, off by default and never put in a preset (their on/off state
-isn't saved). A hint at the bottom of the panel points at both:
+Three tuning tools, off by default and never put in a preset (their on/off state
+isn't saved). A hint at the bottom of the panel points at all three:
 
 - **D** (or `?debug=1`) — **beat trace**. A scrolling plot per band of the
   spectral flux, the adaptive threshold it has to clear, and a tick on every
