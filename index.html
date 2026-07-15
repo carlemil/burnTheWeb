@@ -361,8 +361,8 @@
   <div id="grp-ttl">
     <label>Preset TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="ttl-lo" min="0" max="180" step="1" value="30">
-      <input type="range" id="ttl-hi" min="0" max="180" step="1" value="90"></div>
+      <input type="range" id="ttl-lo" min="0" max="180" step="1" value="10">
+      <input type="range" id="ttl-hi" min="0" max="180" step="1" value="30"></div>
   </div>
 
   <hr class="sep">
@@ -2288,16 +2288,16 @@
   // remembered per effect, so each effect is a fully independent scene.
   const extras = {};
   const EXTRA_PRESETS = {
-    0: { palette: "7", morph: true, showBox: true, randSeed: true, ttl: [10, 30] },
-    1: { palette: "1", morph: true, showBox: false, randSeed: true, ttl: [10, 30] },
-    2: { palette: "2", morph: true, showBox: true, randSeed: true, ttl: [10, 30] },   // AnimeJulia uses randSeed
-    3: { palette: "0", morph: true, showBox: true, randSeed: true, ttl: [10, 30] },
+    0: { palette: "7", morph: true, showBox: true, randSeed: true },
+    1: { palette: "1", morph: true, showBox: false, randSeed: true },
+    2: { palette: "2", morph: true, showBox: true, randSeed: true },   // AnimeJulia uses randSeed
+    3: { palette: "0", morph: true, showBox: true, randSeed: true },
   };
-  function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, ttl: x.ttl.slice() }; }
+  function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed }; }
   function initExtras() { for (const k in PRESETS) extras[k] = presetExtra(k); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, morph: morphChk.checked, showBox: showBoxChk.checked, randSeed: randSeedChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value] };
+    extras[e] = { palette: paletteSel.value, morph: morphChk.checked, showBox: showBoxChk.checked, randSeed: randSeedChk.checked };
   }
   function loadExtra(e) {
     const x = extras[e];
@@ -2305,9 +2305,7 @@
     showBoxChk.checked = x.showBox; showBox = x.showBox;
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
-    el("ttl-lo").value = x.ttl[0]; el("ttl-hi").value = x.ttl[1];
-    el("ttl-lo").dispatchEvent(new Event("input")); el("ttl-hi").dispatchEvent(new Event("input"));
-    nextSwitch = 0;
+    nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
     paletteSel.value = x.palette;
     morphChk.checked = x.morph; morphing = x.morph;
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
@@ -2387,7 +2385,8 @@
       ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       presets, curPreset,
-      cycle: cycleChk.checked,                       // auto-cycle presets
+      cycle: cycleChk.checked,                       // auto-cycle presets (global)
+      ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
       scale: cfg.scale,                              // render resolution (global)
       panelOpen: !panel.classList.contains("hidden"),
       audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
@@ -2436,9 +2435,17 @@
       if (typeof ex.morph === "boolean") extras[k].morph = ex.morph;
       if (typeof ex.showBox === "boolean") extras[k].showBox = ex.showBox;
       if (typeof ex.randSeed === "boolean") extras[k].randSeed = ex.randSeed;
-      if (Array.isArray(ex.ttl) && ok("ttl-lo", ex.ttl[0]) && ok("ttl-lo", ex.ttl[1])) extras[k].ttl = [ex.ttl[0], ex.ttl[1]];
     }
     if (typeof saved.cycle === "boolean") { cycleChk.checked = saved.cycle; cycleOn = saved.cycle; }
+    // Preset TTL is a global setting (like auto-cycle), not per-effect. Migrate a legacy
+    // per-effect ttl (once stored in extras) so old blobs still land on a sensible value.
+    const savedTtl = saved.ttl
+      || (saved.extras && saved.extras[saved.effect] && saved.extras[saved.effect].ttl)
+      || (saved.extras && saved.extras["0"] && saved.extras["0"].ttl);
+    if (Array.isArray(savedTtl) && ok("ttl-lo", savedTtl[0]) && ok("ttl-lo", savedTtl[1])) {
+      el("ttl-lo").value = savedTtl[0]; el("ttl-hi").value = savedTtl[1];
+      el("ttl-lo").dispatchEvent(new Event("input")); el("ttl-hi").dispatchEvent(new Event("input"));
+    }
     if ([1, 1.5, 2, 3, 4].includes(saved.scale)) { cfg.scale = saved.scale; resSel.value = String(saved.scale); }
     if (Number.isInteger(saved.effect) && PRESETS[saved.effect]) effectSel.value = saved.effect;
     if (!sharing) {   // browser-local: saved presets + panel visibility
@@ -2547,7 +2554,7 @@
   // but not the browser-local saved presets). Decoded by applyShared() on load.
   el("share").addEventListener("click", () => {
     saveState(effect); saveBeat(effect); saveExtra(effect);
-    const blob = { states, beats: beatStates, extras, effect, cycle: cycleChk.checked, ranges: collectRanges() };
+    const blob = { states, beats: beatStates, extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
     const s = btoa(unescape(encodeURIComponent(JSON.stringify(blob))));
     // Point at the current effect's static landing page (s/<effect>/) so social
     // unfurls show that effect's preview image; its redirect forwards ?s= to the
@@ -2718,6 +2725,7 @@
       out.states = s.states; out.beats = s.beats; out.extras = s.extras;
       if (Number.isInteger(s.effect)) out.effect = s.effect;
       if (typeof s.cycle === "boolean") out.cycle = s.cycle;
+      if (Array.isArray(s.ttl)) out.ttl = s.ttl;   // global preset TTL
       if (s.scale) out.scale = s.scale;
       if (typeof s.panelOpen === "boolean") out.panelOpen = s.panelOpen;
       if (!el("rst-presets").checked) out.curPreset = -1;   // live values came from the file; don't claim a preset

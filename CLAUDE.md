@@ -56,12 +56,13 @@ control groups (`grp-sirp` = fire controls for 0 & 1, `grp-julia` + `grp-band` f
 - `states[e]` — slider values (keys come from `PRESETS[e]`, e.g. band, speed,
   rise, size, rot, rpm, ratio, inrad, outrad, phase, points).
 - `beatStates[e]` — the L/M/H beat-chip selections.
-- `extras[e]` — palette, auto-morph, show-box, random-seed (AnimeJulia), Preset TTL.
+- `extras[e]` — palette, auto-morph, show-box, random-seed (AnimeJulia).
 
 Switching effects calls `saveState/saveBeat/saveExtra` for the outgoing effect and
 `loadState/loadBeat/loadExtra` for the incoming one, so each effect is a fully
-independent scene. Only `cycle` (auto-cycle on/off) and panel open/closed are
-shared/global. The fire sim only runs for effects 0 & 1 (`if (effect === 2)`
+independent scene. `cycle` (auto-cycle on/off), **`ttl` (Preset TTL)**, `scale`
+(resolution) and panel open/closed are shared/global (top-level blob fields, not per
+effect and not in a preset). The fire sim only runs for effects 0 & 1 (`if (effect === 2)`
 takes the Julia path); the `else` branch in `simulate()` is Tetrafyer-only.
 
 ### Presets & persistence
@@ -72,7 +73,7 @@ writes the current scene straight back into the selected preset (no manual save)
 retired keys and defaults new ones, so old saved presets keep loading after the
 slider set changes (call it whenever you add/remove/rename a `PRESETS` key).
 - Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, extras, effect,
-  ranges, beatTune, presets, curPreset, cycle, scale, panelOpen, audio}` — built by the
+  ranges, beatTune, presets, curPreset, cycle, ttl, scale, panelOpen, audio}` — built by the
   single helper **`fullSnapshot()`**, which is *the* definition of "everything we
   remember." `persist()` and the Backup file both serialize exactly `fullSnapshot()`, so
   a newly saved setting can never land in one but not the other. `applyBlob(saved,
