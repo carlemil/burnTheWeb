@@ -36,6 +36,19 @@ independent "scene" that remembers its own settings (see Controls):
   time, then the summed value is wrapped through a final sine so the palette
   cycles into smooth colour bands. Sliders tune the animation **Speed**, spatial
   **Scale** and **Warp**; **Banding** works here too (as in AnimeJulia).
+- …plus more demoscene effects, each with its own sliders (react to music via the
+  L/M/H chips like everything else):
+  - **Tunnel** — polar-mapped rings rushing toward the vanishing point (Fly speed / Twist / Ring density).
+  - **Metaballs** — gooey blobs that merge with organic necks; turn up Banding for iso-contour shells.
+  - **Kaleidoscope** — a moving field folded into mirror-symmetric wedges (Segments / Spin / Flow).
+  - **Rotozoomer** — the classic Amiga rotate-and-pulse-zoom of a tiled grid.
+  - **Moiré** — two drifting concentric-ring sets interfering into shimmering fringes.
+  - **Munching Squares** — the hypnotic `(x XOR y) + t` pattern with self-similar nested squares.
+  - **Copper Bars** — horizontal gradient raster bars sliding up and down on sine motion.
+  - **Burning Ship** — a jagged, flame-like fractal (Julia's abs-fold cousin), sharing AnimeJulia's controls.
+  - **Multibrot** — `z^power + c` with an animatable exponent that morphs the number of bulbs.
+  - **Newton** — the three interlocking root-basins of `z³−1` with fractal borders (Root spin / Relaxation).
+  - **Attractor** — a de Jong strange attractor whose four coefficients a/b/c/d morph its delicate threads.
 
 ## How it works
 
@@ -114,7 +127,7 @@ visibility is remembered per effect.
 | Control | What it does |
 | --- | --- |
 | **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset (and selects it), **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. Switching to a preset also morphs the palette to a fresh random one. At the top of the panel, **Backup** downloads a full `.json` snapshot — every preset **plus** all your saved settings (each effect's current values, custom slider ranges, beat-detection tuning, the active effect, auto-cycle, render resolution — everything the app remembers). **Restore** loads it back: a dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. |
-| **Effect** | Switch between **Sirpinfyer** (triangle fire), **Tetrafyer** (tetrahedron bouncing in a box) and **AnimeJulia** (animated Julia set). |
+| **Effect** | Switch between all the effects listed above (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching Squares, Copper Bars, Burning Ship, Multibrot, Newton, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of eight demoscene-style colour ramps. |

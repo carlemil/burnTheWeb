@@ -5,14 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A single self-contained demoscene visual published as a GitHub Pages site at
-https://carlemil.github.io/burnTheWeb/. Four effects — Sirpinfyer (2D Sierpiński
-triangle) and Tetrafyer (3D bouncing tetrahedron) are fire/chaos-game based;
-AnimeJulia (animated Julia set) and Plasma (animated sin/cos interference) are
-per-pixel shaders — all share one palette + glow pipeline and can react to the
-user's music. There
-is **no build system, package manager, test framework, or dependency** — the
-entire app is inline HTML/CSS/JS in `index.html`. `README.md` documents it for
-end users; keep it in sync when behaviour changes.
+https://carlemil.github.io/burnTheWeb/. A registry of effects (see below) in three
+families, all sharing one palette + glow + banding + beat-reactive pipeline:
+- **Fire / point-accumulation** — Sirpinfyer (2D Sierpiński triangle), Tetrafyer (3D
+  bouncing tetrahedron), Attractor (de Jong): stamp points into a rising-fire heat grid.
+- **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton: per-pixel escape/
+  iteration fractals.
+- **Shader coordinate/pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer,
+  Moiré, Munching Squares, Copper Bars.
+
+Each is one `EFFECTS` descriptor (metadata + `params`/`defaults`/`beat`/`extras` + a
+`draw(dt)` shader hook or a `stamp(box)` point hook). There is **no build system,
+package manager, test framework, or dependency** — the entire app is inline HTML/CSS/JS
+in `index.html`. `README.md` documents it for end users; keep it in sync when behaviour
+changes.
 
 ## Workflow
 
@@ -39,14 +45,21 @@ different rates.
 - **Chaos-game points** stay on the **CPU** (deterministic — see below) and are
   drawn as additive GL points via `pushPt()`/`glDrawPoints()`, or stamped into the
   heat grid with `plot()` on the CPU path.
-- **Julia** (effect 2) and **Plasma** (effect 3) are fragment shaders
-  (`glJulia()`/`glPlasma()`) writing per-pixel heat, or `julia()`/`plasma()`
-  recomputed every frame on CPU. Each consumes a `*Seed(dt)` that advances its
-  animation phase (identical on GL/CPU). Both bake their own zoom into the shader,
-  declared as `bakesOwnZoom: true` on their descriptor (so `glRender`/`render` force
-  display-zoom to 1). **Adding a shader effect = append one EFFECTS descriptor** with a
-  `draw(dt)` hook + `params`/`defaults` (see the registry below); its presence routes
-  `frame()` past the fire sim, and its sliders generate from the `CONTROLS` schema.
+- **Shader effects** (Julia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope,
+  Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) are fragment shaders writing
+  per-pixel heat to the texture's `.r` channel (`o = vec4(heat,0,0,1)`), with a CPU
+  mirror (`julia()`/`plasma()`/`tunnel()`/…). Each has an `FS_*` source + a `glProg.<id>`
+  registered in `initGL`; the descriptor's `draw(dt)` calls the generic
+  **`glShaderDraw(name, setU)`** (binds the heat FBO, `uSize`, then `setU` sets the
+  effect's uniforms) or the CPU mirror. A `*Seed(dt)` advances the animation phase
+  (identical GL/CPU). `bakesOwnZoom: true` bakes zoom into the shader so `glRender`/
+  `render` force display-zoom to 1. **Adding a shader effect = append one descriptor**
+  with an `FS_*`+`glProg` pair, a `draw`/`cpu` pair, `params`/`defaults`; its presence
+  routes `frame()` past the fire sim, and its sliders generate from the `CONTROLS` schema.
+- **Point-accumulation effects** (Sirpinfyer, Tetrafyer, Attractor) run the fire sim and
+  stamp points into the heat grid via `plot()`. `simulate()` dispatches to the
+  descriptor's **`stamp(box)`** hook if present (Attractor), else the `fractal2d` (2D
+  chaos game) / tetra branches. Adding one = a descriptor with a `stamp` hook, no `draw`.
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
