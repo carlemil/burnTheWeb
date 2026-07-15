@@ -415,16 +415,17 @@
   </select>
   <hr class="sep">
 
-  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> toggle panel/fullscreen</p>
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> hide menus/fullscreen</p>
   <p class="hint">Keys:<br>
-    <b>H</b> — show/hide this panel<br>
+    <b>H</b> / <b>☰</b> — hide all menus, then restore what was open<br>
     <b>F</b> — fullscreen<br>
     <b>C</b> — show/hide the frame + fps counter<br>
+    <b>G</b> — show/hide all dev overlays (D + B + R) at once<br>
     <b>D</b> — beat-detection trace<br>
     <b>B</b> — tune beat detection<br>
     <b>R</b> — edit sliders' min/max/step</p>
 </div>
-<button id="toggle" type="button" aria-label="Toggle controls (H)">☰</button>
+<button id="toggle" type="button" aria-label="Hide all menus / restore (H)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
@@ -3275,7 +3276,40 @@
     panel.classList.toggle("hidden", hidden);
     persist();                          // remember panel open/closed across reloads
   }
-  toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
+  // ---- master menu toggle (the ☰ hamburger + the "H" key) ----
+  // All the on-screen menus: the control panel plus the three dev overlays (beat
+  // trace / tuning / range editor). anyMenuOpen()/setAllMenus() let a single
+  // action collapse everything and later restore exactly what was showing.
+  function anyMenuOpen() {
+    return !panel.classList.contains("hidden") || dbg.on || rng.on || beatUi.on;
+  }
+  function snapshotMenus() {
+    return { panel: !panel.classList.contains("hidden"), dbg: dbg.on, rng: rng.on, beat: beatUi.on };
+  }
+  function applyMenus(s) {
+    setPanel(!s.panel); dbgToggle(s.dbg); rngToggle(s.rng); beatToggle(s.beat);
+  }
+  // Remembered open-state from the last "hide all" so the next press restores it.
+  let menuStash = null;
+  // The hamburger: if anything is open, remember it and hide all; otherwise
+  // restore what was last hidden (or, with nothing remembered, just open the panel).
+  function toggleAllMenus() {
+    if (anyMenuOpen()) {
+      menuStash = snapshotMenus();
+      applyMenus({ panel: false, dbg: false, rng: false, beat: false });
+    } else if (menuStash) {
+      applyMenus(menuStash);
+      menuStash = null;
+    } else {
+      setPanel(false);                  // nothing to restore → reveal the panel
+    }
+  }
+  toggle.addEventListener("click", toggleAllMenus);
+  // Toggle all three dev overlays at once: hide them if any is showing, else show all.
+  function devOverlaysToggle() {
+    const next = !(dbg.on || rng.on || beatUi.on);
+    dbgToggle(next); rngToggle(next); beatToggle(next);
+  }
   // Fullscreen toggle (works on mobile too, where F11 doesn't exist; also the "f" key).
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
@@ -3483,9 +3517,10 @@
 
   window.addEventListener("keydown", e => {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in the overlays
-    if (e.key === "h" || e.key === "H") setPanel(!panel.classList.contains("hidden"));
+    if (e.key === "h" || e.key === "H") toggleAllMenus();      // hide all menus / restore
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "c" || e.key === "C") framesEl.classList.toggle("hidden");   // frame + fps counter
+    else if (e.key === "g" || e.key === "G") devOverlaysToggle();  // all dev overlays at once
     else if (e.key === "d" || e.key === "D") dbgToggle();      // beat-detection trace
     else if (e.key === "r" || e.key === "R") rngToggle();      // slider min/max editor
     else if (e.key === "b" || e.key === "B") beatToggle();     // beat-detection tuning

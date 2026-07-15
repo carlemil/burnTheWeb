@@ -162,8 +162,10 @@ visibility is remembered per effect.
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
 | **Share** | Copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
 
-Press **H** or **☰** to toggle the panel, **F** or **⛶** for fullscreen (works on
-mobile too), **C** to show/hide the frame + FPS counter, and click the canvas to
+Press **H** or **☰** to **hide every open menu** (the panel plus any dev overlays)
+and press again to **restore whatever was showing**, **F** or **⛶** for fullscreen
+(works on mobile too), **C** to show/hide the frame + FPS counter, **G** to
+show/hide all three dev overlays at once, and click the canvas to
 pause. A **Resolution** control drops the render
 resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
@@ -172,7 +174,8 @@ tab/screen audio capture isn't available, so only **Mic** is shown.
 ## Dev overlays
 
 Three tuning tools, off by default and never put in a preset (their on/off state
-isn't saved). A hint at the bottom of the panel points at all three:
+isn't saved). A hint at the bottom of the panel points at all three; **G** toggles
+all of them together:
 
 - **D** (or `?debug=1`) — **beat trace**. A scrolling plot per band of the
   spectral flux, the adaptive threshold it has to clear, and a tick on every
