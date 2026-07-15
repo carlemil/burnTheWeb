@@ -882,6 +882,22 @@
       // colour-cycling (distinct bands incl. darks) instead of a washed-out blob.
       o = vec4(0.5 + 0.5 * sin(v * 1.6), 0.0, 0.0, 1.0);
     }`;
+    // Tunnel: polar map (angle, 1/radius) → rings rushing toward the vanishing point.
+    const FS_TUNNEL = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uTwist; uniform float uRings; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw=uSize.x, fh=uSize.y;
+      vec2 p = vec2((gl_FragCoord.x/fw - 0.5) * (fw/fh), gl_FragCoord.y/fh - 0.5) / uZoom;
+      float r = length(p) + 1e-4;
+      float a = atan(p.y, p.x) + uTwist*6.2831853;
+      float v = 1.0/r + uTime;
+      float ang = 0.5 + 0.5*sin(a*6.0);
+      float dep = 0.5 + 0.5*sin(v*uRings*6.2831853);
+      float heat = dep * (0.55 + 0.45*ang) * clamp(r/0.5, 0.0, 1.0);
+      o = vec4(clamp(heat,0.0,1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -932,6 +948,7 @@
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize"]);
     glProg.julia = makeProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
     glProg.plasma = makeProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
+    glProg.tunnel = makeProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1501,6 +1518,31 @@
     }
   }
 
+  // ---- Tunnel: polar-mapped demoscene flythrough (shader effect) ----
+  let tunSpeed = 1, tunTwist = 0.3, tunRings = 10, tunTime = 0, tunTwistPhase = 0;
+  function tunnelSeed(dt) {
+    tunTime += dt * tunSpeed;             // fly forward down the pipe
+    tunTwistPhase += dt * tunTwist;       // rotate the pipe
+    return { t: tunTime, twist: tunTwistPhase, rings: tunRings, zoom };
+  }
+  function tunnel(dt) {                    // CPU fallback — mirrors FS_TUNNEL
+    const s = tunnelSeed(dt), ar = fw / fh, TAU = 6.2831853;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const py = (y / fh - 0.5) / s.zoom;
+      for (let x = 0; x < fw; x++) {
+        const px = (x / fw - 0.5) * ar / s.zoom;
+        const r = Math.hypot(px, py) + 1e-4;
+        const a = Math.atan2(py, px) + s.twist * TAU;
+        const v = 1 / r + s.t;
+        const ang = 0.5 + 0.5 * Math.sin(a * 6);
+        const dep = 0.5 + 0.5 * Math.sin(v * s.rings * TAU);
+        const heat = dep * (0.55 + 0.45 * ang) * Math.min(1, r / 0.5);
+        fire[idx++] = Math.max(0, Math.min(1, heat)) * 255;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -1949,6 +1991,9 @@
     { key: "pspeed", host: "fx", type: "dual", label: "Speed", valId: "vPspeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => plasmaSpeed = v, durScale: 10 },
     { key: "pscale", host: "fx", type: "dual", label: "Scale", valId: "vPscale", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => plasmaScale = v, durScale: 10 },
     { key: "pwarp", host: "fx", type: "dual", label: "Warp", valId: "vPwarp", min: 0, max: 2, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => v.toFixed(2), apply: v => plasmaWarp = v, durScale: 10 },
+    { key: "tunspeed", host: "fx", type: "dual", label: "Fly speed", valId: "vTunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => tunSpeed = v, durScale: 10 },
+    { key: "tuntwist", host: "fx", type: "dual", label: "Twist", valId: "vTunTwist", min: -2, max: 2, step: 0.05, lo: 0.3, hi: 0.3, fmt: v => v.toFixed(2), apply: v => tunTwist = v, durScale: 10 },
+    { key: "tunrings", host: "fx", type: "dual", label: "Ring density", valId: "vTunRings", min: 1, max: 30, step: 0.5, lo: 10, hi: 10, fmt: v => v.toFixed(1), apply: v => tunRings = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2152,6 +2197,12 @@
       bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); },
       defaults: { band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
       beat: { band: ["low"], banddim: ["high"], pscale: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
+    { id: "tunnel", name: "Tunnel", subtitle: "Tunnel · demoscene flythrough",
+      help: "A classic demoscene tunnel: the screen is polar-mapped so concentric rings rush toward the vanishing point. Fly speed drives you forward; Twist rotates the pipe.",
+      params: ["tunspeed", "tuntwist", "tunrings", "zoom"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
+      draw: dt => { const s = tunnelSeed(dt); if (useGL) glShaderDraw("tunnel", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uRings, s.rings); gl.uniform1f(u.uZoom, s.zoom); }); else tunnel(dt); },
+      defaults: { tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: { tunspeed: ["low"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -2970,6 +3021,9 @@
       { n: "Speed", w: "plasma", t: "How fast the plasma's waves animate. 0 freezes the field." },
       { n: "Scale", w: "plasma", t: "Spatial frequency of the waves — how fine or coarse the interference pattern is." },
       { n: "Warp", w: "plasma", t: "Domain warp: bends the waves into swirls. 0 = clean straight interference; higher = turbulent." },
+      { n: "Fly speed", w: "tunnel", t: "Tunnel only — how fast you fly down the pipe toward the vanishing point (0 freezes)." },
+      { n: "Twist", w: "tunnel", t: "Tunnel only — how fast the pipe rotates around you; negative spins the other way." },
+      { n: "Ring density", w: "tunnel", t: "Tunnel only — how many rings are packed along the depth of the tunnel." },
     ],
   };
   const helpEl = el("help");
