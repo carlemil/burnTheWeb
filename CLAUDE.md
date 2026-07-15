@@ -42,17 +42,28 @@ different rates.
 - **Julia** (effect 2) and **Plasma** (effect 3) are fragment shaders
   (`glJulia()`/`glPlasma()`) writing per-pixel heat, or `julia()`/`plasma()`
   recomputed every frame on CPU. Each consumes a `*Seed(dt)` that advances its
-  animation phase (identical on GL/CPU). Both bake their own zoom into the shader
-  (so `glRender`/`render` force display-zoom to 1 for effects 2 & 3). **Adding a
-  Plasma-like effect = mirror the Julia path** + register the effect index (see
-  below).
+  animation phase (identical on GL/CPU). Both bake their own zoom into the shader,
+  declared as `bakesOwnZoom: true` on their descriptor (so `glRender`/`render` force
+  display-zoom to 1). **Adding a shader effect = append an EFFECTS descriptor** with a
+  `draw(dt)` hook (see the registry below); its presence routes `frame()` past the fire
+  sim. (Control generation from a param schema is the remaining refactor phase.)
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
 ### Effects & per-effect "scenes"
-`effect` (0/1/2) selects the visual. `setEffect(i, save)` shows/hides the relevant
-control groups (`grp-sirp` = fire controls for 0 & 1, `grp-julia` + `grp-band` for
-2, `grp-tetra` for 1) and swaps three parallel per-effect state maps:
+**The `EFFECTS` registry is the single source of truth per effect** — an array of
+descriptors `{id, name, presetName?, subtitle, help, controls, helpTags, draw?/
+fractal2d, bakesOwnZoom?, onEnter?}`. The Effect dropdown, subtitle, help blurb,
+default-preset names, group visibility, render dispatch and zoom-bake all derive from
+it, so *adding an effect = append a descriptor* (control generation from a param
+schema is the remaining phase; slider controls are still static `grp-*` HTML for now).
+Persistence uses each descriptor's **stable string `id`**, not the numeric index —
+`serializeBlob`/`deserializeBlob` convert at the storage edge and `LEGACY_EFFECT_IDS`
+migrates pre-id blobs — so reordering/removing effects never corrupts saved presets.
+`effect` is still the runtime numeric index (registry position).
+
+`setEffect(i, save)` hides `ALL_GROUPS` then shows the descriptor's `controls`, runs
+its `onEnter`, and swaps three parallel per-effect state maps:
 - `states[e]` — slider values (keys come from `PRESETS[e]`, e.g. band, speed,
   rise, size, rot, rpm, ratio, inrad, outrad, phase, points).
 - `beatStates[e]` — the L/M/H beat-chip selections.
@@ -62,8 +73,9 @@ Switching effects calls `saveState/saveBeat/saveExtra` for the outgoing effect a
 `loadState/loadBeat/loadExtra` for the incoming one, so each effect is a fully
 independent scene. `cycle` (auto-cycle on/off), **`ttl` (Preset TTL)**, `scale`
 (resolution) and panel open/closed are shared/global (top-level blob fields, not per
-effect and not in a preset). The fire sim only runs for effects 0 & 1 (`if (effect === 2)`
-takes the Julia path); the `else` branch in `simulate()` is Tetrafyer-only.
+effect and not in a preset). `frame()` routes shader effects (those with a `draw`
+hook) past the fire sim; `simulate()` stamps the 2D chaos game when `fractal2d`, else
+the 3D tetra.
 
 ### Presets & persistence
 A **preset** is a named full-scene snapshot `{name, effect, state, beat, extra}`,
