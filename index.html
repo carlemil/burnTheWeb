@@ -958,6 +958,19 @@
       float v = sin(q.x + t) + sin(q.y*1.3 - t*0.8) + sin((q.x+q.y)*0.7 + t*1.1) + sin(length(q)*1.5 - t);
       o = vec4(0.5 + 0.5*sin(v*1.3), 0.0, 0.0, 1.0);
     }`;
+    // Rotozoomer: rotate + pulse-zoom the plane, sample a tiled grid texture.
+    const FS_ROTOZOOM = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uAngle; uniform float uScale; uniform float uTile; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw=uSize.x, fh=uSize.y;
+      vec2 p = vec2((gl_FragCoord.x/fw-0.5)*(fw/fh), gl_FragCoord.y/fh-0.5) / uZoom;
+      float c=cos(uAngle), s=sin(uAngle);
+      vec2 uv = mat2(c,-s,s,c) * p * uScale;
+      float k = uTile * 3.14159265;
+      o = vec4(0.5 + 0.5*sin(uv.x*k)*sin(uv.y*k), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -1012,6 +1025,7 @@
     glProg.metaball = makeProg(VS_QUAD, FS_METABALL, ["uSize", "uTime", "uCount", "uRadius", "uGain", "uZoom"]);
     glProg.burning = makeProg(VS_QUAD, FS_BURNING, ["uSize", "uC", "uSpan"]);
     glProg.kaleido = makeProg(VS_QUAD, FS_KALEIDO, ["uSize", "uTime", "uSeg", "uRot", "uZoom"]);
+    glProg.rotozoom = makeProg(VS_QUAD, FS_ROTOZOOM, ["uSize", "uAngle", "uScale", "uTile", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1678,6 +1692,26 @@
     }
   }
 
+  // ---- Rotozoomer: rotate + pulse-zoom a tiled grid texture (shader effect) ----
+  let rzRot = 0.4, rzZoomAmt = 0.5, rzTile = 4, rzAngle = 0, rzTime = 0;
+  function rotozoomSeed(dt) {
+    rzAngle += dt * rzRot;
+    rzTime += dt;
+    return { angle: rzAngle, scale: Math.exp(rzZoomAmt * Math.sin(rzTime * 0.7)), tile: rzTile, zoom };
+  }
+  function rotozoom(dt) {                  // CPU fallback — mirrors FS_ROTOZOOM
+    const s = rotozoomSeed(dt), ar = fw / fh, c = Math.cos(s.angle), sn = Math.sin(s.angle), k = s.tile * Math.PI;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const py = (y / fh - 0.5) / s.zoom;
+      for (let x = 0; x < fw; x++) {
+        const px = (x / fw - 0.5) * ar / s.zoom;
+        const ux = (c * px - sn * py) * s.scale, uy = (sn * px + c * py) * s.scale;
+        fire[idx++] = (0.5 + 0.5 * Math.sin(ux * k) * Math.sin(uy * k)) * 255;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -2136,6 +2170,9 @@
     { key: "ksegments", host: "fx", type: "dual", label: "Segments", valId: "vKSeg", min: 3, max: 16, step: 1, lo: 6, hi: 6, fmt: v => Math.round(v), apply: v => kSeg = Math.round(v), durScale: 10 },
     { key: "krotspeed", host: "fx", type: "dual", label: "Spin", valId: "vKRot", min: -1, max: 1, step: 0.02, lo: 0.2, hi: 0.2, fmt: v => v.toFixed(2), apply: v => kRotSpeed = v, durScale: 10 },
     { key: "knoisespeed", host: "fx", type: "dual", label: "Flow", valId: "vKFlow", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => kNoiseSpeed = v, durScale: 10 },
+    { key: "rzrot", host: "fx", type: "dual", label: "Rotation", valId: "vRzRot", min: -2, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => v.toFixed(2), apply: v => rzRot = v, durScale: 10 },
+    { key: "rzzoom", host: "fx", type: "dual", label: "Zoom pulse", valId: "vRzZoom", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => v.toFixed(2), apply: v => rzZoomAmt = v, durScale: 10 },
+    { key: "rztile", host: "fx", type: "dual", label: "Tile density", valId: "vRzTile", min: 1, max: 12, step: 0.5, lo: 4, hi: 4, fmt: v => v.toFixed(1), apply: v => rzTile = v, durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2364,6 +2401,12 @@
       draw: dt => { const s = kaleidoSeed(dt); if (useGL) glShaderDraw("kaleido", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSeg, s.seg); gl.uniform1f(u.uRot, s.rot); gl.uniform1f(u.uZoom, s.zoom); }); else kaleidoscope(dt); },
       defaults: { ksegments: [6, 6], krotspeed: [0.1, 0.3], knoisespeed: [0.6, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { knoisespeed: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
+    { id: "rotozoom", name: "Rotozoomer", subtitle: "Rotozoomer · rotate + zoom",
+      help: "The classic Amiga rotozoomer: a tiled grid texture spun and pulse-zoomed in real time. Rotation sets the spin, Zoom pulse the breathing scale, Tile density how fine the grid is.",
+      params: ["rzrot", "rzzoom", "rztile", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = rotozoomSeed(dt); if (useGL) glShaderDraw("rotozoom", u => { gl.uniform1f(u.uAngle, s.angle); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uTile, s.tile); gl.uniform1f(u.uZoom, s.zoom); }); else rotozoom(dt); },
+      defaults: { rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: { rzzoom: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3192,6 +3235,9 @@
       { n: "Segments", w: "kaleido", t: "Kaleidoscope only — how many mirror wedges the plane is folded into (the order of symmetry)." },
       { n: "Spin", w: "kaleido", t: "Kaleidoscope only — how fast the whole mandala rotates; negative spins the other way." },
       { n: "Flow", w: "kaleido", t: "Kaleidoscope only — how fast the underlying pattern animates inside the wedges (0 freezes it)." },
+      { n: "Rotation", w: "roto", t: "Rotozoomer only — spin rate of the tiled plane; negative spins the other way." },
+      { n: "Zoom pulse", w: "roto", t: "Rotozoomer only — how much the tile scale breathes in and out over time (0 holds a fixed zoom)." },
+      { n: "Tile density", w: "roto", t: "Rotozoomer only — how many grid cells fill the plane (fine vs coarse texture)." },
     ],
   };
   const helpEl = el("help");
