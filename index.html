@@ -761,7 +761,7 @@
   // ---- auto-morph: continuously blend to a random palette over 8s ----
   const MORPH_MS = 8000;
   let morphing = false, morphFrom = null, morphTo = null, morphStart = 0,
-    morphTargetIndex = 0, morphInit = false;
+    morphTargetIndex = 0, morphInit = false, morphOnce = false;   // morphOnce: a single transition (preset switch) even when auto-morph is off
 
   function paletteRGB(i) {
     const fn = PALETTES[i].fn, arr = new Float32Array(256 * 3);
@@ -789,8 +789,9 @@
   function morphStep(now) {
     if (morphInit) { morphStart = now; morphInit = false; }
     let f = (now - morphStart) / MORPH_MS;
-    if (f >= 1) {                           // arrived: target becomes current, pick a new one
-      morphFrom = morphTo;
+    if (f >= 1) {                           // arrived
+      if (!morphing) { morphOnce = false; setPalette(morphTargetIndex); return; }   // one-shot: settle on the target
+      morphFrom = morphTo;                  // auto-morph: target becomes current, pick a new one
       morphTargetIndex = pickOther(morphTargetIndex);
       morphTo = paletteRGB(morphTargetIndex);
       morphStart = now;
@@ -1660,7 +1661,7 @@
     if (dt > 0.25) dt = 0.25;         // clamp after tab switches
     acc += dt;
 
-    if (morphing) morphStep(now);     // blend palettes while auto-morph is on
+    if (morphing || morphOnce) morphStep(now);   // auto-morph, or a one-shot preset-switch morph
 
     cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     // Beats are detected off-thread of the render loop (audioTick, every HOP_MS);
@@ -2306,6 +2307,7 @@
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
+    morphOnce = false;                // cancel a pending one-shot morph from a prior switch
     paletteSel.value = x.palette;
     morphChk.checked = x.morph; morphing = x.morph;
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
@@ -2521,7 +2523,7 @@
   paletteSel.addEventListener("change", () => {
     // while morphing, a manual pick restarts the blend from that palette
     if (morphing) startMorph(+paletteSel.value);
-    else setPalette(+paletteSel.value);
+    else { morphOnce = false; setPalette(+paletteSel.value); }   // manual pick cancels a one-shot morph
   });
   morphChk.addEventListener("change", () => {
     morphing = morphChk.checked;
@@ -2613,6 +2615,10 @@
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene
+    // Switching preset always morphs the palette to a fresh random one. When auto-morph
+    // is on, loadExtra already started a morph toward a random palette; when it's off,
+    // run a one-shot morph (a single transition that then settles on the new palette).
+    if (!morphing) { morphOnce = true; startMorph(+paletteSel.value); }
     curPreset = i; presetSel.value = String(i);
     applyingPreset = false;
     persist();

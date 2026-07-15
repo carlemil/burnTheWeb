@@ -205,6 +205,12 @@ wired via `bindRange(id, valId, fmt, apply, durScale, beat)` and registered in
 - **Palette** is baked into a `Uint32Array` in **little-endian ABGR** for direct
   pixel writes; index 0 is forced opaque black. **Banding** (AnimeJulia-only) is a
   *filter* over the active palette, not a palette of its own.
+- **Every preset switch morphs the palette to a fresh random one.** With auto-morph
+  on, `loadExtra` already kicks off `startMorph()` (which targets `pickOther()`); with
+  it off, `applyPreset` sets `morphOnce = true` + `startMorph()` for a one-shot morph
+  that `morphStep` settles (`setPalette(morphTargetIndex)`) instead of looping. The
+  frame loop runs `morphStep` when `morphing || morphOnce`; a manual palette pick or a
+  scene load clears `morphOnce`.
 - The Sierpiński chaos game is stamped inside a **safe box** (top 20% and
   left/right/bottom 5% excluded) via `plot()`; Size/Rotation scale & spin the
   corners about the box centre and can push points past those bounds.
