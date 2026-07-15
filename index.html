@@ -971,6 +971,17 @@
       float k = uTile * 3.14159265;
       o = vec4(0.5 + 0.5*sin(uv.x*k)*sin(uv.y*k), 0.0, 0.0, 1.0);
     }`;
+    // Munching squares: the classic (x XOR y)+t & mask hypnotic pattern.
+    const FS_MUNCH = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uScale; uniform float uMask; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      vec2 c = gl_FragCoord.xy / uZoom * uScale;
+      int xi = int(c.x), yi = int(c.y), m = int(uMask), ti = int(uTime);
+      int val = ((xi ^ yi) + ti) & m;
+      o = vec4(float(val)/float(m), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     const FS_PAL = `#version 300 es
     precision highp float;
@@ -1026,6 +1037,7 @@
     glProg.burning = makeProg(VS_QUAD, FS_BURNING, ["uSize", "uC", "uSpan"]);
     glProg.kaleido = makeProg(VS_QUAD, FS_KALEIDO, ["uSize", "uTime", "uSeg", "uRot", "uZoom"]);
     glProg.rotozoom = makeProg(VS_QUAD, FS_ROTOZOOM, ["uSize", "uAngle", "uScale", "uTile", "uZoom"]);
+    glProg.munch = makeProg(VS_QUAD, FS_MUNCH, ["uSize", "uTime", "uScale", "uMask", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1712,6 +1724,24 @@
     }
   }
 
+  // ---- Munching squares: heat = ((x^y)+t) & mask — pure XOR pattern (shader effect) ----
+  let xorSpeed = 20, xorScale = 0.4, xorMask = 255, xorTime = 0;
+  function munchSeed(dt) {
+    xorTime += dt * xorSpeed;
+    return { t: xorTime, scale: xorScale, mask: Math.round(xorMask), zoom };
+  }
+  function munch(dt) {                     // CPU fallback — mirrors FS_MUNCH
+    const s = munchSeed(dt), ti = Math.floor(s.t), m = s.mask, inv = 1 / m;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      const yi = Math.floor(y / s.zoom * s.scale);
+      for (let x = 0; x < fw; x++) {
+        const xi = Math.floor(x / s.zoom * s.scale);
+        fire[idx++] = (((xi ^ yi) + ti) & m) * inv * 255;
+      }
+    }
+  }
+
   function render() {
     for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
@@ -2173,6 +2203,9 @@
     { key: "rzrot", host: "fx", type: "dual", label: "Rotation", valId: "vRzRot", min: -2, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => v.toFixed(2), apply: v => rzRot = v, durScale: 10 },
     { key: "rzzoom", host: "fx", type: "dual", label: "Zoom pulse", valId: "vRzZoom", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => v.toFixed(2), apply: v => rzZoomAmt = v, durScale: 10 },
     { key: "rztile", host: "fx", type: "dual", label: "Tile density", valId: "vRzTile", min: 1, max: 12, step: 0.5, lo: 4, hi: 4, fmt: v => v.toFixed(1), apply: v => rzTile = v, durScale: 10 },
+    { key: "xorspeed", host: "fx", type: "dual", label: "Munch speed", valId: "vXorSpeed", min: 0, max: 80, step: 1, lo: 20, hi: 20, fmt: v => Math.round(v), apply: v => xorSpeed = v, durScale: 10 },
+    { key: "xorscale", host: "fx", type: "dual", label: "Square size", valId: "vXorScale", min: 0.1, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => (1 / v).toFixed(1) + "px", apply: v => xorScale = v, durScale: 10 },
+    { key: "xormask", host: "fx", type: "dual", label: "Detail", valId: "vXorMask", min: 15, max: 255, step: 1, lo: 255, hi: 255, fmt: v => Math.round(v), apply: v => xorMask = Math.round(v), durScale: 10 },
     { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
     { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
@@ -2407,6 +2440,12 @@
       draw: dt => { const s = rotozoomSeed(dt); if (useGL) glShaderDraw("rotozoom", u => { gl.uniform1f(u.uAngle, s.angle); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uTile, s.tile); gl.uniform1f(u.uZoom, s.zoom); }); else rotozoom(dt); },
       defaults: { rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { rzzoom: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
+    { id: "munch", name: "Munching Squares", subtitle: "Munching squares · XOR pattern",
+      help: "The hypnotic PDP-1 classic: each pixel is ((x XOR y) + time) masked to a value, mapped through the palette. Munch speed animates it, Square size sets the pixel chunkiness, Detail the wrap.",
+      params: ["xorspeed", "xorscale", "xormask", "zoom"], helpTags: ["all", "xor"], bakesOwnZoom: true,
+      draw: dt => { const s = munchSeed(dt); if (useGL) glShaderDraw("munch", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uMask, s.mask); gl.uniform1f(u.uZoom, s.zoom); }); else munch(dt); },
+      defaults: { xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: { xorspeed: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3238,6 +3277,9 @@
       { n: "Rotation", w: "roto", t: "Rotozoomer only — spin rate of the tiled plane; negative spins the other way." },
       { n: "Zoom pulse", w: "roto", t: "Rotozoomer only — how much the tile scale breathes in and out over time (0 holds a fixed zoom)." },
       { n: "Tile density", w: "roto", t: "Rotozoomer only — how many grid cells fill the plane (fine vs coarse texture)." },
+      { n: "Munch speed", w: "xor", t: "Munching squares only — how fast the XOR pattern churns (0 freezes a still frame)." },
+      { n: "Square size", w: "xor", t: "Munching squares only — the pixel-block size; bigger blocks read as chunkier retro squares." },
+      { n: "Detail", w: "xor", t: "Munching squares only — the bit mask the value wraps at; higher = finer nested detail." },
     ],
   };
   const helpEl = el("help");
