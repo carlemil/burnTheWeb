@@ -56,7 +56,7 @@ control groups (`grp-sirp` = fire controls for 0 & 1, `grp-julia` + `grp-band` f
 - `states[e]` — slider values (keys come from `PRESETS[e]`, e.g. band, speed,
   rise, size, rot, rpm, ratio, inrad, outrad, phase, points).
 - `beatStates[e]` — the L/M/H beat-chip selections.
-- `extras[e]` — palette, auto-morph, show-box, Preset TTL.
+- `extras[e]` — palette, auto-morph, show-box, random-seed (AnimeJulia), Preset TTL.
 
 Switching effects calls `saveState/saveBeat/saveExtra` for the outgoing effect and
 `loadState/loadBeat/loadExtra` for the incoming one, so each effect is a fully
@@ -183,6 +183,13 @@ The chaos game uses a **mulberry32 PRNG re-seeded to `SEED` every frame**, so th
 point *sequence* is identical each frame — only the moving geometry reshapes the
 fractal (no random shimmer). Auto-morph uses `Math.random()`, kept separate so it
 never perturbs the fractal.
+
+**AnimeJulia random start.** The Julia orbit accumulators `juliaOuter/juliaInner`
+default to a fixed 0 and are set by `reseedJulia()`: a random lap (`Math.random()`,
+clear of the chaos PRNG) when the per-effect **Random seed** toggle (`randSeed`, an
+`extras` field, default on) is on, else 0 (reproducible). `setEffect(2)` calls it on
+every entry to AnimeJulia — first load, effect switch, and preset apply — so it opens
+somewhere new each reload; toggling the checkbox re-rolls immediately.
 
 ## Config & control gotchas
 

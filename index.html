@@ -495,6 +495,7 @@
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="phase-lo" min="0" max="0.1" step="0.001" value="0">
       <input type="range" id="phase-hi" min="0" max="0.1" step="0.001" value="0"></div>
+    <label class="check"><input type="checkbox" id="randseed" checked> Random seed each reload</label>
   </div>
 
   <div id="grp-plasma">
@@ -618,6 +619,7 @@
   // render/glow pipeline are identical for every mode.
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
+  let randSeed = true;       // AnimeJulia: re-roll the orbit start on reload / effect entry (toggle)
   let cycleOn = true;        // auto-cycle saved presets on the TTL timer (toggle)
   let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
@@ -1521,10 +1523,16 @@
   let juliaRatio = JULIA_RATIO_DEFAULT;                  // inner : outer spin multiple
   let juliaPhase = 0;                                    // start-position offset, in laps (0=1 wrap)
 
-  // Orbit phases accumulate per frame from the live rpm/ratio (seeded on the
-  // wall clock), so tuning or animating either never teleports the seed.
-  let juliaOuter = T0 * juliaBigRpm * RPM;
-  let juliaInner = T0 * juliaBigRpm * juliaRatio * RPM;
+  // Orbit phases accumulate per frame from the live rpm/ratio, so tuning or
+  // animating either never teleports the seed. reseedJulia() sets the *start*:
+  // a random lap on each reload / effect entry when "Random seed" is on (so the
+  // fractal opens somewhere new), or a fixed 0 when off (fully reproducible).
+  // Uses Math.random(), kept clear of the chaos-game PRNG (see Determinism).
+  let juliaOuter = 0, juliaInner = 0;
+  function reseedJulia() {
+    juliaOuter = randSeed ? Math.random() * Math.PI * 2 : 0;
+    juliaInner = randSeed ? Math.random() * Math.PI * 2 : 0;
+  }
   // Advance the two orbit phases one frame and return the seed c plus the
   // complex-plane span. Shared by the CPU loop and the GPU Julia shader so the
   // seed animation is identical on either path.
@@ -2187,6 +2195,9 @@
   const morphChk = el("morph");
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
+  const randSeedChk = el("randseed");
+  // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
+  randSeedChk.addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");
@@ -2277,21 +2288,23 @@
   // remembered per effect, so each effect is a fully independent scene.
   const extras = {};
   const EXTRA_PRESETS = {
-    0: { palette: "7", morph: true, showBox: true, ttl: [10, 30] },
-    1: { palette: "1", morph: true, showBox: false, ttl: [10, 30] },
-    2: { palette: "2", morph: true, showBox: true, ttl: [10, 30] },
-    3: { palette: "0", morph: true, showBox: true, ttl: [10, 30] },
+    0: { palette: "7", morph: true, showBox: true, randSeed: true, ttl: [10, 30] },
+    1: { palette: "1", morph: true, showBox: false, randSeed: true, ttl: [10, 30] },
+    2: { palette: "2", morph: true, showBox: true, randSeed: true, ttl: [10, 30] },   // AnimeJulia uses randSeed
+    3: { palette: "0", morph: true, showBox: true, randSeed: true, ttl: [10, 30] },
   };
-  function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, ttl: x.ttl.slice() }; }
+  function presetExtra(e) { const x = EXTRA_PRESETS[e]; return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, ttl: x.ttl.slice() }; }
   function initExtras() { for (const k in PRESETS) extras[k] = presetExtra(k); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, morph: morphChk.checked, showBox: showBoxChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value] };
+    extras[e] = { palette: paletteSel.value, morph: morphChk.checked, showBox: showBoxChk.checked, randSeed: randSeedChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value] };
   }
   function loadExtra(e) {
     const x = extras[e];
     suppressPersist = true;
     showBoxChk.checked = x.showBox; showBox = x.showBox;
+    randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
+    randSeedChk.checked = randSeed;
     el("ttl-lo").value = x.ttl[0]; el("ttl-hi").value = x.ttl[1];
     el("ttl-lo").dispatchEvent(new Event("input")); el("ttl-hi").dispatchEvent(new Event("input"));
     nextSwitch = 0;
@@ -2422,6 +2435,7 @@
       if (paletteOK(ex.palette)) extras[k].palette = ex.palette;
       if (typeof ex.morph === "boolean") extras[k].morph = ex.morph;
       if (typeof ex.showBox === "boolean") extras[k].showBox = ex.showBox;
+      if (typeof ex.randSeed === "boolean") extras[k].randSeed = ex.randSeed;
       if (Array.isArray(ex.ttl) && ok("ttl-lo", ex.ttl[0]) && ok("ttl-lo", ex.ttl[1])) extras[k].ttl = [ex.ttl[0], ex.ttl[1]];
     }
     if (typeof saved.cycle === "boolean") { cycleChk.checked = saved.cycle; cycleOn = saved.cycle; }
@@ -2466,7 +2480,8 @@
     grpTetra.style.display = i === 1 ? "" : "none";   // "Show box" is Tetrafyer-only
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
-    loadExtra(i);                     // ...and palette/morph/show-box/TTL
+    loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
+    if (i === 2) reseedJulia();       // AnimeJulia: re-roll its start on entry (incl. first load & preset apply)
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
     if (fireNext) fireNext.fill(0);
     if (useGL && glReady) glClearHeat();
@@ -2982,6 +2997,7 @@
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
       { n: "Outer radius", w: "julia", t: "Scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
+      { n: "Random seed each reload", w: "julia", t: "AnimeJulia only — when on, the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to this effect. Turn off for a fixed, reproducible starting frame." },
       { n: "Speed", w: "plasma", t: "How fast the plasma's waves animate. 0 freezes the field." },
       { n: "Scale", w: "plasma", t: "Spatial frequency of the waves — how fine or coarse the interference pattern is." },
       { n: "Warp", w: "plasma", t: "Domain warp: bends the waves into swirls. 0 = clean straight interference; higher = turbulent." },

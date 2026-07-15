@@ -137,6 +137,7 @@ visibility is remembered per effect.
 | **Inner radius** *(ranged)* | AnimeJulia only — the size of the small circle riding on the seed. Small values keep the seed just outside the cardioid; large values can dip it inside. |
 | **Outer radius** *(ranged)* | AnimeJulia only — the scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward. |
 | **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
+| **Random seed each reload** | AnimeJulia only — when on (the default), the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to the effect. Turn off for a fixed, reproducible starting frame. |
 | **Speed** *(ranged)* | Plasma only — how fast the waves animate (0 freezes the field). |
 | **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
