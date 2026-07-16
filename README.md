@@ -162,32 +162,32 @@ visibility is remembered per effect.
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
 | **Share** | Copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). |
 
-Press **H** or **☰** to **hide every open menu** (the panel plus any dev overlays)
-and press again to **restore whatever was showing**, **F** or **⛶** for fullscreen
-(works on mobile too), **C** to show/hide the frame + FPS counter, **G** to
-show/hide all three dev overlays at once, and click the canvas to
-pause. A **Resolution** control drops the render
+Press **M** or **☰** to toggle the menu, **F** or **⛶** for fullscreen (works on
+mobile too), and click the canvas to pause. The frame + FPS counter is a checkbox in
+the menu's **Diagnostics** section. A **Resolution** control drops the render
 resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
 tab/screen audio capture isn't available, so only **Mic** is shown.
 
-## Dev overlays
+## Diagnostics
 
-Three tuning tools, off by default and never put in a preset (their on/off state
-isn't saved). A hint at the bottom of the panel points at all three; **G** toggles
-all of them together:
+The tuning tools live in a collapsible **Diagnostics** section at the bottom of the
+menu (no more secret keys). They're off by default and never put in a preset (their
+open/closed state isn't saved):
 
-- **D** (or `?debug=1`) — **beat trace**. A scrolling plot per band of the
-  spectral flux, the adaptive threshold it has to clear, and a tick on every
+- **Frame + FPS counter** — a checkbox that shows/hides the on-screen counter.
+- **Beat-detection trace** (a checkbox; also `?debug=1`) — a scrolling plot per band
+  of the spectral flux, the adaptive threshold it has to clear, and a tick on every
   detected beat, plus a rough BPM. This is how you see *why* a beat was missed:
   the flux never rose, or it rose but stayed under the threshold. (Shows nothing
   that gets saved.)
-- **B** (or `?beat=1`) — **beat-detection tuning**. Live sliders for the detector,
-  meant to sit beside the D trace: per-band **sensitivity** (lower = more beats),
-  the **relative floor**, per-band **refractory** gap, and each band's **frequency
-  range**. Unlike the trace, the values you set **are saved** (in your browser and in
-  Backups — not in Share links or presets); **Reset** restores the shipped defaults.
-- **R** (or `?ranges=1`) — **slider range editor**. Ships each slider's
+- **Beat tuning** (a collapsible section; also `?beat=1`) — live sliders for the
+  detector, meant to sit beside the trace: per-band **sensitivity** (lower = more
+  beats), the **relative floor**, per-band **refractory** gap, and each band's
+  **frequency range**. Unlike the trace, the values you set **are saved** (in your
+  browser and in Backups — not in Share links or presets); **Reset** restores the
+  shipped defaults.
+- **Slider ranges** (a collapsible section; also `?ranges=1`) — ships each slider's
   min/max/step as an attribute, but lets you retune the bounds **live** for the
   currently selected effect. Unlike the beat trace, **the bounds you set are
   saved** — they persist in your browser, travel in a **Share** link and go into

@@ -117,8 +117,8 @@ descriptor's `defaults`). `effect` in a saved preset is the stable string `id`.
   `beatTune` **first** (so the live slider bounds / detector thresholds are the custom
   ones) then validates every value against those bounds so a changed range can never
   load junk. Anything a user can change that is *not* in `fullSnapshot()` is
-  deliberately transient: pause, fullscreen, the `dbg`/`beat`/`rng` overlay visibility, and
-  the frame+fps counter's visibility (the `c` key toggles `#frames`'s `.hidden`).
+  deliberately transient: pause, fullscreen, the Diagnostics tools' open/closed state, and
+  the frame+fps counter's visibility (the `#diagFrames` checkbox toggles `#frames`'s `.hidden`).
 - **Custom slider ranges** (min/max/step) are saved, not just live. `RNG_ORIG`
   captures the shipped bounds up top (before `restore()` can overwrite them);
   `collectRanges()` stores only sliders whose bounds differ from shipped and
@@ -176,29 +176,39 @@ otherwise collapse into one. Beats found between frames are **latched** in
 `clearBeats()`. `audioTick(t)` takes an optional timestamp so tests can drive it on
 a fake clock.
 
-### Dev overlays (not user settings)
-Three overlays, off by default; they never enter presets and their on/off state is
-never saved. The `d`/`b`/`r` keys are surfaced in a hint line at the bottom of the panel.
-- **`dbg` — beat trace** (`d` key / `?debug=1`): scrolling flux + adaptive threshold
-  + beat ticks per band. The tool for diagnosing a missed beat. Persists nothing. Its
-  lane labels read `beatCfg.bands` live, so they track band edits from the `b` overlay.
-- **`beat` — detection tuning** (`b` key / `?beat=1`): live sliders/fields for
-  `beatCfg` (per-band `fluxK`, `floor`, per-band `refract`, per-band `bands` Hz),
-  meant to sit beside the `d` trace. Edits write into `beatCfg`, `persist()`, and
-  re-run `computeBins()` when a band edge moves. **Unlike its on/off state, the values
-  persist** (localStorage + Backup, not Share/presets — see the detector section).
-  Reset restores `BEAT_DEFAULTS`. `beatUi` (the overlay object) is separate from the
-  many `beat*`/`BEAT_*` scene-audio names.
-- **`rng` — slider range editor** (`r` key / `?ranges=1`): the sliders' shipped
-  `min`/`max`/`step` are HTML attributes; this edits them live (for the *current
-  effect* only — `setEffect` calls `rngRefresh`). Unlike `dbg`, the **bounds it sets
-  now persist** — a range edit dispatches `input`, which the delegated `onEdit` turns
-  into a `persist()` (see Custom slider ranges above), so they save to `localStorage`,
-  ride the `?s=` share URL and go in the Backup file. "Copy changed" still emits the
-  attributes for baking into `index.html` as new shipped defaults; Reset restores
-  those defaults. Because of the editor, `bindRange`'s `ui()` reads `lo.min`/`lo.max`
-  **live** rather than closing over them, and `rng` is declared with `var` (`setEffect`
-  runs before its declaration is evaluated).
+### Diagnostics tools (not user settings)
+The three dev tools live in a `<details id="diag">` **Diagnostics** section at the
+bottom of the one panel (there are no dev keys — the whole UI opens via ☰ or **m**).
+They're off by default, never enter presets, and their open/closed state is never
+saved. Because they sit *inside* `#panel`, three panel-wide scans guard against them:
+`onEdit` (the delegated persist listener), `rngRows()` and `RNG_ORIG`/`refreshRangeUI`
+all early-return on `e.target.closest("#diag")` / `inp.closest("#diag")`, so a dev-tool
+edit never autosaves into a preset and the beat sliders never leak into the range list.
+- **`dbg` — beat trace** (`#diagTrace` checkbox / `?debug=1`): still a floating
+  `position:fixed` canvas (built by `dbgInit`), just toggled from the checkbox now:
+  scrolling flux + adaptive threshold + beat ticks per band. The tool for diagnosing a
+  missed beat. Persists nothing. Its lane labels read `beatCfg.bands` live, so they
+  track band edits from the Beat tuning section.
+- **`beat` — detection tuning** (`#beatDetails` `<details>` / `?beat=1`): live
+  sliders/fields for `beatCfg` (per-band `fluxK`, `floor`, per-band `refract`, per-band
+  `bands` Hz), inlined into the panel. `beatWire()` builds it once (content isn't
+  per-effect) and syncs `beatUi.on` off the `<details>` toggle. Edits write into
+  `beatCfg`, `persist()`, and re-run `computeBins()` when a band edge moves. **Unlike
+  its open/closed state, the values persist** (localStorage + Backup, not Share/presets
+  — see the detector section). Reset restores `BEAT_DEFAULTS`. `beatUi` is separate from
+  the many `beat*`/`BEAT_*` scene-audio names.
+- **`rng` — slider range editor** (`#rngDetails` `<details>` / `?ranges=1`): the
+  sliders' shipped `min`/`max`/`step` are HTML attributes; this edits them live (for the
+  *current effect* only — `setEffect` calls `rngRefresh`, `rngWire`/the `<details>`
+  toggle keep `rng.on` in sync). Unlike `dbg`, the **bounds it sets now persist** — the
+  editor's number fields live in `#diag` (guarded out of `onEdit`), but `rngApply`
+  dispatches `input` on the *real* slider (outside `#diag`), which the delegated `onEdit`
+  turns into a `persist()` (see Custom slider ranges above), so they save to
+  `localStorage`, ride the `?s=` share URL and go in the Backup file. "Copy changed"
+  still emits the attributes for baking into `index.html` as new shipped defaults; Reset
+  restores those defaults. Because of the editor, `bindRange`'s `ui()` reads
+  `lo.min`/`lo.max` **live** rather than closing over them, and `rng` is declared with
+  `var` (`setEffect` runs before its declaration is evaluated).
 
 ### "Sync with your music" nudge + analytics
 `#syncpop` is shown to users who haven't successfully started audio, at growing

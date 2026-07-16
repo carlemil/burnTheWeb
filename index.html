@@ -172,38 +172,42 @@
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
   #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
   #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
-  /* ---- dev overlays: slider range editor ("r" / ?ranges=1) + beat tuning ("b" / ?beat=1) ---- */
-  #rngbox, #beatbox {
-    position: fixed; z-index: 60; width: 300px; overflow: auto;
-    padding: 10px; background: rgba(0, 0, 0, 0.97); border: 1px solid #333;
-    border-radius: 6px; color: #cfd3d8; font: 11px/1.5 ui-monospace, Consolas, monospace;
+  /* ---- Diagnostics: dev tools folded into the panel (frame counter, beat trace,
+         beat tuning, slider range editor). Formerly floating overlays. ---- */
+  #diag { margin-top: 12px; font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
+  #diag > summary, #diag details > summary {
+    cursor: pointer; list-style: none; color: #ffcf87; opacity: .85;
+    margin: 10px 0 3px; user-select: none;
   }
-  #rngbox { top: 58px; left: 278px; max-height: calc(100vh - 70px); }
-  #beatbox { left: 278px; bottom: 276px; z-index: 61; max-height: calc(100vh - 288px); }  /* above the D trace */
-  #rngbox b, #beatbox b { display: block; color: #ffcf87; margin-bottom: 6px; }
-  #rngbox .rng-head, #rngbox .rng-row { display: grid; grid-template-columns: 1fr 56px 56px 56px; gap: 4px; align-items: center; }
-  #rngbox .rng-head { color: #7d838a; margin-bottom: 3px; text-align: center; }
-  #rngbox .rng-row { margin-bottom: 3px; }
-  #rngbox .rng-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-  #rngbox .rng-f {
+  #diag > summary { opacity: 1; font-size: 12px; letter-spacing: .03em; }
+  #diag summary::-webkit-details-marker { display: none; }
+  #diag summary::before { content: "\25B8 "; color: #7d838a; }   /* ▸ */
+  #diag details[open] > summary::before { content: "\25BE "; }   /* ▾ */
+  #diag details { margin: 4px 0 0; }
+  #diag b { display: block; color: #ffcf87; margin-bottom: 6px; }
+  #diag .rng-head, #diag .rng-row { display: grid; grid-template-columns: 1fr 46px 46px 46px; gap: 4px; align-items: center; }
+  #diag .rng-head { color: #7d838a; margin-bottom: 3px; text-align: center; }
+  #diag .rng-row { margin-bottom: 3px; }
+  #diag .rng-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+  #diag .rng-f {
     width: 100%; padding: 2px 4px; background: #16181b; color: #cfd3d8;
     border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
   }
-  #rngbox .rng-btns, #beatbox .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
-  #rngbox .rng-btns button, #beatbox .rng-btns button {
+  #diag .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
+  #diag .rng-btns button {
     flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
     font: 11px ui-monospace, monospace; cursor: pointer;
   }
-  #rngbox #rngMsg, #beatbox #beatMsg { margin: 6px 0 0; color: #7d838a; font-size: 10px; line-height: 1.4; }
-  #beatbox .beat-sec { color: #7d838a; margin: 8px 0 3px; }
-  #beatbox .beat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
-  #beatbox .beat-name { width: 32px; flex: none; }
-  #beatbox .beat-row input[type=range] { flex: 1; min-width: 0; }
-  #beatbox .beat-val { width: 42px; flex: none; text-align: right; color: #ffcf87; }
-  #beatbox .beat-dash { color: #7d838a; }
-  #beatbox .beat-f {
-    width: 62px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
+  #diag #rngMsg, #diag #beatMsg { margin: 6px 0 0; color: #7d838a; font-size: 10px; line-height: 1.4; }
+  #diag .beat-sec { color: #7d838a; margin: 8px 0 3px; }
+  #diag .beat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  #diag .beat-name { width: 32px; flex: none; }
+  #diag .beat-row input[type=range] { flex: 1; min-width: 0; }
+  #diag .beat-val { width: 42px; flex: none; text-align: right; color: #ffcf87; }
+  #diag .beat-dash { color: #7d838a; }
+  #diag .beat-f {
+    width: 52px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
     border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
   }
   /* ---- music beat reactivity ---- */
@@ -415,17 +419,31 @@
   </select>
   <hr class="sep">
 
-  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> hide menus/fullscreen</p>
-  <p class="hint">Keys:<br>
-    <b>H</b> / <b>☰</b> — hide all menus, then restore what was open<br>
-    <b>F</b> — fullscreen<br>
-    <b>C</b> — show/hide the frame + fps counter<br>
-    <b>G</b> — show/hide all dev overlays (D + B + R) at once<br>
-    <b>D</b> — beat-detection trace<br>
-    <b>B</b> — tune beat detection<br>
-    <b>R</b> — edit sliders' min/max/step</p>
+  <!-- Diagnostics: the dev tools, folded into the one menu (were D/B/R/C/G keys). -->
+  <details id="diag">
+    <summary>Diagnostics</summary>
+    <label class="check"><input type="checkbox" id="diagFrames"> Frame + FPS counter</label>
+    <label class="check"><input type="checkbox" id="diagTrace"> Beat-detection trace</label>
+    <details id="beatDetails">
+      <summary>Beat tuning</summary>
+      <div id="beatBody"></div>
+      <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
+      <p id="beatMsg">Saved in your browser &amp; in Backups (not Share links or presets). Tune it beside the beat trace.</p>
+    </details>
+    <details id="rngDetails">
+      <summary>Slider ranges</summary>
+      <b>Slider ranges — <span id="rngEff"></span></b>
+      <div class="rng-head"><span class="rng-name"></span><span>min</span><span>max</span><span>step</span></div>
+      <div id="rngBody"></div>
+      <div class="rng-btns"><button type="button" id="rngCopy">Copy changed</button><button type="button" id="rngReset">Reset</button></div>
+      <p id="rngMsg">Saved in your browser, shared in ?s= links and written to backups. Copy bakes them into index.html as shipped defaults.</p>
+    </details>
+  </details>
+  <hr class="sep">
+
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen</p>
 </div>
-<button id="toggle" type="button" aria-label="Hide all menus / restore (H)">☰</button>
+<button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
@@ -2265,7 +2283,7 @@
       }
     }
   }
-  // ---- beat-detection debug overlay (?debug=1, or the "d" key) ----
+  // ---- beat-detection debug overlay (Diagnostics ▸ "Beat-detection trace" checkbox, or ?debug=1) ----
   // A scrolling trace per band: spectral flux (bright), the adaptive threshold it
   // must beat (dim), and a tick wherever a beat fired. This is the only way to see
   // *why* a beat was missed — flux never rose, or it rose but stayed under the
@@ -2341,7 +2359,7 @@
       g.fillText(bandName(b) + (audio.bpm[b] ? "  ~" + Math.round(audio.bpm[b]) + " bpm" : ""), 6, y0 + 10);
     }
   }
-  if (/[?&]debug=1/.test(location.search)) dbgToggle(true);
+  if (/[?&]debug=1/.test(location.search)) { dbgToggle(true); const t = el("diagTrace"); if (t) t.checked = true; }
 
   el("audCapture").addEventListener("click", () => { track("capture_click"); startAudio("capture"); });
   el("audMic").addEventListener("click", () => { track("mic_click"); startAudio("mic"); });
@@ -2828,6 +2846,7 @@
   // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
   const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
   panel.querySelectorAll("input[type=range]").forEach(inp => {
+    if (inp.closest("#diag")) return;   // Diagnostics' beat-tuning sliders aren't scene ranges
     RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
   });
   function collectRanges() {              // { id: {min,max,step} } for bounds that differ from shipped
@@ -2852,6 +2871,7 @@
   // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
   function refreshRangeUI() {
     panel.querySelectorAll("input[type=range]").forEach(inp => {
+      if (inp.closest("#diag")) return;   // don't re-dispatch on the beat-tuning sliders
       const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
       if (c !== +inp.value) inp.value = String(c);
       inp.dispatchEvent(new Event("input", { bubbles: true }));
@@ -3037,6 +3057,7 @@
   // listener over the whole panel covers them all. When a preset is selected the
   // edit is auto-saved into it; in "— custom —" it just updates the working scene.
   function onEdit(e) {
+    if (e.target.closest("#diag")) return;   // dev tools persist themselves; never fold them into a preset
     if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }
@@ -3276,40 +3297,9 @@
     panel.classList.toggle("hidden", hidden);
     persist();                          // remember panel open/closed across reloads
   }
-  // ---- master menu toggle (the ☰ hamburger + the "H" key) ----
-  // All the on-screen menus: the control panel plus the three dev overlays (beat
-  // trace / tuning / range editor). anyMenuOpen()/setAllMenus() let a single
-  // action collapse everything and later restore exactly what was showing.
-  function anyMenuOpen() {
-    return !panel.classList.contains("hidden") || dbg.on || rng.on || beatUi.on;
-  }
-  function snapshotMenus() {
-    return { panel: !panel.classList.contains("hidden"), dbg: dbg.on, rng: rng.on, beat: beatUi.on };
-  }
-  function applyMenus(s) {
-    setPanel(!s.panel); dbgToggle(s.dbg); rngToggle(s.rng); beatToggle(s.beat);
-  }
-  // Remembered open-state from the last "hide all" so the next press restores it.
-  let menuStash = null;
-  // The hamburger: if anything is open, remember it and hide all; otherwise
-  // restore what was last hidden (or, with nothing remembered, just open the panel).
-  function toggleAllMenus() {
-    if (anyMenuOpen()) {
-      menuStash = snapshotMenus();
-      applyMenus({ panel: false, dbg: false, rng: false, beat: false });
-    } else if (menuStash) {
-      applyMenus(menuStash);
-      menuStash = null;
-    } else {
-      setPanel(false);                  // nothing to restore → reveal the panel
-    }
-  }
-  toggle.addEventListener("click", toggleAllMenus);
-  // Toggle all three dev overlays at once: hide them if any is showing, else show all.
-  function devOverlaysToggle() {
-    const next = !(dbg.on || rng.on || beatUi.on);
-    dbgToggle(next); rngToggle(next); beatToggle(next);
-  }
+  // The ☰ hamburger (and the "m" key) toggle the one menu — the dev tools now live
+  // inside it as the Diagnostics section, so there's nothing else to collapse.
+  toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
   // Fullscreen toggle (works on mobile too, where F11 doesn't exist; also the "f" key).
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
@@ -3325,7 +3315,7 @@
     if (matchMedia("(prefers-reduced-motion: reduce)").matches)
       requestAnimationFrame(() => requestAnimationFrame(() => setPaused(true)));
   } catch (e) {}
-  // ---- slider range editor (dev overlay: the "r" key, or ?ranges=1) ----
+  // ---- slider range editor (Diagnostics ▸ "Slider ranges" section, or ?ranges=1) ----
   // Sliders ship their min/max/step as HTML attributes; this overlay makes the
   // bounds editable *live*, against the running visual, and lists only the sliders
   // of the currently selected effect (it rebuilds on every setEffect).
@@ -3338,12 +3328,13 @@
   // bounds) is captured up top, before restore() can overwrite the live bounds.
   // `var`, not `const`: setEffect() calls rngRefresh() during startup, before this
   // line has run — a const would be in its temporal dead zone and throw.
-  var rng = { on: false, box: null, body: null };
+  var rng = { on: false, wired: false, body: null };
   function rngRows() {
     // One row per slider of the visible groups: a dual slider's -lo/-hi pair share
     // one row (they must keep identical bounds), a plain range is a row of one.
     const rows = new Map();
     panel.querySelectorAll("input[type=range]").forEach(inp => {
+      if (inp.closest("#diag")) return;                         // skip the beat-tuning sliders in Diagnostics
       const grp = inp.closest(".ctl, #grp-ttl");                // generated control wrapper (or the TTL group)
       if (grp && grp.style.display === "none") return;          // not part of this effect
       const base = inp.id.replace(/-(lo|hi)$/, "");
@@ -3410,41 +3401,34 @@
     el("rngMsg").textContent = "Restored the shipped bounds.";
     rngBuild();
   }
-  function rngInit() {
-    const box = rng.box = document.createElement("div");
-    box.id = "rngbox";
-    box.innerHTML =
-      '<b>Slider ranges — ' + '<span id="rngEff"></span></b>' +
-      '<div class="rng-head"><span class="rng-name"></span><span>min</span><span>max</span><span>step</span></div>' +
-      '<div id="rngBody"></div>' +
-      '<div class="rng-btns"><button type="button" id="rngCopy">Copy changed</button>' +
-      '<button type="button" id="rngReset">Reset</button></div>' +
-      '<p id="rngMsg">Saved in your browser, shared in ?s= links and written to backups. Copy bakes them into index.html as shipped defaults.</p>';
-    document.body.appendChild(box);
-    rng.body = box.querySelector("#rngBody");
-    box.querySelector("#rngCopy").addEventListener("click", rngCopy);
-    box.querySelector("#rngReset").addEventListener("click", rngReset);
+  function rngWire() {            // the editor now lives in the panel's Diagnostics section (static markup)
+    if (rng.wired) return;
+    rng.wired = true;
+    rng.body = el("rngBody");
+    el("rngCopy").addEventListener("click", rngCopy);
+    el("rngReset").addEventListener("click", rngReset);
+    const d = el("rngDetails");   // open/close the <details> is the toggle
+    d.addEventListener("toggle", () => { rng.on = d.open; if (rng.on) rngRefresh(); });
   }
-  function rngToggle(on) {
-    rng.on = on === undefined ? !rng.on : !!on;
-    if (rng.on && !rng.box) rngInit();
-    if (rng.box) {
-      rng.box.style.display = rng.on ? "block" : "none";
-      if (rng.on) rngRefresh();
-    }
+  function rngToggle(on) {        // programmatic open (e.g. ?ranges=1); users just click the summary
+    const d = el("rngDetails");
+    const want = on === undefined ? !d.open : !!on;
+    if (want) el("diag").open = true;   // reveal the parent Diagnostics section too
+    d.open = want;                       // fires 'toggle' → sets rng.on + refreshes
   }
   function rngRefresh() {        // called on every effect switch while the editor is open
-    if (!rng || !rng.on || !rng.box) return;
-    rng.box.querySelector("#rngEff").textContent = effectSel.options[effect].text;
+    if (!rng || !rng.on) return;
+    el("rngEff").textContent = effectSel.options[effect].text;
     rngBuild();
   }
-  if (/[?&]ranges=1/.test(location.search)) rngToggle(true);
+  rngWire();
+  if (/[?&]ranges=1/.test(location.search)) { setPanel(false); rngToggle(true); }
 
-  // ---- beat-detection tuning overlay (dev: the "b" key, or ?beat=1) ----
+  // ---- beat-detection tuning (Diagnostics ▸ "Beat tuning" section, or ?beat=1) ----
   // Live sliders for the detector thresholds in beatCfg — meant to sit next to the
-  // "d" beat trace. Edits write straight into beatCfg, persist (localStorage + Backup,
+  // beat trace. Edits write straight into beatCfg, persist (localStorage + Backup,
   // never Share/scenes), and re-derive the FFT bins when a band edge moves.
-  let beatUi = { on: false, box: null };
+  let beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
     persist();
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
@@ -3474,7 +3458,7 @@
     return row;
   }
   function beatBuild() {
-    const body = beatUi.box.querySelector("#beatBody");
+    const body = el("beatBody");
     body.textContent = "";
     const sec = t => { const d = document.createElement("div"); d.className = "beat-sec"; d.textContent = t; body.appendChild(d); };
     sec("Sensitivity — flux ÷ median (lower = more beats)");
@@ -3494,36 +3478,35 @@
     beatCfg.refract = BEAT_DEFAULTS.refract.slice();
     beatCfg.bands = BEAT_DEFAULTS.bands.map(b => b.slice());
     beatBuild(); beatChanged(true);
-    beatUi.box.querySelector("#beatMsg").textContent = "Restored the shipped detector defaults.";
+    el("beatMsg").textContent = "Restored the shipped detector defaults.";
   }
-  function beatInit() {
-    const box = beatUi.box = document.createElement("div");
-    box.id = "beatbox";
-    box.innerHTML =
-      '<b>Beat detection · live</b>' +
-      '<div id="beatBody"></div>' +
-      '<div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>' +
-      '<p id="beatMsg">Saved in your browser &amp; in Backups (not Share links or presets). Tune it beside the D trace.</p>';
-    document.body.appendChild(box);
-    box.querySelector("#beatReset").addEventListener("click", beatReset);
-    beatBuild();
+  function beatWire() {           // the tuning controls now live in the panel's Diagnostics section
+    if (beatUi.wired) return;
+    beatUi.wired = true;
+    el("beatReset").addEventListener("click", beatReset);
+    beatBuild();                  // content isn't per-effect — build once
+    const d = el("beatDetails");
+    d.addEventListener("toggle", () => { beatUi.on = d.open; });
   }
-  function beatToggle(on) {
-    beatUi.on = on === undefined ? !beatUi.on : !!on;
-    if (beatUi.on && !beatUi.box) beatInit();
-    if (beatUi.box) beatUi.box.style.display = beatUi.on ? "block" : "none";
+  function beatToggle(on) {       // programmatic open (e.g. ?beat=1); users just click the summary
+    const d = el("beatDetails");
+    const want = on === undefined ? !d.open : !!on;
+    if (want) el("diag").open = true;
+    d.open = want;
   }
-  if (/[?&]beat=1/.test(location.search)) beatToggle(true);
+  beatWire();
+  if (/[?&]beat=1/.test(location.search)) { setPanel(false); beatToggle(true); }
+
+  // ---- Diagnostics checkboxes: frame + FPS counter and the beat-trace canvas ----
+  el("diagFrames").checked = !framesEl.classList.contains("hidden");
+  el("diagFrames").addEventListener("change", e => framesEl.classList.toggle("hidden", !e.target.checked));
+  el("diagTrace").checked = dbg.on;
+  el("diagTrace").addEventListener("change", e => dbgToggle(e.target.checked));
 
   window.addEventListener("keydown", e => {
-    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in the overlays
-    if (e.key === "h" || e.key === "H") toggleAllMenus();      // hide all menus / restore
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
+    if (e.key === "m" || e.key === "M") setPanel(!panel.classList.contains("hidden"));   // the one menu (dev tools live inside it now)
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
-    else if (e.key === "c" || e.key === "C") framesEl.classList.toggle("hidden");   // frame + fps counter
-    else if (e.key === "g" || e.key === "G") devOverlaysToggle();  // all dev overlays at once
-    else if (e.key === "d" || e.key === "D") dbgToggle();      // beat-detection trace
-    else if (e.key === "r" || e.key === "R") rngToggle();      // slider min/max editor
-    else if (e.key === "b" || e.key === "B") beatToggle();     // beat-detection tuning
     else if (e.key === "Escape") { closeHelp(); closeRestore(); }
   });
 
