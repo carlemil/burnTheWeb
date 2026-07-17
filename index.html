@@ -269,19 +269,24 @@
     border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
   #breakout label { display: block; margin: 0 0 3px; opacity: .85; }
-  /* +/- pop button: sits in a left gutter, both on the docked control and its box. */
-  .poppable { position: relative; padding-left: 15px; }
+  /* +/- pop button. In a pop-out box it sits in the box's left gutter (absolute);
+     on a menu row it's a static chip pinned to the right of the slider's name. */
+  .poppable { position: relative; }
   .ctl-pop {
-    position: absolute; left: 0; top: 1px; width: 14px; height: 15px; padding: 0;
+    flex: none; width: 14px; height: 15px; padding: 0;
     font: bold 12px/12px ui-monospace, monospace; background: transparent;
     border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 4px; color: #ffb15a;
     cursor: pointer; transition: background .1s, box-shadow .08s;
   }
-  #breakout .ctl > .ctl-pop { left: 8px; top: 9px; }
+  #breakout .ctl > .ctl-pop { position: absolute; left: 8px; top: 9px; }
   .ctl-pop:hover { background: rgba(255, 140, 40, 0.22); box-shadow: 0 0 5px rgba(255, 176, 77, 0.6); }
-  /* menu stub left behind while a control is popped out: its name + a − button. */
-  .ctl-stub { display: block; margin: 10px 0 3px; opacity: .7; }
-  .ctl-stub-name { font-style: italic; }
+  /* menu row for a poppable slider: just its name and the +/- button, right-aligned.
+     The slider, value, beat chips and pulse picker all live in the pop-out box. */
+  .ctl-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin: 10px 0 3px; opacity: .85;
+  }
+  .ctl-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* ---- help popup ---- */
   #panel #help-btn {
     position: absolute; top: 14px; right: 14px;
@@ -3138,8 +3143,12 @@
     sub.textContent = fx.subtitle;
     // show only the controls this effect declares (rendered from the CONTROLS schema)
     const shown = new Set(fx.params);
-    CONTROLS.forEach(c => el("ctl-" + c.key).style.display = shown.has(c.key) ? "" : "none");
-    refreshBreakout();                // hide stubs/boxes of popped controls this effect doesn't use
+    CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
+      const vis = shown.has(c.key) ? "" : "none";
+      if (rows[c.key]) rows[c.key].style.display = vis;
+      else el("ctl-" + c.key).style.display = vis;
+    });
+    refreshBreakout();                // show/hide the pop-out boxes for this effect
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
@@ -3153,70 +3162,72 @@
   }
 
   // ---- Break-out boxes -------------------------------------------------------
-  // Pop a slider's whole control block out of the menu into a stacked column at
-  // the right (#breakout); leave a slim name stub with a − button in its slot.
-  // `popped` is a global set of control keys — a control is one singleton reused
-  // across effects, so a pop applies wherever that slider appears; refreshBreakout
-  // filters visibility to the current effect's params. Transient (not persisted).
-  // The moved node keeps working: element refs (anims/loadState) are location-
-  // independent, its styling is scoped to #breakout too (CSS), and onEdit + the
-  // range editor are wired to scan #breakout as well (see below).
+  // Every poppable slider shows in the menu as just a name + a +/- button (a
+  // .ctl-row launcher). Its full control block (slider, value readout, beat chips,
+  // pulse-shape picker) lives in the pop-out column (#breakout) and is only shown
+  // while popped — so the menu stays a compact index and the sliders never crowd
+  // each other. `popped` is a global set of control keys — a control is one
+  // singleton reused across effects, so a pop applies wherever that slider appears;
+  // refreshBreakout filters both the rows and the boxes to the current effect's
+  // params. Transient (not persisted). The moved node keeps working: element refs
+  // (anims/loadState) are location-independent, its styling is scoped to #breakout
+  // too (CSS), and onEdit + the range editor scan #breakout as well (see below).
   const breakout = el("breakout");
   const popped = new Set();
-  const stubs = {};                  // key -> menu stub element (exists only while popped)
+  const rows = {};                   // key -> menu row element (name + +/- button)
   const POPPABLE = CONTROLS.filter(c => c.type === "dual" || c.type === "plain").map(c => c.key);
   const ctlLabel = key => { const c = CONTROLS.find(x => x.key === key); return c ? c.label : key; };
-  function makePopBtn(key, docked) {
+  function makePopBtn(key) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "ctl-pop";
-    b.textContent = docked ? "+" : "−";
-    b.title = docked ? "Pop out into its own box" : "Return to the menu";
-    b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
     b.addEventListener("click", () => togglePop(key));
     return b;
   }
-  POPPABLE.forEach(key => {           // give each poppable control its travelling +/− button
+  POPPABLE.forEach(key => {
     const ctl = el("ctl-" + key);
     ctl.classList.add("poppable");
-    ctl.appendChild(makePopBtn(key, true));   // last child so it never displaces the label's name text node
+    ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
+    const row = document.createElement("div");   // the launcher that stays in the menu slot
+    row.className = "ctl-row";
+    const name = document.createElement("span");
+    name.className = "ctl-row-name"; name.textContent = ctlLabel(key);
+    row.appendChild(name);
+    row.appendChild(makePopBtn(key));            // +/- button, right of the name
+    ctl.parentNode.insertBefore(row, ctl);       // row takes the control's menu slot
+    breakout.appendChild(ctl);                   // full control lives in the column (hidden until popped)
+    rows[key] = row;
+    syncPopBtns(key);
   });
-  function setPopBtn(key, docked) {
-    const b = el("ctl-" + key).querySelector(".ctl-pop");
-    b.textContent = docked ? "+" : "−";
-    b.title = docked ? "Pop out into its own box" : "Return to the menu";
-    b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
+  function syncPopBtns(key) {         // keep both the menu-row and the box's button in sync
+    const docked = !popped.has(key);
+    for (const host of [rows[key], el("ctl-" + key)]) {
+      const b = host.querySelector(".ctl-pop");
+      if (!b) continue;
+      b.textContent = docked ? "+" : "−";
+      b.title = docked ? "Pop out into its own box" : "Return to the menu";
+      b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
+    }
   }
   function popCtl(key) {
     if (popped.has(key)) return;
-    const ctl = el("ctl-" + key);
-    const stub = document.createElement("div");
-    stub.className = "ctl-stub poppable";
-    stub.appendChild(makePopBtn(key, false));
-    const name = document.createElement("span");
-    name.className = "ctl-stub-name"; name.textContent = ctlLabel(key);
-    stub.appendChild(name);
-    ctl.parentNode.insertBefore(stub, ctl);   // stub marks the vacated slot
-    breakout.appendChild(ctl);                 // append ⇒ boxes stack top→down in click order
-    stubs[key] = stub; popped.add(key);
-    setPopBtn(key, false);
+    popped.add(key);
+    breakout.appendChild(el("ctl-" + key));      // append ⇒ boxes stack top→down in click order
+    syncPopBtns(key);
     refreshBreakout();
   }
   function dockCtl(key) {
     if (!popped.has(key)) return;
-    const ctl = el("ctl-" + key), stub = stubs[key];
-    stub.parentNode.insertBefore(ctl, stub);   // back into its original slot
-    stub.remove(); delete stubs[key]; popped.delete(key);
-    setPopBtn(key, true);
+    popped.delete(key);                          // box stays a child of #breakout, just hidden below
+    syncPopBtns(key);
     refreshBreakout();
   }
   function togglePop(key) { popped.has(key) ? dockCtl(key) : popCtl(key); }
   function refreshBreakout() {
     const shown = new Set(EFFECTS[effect].params);
     let anyVisible = false;
-    for (const key of popped) {
-      const vis = shown.has(key);
-      el("ctl-" + key).style.display = vis ? "" : "none";   // hide the box if not in this effect
-      if (stubs[key]) stubs[key].style.display = vis ? "" : "none";
+    for (const key of POPPABLE) {
+      const vis = popped.has(key) && shown.has(key);   // shown only when popped AND used by this effect
+      el("ctl-" + key).style.display = vis ? "" : "none";
       if (vis) anyVisible = true;
     }
     breakout.classList.toggle("empty", !anyVisible);
@@ -3625,8 +3636,11 @@
     sceneRangeInputs().forEach(inp => {
       if (inp.closest("#diag")) return;                         // skip the beat-tuning sliders in Diagnostics
       const grp = inp.closest(".ctl, #grp-ttl");                // generated control wrapper (or the TTL group)
-      if (grp && grp.style.display === "none") return;          // not part of this effect
       const base = inp.id.replace(/-(lo|hi)$/, "");
+      // A poppable slider's box lives in #breakout and is hidden while docked, so
+      // gate it on effect membership rather than display; other groups use display.
+      if (POPPABLE.includes(base)) { if (!EFFECTS[effect].params.includes(base)) return; }
+      else if (grp && grp.style.display === "none") return;     // not part of this effect
       if (!rows.has(base)) {
         const host = inp.closest(".dual") || inp;
         const lbl = host.previousElementSibling;
