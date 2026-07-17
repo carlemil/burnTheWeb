@@ -391,6 +391,9 @@
     <option value="5">Rainbow</option>
     <option value="6">Grayscale</option>
     <option value="7">Electric</option>
+    <option value="8">Amber</option>
+    <option value="9">Matrix</option>
+    <option value="10">Sunset</option>
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
 
@@ -617,6 +620,9 @@
     { name: "Rainbow", fn: rainbowColor },
     { name: "Grayscale", fn: x => [x, x, x] },
     { name: "Electric", fn: grad([[0, [0, 0, 0]], [0.3, [0, 40, 120]], [0.55, [0, 200, 220]], [0.75, [180, 120, 255]], [0.9, [255, 120, 240]], [1, [255, 240, 255]]]) },
+    { name: "Amber", fn: grad([[0, [0, 0, 0]], [0.3, [60, 25, 0]], [0.6, [180, 90, 0]], [0.85, [255, 170, 20]], [1, [255, 235, 160]]]) },
+    { name: "Matrix", fn: grad([[0, [0, 0, 0]], [0.3, [0, 50, 10]], [0.6, [0, 160, 40]], [0.85, [80, 255, 120]], [1, [220, 255, 220]]]) },
+    { name: "Sunset", fn: grad([[0, [0, 0, 0]], [0.25, [30, 0, 60]], [0.5, [150, 20, 90]], [0.7, [240, 90, 60]], [0.88, [255, 180, 60]], [1, [255, 245, 200]]]) },
   ];
 
   // ---- Banded stripes: a *filter* over whatever palette is active, not a
