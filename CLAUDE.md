@@ -87,14 +87,27 @@ param/default that isn't a real control). Everything derives from the registry:
   `effect` stays the runtime numeric index (registry position).
 
 `setEffect(i, save)` shows the descriptor's `params` controls, runs `onEnter`, and swaps
-three parallel per-effect state maps:
+four parallel per-effect state maps:
 - `states[e]` — slider values (seeded from the descriptor's `defaults`).
 - `beatStates[e]` — the L/M/H beat-chip selections (seeded from `beat`).
+- `pulseStates[e]` — per-slider **beat-pulse shape** (a `PULSE_SHAPES` key; seeded
+  from the descriptor's optional `pulse` map, else `"snap"`).
 - `extras[e]` — palette, auto-morph, show-box, random-seed (seeded from `extras`).
 
-Switching effects calls `saveState/saveBeat/saveExtra` for the outgoing effect and
-`loadState/loadBeat/loadExtra` for the incoming one, so each effect is a fully
-independent scene. `cycle` (auto-cycle on/off), **`ttl` (Preset TTL)**, `scale`
+Switching effects calls `saveState/saveBeat/savePulse/saveExtra` for the outgoing effect
+and `loadState/loadBeat/loadPulse/loadExtra` for the incoming one, so each effect is a
+fully independent scene.
+
+**Beat-pulse shape.** When an armed slider (audio on + an L/M/H chip) gets a beat,
+`updateAnims` snaps it to the high thumb and decays `a.pulse` linearly 1→0 over
+`PULSE_DROP`; the per-slider shape (`pulseShape[id]`, a `PULSE_FN` entry) *reshapes*
+that decay into the applied value — `a.apply(mn + shape(a.pulse)*(mx-mn))`. Every
+`PULSE_SHAPES` fn maps the phase `p∈[0,1]` to an amplitude in `[0,1]` (so the value
+never leaves `[lo,hi]`), with `f(1)=1` (full at the beat) and `f(0)=0` (back to rest);
+`snap` is the identity, i.e. the shipped default reproduces the old linear fall exactly.
+A `<select>.pulsesel` per slider (built in `makeChips`, alongside the chips) drives
+`pulseShape[id]`; its `change` bubbles to the delegated `onEdit` (persist + autosave),
+like the palette `<select>`. `pulseEls`/`syncPulse` mirror `chipEls`/`syncChips`. `cycle` (auto-cycle on/off), **`ttl` (Preset TTL)**, `scale`
 (resolution) and panel open/closed are shared/global (top-level blob fields, not per
 effect and not in a preset). `frame()` routes shader effects (those with a `draw`
 hook) past the fire sim; `simulate()` stamps the 2D chaos game when `fractal2d`, else
@@ -107,8 +120,10 @@ writes the current scene straight back into the selected preset (no manual save)
 `mergeState()` normalizes a loaded preset to the current slider set — it drops
 retired keys and defaults new ones, so old saved presets keep loading after an
 effect's `defaults` change (it validates against `presetState(e)`, i.e. the
-descriptor's `defaults`). `effect` in a saved preset is the stable string `id`.
-- Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, extras, effect,
+descriptor's `defaults`). `mergePulse()` does the same for a preset's `pulse` map,
+so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`.
+`effect` in a saved preset is the stable string `id`.
+- Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, pulses, extras, effect,
   ranges, beatTune, presets, curPreset, cycle, ttl, scale, panelOpen, audio}` — built by the
   single helper **`fullSnapshot()`**, which is *the* definition of "everything we
   remember." `persist()` and the Backup file both serialize exactly `fullSnapshot()`, so
@@ -124,18 +139,19 @@ descriptor's `defaults`). `effect` in a saved preset is the stable string `id`.
   `collectRanges()` stores only sliders whose bounds differ from shipped and
   `applyRanges()` sets them back. They ride in `localStorage`, the `?s=` URL and the
   Backup file. The `rng` editor (below) writes them live via the normal persist path.
-- **Share** encodes `{states, beats, extras, effect, cycle, ranges}` (NOT presets)
-  as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
+- **Share** encodes `{states, beats, pulses, extras, effect, cycle, ranges}` (NOT
+  presets) as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
   `shareUrl()` builds it; **`pruneBeats()` diffs the beat chips against each
   effect's `presetBeat(e)` defaults and sends only what differs** — the full map
   is every control × L/M/H × every effect and was ~90% of the blob (49k-char URLs,
   which chat clients truncate and TinyURL rejects; a truncated `?s=` silently
-  JSON.parse-fails and opens the default scene). Pruning is share-only:
-  `fullSnapshot()` (localStorage/Backup) stays verbose, and `applyBlob` leaves any
-  id/band a blob omits at its seeded default, so a diff decodes identically and
-  older full blobs still load. **Prune against the descriptor's defaults, not
-  against all-false** — several effects default a chip *on*, and turning one off
-  must survive.
+  JSON.parse-fails and opens the default scene). **`prunePulses()` does the same for
+  the pulse shapes** (only sliders whose shape ≠ the effect default, almost always
+  `snap`). Pruning is share-only: `fullSnapshot()` (localStorage/Backup) stays
+  verbose, and `applyBlob` leaves any id/band/shape a blob omits at its seeded
+  default, so a diff decodes identically and older full blobs still load. **Prune
+  against the descriptor's defaults, not against all-false** — several effects
+  default a chip *on*, and turning one off must survive.
 - **Share URL routing.** `OG_PAGES` maps an effect **id** → its static unfurl
   landing page `s/<n>/` (a numbered dir whose redirect forwards `?s=` to the app,
   so social unfurls show that effect's `og/` image). Only `sirpinfyer`/`tetrafyer`/
@@ -169,8 +185,10 @@ descriptor's `defaults`). `effect` in a saved preset is the stable string `id`.
 `getDisplayMedia`/`getUserMedia` and must run inside a user gesture. **Pulse mode**:
 when audio is on and a slider has an armed chip, `updateAnims()` stops that slider
 drifting — it rests at the low thumb and snaps to the high thumb on each beat,
-dropping back over ~0.2s. Browsers can't silently re-grab audio after a reload, so
-`armAudioResume()` re-opens the last-used source on the first post-load gesture.
+dropping back over ~0.2s along the slider's chosen **beat-pulse shape** (see the
+Effects section — `pulseShape[id]`, default `snap` = the original linear drop).
+Browsers can't silently re-grab audio after a reload, so `armAudioResume()` re-opens
+the last-used source on the first post-load gesture.
 
 **The detector (`audioTick`) is an onset detector, not an energy detector** — don't
 "simplify" it back. Per band it computes **spectral flux**: the sum of the positive

@@ -97,8 +97,9 @@ then wanders *erratically* between them (a random target reached over a random
 time, eased, on repeat). Collapse the two thumbs together to pin a constant
 value, so a ranged slider also works as an ordinary one.
 
-**Each effect is a fully independent scene** — its sliders, beat chips, palette,
-auto-morph, show-box and hold time are all remembered *separately per effect*, so
+**Each effect is a fully independent scene** — its sliders, beat chips, pulse
+shapes, palette, auto-morph, show-box and hold time are all remembered *separately
+per effect*, so
 tweaking Tetrafyer never touches AnimeJulia. Only auto-cycle on/off and the
 panel's open/closed state are shared. Everything is **saved to your browser** and
 restored on your next visit (persisted values that fall outside a slider's
@@ -120,7 +121,11 @@ so beats stay in time even when the visual is working hard. Each ranged slider h
 toggle chips: arm one and — while audio is on — the slider stops drifting and
 instead rests at its low thumb, snapping to its high thumb on each beat in that
 band and dropping back within 0.2s (so the range width sets how big the pulse
-is). The chips are remembered per effect and persisted. Pinned sliders (thumbs
+is). Beside the chips is a **pulse-shape** dropdown that picks the curve the value
+follows on the way back down — **Snap** (linear, the classic), **Pluck** (fast
+percussive drop), **Sustain** (holds high, then falls), **Ease** (smooth S-curve),
+**Bounce** (a few decaying bounces) or **Steps** (retro quantized). The chips and
+shapes are remembered per effect and persisted. Pinned sliders (thumbs
 together) have no range to pulse within, so widen a slider to make it react.
 Browsers can't silently re-grab tab/screen (or mic) audio after a reload, so the
 last source is remembered and re-opened on your **first click/keypress** after

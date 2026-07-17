@@ -240,6 +240,12 @@
   .bandchips button:nth-child(2).on { background: #45cf62; border-color: #aef0bc; color: #041505; box-shadow: 0 0 6px rgba(69, 207, 98, 0.85); }
   .bandchips button:nth-child(3).on { background: #ff5f4d; border-color: #ffb4aa; color: #1f0603; box-shadow: 0 0 6px rgba(255, 95, 77, 0.85); }
   #panel.audio-off .bandchips { opacity: .4; }
+  /* Per-slider beat-pulse shape: the curve the value follows after a beat. */
+  .bandchips select {
+    height: 15px; padding: 0 1px; margin-left: 2px; font: 9px/13px ui-monospace, monospace;
+    background: #17100a; color: #ffb15a; border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 4px; cursor: pointer;
+  }
   /* ---- help popup ---- */
   #panel #help-btn {
     position: absolute; top: 14px; right: 14px;
@@ -2519,6 +2525,25 @@
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
   const PULSE_DROP = 0.2;   // s for a beat pulse to fall from the high thumb back to the low
+
+  // Beat-pulse SHAPE (per slider, per effect). On a beat an armed slider snaps to
+  // its high thumb and `a.pulse` decays linearly 1→0 over PULSE_DROP; the chosen
+  // envelope reshapes that decay into the value actually applied. Each fn maps the
+  // linear phase p (1 at the beat, 0 at rest) to an amplitude in [0,1] — so the
+  // value stays inside [lo,hi] whatever the shape. `snap` is the identity = the
+  // original linear fall, i.e. the default preserves prior behaviour exactly.
+  const PULSE_SHAPES = [
+    { key: "snap",    name: "Snap",    fn: p => p },                                          // linear (default)
+    { key: "pluck",   name: "Pluck",   fn: p => p * p },                                      // fast percussive release
+    { key: "sustain", name: "Sustain", fn: p => p * (2 - p) },                                // holds high, then drops
+    { key: "ease",    name: "Ease",    fn: p => p * p * (3 - 2 * p) },                         // smooth S-curve fall
+    { key: "bounce",  name: "Bounce",  fn: p => Math.abs(Math.cos((1 - p) * Math.PI * 2.5)) * p },  // decaying bounces
+    { key: "steps",   name: "Steps",   fn: p => Math.ceil(p * 5) / 5 },                        // retro quantized decay
+  ];
+  const PULSE_FN = {}; PULSE_SHAPES.forEach(s => PULSE_FN[s.key] = s.fn);
+  const PULSE_DEFAULT = "snap";
+  const pulseShape = {};       // id -> shape key : live per-effect selection (drives updateAnims)
+  const pulseEls = {};         // id -> <select> : the shape pickers (never persisted)
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
   function makeChips(id, label) {
     beatReact[id] = { low: false, mid: false, high: false };
@@ -2538,6 +2563,18 @@
       wrap.appendChild(btn);
       chipEls[id][k] = btn;
     }
+    // Shape picker: how this slider's value animates back down after a beat. Its
+    // `change` bubbles to the panel's delegated onEdit, which persists + autosaves,
+    // so we only update the live value here (like the palette <select>).
+    const psel = document.createElement("select");
+    psel.className = "pulsesel";
+    psel.title = "Beat pulse shape";
+    PULSE_SHAPES.forEach(s => psel.appendChild(new Option(s.name, s.key)));
+    psel.value = PULSE_DEFAULT;
+    psel.addEventListener("change", () => { pulseShape[id] = psel.value; });
+    wrap.appendChild(psel);
+    pulseEls[id] = psel;
+    pulseShape[id] = PULSE_DEFAULT;
     label.insertBefore(wrap, label.querySelector(".val"));   // right-edge column (before the value)
   }
   function bindRange(id, valId, fmt, apply, durScale, beat) {
@@ -2585,7 +2622,8 @@
         const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
         if (beat) a.pulse = 1;                                   // immediate, significant
         else a.pulse = a.pulse - dt / PULSE_DROP > 0 ? a.pulse - dt / PULSE_DROP : 0;
-        a.apply(mn + a.pulse * (mx - mn));                       // rest at mn, snap to mx, decay back
+        const shape = PULSE_FN[pulseShape[id]] || PULSE_FN[PULSE_DEFAULT];
+        a.apply(mn + shape(a.pulse) * (mx - mn));                // rest at mn, snap to mx, decay back along the chosen curve
         continue;
       }
 
@@ -2834,6 +2872,23 @@
     for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", beatReact[id][k]);
   }
 
+  // Per-effect beat-pulse SHAPE, parallel to beatStates. pulseStates[effect][id] =
+  // a PULSE_SHAPES key; the live `pulseShape` reflects the current effect and is
+  // read by updateAnims. Seeded to the descriptor's optional `pulse` map, else snap.
+  const pulseStates = {};
+  function presetPulse(e) {
+    const pt = {};
+    for (const id in pulseShape) pt[id] = PULSE_DEFAULT;
+    const pp = EFFECTS[e].pulse;
+    if (pp) for (const id in pp) if (id in pt && PULSE_FN[pp[id]]) pt[id] = pp[id];
+    return pt;
+  }
+  function initPulseStates() { EFFECTS.forEach((_, k) => pulseStates[k] = presetPulse(k)); }
+  initPulseStates();
+  function savePulse(e) { for (const id in pulseShape) pulseStates[e][id] = pulseShape[id]; }
+  function loadPulse(e) { for (const id in pulseShape) pulseShape[id] = PULSE_FN[pulseStates[e][id]] ? pulseStates[e][id] : PULSE_DEFAULT; syncPulse(); }
+  function syncPulse() { for (const id in pulseEls) pulseEls[id].value = pulseShape[id]; }
+
   // Per-effect "extras": palette, auto-morph, show-box and Effect TTL are also
   // remembered per effect, so each effect is a fully independent scene.
   const extras = {};
@@ -2926,9 +2981,10 @@
   function fullSnapshot() {
     saveState(effect);                // fold the live sliders into the current effect
     saveBeat(effect);                 // ...the live beat toggles
+    savePulse(effect);                // ...the live beat-pulse shapes
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
     return {
-      states, beats: beatStates, extras, effect,
+      states, beats: beatStates, pulses: pulseStates, extras, effect,
       ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       presets, curPreset,
@@ -2970,6 +3026,14 @@
         for (const id in beatStates[k]) {
           const b = bs[id]; if (!b) continue;
           for (const band of ["low", "mid", "high"]) if (typeof b[band] === "boolean") beatStates[k][id][band] = b[band];
+        }
+      }
+    }
+    if (saved.pulses) {                 // per-effect beat-pulse shapes (a blob may carry only non-default ids)
+      for (const k in pulseStates) {
+        const ps = saved.pulses[k]; if (!ps) continue;
+        for (const id in pulseStates[k]) {
+          const v = ps[id]; if (typeof v === "string" && PULSE_FN[v]) pulseStates[k][id] = v;
         }
       }
     }
@@ -3022,7 +3086,7 @@
   resize();          // re-apply the restored render resolution (cfg.scale)
 
   function setEffect(i, save = true) {
-    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); saveExtra(effect); }  // remember outgoing
+    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
@@ -3031,6 +3095,7 @@
     CONTROLS.forEach(c => el("ctl-" + c.key).style.display = shown.has(c.key) ? "" : "none");
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
+    loadPulse(i);                     // ...its per-slider beat-pulse shapes
     loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
     if (fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
@@ -3088,9 +3153,11 @@
   el("reset").addEventListener("click", () => {
     states[effect] = presetState(effect);
     beatStates[effect] = presetBeat(effect);
+    pulseStates[effect] = presetPulse(effect);
     extras[effect] = presetExtra(effect);
     loadState(effect);                // apply to the live sliders
     loadBeat(effect);                 // ...the live chips
+    loadPulse(effect);                // ...the live pulse shapes
     loadExtra(effect);                // ...and palette/morph/show-box/TTL
     persist();
   });
@@ -3124,12 +3191,23 @@
     }
     return out;
   }
+  // Same idea for pulse shapes: keep only sliders whose shape differs from the
+  // effect's default (almost always "snap"), so they cost nothing in the common case.
+  function prunePulses(all) {
+    const out = {};
+    for (const e in all) {
+      const def = presetPulse(e), keep = {};
+      for (const id in all[e]) if (all[e][id] !== (def[id] || PULSE_DEFAULT)) keep[id] = all[e][id];
+      if (Object.keys(keep).length) out[e] = keep;
+    }
+    return out;
+  }
 
   // Build the share URL for the current scene: all effects' values, but not the
   // browser-local saved presets. Decoded by applyShared() on load.
   function shareUrl() {
-    saveState(effect); saveBeat(effect); saveExtra(effect);
-    const blob = { states, beats: pruneBeats(beatStates), extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
+    saveState(effect); saveBeat(effect); savePulse(effect); saveExtra(effect);
+    const blob = { states, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
     const s = btoa(unescape(encodeURIComponent(JSON.stringify(serializeBlob(blob)))));   // effect stored as a stable id
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
     // through the effect's landing page when it has one (so social unfurls show
@@ -3187,16 +3265,17 @@
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
   function snapshotScene() {
-    saveState(effect); saveBeat(effect); saveExtra(effect);
+    saveState(effect); saveBeat(effect); savePulse(effect); saveExtra(effect);
     return {
       effect,
       state: JSON.parse(JSON.stringify(states[effect])),
       beat: JSON.parse(JSON.stringify(beatStates[effect])),
+      pulse: JSON.parse(JSON.stringify(pulseStates[effect])),
       extra: JSON.parse(JSON.stringify(extras[effect])),
     };
   }
   function defaultPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), extra: presetExtra(e) }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), extra: presetExtra(e) }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -3214,12 +3293,20 @@
     }
     return base;
   }
+  // Same normalization for a preset's pulse-shape map: keep known ids/keys, default
+  // the rest — so presets saved before pulse shapes existed (no `pulse`) still load.
+  function mergePulse(e, saved) {
+    const base = presetPulse(e);
+    if (saved) for (const id in base) if (typeof saved[id] === "string" && PULSE_FN[saved[id]]) base[id] = saved[id];
+    return base;
+  }
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;
     applyingPreset = true;
     const fromRamp = paletteBase.slice();   // the palette on screen right now — blend away from it
     states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = JSON.parse(JSON.stringify(p.beat));
+    pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene (may snap the palette)
@@ -3296,7 +3383,7 @@
         const valid = arr
           .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
-                       state: mergeState(p.effect, p.state), beat: p.beat, extra: p.extra }));
+                       state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), extra: p.extra }));
         if (!valid.length) throw new Error("no valid presets in file");
         openRestore(parsed, valid, file.name);   // let the user pick what to restore + how
       } catch (err) { alert("Couldn't read backup: " + err.message); }
@@ -3348,6 +3435,7 @@
     if (p.hasSettings && el("rst-settings").checked) {
       const s = p.parsed;
       out.states = s.states; out.beats = s.beats; out.extras = s.extras;
+      if (s.pulses) out.pulses = s.pulses;         // per-effect beat-pulse shapes (absent in pre-feature backups)
       if (Number.isInteger(s.effect)) out.effect = s.effect;
       if (typeof s.cycle === "boolean") out.cycle = s.cycle;
       if (Array.isArray(s.ttl)) out.ttl = s.ttl;   // global preset TTL
@@ -3594,7 +3682,7 @@
 
   // ---- help popup: effect-aware explanation of every control ----
   const HELP = {
-    intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats. Every setting is saved in your browser, separately per effect.",
+    intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats, and the dropdown beside them picks the <b>pulse shape</b> — how the value animates back down after each hit. Every setting is saved in your browser, separately per effect.",
     // Per-effect names/blurbs come from the EFFECTS registry (see renderHelp).
     // Each slider blurb's `w:` tag is matched against the effect's `helpTags`
     // (see the EFFECTS registry). "all" shows on every effect; "band" on every
@@ -3607,6 +3695,7 @@
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
+      { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
       { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
       { n: "Box size", w: "tetra", t: "Tetrafyer only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
       { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
