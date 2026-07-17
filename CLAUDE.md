@@ -126,6 +126,33 @@ descriptor's `defaults`). `effect` in a saved preset is the stable string `id`.
   Backup file. The `rng` editor (below) writes them live via the normal persist path.
 - **Share** encodes `{states, beats, extras, effect, cycle, ranges}` (NOT presets)
   as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
+  `shareUrl()` builds it; **`pruneBeats()` diffs the beat chips against each
+  effect's `presetBeat(e)` defaults and sends only what differs** — the full map
+  is every control × L/M/H × every effect and was ~90% of the blob (49k-char URLs,
+  which chat clients truncate and TinyURL rejects; a truncated `?s=` silently
+  JSON.parse-fails and opens the default scene). Pruning is share-only:
+  `fullSnapshot()` (localStorage/Backup) stays verbose, and `applyBlob` leaves any
+  id/band a blob omits at its seeded default, so a diff decodes identically and
+  older full blobs still load. **Prune against the descriptor's defaults, not
+  against all-false** — several effects default a chip *on*, and turning one off
+  must survive.
+- **Share URL routing.** `OG_PAGES` maps an effect **id** → its static unfurl
+  landing page `s/<n>/` (a numbered dir whose redirect forwards `?s=` to the app,
+  so social unfurls show that effect's `og/` image). Only `sirpinfyer`/`tetrafyer`/
+  `animejulia`/`plasma` have one; `shareUrl()` links the app root for every other
+  effect, because `s/<n>/` would 404 and a 404 never forwards the `?s=`. **Add a
+  landing page + `og/` image ⇒ add its id to `OG_PAGES`**; it's keyed by id, not
+  index, so reordering the registry can't silently repoint the dirs. The landing
+  pages redirect **relatively** (`../../`) so a local checkout or fork stays put
+  instead of jumping to the live site.
+- **Short link** (`#shorten`) POSTs the share URL to `tinyurl.com/api-create.php`
+  and copies the result. Opt-in and separate from Share on purpose: it needs the
+  network and hands the scene to a third party. TinyURL because it 301s
+  byte-for-byte (no interstitial/injected params), sends CORS headers, needs no
+  key, and doesn't block `github.io` (is.gd/v.gd reject all GitHub domains). POST
+  keeps a big scene off the query string; its URL ceiling is ~30k chars, so the
+  `pruneBeats` diff above is what keeps shares shortenable. The API signals
+  failure with **200 + an error string**, so the response shape is validated.
 - **Backup** file (top of panel) is the full `fullSnapshot()` blob (every preset + all
   settings). **Restore** opens the `#restoredlg` dialog: `openRestore(parsed, valid,
   name)` shows a checkbox per part the file actually contains (presets / effect settings

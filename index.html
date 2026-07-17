@@ -352,6 +352,7 @@
     <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, beat-detection tuning — everything the app remembers">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup — choose which parts to bring back, and whether to merge or replace">Restore</button>
     <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
+    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current settings — needs the internet, and sends the scene to TinyURL">Short link</button>
   </div>
   <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
   <hr class="sep">
@@ -3091,30 +3092,94 @@
     persist();
   });
 
-  // Share: copy a link that opens with the current settings (all effects' values,
-  // but not the browser-local saved presets). Decoded by applyShared() on load.
-  el("share").addEventListener("click", () => {
+  // Which effects have a static unfurl landing page under s/<n>/. Keyed by the
+  // stable id, NOT the registry index — the dirs were written when the numbering
+  // happened to match, and reordering the registry must not repoint them. An
+  // effect that isn't here has no page: sharing it must link the app directly,
+  // because s/<n>/ would 404 and the 404 never forwards ?s= (that was the bug).
+  const OG_PAGES = { sirpinfyer: 0, tetrafyer: 1, animejulia: 2, plasma: 3 };
+
+  // Beat chips dominate the share blob: every control × L/M/H for every effect,
+  // almost all false — ~90% of the JSON, which pushed share URLs past 49k chars.
+  // That's long enough that chat clients truncate the link (a truncated ?s= just
+  // fails JSON.parse and silently opens the default scene) and TinyURL rejects it
+  // outright. So send only the chips that DIFFER from the effect's own default
+  // selection: applyBlob skips ids/bands a blob doesn't mention, leaving them at
+  // the default the state was seeded with, so a diff decodes to the same thing.
+  // Pruning is share-only — localStorage and Backup have no length limit and stay
+  // verbose, and an older full blob still loads unchanged (a superset of a diff).
+  function pruneBeats(all) {
+    const out = {};
+    for (const e in all) {
+      const def = presetBeat(e), keep = {};
+      for (const id in all[e]) {
+        const cur = all[e][id], d = def[id], diff = {};
+        for (const band of ["low", "mid", "high"]) if (!d || cur[band] !== d[band]) diff[band] = cur[band];
+        if (Object.keys(diff).length) keep[id] = diff;
+      }
+      if (Object.keys(keep).length) out[e] = keep;
+    }
+    return out;
+  }
+
+  // Build the share URL for the current scene: all effects' values, but not the
+  // browser-local saved presets. Decoded by applyShared() on load.
+  function shareUrl() {
     saveState(effect); saveBeat(effect); saveExtra(effect);
-    const blob = { states, beats: beatStates, extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
+    const blob = { states, beats: pruneBeats(beatStates), extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
     const s = btoa(unescape(encodeURIComponent(JSON.stringify(serializeBlob(blob)))));   // effect stored as a stable id
-    // (the s/<effect>/ path below stays numeric — it's just the static unfurl page)
-    // Point at the current effect's static landing page (s/<effect>/) so social
-    // unfurls show that effect's preview image; its redirect forwards ?s= to the
-    // app. dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/
+    // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
+    // through the effect's landing page when it has one (so social unfurls show
+    // that effect's preview image); otherwise straight to the app.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
-    const url = dir + "s/" + effect + "/?s=" + s;
-    const btn = el("share");
-    const done = okState => { btn.textContent = okState ? "Link copied!" : "Copy failed"; setTimeout(() => btn.textContent = "Share", 1400); };
+    const og = OG_PAGES[EFFECTS[effect].id];
+    return dir + (og === undefined ? "" : "s/" + og + "/") + "?s=" + s;
+  }
+
+  // Copy `text`, flashing the button's label. Clipboard API needs a secure
+  // context, so keep the execCommand fallback for file:// and plain http.
+  function copyText(text, btn, okMsg, restore) {
+    const done = okState => { btn.textContent = okState ? okMsg : "Copy failed"; setTimeout(() => btn.textContent = restore, 1400); };
     const fallback = () => {
       try {
         const ta = document.createElement("textarea");
-        ta.value = url; ta.style.cssText = "position:fixed;opacity:0";
+        ta.value = text; ta.style.cssText = "position:fixed;opacity:0";
         document.body.appendChild(ta); ta.select();
         const okc = document.execCommand("copy"); document.body.removeChild(ta); done(okc);
       } catch (e) { done(false); }
     };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(() => done(true), fallback);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => done(true), fallback);
     else fallback();
+  }
+
+  el("share").addEventListener("click", () => copyText(shareUrl(), el("share"), "Link copied!", "Share"));
+
+  // Short link: hand the (long) share URL to TinyURL and copy what comes back.
+  // Deliberately a separate, opt-in button — unlike Share it needs the network
+  // and hands the scene blob to a third party. TinyURL is the pick because it
+  // 301s to the target byte-for-byte (no interstitial, no injected params), sends
+  // CORS headers, needs no API key, and doesn't block github.io the way is.gd
+  // does. POST (not GET) so a big scene can't hit a query-length ceiling; the
+  // form-urlencoded body keeps it a simple request, so there's no preflight.
+  el("shorten").addEventListener("click", () => {
+    const btn = el("shorten"), url = shareUrl();
+    btn.disabled = true; btn.textContent = "Shortening…";
+    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
+    fetch("https://tinyurl.com/api-create.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "url=" + encodeURIComponent(url),
+    })
+      .then(r => (r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status))))
+      .then(t => {
+        const short = t.trim();
+        // The API reports failure with a 200 + an error string, so check the shape.
+        if (!/^https?:\/\/tinyurl\.com\/\S+$/.test(short)) throw new Error(short);
+        btn.disabled = false;
+        copyText(short, btn, "Short link copied!", "Short link");
+        track("share_shorten");
+      })
+      .catch(() => fail("Shorten failed"));
   });
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
