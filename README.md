@@ -74,9 +74,9 @@ independent "scene" that remembers its own settings (see Controls):
 - **Deterministic point cloud** — the chaos game uses a seeded PRNG (mulberry32)
   that resets to the same value every frame, so the point *sequence* is identical
   each frame. Only the moving geometry reshapes the fractal — no random shimmer.
-- **Palettes & glow** — eleven classic demoscene-style palettes to choose from
+- **Palettes & glow** — fifteen classic demoscene-style palettes to choose from
   (Fire, Ice, Toxic, Copper, Purple, Rainbow, Grayscale, Electric, Amber, Matrix,
-  Sunset), plus a subtle
+  Sunset, C64, CGA, Blood, Chrome), plus a subtle
   additive bloom that makes the white-hot points glow. An optional auto-morph mode
   continuously blends from the current palette to a random next one over 8 seconds,
   on repeat.
@@ -136,7 +136,7 @@ visibility is remembered per effect.
 | **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
-| **Palette** | Pick one of eleven demoscene-style colour ramps. |
+| **Palette** | Pick one of fifteen demoscene-style colour ramps. |
 | **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
 | **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
