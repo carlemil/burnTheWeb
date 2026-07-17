@@ -107,6 +107,13 @@ current range are ignored, so updates can't load junk). The **?** by the title
 opens an effect-aware help panel; a small **frame counter + rolling FPS** sits in
 the top-right corner.
 
+**Pop out a slider** — every slider has a small **+** button. Click it to break
+that slider (with its chips, pulse-shape dropdown and value) out into its own box
+in a column to the right of the menu; the menu keeps the slider's name with a **−**
+to put it back. Pop out several and the boxes stack from the top down, so you can
+line up just the controls you're playing with. (This layout is per-session and
+isn't saved.)
+
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
 audio", or a *tab* + "share tab audio"), or **Mic** for the microphone. The

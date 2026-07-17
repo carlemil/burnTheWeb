@@ -74,6 +74,22 @@ param/default that isn't a real control). Everything derives from the registry:
   schema** (one entry per slider/checkbox: type, label, range, `fmt`, `apply`,
   `durScale`, host). `buildControls()` renders them into `#fxctl`/`#bandctl`; `setEffect`
   shows only the keys in the descriptor's ordered `params`. No hand-written control HTML.
+- **Break-out boxes** — every slider (the `dual`/`plain` `CONTROLS`) gets a `+`/`−`
+  button; clicking `+` **moves its whole `#ctl-<key>` node** into `#breakout`, a
+  `position:fixed` column to the right of the menu that fills top→down in click order,
+  and drops a slim name **stub** (`.ctl-stub`, with a `−`) into the vacated menu slot;
+  `−` moves it back. `popped` is a global set of control keys (a control is one
+  singleton reused across effects); `refreshBreakout()` — called by `setEffect` —
+  filters box/stub visibility to the current effect's `params` and toggles
+  `#breakout.empty`. State is **transient** (not persisted). Because `#breakout` sits
+  *outside* `#panel` (the panel's `backdrop-filter` + `overflow` would clip a fixed
+  child), three things are wired to reach it too: the control-appearance CSS is scoped
+  to `#panel …, #breakout …`; the delegated `onEdit` (persist/autosave) is attached to
+  `#breakout` as well; and the range editor's slider scan uses `sceneRangeInputs()`
+  (`#panel` + `#breakout`). Element refs (`anims`, `el(id)`) are location-independent,
+  so a moved slider keeps animating, saving and loading unchanged. The `+`/`−` button is
+  the control's *last* child on purpose — it must not displace the label's first text
+  node, which `bindRange`/`rngRows` read as the slider's name.
 - **Defaults** — `defaults` (slider values), `beat` (chip selections), `extras`
   (palette/morph/showBox/randSeed) seed `states[e]`/`beatStates[e]`/`extras[e]` via
   `presetState`/`presetBeat`/`presetExtra`. `defaults` includes a few render-affecting

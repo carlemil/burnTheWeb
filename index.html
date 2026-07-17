@@ -56,27 +56,34 @@
   }
   #panel .sub { margin: 0 0 12px; opacity: .6; font-size: 11px; }
   #panel label { display: block; margin: 10px 0 3px; opacity: .85; }
-  #panel .val { float: right; color: #ffcf87; opacity: 1; }
-  #panel input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
+  /* Control appearance is scoped to both the menu and the pop-out column so a
+     control keeps its styling after it moves into a break-out box (#breakout). */
+  #panel .val, #breakout .val { float: right; color: #ffcf87; opacity: 1; }
+  #panel input[type=range], #breakout input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
   /* dual-thumb range: two overlaid sliders set a [lo,hi] band */
-  #panel .dual { position: relative; height: 22px; }
-  #panel .dual .track, #panel .dual .fill {
+  #panel .dual, #breakout .dual { position: relative; height: 22px; }
+  #panel .dual .track, #panel .dual .fill,
+  #breakout .dual .track, #breakout .dual .fill {
     position: absolute; top: 9px; height: 4px; border-radius: 2px; pointer-events: none;
   }
-  #panel .dual .track { left: 0; right: 0; background: rgba(255, 140, 40, 0.22); }
-  #panel .dual .fill { background: #ff7a1a; }
-  #panel .dual input[type=range] {
+  #panel .dual .track, #breakout .dual .track { left: 0; right: 0; background: rgba(255, 140, 40, 0.22); }
+  #panel .dual .fill, #breakout .dual .fill { background: #ff7a1a; }
+  #panel .dual input[type=range], #breakout .dual input[type=range] {
     position: absolute; top: 0; left: 0; width: 100%; height: 22px; margin: 0;
     -webkit-appearance: none; appearance: none; background: transparent; pointer-events: none;
   }
-  #panel .dual input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
-  #panel .dual input[type=range]::-webkit-slider-thumb {
+  #panel .dual input[type=range]::-webkit-slider-runnable-track,
+  #breakout .dual input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
+  #panel .dual input[type=range]::-webkit-slider-thumb,
+  #breakout .dual input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; pointer-events: auto; margin-top: 4px;
     width: 14px; height: 14px; border-radius: 50%;
     background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
   }
-  #panel .dual input[type=range]::-moz-range-track { background: transparent; height: 22px; }
-  #panel .dual input[type=range]::-moz-range-thumb {
+  #panel .dual input[type=range]::-moz-range-track,
+  #breakout .dual input[type=range]::-moz-range-track { background: transparent; height: 22px; }
+  #panel .dual input[type=range]::-moz-range-thumb,
+  #breakout .dual input[type=range]::-moz-range-thumb {
     pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
     background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
   }
@@ -239,13 +246,42 @@
   .bandchips button:nth-child(1).on { background: #5a9cff; border-color: #b0d0ff; color: #05101f; box-shadow: 0 0 6px rgba(90, 156, 255, 0.85); }
   .bandchips button:nth-child(2).on { background: #45cf62; border-color: #aef0bc; color: #041505; box-shadow: 0 0 6px rgba(69, 207, 98, 0.85); }
   .bandchips button:nth-child(3).on { background: #ff5f4d; border-color: #ffb4aa; color: #1f0603; box-shadow: 0 0 6px rgba(255, 95, 77, 0.85); }
-  #panel.audio-off .bandchips { opacity: .4; }
+  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; }
   /* Per-slider beat-pulse shape: the curve the value follows after a beat. */
   .bandchips select {
     height: 15px; padding: 0 1px; margin-left: 2px; font: 9px/13px ui-monospace, monospace;
     background: #17100a; color: #ffb15a; border: 1px solid rgba(255, 140, 40, 0.45);
     border-radius: 4px; cursor: pointer;
   }
+  /* ---- break-out boxes: a slider popped into its own box, in a column that
+       fills top→down at the right of the menu. Boxes are moved #ctl nodes. ---- */
+  #breakout {
+    position: fixed; top: 58px; left: 298px; z-index: 5;
+    width: 244px; max-height: calc(100vh - 72px); overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column; gap: 10px;
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; user-select: none;
+  }
+  #breakout.empty { display: none; }
+  #panel.hidden ~ #breakout { display: none; }      /* hide the column when the menu is hidden */
+  #breakout .ctl {
+    position: relative; margin: 0; padding: 9px 14px 13px 26px;
+    background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  #breakout label { display: block; margin: 0 0 3px; opacity: .85; }
+  /* +/- pop button: sits in a left gutter, both on the docked control and its box. */
+  .poppable { position: relative; padding-left: 15px; }
+  .ctl-pop {
+    position: absolute; left: 0; top: 1px; width: 14px; height: 15px; padding: 0;
+    font: bold 12px/12px ui-monospace, monospace; background: transparent;
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 4px; color: #ffb15a;
+    cursor: pointer; transition: background .1s, box-shadow .08s;
+  }
+  #breakout .ctl > .ctl-pop { left: 8px; top: 9px; }
+  .ctl-pop:hover { background: rgba(255, 140, 40, 0.22); box-shadow: 0 0 5px rgba(255, 176, 77, 0.6); }
+  /* menu stub left behind while a control is popped out: its name + a − button. */
+  .ctl-stub { display: block; margin: 10px 0 3px; opacity: .7; }
+  .ctl-stub-name { font-style: italic; }
   /* ---- help popup ---- */
   #panel #help-btn {
     position: absolute; top: 14px; right: 14px;
@@ -503,6 +539,10 @@
     </div>
   </div>
 </div>
+
+<!-- Pop-out column: sliders "broken out" of the menu dock here (see the break-out
+     module in the script). Sits to the right of #panel; empty/hidden by default. -->
+<div id="breakout" class="empty"></div>
 
 <script>
 (() => {
@@ -2160,6 +2200,7 @@
     el("audCapture").classList.toggle("on", audio.on && audio.src === "capture");
     el("audMic").classList.toggle("on", audio.on && audio.src === "mic");
     panel.classList.toggle("audio-off", !audio.on);
+    el("breakout").classList.toggle("audio-off", !audio.on);   // dim popped-out chips too
   }
   function stopStream() { if (audio.stream) { audio.stream.getTracks().forEach(t => t.stop()); audio.stream = null; } }
   function stopAudio() {
@@ -2942,8 +2983,13 @@
   }
   // After bounds change mid-session, re-clamp stray values and re-run each slider's
   // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
+  // Every scene range slider, whether docked in the menu or popped into #breakout.
+  function sceneRangeInputs() {
+    const b = document.getElementById("breakout");
+    return [...panel.querySelectorAll("input[type=range]"), ...(b ? b.querySelectorAll("input[type=range]") : [])];
+  }
   function refreshRangeUI() {
-    panel.querySelectorAll("input[type=range]").forEach(inp => {
+    sceneRangeInputs().forEach(inp => {
       if (inp.closest("#diag")) return;   // don't re-dispatch on the beat-tuning sliders
       const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
       if (c !== +inp.value) inp.value = String(c);
@@ -3093,6 +3139,7 @@
     // show only the controls this effect declares (rendered from the CONTROLS schema)
     const shown = new Set(fx.params);
     CONTROLS.forEach(c => el("ctl-" + c.key).style.display = shown.has(c.key) ? "" : "none");
+    refreshBreakout();                // hide stubs/boxes of popped controls this effect doesn't use
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
@@ -3103,6 +3150,76 @@
     if (useGL && glReady) glClearHeat();
     rngRefresh();                     // the range editor lists only this effect's sliders
     persist();
+  }
+
+  // ---- Break-out boxes -------------------------------------------------------
+  // Pop a slider's whole control block out of the menu into a stacked column at
+  // the right (#breakout); leave a slim name stub with a − button in its slot.
+  // `popped` is a global set of control keys — a control is one singleton reused
+  // across effects, so a pop applies wherever that slider appears; refreshBreakout
+  // filters visibility to the current effect's params. Transient (not persisted).
+  // The moved node keeps working: element refs (anims/loadState) are location-
+  // independent, its styling is scoped to #breakout too (CSS), and onEdit + the
+  // range editor are wired to scan #breakout as well (see below).
+  const breakout = el("breakout");
+  const popped = new Set();
+  const stubs = {};                  // key -> menu stub element (exists only while popped)
+  const POPPABLE = CONTROLS.filter(c => c.type === "dual" || c.type === "plain").map(c => c.key);
+  const ctlLabel = key => { const c = CONTROLS.find(x => x.key === key); return c ? c.label : key; };
+  function makePopBtn(key, docked) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "ctl-pop";
+    b.textContent = docked ? "+" : "−";
+    b.title = docked ? "Pop out into its own box" : "Return to the menu";
+    b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
+    b.addEventListener("click", () => togglePop(key));
+    return b;
+  }
+  POPPABLE.forEach(key => {           // give each poppable control its travelling +/− button
+    const ctl = el("ctl-" + key);
+    ctl.classList.add("poppable");
+    ctl.appendChild(makePopBtn(key, true));   // last child so it never displaces the label's name text node
+  });
+  function setPopBtn(key, docked) {
+    const b = el("ctl-" + key).querySelector(".ctl-pop");
+    b.textContent = docked ? "+" : "−";
+    b.title = docked ? "Pop out into its own box" : "Return to the menu";
+    b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
+  }
+  function popCtl(key) {
+    if (popped.has(key)) return;
+    const ctl = el("ctl-" + key);
+    const stub = document.createElement("div");
+    stub.className = "ctl-stub poppable";
+    stub.appendChild(makePopBtn(key, false));
+    const name = document.createElement("span");
+    name.className = "ctl-stub-name"; name.textContent = ctlLabel(key);
+    stub.appendChild(name);
+    ctl.parentNode.insertBefore(stub, ctl);   // stub marks the vacated slot
+    breakout.appendChild(ctl);                 // append ⇒ boxes stack top→down in click order
+    stubs[key] = stub; popped.add(key);
+    setPopBtn(key, false);
+    refreshBreakout();
+  }
+  function dockCtl(key) {
+    if (!popped.has(key)) return;
+    const ctl = el("ctl-" + key), stub = stubs[key];
+    stub.parentNode.insertBefore(ctl, stub);   // back into its original slot
+    stub.remove(); delete stubs[key]; popped.delete(key);
+    setPopBtn(key, true);
+    refreshBreakout();
+  }
+  function togglePop(key) { popped.has(key) ? dockCtl(key) : popCtl(key); }
+  function refreshBreakout() {
+    const shown = new Set(EFFECTS[effect].params);
+    let anyVisible = false;
+    for (const key of popped) {
+      const vis = shown.has(key);
+      el("ctl-" + key).style.display = vis ? "" : "none";   // hide the box if not in this effect
+      if (stubs[key]) stubs[key].style.display = vis ? "" : "none";
+      if (vis) anyVisible = true;
+    }
+    breakout.classList.toggle("empty", !anyVisible);
   }
 
   // A preset is a named full scene (effect + all its settings). Auto-cycle holds
@@ -3146,6 +3263,8 @@
   }
   panel.addEventListener("input", onEdit);
   panel.addEventListener("change", onEdit);
+  breakout.addEventListener("input", onEdit);    // popped controls live outside #panel — persist their edits too
+  breakout.addEventListener("change", onEdit);
 
   // Reset: restore *only the current effect's* settings (sliders, beat chips,
   // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
@@ -3503,7 +3622,7 @@
     // One row per slider of the visible groups: a dual slider's -lo/-hi pair share
     // one row (they must keep identical bounds), a plain range is a row of one.
     const rows = new Map();
-    panel.querySelectorAll("input[type=range]").forEach(inp => {
+    sceneRangeInputs().forEach(inp => {
       if (inp.closest("#diag")) return;                         // skip the beat-tuning sliders in Diagnostics
       const grp = inp.closest(".ctl, #grp-ttl");                // generated control wrapper (or the TTL group)
       if (grp && grp.style.display === "none") return;          // not part of this effect
