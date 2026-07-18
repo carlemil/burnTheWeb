@@ -481,16 +481,42 @@ because any later slider drag *did* autosave and retroactively captured the chip
   keeps a big scene off the query string; its URL ceiling is ~30k chars, so the
   `pruneBeats` diff above is what keeps shares shortenable. The API signals
   failure with **200 + an error string**, so the response shape is validated.
-- **Backup** file (top of panel) is the full `fullSnapshot()` blob (every preset + all
-  settings). **Restore** opens the `#restoredlg` dialog: `openRestore(parsed, valid,
-  name)` shows a checkbox per part the file actually contains (presets / effect settings
-  / ranges / beat tuning) plus a merge-vs-replace radio for presets. `applyRestore()`
+- **Backup** writes **one file per preset**, named after the preset, plus one
+  `_settings.json` for everything that is not a preset. It used to be a single blob —
+  a fine backup and a terrible way to hand someone one scene, since they had to import
+  the whole library and hunt for it. `backupFiles()` builds `[{name, text}]`; each preset
+  file is `{app, kind: "preset", version, preset}` and each is routed through
+  `serializeBlob` so `effect` is the stable id. `curPreset` is deliberately **not** in
+  `_settings.json`: it is an index into a list that no longer travels as a list.
+  - **Delivery** splits on `showDirectoryPicker`. Chromium: pick a location once, create
+    `backup-<YYYY-MM-DD_HHMM>/`, write the files into it. Everything else: one download
+    per file, named `backup-<stamp> - <preset>.json`, **spaced ~150ms apart** because
+    browsers drop back-to-back downloads. The fallback flattens rather than nests
+    because the HTML spec has user agents sanitize path components out of `a.download`
+    — `"backup-x/y.json"` arrives as one mangled file, not a folder, so nesting that way
+    is not an option anywhere.
+  - **`safeFileName`** exists because a preset name is free text that becomes a filename:
+    it strips path separators and Windows-illegal characters and control codes, trims,
+    drops trailing dots/spaces (Windows removes them silently), escapes reserved device
+    names (`CON`, `NUL`, `COM1`…), truncates to 80, and falls back to `Preset` for an
+    empty name. `backupFiles` de-duplicates collisions with ` (2)`. `presetprobe` pins
+    all of it.
+- **Restore** takes **multiple files** (`#presetsfile` has `multiple`) — a whole backup
+  folder, or the single preset file a friend sent. `normalizeBackup()` folds every shape
+  we have ever written into the one the restore path understands (single preset file,
+  settings file, whole-library snapshot, legacy `{presets, ranges}`, oldest bare array)
+  and runs **before** `deserializeBlob`, so the id→index mapping lives in one place.
+  Presets accumulate across all selected files; the settings come from whichever file
+  carries them. `openRestore(parsed, valid, name)` shows a checkbox per part the
+  selection actually contains plus a merge-vs-replace radio — **Presets is no longer
+  always enabled**, since selecting only `_settings.json` is legitimate. `applyRestore()`
   starts from the current `fullSnapshot()` and overrides only the ticked parts — presets
-  merge by name or fully replace, `curPreset` is remapped by name — then writes to
-  `localStorage` and **reloads**, so the normal load path (`restore` → `applyBlob` →
-  `setEffect` → `resize`) reapplies it exactly. Older `{presets, ranges}` objects and
-  bare-array backups still load (only the parts they carry are offered). There is no
-  per-effect text Export/Import — removed; **Share** is the only text-export path.
+  merge by name or fully replace — then writes to `localStorage` and **reloads**, so the
+  normal load path (`restore` → `applyBlob` → `setEffect` → `resize`) reapplies it
+  exactly. (`location.reload` is non-configurable in Chromium, so a test cannot stub it;
+  read `localStorage` synchronously after the click and stash the verdict in
+  `sessionStorage`, which survives the navigation.) There is no per-effect text
+  Export/Import — removed; **Share** is the only text-export path.
 
 ### Audio & beat reactivity
 `audio` holds the WebAudio graph; `startAudio("capture"|"mic")` grabs
@@ -744,7 +770,10 @@ default. It slices by markers: `// ---- FILTERS: stackable post-FX` … `functio
 initStates(`, and `function presetExtra(` … `function initExtras(`.
 
 **Preset completeness** has `tools/presetprobe.js` (`node tools/presetprobe.js
-index.html`, 28 assertions). Two halves. The **structural** half reads the real
+index.html`, 44 assertions). Three parts — it also pins `safeFileName` (the Windows
+filename traps: reserved device names, trailing dots, path separators in a free-text
+preset name) and `normalizeBackup` (every backup shape we have ever written still
+restores). Two halves for the preset itself. The **structural** half reads the real
 `snapshotScene`, `applyPreset` and the import mapping out of the source and asserts every
 `p.<field>` `applyPreset` restores is a field `snapshotScene` captures *and* one the
 import mapping rebuilds — so adding a field to one and forgetting the other two fails by

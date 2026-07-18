@@ -561,12 +561,13 @@
   <details class="box">
   <summary class="box-t">Backup, restore &amp; share</summary>
   <div class="presetrow grid2">
-    <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, beat-detection tuning — everything the app remembers">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup — choose which parts to bring back, and whether to merge or replace">Restore</button>
-    <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
-    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current settings — needs the internet, and sends the scene to TinyURL">Short link</button>
+    <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers">Backup</button>
+    <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
+    <button id="share" class="audbtn" type="button" title="Copy a link that opens the scene you're looking at">Share</button>
+    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current scene — needs the internet, and sends the scene to TinyURL">Short link</button>
   </div>
-  <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
+  <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
+  <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
   </details>
 
   <!-- Box — Scene: what's playing. The three choosers (preset / effect / palette)
@@ -4887,49 +4888,146 @@
   });
   presetSel.addEventListener("change", () => { const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1; });
 
-  // Backup / Restore the whole saved state (it's browser-local otherwise).
-  el("exportpresets").addEventListener("click", () => {
-    autosavePreset();                 // fold pending edits into the selected preset first
-    // Full snapshot: every saved value (all presets, all per-effect scenes, custom
-    // slider ranges, active effect, auto-cycle, resolution, panel state, ...) — the
-    // same object persist() writes, so Restore brings the app back exactly. (A bare
-    // array or a { presets, ranges } object from older builds still restores.)
-    const blob = new Blob([JSON.stringify(serializeBlob(fullSnapshot()), null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
+  // ---- Backup: ONE FILE PER PRESET, so a single scene can be sent to someone ----
+  // The backup used to be one big .json holding everything. That is a fine backup and a
+  // terrible way to hand someone a scene: they would have to import the lot and hunt for
+  // it. Now each preset is its own self-contained file named after itself, plus one
+  // _settings.json for everything that is not a preset (per-effect settings, resolution,
+  // auto-cycle, the custom scene's beat tuning) so Backup is still a *complete* backup.
+
+  function downloadText(name, text) {   // Blob → objectURL → synthetic anchor click
+    const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
     const a = document.createElement("a");
-    a.href = url; a.download = "burnTheWeb-presets.json";
+    a.href = url; a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  });
-  el("importpresets").addEventListener("click", () => el("presetsfile").click());
-  el("presetsfile").addEventListener("change", ev => {
-    const file = ev.target.files && ev.target.files[0];
-    ev.target.value = "";             // allow re-picking the same file later
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  // Preset names are free text and end up as filenames. Strip what no filesystem
+  // accepts, plus Windows' reserved device names (a preset called "CON" is unwritable).
+  const WIN_RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
+  function safeFileName(name) {
+    let s = String(name == null ? "" : name)
+      .replace(/[\/\\:*?"<>|]/g, "-")     // path separators + Windows-illegal
+      .replace(/[\x00-\x1f]/g, "")        // control chars
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[. ]+$/, "");             // Windows silently drops trailing dots/spaces
+    if (!s) s = "Preset";
+    if (WIN_RESERVED.test(s)) s = "_" + s;
+    return s.slice(0, 80);
+  }
+  function stampNow() {
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+           "_" + p(d.getHours()) + p(d.getMinutes());
+  }
+  // The files a backup consists of: [{ name, text }]. Preset files are self-describing
+  // and self-contained — `kind` lets Restore tell them from a settings file or from any
+  // of the older whole-library shapes without guessing.
+  function backupFiles() {
+    autosavePreset();                   // fold pending edits into the selected preset
+    const snap = fullSnapshot();
+    const files = [], used = new Set();
+    for (const p of snap.presets) {
+      let base = safeFileName(p.name), n = 2;
+      while (used.has(base.toLowerCase())) base = safeFileName(p.name) + " (" + n++ + ")";
+      used.add(base.toLowerCase());
+      const one = serializeBlob({ presets: [p] }).presets[0];   // effect → stable id
+      files.push({ name: base + ".json",
+                   text: JSON.stringify({ app: "burnTheWeb", kind: "preset", version: 1, preset: one }, null, 2) });
+    }
+    // Everything that is not a preset. curPreset is deliberately left out: it is an index
+    // into a list that no longer travels as a list, so it could only ever point at the
+    // wrong scene once the files are re-selected in a different order.
+    const settings = serializeBlob(snap);
+    delete settings.presets; delete settings.curPreset;
+    files.push({ name: "_settings.json",
+                 text: JSON.stringify({ app: "burnTheWeb", kind: "settings", version: 1, settings }, null, 2) });
+    return files;
+  }
+  // Chromium can write a real folder; everything else gets flat files with the stamp in
+  // the name. Nesting via `a.download` is not an option for the fallback — the HTML spec
+  // has user agents sanitize path components out of the filename, so "backup-x/y.json"
+  // arrives as one mangled file rather than a folder.
+  async function runBackup(btn) {
+    const files = backupFiles(), stamp = stampNow();
+    const say = (msg, ms) => { btn.textContent = msg; setTimeout(() => btn.textContent = "Backup", ms || 2200); };
+    if (window.showDirectoryPicker) {
+      let root;
+      try { root = await window.showDirectoryPicker({ mode: "readwrite", id: "btwBackup" }); }
+      catch (e) { btn.textContent = "Backup"; return; }        // user cancelled the picker
       try {
-        const raw = JSON.parse(reader.result);
-        // Accept a full snapshot (current), a legacy { presets, ranges } object, or a
-        // bare presets array (oldest). deserializeBlob maps stable effect ids (or legacy
-        // numbers) back to numeric indices in every shape. `arr` is the preset list.
-        const parsed = Array.isArray(raw) ? deserializeBlob({ presets: raw }).presets : deserializeBlob(raw);
-        const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.presets);
-        if (!Array.isArray(arr)) throw new Error("not a burnTheWeb backup");
-        // `cam` and `beatTune` must be carried through verbatim: camrx/camry/camrz and the
-        // detector thresholds live NOWHERE else (the camera angles are deliberately absent
-        // from every effect's `defaults`), so dropping them here silently hands the imported
-        // preset whatever camera and tuning the recipient happened to be sitting at.
-        const valid = arr
-          .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-          .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
-                       state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
-                       cam: p.cam, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra }));
-        if (!valid.length) throw new Error("no valid presets in file");
-        openRestore(parsed, valid, file.name);   // let the user pick what to restore + how
-      } catch (err) { alert("Couldn't read backup: " + err.message); }
-    };
-    reader.readAsText(file);
+        const dir = await root.getDirectoryHandle("backup-" + stamp, { create: true });
+        for (const f of files) {
+          const fh = await dir.getFileHandle(f.name, { create: true });
+          const w = await fh.createWritable();
+          await w.write(f.text);
+          await w.close();
+        }
+        say("Saved " + files.length + " files");
+        track("backup_folder", { files: files.length });
+      } catch (e) { say("Backup failed"); }
+      return;
+    }
+    // One download per file, spaced out: fired back-to-back, browsers drop all but the
+    // first few. The stamp goes in the name since there is no folder to put it in.
+    files.forEach((f, i) => setTimeout(() => downloadText("backup-" + stamp + " - " + f.name, f.text), i * 150));
+    say("Saving " + files.length + " files…", 400 + files.length * 150);
+    track("backup_files", { files: files.length });
+  }
+  el("exportpresets").addEventListener("click", () => {
+    const btn = el("exportpresets");
+    btn.textContent = "Saving…";
+    runBackup(btn);
+  });
+  // Fold every shape we have ever written into the one the restore path understands:
+  // a single-preset file, a _settings.json, a whole-library snapshot (the old Backup),
+  // a legacy { presets, ranges }, or the oldest bare array. Run BEFORE deserializeBlob,
+  // so its `effect` id → index mapping does the work in exactly one place.
+  function normalizeBackup(raw) {
+    if (Array.isArray(raw)) return { presets: raw };                        // oldest
+    if (!raw || typeof raw !== "object") return null;
+    if (raw.kind === "preset" && raw.preset) return { presets: [raw.preset] };
+    if (raw.kind === "settings" && raw.settings) return raw.settings;
+    return raw;                                                             // snapshot / legacy
+  }
+  el("importpresets").addEventListener("click", () => el("presetsfile").click());
+  el("presetsfile").addEventListener("change", async ev => {
+    const files = [...(ev.target.files || [])];
+    ev.target.value = "";             // allow re-picking the same files later
+    if (!files.length) return;
+    try {
+      const texts = await Promise.all(files.map(f => f.text()));
+      const parts = texts.map((t, i) => {
+        const n = normalizeBackup(JSON.parse(t));
+        if (!n) throw new Error(files[i].name + " isn't a burnTheWeb backup");
+        return deserializeBlob(n);
+      });
+      // Presets accumulate across every file selected; the settings come from whichever
+      // file actually carries them (a folder holds one _settings.json among N presets).
+      const arr = parts.flatMap(p => (Array.isArray(p) ? p : (p && p.presets) || []));
+      const parsed = Object.assign({}, parts.find(p => p && !Array.isArray(p) && p.states) || {});
+      for (const p of parts) {        // a legacy { presets, ranges } carries these without states
+        if (!p || Array.isArray(p)) continue;
+        if (!parsed.ranges && p.ranges) parsed.ranges = p.ranges;
+        if (!parsed.beatTune && p.beatTune) parsed.beatTune = p.beatTune;
+      }
+      parsed.presets = arr;
+      delete parsed.curPreset;        // meaningless once presets arrive as separate files
+      if (!arr.length && !parsed.states) throw new Error("no presets or settings found");
+      // `cam` and `beatTune` must be carried through verbatim: camrx/camry/camrz and the
+      // detector thresholds live NOWHERE else (the camera angles are deliberately absent
+      // from every effect's `defaults`), so dropping them here silently hands the imported
+      // preset whatever camera and tuning the recipient happened to be sitting at.
+      const valid = arr
+        .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
+        .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
+                     state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
+                     cam: p.cam, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra }));
+      if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
+      const label = files.length === 1 ? files[0].name : files.length + " files";
+      openRestore(parsed, valid, label);   // let the user pick what to restore + how
+    } catch (err) { alert("Couldn't read backup: " + err.message); }
   });
 
   // ---- Restore dialog: choose which parts to bring back, and merge vs replace ----
@@ -4939,20 +5037,23 @@
     const hasRanges = !Array.isArray(parsed) && parsed.ranges && typeof parsed.ranges === "object";
     const hasBeat = !Array.isArray(parsed) && parsed.beatTune && typeof parsed.beatTune === "object";
     pendingRestore = { parsed, valid, hasSettings, hasRanges, hasBeat };
-    const bits = [valid.length + " preset" + (valid.length === 1 ? "" : "s")];
+    const bits = [];
+    if (valid.length) bits.push(valid.length + " preset" + (valid.length === 1 ? "" : "s"));
     if (hasSettings) bits.push("settings"); if (hasRanges) bits.push("ranges"); if (hasBeat) bits.push("beat tuning");
-    el("rst-sub").textContent = (fileName || "backup") + " — " + bits.join(", ");
+    el("rst-sub").textContent = (fileName || "backup") + " — " + (bits.join(", ") || "nothing usable");
     el("rst-presets-n").textContent = "(" + valid.length + ")";
-    // Enable only the parts the file actually contains; check the available ones.
+    // Enable only the parts the selection actually contains; check the available ones.
     const opt = (wrapId, cbId, avail) => {
       const cb = el(cbId); cb.checked = avail; cb.disabled = !avail;
       el(wrapId).classList.toggle("disabled", !avail);
     };
-    opt("rst-opt-presets", "rst-presets", true);
+    // Selecting only _settings.json is legitimate, so Presets is no longer always on.
+    opt("rst-opt-presets", "rst-presets", valid.length > 0);
     opt("rst-opt-settings", "rst-settings", hasSettings);
     opt("rst-opt-ranges", "rst-ranges", hasRanges);
     opt("rst-opt-beat", "rst-beat", hasBeat);
     el("rst-merge").checked = true;
+    el("rst-mode").classList.toggle("disabled", !valid.length);
     el("restoredlg").classList.remove("hidden");
   }
   function closeRestore() { el("restoredlg").classList.add("hidden"); pendingRestore = null; }

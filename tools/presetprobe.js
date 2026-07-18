@@ -18,7 +18,7 @@
 // It slices by source markers, so keep them: `const BEAT_DEFAULTS` … `const beatCfg`,
 // `function mergeBeatTune(` … `function installBeatTune(`, `function snapshotScene()`
 // … `function defaultPresets(`, `function applyPreset(` … `function createPreset(`,
-// and `const valid = arr` … `if (!valid.length)`.
+// and `const valid = arr` … `if (!valid.length`.
 const fs = require("fs");
 const html = fs.readFileSync(process.argv[2] || "index.html", "utf8");
 const s0 = html.indexOf("<script>"), s1 = html.indexOf("</script>", s0);
@@ -40,7 +40,9 @@ const ok = (cond, name, detail) => {
 // --- 1. structural: snapshotScene vs applyPreset vs the import mapping --------
 const snapSrc = cut("  function snapshotScene()", "  function defaultPresets(");
 const applySrc = cut("  function applyPreset(", "  function createPreset(");
-const importSrc = cut("        const valid = arr", "        if (!valid.length)");
+// Markers without leading indentation on purpose: this block sits inside the file-input
+// handler, and its nesting depth has already changed once (single file → many).
+const importSrc = cut("const valid = arr", "if (!valid.length");
 
 // Keys of the object literal snapshotScene returns (one per line, `key:` or `key,`).
 const snapKeys = new Set();
@@ -122,6 +124,44 @@ const D = P.BEAT_DEFAULTS;
   let threw = false;
   try { P.mergeBeatTune({ bands: [] }); P.mergeBeatTune({ bands: [null, 3] }); } catch (e) { threw = true; }
   ok(!threw, "a short/sparse bands array doesn't throw (reachable from a hand-edited backup)");
+}
+
+// --- 3. backup file naming + shape normalization ------------------------------
+const B = new Function(
+  cut("  const WIN_RESERVED", "  function stampNow(") +
+  cut("  function normalizeBackup(", "  el(\"importpresets\")") +
+  "\nreturn { safeFileName, normalizeBackup };")();
+
+{
+  const f = B.safeFileName;
+  ok(f("Fire Thing") === "Fire Thing", "an ordinary name is left alone", f("Fire Thing"));
+  // A preset name is free text and becomes a filename; these are the ways that bites.
+  ok(!/[\/\\:*?"<>|]/.test(f('a/b\\c:d*e?f"g<h>i|j')), "path separators and illegal chars are stripped",
+     f('a/b\\c:d*e?f"g<h>i|j'));
+  ok(f("  padded  ") === "padded", "surrounding whitespace is trimmed", "'" + f("  padded  ") + "'");
+  ok(!/[. ]$/.test(f("trailing dot.")), "no trailing dot (Windows drops them silently)", f("trailing dot."));
+  ok(f("") === "Preset" && f(null) === "Preset" && f(undefined) === "Preset",
+     "an empty/missing name falls back rather than producing '.json'");
+  ok(f("CON") === "_CON" && f("nul") === "_nul" && f("COM1") === "_COM1",
+     "Windows reserved device names are escaped", f("CON") + "," + f("nul"));
+  ok(f("ok.name") === "ok.name", "an interior dot is fine");
+  ok(f("x".repeat(300)).length <= 80, "absurdly long names are truncated", f("x".repeat(300)).length);
+  ok(f("a bc") === "abc", "control characters are removed", JSON.stringify(f("a bc")));
+}
+{
+  const n = B.normalizeBackup;
+  // Every shape Backup has ever written has to keep restoring.
+  ok(JSON.stringify(n([{ name: "x" }])) === '{"presets":[{"name":"x"}]}',
+     "oldest bare array becomes { presets }");
+  ok(n({ kind: "preset", preset: { name: "p" } }).presets.length === 1,
+     "a single-preset file becomes a one-entry preset list");
+  ok(n({ kind: "settings", settings: { states: {} } }).states !== undefined,
+     "a settings file unwraps to the settings object");
+  ok(n({ presets: [], ranges: {} }).ranges !== undefined, "a legacy { presets, ranges } passes through");
+  ok(n({ states: {}, presets: [] }).states !== undefined, "a whole-library snapshot passes through");
+  ok(n(null) === null && n(7) === null && n("x") === null, "junk is rejected, not guessed at");
+  ok(n({ kind: "preset" }).kind === "preset",
+     "a preset file with no payload falls through rather than throwing");
 }
 
 console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");
