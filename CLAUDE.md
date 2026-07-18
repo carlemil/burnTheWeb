@@ -311,17 +311,36 @@ so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`
   `collectRanges()` stores only sliders whose bounds differ from shipped and
   `applyRanges()` sets them back. They ride in `localStorage`, the `?s=` URL and the
   Backup file. Each slider's in-box range editor writes them live via the normal persist path.
+- **Share** is **deflated**: the JSON goes through `CompressionStream("deflate-raw")`
+  and out as base64url under **`?z=`** (measured 9400 → 1368 chars, and a messy
+  full-precision scene 23252 → 646). base64url matters — `+` and `/` cost three
+  characters each once percent-encoded. `?s=` (plain base64) is still emitted when
+  `CompressionStream` is missing and **decoded forever**, so every link ever made keeps
+  working; `?z=` is checked first and the two are mutually exclusive. The `s/<n>/`
+  landing pages forward `location.search` **wholesale**, so `?z=` travels through them
+  unchanged. Values are rounded on encode to each control's declared `CONTROLS.step`
+  (`step="any"` sliders otherwise carry full-precision doubles, which more than doubles
+  the payload) and then **clamped to the live bounds** — `applyBlob`'s `ok()` is a hard
+  reject, so an out-of-range value would silently fall back to the seeded default.
+  Decoding `?z=` is **async**, so it lands after startup has already run `setEffect`;
+  the promise re-activates with `resize()` + `setEffect(...)` itself. `shareUrl()` is
+  therefore async too, and Share copies via `ClipboardItem`'s promise form so the user
+  gesture survives (a plain `writeText` after an `await` is rejected by Safari).
 - **Share** encodes `{states, beats, pulses, plens, extras, effect, cycle, ranges}` (NOT
   presets) as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
   `shareUrl()` builds it; **`pruneBeats()` diffs the beat chips against each
   effect's `presetBeat(e)` defaults and sends only what differs** — the full map
-  is every control × L/M/H × every effect and was ~90% of the blob (49k-char URLs,
+  is every control × L/M/H × every effect and was a large part of the blob (49k-char URLs,
   which chat clients truncate and TinyURL rejects; a truncated `?s=` silently
   JSON.parse-fails and opens the default scene). **`prunePulses()` does the same for
   the pulse shapes** (only sliders whose shape ≠ the effect default, almost always
   `snap`). Pruning is share-only: `fullSnapshot()` (localStorage/Backup) stays
   verbose, and `applyBlob` leaves any id/band/shape a blob omits at its seeded
-  default, so a diff decodes identically and older full blobs still load. **Prune
+  default — **but only because `applyShared` re-seeds first**. `restore()` runs before it
+  and `applyBlob` skips any key a blob omits, so without `initStates()`/`initBeatStates()`/
+  … the pruned maps would decode against *the recipient's own saved scene* and bleed their
+  chips and pulse shapes into the shared one. That was a real bug, invisible in a fresh
+  browser and wrong for everyone else. **Prune
   against the descriptor's defaults, not against all-false** — the two happen to
   coincide today (every effect ships `beat: {}`, so no chip is armed out of the
   box), but the moment a descriptor arms one again, diffing against all-false
@@ -330,7 +349,9 @@ so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`
   landing page `s/<n>/` (a numbered dir whose redirect forwards `?s=` to the app,
   so social unfurls show that effect's `og/` image). Only `sirpinfyer`/`tetrafyer`/
   `animejulia`/`plasma` have one; `shareUrl()` links the app root for every other
-  effect, because `s/<n>/` would 404 and a 404 never forwards the `?s=`. **Add a
+  effect, because `s/<n>/` would 404 and a 404 forwards nothing. (Each landing page is
+  `location.replace("../../" + location.search + location.hash)` — the *whole* query
+  string, so it carries `?z=` as happily as `?s=`.) **Add a
   landing page + `og/` image ⇒ add its id to `OG_PAGES`**; it's keyed by id, not
   index, so reordering the registry can't silently repoint the dirs. The landing
   pages redirect **relatively** (`../../`) so a local checkout or fork stays put

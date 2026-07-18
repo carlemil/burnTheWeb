@@ -3999,15 +3999,42 @@
     try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
     applyBlob(saved, false);
   }
-  function applyShared() {           // ?s=... link carries the settings (not presets)
-    const m = location.search.match(/[?&]s=([^&#]+)/);
-    if (!m) return;
-    let d = null;
-    try { d = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { return; }
-    applyBlob(d, true);
-    curPreset = -1;                  // a shared scene isn't one of your saved presets
+  // Drop the payload from the address bar. Runs even when decode FAILS, so a
+  // corrupt link doesn't stick around and get retried on every reload.
+  function stripShareParam() {
     try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) {}
   }
+  // Install a decoded share blob. **Re-seeding first is load-bearing**: restore()
+  // has already loaded the recipient's own scene into these maps, and applyBlob
+  // SKIPS every key a blob omits — so without this, anything the sender left at a
+  // default would silently inherit the recipient's value instead. The pruned
+  // beats/pulses/plens maps omit defaults by design, so that bled through for
+  // anyone who had used the app before (it looked perfect in a fresh browser).
+  function installShared(d) {
+    if (!d) return false;
+    initStates(); initBeatStates(); initPulseStates(); initPlenStates(); initExtras();
+    applyBlob(d, true);
+    curPreset = -1;                  // a shared scene isn't one of your saved presets
+    return true;
+  }
+  // ?z= (deflated) or ?s= (legacy, uncompressed) — the settings, never the presets.
+  // ?z= wins if both are somehow present; they are mutually exclusive by construction.
+  function applyShared() {
+    const z = location.search.match(/[?&]z=([^&#]+)/);
+    const m = z ? null : location.search.match(/[?&]s=([^&#]+)/);
+    if (!z && !m) return;
+    stripShareParam();
+    const parse = json => { try { return JSON.parse(json); } catch (e) { return null; } };
+    if (m) { installShared(parse(atobSafe(m[1]))); return; }
+    // The compressed path is async, so it lands after the startup below has already
+    // run setEffect() on the recipient's own scene — re-activate once it arrives.
+    unzipFromB64(z[1]).then(json => {
+      if (!json || !installShared(parse(json))) return;
+      resize();
+      setEffect(+effectSel.value, false);
+    });
+  }
+  function atobSafe(s) { try { return decodeURIComponent(escape(atob(s))); } catch (e) { return ""; } }
   restore();
   applyShared();
   resize();          // re-apply the restored render resolution (cfg.scale)
@@ -4291,23 +4318,116 @@
     return out;
   }
 
+  // ---- share payload codec ------------------------------------------------------
+  // The JSON is hugely repetitive (the same slider keys for every effect), so raw
+  // deflate takes it down ~85% — measured 9400 → 1368 chars, which is what makes the
+  // Short link work again. Emitted as `?z=` in base64url; `+` and `/` would each cost
+  // three characters once percent-encoded, and `=` padding is pointless in a URL.
+  // `?s=` (uncompressed) is still both emitted as a fallback and decoded forever, so
+  // every link ever generated keeps working.
+  // Function declarations, not consts: applyShared() runs during startup, far above
+  // this block, and a const would still be in its temporal dead zone when the decode
+  // reached for it — which the catch below would then report as a corrupt payload.
+  function b64urlOut(b) { return b.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+  function b64urlIn(s) {             // atob rejects -/_ and needs the padding back
+    let b = s.replace(/-/g, "+").replace(/_/g, "/");
+    while (b.length % 4) b += "=";
+    return b;
+  }
+  function canZip() { return typeof CompressionStream === "function" && typeof Response === "function"; }
+  async function zipToB64(str) {
+    if (!canZip()) return null;
+    try {
+      const body = new Blob([new TextEncoder().encode(str)]).stream()
+        .pipeThrough(new CompressionStream("deflate-raw"));
+      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return b64urlOut(btoa(bin));
+    } catch (e) { return null; }
+  }
+  async function unzipFromB64(str) {
+    if (typeof DecompressionStream !== "function") return null;
+    try {
+      const bin = atob(b64urlIn(str));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const body = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new TextDecoder().decode(await new Response(body).arrayBuffer());
+    } catch (e) { return null; }
+  }
+
+  // Round every shared value to the granularity its own control declares. The DOM
+  // sliders are step="any", so a dragged thumb carries a full-precision double like
+  // 0.8234567901234568 — that more than doubles the payload (measured: 9.4k → 21.9k
+  // chars) for precision no one can see, since every readout goes through sig3().
+  // CONTROLS still carries a semantic `step` per key, which is range-aware in a way
+  // a blanket "N significant digits" is not.
+  const CTL_STEP = {};
+  CONTROLS.forEach(c => { if (c.step) CTL_STEP[c.key] = c.step; });
+  function roundShared(id, n) {
+    const step = CTL_STEP[id] || 0.001;
+    const dec = Math.max(0, Math.ceil(-Math.log10(step)));
+    let r = +(+n).toFixed(dec);
+    // Clamp to the LIVE bounds, not RNG_ORIG: custom ranges ride in the same blob
+    // and applyBlob applies them first, so these are the bounds it will validate
+    // against — and its ok() is a hard reject, so an out-of-range value would be
+    // silently dropped back to the seeded default (fade's max of 0.995 is the case).
+    const ref = el(id + "-lo") || el(id);
+    if (ref) {
+      const mn = +ref.min, mx = +ref.max;
+      if (isFinite(mn) && r < mn) r = mn;
+      if (isFinite(mx) && r > mx) r = mx;
+    }
+    return r;
+  }
+  const roundMap = m => {            // {key: [lo,hi] | scalar} → the same, rounded
+    const out = {};
+    for (const id in m) {
+      const v = m[id];
+      out[id] = Array.isArray(v) ? v.map(n => roundShared(id, n)) : roundShared(id, v);
+    }
+    return out;
+  };
+
   // Build the share URL for the current scene: all effects' values, but not the
   // browser-local saved presets. Decoded by applyShared() on load.
-  function shareUrl() {
+  async function shareUrl() {
     saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
-    const blob = { states, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), plens: prunePlens(plenStates), extras, effect, cam: readCam(), cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
-    const s = btoa(unescape(encodeURIComponent(JSON.stringify(serializeBlob(blob)))));   // effect stored as a stable id
+    const rounded = {};
+    for (const e in states) rounded[e] = roundMap(states[e]);
+    const blob = { states: rounded, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), plens: prunePlens(plenStates), extras, effect, cam: roundMap(readCam()), cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
+    const json = JSON.stringify(serializeBlob(blob));   // effect stored as a stable id
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
     // through the effect's landing page when it has one (so social unfurls show
-    // that effect's preview image); otherwise straight to the app.
+    // that effect's preview image); otherwise straight to the app. Those pages
+    // forward location.search wholesale, so ?z= travels through them unchanged.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const og = OG_PAGES[EFFECTS[effect].id];
-    return dir + (og === undefined ? "" : "s/" + og + "/") + "?s=" + s;
+    const base = dir + (og === undefined ? "" : "s/" + og + "/");
+    const z = await zipToB64(json);
+    return z ? base + "?z=" + z
+             : base + "?s=" + btoa(unescape(encodeURIComponent(json)));   // no CompressionStream
   }
 
   // Copy `text`, flashing the button's label. Clipboard API needs a secure
   // context, so keep the execCommand fallback for file:// and plain http.
+  // `text` may be a string or a Promise of one. Clipboard writes are gesture-bound,
+  // and the share URL is now produced asynchronously — ClipboardItem takes the promise
+  // directly, which keeps the gesture; a plain writeText after an await is rejected by
+  // Safari. Everything else falls back to the old paths.
   function copyText(text, btn, okMsg, restore) {
+    const done = okState => { btn.textContent = okState ? okMsg : "Copy failed"; setTimeout(() => btn.textContent = restore, 1400); };
+    const p = Promise.resolve(text);
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      navigator.clipboard
+        .write([new ClipboardItem({ "text/plain": p.then(t => new Blob([t], { type: "text/plain" })) })])
+        .then(() => done(true), () => p.then(t => copyTextSync(t, btn, okMsg, restore)));
+      return;
+    }
+    p.then(t => copyTextSync(t, btn, okMsg, restore));
+  }
+  function copyTextSync(text, btn, okMsg, restore) {
     const done = okState => { btn.textContent = okState ? okMsg : "Copy failed"; setTimeout(() => btn.textContent = restore, 1400); };
     const fallback = () => {
       try {
@@ -4330,9 +4450,10 @@
   // CORS headers, needs no API key, and doesn't block github.io the way is.gd
   // does. POST (not GET) so a big scene can't hit a query-length ceiling; the
   // form-urlencoded body keeps it a simple request, so there's no preflight.
-  el("shorten").addEventListener("click", () => {
-    const btn = el("shorten"), url = shareUrl();
+  el("shorten").addEventListener("click", async () => {
+    const btn = el("shorten");
     btn.disabled = true; btn.textContent = "Shortening…";
+    const url = await shareUrl();
     const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
     fetch("https://tinyurl.com/api-create.php", {
       method: "POST",

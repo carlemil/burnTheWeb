@@ -188,7 +188,7 @@ visibility is remembered per effect.
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
 | **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
 | **Share** | Copies a URL that reopens the page with every effect's current settings (saved presets stay local to your browser and are not shared). Works offline — the whole scene rides in the link. |
-| **Short link** | Copies a short `tinyurl.com` link to the same scene. Needs the internet, and hands the (long) share URL to TinyURL to store — use **Share** if you'd rather nothing left your browser. Handy because a full share link is a few thousand characters and some chat apps truncate long links. |
+| **Short link** | Copies a short `tinyurl.com` link to the same scene. Needs the internet, and hands the share URL to TinyURL to store — use **Share** if you'd rather nothing left your browser. The scene is deflated into the link, so it is around a tenth of the size it used to be — short enough that TinyURL accepts it and chat apps stop truncating it. |
 
 Press **M** or **☰** to toggle the menu, **F** or **⛶** for fullscreen (works on
 mobile too), and click the canvas to pause. The frame + FPS counter is a checkbox in
