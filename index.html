@@ -632,18 +632,11 @@
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </details>
 
-  <!-- Box — Credits. The same two people the startup overlay burns into the fire
-       (CREDITS in the script), split into role/name/handle so they can be styled. -->
+  <!-- Box — Credits. Generated from CREDITS in the script — the same array the
+       startup burn-in rasterises, so the two can no longer drift apart. -->
   <details class="box">
   <summary class="box-t">Credits</summary>
-  <div class="credit">
-    <div class="credit-role">The Rastermancer</div>
-    <div class="credit-name">Carl-Emil Kjellstrand <span class="credit-alias"><span class="credit-aka">aka</span> <span class="credit-handle">Erbsman</span></span></div>
-  </div>
-  <div class="credit">
-    <div class="credit-role">Warden of Waveforms</div>
-    <div class="credit-name">Kristian Saether <span class="credit-alias"><span class="credit-aka">aka</span> <span class="credit-handle">The Dyze</span></span></div>
-  </div>
+  <div id="creditlist"></div>
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
   </details>
 
@@ -3553,65 +3546,137 @@
   // their pixels are stamped through the same plot() the effects use. So the text
   // catches the effect's own palette, glow and (if Fire is on) rises and burns away
   // by itself — it is the effect, not a layer on top of it. Nothing to undraw.
-  // Same two credits as the panel's Credits box, but flat: this is rasterised to a
-  // glyph mask, so it gets one plain string per line while the panel splits each into
-  // role / name / handle for styling. Change one, change the other.
+  // One source for both the panel's Credits box and the burn-in, so they can't drift.
   const CREDITS = [
-    "The Rastermancer - Carl-Emil Kjellstrand aka Erbsman",
-    "Warden of Waveforms - Kristian Saether aka The Dyze",
+    { role: "The Rastermancer", name: "Carl-Emil Kjellstrand", handle: "Erbsman" },
+    { role: "Warden of Waveforms", name: "Kristian Saether", handle: "The Dyze" },
   ];
+  const CREDIT_AKA = " aka ";
+  // The burn-in follows the panel's layout — ROLE on its own line above the name,
+  // "aka <handle>" trailing it — but the heat grid has only one channel, so
+  // *brightness* stands in for the panel's colour and opacity: role and handle burn
+  // full (accent / bold), the name a little softer, the "aka" dim. The numbers are
+  // the opacities from #panel .credit-name / -aka.
+  const CR_ROLE = 1, CR_NAME = .8, CR_AKA = .45, CR_HANDLE = 1;
+  // Build the panel's Credits box from the same array.
+  (function buildCreditList() {
+    const host = el("creditlist");
+    if (!host) return;
+    for (const cr of CREDITS) {
+      const wrap = document.createElement("div");
+      wrap.className = "credit";
+      const role = document.createElement("div");
+      role.className = "credit-role"; role.textContent = cr.role;
+      const name = document.createElement("div");
+      name.className = "credit-name"; name.textContent = cr.name + " ";
+      // "aka <handle>" is one nowrap span so a long name wraps as name / alias
+      // instead of stranding the "aka" at the end of a line.
+      const alias = document.createElement("span");
+      alias.className = "credit-alias";
+      const aka = document.createElement("span");
+      aka.className = "credit-aka"; aka.textContent = "aka";
+      const handle = document.createElement("span");
+      handle.className = "credit-handle"; handle.textContent = cr.handle;
+      alias.append(aka, " ", handle);
+      name.appendChild(alias);
+      wrap.append(role, name);
+      host.appendChild(wrap);
+    }
+  })();
   // Counted down in RENDERED time (dt from the frame loop), not wall clock: if the
   // tab is backgrounded rAF stops, and a wall-clock timer would burn the credits
   // away unseen. It also makes the duration testable on a driven clock.
   const CREDIT_S = 3;                 // seconds of rendered time to keep re-stamping
   const CREDIT_KEY = "burnTheWeb.credits.v1";
-  let creditLeft = 0, creditMask = null, creditMaskW = 0, creditMaskH = 0;
+  let creditLeft = 0, creditMask = null, creditMaskW = 0, creditMaskH = 0, creditMaskZ = 0;
+  // The credits sit in the heat buffer, so the display zoom magnifies them like
+  // everything else — and Zoom is a *ranged* slider that drifts (Sirpinfyer ships
+  // 0.9–1.65), so sizing the text to the raw frame would run it off both edges at the
+  // top of the drift. Fit against the effect's zoom *ceiling* instead: the high thumb,
+  // which only moves when the user drags it, so the mask cache still almost never
+  // rebuilds. bakesOwnZoom effects force display zoom to 1, same as glRender/render.
+  function creditZoomCap() {
+    if (EFFECTS[effect].bakesOwnZoom) return 1;
+    const lo = el("zoom-lo"), hi = el("zoom-hi");
+    return Math.max(1, lo ? +lo.value : 1, hi ? +hi.value : 1);
+  }
   // Rasterise once, at heat resolution, into a 0..255 coverage mask.
   function creditRaster() {
-    if (creditMask && creditMaskW === fw && creditMaskH === fh) return creditMask;
+    const zc = creditZoomCap();
+    if (creditMask && creditMaskW === fw && creditMaskH === fh && creditMaskZ === zc) return creditMask;
     const c = document.createElement("canvas");
     c.width = fw; c.height = fh;
     const g = c.getContext("2d");
     g.fillStyle = "#000"; g.fillRect(0, 0, fw, fh);
-    // Size to fit the longest line with a margin, and keep it readable at low res.
+    // Laid out left-to-right by hand rather than with textAlign:center, because a
+    // name line is three runs in three fonts and only their *total* is centred.
+    g.textAlign = "left"; g.textBaseline = "middle";
+    const MONO = "px ui-monospace, Consolas, monospace";
+    const roleSize = p => Math.max(5, Math.round(p * 0.8));   // panel: 10px role vs 11px name
+    const spacing = p => Math.max(1, Math.round(p * 0.12));   // panel: letter-spacing .12em
+    const segsOf = cr => [[cr.name, CR_NAME, false], [CREDIT_AKA, CR_AKA, false], [cr.handle, CR_HANDLE, true]];
+    const nameW = (cr, p) => segsOf(cr).reduce((w, s) => {
+      g.font = (s[2] ? "bold " : "") + p + MONO;
+      return w + g.measureText(s[0]).width;
+    }, 0);
+    const roleW = (cr, p) => {                  // measured *with* the letter-spacing on
+      g.letterSpacing = spacing(p) + "px";
+      g.font = "bold " + roleSize(p) + MONO;
+      const w = g.measureText(cr.role.toUpperCase()).width;
+      g.letterSpacing = "0px";
+      return w;
+    };
+    // Shrink until the widest line of either kind fits the margin, at full zoom.
+    const budget = fw * 0.88 / zc;
     let px = Math.max(6, Math.floor(fw / 26));
-    g.textAlign = "center"; g.textBaseline = "middle";
-    for (let i = 0; i < 40; i++) {
-      g.font = "bold " + px + "px ui-monospace, Consolas, monospace";
-      if (Math.max(...CREDITS.map(t => g.measureText(t).width)) <= fw * 0.88) break;
+    for (let i = 0; i < 40 && px > 5; i++) {
+      const widest = Math.max(...CREDITS.map(cr => Math.max(nameW(cr, px), roleW(cr, px))));
+      if (widest <= budget) break;
       px--;
-      if (px < 5) break;
     }
-    g.fillStyle = "#fff";
-    const lh = px * 1.6, y0 = fh * 0.5 - (CREDITS.length - 1) * lh / 2;
-    CREDITS.forEach((t, i) => g.fillText(t, fw / 2, y0 + i * lh));
+    const rpx = roleSize(px), roleLh = rpx * 1.7, nameLh = px * 1.5, gap = px * 1.1;
+    const blockH = CREDITS.length * (roleLh + nameLh) + (CREDITS.length - 1) * gap;
+    let y = fh * 0.5 - blockH / 2 + roleLh / 2;
+    for (const cr of CREDITS) {
+      const t = cr.role.toUpperCase();
+      g.letterSpacing = spacing(px) + "px";
+      g.font = "bold " + rpx + MONO;
+      g.fillStyle = "rgba(255,255,255," + CR_ROLE + ")";
+      g.fillText(t, (fw - g.measureText(t).width) / 2, y);
+      g.letterSpacing = "0px";
+      y += roleLh / 2 + nameLh / 2;
+      let x = (fw - nameW(cr, px)) / 2;         // sets g.font as it measures — reset below
+      for (const [txt, a, bold] of segsOf(cr)) {
+        g.font = (bold ? "bold " : "") + px + MONO;
+        g.fillStyle = "rgba(255,255,255," + a + ")";
+        g.fillText(txt, x, y);
+        x += g.measureText(txt).width;
+      }
+      y += nameLh / 2 + gap + roleLh / 2;
+    }
     const d = g.getImageData(0, 0, fw, fh).data;
     const m = new Uint8Array(fw * fh);
     for (let i = 0, j = 0; i < m.length; i++, j += 4) m[i] = d[j];
-    creditMask = m; creditMaskW = fw; creditMaskH = fh;
+    creditMask = m; creditMaskW = fw; creditMaskH = fh; creditMaskZ = zc;
     return m;
   }
-  // Stamp the mask as heat. Called every sim tick while the credits are up. The credits
-  // are fixed chrome, so they are the one thing on the heat grid the camera does *not*
-  // touch: plot(..., true) skips the camera rotation, and the display zoom is cancelled
-  // by gathering — the render pass maps heat pixel h to screen (h-c)*z+c, so a glyph
-  // texel must be written at (g-c)/z+c to land at its nominal spot. Same bakesOwnZoom
-  // ternary as glRender/render; if the two ever diverge the credits drift out of place.
+  // Stamp the mask as heat. Called every sim tick while the credits are up.
+  // plot(..., true) skips the camera *rotation*, so the text stays level whatever the
+  // preset's camera is doing. The display **zoom** is deliberately NOT cancelled here,
+  // and that is not an oversight — it was tried and reverted. The heat grid accumulates
+  // over many ticks, so writing the mask pre-divided by the live zoom leaves every
+  // earlier tick's glyphs at a stale scale, and a drifting zoom (Sirpinfyer ships
+  // 0.9–1.65) smears the text outward in proportion to its distance from centre. Nor
+  // does freezing the zoom help: the display pass still scales it, so a fixed 1/z0 is
+  // just a constant size offset — identical behaviour to not cancelling at all. Zoom is
+  // a property of the whole buffer, and the credits live in the buffer.
   function creditStamp() {
     if (creditLeft <= 0) return;
     const m = creditRaster();
-    const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
-    const cx = fw * 0.5, cy = fh * 0.5;
     for (let y = 0; y < fh; y++) {
       const row = y * fw;
       for (let x = 0; x < fw; x++) {
-        let v;
-        if (z === 1) { v = m[row + x]; }
-        else {
-          const sx = ((x - cx) * z + cx) | 0, sy = ((y - cy) * z + cy) | 0;
-          if (sx < 0 || sx >= fw || sy < 0 || sy >= fh) continue;
-          v = m[sy * fw + sx];
-        }
+        const v = m[row + x];
         if (v > 40) plot(x, y, v, true);
       }
     }

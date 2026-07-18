@@ -99,17 +99,33 @@ Fire on) rise and burn away with no undraw step. `creditRaster()` rasterises the
 once to an offscreen 2D canvas at heat resolution and caches the coverage mask per
 `fw`/`fh`; `creditStamp()` replays it every tick.
 
-The credits are the one thing on the heat grid the **camera does not touch** — they are
-fixed chrome, so a preset's rotation or zoom must not tilt or rescale the text. Two
-opt-outs, one per transform: `plot(x, y, v, raw)` takes a fourth argument that skips the
-`camOn()` rotation (only `creditStamp` passes it, so every other caller is unchanged), and
-`creditStamp` cancels the *display* zoom by gathering — the render pass maps heat pixel
-`h` to screen `(h−c)·z + c`, so a glyph texel is written at `(h−c)·z + c` sampled from the
-mask, landing it at its nominal screen spot. It uses the **same `bakesOwnZoom ? 1 : zoom`
-ternary as `glRender`/`render`**; if the three ever diverge the credits drift out of
-place. A `z === 1` fast path keeps the common case the original tight loop. At high zoom
-the glyphs are written into a smaller region and so read thinner — correct, since they end
-up the right size on screen.
+**Rotation** does not touch them: `plot(x, y, v, raw)` takes a fourth argument that skips
+the `camOn()` rotation, so the text stays level whatever the preset's camera is doing.
+Only `creditStamp` passes it, so every other caller is byte-identical.
+
+**Zoom is deliberately NOT cancelled**, and that is the interesting part, because it was
+built, shipped and reverted. Pre-dividing the mask by the live zoom is correct for *one*
+frame and wrong for the buffer: heat accumulates over many ticks, so every earlier tick's
+glyphs sit at a stale scale and a drifting zoom (Sirpinfyer ships `0.9–1.65`) smears the
+text outward in proportion to its distance from centre — the widest line worst. Freezing
+the zoom instead doesn't help either: the display pass still scales the buffer, so a fixed
+`1/z₀` is just a constant size offset, i.e. behaviourally identical to not cancelling.
+**Zoom is a property of the whole buffer, and the credits live in the buffer.**
+
+What the credits do instead is *size themselves for* the zoom: `creditZoomCap()` reads the
+Zoom slider's **high thumb** (the ceiling of the drift, 1 for `bakesOwnZoom` effects) and
+`creditRaster` fits the text to `fw · 0.88 / cap`. Without it the text runs off both edges
+at the top of the drift. The cap is part of the mask cache key alongside `fw`/`fh`; it only
+changes when the user drags the slider, so the mask still almost never rebuilds.
+
+**Layout mirrors the panel's Credits box**, because both are generated from the one
+`CREDITS` array (`{role, name, handle}`) — `buildCreditList()` builds the DOM, `creditRaster`
+the glyph mask, so they cannot drift apart. The burn-in reproduces the panel's hierarchy in
+the only channel a heat grid has, **brightness**: role and handle full, name `.8`, the
+"aka" `.45` — the literal opacities from `#panel .credit-name` / `-aka`. The role line is
+uppercased, letter-spaced and drawn at `0.8×` the name size, matching the CSS. Name lines
+are laid out **left-to-right by hand** rather than with `textAlign: "center"`, because a
+name line is three runs in three different fonts and only their *total* width is centred.
 
 It is called from **two** places, because the two effect families reach the heat grid
 differently: inside `simulate()` for point effects (so the glyphs join that tick's stamp
@@ -619,12 +635,20 @@ eyeball; a brightness/band heuristic can't tell thin glyphs from the effect's ow
 (point-effect pixels aren't reproducible across runs). Inject an export hook just before
 the app IIFE closes, stub WebGL off so `fire` is the live buffer, then call `creditStamp()`
 directly with the camera set various ways and compare the set of lit `fire` indices: a
-rotated camera must stamp **byte-identical** indices, `zoom = 2` must halve the stamped
-bounding box while staying centred, and `plot(x, y, v)` *without* the raw flag must still
-be moved by the camera (or the opt-out silently disabled the camera for effects). Run the
-same probe against a copy with the fix reverted — both halves must go red, or the
-assertions aren't biting. Note the two reverts are separate one-token edits and a naive
-`.replace()` of `const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;` hits `glRender` first.
+rotated camera must stamp **byte-identical** indices, and `plot(x, y, v)` *without* the raw
+flag must still be moved by the camera (or the opt-out silently disabled the camera for
+effects). Run the same probe against a copy with the fix reverted, or the assertions
+aren't biting.
+
+**That probe is also a standing lesson in what a single-stamp assertion cannot see.** The
+zoom-cancellation it originally covered passed cleanly — one `creditStamp` into a *cleared*
+buffer really did land where the maths said. The bug only exists across *accumulated*
+ticks with a *drifting* zoom, which the probe never exercised. For anything that writes the
+retained heat buffer, a green logic probe is necessary and not sufficient: also drive a few
+hundred real frames and **look at the screenshot**. For credit layout specifically, measure
+the mask directly (walk `creditRaster()`'s rows, group contiguous ones into lines, and check
+each line's width against `fw` and its centre against `fw/2`) — that separates a raster bug
+from a display-path bug in one shot, which eyeballing the composited frame cannot.
 
 **Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
 `requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes
