@@ -204,10 +204,24 @@ selection is remembered per effect and saved into presets.
 - **Fire** — the rising, cooling heat simulation. It used to be hardwired to the
   three point effects; now any effect can burn. **Flame rise** sets how tall the
   flames climb, **Burn rate** how many times a second the fire advances.
+- **Fade pixel** — every pixel keeps a fraction of its brightness each tick, so
+  the image smears into phosphor trails. **Keep** near 100% holds almost forever.
+- **Pixelate** — snap the picture to a coarse grid. **Block** is the cell size.
+- **Blur / sharpen** — one knob: negative blurs, positive sharpens (unsharp mask),
+  with its own **Radius**.
+- **Edge** — a Sobel outline that traces the shapes instead of filling them.
+- **Posterize** — quantise the colours into flat bands. **Levels** sets how many.
+- **Mirror** — fold the image about its centre, on **X**, **Y** or both.
 - **Bloom** — the additive glow: a blurred copy of the scene added back over it.
   **Strength** at 0 turns it off entirely.
 
-Untick everything for the raw effect with no post-processing.
+Untick everything for the raw effect with no post-processing. Fire and Fade run
+on the retained heat, before the effect's fresh output is mixed in; the rest work
+on the finished colour image, so they behave the way their names suggest.
+
+On machines without WebGL the app falls back to a Canvas2D renderer, and the
+filters that are GPU passes (Pixelate, Blur/sharpen, Edge, Posterize, Mirror) are
+greyed out there rather than pretending to work. Fire, Fade and Bloom run on both.
 
 ## Diagnostics
 

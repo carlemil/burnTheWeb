@@ -738,6 +738,8 @@
   // Which post-FX filters are on for the live effect. Declared up here (and read
   // through a hoisted function) because bindRange runs a slider's apply() during
   // wiring, long before the FILTERS registry block is evaluated.
+  let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
+    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1;
   let activeIds = new Set(["fire", "bloom"]);
   function filterOn(id) { return activeIds.has(id); }
   // Camera rotation (radians) applied to each effect's own sampled space — see
@@ -1372,6 +1374,79 @@
       o = vec4(heat, 0.0, 0.0, 1.0);
     }`;
     // heat → palette colour (fire-oriented, no flip yet)
+    // ---- post-FX passes. All RGB, all read the palette-mapped image, so they
+    // behave as named (an Edge in palette-INDEX space would find edges where there
+    // is no visible one, and vice versa). None of them touch the retained heat. ----
+    const FS_PIXELATE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uBlock;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float b = max(1.0, uBlock);
+      vec2 px = floor(vUv * uSize / b) * b + b * 0.5;   // snap to block centres
+      o = vec4(texture(uSrc, px / uSize).rgb, 1.0);
+    }`;
+    const FS_POSTERIZE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uLevels;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float n = max(2.0, floor(uLevels));
+      vec3 c = texture(uSrc, vUv).rgb;
+      o = vec4(floor(c * n + 0.5) / n, 1.0);
+    }`;
+    // uMode: 1 = mirror X, 2 = mirror Y, 3 = both (kaleidoscope-lite)
+    const FS_MIRROR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uMode;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 uv = vUv;
+      int m = int(uMode + 0.5);
+      if (m == 1 || m == 3) uv.x = 0.5 - abs(uv.x - 0.5);
+      if (m == 2 || m == 3) uv.y = 0.5 - abs(uv.y - 0.5);
+      o = vec4(texture(uSrc, uv).rgb, 1.0);
+    }`;
+    // Separable-ish single-pass box/gauss: cheap, and the radius scales the step
+    // rather than the loop count (the bound is compile-time), so cap it in the UI.
+    const FS_SOFTEN = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uRadius; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 t = uRadius / uSize;
+      vec3 sum = vec3(0.0); float wsum = 0.0;
+      for (int y = -2; y <= 2; y++) {
+        for (int x = -2; x <= 2; x++) {
+          float w = exp(-float(x*x + y*y) / 4.0);
+          sum += texture(uSrc, vUv + vec2(float(x), float(y)) * t).rgb * w;
+          wsum += w;
+        }
+      }
+      vec3 blur = sum / wsum, base = texture(uSrc, vUv).rgb;
+      // uAmount > 0 sharpens (unsharp mask), < 0 blurs toward the average
+      o = vec4(clamp(mix(blur, base + (base - blur) * uAmount, step(0.0, uAmount)), 0.0, 1.0), 1.0);
+    }`;
+    const FS_EDGE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    float lum(vec2 uv){ vec3 c = texture(uSrc, uv).rgb; return dot(c, vec3(0.299, 0.587, 0.114)); }
+    void main(){
+      vec2 t = 1.0 / uSize;
+      float gx = lum(vUv + vec2(-t.x, -t.y)) + 2.0*lum(vUv + vec2(-t.x, 0.0)) + lum(vUv + vec2(-t.x, t.y))
+               - lum(vUv + vec2( t.x, -t.y)) - 2.0*lum(vUv + vec2( t.x, 0.0)) - lum(vUv + vec2( t.x, t.y));
+      float gy = lum(vUv + vec2(-t.x, -t.y)) + 2.0*lum(vUv + vec2(0.0, -t.y)) + lum(vUv + vec2( t.x, -t.y))
+               - lum(vUv + vec2(-t.x,  t.y)) - 2.0*lum(vUv + vec2(0.0,  t.y)) - lum(vUv + vec2( t.x,  t.y));
+      float e = clamp(sqrt(gx*gx + gy*gy) * uAmount, 0.0, 1.0);
+      o = vec4(mix(texture(uSrc, vUv).rgb, vec3(e), clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // Feedback: fade the retained heat toward black each tick (phosphor trails).
+    const FS_FADE = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){ o = vec4(texture(uHeat, vUv).r * uKeep, 0.0, 0.0, 1.0); }`;
     const FS_PAL = `#version 300 es
     precision highp float;
     uniform sampler2D uHeat; uniform sampler2D uPal;
@@ -1431,6 +1506,12 @@
     glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
+    glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
+    glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
+    glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
+    glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
+    glProg.fade = makeProg(VS_QUAD, FS_FADE, ["uHeat", "uKeep"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1445,6 +1526,11 @@
     glFbo.native = createFbo(glTex.native);
     glTex.scene = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.scene = createFbo(glTex.scene);
+    glTex.post = [
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.post = [createFbo(glTex.post[0]), createFbo(glTex.post[1])];
     glTex.blur1 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.blur1 = createFbo(glTex.blur1);
     glTex.blur2 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
@@ -1478,6 +1564,8 @@
     resizeTex(glTex.scene, fw, fh);
     resizeTex(glTex.blur1, fw, fh);
     resizeTex(glTex.blur2, fw, fh);
+    resizeTex(glTex.post[0], fw, fh);
+    resizeTex(glTex.post[1], fw, fh);
   }
   function glClearHeat() {
     gl.disable(gl.BLEND);
@@ -1560,6 +1648,31 @@
   function glPlasma(s) { glShaderDraw("plasma", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); }
 
   // display: heat→palette, optional zoom, blurred additive glow, to the screen
+  // Run the ticked post filters over the palette-mapped image and return whatever
+  // texture holds the result. An empty chain returns glTex.native untouched — it
+  // must NOT run a pass-through copy, since an extra RGBA8 sample through a
+  // nominally identity pass can shift values by a LSB and show as a brightness change.
+  function glPostChain() {
+    const chain = activeFilters().filter(f => f.stage === "post" && f.gl);
+    if (!chain.length) return glTex.native;
+    let src = glTex.native, slot = 0;
+    for (const f of chain) {
+      bindFbo(glFbo.post[slot], fw, fh);
+      f.gl(src);
+      src = glTex.post[slot];
+      slot = 1 - slot;
+    }
+    return src;
+  }
+  // One post pass: bind the program, feed it the source texture, draw.
+  function postPass(name, src, setU) {
+    const P = glProg[name];
+    gl.useProgram(P.p);
+    bindTexUnit(0, src); gl.uniform1i(P.u.uSrc, 0);
+    if (P.u.uSize) gl.uniform2f(P.u.uSize, fw, fh);
+    if (setU) setU(P.u);
+    drawQuad();
+  }
   function glRender() {
     // A) heat → palette colour (native fire resolution)
     bindFbo(glFbo.native, fw, fh);
@@ -1568,11 +1681,13 @@
     bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
     bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
     drawQuad();
+    // A2) the post-FX chain, in registry order, ping-ponging between post[0]/[1]
+    const postSrc = glPostChain();
     // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
     const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
     bindFbo(glFbo.scene, fw, fh);
     gl.useProgram(glProg.zoom.p);
-    bindTexUnit(0, glTex.native); gl.uniform1i(glProg.zoom.u.uSrc, 0);
+    bindTexUnit(0, postSrc); gl.uniform1i(glProg.zoom.u.uSrc, 0);
     gl.uniform1f(glProg.zoom.u.uZoom, z);
     drawQuad();
     // C) horizontal blur
@@ -1739,6 +1854,7 @@
       glPtCount = 0;             // start a fresh stamp list for this tick
     } else if (!filterOn("fire")) {
       fire.fill(0);              // Fire off: this tick's stamps stand alone
+      for (const f of activeFilters()) if (f.cpuFeedback) f.cpuFeedback();
     } else {
       const decay = cfg.decay, src = fire, dst = fireNext;
       for (let x = 0; x < fw; x++) {
@@ -1756,6 +1872,7 @@
         }
       }
       fire = fireNext; fireNext = src;   // swap: `fire` now holds the new frame
+      for (const f of activeFilters()) if (f.cpuFeedback) f.cpuFeedback();
     }
 
     // 2) stamp the Sierpiński fractal as fresh heat via the chaos game.
@@ -2803,6 +2920,13 @@
     // they render in the Filters box; shown only while their filter is ticked. ----
     { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
     { key: "burn", host: "filter", group: "f_fire", type: "dual", label: "Burn rate", valId: "vBurn", min: 20, max: 240, step: 1, lo: 120, hi: 120, fmt: v => sig3(v) + "/s", apply: v => cfg.burn = Math.max(1, v), durScale: 10 },
+    { key: "fade", host: "filter", group: "f_fade", type: "dual", label: "Keep", valId: "vFade", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => fadeKeep = v, durScale: 10 },
+    { key: "pixel", host: "filter", group: "f_pixelate", type: "dual", label: "Block", valId: "vPixel", min: 2, max: 40, step: 1, lo: 6, hi: 6, fmt: v => sig3(v) + "px", apply: v => pixelBlock = v, durScale: 10 },
+    { key: "soften", host: "filter", group: "f_soften", type: "dual", label: "Amount", valId: "vSoften", min: -1, max: 2, step: 0.01, lo: -0.6, hi: -0.6, fmt: v => v < 0 ? "blur " + sig3(-v) : "sharp " + sig3(v), apply: v => softenAmt = v, durScale: 10 },
+    { key: "softrad", host: "filter", group: "f_soften", type: "dual", label: "Radius", valId: "vSoftRad", min: 0.5, max: 6, step: 0.1, lo: 1.5, hi: 1.5, fmt: v => sig3(v) + "px", apply: v => softenRad = v, durScale: 10 },
+    { key: "edge", host: "filter", group: "f_edge", type: "dual", label: "Amount", valId: "vEdge", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => edgeAmt = v, durScale: 10 },
+    { key: "poster", host: "filter", group: "f_poster", type: "dual", label: "Levels", valId: "vPoster", min: 2, max: 16, step: 1, lo: 5, hi: 5, fmt: v => sig3(Math.round(v)), apply: v => posterLevels = v, durScale: 10 },
+    { key: "mirror", host: "filter", group: "f_mirror", type: "dual", label: "Axis", valId: "vMirror", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["", "X", "Y", "Both"][Math.round(v)] || "X", apply: v => mirrorMode = Math.round(v), durScale: 10 },
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
@@ -2843,6 +2967,13 @@
       lab.appendChild(cb);
       lab.appendChild(document.createTextNode(" " + f.name));
       lab.title = f.help || f.name;
+      // A GPU-only filter on the Canvas2D fallback: disable it visibly rather than
+      // leaving a checkbox that silently does nothing.
+      if (f.cpuOk === false && !useGL) {
+        cb.disabled = true;
+        lab.classList.add("off");
+        lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
+      }
       host.appendChild(lab);
     });
   }
@@ -2890,7 +3021,8 @@
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
     attractor: "Attractor", camera: "Camera", other: "Other",
-    f_fire: "Fire", f_bloom: "Bloom",
+    f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
+    f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
     palette: "Palette", banding: "Banding",
   };
   function buildControls() {
@@ -3279,9 +3411,48 @@
   // without editing all 19 descriptors. `cpu: false` marks a filter the Canvas2D
   // fallback can't do — the UI greys those out rather than lying.
   const FILTERS = [
-    { id: "fire",  name: "Fire",  stage: "feedback", params: ["burn"],
+    { id: "fire",  name: "Fire",  stage: "feedback", params: ["rise", "burn"],
       help: "Heat rises and cools, the classic fire sim — now available to every effect, not just the point ones.",
-      defaults: { rise: [130, 130], burn: [120, 120] } },
+      defaults: { rise: [130, 130], burn: [120, 120] },
+      glFeedback: src => {
+        gl.useProgram(glProg.prop.p);
+        bindTexUnit(0, src);
+        gl.uniform1i(glProg.prop.u.uHeat, 0);
+        gl.uniform2f(glProg.prop.u.uSize, fw, fh);
+        gl.uniform1f(glProg.prop.u.uDecay, cfg.decay);
+        drawQuad();
+      } },
+    { id: "fade",  name: "Fade pixel", stage: "feedback", params: ["fade"],
+      help: "Each pixel keeps a fraction of its heat every tick — phosphor trails.",
+      defaults: { fade: [0.94, 0.94] },
+      glFeedback: src => {
+        const P = glProg.fade;
+        gl.useProgram(P.p);
+        bindTexUnit(0, src); gl.uniform1i(P.u.uHeat, 0);
+        gl.uniform1f(P.u.uKeep, fadeKeep);
+        drawQuad();
+      },
+      cpuFeedback: () => { for (let i = 0; i < fire.length; i++) fire[i] = fire[i] * fadeKeep; } },
+    { id: "pixelate", cpuOk: false, name: "Pixelate", stage: "post", params: ["pixel"],
+      help: "Snap the image to a coarse grid of blocks.",
+      defaults: { pixel: [6, 6] },
+      gl: src => postPass("pixelate", src, u => gl.uniform1f(u.uBlock, pixelBlock)) },
+    { id: "soften", cpuOk: false, name: "Blur / sharpen", stage: "post", params: ["soften", "softrad"],
+      help: "One knob: negative blurs, positive sharpens (unsharp mask).",
+      defaults: { soften: [-0.6, -0.6], softrad: [1.5, 1.5] },
+      gl: src => postPass("soften", src, u => { gl.uniform1f(u.uRadius, softenRad); gl.uniform1f(u.uAmount, softenAmt); }) },
+    { id: "edge", cpuOk: false, name: "Edge", stage: "post", params: ["edge"],
+      help: "Sobel outline — traces the shapes instead of filling them.",
+      defaults: { edge: [0.7, 0.7] },
+      gl: src => postPass("edge", src, u => gl.uniform1f(u.uAmount, edgeAmt)) },
+    { id: "poster", cpuOk: false, name: "Posterize", stage: "post", params: ["poster"],
+      help: "Quantise the colours into flat bands.",
+      defaults: { poster: [5, 5] },
+      gl: src => postPass("posterize", src, u => gl.uniform1f(u.uLevels, posterLevels)) },
+    { id: "mirror", cpuOk: false, name: "Mirror", stage: "post", params: ["mirror"],
+      help: "Fold the image about its centre — X, Y or both.",
+      defaults: { mirror: [1, 1] },
+      gl: src => postPass("mirror", src, u => gl.uniform1f(u.uMode, mirrorMode)) },
     { id: "bloom", name: "Bloom", stage: "post", params: ["bloom"],
       help: "Additive glow: a blurred copy of the scene added back over it.",
       defaults: { bloom: [0.35, 0.35] } },
@@ -3479,6 +3650,7 @@
     randSeedChk.checked = randSeed;
     const fok = filtersOk(x.filters);                 // absent in pre-filter scenes
     activeIds = fok || new Set(presetFilters(e));
+    if (!useGL) for (const f of FILTERS) if (f.cpuOk === false) activeIds.delete(f.id);
     syncFilterUI();
     refreshControlVisibility();       // setEffect's earlier pass ran before we knew the filters
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch

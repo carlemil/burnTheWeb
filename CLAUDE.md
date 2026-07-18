@@ -101,8 +101,19 @@ filter writes the retained heat buffer**:
   so it runs inside `glBeginHeat` *before* the effect's output is MAX-injected. With no
   feedback filter, `glBeginHeat` **clears** (skipping it would read 2-frames-stale heat)
   and the CPU path zeroes `fire` instead of running the propagation loop.
-- **post** (`Bloom`; later Blur/Pixelate/…) — reads the palette-mapped image. Bloom is the
-  pre-existing glow composite with its strength under `bloomAmt`/`uBloom` (0 when off).
+- **post** (Pixelate, Blur/sharpen, Edge, Posterize, Mirror, Bloom) — read the
+  palette-mapped image. `glPostChain()` ping-pongs them through `glTex.post[0]/[1]`
+  between FS_PAL and FS_ZOOM and **returns `glTex.native` untouched when the chain is
+  empty** — it must not run a pass-through copy, since an extra RGBA8 sample through a
+  nominally identity pass can shift a value by a LSB and read as a brightness change.
+  Bloom has no pass of its own: it is the pre-existing glow composite with its strength
+  under `bloomAmt`/`uBloom` (0 when off).
+
+`glBeginHeat` runs the feedback chain with **`pendingDst` set to wherever the result
+landed**, not a fixed `1 - curHeat`, so any number of passes works without a parity
+fixup. Post filters are GPU passes; on the Canvas2D fallback they carry `cpuOk: false`,
+which greys out their checkbox *and* is stripped from a loaded scene's list, so a blob
+authored on a GL machine can't silently enable a no-op on a fallback one.
 
 A filter's `params` are ordinary CONTROLS keys (host `"filter"` → `#filterctl`, one
 `group` per filter, contiguous in the array). `refreshControlVisibility()` shows a control
