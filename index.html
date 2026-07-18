@@ -408,18 +408,21 @@
   #syncpop .sync-actions #sync-capture { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
   #syncpop .sync-actions .ghost { flex: 0 0 auto; background: transparent; opacity: .75; }
 
-  /* Cardioid debug view: the Mandelbrot set with the seed's orbit drawn on top */
+  /* Cardioid debug view: the Mandelbrot set with the seed's orbit drawn on top.
+     Deliberately NOT a modal — it's a floating panel at the same depth as the
+     rest of the menu (below #panel, like #breakout), with no backdrop, so you can
+     drag the orbit sliders and watch the seed path redraw at the same time. */
   #carddlg {
-    position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
-    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  }
-  #carddlg.hidden { display: none; }
-  #carddlg .card-box {
-    position: relative; max-height: 92vh; overflow-y: auto; margin: 16px; padding: 18px 20px 16px;
-    background: rgba(14, 8, 5, 0.97); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    position: fixed; right: 16px; bottom: 16px; z-index: 5;
+    max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
+    padding: 16px 18px 14px;
+    background: rgba(14, 8, 5, 0.92); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
+  #carddlg.hidden { display: none; }
+  #carddlg .card-box { position: static; }
   #carddlg h2 { margin: 0 30px 10px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #carddlg canvas { display: block; max-width: 100%; border: 1px solid rgba(255, 140, 40, 0.25); border-radius: 6px; }
   #carddlg .card-close {
@@ -1798,6 +1801,7 @@
   const JULIA_RATIO_DEFAULT = (JULIA_C_BIG - JULIA_C_SMALL) / JULIA_C_SMALL; // ≈ 21.5
   let juliaRatio = JULIA_RATIO_DEFAULT;                  // inner : outer spin multiple
   let juliaPhase = 0;                                    // start-position offset, in laps (0=1 wrap)
+  let juliaOffX = 0;                                     // slide the whole orbit along the real axis
 
   // Orbit phases accumulate per frame from the live rpm/ratio, so tuning or
   // animating either never teleports the seed. reseedJulia() sets the *start*:
@@ -1818,7 +1822,8 @@
     // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
     // scaled outward by the margin so it sits just outside the inner bound.
     const th = outer + juliaPhase * Math.PI * 2, s = (1 + JULIA_MARGIN) * juliaOuterR;
-    const bx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
+    // juliaOffX slides the whole orbit (cardioid + riding circle) along the real axis
+    const bx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s + juliaOffX;
     const by = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
     // small circle riding on top, spinning ratio× faster than the big loop; its
     // radius is the inner:outer slider × the reference outer radius.
@@ -2582,6 +2587,10 @@
     { key: "inrad", host: "fx", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => v.toFixed(2), apply: v => juliaInnerR = v, durScale: 10 },
     { key: "outrad", host: "fx", type: "dual", label: "Outer radius", valId: "vOutRad", min: 0.5, max: 2.5, step: 0.01, lo: 1.05, hi: 1.05, fmt: v => v.toFixed(2) + "×", apply: v => juliaOuterR = v, durScale: 10 },
     { key: "phase", host: "fx", type: "dual", label: "Cardioid start", valId: "vPhase", min: 0, max: 0.1, step: 0.001, lo: 0, hi: 0, fmt: v => v.toFixed(2), apply: v => juliaPhase = v, durScale: 10 },
+    // Slides the whole seed orbit along the real axis. Slider units are hundredths
+    // of the complex plane (like Drift speed), so ±50 walks the orbit ±0.5 — enough
+    // to ride it off the cardioid into the bulbs and back.
+    { key: "cardx", host: "fx", type: "dual", label: "Cardioid X offset", valId: "vCardX", min: -50, max: 50, step: 1, lo: 0, hi: 0, fmt: v => (v > 0 ? "+" : "") + Math.round(v), apply: v => juliaOffX = v / 100, durScale: 10 },
     { key: "randseed", host: "fx", type: "check", label: "Random seed each reload" },
     { key: "pspeed", host: "fx", type: "dual", label: "Speed", valId: "vPspeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => plasmaSpeed = v, durScale: 10 },
     { key: "pscale", host: "fx", type: "dual", label: "Scale", valId: "vPscale", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => plasmaScale = v, durScale: 10 },
@@ -2867,9 +2876,9 @@
       beat: { speed: ["low"], rise: ["high"], size: ["mid"] }, extras: { palette: "1", morph: true, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { if (useGL) glJulia(juliaSeed(dt)); else julia(dt); },
-      defaults: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], points: 1500 },
+      defaults: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
@@ -2891,10 +2900,10 @@
       beat: { mbradius: ["low"], mbgain: ["mid"] }, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
     { id: "burningship", name: "Burning Ship", presetName: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(dt); },
-      defaults: { band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052] },
+      defaults: { band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "kaleidoscope", name: "Kaleidoscope", subtitle: "Kaleidoscope · mirrored symmetry",
       help: "A moving field folded into mirror-symmetric wedges, like looking down a kaleidoscope. Segments sets the symmetry, Spin rotates the whole thing, Flow animates the pattern. Add banding for sharp mandala rings.",
@@ -2928,10 +2937,10 @@
       beat: { nwspin: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", presetName: "Multibrot", subtitle: "Multibrot · power sweep",
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
-      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band", "multibrot"],
+      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(dt); },
-      defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052] },
+      defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: { mbexp: ["low"], banddim: ["high"] }, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
@@ -3945,7 +3954,8 @@
   }
   el("cardbtn").addEventListener("click", () => cardOpen(true));
   el("card-close").addEventListener("click", () => cardOpen(false));
-  el("carddlg").addEventListener("click", e => { if (e.target === el("carddlg")) cardOpen(false); });   // backdrop
+  // No backdrop click-to-close: it's a floating panel, not a modal — clicking it
+  // (or anything behind it) must keep working while the view stays up.
 
   // ---- beat-detection tuning (Diagnostics ▸ "Beat tuning" section, or ?beat=1) ----
   // Live sliders for the detector thresholds in beatCfg — meant to sit next to the
@@ -4068,6 +4078,7 @@
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
       { n: "Outer radius", w: "julia", t: "Scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward." },
       { n: "Cardioid debug", w: "julia", t: "Opens the Mandelbrot set with this effect's seed orbit drawn on top: the full seed cardioid, the path the seed actually traces at the current ratio and radii, the small riding circle and the live seed point. Use it to see where the Cardioid RPM / ratio / radius / start settings put the seed — right at the frontier gives intricate fractals, too far inside gives solid blobs." },
+      { n: "Cardioid X offset", w: "julia", t: "Slides the whole seed orbit left or right along the real axis (0 = the Mandelbrot cardioid's own position). Negative walks it toward the bulbs and the spike; positive pushes it out past the cusp. Use Cardioid debug to see where it lands." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
       { n: "Random seed each reload", w: "julia", t: "AnimeJulia only — when on, the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to this effect. Turn off for a fixed, reproducible starting frame." },
       { n: "Speed", w: "plasma", t: "How fast the plasma's waves animate. 0 freezes the field." },

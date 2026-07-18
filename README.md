@@ -216,7 +216,9 @@ for the effects whose seed orbits the Mandelbrot cardioid (AnimeJulia, Burning
 Ship, Multibrot). It opens the Mandelbrot set with that orbit drawn on top — the
 full seed cardioid, the path the seed actually traces at the current ratio and
 radii, the little riding circle and the live seed point — so you can see exactly
-where your **Cardioid RPM / ratio / radius / start** settings land.
+where your **Cardioid RPM / ratio / radius / start / X offset** settings land.
+It's a floating panel, not a modal: the menu stays live underneath it, so you can
+drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
 
 ## Running locally
 

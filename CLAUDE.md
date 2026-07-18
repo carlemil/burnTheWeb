@@ -119,10 +119,13 @@ way — the number fields themselves are skipped in `onEdit`. `applyRanges` call
 
 **Cardioid debug** (`#carddlg`, button `#cardbtn`). Descriptor-gated on `cardioid: true`
 (AnimeJulia / Burning Ship / Multibrot — the effects seeded from a Mandelbrot point):
-a popup rendering the Mandelbrot set in the c-plane with the seed's full cardioid, the
+a **floating panel** (bottom-right, `z-index: 5` like `#breakout`, **no backdrop and not
+a modal**) rendering the Mandelbrot set in the c-plane with the seed's full cardioid, the
 path it actually traces at the current ratio/radii, the riding circle and the live seed
-point drawn over it. It samples **`juliaSeedAt(outer, inner)`** — the pure part split out
-of `juliaSeed(dt)` — so opening it never advances the animation. `frame()` redraws it
+point drawn over it. Non-modal on purpose: you tune the orbit sliders *while watching it*,
+so it must never intercept a click — don't reintroduce a backdrop or click-outside-closes. It samples **`juliaSeedAt(outer, inner)`** — the pure part split out
+of `juliaSeed(dt)`, which also applies the **`cardx`** slider's `juliaOffX` real-axis
+shift — so opening it never advances the animation and it always shows the true orbit. `frame()` redraws it
 while open; the Mandelbrot bitmap is rendered once and cached. Transient: never persisted,
 never in a preset. `card` is a **`var`** and `cardOpen`/`cardDraw` early-return on a falsy
 `card`, because `setEffect` calls `cardOpen` during startup before the declaration runs.
