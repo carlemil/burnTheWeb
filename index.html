@@ -225,15 +225,26 @@
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
     font: 11px ui-monospace, monospace; cursor: pointer;
   }
-  #diag #beatMsg { margin: 6px 0 0; color: #7d838a; font-size: 10px; line-height: 1.4; }
-  #diag .beat-sec { color: #7d838a; margin: 8px 0 3px; }
-  #diag .beat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
-  #diag .beat-name { width: 32px; flex: none; }
-  #diag .beat-row input[type=range] { flex: 1; min-width: 0; }
-  #diag .beat-val { width: 42px; flex: none; text-align: right; color: #ffcf87; }
-  #diag .beat-dash { color: #7d838a; }
-  #diag .beat-f {
-    width: 52px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
+  /* Beat tuning moved out of #diag into its own .box (it is per-preset scene data,
+     not a dev tool), so its styling is scoped to that box now. The .rng-btns rule
+     above is still #diag-scoped, so the Reset button needs its own copy here. */
+  #beatDetails { font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
+  #beatDetails .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
+  #beatDetails .rng-btns button {
+    flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
+    font: 11px ui-monospace, monospace; cursor: pointer;
+  }
+  #beatMsg { margin: 6px 0 0; color: #7d838a; font-size: 10px; line-height: 1.4; }
+  #beatDetails .beat-sec { color: #7d838a; margin: 8px 0 3px; }
+  #beatDetails .beat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  #beatDetails .beat-name { width: 32px; flex: none; }
+  #beatDetails .beat-row input[type=range] { flex: 1; min-width: 0; }
+  #beatDetails .beat-val { width: 42px; flex: none; text-align: right; color: #ffcf87; }
+  #beatDetails .beat-dash { color: #7d838a; }
+  #beatDetails .beat-f {
+    /* 60px, not 52: the high band's 12000 Hz is five digits and was being clipped. */
+    width: 60px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
     border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
   }
   /* ---- music beat reactivity ---- */
@@ -542,12 +553,6 @@
     <summary>Diagnostics</summary>
     <label class="check"><input type="checkbox" id="diagFrames"> Frame + FPS counter</label>
     <label class="check"><input type="checkbox" id="diagTrace"> Beat-detection trace</label>
-    <details id="beatDetails">
-      <summary>Beat tuning</summary>
-      <div id="beatBody"></div>
-      <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
-      <p id="beatMsg">Saved in your browser &amp; in Backups (not Share links or presets). Tune it beside the beat trace.</p>
-    </details>
   </details>
   </details>
 
@@ -605,6 +610,16 @@
   <summary class="box-t">Filters</summary>
   <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
+  </details>
+
+  <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting;
+       it is per-preset scene data now, so it belongs beside the other scene controls
+       and autosaves like them (the delegated onEdit skips #diag on purpose). -->
+  <details class="box" id="beatDetails">
+  <summary class="box-t">Beat tuning</summary>
+  <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
+  <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
+  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Tune it beside the beat trace (Diagnostics).</p>
   </details>
 
   <!-- Box — Palette settings: the ramp, how fast it cycles, and the banding filter. -->
@@ -771,7 +786,14 @@
   let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
     edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1;
   let activeIds = new Set(["fire", "bloom"]);
-  function filterOn(id) { return activeIds.has(id); }
+  // GPU-only filters on the Canvas2D fallback. They are masked HERE, at the point of
+  // use, and never removed from activeIds — that set is what saveExtra writes back, so
+  // deleting them on load meant opening a scene on a fallback machine and touching
+  // anything permanently stripped Pixelate/Blur/Edge/Posterize/Mirror from it. Filled
+  // by the FILTERS block; empty until then, which is why filterOn stays safe to call
+  // during slider wiring (bindRange runs apply() long before the registry exists).
+  const cpuBlocked = new Set();
+  function filterOn(id) { return activeIds.has(id) && !cpuBlocked.has(id); }
   // Camera rotation (radians) applied to each effect's own sampled space — see
   // camProg/camGlsl for the GL path and the camM matrix for the CPU path. Global on
   // purpose: it is NOT part of states[e] (no cam key in any effect's `defaults`),
@@ -3586,7 +3608,9 @@
   // Counted down in RENDERED time (dt from the frame loop), not wall clock: if the
   // tab is backgrounded rAF stops, and a wall-clock timer would burn the credits
   // away unseen. It also makes the duration testable on a driven clock.
-  const CREDIT_S = 3;                 // seconds of rendered time to keep re-stamping
+  const CREDIT_HOLD = 5;              // seconds at full brightness
+  const CREDIT_FADE = 3;              // ...then this long ramping down to nothing
+  const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
   const CREDIT_KEY = "burnTheWeb.credits.v1";
   let creditLeft = 0, creditMask = null, creditMaskW = 0, creditMaskH = 0, creditMaskZ = 0;
   // The credits sit in the heat buffer, so the display zoom magnifies them like
@@ -3670,14 +3694,22 @@
   // does freezing the zoom help: the display pass still scales it, so a fixed 1/z0 is
   // just a constant size offset — identical behaviour to not cancelling at all. Zoom is
   // a property of the whole buffer, and the credits live in the buffer.
+  // The last CREDIT_FADE seconds ramp the stamped heat down to nothing rather than
+  // cutting out. The threshold stays on the *raw* mask so the same texels are stamped
+  // the whole way down — thresholding the faded value instead would drop the
+  // anti-aliased edges first and eat the glyphs from the outside in.
+  function creditAlpha() {
+    return creditLeft >= CREDIT_FADE ? 1 : Math.max(0, creditLeft / CREDIT_FADE);
+  }
   function creditStamp() {
     if (creditLeft <= 0) return;
     const m = creditRaster();
+    const a = creditAlpha();
     for (let y = 0; y < fh; y++) {
       const row = y * fw;
       for (let x = 0; x < fw; x++) {
         const v = m[row + x];
-        if (v > 40) plot(x, y, v, true);
+        if (v > 40) plot(x, y, a === 1 ? v : v * a, true);
       }
     }
   }
@@ -3686,11 +3718,12 @@
   }
   function startCredits() {
     if (!creditsEnabled()) return;
-    // ?credits=<seconds> overrides the duration — same spirit as ?debug=1 / ?beat=1.
-    // Mostly for looking at the burn-in without racing a 3s window.
+    // ?credits=<seconds> overrides the **hold**; the fade is always added on top, so
+    // ?credits=600 parks them on screen and still fades out the same way. Same spirit
+    // as ?debug=1 / ?beat=1 — mostly for looking at the burn-in without racing it.
     const m = location.search.match(/[?&]credits=([\d.]+)/);
-    const secs = m ? +m[1] : CREDIT_S;
-    creditLeft = isFinite(secs) && secs > 0 ? secs : CREDIT_S;
+    const secs = m ? +m[1] : CREDIT_HOLD;
+    creditLeft = (isFinite(secs) && secs > 0 ? secs : CREDIT_HOLD) + CREDIT_FADE;
   }
 
   // ---- FILTERS: stackable post-FX applied after the effect renders ------------
@@ -3756,13 +3789,15 @@
   ];
   const FILTER_BY_ID = {};
   FILTERS.forEach(f => FILTER_BY_ID[f.id] = f);
+  // Fill the fallback mask now that the registry exists (see cpuBlocked's declaration).
+  if (!useGL) FILTERS.forEach(f => { if (f.cpuOk === false) cpuBlocked.add(f.id); });
   const FILTER_DEFAULTS = {};                 // merged into every effect's state
   FILTERS.forEach(f => Object.assign(FILTER_DEFAULTS, f.defaults));
   buildFilterUI();                           // must follow FILTERS, not buildControls
   // Which filters are on for the live effect, in registry order (never in stored
   // order — reordering FILTERS must not remap a saved scene).
-  const activeFilters = () => FILTERS.filter(f => activeIds.has(f.id));
-  const hasFeedback = () => FILTERS.some(f => f.stage === "feedback" && activeIds.has(f.id));
+  const activeFilters = () => FILTERS.filter(f => filterOn(f.id));
+  const hasFeedback = () => FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));
   function filtersOk(v) {                     // validate a stored list
     if (!Array.isArray(v)) return null;
     const seen = new Set();
@@ -3949,8 +3984,10 @@
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
     const fok = filtersOk(x.filters);                 // absent in pre-filter scenes
+    // Keep the stored list intact even for filters this device can't run — filterOn()
+    // masks them (cpuBlocked), so they stay ticked-but-greyed and survive a round trip
+    // instead of being deleted here and written straight back out by saveExtra.
     activeIds = fok || new Set(presetFilters(e));
-    if (!useGL) for (const f of FILTERS) if (f.cpuOk === false) activeIds.delete(f.id);
     syncFilterUI();
     refreshControlVisibility();       // setEffect's earlier pass ran before we knew the filters
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
@@ -3972,7 +4009,7 @@
   // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
   const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
   panel.querySelectorAll("input[type=range]").forEach(inp => {
-    if (inp.closest("#diag")) return;   // Diagnostics' beat-tuning sliders aren't scene ranges
+    if (inp.closest("#diag") || inp.closest("#beatDetails")) return;   // dev tools / beat tuning aren't scene ranges
     if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
     RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
   });
@@ -4022,8 +4059,16 @@
     for (const inp of els) inp.dispatchEvent(new Event("input", { bubbles: true }));
     persist();
   }
-  function applyRanges(r) {               // set custom bounds onto the slider elements (validated)
-    if (!r || typeof r !== "object") return;
+  // Set custom bounds onto the slider elements (validated). Restores every slider to its
+  // shipped bounds first, so this is a REPLACE, not a merge: `r` is always the complete
+  // set of non-default bounds (collectRanges only stores what differs), and switching to
+  // a preset that widened nothing must narrow the previous preset's widening back.
+  function applyRanges(r) {
+    for (const id in RNG_ORIG) {
+      const inp = el(id), o = RNG_ORIG[id];
+      if (inp) { inp.min = o.min; inp.max = o.max; }
+    }
+    if (!r || typeof r !== "object") { rngSyncAll(); return; }
     for (const id in r) {
       const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
@@ -4041,33 +4086,55 @@
   }
   function refreshRangeUI() {
     sceneRangeInputs().forEach(inp => {
-      if (inp.closest("#diag")) return;   // don't re-dispatch on the beat-tuning sliders
+      // The beat-tuning sliders have no ids and fixed bounds — re-dispatching on them
+      // would fire their handlers (and another persist) for no gain.
+      if (inp.closest("#diag") || inp.closest("#beatDetails")) return;
       const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
       if (c !== +inp.value) inp.value = String(c);
       inp.dispatchEvent(new Event("input", { bubbles: true }));
     });
   }
 
-  // ---- beat-detection tuning (the "b" overlay) — persisted to localStorage + Backup,
-  // never Share/scenes. A snapshot of the live beatCfg; applyBeatTune validates each
-  // field and falls back to BEAT_DEFAULTS so junk (or a future default change) is safe.
+  // ---- beat-detection tuning — per-preset scene data (localStorage, Backup, Share
+  // and every preset). A snapshot of the live beatCfg, validated field by field.
   function collectBeatTune() {
     return { fluxK: beatCfg.fluxK.slice(), floor: beatCfg.floor,
              refract: beatCfg.refract.slice(), bands: beatCfg.bands.map(b => b.slice()) };
   }
-  function applyBeatTune(t) {
-    if (!t || typeof t !== "object") return;
+  // REPLACE semantics, deliberately: build a fresh tuning from BEAT_DEFAULTS and overlay
+  // only the fields the saved object actually supplies. The obvious alternative —
+  // merging into the live beatCfg — leaks the previously selected preset's tuning into
+  // any preset that omits a field, which for a preset saved before this feature is
+  // every field. Mirrors mergeState/mergeBeat/mergePulse/mergePlen, which all start
+  // from the descriptor's defaults for the same reason.
+  function mergeBeatTune(saved) {
+    const base = { fluxK: BEAT_DEFAULTS.fluxK.slice(), floor: BEAT_DEFAULTS.floor,
+                   refract: BEAT_DEFAULTS.refract.slice(), bands: BEAT_DEFAULTS.bands.map(b => b.slice()) };
+    if (!saved || typeof saved !== "object") return base;
     const nyq = 24000;   // half of a typical 48k rate; band edges must stay below it
-    if (Array.isArray(t.fluxK)) for (let b = 0; b < 3; b++)
-      if (isFinite(+t.fluxK[b]) && +t.fluxK[b] > 0) beatCfg.fluxK[b] = +t.fluxK[b];
-    if (isFinite(+t.floor) && +t.floor >= 0 && +t.floor <= 1) beatCfg.floor = +t.floor;
-    if (Array.isArray(t.refract)) for (let b = 0; b < 3; b++)
-      if (isFinite(+t.refract[b]) && +t.refract[b] >= 0) beatCfg.refract[b] = +t.refract[b];
-    if (Array.isArray(t.bands)) for (let b = 0; b < 3; b++) {
-      const lo = +t.bands[b][0], hi = +t.bands[b][1];
-      if (isFinite(lo) && isFinite(hi) && lo >= 1 && hi > lo && hi <= nyq) beatCfg.bands[b] = [lo, hi];
+    if (Array.isArray(saved.fluxK)) for (let b = 0; b < 3; b++)
+      if (isFinite(+saved.fluxK[b]) && +saved.fluxK[b] > 0) base.fluxK[b] = +saved.fluxK[b];
+    if (isFinite(+saved.floor) && +saved.floor >= 0 && +saved.floor <= 1) base.floor = +saved.floor;
+    if (Array.isArray(saved.refract)) for (let b = 0; b < 3; b++)
+      if (isFinite(+saved.refract[b]) && +saved.refract[b] >= 0) base.refract[b] = +saved.refract[b];
+    if (Array.isArray(saved.bands)) for (let b = 0; b < 3; b++) {
+      const e = saved.bands[b];
+      if (!Array.isArray(e)) continue;        // a short/sparse array would throw on e[0]
+      const lo = +e[0], hi = +e[1];
+      if (isFinite(lo) && isFinite(hi) && lo >= 1 && hi > lo && hi <= nyq) base.bands[b] = [lo, hi];
     }
+    return base;
   }
+  // Write a validated tuning into the live detector. beatCfg's FIELDS are replaced but
+  // the object identity is kept — audioTick closes over it, and tools/beatprobe.js
+  // slices it straight out of the constants block.
+  function installBeatTune(t) {
+    beatCfg.fluxK = t.fluxK.slice(); beatCfg.floor = t.floor;
+    beatCfg.refract = t.refract.slice(); beatCfg.bands = t.bands.map(b => b.slice());
+    if (beatUi && beatUi.wired) beatBuild();   // the sliders never refresh themselves
+    if (audio.on) computeBins();               // computeBins throws before audio starts
+  }
+  function applyBeatTune(t) { if (t) installBeatTune(mergeBeatTune(t)); }
 
   const STORE_KEY = "burnTheWeb.v1";
   let persistReady = false, suppressPersist = false;
@@ -4677,12 +4744,20 @@
       beat: JSON.parse(JSON.stringify(beatStates[effect])),
       pulse: JSON.parse(JSON.stringify(pulseStates[effect])),
       plen: JSON.parse(JSON.stringify(plenStates[effect])),
-      cam: readCam(),                   // global, but remembered per preset so it can fly between them
+      // These three are globals, remembered per preset so a scene is a COMPLETE copy of
+      // what is on screen — the point of the exercise, since a preset is now something
+      // you hand to someone else. cam: camrx/y/z exist nowhere else. beatTune: different
+      // thresholds mean different beats mean a different animation. ranges: a value
+      // outside the recipient's slider bounds is silently clamped by the DOM, so a
+      // preset authored with a widened bound would quietly animate differently.
+      cam: readCam(),
+      beatTune: collectBeatTune(),
+      ranges: collectRanges(),
       extra: JSON.parse(JSON.stringify(extras[effect])),
     };
   }
   function defaultPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), cam: readCam() }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), cam: readCam(), beatTune: mergeBeatTune(null), ranges: {} }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -4731,6 +4806,11 @@
     const p = presets[i]; if (!p) return;
     applyingPreset = true;
     const fromRamp = paletteBase.slice();   // the palette on screen right now — blend away from it
+    // Bounds FIRST, matching applyBlob's ordering: loadState below assigns straight to
+    // el.value, which the DOM silently clamps to the slider's current min/max — so a
+    // stale bound would quietly rewrite the value we are about to install.
+    applyRanges(p.ranges);
+    installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = mergeBeat(p.effect, p.beat);      // p.beat may predate a control → default it
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
@@ -4739,11 +4819,15 @@
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene (may snap the palette)
-    // Switching preset always morphs the palette to a fresh random one — but blend it in
-    // from whatever was on screen (fromRamp) rather than snapping there first. When
-    // auto-morph is on the blend keeps cycling; when off it's a one-shot that then settles.
+    // Blend the palette in from whatever was on screen (fromRamp) rather than snapping.
+    // WHERE it blends to depends on whether the palette cycle is running: with cycling on,
+    // head for a fresh random palette and keep going — that is the whole point of cycling.
+    // With it pinned (band tops out at 0) settle on the palette the preset actually stored,
+    // or a preset could never show its own colours: this is a one-shot that morphStep ends
+    // with setPalette(morphTargetIndex). That mattered the moment presets became portable —
+    // a scene sent to someone else used to land on a random palette on arrival.
     morphOnce = !morphing;
-    beginMorph(fromRamp, pickOther(+paletteSel.value));
+    beginMorph(fromRamp, morphing ? pickOther(+paletteSel.value) : +paletteSel.value);
     curPreset = i; presetSel.value = String(i);
     applyingPreset = false;
     persist();
@@ -4809,10 +4893,15 @@
         const parsed = Array.isArray(raw) ? deserializeBlob({ presets: raw }).presets : deserializeBlob(raw);
         const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.presets);
         if (!Array.isArray(arr)) throw new Error("not a burnTheWeb backup");
+        // `cam` and `beatTune` must be carried through verbatim: camrx/camry/camrz and the
+        // detector thresholds live NOWHERE else (the camera angles are deliberately absent
+        // from every effect's `defaults`), so dropping them here silently hands the imported
+        // preset whatever camera and tuning the recipient happened to be sitting at.
         const valid = arr
           .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
-                       state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen), extra: p.extra }));
+                       state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
+                       cam: p.cam, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra }));
         if (!valid.length) throw new Error("no valid presets in file");
         openRestore(parsed, valid, file.name);   // let the user pick what to restore + how
       } catch (err) { alert("Couldn't read backup: " + err.message); }
@@ -5013,14 +5102,19 @@
   // No backdrop click-to-close: it's a floating panel, not a modal — clicking it
   // (or anything behind it) must keep working while the view stays up.
 
-  // ---- beat-detection tuning (Diagnostics ▸ "Beat tuning" section, or ?beat=1) ----
-  // Live sliders for the detector thresholds in beatCfg — meant to sit next to the
-  // beat trace. Edits write straight into beatCfg, persist (localStorage + Backup,
-  // never Share/scenes), and re-derive the FFT bins when a band edge moves.
-  let beatUi = { on: false, wired: false };
+  // ---- beat-detection tuning (its own "Beat tuning" box, or ?beat=1) ----
+  // Live sliders for the detector thresholds in beatCfg. Edits write straight into
+  // beatCfg and re-derive the FFT bins when a band edge moves; the box sits outside
+  // #diag so the delegated onEdit persists them AND autosaves them into the selected
+  // preset, which is the whole point of the tuning being per-scene.
+  // `var`, not `let`: installBeatTune runs during startup (restore/share → applyBlob)
+  // long before this line, and reads `beatUi && beatUi.wired` — same reason `card` is
+  // a var. With `let` that read is a TDZ crash, not a falsy skip.
+  var beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
-    persist();
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
+    // No persist() here: the box is outside #diag, so onEdit already persisted and
+    // folded the change into the selected preset. Calling it again would double-write.
   }
   function beatRow(label, val, min, max, step, fmt, set) {   // name + range slider + live readout
     const row = document.createElement("div"); row.className = "beat-row";
@@ -5062,26 +5156,26 @@
     for (let b = 0; b < 3; b++) body.appendChild(beatBandRow(BANDLABEL[b], b));
   }
   function beatReset() {
-    beatCfg.fluxK = BEAT_DEFAULTS.fluxK.slice();
-    beatCfg.floor = BEAT_DEFAULTS.floor;
-    beatCfg.refract = BEAT_DEFAULTS.refract.slice();
-    beatCfg.bands = BEAT_DEFAULTS.bands.map(b => b.slice());
-    beatBuild(); beatChanged(true);
+    installBeatTune(mergeBeatTune(null));   // mergeBeatTune(null) IS the shipped defaults
+    beatChanged(true);
+    // Reset is a click, not an input event, so the delegated onEdit never sees it —
+    // persist and fold it into the selected preset by hand.
+    persist();
+    if (persistReady && !applyingPreset) autosavePreset();
     el("beatMsg").textContent = "Restored the shipped detector defaults.";
   }
-  function beatWire() {           // the tuning controls now live in the panel's Diagnostics section
+  function beatWire() {
     if (beatUi.wired) return;
     beatUi.wired = true;
     el("beatReset").addEventListener("click", beatReset);
-    beatBuild();                  // content isn't per-effect — build once
+    beatBuild();                  // rebuilt by installBeatTune when a preset brings its own
     const d = el("beatDetails");
     d.addEventListener("toggle", () => { beatUi.on = d.open; });
   }
   function beatToggle(on) {       // programmatic open (e.g. ?beat=1); users just click the summary
     const d = el("beatDetails");
     const want = on === undefined ? !d.open : !!on;
-    if (want) el("diag").open = true;
-    d.open = want;
+    d.open = want;                // its own box now — no #diag to open first
   }
   beatWire();
   if (/[?&]beat=1/.test(location.search)) { setPanel(false); beatToggle(true); }

@@ -158,7 +158,7 @@ visibility is remembered per effect.
 
 | Control | What it does |
 | --- | --- |
-| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset (and selects it), **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. Switching to a preset also morphs the palette to a fresh random one. At the top of the panel, **Backup** downloads a full `.json` snapshot — every preset **plus** all your saved settings (each effect's current values, custom slider ranges, beat-detection tuning, the active effect, auto-cycle, render resolution — everything the app remembers). **Restore** loads it back: a dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. |
+| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset (and selects it), **Delete** removes the selected one. Pick "— custom —" to tweak without touching a saved preset. Switching to a preset blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the preset's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** downloads a full `.json` snapshot — every preset **plus** all your saved settings (each effect's current values, custom slider ranges, beat-detection tuning, the active effect, auto-cycle, render resolution — everything the app remembers). **Restore** loads it back: a dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. |
 | **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
@@ -249,12 +249,8 @@ open/closed state isn't saved):
   detected beat, plus a rough BPM. This is how you see *why* a beat was missed:
   the flux never rose, or it rose but stayed under the threshold. (Shows nothing
   that gets saved.)
-- **Beat tuning** (a collapsible section; also `?beat=1`) — live sliders for the
-  detector, meant to sit beside the trace: per-band **sensitivity** (lower = more
-  beats), the **relative floor**, per-band **refractory** gap, and each band's
-  **frequency range**. Unlike the trace, the values you set **are saved** (in your
-  browser and in Backups — not in Share links or presets); **Reset** restores the
-  shipped defaults.
+**Beat tuning has its own box** in the menu now, not a Diagnostics tool — because it is
+part of the scene rather than a dev setting. See below.
 Two more tools sit outside that section: each slider's **min / max / step** row
 (in its pop-out box — see above), and **Cardioid debug**, a button in **Settings**
 for the effects whose seed orbits the Mandelbrot cardioid (AnimeJulia, Burning
@@ -264,6 +260,35 @@ radii, the little riding circle and the live seed point — so you can see exact
 where your **Cardioid RPM / ratio / radius / start / X offset** settings land.
 It's a floating panel, not a modal: the menu stays live underneath it, so you can
 drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
+
+## Beat tuning
+
+Its own box in the menu: live sliders for how beats are detected — per-band
+**sensitivity** (lower = more beats), the **relative floor**, per-band **refractory**
+gap (the minimum time between two beats), and each band's **frequency range** in Hz.
+**Reset** restores the shipped defaults. Open the **Beat-detection trace** in
+Diagnostics alongside it and you can watch the effect of every change.
+
+**The tuning is part of the preset**, not a global setting — so a punchy kick-driven
+scene and a hi-hat-driven one can each detect beats their own way, and switching
+between them switches the tuning too. It rides along in presets, Share links and
+Backups, which means a scene you send someone reacts to music the way you set it up.
+
+### What a shared scene does and doesn't carry
+
+A preset is a complete copy of the settings: every slider, the palette, the filters,
+the camera, the beat chips and pulse shapes, the beat tuning, and any slider bounds
+you widened. A few things deliberately stay behind:
+
+- **Render resolution** is yours, not the scene's — otherwise a scene built on a fast
+  GPU could bring a laptop or phone to a crawl with no obvious cause.
+- **Audio** can't be started for you; browsers require you to click. A beat-reactive
+  scene wanders gently until you turn on Capture or Mic.
+- **The random bits stay random** — where a Julia orbit starts (unless you turn off
+  Random seed), the chaos game's speckle, and how far into its cycle the animation is.
+
+So a shared scene is the same *configuration*, not the same *frame*. Open the same link
+twice and it won't be pixel-identical — that's the demo running, not something broken.
 
 ## Credits
 

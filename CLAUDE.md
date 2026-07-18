@@ -179,9 +179,16 @@ shared tick body (extracted from `simulate`) and does **not** flip `curHeat`;
 phase to close the tick. `applyFilters()` wipes `fire` on `!hasFeedback()`, not
 `!filterOn("fire")` — otherwise unticking Fire would wipe Fade's trails.
 
-Post filters are GPU passes; on the Canvas2D fallback they carry `cpuOk: false`,
-which greys out their checkbox *and* is stripped from a loaded scene's list, so a blob
-authored on a GL machine can't silently enable a no-op on a fallback one.
+Post filters are GPU passes; on the Canvas2D fallback they carry `cpuOk: false`, which
+greys out their checkbox. They are masked **at the point of use** — `cpuBlocked` is
+consulted by `filterOn()`, which `activeFilters()`/`hasFeedback()` route through — and
+are deliberately **never removed from `activeIds`**. `loadExtra` used to delete them on
+load, and since `saveExtra` writes `activeIds` straight back out, opening a scene on a
+fallback machine and touching anything **permanently stripped Pixelate/Blur/Edge/
+Posterize/Mirror from it**. A ticked-but-greyed checkbox honestly reads "stored on,
+unavailable here" and survives the round trip. `cpuBlocked` is filled by the FILTERS
+block but declared up with the render globals, and is empty until then — which is what
+keeps `filterOn` safe to call during slider wiring, long before the registry exists.
 
 A filter's `params` are ordinary CONTROLS keys (host `"filter"` → `#filterctl`, one
 `group` per filter, contiguous in the array). `refreshControlVisibility()` shows a control
@@ -339,8 +346,27 @@ hook) past the fire sim; `simulate()` stamps the 2D chaos game when `fractal2d`,
 the 3D tetra.
 
 ### Presets & persistence
-A **preset** is a named full-scene snapshot `{name, effect, state, beat, extra}`,
-**local to the browser**. Selecting one links edits to it: `onEdit` → `autosavePreset()`
+A **preset** is a named full-scene snapshot, built by `snapshotScene()`:
+`{name, effect, state, beat, pulse, plen, cam, beatTune, ranges, extra}`.
+The last three of those are **globals deliberately remembered per preset**, because a
+preset has to be a *complete* copy of what is on screen — it is something you hand to
+someone else, and anything it fails to carry renders as the recipient's value instead,
+invisibly. `cam` because `camrx/camry/camrz` exist nowhere else (no effect's `defaults`
+names them); `beatTune` because different thresholds mean different beats mean a
+different animation; `ranges` because `mergeState` does **no** bounds check and
+`loadState`'s `el.value = …` is then silently clamped by the DOM, so a value authored
+against a widened bound quietly animates differently. `applyPreset` applies `ranges`
+**first**, mirroring `applyBlob`'s ordering, for exactly that reason.
+`tools/presetprobe.js` asserts by construction that every field `applyPreset` restores
+is one `snapshotScene` captures *and* one the import mapping carries — the check exists
+because `applyRestore`'s mapping silently dropped `cam` for a long time.
+What deliberately does **not** travel: resolution (`cfg.scale`, a device setting — it
+changes flame height in screen pixels, point density and glow radius, but a scene from a
+fast GPU must not tank a phone), audio on/off (needs a user gesture), the `randSeed`
+orbit re-roll, the `Date.now()` chaos seed, and every accumulated phase (`simT`,
+`spinAngle`, `*Time`). A shared scene is the same *configuration*, not the same *frame*.
+
+Presets are **local to the browser**. Selecting one links edits to it: `onEdit` → `autosavePreset()`
 writes the current scene straight back into the selected preset (no manual save).
 `mergeState()` normalizes a loaded preset to the current slider set — it drops
 retired keys and defaults new ones, so old saved presets keep loading after an
@@ -478,10 +504,18 @@ bin-to-bin changes since the previous tick. Four properties are load-bearing:
 - **The thresholds are live-tunable, not consts.** `beatCfg` (defaults in
   `BEAT_DEFAULTS`, both in the detector constants block) holds per-band `fluxK`, global
   `floor`, per-band `refract`, and per-band `bands`; `audioTick`/`computeBins` read it
-  live. The **`b` overlay** edits it (see Dev overlays). It persists to `localStorage`
-  and the Backup file (via `collectBeatTune`/`applyBeatTune` in `fullSnapshot`/
-  `applyBlob`) but is **not** in Share links or presets. `beatprobe` still slices the
-  same markers and gets `beatCfg` because it lives in the sliced constants block.
+  live. It is **per-preset scene data** — `snapshotScene` stores it, `applyPreset`
+  installs it, and it rides in `localStorage`, the Backup file *and* Share links, so a
+  scene reacts to music the same way wherever it is opened. `mergeBeatTune(saved)` has
+  **replace semantics** (start from `BEAT_DEFAULTS`, overlay only valid supplied fields),
+  which is the whole point: merging into the live `beatCfg` instead would leak the
+  previously selected preset's tuning into any preset that omits a field — and a preset
+  saved before the feature omits all of them. `installBeatTune` writes the fields into
+  `beatCfg` **in place**, never replacing the object: `audioTick` closes over it and
+  `beatprobe` slices it straight out of the constants block, so it must stay there and
+  stay the same object. It also re-runs `beatBuild()` (the sliders never refresh
+  themselves) and `computeBins()` — the latter only when `audio.on`, since it throws
+  before audio has started. `presetprobe` locks the merge semantics down.
 
 `audioTick` runs on a **fixed `setInterval(HOP_MS)` (100Hz), not on rAF** — beat
 timing must not jitter with framerate, and two beats inside one slow frame would
@@ -491,27 +525,41 @@ otherwise collapse into one. Beats found between frames are **latched** in
 a fake clock.
 
 ### Diagnostics tools (not user settings)
-The two dev tools live in a `<details id="diag">` **Diagnostics** section at the bottom
+The dev tools live in a `<details id="diag">` **Diagnostics** section at the bottom
 of the System box (there are no dev keys — the whole UI opens via ☰ or **m**). They're
 off by default, never enter presets, and their open/closed state is never saved. Because
 they sit *inside* `#panel`, the panel-wide scans guard against them: `onEdit` (the
 delegated persist listener) and the `RNG_ORIG` capture early-return on
 `e.target.closest("#diag")` / `inp.closest("#diag")`, so a dev-tool edit never autosaves
-into a preset and the beat sliders never leak into the saved ranges. (The slider-range
-editor used to be the third tool here; it now lives per-slider in the pop-out boxes.)
-- **`dbg` — beat trace** (`#diagTrace` checkbox / `?debug=1`): still a floating
-  `position:fixed` canvas (built by `dbgInit`), just toggled from the checkbox now:
+into a preset. (The slider-range editor used to be a tool here; it now lives per-slider
+in the pop-out boxes. Beat tuning used to be one too — see below.)
+- **`dbg` — beat trace** (`#diagTrace` checkbox / `?debug=1`): a floating
+  `position:fixed` canvas (built by `dbgInit`), toggled from the checkbox:
   scrolling flux + adaptive threshold + beat ticks per band. The tool for diagnosing a
   missed beat. Persists nothing. Its lane labels read `beatCfg.bands` live, so they
-  track band edits from the Beat tuning section.
-- **`beat` — detection tuning** (`#beatDetails` `<details>` / `?beat=1`): live
-  sliders/fields for `beatCfg` (per-band `fluxK`, `floor`, per-band `refract`, per-band
-  `bands` Hz), inlined into the panel. `beatWire()` builds it once (content isn't
-  per-effect) and syncs `beatUi.on` off the `<details>` toggle. Edits write into
-  `beatCfg`, `persist()`, and re-run `computeBins()` when a band edge moves. **Unlike
-  its open/closed state, the values persist** (localStorage + Backup, not Share/presets
-  — see the detector section). Reset restores `BEAT_DEFAULTS`. `beatUi` is separate from
-  the many `beat*`/`BEAT_*` scene-audio names.
+  track band edits from the Beat tuning box.
+
+**Beat tuning is NOT one of these** — it moved out of `#diag` into its own
+`<details class="box" id="beatDetails">` beside the other scene controls, because it
+became per-preset scene data and therefore has to autosave like every other control.
+That move is more than markup, and each part is load-bearing:
+- Its CSS was entirely `#diag`-prefixed and is now scoped to `#beatDetails`. The
+  `.rng-btns` button rule is still `#diag`-scoped, so the box carries its own copy.
+- Escaping `onEdit`'s `#diag` early-return is the *point* — edits now persist and fold
+  into the selected preset. `beatChanged` therefore must **not** `persist()` itself, or
+  every drag double-writes. `beatReset` is a click, not an `input`, so `onEdit` never
+  sees it and it persists + autosaves by hand.
+- `RNG_ORIG` and `refreshRangeUI` skip `#beatDetails` explicitly as well as `#diag`:
+  the generated beat sliders have **no `id`**, so letting them into the ranges scan
+  writes an `RNG_ORIG[undefined]` entry and `collectRanges` then emits a junk
+  `undefined` key into every saved and shared blob.
+- `beatUi` is a **`var`**, like `card`: `installBeatTune` runs during startup
+  (restore/share → `applyBlob`) long before the declaration, and reads
+  `beatUi && beatUi.wired`. With `let` that read is a TDZ crash rather than a falsy skip.
+- `applyPreset` rebuilds the sliders (`beatBuild`), so any reference held across a preset
+  switch is a **detached node** — its listeners still fire but nothing bubbles to
+  `onEdit`. That bit a test before it bit a user.
+`beatUi` is separate from the many `beat*`/`BEAT_*` scene-audio names.
 Because slider bounds are editable at runtime (the per-box range editor), `bindRange`'s
 `ui()` reads `lo.min`/`lo.max` **live** rather than closing over them.
 
@@ -583,11 +631,16 @@ wired via `bindRange(id, valId, fmt, apply, durScale, beat)` and registered in
 - **Palette** is baked into a `Uint32Array` in **little-endian ABGR** for direct
   pixel writes; index 0 is forced opaque black. **Banding** (AnimeJulia-only) is a
   *filter* over the active palette, not a palette of its own.
-- **Every preset switch morphs the palette to a fresh random one, blended in from
-  whatever was on screen** (no snap). `applyPreset` snapshots the live `paletteBase`
+- **A preset switch always blends the palette in from whatever was on screen** (no snap),
+  but **where it blends to depends on the palette cycle**. Cycling on ⇒ a fresh random
+  palette, and it keeps cycling. Cycling pinned (`palcycle` band tops out at 0) ⇒ the
+  palette the preset actually **stored**. It used to be random either way, which meant a
+  preset could never show its own colours — invisible while presets were browser-local,
+  and the single biggest "why doesn't this look like yours" the moment they became
+  something you hand to someone else. `applyPreset` snapshots the live `paletteBase`
   *before* `setEffect`/`loadExtra` can overwrite it, then calls **`beginMorph(fromRamp,
-  pickOther(...))`** — `startMorph(i)` is just `beginMorph(paletteRGB(i), pickOther(i))`,
-  the discrete-source case. `beginMorph` paints `fromRamp` into `paletteBase` immediately
+  morphing ? pickOther(...) : +paletteSel.value)`** — `startMorph(i)` is just
+  `beginMorph(paletteRGB(i), pickOther(i))`, the discrete-source case. `beginMorph` paints `fromRamp` into `paletteBase` immediately
   (so an auto-cycle switch made mid-`frame()` doesn't flash the target for one frame) and
   arms the blend; `morphOnce = !morphing` makes it a one-shot when auto-morph is off (which
   `morphStep` settles via `setPalette(morphTargetIndex)`) and a continuing cycle when on.
@@ -672,6 +725,22 @@ filter off is a real choice that must survive a round trip) and a list naming on
 filters ends up empty — only a *missing* `filters` key falls back to the descriptor
 default. It slices by markers: `// ---- FILTERS: stackable post-FX` … `function
 initStates(`, and `function presetExtra(` … `function initExtras(`.
+
+**Preset completeness** has `tools/presetprobe.js` (`node tools/presetprobe.js
+index.html`, 28 assertions). Two halves. The **structural** half reads the real
+`snapshotScene`, `applyPreset` and the import mapping out of the source and asserts every
+`p.<field>` `applyPreset` restores is a field `snapshotScene` captures *and* one the
+import mapping rebuilds — so adding a field to one and forgetting the other two fails by
+construction rather than when someone notices their camera is wrong. That is not
+hypothetical: the import mapping dropped `cam` for a long time, and because the failure
+mode is "you silently get the recipient's camera", nothing local ever surfaced it. The
+**behavioural** half slices `mergeBeatTune` and pins its replace semantics — that a
+partial or empty tuning defaults the rest instead of inheriting the previously applied
+preset's, that results are deep copies, and that junk (wrong types, inverted bands, bands
+above Nyquist, a sparse `bands` array) is rejected without throwing. It slices by markers:
+`const BEAT_DEFAULTS` … `const beatCfg`, `function mergeBeatTune(` … `function
+installBeatTune(`, `function snapshotScene()` … `function defaultPresets(`, `function
+applyPreset(` … `function createPreset(`, and `const valid = arr` … `if (!valid.length)`.
 
 **The GL heat-tick feedback chain** has `tools/heatprobe.js` (`node tools/heatprobe.js
 index.html`, 24 assertions): it slices the real `glBeginHeat` and runs it against a
