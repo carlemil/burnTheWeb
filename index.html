@@ -390,7 +390,9 @@
     margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
     color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   }
-  #panel #fxctl > .ctl-grp:first-child { margin-top: 2px; padding-top: 0; border-top: none; }
+  /* #fxctl's first group used to sit directly under the box title, where a separator
+     line looked like a stray rule; it now follows the Effect chooser, so it keeps the
+     normal border and reads as the divider between "what" and "how". */
   /* ---- help popup ---- */
   #panel #help-btn {
     position: absolute; top: 14px; right: 14px;
@@ -570,8 +572,8 @@
   <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
   </details>
 
-  <!-- Box — Scene: what's playing. The three choosers (preset / effect / palette)
-       and the toggles that belong to each. Their sliders live in Settings. -->
+  <!-- Box — Scene: saved scenes and how long each is held. The Effect chooser used to
+       live here too; it moved down to Effects, next to the sliders it drives. -->
   <details class="box" open>
   <summary class="box-t">Scene</summary>
   <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
@@ -590,16 +592,16 @@
       <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
   </div>
 
-  <!-- Effect: pick the visual. Its shape / motion sliders are in box 2. -->
-  <label>Effect</label>
-  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
-
   </details>
 
-  <!-- Box — Effect settings: every slider of the selected effect (each a name + a
-       +/- launcher; the slider itself lives in its pop-out box). -->
+  <!-- Box — Effects: pick the visual, then every slider that belongs to it (each a
+       name + a +/- launcher; the slider itself lives in its pop-out box). The chooser
+       sits with the controls it drives rather than up in Scene, which is now purely
+       about presets. -->
   <details class="box" open>
-  <summary class="box-t">Effect settings</summary>
+  <summary class="box-t">Effects</summary>
+  <label>Effect</label>
+  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
   <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button id="cardbtn" type="button" title="Show where the seed's cardioid orbit lands on the Mandelbrot set">Cardioid debug</button>

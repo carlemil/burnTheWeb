@@ -295,10 +295,16 @@ row until you rotate, and then they aren't.
 **Menu layout.** The panel is a header (title + subtitle) followed by **five `.box`
 sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is
 **transient**, like Diagnostics): *System* (audio, resolution, Diagnostics — collapsed by
-default), *Backup, restore & share* (the 2×2 `.presetrow.grid2`), *Scene* (preset +
-effect choosers), *Effect settings* (`#fxctl`, Cardioid debug, Reset) and *Palette
-settings* (`#palette`, `#palctl`, `#bandctl`). `buildControls` routes a control by
+default), *Backup, restore & share* (the 2×2 `.presetrow.grid2`), *Scene* (the preset
+chooser, auto-cycle and TTL), *Effects* (`#effect`, `#fxctl`, Cardioid debug, Reset) and
+*Palette settings* (`#palette`, `#palctl`, `#bandctl`). `buildControls` routes a control by
 `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
+The **Effect chooser sits in *Effects*, above `#fxctl`** — with the sliders it drives
+rather than up in *Scene*, which is now purely about presets. That is also why
+`#fxctl > .ctl-grp:first-child` no longer suppresses its top border: the first group used
+to butt against the box title (where a rule read as a stray line) and now separates the
+chooser from the sliders. Note the Restore dialog's "Effect settings" checkbox is a
+*different* thing — a blob category (states/beats/extras), not this section.
 
 **Palette cycle.** The old "Auto-morph palettes" checkbox is gone; a `palcycle` dual
 slider (host `pal`) sets the **[min,max] seconds one morph takes**, and `morphMs()` draws

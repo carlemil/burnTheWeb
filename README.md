@@ -16,7 +16,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 
 ## Effects
 
-An **Effect** selector at the top of the panel switches between fifteen visuals
+An **Effect** selector at the top of the panel's **Effects** section switches between fifteen visuals
 that share the same palette, glow and music-reactivity pipeline — but each is an
 independent "scene" that remembers its own settings (see Controls):
 
@@ -122,9 +122,9 @@ from sane. Custom bounds are saved: they persist in your browser, ride along in 
 
 **The menu is five foldable sections** — click a heading's chevron to collapse it:
 **System** (audio, resolution and the diagnostics tools; folded by default),
-**Backup, restore & share**, **Scene** (which preset and effect), **Effect
-settings** (the selected effect's sliders) and **Palette settings** (the ramp, how
-fast it cycles, and banding).
+**Backup, restore & share**, **Scene** (which preset, and how long each is held),
+**Effects** (pick the visual, then its sliders) and **Palette settings** (the ramp,
+how fast it cycles, and banding).
 
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
