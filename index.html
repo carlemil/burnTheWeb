@@ -719,6 +719,11 @@
   // by shrinking the complex-plane span (revealing real fractal detail); the fire
   // has no sub-pixel detail, so it zooms by scaling the rendered image.
   let zoom = 1;
+  // Additive glow strength. Was a hardcoded 0.35 in FS_COMP and its CPU twin;
+  // hoisted so the Bloom filter can drive it (0 = no glow). BLOOM_DEFAULT is what
+  // every scene was authored under, so it stays the default everywhere.
+  const BLOOM_DEFAULT = 0.35;
+  let bloomAmt = BLOOM_DEFAULT;
   // Camera rotation (radians) applied to each effect's own sampled space — see
   // camProg/camGlsl for the GL path and the camM matrix for the CPU path. Global on
   // purpose: it is NOT part of states[e] (no cam key in any effect's `defaults`),
@@ -1387,13 +1392,13 @@
     // composite: base + 0.35*glow (additive), flip v so fire row 0 is on top
     const FS_COMP = `#version 300 es
     precision highp float;
-    uniform sampler2D uScene; uniform sampler2D uGlow;
+    uniform sampler2D uScene; uniform sampler2D uGlow; uniform float uBloom;
     in vec2 vUv; out vec4 o;
     void main(){
       vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
       vec3 base = texture(uScene, uv).rgb;
       vec3 glow = texture(uGlow, uv).rgb;
-      o = vec4(base + glow*0.35, 1.0);
+      o = vec4(base + glow*uBloom, 1.0);
     }`;
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
@@ -1413,7 +1418,7 @@
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
-    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow"]);
+    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow", "uBloom"]);
 
     glTex.heat = [
       createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE),
@@ -1477,7 +1482,12 @@
   }
 
   // one propagation tick: src heat → dst heat (points get MAX-blended after)
-  function glPropagate() {
+  // Open a heat tick: run the feedback stage (currently just Fire's propagation)
+  // from the live heat into the other buffer, and leave that FBO bound so the
+  // effect's fresh output can be MAX-blended into it. Pairs with glEndHeat, which
+  // is the ONLY place curHeat flips — keeping the flip in one place is what makes
+  // the point path safe to reason about.
+  function glBeginHeat() {
     const src = curHeat, dst = 1 - curHeat;
     bindFbo(glFbo.heat[dst], fw, fh);
     gl.disable(gl.BLEND);
@@ -1506,6 +1516,9 @@
     }
     curHeat = pendingDst;
   }
+  // Close a heat tick. Split out from glDrawPoints so the flip has a name that
+  // isn't about points — a shader effect will inject its output here too.
+  function glEndHeat() { glDrawPoints(); }
   // Generic per-effect fragment-shader pass: replace the current heat by running
   // glProg[name] over a fullscreen quad. Every effect shader takes uSize; `setU` sets
   // the rest. A shader effect = an FS_* source + `glProg.<id>` registered in initGL +
@@ -1555,6 +1568,7 @@
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
+    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
     drawQuad();
   }
 
@@ -1698,7 +1712,7 @@
     // 1) propagate existing fire upward (cgtutor averaging, with decay). On the
     // GPU this is a fragment shader; the CPU double loop is the fallback path.
     if (useGL) {
-      glPropagate();
+      glBeginHeat();
       glPtCount = 0;             // start a fresh stamp list for this tick
     } else {
       const decay = cfg.decay, src = fire, dst = fireNext;
@@ -1857,7 +1871,7 @@
 
     // On the GPU, the tick's collected stamps are MAX-blended into the freshly
     // propagated heat texture (same order as the CPU stamps after propagation).
-    if (useGL) glDrawPoints();
+    if (useGL) glEndHeat();
   }
 
   // ---- AnimeJulia: animated Julia set ----
@@ -2276,7 +2290,7 @@
     // subtle glow: an additive, blurred copy blooms the brightest pixels —
     // which are the white-hot triangle points — into a soft halo.
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = bloomAmt;
     ctx.filter = "blur(4px)";
     ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
     ctx.restore();
@@ -2324,17 +2338,20 @@
     camMat();                         // fold this frame's camera angles into the 2x2 map
     if (useGL) uploadPalette();       // push the (possibly morphed) palette
 
+    // The sim accumulator is drained EVERY frame, not only in the fire branch —
+    // otherwise a shader effect silently banks time and bursts the full 4 catch-up
+    // ticks the moment you switch back to (or enable) fire. setEffect zeroes it too.
+    // Keep the repeated-subtraction form, not `acc -= ticks*step`: 1/60 and 1/120
+    // aren't exact binary fractions, and the two round differently enough to gain
+    // or lose a tick over a few seconds — which shifts the fire's phase.
     const fx = EFFECTS[effect];
+    const step = 1 / cfg.burn;
+    let ticks = 0;
+    while (acc >= step && ticks < 4) { acc -= step; ticks++; }
     if (fx.draw) {
       fx.draw(dt);                    // shader effect: writes the heat tex directly from its seed
     } else {
-      const step = 1 / cfg.burn;      // fire effect: advance the decoupled sim accumulator
-      let ticks = 0;
-      while (acc >= step && ticks < 4) {
-        simulate(now);
-        acc -= step;
-        ticks++;
-      }
+      for (let i = 0; i < ticks; i++) simulate(now);
     }
     if (useGL) glRender();
     else render();
@@ -3544,6 +3561,7 @@
     loadPlen(i);                      // ...and their lengths
     loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
     if (fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry
+    acc = 0;                          // don't carry banked sim time across a switch
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
     if (fireNext) fireNext.fill(0);
     if (useGL && glReady) glClearHeat();

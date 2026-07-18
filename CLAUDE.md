@@ -418,6 +418,15 @@ Changes are verified by driving the page in headless Edge and reading a screensh
   `Document.prototype.hidden` if a timer gates on visibility). GoatCounter/GA stay
   inert on `file://`/`localhost`, so tests never emit analytics.
 
+**Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
+`requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes
+*shader* effects bit-reproducible — Plasma hashes identically across runs and builds, so
+it works as a before/after gate. The **point effects do not**: Sirpinfyer/Tetrafyer hash
+differently between two runs of the *same* file, so a fire-path pixel diff is noise. Gate
+those on logic instead (e.g. compare tick sequences in Node) rather than pixels. Also note
+`--virtual-time-budget` stops the page after a dozen-odd frames, so any timing comparison
+must drive its own clock rather than let the animation run.
+
 **The cardioid seed orbit** has its own probe, `tools/juliaprobe.js` (`node
 tools/juliaprobe.js index.html`): it slices the *real* seed source out of
 `index.html` (the constants block through `juliaSeedAt`/`juliaSeed`) and drives it
