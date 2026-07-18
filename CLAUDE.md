@@ -554,6 +554,16 @@ wired via `bindRange(id, valId, fmt, apply, durScale, beat)` and registered in
 - **Drift speed** slider value is divided by 100 → `cfg.speed`.
 - **Rotation** slider is degrees/second → converted to rad/s (`rotSpeed`),
   accumulated into `spinAngle` per tick (independent of drift speed & burn rate).
+- **Tetrafyer's view has two rotations**, and only one used to be controllable.
+  `Rotation` yaws (`spinAngle`); the **pitch** was a hardcoded `0.30·sin(simT·0.12)` —
+  the ±17°, minutes-long nod that reads as "the box is slowly rotating by itself".
+  It is now `nodAmp·sin(nodPhase)` behind the **Box nod** (degrees) and **Nod speed**
+  (×) sliders. `nodPhase` is **accumulated per tick** (`NOD_RATE · nodSpd · cfg.speed /
+  cfg.burn`), not derived as `0.12·simT`: now that the rate is a slider it can be
+  animated or beat-armed, and reading it off `simT` would teleport the nod mid-swing —
+  the same reason `simT` and `spinAngle` accumulate. At `nodSpd` 1 the phase tracks
+  `0.12·simT` exactly, so the shipped default reproduces the old motion (the probe pins
+  this to 1e-9). Still multiplied by `cfg.speed`, so Drift speed drives it as before.
 - **Palette** is baked into a `Uint32Array` in **little-endian ABGR** for direct
   pixel writes; index 0 is forced opaque black. **Banding** (AnimeJulia-only) is a
   *filter* over the active palette, not a palette of its own.

@@ -173,7 +173,9 @@ visibility is remembered per effect.
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). *(Sirpinfyer / Tetrafyer.)* |
 | **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sirpinfyer / Tetrafyer.)* |
-| **Rotation** *(ranged)* | Tetrafyer only — spin rate in degrees/second for the scene orbit around the box. 0 holds still. |
+| **Rotation** *(ranged)* | Tetrafyer only — **yaw** rate in degrees/second for the scene orbit around the box. Ships drifting −5…5°/s; set both thumbs to 0 to hold still. |
+| **Box nod** *(ranged)* | Tetrafyer only — how far the view **pitches** up and down in its slow sine, in degrees (default ≈17°). 0 holds the box dead level. This is the drift that used to be hardcoded with no control. |
+| **Nod speed** *(ranged)* | Tetrafyer only — multiplier on how fast that nod swings. 0 freezes it mid-swing; the swing is also scaled by Drift speed, as it always was. |
 | **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in, along with the spark-sphere burst each wall hit throws off. *(Tetrafyer.)* |
 | **Box size** *(ranged)* | How large the box the tetrahedra bounce inside is — bigger gives them more room. *(Tetrafyer.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
