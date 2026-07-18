@@ -56,6 +56,16 @@ different rates.
   `render` force display-zoom to 1. **Adding a shader effect = append one descriptor**
   with an `FS_*`+`glProg` pair, a `draw`/`cpu` pair, `params`/`defaults`; its presence
   routes `frame()` past the fire sim, and its sliders generate from the `CONTROLS` schema.
+**The three cardioid-seeded effects share one seed path.** AnimeJulia, Burning Ship
+and Multibrot each call `juliaSeed(dt)` **once** in their `draw` hook and hand the
+resulting seed to either the shader (`uC`) or the CPU mirror — `julia(seed)` /
+`burningShip(seed)` / `multibrot(seed)` take the seed as an argument and must never
+call `juliaSeed()` themselves, or the Canvas2D path advances the orbit twice a frame
+(it did, until fixed). `juliaSeed` = rim point on the scaled main cardioid **plus**
+the small riding circle of radius `juliaInnerR` at `ratio ×` the outer phase; the
+riding circle is what keeps the seed's neighbourhood varying instead of retracing
+one closed curve. `juliaprobe` locks all of this down.
+
 - **Point-accumulation effects** (Sirpinfyer, Tetrafyer, Attractor) run the fire sim and
   stamp points into the heat grid via `plot()`. `simulate()` dispatches to the
   descriptor's **`stamp(box)`** hook if present (Attractor), else the `fractal2d` (2D
@@ -377,6 +387,17 @@ Changes are verified by driving the page in headless Edge and reading a screensh
   `--virtual-time-budget`; `document.hidden` may read true in headless (override
   `Document.prototype.hidden` if a timer gates on visibility). GoatCounter/GA stay
   inert on `file://`/`localhost`, so tests never emit analytics.
+
+**The cardioid seed orbit** has its own probe, `tools/juliaprobe.js` (`node
+tools/juliaprobe.js index.html`): it slices the *real* seed source out of
+`index.html` (the constants block through `juliaSeedAt`/`juliaSeed`) and drives it
+on a fake clock, asserting the geometry the three Mandelbrot-seeded effects depend
+on — the rim point matches the cardioid formula, the seed sits exactly `juliaInnerR`
+off that rim (an `innerR` of 0 collapses it onto the rim), the inner phase advances
+at `ratio ×` the outer one and yields `ratio` epicycles per lap, and `juliaOffX`
+shifts only the real axis. It also greps the three descriptors to assert each
+advances the orbit **once** per frame. It slices by source markers, so keep them:
+`const RPM` … `function julia(`.
 
 **Beat detection** can't be tested that way — a headless browser has no audio. It
 has its own probe, `tools/beatprobe.js` (`node tools/beatprobe.js index.html`):

@@ -1837,8 +1837,10 @@
     const spanY = JULIA_SPAN / zoom, spanX = spanY * (fw / fh);
     return { cx: p.cx, cy: p.cy, spanX, spanY };
   }
-  function julia(dt) {
-    const seed = juliaSeed(dt);
+  // The CPU mirrors take the seed the descriptor already advanced this frame —
+  // they must NOT call juliaSeed() themselves, or the orbit runs at double speed
+  // on the Canvas2D path (the GL path passes the same object to the shader).
+  function julia(seed) {
     const cx = seed.cx, cy = seed.cy, spanX = seed.spanX, spanY = seed.spanY;
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
@@ -1867,8 +1869,7 @@
       }
     }
   }
-  function burningShip(dt) {              // CPU fallback — Julia-orbit Burning Ship (|Re·Im| each step)
-    const seed = juliaSeed(dt);
+  function burningShip(seed) {             // CPU fallback — Julia-orbit Burning Ship (|Re·Im| each step)
     const cx = seed.cx, cy = seed.cy, spanX = seed.spanX, spanY = seed.spanY;
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
@@ -2087,8 +2088,7 @@
 
   // ---- Multibrot: Julia-orbit z^d + c with an animatable exponent (shader effect) ----
   let mbPower = 2.5;
-  function multibrot(dt) {                 // CPU fallback — mirrors FS_MULTIBROT
-    const seed = juliaSeed(dt);
+  function multibrot(seed) {                // CPU fallback — mirrors FS_MULTIBROT
     const cx = seed.cx, cy = seed.cy, spanX = seed.spanX, spanY = seed.spanY, d = mbPower;
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
@@ -2877,7 +2877,7 @@
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
-      bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { if (useGL) glJulia(juliaSeed(dt)); else julia(dt); },
+      bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { const s = juliaSeed(dt); if (useGL) glJulia(s); else julia(s); },
       defaults: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
@@ -2902,7 +2902,7 @@
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
-      draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(dt); },
+      draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(s); },
       defaults: { band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "kaleidoscope", name: "Kaleidoscope", subtitle: "Kaleidoscope · mirrored symmetry",
@@ -2939,7 +2939,7 @@
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
       params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
-      draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(dt); },
+      draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
       defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: { mbexp: ["low"], banddim: ["high"] }, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
