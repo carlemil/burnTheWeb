@@ -340,6 +340,12 @@
     gap: 10px; margin: 10px 0 3px; opacity: .85;
   }
   .ctl-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* subheading over a run of related sliders (Camera, Banding) */
+  #panel .ctl-grp {
+    margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
+    color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  #panel #fxctl > .ctl-grp:first-child { margin-top: 2px; padding-top: 0; border-top: none; }
   /* ---- help popup ---- */
   #panel #help-btn {
     position: absolute; top: 14px; right: 14px;
@@ -698,6 +704,27 @@
   // by shrinking the complex-plane span (revealing real fractal detail); the fire
   // has no sub-pixel detail, so it zooms by scaling the rendered image.
   let zoom = 1;
+  // Camera rotation (radians) applied to each effect's own sampled space — see
+  // camProg/camGlsl for the GL path and the camM matrix for the CPU path. Global on
+  // purpose: it is NOT part of states[e] (no cam key in any effect's `defaults`),
+  // so it survives effect switches, and applyPreset eases it toward the preset's
+  // angles instead of snapping — the same "blend from what's on screen" idea as
+  // the palette morph.
+  let camRX = 0, camRY = 0, camRZ = 0;
+  // CPU mirror of the shader camera. Rotating (x, y, 0) by Rz·Ry·Rx and dropping z is a
+  // plain 2×2 map, so the whole camera collapses to four numbers — worth hoisting,
+  // since the CPU mirrors would otherwise call trig six times per pixel. Recomputed
+  // once per frame by camMat(); the mirrors read camM and multiply.
+  const camM = [1, 0, 0, 1];           // [m00, m01, m10, m11]
+  function camMat() {
+    const sx = Math.sin(camRX), cx = Math.cos(camRX);
+    const sy = Math.sin(camRY), cy = Math.cos(camRY);
+    const sz = Math.sin(camRZ), cz = Math.cos(camRZ);
+    camM[0] = cy * cz;  camM[1] = sx * sy * cz - cx * sz;
+    camM[2] = cy * sz;  camM[3] = sx * sy * sz + cx * cz;
+    return camM;
+  }
+  const camOn = () => camRX !== 0 || camRY !== 0 || camRZ !== 0;   // skip the maths at rest
 
   // Deterministic PRNG (mulberry32). Seeded once from unix time at load, then
   // re-seeded to that same value every frame so the chaos game draws the
@@ -941,6 +968,35 @@
     if (!gl.getProgramParameter(p, gl.LINK_STATUS))
       throw new Error("link: " + gl.getProgramInfoLog(p));
     return p;
+  }
+  // Camera: every EFFECT shader samples a rotated coordinate instead of the raw
+  // fragment position, so the effect's own space turns rather than the finished
+  // picture (no black corners — the fields are procedural and defined everywhere).
+  // Rather than edit 12 shaders by hand, camProg() rewrites the source at compile
+  // time: gl_FragCoord becomes `fragCam`, and main() opens by computing it. The
+  // rotation is orthographic (rotate as a 3D point about the screen centre, drop
+  // z), so X/Y read as a lean and Z as a spin, and it is always well defined —
+  // a perspective divide would put a horizon on screen with nothing beyond it.
+  // NB this must NOT be applied to the pipeline shaders (prop/pal/zoom/blur/comp/
+  // pts): rotating those would rotate the fire sim and the glow composite.
+  // A hoisted function, not a const: initGL() is called above this line, so a const
+  // would still be in its temporal dead zone when camProg() first runs.
+  function camGlsl() { return `
+    uniform vec3 uCam; uniform vec2 uCamSize;
+    vec4 camFrag4() {
+      vec2 c = gl_FragCoord.xy - 0.5 * uCamSize;
+      vec3 q = vec3(c, 0.0);
+      float s, k;
+      s = sin(uCam.x); k = cos(uCam.x); q = vec3(q.x, q.y * k - q.z * s, q.y * s + q.z * k);
+      s = sin(uCam.y); k = cos(uCam.y); q = vec3(q.x * k + q.z * s, q.y, -q.x * s + q.z * k);
+      s = sin(uCam.z); k = cos(uCam.z); q = vec3(q.x * k - q.y * s, q.x * s + q.y * k, q.z);
+      return vec4(q.xy + 0.5 * uCamSize, gl_FragCoord.z, gl_FragCoord.w);
+    }`; }
+  function camProg(vsSrc, fsSrc, names) {
+    // rewrite first, then inject — so the injected block's own gl_FragCoord survives
+    const src = fsSrc.replace(/gl_FragCoord/g, "fragCam")
+      .replace("void main(){", camGlsl() + "\n    void main(){ vec4 fragCam = camFrag4();");
+    return makeProg(vsSrc, src, names.concat(["uCam", "uCamSize"]));
   }
   function makeProg(vsSrc, fsSrc, names) {
     const p = glLink(glCompile(gl.VERTEX_SHADER, vsSrc), glCompile(gl.FRAGMENT_SHADER, fsSrc));
@@ -1309,18 +1365,18 @@
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize"]);
-    glProg.julia = makeProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
-    glProg.plasma = makeProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
-    glProg.tunnel = makeProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
-    glProg.metaball = makeProg(VS_QUAD, FS_METABALL, ["uSize", "uTime", "uCount", "uRadius", "uGain", "uZoom"]);
-    glProg.burning = makeProg(VS_QUAD, FS_BURNING, ["uSize", "uC", "uSpan"]);
-    glProg.kaleido = makeProg(VS_QUAD, FS_KALEIDO, ["uSize", "uTime", "uSeg", "uRot", "uZoom"]);
-    glProg.rotozoom = makeProg(VS_QUAD, FS_ROTOZOOM, ["uSize", "uAngle", "uScale", "uTile", "uZoom"]);
-    glProg.munch = makeProg(VS_QUAD, FS_MUNCH, ["uSize", "uTime", "uScale", "uMask", "uZoom"]);
-    glProg.moire = makeProg(VS_QUAD, FS_MOIRE, ["uSize", "uTime", "uFreq", "uMix", "uZoom"]);
-    glProg.newton = makeProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
-    glProg.multibrot = makeProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
-    glProg.copper = makeProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.julia = camProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
+    glProg.plasma = camProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
+    glProg.tunnel = camProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
+    glProg.metaball = camProg(VS_QUAD, FS_METABALL, ["uSize", "uTime", "uCount", "uRadius", "uGain", "uZoom"]);
+    glProg.burning = camProg(VS_QUAD, FS_BURNING, ["uSize", "uC", "uSpan"]);
+    glProg.kaleido = camProg(VS_QUAD, FS_KALEIDO, ["uSize", "uTime", "uSeg", "uRot", "uZoom"]);
+    glProg.rotozoom = camProg(VS_QUAD, FS_ROTOZOOM, ["uSize", "uAngle", "uScale", "uTile", "uZoom"]);
+    glProg.munch = camProg(VS_QUAD, FS_MUNCH, ["uSize", "uTime", "uScale", "uMask", "uZoom"]);
+    glProg.moire = camProg(VS_QUAD, FS_MOIRE, ["uSize", "uTime", "uFreq", "uMix", "uZoom"]);
+    glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
+    glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
+    glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1427,6 +1483,7 @@
     const P = glProg[name];
     gl.useProgram(P.p);
     gl.uniform2f(P.u.uSize, fw, fh);
+    if (P.u.uCam) { gl.uniform3f(P.u.uCam, camRX, camRY, camRZ); gl.uniform2f(P.u.uCamSize, fw, fh); }
     setU(P.u);
     drawQuad();
   }
@@ -1485,6 +1542,11 @@
   }
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
   function plot(x, y, v) {
+    if (camOn()) {                      // camera: rotate the stamped point about the grid centre
+      const dx = x - fw * 0.5, dy = y - fh * 0.5;
+      x = camM[0] * dx + camM[1] * dy + fw * 0.5;
+      y = camM[2] * dx + camM[3] * dy + fh * 0.5;
+    }
     const xi = x | 0, yi = y | 0;
     if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
     if (useGL) { pushPt(xi, yi, v); }
@@ -2208,6 +2270,7 @@
     acc += dt;
 
     if (morphing || morphOnce) morphStep(now);   // auto-morph, or a one-shot preset-switch morph
+    if (camTween) camTweenStep(now);            // fly the camera to a new preset's angles
 
     cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     // Beats are detected off-thread of the render loop (audioTick, every HOP_MS);
@@ -2225,6 +2288,7 @@
       bandLive = bandLevel > 0.001;
     }
 
+    camMat();                         // fold this frame's camera angles into the 2x2 map
     if (useGL) uploadPalette();       // push the (possibly morphed) palette
 
     const fx = EFFECTS[effect];
@@ -2598,60 +2662,66 @@
   // or print noise like 0.012340000000000001.
   const sig3 = v => String(Number((+v).toPrecision(3)));
   const CONTROLS = [
-    { key: "showbox", host: "fx", type: "check", label: "Show box" },
-    { key: "boxsize", host: "fx", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
-    { key: "points", host: "fx", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
-    { key: "layers", host: "fx", type: "layers", label: "Layers", valId: "vLayers" },
-    { key: "speed", host: "fx", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
-    { key: "rise", host: "fx", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
-    { key: "size", host: "fx", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => fractalSize = v, durScale: 10 },
-    { key: "rot", host: "fx", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
-    { key: "rpm", host: "fx", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => sig3(v), apply: v => juliaBigRpm = v, durScale: 10 },
-    { key: "ratio", host: "fx", type: "dual", label: "Inner : outer ratio", valId: "vRatio", min: 1, max: 60, step: 0.5, lo: 21.5, hi: 21.5, fmt: v => sig3(v) + "×", apply: v => juliaRatio = v },
-    { key: "inrad", host: "fx", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => juliaInnerR = v, durScale: 10 },
-    { key: "outrad", host: "fx", type: "dual", label: "Outer radius", valId: "vOutRad", min: 0.5, max: 2.5, step: 0.01, lo: 1.05, hi: 1.05, fmt: v => sig3(v) + "×", apply: v => juliaOuterR = v, durScale: 10 },
-    { key: "phase", host: "fx", type: "dual", label: "Cardioid start", valId: "vPhase", min: 0, max: 0.1, step: 0.001, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => juliaPhase = v, durScale: 10 },
+    { key: "showbox", host: "fx", group: "shape", type: "check", label: "Show box" },
+    { key: "boxsize", host: "fx", group: "shape", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
+    { key: "points", host: "fx", group: "shape", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
+    { key: "layers", host: "fx", group: "shape", type: "layers", label: "Layers", valId: "vLayers" },
+    { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
+    { key: "rise", host: "fx", group: "shape", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
+    { key: "size", host: "fx", group: "shape", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => fractalSize = v, durScale: 10 },
+    { key: "rot", host: "fx", group: "shape", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
+    { key: "rpm", host: "fx", group: "cardioid", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => sig3(v), apply: v => juliaBigRpm = v, durScale: 10 },
+    { key: "ratio", host: "fx", group: "cardioid", type: "dual", label: "Inner : outer ratio", valId: "vRatio", min: 1, max: 60, step: 0.5, lo: 21.5, hi: 21.5, fmt: v => sig3(v) + "×", apply: v => juliaRatio = v },
+    { key: "inrad", host: "fx", group: "cardioid", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => juliaInnerR = v, durScale: 10 },
+    { key: "outrad", host: "fx", group: "cardioid", type: "dual", label: "Outer radius", valId: "vOutRad", min: 0.5, max: 2.5, step: 0.01, lo: 1.05, hi: 1.05, fmt: v => sig3(v) + "×", apply: v => juliaOuterR = v, durScale: 10 },
+    { key: "phase", host: "fx", group: "cardioid", type: "dual", label: "Cardioid start", valId: "vPhase", min: 0, max: 0.1, step: 0.001, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => juliaPhase = v, durScale: 10 },
     // Slides the whole seed orbit along the real axis. Slider units are hundredths
     // of the complex plane (like Drift speed), so ±50 walks the orbit ±0.5 — enough
     // to ride it off the cardioid into the bulbs and back.
-    { key: "cardx", host: "fx", type: "dual", label: "Cardioid X offset", valId: "vCardX", min: -50, max: 50, step: 1, lo: 0, hi: 0, fmt: v => (v > 0 ? "+" : "") + sig3(v), apply: v => juliaOffX = v / 100, durScale: 10 },
-    { key: "randseed", host: "fx", type: "check", label: "Random seed each reload" },
-    { key: "pspeed", host: "fx", type: "dual", label: "Speed", valId: "vPspeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => plasmaSpeed = v, durScale: 10 },
-    { key: "pscale", host: "fx", type: "dual", label: "Scale", valId: "vPscale", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => plasmaScale = v, durScale: 10 },
-    { key: "pwarp", host: "fx", type: "dual", label: "Warp", valId: "vPwarp", min: 0, max: 2, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => plasmaWarp = v, durScale: 10 },
-    { key: "tunspeed", host: "fx", type: "dual", label: "Fly speed", valId: "vTunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => tunSpeed = v, durScale: 10 },
-    { key: "tuntwist", host: "fx", type: "dual", label: "Twist", valId: "vTunTwist", min: -2, max: 2, step: 0.05, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => tunTwist = v, durScale: 10 },
-    { key: "tunrings", host: "fx", type: "dual", label: "Ring density", valId: "vTunRings", min: 1, max: 30, step: 0.5, lo: 10, hi: 10, fmt: v => sig3(v), apply: v => tunRings = v, durScale: 10 },
-    { key: "mbcount", host: "fx", type: "dual", label: "Ball count", valId: "vMbCount", min: 2, max: 16, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => mbCount = Math.round(v), durScale: 10 },   // max must stay <= the FS_METABALL loop bound (its hard ceiling)
-    { key: "mbradius", host: "fx", type: "dual", label: "Ball size", valId: "vMbRadius", min: 0.04, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => mbRadius = v, durScale: 10 },
-    { key: "mbspeed", host: "fx", type: "dual", label: "Ball speed", valId: "vMbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => mbSpeed = v, durScale: 10 },
-    { key: "mbgain", host: "fx", type: "dual", label: "Gain", valId: "vMbGain", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => mbGain = v, durScale: 10 },
-    { key: "ksegments", host: "fx", type: "dual", label: "Segments", valId: "vKSeg", min: 3, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => kSeg = Math.round(v), durScale: 10 },
-    { key: "krotspeed", host: "fx", type: "dual", label: "Spin", valId: "vKRot", min: -1, max: 1, step: 0.02, lo: 0.2, hi: 0.2, fmt: v => sig3(v), apply: v => kRotSpeed = v, durScale: 10 },
-    { key: "knoisespeed", host: "fx", type: "dual", label: "Flow", valId: "vKFlow", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => kNoiseSpeed = v, durScale: 10 },
-    { key: "rzrot", host: "fx", type: "dual", label: "Rotation", valId: "vRzRot", min: -2, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => rzRot = v, durScale: 10 },
-    { key: "rzzoom", host: "fx", type: "dual", label: "Zoom pulse", valId: "vRzZoom", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => rzZoomAmt = v, durScale: 10 },
-    { key: "rztile", host: "fx", type: "dual", label: "Tile density", valId: "vRzTile", min: 1, max: 12, step: 0.5, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => rzTile = v, durScale: 10 },
-    { key: "xorspeed", host: "fx", type: "dual", label: "Munch speed", valId: "vXorSpeed", min: 0, max: 80, step: 1, lo: 20, hi: 20, fmt: v => sig3(v), apply: v => xorSpeed = v, durScale: 10 },
-    { key: "xorscale", host: "fx", type: "dual", label: "Square size", valId: "vXorScale", min: 0.1, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(1 / v) + "px", apply: v => xorScale = v, durScale: 10 },
-    { key: "xormask", host: "fx", type: "dual", label: "Detail", valId: "vXorMask", min: 15, max: 255, step: 1, lo: 255, hi: 255, fmt: v => sig3(v), apply: v => xorMask = Math.round(v), durScale: 10 },
-    { key: "mofreq", host: "fx", type: "dual", label: "Ring frequency", valId: "vMoFreq", min: 2, max: 40, step: 0.5, lo: 10, hi: 10, fmt: v => sig3(v), apply: v => moFreq = v, durScale: 10 },
-    { key: "modrift", host: "fx", type: "dual", label: "Drift speed", valId: "vMoDrift", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => moDrift = v, durScale: 10 },
-    { key: "momix", host: "fx", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => moMix = v, durScale: 10 },
-    { key: "nwspin", host: "fx", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => nwSpin = v, durScale: 10 },
-    { key: "nwrelax", host: "fx", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => nwRelax = v, durScale: 10 },
-    { key: "mbexp", host: "fx", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 3.5, fmt: v => sig3(v), apply: v => mbPower = v, durScale: 10 },
-    { key: "cbcount", host: "fx", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
-    { key: "cbspeed", host: "fx", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
-    { key: "cbwidth", host: "fx", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
-    { key: "ata", host: "fx", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => sig3(v), apply: v => atA = v, durScale: 10 },
-    { key: "atb", host: "fx", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => sig3(v), apply: v => atB = v, durScale: 10 },
-    { key: "atc", host: "fx", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
-    { key: "atd", host: "fx", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => sig3(v), apply: v => atD = v, durScale: 10 },
-    { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
-    { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
-    { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
-    { key: "banddim", host: "band", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
+    { key: "cardx", host: "fx", group: "cardioid", type: "dual", label: "Cardioid X offset", valId: "vCardX", min: -50, max: 50, step: 1, lo: 0, hi: 0, fmt: v => (v > 0 ? "+" : "") + sig3(v), apply: v => juliaOffX = v / 100, durScale: 10 },
+    { key: "pspeed", host: "fx", group: "plasma", type: "dual", label: "Speed", valId: "vPspeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => plasmaSpeed = v, durScale: 10 },
+    { key: "pscale", host: "fx", group: "plasma", type: "dual", label: "Scale", valId: "vPscale", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => plasmaScale = v, durScale: 10 },
+    { key: "pwarp", host: "fx", group: "plasma", type: "dual", label: "Warp", valId: "vPwarp", min: 0, max: 2, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => plasmaWarp = v, durScale: 10 },
+    { key: "tunspeed", host: "fx", group: "tunnel", type: "dual", label: "Fly speed", valId: "vTunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => tunSpeed = v, durScale: 10 },
+    { key: "tuntwist", host: "fx", group: "tunnel", type: "dual", label: "Twist", valId: "vTunTwist", min: -2, max: 2, step: 0.05, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => tunTwist = v, durScale: 10 },
+    { key: "tunrings", host: "fx", group: "tunnel", type: "dual", label: "Ring density", valId: "vTunRings", min: 1, max: 30, step: 0.5, lo: 10, hi: 10, fmt: v => sig3(v), apply: v => tunRings = v, durScale: 10 },
+    { key: "mbcount", host: "fx", group: "metaball", type: "dual", label: "Ball count", valId: "vMbCount", min: 2, max: 16, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => mbCount = Math.round(v), durScale: 10 },   // max must stay <= the FS_METABALL loop bound (its hard ceiling)
+    { key: "mbradius", host: "fx", group: "metaball", type: "dual", label: "Ball size", valId: "vMbRadius", min: 0.04, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => mbRadius = v, durScale: 10 },
+    { key: "mbspeed", host: "fx", group: "metaball", type: "dual", label: "Ball speed", valId: "vMbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => mbSpeed = v, durScale: 10 },
+    { key: "mbgain", host: "fx", group: "metaball", type: "dual", label: "Gain", valId: "vMbGain", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => mbGain = v, durScale: 10 },
+    { key: "ksegments", host: "fx", group: "kaleido", type: "dual", label: "Segments", valId: "vKSeg", min: 3, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => kSeg = Math.round(v), durScale: 10 },
+    { key: "krotspeed", host: "fx", group: "kaleido", type: "dual", label: "Spin", valId: "vKRot", min: -1, max: 1, step: 0.02, lo: 0.2, hi: 0.2, fmt: v => sig3(v), apply: v => kRotSpeed = v, durScale: 10 },
+    { key: "knoisespeed", host: "fx", group: "kaleido", type: "dual", label: "Flow", valId: "vKFlow", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => kNoiseSpeed = v, durScale: 10 },
+    { key: "rzrot", host: "fx", group: "rotozoom", type: "dual", label: "Rotation", valId: "vRzRot", min: -2, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => rzRot = v, durScale: 10 },
+    { key: "rzzoom", host: "fx", group: "rotozoom", type: "dual", label: "Zoom pulse", valId: "vRzZoom", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => rzZoomAmt = v, durScale: 10 },
+    { key: "rztile", host: "fx", group: "rotozoom", type: "dual", label: "Tile density", valId: "vRzTile", min: 1, max: 12, step: 0.5, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => rzTile = v, durScale: 10 },
+    { key: "xorspeed", host: "fx", group: "munch", type: "dual", label: "Munch speed", valId: "vXorSpeed", min: 0, max: 80, step: 1, lo: 20, hi: 20, fmt: v => sig3(v), apply: v => xorSpeed = v, durScale: 10 },
+    { key: "xorscale", host: "fx", group: "munch", type: "dual", label: "Square size", valId: "vXorScale", min: 0.1, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(1 / v) + "px", apply: v => xorScale = v, durScale: 10 },
+    { key: "xormask", host: "fx", group: "munch", type: "dual", label: "Detail", valId: "vXorMask", min: 15, max: 255, step: 1, lo: 255, hi: 255, fmt: v => sig3(v), apply: v => xorMask = Math.round(v), durScale: 10 },
+    { key: "mofreq", host: "fx", group: "moire", type: "dual", label: "Ring frequency", valId: "vMoFreq", min: 2, max: 40, step: 0.5, lo: 10, hi: 10, fmt: v => sig3(v), apply: v => moFreq = v, durScale: 10 },
+    { key: "modrift", host: "fx", group: "moire", type: "dual", label: "Drift speed", valId: "vMoDrift", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => moDrift = v, durScale: 10 },
+    { key: "momix", host: "fx", group: "moire", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => moMix = v, durScale: 10 },
+    { key: "nwspin", host: "fx", group: "newton", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => nwSpin = v, durScale: 10 },
+    { key: "nwrelax", host: "fx", group: "newton", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => nwRelax = v, durScale: 10 },
+    { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 3.5, fmt: v => sig3(v), apply: v => mbPower = v, durScale: 10 },
+    { key: "cbcount", host: "fx", group: "copper", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
+    { key: "cbspeed", host: "fx", group: "copper", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
+    { key: "cbwidth", host: "fx", group: "copper", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
+    { key: "ata", host: "fx", group: "attractor", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => sig3(v), apply: v => atA = v, durScale: 10 },
+    { key: "atb", host: "fx", group: "attractor", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => sig3(v), apply: v => atB = v, durScale: 10 },
+    { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
+    { key: "atd", host: "fx", group: "attractor", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => sig3(v), apply: v => atD = v, durScale: 10 },
+    { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
+    // Camera rotation, in degrees, shown for every effect. Global on purpose:
+    // deliberately absent from every effect's `defaults`, so save/loadState (which
+    // iterate the defaults) leave them alone and they persist across effect switches.
+    { key: "camrx", host: "fx", group: "camera", type: "dual", label: "Camera X", valId: "vCamRX", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRX = v * Math.PI / 180, durScale: 10 },
+    { key: "camry", host: "fx", group: "camera", type: "dual", label: "Camera Y", valId: "vCamRY", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRY = v * Math.PI / 180, durScale: 10 },
+    { key: "camrz", host: "fx", group: "camera", type: "dual", label: "Camera Z", valId: "vCamRZ", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRZ = v * Math.PI / 180, durScale: 10 },
+    { key: "randseed", host: "fx", group: "other", type: "check", label: "Random seed each reload" },
+    { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
+    { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
+    { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
   ];
   function ctlHTML(c) {
     const open = '<div class="ctl" id="ctl-' + c.key + '">';
@@ -2671,9 +2741,28 @@
     const inp = t => '<input type="range" id="' + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
     return open + lbl + '<div class="dual"><div class="track"></div><div class="fill"></div>' + inp("lo") + inp("hi") + "</div></div>";
   }
+  // Controls carrying a `group` are rendered under a shared subheading (Camera,
+  // Banding), so the Settings box reads as sections rather than one long list.
+  // setEffect shows a heading only while at least one of its controls is in the
+  // current effect's params.
+  const CTL_GROUPS = {
+    shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
+    metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
+    moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
+    attractor: "Attractor", camera: "Camera", other: "Other", banding: "Banding",
+  };
   function buildControls() {
     const fxHost = el("fxctl"), bandHost = el("bandctl");
-    CONTROLS.forEach(c => (c.host === "band" ? bandHost : fxHost).insertAdjacentHTML("beforeend", ctlHTML(c)));
+    let open = null;
+    CONTROLS.forEach(c => {
+      const host = c.host === "band" ? bandHost : fxHost;
+      if (c.group !== open) {
+        open = c.group;
+        if (c.group) host.insertAdjacentHTML("beforeend",
+          '<div class="ctl-grp" id="grp-' + c.group + '">' + CTL_GROUPS[c.group] + "</div>");
+      }
+      host.insertAdjacentHTML("beforeend", ctlHTML(c));
+    });
   }
   buildControls();   // render the control DOM before the bind() / bindRange() wiring below reads it
 
@@ -2893,91 +2982,91 @@
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sirpinfyer", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
-      params: ["points", "layers", "speed", "rise", "size", "zoom"], helpTags: ["all", "fire"], fractal2d: true,
+      params: ["points", "layers", "speed", "rise", "size", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "fire"], fractal2d: true,
       defaults: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
       beat: { speed: ["high"], size: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks.",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "rise", "size", "rot", "zoom"], helpTags: ["all", "fire", "tetra"],
+      params: ["showbox", "boxsize", "points", "layers", "speed", "rise", "size", "rot", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "fire", "tetra"],
       defaults: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
       beat: { speed: ["low"], rise: ["high"], size: ["mid"] }, extras: { palette: "1", morph: true, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { const s = juliaSeed(dt); if (useGL) glJulia(s); else julia(s); },
       defaults: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
-      params: ["pspeed", "pscale", "pwarp", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
+      params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
       bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); },
       defaults: { band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
       beat: { band: ["low"], banddim: ["high"], pscale: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "tunnel", name: "Tunnel", subtitle: "Tunnel · demoscene flythrough",
       help: "A classic demoscene tunnel: the screen is polar-mapped so concentric rings rush toward the vanishing point. Fly speed drives you forward; Twist rotates the pipe.",
-      params: ["tunspeed", "tuntwist", "tunrings", "zoom"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
+      params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
       draw: dt => { const s = tunnelSeed(dt); if (useGL) glShaderDraw("tunnel", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uRings, s.rings); gl.uniform1f(u.uZoom, s.zoom); }); else tunnel(dt); },
       defaults: { tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { tunspeed: ["low"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "metaballs", name: "Metaballs", subtitle: "Metaballs · gooey blobs",
       help: "Blobby fields that merge and split like lava-lamp goo — a sum of inverse-square fields from moving centres, soft-saturated. Turn up Banding for hard iso-contour shells.",
-      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
+      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
       draw: dt => { const s = metaSeed(dt); if (useGL) glShaderDraw("metaball", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRadius, s.radius); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); else metaballs(dt); },
       defaults: { mbcount: [5, 5], mbradius: [0.16, 0.2], mbspeed: [0.6, 1.2], mbgain: [0.8, 1.5], zoom: [1, 1], band: [40, 70], bandsize: [1, 3], banddim: [15, 40] },
       beat: { mbradius: ["low"], mbgain: ["mid"] }, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
     { id: "burningship", name: "Burning Ship", presetName: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(s); },
       defaults: { band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "kaleidoscope", name: "Kaleidoscope", subtitle: "Kaleidoscope · mirrored symmetry",
       help: "A moving field folded into mirror-symmetric wedges, like looking down a kaleidoscope. Segments sets the symmetry, Spin rotates the whole thing, Flow animates the pattern. Add banding for sharp mandala rings.",
-      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
+      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
       draw: dt => { const s = kaleidoSeed(dt); if (useGL) glShaderDraw("kaleido", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSeg, s.seg); gl.uniform1f(u.uRot, s.rot); gl.uniform1f(u.uZoom, s.zoom); }); else kaleidoscope(dt); },
       defaults: { ksegments: [6, 6], krotspeed: [0.1, 0.3], knoisespeed: [0.6, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { knoisespeed: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "rotozoom", name: "Rotozoomer", subtitle: "Rotozoomer · rotate + zoom",
       help: "The classic Amiga rotozoomer: a tiled grid texture spun and pulse-zoomed in real time. Rotation sets the spin, Zoom pulse the breathing scale, Tile density how fine the grid is.",
-      params: ["rzrot", "rzzoom", "rztile", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
+      params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
       draw: dt => { const s = rotozoomSeed(dt); if (useGL) glShaderDraw("rotozoom", u => { gl.uniform1f(u.uAngle, s.angle); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uTile, s.tile); gl.uniform1f(u.uZoom, s.zoom); }); else rotozoom(dt); },
       defaults: { rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { rzzoom: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "munch", name: "Munching Squares", subtitle: "Munching squares · XOR pattern",
       help: "The hypnotic PDP-1 classic: each pixel is ((x XOR y) + time) masked to a value, mapped through the palette. Munch speed animates it, Square size sets the pixel chunkiness, Detail the wrap.",
-      params: ["xorspeed", "xorscale", "xormask", "zoom"], helpTags: ["all", "xor"], bakesOwnZoom: true,
+      params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "xor"], bakesOwnZoom: true,
       draw: dt => { const s = munchSeed(dt); if (useGL) glShaderDraw("munch", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uMask, s.mask); gl.uniform1f(u.uZoom, s.zoom); }); else munch(dt); },
       defaults: { xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { xorspeed: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "moire", name: "Moiré", subtitle: "Moiré · interference shimmer",
       help: "Two sets of concentric rings drift over each other and interfere into shimmering moiré bands. Ring frequency sets how tight the rings are, Drift speed how fast the centres move, Blend fades between multiply and add.",
-      params: ["mofreq", "modrift", "momix", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
+      params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
       draw: dt => { const s = moireSeed(dt); if (useGL) glShaderDraw("moire", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uZoom, s.zoom); }); else moire(dt); },
       defaults: { mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { mofreq: ["low"] }, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
     { id: "newton", name: "Newton", subtitle: "Newton fractal · root basins",
       help: "The Newton fractal: each pixel is coloured by which root of z³−1 Newton's method converges to, plus how many steps it took, giving three interlocking basins with fractal borders. Root spin rotates it; Relaxation warps the convergence.",
-      params: ["nwspin", "nwrelax", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
+      params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
       draw: dt => { const s = newtonSeed(dt); if (useGL) glShaderDraw("newton", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uRelax, s.relax); gl.uniform1f(u.uZoom, s.zoom); }); else newton(dt); },
       defaults: { nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { nwspin: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", presetName: "Multibrot", subtitle: "Multibrot · power sweep",
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
-      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band", "multibrot"],
+      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
       defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: { mbexp: ["low"], banddim: ["high"] }, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
-      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
+      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
       draw: dt => { const s = copperSeed(dt); if (useGL) glShaderDraw("copper", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); else copperbars(dt); },
       defaults: { cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { cbwidth: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", presetName: "Attractor", subtitle: "Strange attractor · de Jong",
       help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow.",
-      params: ["ata", "atb", "atc", "atd", "points", "rise", "zoom"], helpTags: ["all", "attractor"],
+      params: ["ata", "atb", "atc", "atd", "points", "rise", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "attractor"],
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
       defaults: { ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: { ata: ["low"], atc: ["high"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
@@ -3037,6 +3126,59 @@
     const st = {}, d = EFFECTS[e].defaults;
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
+  }
+  // The camera lives outside states[e] (it is global — see camRX/camRY/camRZ), so
+  // it needs its own read/write of the thumbs. A preset records one, and applying
+  // a preset EASES the camera from wherever it is now to the preset's angles over
+  // CAM_TWEEN ms rather than snapping — so cutting between two presets with
+  // different cameras flies between them.
+  const CAM_KEYS = ["zoom", "camrx", "camry", "camrz"];
+  const CAM_TWEEN = 900;
+  let camTween = null;
+  function readCam() {
+    const c = {};
+    for (const k of CAM_KEYS) c[k] = [+el(k + "-lo").value, +el(k + "-hi").value];
+    return c;
+  }
+  function writeCam(c) {
+    if (!c) return;
+    for (const k of CAM_KEYS) {
+      const v = c[k]; if (!Array.isArray(v)) continue;
+      el(k + "-lo").value = v[0]; el(k + "-hi").value = v[1];
+      el(k + "-lo").dispatchEvent(new Event("input"));
+      el(k + "-hi").dispatchEvent(new Event("input"));
+    }
+  }
+  function camOk(c) {          // a blob's camera, validated against the live bounds
+    if (!c || typeof c !== "object") return null;
+    const out = {};
+    for (const k of CAM_KEYS) {
+      const v = c[k], lo = el(k + "-lo"); if (!Array.isArray(v) || !lo) continue;
+      const mn = +lo.min, mx = +lo.max;
+      const a = +v[0], b = +v[1];
+      if (isFinite(a) && isFinite(b) && a >= mn && a <= mx && b >= mn && b <= mx) out[k] = [a, b];
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  function beginCamTween(to) {
+    const t = camOk(to); if (!t) return;
+    camTween = { from: readCam(), to: t, t0: 0 };
+  }
+  function camTweenStep(now) {
+    if (!camTween) return;
+    if (!camTween.t0) camTween.t0 = now;
+    const f = Math.min(1, (now - camTween.t0) / CAM_TWEEN);
+    const e = f * f * (3 - 2 * f);                    // smoothstep, like the slider drift
+    const mid = {};
+    for (const k of CAM_KEYS) {
+      const a = camTween.from[k], b = camTween.to[k];
+      if (!a || !b) continue;
+      mid[k] = [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e];
+    }
+    suppressPersist = true;                            // a tween frame is not an edit
+    writeCam(mid);
+    suppressPersist = false;
+    if (f >= 1) camTween = null;
   }
   function initStates() { EFFECTS.forEach((_, k) => states[k] = presetState(k)); }
   initStates();
@@ -3226,6 +3368,7 @@
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
     return {
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
+      cam: readCam(),                                // the global camera (not per effect)
       ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       presets, curPreset,
@@ -3278,6 +3421,7 @@
         }
       }
     }
+    if (saved.cam) writeCam(camOk(saved.cam));   // global camera (absent in pre-feature blobs → 0°)
     if (saved.plens) {                  // ...and their lengths (absent in pre-feature blobs → PULSE_DROP)
       for (const k in plenStates) {
         const ps = saved.plens[k]; if (!ps) continue;
@@ -3344,6 +3488,10 @@
       if (rows[c.key]) rows[c.key].style.display = vis;
       else el("ctl-" + c.key).style.display = vis;
     });
+    for (const g in CTL_GROUPS) {     // a heading shows only if the effect uses that group
+      const hdr = el("grp-" + g);
+      if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
+    }
     refreshBreakout();                // show/hide the pop-out boxes for this effect
     // The Cardioid debug view only means anything for a Mandelbrot-seeded effect.
     el("cardbtn").style.display = fx.cardioid ? "" : "none";
@@ -3614,7 +3762,7 @@
   // browser-local saved presets. Decoded by applyShared() on load.
   function shareUrl() {
     saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
-    const blob = { states, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), plens: prunePlens(plenStates), extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
+    const blob = { states, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), plens: prunePlens(plenStates), extras, effect, cam: readCam(), cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
     const s = btoa(unescape(encodeURIComponent(JSON.stringify(serializeBlob(blob)))));   // effect stored as a stable id
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
     // through the effect's landing page when it has one (so social unfurls show
@@ -3679,11 +3827,12 @@
       beat: JSON.parse(JSON.stringify(beatStates[effect])),
       pulse: JSON.parse(JSON.stringify(pulseStates[effect])),
       plen: JSON.parse(JSON.stringify(plenStates[effect])),
+      cam: readCam(),                   // global, but remembered per preset so it can fly between them
       extra: JSON.parse(JSON.stringify(extras[effect])),
     };
   }
   function defaultPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e) }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), cam: readCam() }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -3722,6 +3871,7 @@
     beatStates[p.effect] = JSON.parse(JSON.stringify(p.beat));
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
+    beginCamTween(p.cam);                                   // fly, don't snap (no p.cam ⇒ stay put)
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene (may snap the palette)
@@ -3852,6 +4002,7 @@
       out.states = s.states; out.beats = s.beats; out.extras = s.extras;
       if (s.pulses) out.pulses = s.pulses;         // per-effect beat-pulse shapes (absent in pre-feature backups)
       if (s.plens) out.plens = s.plens;            // ...and their lengths
+      if (s.cam) out.cam = s.cam;                  // the global camera
       if (Number.isInteger(s.effect)) out.effect = s.effect;
       if (typeof s.cycle === "boolean") out.cycle = s.cycle;
       if (Array.isArray(s.ttl)) out.ttl = s.ttl;   // global preset TTL
