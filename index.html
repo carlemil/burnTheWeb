@@ -177,6 +177,8 @@
   #reset:hover { background: rgba(255, 122, 26, 0.3); }
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
+  /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
+  #panel .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
   #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
   #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
   /* ---- Diagnostics: dev tools folded into the panel (frame counter, beat trace,
@@ -395,7 +397,7 @@
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
   <label>Backup, restore &amp; share</label>
-  <div class="presetrow">
+  <div class="presetrow grid2">
     <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, beat-detection tuning — everything the app remembers">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup — choose which parts to bring back, and whether to merge or replace">Restore</button>
     <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
