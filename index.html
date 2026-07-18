@@ -4125,6 +4125,7 @@
     effect = i;
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
+    dockAll();                        // new scene ⇒ empty pop-out column (see Break-out boxes)
     // show only the controls this effect declares (rendered from the CONTROLS schema)
     refreshControlVisibility();       // effect params + the ticked filters' params
     // The Cardioid debug view only means anything for a Mandelbrot-seeded effect.
@@ -4262,6 +4263,14 @@
     refreshBreakout();
   }
   function togglePop(key) { popped.has(key) ? dockCtl(key) : popCtl(key); }
+  // Dock everything. setEffect calls this: a switch is a whole new scene (every
+  // slider, chip and palette is swapped out from under you), so a column left over
+  // from the last one is stale furniture — start clean and let the user re-pop.
+  function dockAll() {
+    if (!popped.size) return;
+    const keys = [...popped];                    // snapshot: dockCtl mutates the set
+    for (const key of keys) dockCtl(key);
+  }
   function refreshBreakout() {
     const shown = shownKeys();
     let anyVisible = false;

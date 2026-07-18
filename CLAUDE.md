@@ -212,7 +212,12 @@ param/default that isn't a real control). Everything derives from the registry:
   `setEffect` — shows a box iff `popped.has(key) && effect.params.has(key)` and toggles
   `#breakout.empty`. `setEffect` toggles the **menu row** for poppable keys (the box
   itself is left to `refreshBreakout`) and the control node directly for the rest. State
-  is **transient** (not persisted). Because `#breakout` sits *outside* `#panel` (the
+  is **transient** (not persisted). `setEffect` also calls **`dockAll()`** first: a switch
+  swaps every slider, chip and palette, so a column left over from the previous scene is
+  stale furniture — you start clean and re-pop what you want. It runs on *every*
+  `setEffect`, including a same-effect preset apply (also a new scene) and the auto-cycle's,
+  and it goes through `dockCtl` per key rather than clearing the set, so the menu rows'
+  `+`/`−` buttons can't desync from `popped`. Because `#breakout` sits *outside* `#panel` (the
   panel's `backdrop-filter` + `overflow` would clip a fixed child), three things are
   wired to reach it too: the control-appearance CSS is scoped to `#panel …, #breakout …`;
   the delegated `onEdit` (persist/autosave) is attached to `#breakout` as well; and
