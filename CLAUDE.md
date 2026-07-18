@@ -366,6 +366,17 @@ fast GPU must not tank a phone), audio on/off (needs a user gesture), the `randS
 orbit re-roll, the `Date.now()` chaos seed, and every accumulated phase (`simT`,
 `spinAngle`, `*Time`). A shared scene is the same *configuration*, not the same *frame*.
 
+**Switching effect leaves the selected preset** (drops the menu to "— custom —") rather
+than rewriting it. A preset carries its own effect, so the delegated autosave used to
+fold the switch straight into it: pick "Sirpinfyer", switch to Tunnel, and your
+Sirpinfyer preset silently became a Tunnel scene under its old name. Suppressing autosave
+for just that one event would not have been enough — the preset would keep its old effect
+only until the next slider drag wrote the new one in. Deselecting fixes both, because
+`autosavePreset()` early-returns while `curPreset < 0`. The deselect lives in the effect
+`<select>`'s own listener, which runs in the **target phase**, before the delegated
+`onEdit` bubbles up to `#panel` — that ordering is what makes it win the race. Assigning
+`presetSel.value` does not fire `change`, so `applyPreset` is not re-entered.
+
 Presets are **local to the browser**. Selecting one links edits to it: `onEdit` → `autosavePreset()`
 writes the current scene straight back into the selected preset (no manual save).
 `mergeState()` normalizes a loaded preset to the current slider set — it drops

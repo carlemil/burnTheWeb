@@ -4471,7 +4471,21 @@
   }
   el("ttl-lo").addEventListener("input", () => nextSwitch = 0);   // reschedule on retune
   el("ttl-hi").addEventListener("input", () => nextSwitch = 0);
-  effectSel.addEventListener("change", () => { setEffect(+effectSel.value); nextSwitch = 0; });
+  // Switching effect LEAVES the selected preset — it does not rewrite it. A preset is a
+  // whole scene *including* its effect, so without this the delegated autosave folded the
+  // switch straight into the selected preset: pick "Sirpinfyer", switch to Tunnel, and
+  // your Sirpinfyer preset silently became a Tunnel scene under its old name. Skipping
+  // just this one event would not be enough either — the preset would keep its old effect
+  // until the very next slider drag autosaved the new one into it.
+  // Dropping to "— custom —" fixes both: autosavePreset() early-returns while curPreset
+  // is < 0. This listener is on the select itself, so it runs in the target phase, before
+  // the delegated onEdit bubbles up to #panel — the deselect always wins the race.
+  // Assigning presetSel.value does not fire `change`, so applyPreset is not re-entered.
+  effectSel.addEventListener("change", () => {
+    if (curPreset >= 0) { curPreset = -1; presetSel.value = "-1"; }
+    setEffect(+effectSel.value);
+    nextSwitch = 0;
+  });
   paletteSel.addEventListener("change", () => {
     // while morphing, a manual pick restarts the blend from that palette
     if (morphing) startMorph(+paletteSel.value);

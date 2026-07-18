@@ -18,7 +18,8 @@
 // It slices by source markers, so keep them: `const BEAT_DEFAULTS` … `const beatCfg`,
 // `function mergeBeatTune(` … `function installBeatTune(`, `function snapshotScene()`
 // … `function defaultPresets(`, `function applyPreset(` … `function createPreset(`,
-// and `const valid = arr` … `if (!valid.length`.
+// `const valid = arr` … `if (!valid.length`, and
+// `effectSel.addEventListener("change"` … `paletteSel.addEventListener(`.
 const fs = require("fs");
 const html = fs.readFileSync(process.argv[2] || "index.html", "utf8");
 const s0 = html.indexOf("<script>"), s1 = html.indexOf("</script>", s0);
@@ -126,7 +127,20 @@ const D = P.BEAT_DEFAULTS;
   ok(!threw, "a short/sparse bands array doesn't throw (reachable from a hand-edited backup)");
 }
 
-// --- 3. backup file naming + shape normalization ------------------------------
+// --- 3. switching effect must leave the selected preset, not rewrite it -------
+// The delegated autosave folds any panel edit into the selected preset, and a preset
+// carries its own effect — so without an explicit deselect here, picking a preset and
+// then switching effect rewrote that preset to the new effect under its old name. The
+// corruption is silent and permanent, which is why it is worth a structural assertion
+// as well as the headless behaviour test.
+{
+  const src2 = cut('effectSel.addEventListener("change"', "paletteSel.addEventListener(");
+  ok(/curPreset\s*=\s*-1/.test(src2),
+     "the effect chooser drops to '— custom —' (autosavePreset early-returns below 0)");
+  ok(/presetSel\.value\s*=\s*"-1"/.test(src2), "...and the menu follows");
+}
+
+// --- 4. backup file naming + shape normalization ------------------------------
 const B = new Function(
   cut("  const WIN_RESERVED", "  function stampNow(") +
   cut("  function normalizeBackup(", "  el(\"importpresets\")") +
