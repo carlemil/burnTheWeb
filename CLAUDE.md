@@ -332,6 +332,27 @@ effect's `defaults` change (it validates against `presetState(e)`, i.e. the
 descriptor's `defaults`). `mergePulse()` does the same for a preset's `pulse` map,
 so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`.
 `effect` in a saved preset is the stable string `id`.
+
+**Every one of `applyPreset`'s four maps must go through its `merge*`** — `mergeState`,
+`mergeBeat`, `mergePulse`, `mergePlen`. `beat` was copied verbatim for a long time and
+that was a real, ugly bug: a preset saved before a control existed has no entry for that
+id, `loadBeat` spread the `undefined` into `{}`, and **`classList.toggle("on", undefined)`
+*flips* the class** — per the DOM spec an explicitly-passed `undefined` counts as "force
+not supplied". So the chip inverted on every `loadBeat` (every effect switch, preset apply
+and Reset) while `updateAnims` saw `undefined` and never armed the slider: a chip that
+looked lit and did nothing. It hid well, because the chips only exist inside `#breakout`
+and an un-popped box is `display:none`, so the flips accumulated unseen and what you saw
+on first pop was just the parity of how many loads had happened. `saveBeat` then wrote the
+`{}` straight back, so it survived reloads. `loadBeat` now spreads over an all-false base
+and `syncChips` coerces with `!!` — belt and braces, since the flip is silent and the
+merge is easy to forget again.
+
+**Beat chips are `<button>`s, so they fire neither `input` nor `change`** and the delegated
+`onEdit` cannot see them. `chipEdited()` does `onEdit`'s job by hand — `autosavePreset()`
+(guarded on `persistReady && !applyingPreset`) then `persist()`. Calling only `persist()`
+was the second half of the same bug report: the chip reached `localStorage` but never the
+*selected preset*, so re-selecting that preset silently disarmed it. It looked intermittent
+because any later slider drag *did* autosave and retroactively captured the chip.
 - Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, pulses, plens, extras, effect,
   ranges, beatTune, presets, curPreset, cycle, ttl, scale, panelOpen, audio}` — built by the
   single helper **`fullSnapshot()`**, which is *the* definition of "everything we

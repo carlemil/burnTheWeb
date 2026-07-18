@@ -3244,7 +3244,11 @@
       btn.addEventListener("click", () => {
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
-        persist();               // clicks aren't caught by the delegated input/change listener
+        // A <button> click fires neither input nor change, so the delegated onEdit
+        // never sees it — do its job by hand, autosave included. Without the
+        // autosave the chip reached localStorage but not the *selected preset*,
+        // so re-selecting that preset silently disarmed it again.
+        chipEdited();
       });
       wrap.appendChild(btn);
       chipEls[id][k] = btn;
@@ -3792,9 +3796,12 @@
   function initBeatStates() { EFFECTS.forEach((_, k) => beatStates[k] = presetBeat(k)); }
   initBeatStates();
   function saveBeat(e) { for (const id in beatReact) beatStates[e][id] = { ...beatReact[id] }; }
-  function loadBeat(e) { for (const id in beatReact) beatReact[id] = { ...beatStates[e][id] }; syncChips(); }
+  // A missing id must land as all-false, not `{}`: an undefined band would reach
+  // classList.toggle below, where "force not supplied" means *flip*, not clear.
+  function loadBeat(e) { for (const id in beatReact) beatReact[id] = { low: false, mid: false, high: false, ...beatStates[e][id] }; syncChips(); }
   function syncChips() {
-    for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", beatReact[id][k]);
+    // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
+    for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
   }
 
   // Per-effect beat-pulse SHAPE, parallel to beatStates. pulseStates[effect][id] =
@@ -4349,6 +4356,12 @@
     if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }
+  // Beat chips are <button>s, so they never fire input/change and the delegated
+  // listener above can't see them. Same body, minus the target-based guards.
+  function chipEdited() {
+    if (persistReady && !applyingPreset) autosavePreset();
+    persist();
+  }
   panel.addEventListener("input", onEdit);
   panel.addEventListener("change", onEdit);
   breakout.addEventListener("input", onEdit);    // popped controls live outside #panel — persist their edits too
@@ -4608,6 +4621,20 @@
     }
     return base;
   }
+  // ...and for its beat-chip map. This was the one loader that copied verbatim, which
+  // left `beatStates[e][id]` undefined for any control the preset predates. loadBeat
+  // spread that into `{}`, and `syncChips`'s classList.toggle(…, undefined) *flips*
+  // the class rather than clearing it (per the DOM spec an explicit undefined counts
+  // as "force not supplied"), so the chip inverted on every load while the slider was
+  // never actually armed. Merging here is the fix; syncChips coerces as a backstop.
+  function mergeBeat(e, saved) {
+    const base = presetBeat(e);
+    if (saved) for (const id in base) {
+      const b = saved[id]; if (!b) continue;
+      for (const band of ["low", "mid", "high"]) if (typeof b[band] === "boolean") base[id][band] = b[band];
+    }
+    return base;
+  }
   // Same normalization for a preset's pulse-shape map: keep known ids/keys, default
   // the rest — so presets saved before pulse shapes existed (no `pulse`) still load.
   function mergePulse(e, saved) {
@@ -4626,7 +4653,7 @@
     applyingPreset = true;
     const fromRamp = paletteBase.slice();   // the palette on screen right now — blend away from it
     states[p.effect] = mergeState(p.effect, p.state);
-    beatStates[p.effect] = JSON.parse(JSON.stringify(p.beat));
+    beatStates[p.effect] = mergeBeat(p.effect, p.beat);      // p.beat may predate a control → default it
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
     beginCamTween(p.cam);                                   // fly, don't snap (no p.cam ⇒ stay put)
