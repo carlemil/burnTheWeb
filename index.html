@@ -1001,7 +1001,9 @@
   // CPU path double-buffers so propagation is left/right symmetric — reading a
   // single in-place buffer in column order would bias heat leftward and the
   // flames would lean, diverging from the symmetric GPU shader).
-  let fw = 0, fh = 0, fire = null, fireNext = null, img = null, buf32 = null;
+  // `fireKeep` holds the retained heat while a shader effect's CPU mirror overwrites
+  // the scratch buffer (see frame()); the two are swapped, never copied.
+  let fw = 0, fh = 0, fire = null, fireNext = null, fireKeep = null, img = null, buf32 = null;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     canvas.width = w;
@@ -1015,6 +1017,7 @@
       off.height = fh;
       fire = new Uint8Array(fw * fh);
       fireNext = new Uint8Array(fw * fh);
+      fireKeep = new Uint8Array(fw * fh);
       img = offCtx.createImageData(fw, fh);
       buf32 = new Uint32Array(img.data.buffer);
       ctx.imageSmoothingEnabled = true;
@@ -1592,7 +1595,7 @@
     gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 1);
     for (let i = 0; i < 2; i++) { bindFbo(glFbo.heat[i], fw, fh); gl.clear(gl.COLOR_BUFFER_BIT); }
-    curHeat = 0;
+    curHeat = 0; pendingDst = 0;
   }
   function uploadPalette() {
     if (!paletteDirty) return;   // skip the repack+upload when the palette is unchanged
@@ -1606,30 +1609,34 @@
     paletteDirty = false;
   }
 
-  // one propagation tick: src heat → dst heat (points get MAX-blended after)
-  // Open a heat tick: run the feedback stage (currently just Fire's propagation)
-  // from the live heat into the other buffer, and leave that FBO bound so the
-  // effect's fresh output can be MAX-blended into it. Pairs with glEndHeat, which
-  // is the ONLY place curHeat flips — keeping the flip in one place is what makes
-  // the point path safe to reason about.
+  // Open a heat tick: run the whole feedback chain (Fire's propagation, Fade's decay,
+  // …) from the live heat into the other buffer, ping-ponging one pass per filter, and
+  // leave the final FBO bound so the effect's fresh output can be MAX-blended into it.
+  // Pairs with glEndHeat, which is the ONLY place curHeat flips for the point path —
+  // keeping the flip in one place is what makes that path safe to reason about.
+  //
+  // `pendingDst` is set to wherever the LAST pass landed, not a fixed 1 - curHeat, so
+  // any number of passes works without a parity fixup: with two filters the result ends
+  // up back in the buffer it started in. Getting this backwards only misbehaves when two
+  // feedback filters are ticked at once, so it is easy to ship broken.
   function glBeginHeat() {
-    const src = curHeat, dst = 1 - curHeat;
-    bindFbo(glFbo.heat[dst], fw, fh);
+    const chain = activeFilters().filter(f => f.stage === "feedback" && f.glFeedback);
+    let src = curHeat, dst = 1 - curHeat;
     gl.disable(gl.BLEND);
     // No feedback filter ⇒ nothing carries over, so start from black. Clearing is
     // essential: skipping it would leave 2-frames-stale heat in this buffer.
-    if (!filterOn("fire")) {
+    if (!chain.length) {
+      bindFbo(glFbo.heat[dst], fw, fh);
       gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
       pendingDst = dst;
       return;
     }
-    gl.useProgram(glProg.prop.p);
-    bindTexUnit(0, glTex.heat[src]);
-    gl.uniform1i(glProg.prop.u.uHeat, 0);
-    gl.uniform2f(glProg.prop.u.uSize, fw, fh);
-    gl.uniform1f(glProg.prop.u.uDecay, cfg.decay);
-    drawQuad();
-    pendingDst = dst;             // FBO stays bound; points draw into it next
+    for (const f of chain) {
+      bindFbo(glFbo.heat[dst], fw, fh);   // bind before sampling: src is never the target
+      f.glFeedback(glTex.heat[src]);
+      src = dst; dst = 1 - dst;
+    }
+    pendingDst = src;             // FBO stays bound; the effect draws into it next
   }
   // Draw the collected stamps into the currently bound FBO with MAX blending.
   // Split out of glDrawPoints so the credits can stamp over a shader effect's heat
@@ -1661,15 +1668,23 @@
   // glProg[name] over a fullscreen quad. Every effect shader takes uSize; `setU` sets
   // the rest. A shader effect = an FS_* source + `glProg.<id>` registered in initGL +
   // a descriptor `draw` hook that calls this (see glJulia/glPlasma below for the shape).
+  // With a feedback filter ticked, frame() has already run the chain and flipped, so
+  // heat[curHeat] holds the retained (decayed/risen) heat — MAX-blend over it instead of
+  // replacing it, exactly as point stamps inject. With no feedback filter this is the
+  // original unblended overwrite, byte for byte.
   function glShaderDraw(name, setU) {
-    bindFbo(glFbo.heat[curHeat], fw, fh);   // the shader replaces the current heat
-    gl.disable(gl.BLEND);
+    const retain = hasFeedback();
+    bindFbo(glFbo.heat[curHeat], fw, fh);
+    if (retain) { gl.enable(gl.BLEND); gl.blendEquation(gl.MAX); }
+    else gl.disable(gl.BLEND);
     const P = glProg[name];
     gl.useProgram(P.p);
     gl.uniform2f(P.u.uSize, fw, fh);
     if (P.u.uCam) { gl.uniform3f(P.u.uCam, camRX, camRY, camRZ); gl.uniform2f(P.u.uCamSize, fw, fh); }
     setU(P.u);
     drawQuad();
+    // Restore explicitly: glPostChain/postPass assume BLEND is off and never set it.
+    if (retain) { gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); }
   }
   function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }
   function glPlasma(s) { glShaderDraw("plasma", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); }
@@ -1866,21 +1881,17 @@
   // reload starts somewhere different.
   const T0 = performance.timeOrigin * 0.001;       // load time in seconds
   let simT = T0 * cfg.speed;
-  // The fire simulation advances at a fixed (slow) tick rate, decoupled from
-  // the render frame rate, so the burn can be as slow as we like while the
-  // canvas still repaints smoothly.
-  function simulate(now) {
-    simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
-    const t = simT;
-    spinAngle += rotSpeed / cfg.burn;  // rotation phase — 1/burn s per tick, so rad/s
-
-    // 1) propagate existing fire upward (cgtutor averaging, with decay). On the
-    // GPU this is a fragment shader; the CPU double loop is the fallback path.
+  // One tick of the feedback stage: advance the retained heat (Fire's upward
+  // propagation, Fade's decay, …) and leave it ready for this tick's fresh output to
+  // be MAX-injected on top. On the GPU this is a fragment shader; the CPU double loop
+  // is the fallback path. Does NOT flip curHeat — glEndHeat owns that for the point
+  // path, so that the flip lives in exactly one place.
+  function beginHeatTick() {
     if (useGL) {
       glBeginHeat();
       glPtCount = 0;             // start a fresh stamp list for this tick
     } else if (!filterOn("fire")) {
-      fire.fill(0);              // Fire off: this tick's stamps stand alone
+      fire.fill(0);              // Fire off: this tick's output stands alone
       for (const f of activeFilters()) if (f.cpuFeedback) f.cpuFeedback();
     } else {
       const decay = cfg.decay, src = fire, dst = fireNext;
@@ -1901,6 +1912,20 @@
       fire = fireNext; fireNext = src;   // swap: `fire` now holds the new frame
       for (const f of activeFilters()) if (f.cpuFeedback) f.cpuFeedback();
     }
+  }
+  // Same tick, but closed: for shader effects, which have no stamp phase to close it.
+  function heatFeedbackTick() { beginHeatTick(); if (useGL) curHeat = pendingDst; }
+
+  // The fire simulation advances at a fixed (slow) tick rate, decoupled from
+  // the render frame rate, so the burn can be as slow as we like while the
+  // canvas still repaints smoothly.
+  function simulate(now) {
+    simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
+    const t = simT;
+    spinAngle += rotSpeed / cfg.burn;  // rotation phase — 1/burn s per tick, so rad/s
+
+    // 1) propagate existing fire upward (cgtutor averaging, with decay).
+    beginHeatTick();
 
     creditStamp();                    // credits burn in with the effect's own points
 
@@ -2539,7 +2564,20 @@
     let ticks = 0;
     while (acc >= step && ticks < 4) { acc -= step; ticks++; }
     if (fx.draw) {
+      // A shader effect overwrites the whole heat buffer, so with a feedback filter
+      // ticked we advance the retained heat first and then MAX-composite this frame's
+      // output over it. On the CPU the mirror still writes every cell unconditionally,
+      // so we hand it the *other* buffer (a pointer swap, not a per-frame memcpy) and
+      // merge afterwards. With no feedback filter none of this runs and the clean-slate
+      // path is untouched.
+      const retain = hasFeedback();
+      if (retain) {
+        for (let i = 0; i < ticks; i++) heatFeedbackTick();
+        if (!useGL) { const keep = fireKeep; fireKeep = fire; fire = keep; }
+      }
       fx.draw(dt);                    // shader effect: writes the heat tex directly from its seed
+      if (retain && !useGL)
+        for (let i = 0; i < fire.length; i++) if (fireKeep[i] > fire[i]) fire[i] = fireKeep[i];
       if (creditLeft > 0) {           // ...then burn the credits over it
         glPtCount = 0;
         creditStamp();
@@ -3062,7 +3100,8 @@
     refreshControlVisibility();
     bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // the slider's apply respects this too
     acc = 0;
-    if (!filterOn("fire")) { if (fire) fire.fill(0); if (fireNext) fireNext.fill(0); }
+    // Only wipe when nothing carries heat over — Fade alone still retains it.
+    if (!hasFeedback()) { if (fire) fire.fill(0); if (fireNext) fireNext.fill(0); }
     persist();
   }
   // Controls carrying a `group` are rendered under a shared subheading (Camera,

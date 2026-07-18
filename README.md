@@ -222,6 +222,15 @@ Untick everything for the raw effect with no post-processing. Fire and Fade run
 on the retained heat, before the effect's fresh output is mixed in; the rest work
 on the finished colour image, so they behave the way their names suggest.
 
+That first pair is what decides whether the picture starts from a clean slate.
+With neither ticked, every frame is drawn fresh over black — which is what the
+shader effects (Plasma, the fractals, Tunnel, …) have always done. Tick Fire or
+Fade and the previous frame stays put, decayed or drifting upward, with the new
+frame laid over the top wherever it's brighter. That's where trails, smears and
+long exposures come from. Worth knowing: with Fire and Fade both unticked there
+is nothing to dim what's already on screen, so anything bright stays bright —
+retention is only interesting when something is fading it.
+
 On machines without WebGL the app falls back to a Canvas2D renderer, and the
 filters that are GPU passes (Pixelate, Blur/sharpen, Edge, Posterize, Mirror) are
 greyed out there rather than pretending to work. Fire, Fade and Bloom run on both.

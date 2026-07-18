@@ -117,9 +117,9 @@ it is a per-browser choice, not part of a shared or backed-up scene.
 use, ticked in a checkbox list (registry order is the apply order — a checkbox list can't
 be reordered, so that order is a design decision). Two stages, split by **whether the
 filter writes the retained heat buffer**:
-- **feedback** (`Fire`; later Echo/Fade) — mutates heat that survives to the next frame,
-  so it runs inside `glBeginHeat` *before* the effect's output is MAX-injected. With no
-  feedback filter, `glBeginHeat` **clears** (skipping it would read 2-frames-stale heat)
+- **feedback** (`Fire`, `Fade pixel`; later Echo) — mutates heat that survives to the next
+  frame, so it runs inside `glBeginHeat` *before* the effect's output is MAX-injected. With
+  no feedback filter, `glBeginHeat` **clears** (skipping it would read 2-frames-stale heat)
   and the CPU path zeroes `fire` instead of running the propagation loop.
 - **post** (Pixelate, Blur/sharpen, Edge, Posterize, Mirror, Bloom) — read the
   palette-mapped image. `glPostChain()` ping-pongs them through `glTex.post[0]/[1]`
@@ -129,9 +129,29 @@ filter writes the retained heat buffer**:
   Bloom has no pass of its own: it is the pre-existing glow composite with its strength
   under `bloomAmt`/`uBloom` (0 when off).
 
-`glBeginHeat` runs the feedback chain with **`pendingDst` set to wherever the result
-landed**, not a fixed `1 - curHeat`, so any number of passes works without a parity
-fixup. Post filters are GPU passes; on the Canvas2D fallback they carry `cpuOk: false`,
+`glBeginHeat` runs the feedback chain — every ticked `stage: "feedback"` filter's
+`glFeedback(srcTex)` in registry order, one ping-pong pass each — with **`pendingDst` set
+to wherever the last pass landed**, not a fixed `1 - curHeat`, so any number of passes
+works without a parity fixup. With two filters the result ends up back in the buffer it
+started in, which is why `pendingDst = src` (not `dst`) after the loop; a `1 - curHeat`
+assumption is correct for one pass and wrong for two, so it is easy to ship broken.
+`tools/heatprobe.js` locks the parity down.
+
+**Feedback filters apply to shader effects too, not just the point ones.** A shader
+effect overwrites the whole heat buffer, so `frame()` advances the retained heat first
+(`heatFeedbackTick()` × `ticks`) and then `glShaderDraw` **MAX-blends** its output over
+it instead of replacing it — the same injection point stamps use. `hasFeedback()` is the
+single predicate: false ⇒ the original clean-slate overwrite, byte for byte. On the CPU
+path the mirrors still write every cell unconditionally, so `frame()` hands the mirror
+the *other* buffer (a `fire`/`fireKeep` **pointer swap**, not a per-frame memcpy) and
+MAX-merges afterwards; this depends on the invariant that **every CPU mirror writes every
+cell** — an early-out in one would leak two-frames-stale pixels. `beginHeatTick()` is the
+shared tick body (extracted from `simulate`) and does **not** flip `curHeat`;
+`heatFeedbackTick()` is the flipping variant for shader effects, which have no stamp
+phase to close the tick. `applyFilters()` wipes `fire` on `!hasFeedback()`, not
+`!filterOn("fire")` — otherwise unticking Fire would wipe Fade's trails.
+
+Post filters are GPU passes; on the Canvas2D fallback they carry `cpuOk: false`,
 which greys out their checkbox *and* is stripped from a loaded scene's list, so a blob
 authored on a GL machine can't silently enable a no-op on a fallback one.
 
@@ -555,6 +575,18 @@ filter off is a real choice that must survive a round trip) and a list naming on
 filters ends up empty — only a *missing* `filters` key falls back to the descriptor
 default. It slices by markers: `// ---- FILTERS: stackable post-FX` … `function
 initStates(`, and `function presetExtra(` … `function initExtras(`.
+
+**The GL heat-tick feedback chain** has `tools/heatprobe.js` (`node tools/heatprobe.js
+index.html`, 24 assertions): it slices the real `glBeginHeat` and runs it against a
+recording stub `gl`. It exists because **a headless browser has no usable WebGL** — the
+pixel harness can only ever drive the Canvas2D path, so the GL ping-pong parity is
+invisible to it. It asserts, for chains of 0–4 passes from either starting buffer, that
+`pendingDst` names the buffer the *last* pass wrote, that no pass samples its own render
+target (undefined behaviour in WebGL), and that the final FBO is still bound on exit. The
+two-pass case (Fire + Fade, the only one a user can hit today) is the one that
+distinguishes `pendingDst = src` from the `1 - curHeat` bug — flipping that one token
+turns 12 of these red. It slices by markers: `function glBeginHeat(` … `function
+glBlitPoints(`.
 
 **The cardioid seed orbit** has its own probe, `tools/juliaprobe.js` (`node
 tools/juliaprobe.js index.html`): it slices the *real* seed source out of
