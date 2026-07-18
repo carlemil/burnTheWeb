@@ -519,6 +519,13 @@ Changes are verified by driving the page in headless Edge and reading a screensh
   `Document.prototype.hidden` if a timer gates on visibility). GoatCounter/GA stay
   inert on `file://`/`localhost`, so tests never emit analytics.
 
+**Testing the share buttons** needs three stubs, because both paths are async and both
+end in something the page can't observe: define `navigator.clipboard` with capturing
+`writeText`/`write` (the `write` stub must resolve the ClipboardItem's promise and read
+the Blob back), and stub `fetch` so Short link resolves without TinyURL. Run it **twice** —
+once as-is, once with `ClipboardItem` hidden — since the two clipboard paths are different
+code and only the fallback runs on older Safari/Firefox.
+
 **Testing a timed overlay** (the credits): drive the clock, stub WebGL off so pixels are
 readable, then run the page twice — once with `?credits=<short>` and once with the
 preference disabled — and hash the same driven frames. Early frames must **differ** (it is
