@@ -92,6 +92,26 @@ or the drawn epicycles would not match the ones on screen.
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
+### Credits burn-in
+The startup credits are stamped into the **heat grid** through the same `plot()` the
+effects use, not drawn as an overlay — so they take the effect's palette, glow and (with
+Fire on) rise and burn away with no undraw step. `creditRaster()` rasterises the two lines
+once to an offscreen 2D canvas at heat resolution and caches the coverage mask per
+`fw`/`fh`; `creditStamp()` replays it every tick.
+
+It is called from **two** places, because the two effect families reach the heat grid
+differently: inside `simulate()` for point effects (so the glyphs join that tick's stamp
+list), and in `frame()` right after `fx.draw(dt)` for shader effects (which overwrite the
+whole heat texture each frame, so the credits have to go on top). On GL the latter needs
+`glBlitPoints()` — the MAX-blended point draw split out of `glDrawPoints` so it can run
+*without* the `curHeat` flip the point path owns.
+
+`creditLeft` counts down in **rendered** time (`dt` from the frame loop), not wall clock:
+a backgrounded tab stops rAF, and a wall-clock timer would burn the credits away unseen.
+`?credits=<seconds>` overrides the duration (same spirit as `?debug=1`). The on/off
+preference lives in its own `localStorage` key, deliberately **not** in the scene blob —
+it is a per-browser choice, not part of a shared or backed-up scene.
+
 ### Filters (post-FX)
 `FILTERS` is a second registry beside `EFFECTS`: stackable post-processing any effect can
 use, ticked in a checkbox list (registry order is the apply order — a checkbox list can't
@@ -203,6 +223,14 @@ shift — so opening it never advances the animation and it always shows the tru
 while open; the Mandelbrot bitmap is rendered once and cached. Transient: never persisted,
 never in a preset. `card` is a **`var`** and `cardOpen`/`cardDraw` early-return on a falsy
 `card`, because `setEffect` calls `cardOpen` during startup before the declaration runs.
+
+**Camera on the CPU path.** The 12 shader effects' CPU mirrors call `camPix(x, y)` per
+pixel (writing the scratch pair `camPX`/`camPY` rather than allocating), which applies the
+same 2×2 `camM` map the shader camera uses. This forced the hoisted per-row terms inside
+the x loop: a rotation mixes x into the y coordinate, so `const py = f(y)` outside the
+inner loop is only valid while the camera is upright. **Copper Bars** keeps its
+row-constant fast path but gates it on `camOn()` — its bars really are constant across a
+row until you rotate, and then they aren't.
 
 **Menu layout.** The panel is a header (title + subtitle) followed by **five `.box`
 sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is

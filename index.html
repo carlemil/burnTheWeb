@@ -348,6 +348,7 @@
     gap: 10px; margin: 10px 0 3px; opacity: .85;
   }
   .ctl-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #panel .credit-line { margin: 6px 0 0; opacity: .85; line-height: 1.5; }
   /* Filters: the stackable post-FX checkboxes */
   #panel #filterlist { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 2px 0 4px; }
   #panel .filter-chk { margin: 4px 0 0; }
@@ -610,6 +611,14 @@
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </details>
 
+  <!-- Box — Credits. The same two lines the startup overlay burns into the fire. -->
+  <details class="box">
+  <summary class="box-t">Credits</summary>
+  <p class="credit-line">The Rastermancer — Carl-Emil Kjellstrand aka Erbsman</p>
+  <p class="credit-line">Warden of Waveforms — Kristian Saether aka The Dyze</p>
+  <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
+  </details>
+
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen</p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
@@ -763,6 +772,16 @@
     return camM;
   }
   const camOn = () => camRX !== 0 || camRY !== 0 || camRZ !== 0;   // skip the maths at rest
+  // Rotate a pixel about the frame centre into camPX/camPY. The CPU mirrors call
+  // this per pixel, so it writes scratch globals rather than returning a pair.
+  // Mirrors the shader camera (camGlsl), which rotates gl_FragCoord the same way.
+  let camPX = 0, camPY = 0;
+  function camPix(x, y) {
+    if (!camOn()) { camPX = x; camPY = y; return; }
+    const dx = x - fw * 0.5, dy = y - fh * 0.5;
+    camPX = camM[0] * dx + camM[1] * dy + fw * 0.5;
+    camPY = camM[2] * dx + camM[3] * dy + fh * 0.5;
+  }
 
   // Deterministic PRNG (mulberry32). Seeded once from unix time at load, then
   // re-seeded to that same value every frame so the chaos game draws the
@@ -1610,7 +1629,10 @@
     drawQuad();
     pendingDst = dst;             // FBO stays bound; points draw into it next
   }
-  function glDrawPoints() {
+  // Draw the collected stamps into the currently bound FBO with MAX blending.
+  // Split out of glDrawPoints so the credits can stamp over a shader effect's heat
+  // without touching the curHeat flip that the point path owns.
+  function glBlitPoints() {
     if (glPtCount > 0) {
       gl.useProgram(glProg.pts.p);
       gl.uniform2f(glProg.pts.u.uSize, fw, fh);
@@ -1625,6 +1647,9 @@
       gl.disable(gl.BLEND);
       gl.blendEquation(gl.FUNC_ADD);
     }
+  }
+  function glDrawPoints() {
+    glBlitPoints();
     curHeat = pendingDst;
   }
   // Close a heat tick. Split out from glDrawPoints so the flip has a name that
@@ -1875,6 +1900,8 @@
       for (const f of activeFilters()) if (f.cpuFeedback) f.cpuFeedback();
     }
 
+    creditStamp();                    // credits burn in with the effect's own points
+
     // 2) stamp the Sierpiński fractal as fresh heat via the chaos game.
     // Keep it inside a safe box (top 20% and left/right/bottom 5% excluded) so
     // it never touches the screen edges. Effect 0 is the 2D triangle; effect 1
@@ -2115,9 +2142,9 @@
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const zy0 = (y / fh - 0.5) * spanY;
       for (let x = 0; x < fw; x++) {
-        let zx = (x / fw - 0.5) * spanX, zy = zy0;
+        camPix(x, y);
+        let zx = (camPX / fw - 0.5) * spanX, zy = (camPY / fh - 0.5) * spanY;
         let zx2 = zx * zx, zy2 = zy * zy, i = 0;
         while (zx2 + zy2 <= 4 && i < maxIter) {
           zy = 2 * zx * zy + cy;
@@ -2144,9 +2171,9 @@
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const zy0 = (y / fh - 0.5) * spanY;
       for (let x = 0; x < fw; x++) {
-        let zx = (x / fw - 0.5) * spanX, zy = zy0;
+        camPix(x, y);
+        let zx = (camPX / fw - 0.5) * spanX, zy = (camPY / fh - 0.5) * spanY;
         let zx2 = zx * zx, zy2 = zy * zy, i = 0;
         while (zx2 + zy2 <= 4 && i < maxIter) {
           zy = 2 * Math.abs(zx * zy) + cy;   // burning ship: fold to |Re·Im|
@@ -2178,9 +2205,10 @@
     const ar = fw / fh, k = s.scale / s.zoom * 6.2831853, t = s.t, warp = s.warp;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const yy = (y / fh - 0.5) * k;
       for (let x = 0; x < fw; x++) {
-        const xx = (x / fw - 0.5) * ar * k;
+        camPix(x, y);
+        const yy = (camPY / fh - 0.5) * k;
+        const xx = (camPX / fw - 0.5) * ar * k;
         const wx = xx + warp * Math.sin(yy * 0.5 + t * 0.7);
         const wy = yy + warp * Math.cos(xx * 0.5 + t * 0.9);
         const v = Math.sin(wx + t)
@@ -2203,9 +2231,10 @@
     const s = tunnelSeed(dt), ar = fw / fh, TAU = 6.2831853;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const py = (y / fh - 0.5) / s.zoom;
       for (let x = 0; x < fw; x++) {
-        const px = (x / fw - 0.5) * ar / s.zoom;
+        camPix(x, y);
+        const py = (camPY / fh - 0.5) / s.zoom;
+        const px = (camPX / fw - 0.5) * ar / s.zoom;
         const r = Math.hypot(px, py) + 1e-4;
         const a = Math.atan2(py, px) + s.twist * TAU;
         const v = 1 / r + s.t;
@@ -2231,9 +2260,10 @@
     const cs = []; for (let i = 0; i < n; i++) cs.push(metaCenter(i, s.t));
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const py = (y / fh - 0.5) / s.zoom;
       for (let x = 0; x < fw; x++) {
-        const px = (x / fw - 0.5) * ar / s.zoom;
+        camPix(x, y);
+        const py = (camPY / fh - 0.5) / s.zoom;
+        const px = (camPX / fw - 0.5) * ar / s.zoom;
         let field = 0;
         for (let i = 0; i < n; i++) { const dx = px - cs[i][0], dy = py - cs[i][1]; field += Math.exp(-(dx * dx + dy * dy) / rr); }
         const heat = 1 - Math.exp(-field * g);
@@ -2253,9 +2283,10 @@
     const s = kaleidoSeed(dt), ar = fw / fh, wedge = Math.PI * 2 / Math.round(s.seg), t = s.t;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const py = (y / fh - 0.5) / s.zoom;
       for (let x = 0; x < fw; x++) {
-        const px = (x / fw - 0.5) * ar / s.zoom;
+        camPix(x, y);
+        const py = (camPY / fh - 0.5) / s.zoom;
+        const px = (camPX / fw - 0.5) * ar / s.zoom;
         const r = Math.hypot(px, py);
         let a = Math.atan2(py, px) + s.rot;
         a = Math.abs(((a % wedge) + wedge) % wedge - wedge * 0.5);   // fold + mirror into a wedge
@@ -2277,9 +2308,10 @@
     const s = rotozoomSeed(dt), ar = fw / fh, c = Math.cos(s.angle), sn = Math.sin(s.angle), k = s.tile * Math.PI;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const py = (y / fh - 0.5) / s.zoom;
       for (let x = 0; x < fw; x++) {
-        const px = (x / fw - 0.5) * ar / s.zoom;
+        camPix(x, y);
+        const py = (camPY / fh - 0.5) / s.zoom;
+        const px = (camPX / fw - 0.5) * ar / s.zoom;
         const ux = (c * px - sn * py) * s.scale, uy = (sn * px + c * py) * s.scale;
         fire[idx++] = (0.5 + 0.5 * Math.sin(ux * k) * Math.sin(uy * k)) * 255;
       }
@@ -2296,9 +2328,10 @@
     const s = munchSeed(dt), ti = Math.floor(s.t), m = s.mask, inv = 1 / m;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const yi = Math.floor(y / s.zoom * s.scale);
       for (let x = 0; x < fw; x++) {
-        const xi = Math.floor(x / s.zoom * s.scale);
+        camPix(x, y);
+        const yi = Math.floor(camPY / s.zoom * s.scale);
+        const xi = Math.floor(camPX / s.zoom * s.scale);
         fire[idx++] = (((xi ^ yi) + ti) & m) * inv * 255;
       }
     }
@@ -2316,9 +2349,10 @@
     const c2x = 0.3 * Math.cos(t * 0.4), c2y = 0.3 * Math.sin(t * 0.7);
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const py = (y / fh - 0.5) / s.zoom;
       for (let x = 0; x < fw; x++) {
-        const px = (x / fw - 0.5) * ar / s.zoom;
+        camPix(x, y);
+        const py = (camPY / fh - 0.5) / s.zoom;
+        const px = (camPX / fw - 0.5) * ar / s.zoom;
         const a = 0.5 + 0.5 * Math.sin(Math.hypot(px - c1x, py - c1y) * s.freq * TAU);
         const b = 0.5 + 0.5 * Math.sin(Math.hypot(px - c2x, py - c2y) * s.freq * TAU);
         const heat = a * b * (1 - s.mix) + 0.5 * (a + b) * s.mix;
@@ -2337,9 +2371,10 @@
     const s = newtonSeed(dt), ar = fw / fh, c = Math.cos(s.spin), sn = Math.sin(s.spin), TAU = 6.2831853;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const py0 = (y / fh - 0.5) * 3 / s.zoom;
       for (let x = 0; x < fw; x++) {
-        const px0 = (x / fw - 0.5) * ar * 3 / s.zoom;
+        camPix(x, y);
+        const py0 = (camPY / fh - 0.5) * 3 / s.zoom;
+        const px0 = (camPX / fw - 0.5) * ar * 3 / s.zoom;
         let zx = c * px0 - sn * py0, zy = sn * px0 + c * py0, iter = 0;
         for (let k = 0; k < 40; k++) {
           const zx2 = zx * zx - zy * zy, zy2 = 2 * zx * zy;          // z²
@@ -2363,9 +2398,9 @@
     const maxIter = JULIA_MAX_ITER, invLn2 = JULIA_INV_LN2;
     let idx = 0;
     for (let y = 0; y < fh; y++) {
-      const zy0 = (y / fh - 0.5) * spanY;
       for (let x = 0; x < fw; x++) {
-        let zx = (x / fw - 0.5) * spanX, zy = zy0, i = 0, mag2 = zx * zx + zy * zy;
+        camPix(x, y);
+        let zx = (camPX / fw - 0.5) * spanX, zy = (camPY / fh - 0.5) * spanY, i = 0, mag2 = zx * zx + zy * zy;
         while (mag2 <= 4 && i < maxIter) {
           const r = Math.pow(Math.sqrt(mag2), d), th = Math.atan2(zy, zx) * d;
           zx = r * Math.cos(th) + cx; zy = r * Math.sin(th) + cy;
@@ -2388,12 +2423,22 @@
   function copperbars(dt) {                // CPU fallback — mirrors FS_COPPER
     const s = copperSeed(dt), n = Math.round(s.count), w = s.width, bys = [];
     for (let i = 0; i < n; i++) bys.push(0.5 + 0.4 * Math.sin(s.t * (0.6 + i * 0.13) + i * 1.7));
-    for (let y = 0; y < fh; y++) {
-      const yy = (y / fh - 0.5) / s.zoom + 0.5;
+    const barAt = yy => {
       let heat = 0;
       for (let i = 0; i < n; i++) { const bar = Math.max(0, 1 - Math.abs(yy - bys[i]) / w); if (bar * bar > heat) heat = bar * bar; }
-      const v = heat * 255, row = y * fw;
-      for (let x = 0; x < fw; x++) fire[row + x] = v;   // horizontal bars: constant across a row
+      return heat * 255;
+    };
+    for (let y = 0; y < fh; y++) {
+      const row = y * fw;
+      if (!camOn()) {                                  // upright: bars are constant across a row
+        const v = barAt((y / fh - 0.5) / s.zoom + 0.5);
+        for (let x = 0; x < fw; x++) fire[row + x] = v;
+      } else {                                         // rotated: yy varies with x, so go per pixel
+        for (let x = 0; x < fw; x++) {
+          camPix(x, y);
+          fire[row + x] = barAt((camPY / fh - 0.5) / s.zoom + 0.5);
+        }
+      }
     }
   }
 
@@ -2477,6 +2522,7 @@
       bandLive = bandLevel > 0.001;
     }
 
+    if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
     camMat();                         // fold this frame's camera angles into the 2x2 map
     if (useGL) uploadPalette();       // push the (possibly morphed) palette
 
@@ -2492,6 +2538,11 @@
     while (acc >= step && ticks < 4) { acc -= step; ticks++; }
     if (fx.draw) {
       fx.draw(dt);                    // shader effect: writes the heat tex directly from its seed
+      if (creditLeft > 0) {           // ...then burn the credits over it
+        glPtCount = 0;
+        creditStamp();
+        if (useGL) { bindFbo(glFbo.heat[curHeat], fw, fh); glBlitPoints(); }
+      }
     } else {
       for (let i = 0; i < ticks; i++) simulate(now);
     }
@@ -3396,6 +3447,72 @@
   // few render-affecting keys the effect doesn't display (e.g. band) at safe values so
   // switching to it resets them rather than inheriting the previous effect's.
   const states = {};
+  // ---- Credits ---------------------------------------------------------------
+  // On startup the two credit lines are burned INTO the heat grid rather than drawn
+  // over the canvas: the glyphs are rasterised once to an offscreen 2D canvas, and
+  // their pixels are stamped through the same plot() the effects use. So the text
+  // catches the effect's own palette, glow and (if Fire is on) rises and burns away
+  // by itself — it is the effect, not a layer on top of it. Nothing to undraw.
+  const CREDITS = [
+    "The Rastermancer - Carl-Emil Kjellstrand aka Erbsman",
+    "Warden of Waveforms - Kristian Saether aka The Dyze",
+  ];
+  // Counted down in RENDERED time (dt from the frame loop), not wall clock: if the
+  // tab is backgrounded rAF stops, and a wall-clock timer would burn the credits
+  // away unseen. It also makes the duration testable on a driven clock.
+  const CREDIT_S = 3;                 // seconds of rendered time to keep re-stamping
+  const CREDIT_KEY = "burnTheWeb.credits.v1";
+  let creditLeft = 0, creditMask = null, creditMaskW = 0, creditMaskH = 0;
+  // Rasterise once, at heat resolution, into a 0..255 coverage mask.
+  function creditRaster() {
+    if (creditMask && creditMaskW === fw && creditMaskH === fh) return creditMask;
+    const c = document.createElement("canvas");
+    c.width = fw; c.height = fh;
+    const g = c.getContext("2d");
+    g.fillStyle = "#000"; g.fillRect(0, 0, fw, fh);
+    // Size to fit the longest line with a margin, and keep it readable at low res.
+    let px = Math.max(6, Math.floor(fw / 26));
+    g.textAlign = "center"; g.textBaseline = "middle";
+    for (let i = 0; i < 40; i++) {
+      g.font = "bold " + px + "px ui-monospace, Consolas, monospace";
+      if (Math.max(...CREDITS.map(t => g.measureText(t).width)) <= fw * 0.88) break;
+      px--;
+      if (px < 5) break;
+    }
+    g.fillStyle = "#fff";
+    const lh = px * 1.6, y0 = fh * 0.5 - (CREDITS.length - 1) * lh / 2;
+    CREDITS.forEach((t, i) => g.fillText(t, fw / 2, y0 + i * lh));
+    const d = g.getImageData(0, 0, fw, fh).data;
+    const m = new Uint8Array(fw * fh);
+    for (let i = 0, j = 0; i < m.length; i++, j += 4) m[i] = d[j];
+    creditMask = m; creditMaskW = fw; creditMaskH = fh;
+    return m;
+  }
+  // Stamp the mask as heat. Called every sim tick while the credits are up; plot()
+  // applies the camera and clips, exactly as for any other stamped point.
+  function creditStamp() {
+    if (creditLeft <= 0) return;
+    const m = creditRaster();
+    for (let y = 0; y < fh; y++) {
+      const row = y * fw;
+      for (let x = 0; x < fw; x++) {
+        const v = m[row + x];
+        if (v > 40) plot(x, y, v);
+      }
+    }
+  }
+  function creditsEnabled() {
+    try { return localStorage.getItem(CREDIT_KEY) !== "off"; } catch (e) { return true; }
+  }
+  function startCredits() {
+    if (!creditsEnabled()) return;
+    // ?credits=<seconds> overrides the duration — same spirit as ?debug=1 / ?beat=1.
+    // Mostly for looking at the burn-in without racing a 3s window.
+    const m = location.search.match(/[?&]credits=([\d.]+)/);
+    const secs = m ? +m[1] : CREDIT_S;
+    creditLeft = isFinite(secs) && secs > 0 ? secs : CREDIT_S;
+  }
+
   // ---- FILTERS: stackable post-FX applied after the effect renders ------------
   // The fire simulation used to be hardwired to the three point effects; it is now
   // one entry here, so any effect can have it. Two stages, split by whether the
@@ -4417,6 +4534,7 @@
   if (presets.length === 0) { presets = defaultPresets(); curPreset = effect; }   // first visit: one preset per effect
   rebuildPresetOptions();
   syncTtlEnabled();                   // match the Preset TTL enabled-state to the restored cycle toggle
+  startCredits();                     // burn the credits into the opening frames
   persistReady = true;
 
   function setPanel(hidden) {
@@ -4524,6 +4642,14 @@
     if (!card.ctx) { card.cv = el("cardcv"); card.ctx = card.cv.getContext("2d"); }
     cardDraw();                    // paint immediately; frame() keeps it live after
   }
+  // Credits toggle. Deliberately in its own localStorage key, not the scene blob:
+  // it is a per-browser preference, not part of a shared/backed-up scene.
+  const creditsChk = el("creditsOn");
+  creditsChk.checked = creditsEnabled();
+  creditsChk.addEventListener("change", () => {
+    try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
+  });
+
   el("cardbtn").addEventListener("click", () => cardOpen(true));
   el("card-close").addEventListener("click", () => cardOpen(false));
   // No backdrop click-to-close: it's a floating panel, not a modal — clicking it

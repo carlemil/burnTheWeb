@@ -251,6 +251,18 @@ where your **Cardioid RPM / ratio / radius / start / X offset** settings land.
 It's a floating panel, not a modal: the menu stays live underneath it, so you can
 drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
 
+## Credits
+
+On startup the credits are **burned into the effect itself** rather than drawn over
+it: the two lines are rasterised and stamped into the fire's heat grid, so they
+pick up whatever palette and glow the running effect has, and — with the Fire
+filter on — rise and burn away by themselves after about three seconds.
+
+They're also listed under **Credits** at the foot of the menu, with a checkbox to
+stop them appearing on future visits (remembered in this browser only, and kept
+out of presets, share links and backups since it's a per-browser preference).
+`?credits=<seconds>` overrides the duration if you want a longer look.
+
 ## Running locally
 
 It's a single self-contained `index.html` — no build step, no dependencies.
