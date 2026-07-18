@@ -159,10 +159,21 @@ while open; the Mandelbrot bitmap is rendered once and cached. Transient: never 
 never in a preset. `card` is a **`var`** and `cardOpen`/`cardDraw` early-return on a falsy
 `card`, because `setEffect` calls `cardOpen` during startup before the declaration runs.
 
-**Menu layout.** The panel is a header (title + Backup/Restore/Share/Short link as a 2×2
-`.presetrow.grid2`) followed by **three `.box` sections**: *Scene* (preset / effect /
-palette choosers + their toggles), *Settings* (`#fxctl`, `#bandctl`, Cardioid debug,
-Reset) and *System* (audio, resolution, Diagnostics).
+**Menu layout.** The panel is a header (title + subtitle) followed by **five `.box`
+sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is
+**transient**, like Diagnostics): *System* (audio, resolution, Diagnostics — collapsed by
+default), *Backup, restore & share* (the 2×2 `.presetrow.grid2`), *Scene* (preset +
+effect choosers), *Effect settings* (`#fxctl`, Cardioid debug, Reset) and *Palette
+settings* (`#palette`, `#palctl`, `#bandctl`). `buildControls` routes a control by
+`host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
+
+**Palette cycle.** The old "Auto-morph palettes" checkbox is gone; a `palcycle` dual
+slider (host `pal`) sets the **[min,max] seconds one morph takes**, and `morphMs()` draws
+each cycle's duration from it the way `ttlMs()` does for presets. Both thumbs at 0 pins
+the palette — `morphing` is now *derived* (`palCycleOn()`), not stored, and
+`syncMorphFromSlider()` starts/pins the blend on any edit. `extras.morph` is still
+written for backward compatibility, and `loadExtra` seeds the slider to 0 for a scene
+saved with `morph:false` before the slider existed.
 
 `setEffect(i, save)` shows the descriptor's `params` controls, runs `onEnter`, and swaps
 five parallel per-effect state maps:

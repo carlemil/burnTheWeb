@@ -181,9 +181,11 @@
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
   #panel .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
   #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
-  /* The menu is three grouped boxes — what the scene IS (presets/effect/palette),
-     how it's tuned (this effect's sliders), and the app-wide stuff (audio,
-     resolution, diagnostics) — so the long list reads as sections, not one run-on. */
+  /* The menu is grouped boxes — the app-wide stuff (audio, resolution,
+     diagnostics), backup/share, what the scene IS (presets/effect/palette) and
+     how it's tuned (this effect's sliders) — so the long list reads as sections,
+     not one run-on. Each is a <details>, so a section can be folded away; the
+     open/closed state is deliberately transient (like Diagnostics). */
   #panel .box {
     margin: 12px 0 0; padding: 2px 12px 12px;
     background: rgba(255, 140, 40, 0.045);
@@ -193,7 +195,13 @@
     margin: 0 -12px 8px; padding: 7px 12px 6px;
     border-bottom: 1px solid rgba(255, 140, 40, 0.16);
     color: #ffb15a; opacity: .95; letter-spacing: .05em; font-size: 11px; text-transform: uppercase;
+    cursor: pointer; list-style: none; user-select: none;
   }
+  #panel .box > .box-t::-webkit-details-marker { display: none; }
+  #panel .box > .box-t::before { content: "\25B8 "; opacity: .7; }        /* ▸ */
+  #panel .box[open] > .box-t::before { content: "\25BE "; }               /* ▾ */
+  /* folded: the title's rule would otherwise hang under nothing */
+  #panel .box:not([open]) > .box-t { margin-bottom: -6px; border-bottom: none; }
   #panel .box > .box-t + * { margin-top: 0; }
   #panel .box > #diag { margin-top: 4px; }
   #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
@@ -480,77 +488,10 @@
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
-  <label>Backup, restore &amp; share</label>
-  <div class="presetrow grid2">
-    <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, beat-detection tuning — everything the app remembers">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup — choose which parts to bring back, and whether to merge or replace">Restore</button>
-    <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
-    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current settings — needs the internet, and sends the scene to TinyURL">Short link</button>
-  </div>
-  <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
-
-  <!-- Box 1 — Scene: what's playing. The three choosers (preset / effect / palette)
-       and the toggles that belong to each. Their sliders live in box 2. -->
-  <div class="box">
-  <div class="box-t">Scene</div>
-  <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
-  <label>Presets</label>
-  <select id="preset"></select>
-  <div class="presetrow">
-    <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
-    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
-    <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
-  </div>
-  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
-  <div id="grp-ttl">
-    <label>Preset TTL <span class="val" id="vTtl"></span></label>
-    <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="ttl-lo" min="0" max="180" step="any" value="10">
-      <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
-  </div>
-
-  <!-- Effect: pick the visual. Its shape / motion sliders are in box 2. -->
-  <label>Effect</label>
-  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
-
-  <!-- Colour: the palette and its auto-morph (the banding filter is in box 2) -->
-  <label>Palette</label>
-  <select id="palette">
-    <option value="0">Fire</option>
-    <option value="1">Ice</option>
-    <option value="2">Toxic</option>
-    <option value="3">Copper</option>
-    <option value="4">Purple</option>
-    <option value="5">Rainbow</option>
-    <option value="6">Grayscale</option>
-    <option value="7">Electric</option>
-    <option value="8">Amber</option>
-    <option value="9">Matrix</option>
-    <option value="10">Sunset</option>
-    <option value="11">C64</option>
-    <option value="12">CGA</option>
-    <option value="13">Blood</option>
-    <option value="14">Chrome</option>
-  </select>
-  <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
-  </div>
-
-  <!-- Box 2 — Settings: every slider of the selected effect (each a name + a +/-
-       launcher; the slider itself lives in its pop-out box), plus the banding
-       filter and the per-effect reset. -->
-  <div class="box">
-  <div class="box-t">Settings</div>
-  <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
-  <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
-  <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
-  <button id="cardbtn" type="button" title="Show where the seed's cardioid orbit lands on the Mandelbrot set">Cardioid debug</button>
-  <button id="reset" type="button">Reset this effect</button>
-  </div>
-
-  <!-- Box 3 — System: app-wide, never part of a scene — audio input, render
+  <!-- Box — System: app-wide, never part of a scene — audio input, render
        resolution and the dev tools. -->
-  <div class="box">
-  <div class="box-t">System</div>
+  <details class="box">
+  <summary class="box-t">System</summary>
   <!-- Sound &amp; quality: music reactivity and the global render resolution -->
   <label>React to music <span class="val" id="vAudio">off</span></label>
   <div class="audiorow">
@@ -582,7 +523,81 @@
       <p id="beatMsg">Saved in your browser &amp; in Backups (not Share links or presets). Tune it beside the beat trace.</p>
     </details>
   </details>
+  </details>
+
+  <!-- Box — Backup/share. Boxed like the rest so the panel is one consistent
+       stack of foldable sections. -->
+  <details class="box">
+  <summary class="box-t">Backup, restore &amp; share</summary>
+  <div class="presetrow grid2">
+    <button id="exportpresets" class="audbtn" type="button" title="Download a full backup (.json): every preset, each effect's live settings, custom slider ranges, beat-detection tuning — everything the app remembers">Backup</button>
+    <button id="importpresets" class="audbtn" type="button" title="Restore from a .json backup — choose which parts to bring back, and whether to merge or replace">Restore</button>
+    <button id="share" class="audbtn" type="button" title="Copy a link that opens with the current settings">Share</button>
+    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current settings — needs the internet, and sends the scene to TinyURL">Short link</button>
   </div>
+  <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
+  </details>
+
+  <!-- Box — Scene: what's playing. The three choosers (preset / effect / palette)
+       and the toggles that belong to each. Their sliders live in Settings. -->
+  <details class="box" open>
+  <summary class="box-t">Scene</summary>
+  <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
+  <label>Presets</label>
+  <select id="preset"></select>
+  <div class="presetrow">
+    <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
+    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
+    <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
+  </div>
+  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
+  <div id="grp-ttl">
+    <label>Preset TTL <span class="val" id="vTtl"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="ttl-lo" min="0" max="180" step="any" value="10">
+      <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
+  </div>
+
+  <!-- Effect: pick the visual. Its shape / motion sliders are in box 2. -->
+  <label>Effect</label>
+  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
+
+  </details>
+
+  <!-- Box — Effect settings: every slider of the selected effect (each a name + a
+       +/- launcher; the slider itself lives in its pop-out box). -->
+  <details class="box" open>
+  <summary class="box-t">Effect settings</summary>
+  <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
+  <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
+  <button id="cardbtn" type="button" title="Show where the seed's cardioid orbit lands on the Mandelbrot set">Cardioid debug</button>
+  <button id="reset" type="button">Reset this effect</button>
+  </details>
+
+  <!-- Box — Palette settings: the ramp, how fast it cycles, and the banding filter. -->
+  <details class="box" open>
+  <summary class="box-t">Palette settings</summary>
+  <label>Palette</label>
+  <select id="palette">
+    <option value="0">Fire</option>
+    <option value="1">Ice</option>
+    <option value="2">Toxic</option>
+    <option value="3">Copper</option>
+    <option value="4">Purple</option>
+    <option value="5">Rainbow</option>
+    <option value="6">Grayscale</option>
+    <option value="7">Electric</option>
+    <option value="8">Amber</option>
+    <option value="9">Matrix</option>
+    <option value="10">Sunset</option>
+    <option value="11">C64</option>
+    <option value="12">CGA</option>
+    <option value="13">Blood</option>
+    <option value="14">Chrome</option>
+  </select>
+  <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
+  <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  </details>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen</p>
 </div>
@@ -864,7 +879,23 @@
   setPalette(0);
 
   // ---- auto-morph: continuously blend to a random palette over 8s ----
-  const MORPH_MS = 8000;
+  const MORPH_MS = 8000;          // fallback only — the live duration comes from the Palette cycle slider
+  // Palette cycle: the [min,max] seconds one morph takes, from the "palcycle"
+  // dual slider. Both thumbs at 0 pins the palette (what the old "Auto-morph"
+  // checkbox unticked used to do). palCycleLive is the slider's animated value;
+  // morphMs() draws each cycle's duration from the thumbs, like ttlMs().
+  let palCycleLive = 8;
+  function palCycleBand() {
+    const lo = el("palcycle-lo"), hi = el("palcycle-hi");
+    if (!lo || !hi) return [8, 8];
+    return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
+  }
+  function palCycleOn() { return palCycleBand()[1] > 0; }        // fixed palette when the band tops out at 0
+  function morphMs() {
+    const [a, b] = palCycleBand();
+    const s = a + Math.random() * (b - a);
+    return Math.max(0.2, s) * 1000;                              // never divide by ~0
+  }
   let morphing = false, morphFrom = null, morphTo = null, morphStart = 0,
     morphTargetIndex = 0, morphInit = false, morphOnce = false;   // morphOnce: a single transition (preset switch) even when auto-morph is off
 
@@ -900,15 +931,17 @@
     showMorphTarget();
   }
   function startMorph(fromIndex) { beginMorph(paletteRGB(fromIndex), pickOther(fromIndex)); }
+  let morphDur = MORPH_MS;
   function morphStep(now) {
-    if (morphInit) { morphStart = now; morphInit = false; }
-    let f = (now - morphStart) / MORPH_MS;
+    if (morphInit) { morphStart = now; morphDur = morphMs(); morphInit = false; }
+    let f = (now - morphStart) / morphDur;
     if (f >= 1) {                           // arrived
       if (!morphing) { morphOnce = false; setPalette(morphTargetIndex); return; }   // one-shot: settle on the target
       morphFrom = morphTo;                  // auto-morph: target becomes current, pick a new one
       morphTargetIndex = pickOther(morphTargetIndex);
       morphTo = paletteRGB(morphTargetIndex);
       morphStart = now;
+      morphDur = morphMs();               // each cycle draws its own hold time
       f = 0;
       showMorphTarget();
     }
@@ -2719,6 +2752,11 @@
     { key: "camry", host: "fx", group: "camera", type: "dual", label: "Camera Y", valId: "vCamRY", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRY = v * Math.PI / 180, durScale: 10 },
     { key: "camrz", host: "fx", group: "camera", type: "dual", label: "Camera Z", valId: "vCamRZ", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRZ = v * Math.PI / 180, durScale: 10 },
     { key: "randseed", host: "fx", group: "other", type: "check", label: "Random seed each reload" },
+    // Palette cycle time, in seconds, as a [min,max] band: each morph holds for a
+    // random time drawn from it (like Preset TTL). Collapsed to 0 = fixed palette.
+    // This replaced the old "Auto-morph palettes" checkbox — `morphing` is now
+    // derived from the slider rather than stored separately.
+    { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 120, step: 1, lo: 8, hi: 8, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
     { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
     { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
@@ -2749,13 +2787,14 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", camera: "Camera", other: "Other", banding: "Banding",
+    attractor: "Attractor", camera: "Camera", other: "Other",
+    palette: "Palette", banding: "Banding",
   };
   function buildControls() {
-    const fxHost = el("fxctl"), bandHost = el("bandctl");
+    const fxHost = el("fxctl"), bandHost = el("bandctl"), palHost = el("palctl");
     let open = null;
     CONTROLS.forEach(c => {
-      const host = c.host === "band" ? bandHost : fxHost;
+      const host = c.host === "band" ? bandHost : c.host === "pal" ? palHost : fxHost;
       if (c.group !== open) {
         open = c.group;
         if (c.group) host.insertAdjacentHTML("beforeend",
@@ -2955,7 +2994,6 @@
     el("ttl-lo").disabled = el("ttl-hi").disabled = !on;
   }
   const paletteSel = el("palette");
-  const morphChk = el("morph");
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
   const randSeedChk = el("randseed");
@@ -2982,93 +3020,93 @@
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sirpinfyer", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
-      params: ["points", "layers", "speed", "rise", "size", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "fire"], fractal2d: true,
-      defaults: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
+      params: ["points", "layers", "speed", "rise", "size", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire"], fractal2d: true,
+      defaults: { palcycle: [8, 8], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
       beat: { speed: ["high"], size: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks.",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "rise", "size", "rot", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "fire", "tetra"],
-      defaults: { band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+      params: ["showbox", "boxsize", "points", "layers", "speed", "rise", "size", "rot", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire", "tetra"],
+      defaults: { palcycle: [8, 8], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
       beat: { speed: ["low"], rise: ["high"], size: ["mid"] }, extras: { palette: "1", morph: true, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { const s = juliaSeed(dt); if (useGL) glJulia(s); else julia(s); },
-      defaults: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
+      defaults: { palcycle: [8, 8], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
-      params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
+      params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
       bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); },
-      defaults: { band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
+      defaults: { palcycle: [8, 8], band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
       beat: { band: ["low"], banddim: ["high"], pscale: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "tunnel", name: "Tunnel", subtitle: "Tunnel · demoscene flythrough",
       help: "A classic demoscene tunnel: the screen is polar-mapped so concentric rings rush toward the vanishing point. Fly speed drives you forward; Twist rotates the pipe.",
-      params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
+      params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
       draw: dt => { const s = tunnelSeed(dt); if (useGL) glShaderDraw("tunnel", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uRings, s.rings); gl.uniform1f(u.uZoom, s.zoom); }); else tunnel(dt); },
-      defaults: { tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { tunspeed: ["low"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "metaballs", name: "Metaballs", subtitle: "Metaballs · gooey blobs",
       help: "Blobby fields that merge and split like lava-lamp goo — a sum of inverse-square fields from moving centres, soft-saturated. Turn up Banding for hard iso-contour shells.",
-      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
+      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
       draw: dt => { const s = metaSeed(dt); if (useGL) glShaderDraw("metaball", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRadius, s.radius); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); else metaballs(dt); },
-      defaults: { mbcount: [5, 5], mbradius: [0.16, 0.2], mbspeed: [0.6, 1.2], mbgain: [0.8, 1.5], zoom: [1, 1], band: [40, 70], bandsize: [1, 3], banddim: [15, 40] },
+      defaults: { palcycle: [8, 8], mbcount: [5, 5], mbradius: [0.16, 0.2], mbspeed: [0.6, 1.2], mbgain: [0.8, 1.5], zoom: [1, 1], band: [40, 70], bandsize: [1, 3], banddim: [15, 40] },
       beat: { mbradius: ["low"], mbgain: ["mid"] }, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
     { id: "burningship", name: "Burning Ship", presetName: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(s); },
-      defaults: { band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
+      defaults: { palcycle: [8, 8], band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "kaleidoscope", name: "Kaleidoscope", subtitle: "Kaleidoscope · mirrored symmetry",
       help: "A moving field folded into mirror-symmetric wedges, like looking down a kaleidoscope. Segments sets the symmetry, Spin rotates the whole thing, Flow animates the pattern. Add banding for sharp mandala rings.",
-      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
+      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
       draw: dt => { const s = kaleidoSeed(dt); if (useGL) glShaderDraw("kaleido", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSeg, s.seg); gl.uniform1f(u.uRot, s.rot); gl.uniform1f(u.uZoom, s.zoom); }); else kaleidoscope(dt); },
-      defaults: { ksegments: [6, 6], krotspeed: [0.1, 0.3], knoisespeed: [0.6, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], ksegments: [6, 6], krotspeed: [0.1, 0.3], knoisespeed: [0.6, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { knoisespeed: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "rotozoom", name: "Rotozoomer", subtitle: "Rotozoomer · rotate + zoom",
       help: "The classic Amiga rotozoomer: a tiled grid texture spun and pulse-zoomed in real time. Rotation sets the spin, Zoom pulse the breathing scale, Tile density how fine the grid is.",
-      params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
+      params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
       draw: dt => { const s = rotozoomSeed(dt); if (useGL) glShaderDraw("rotozoom", u => { gl.uniform1f(u.uAngle, s.angle); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uTile, s.tile); gl.uniform1f(u.uZoom, s.zoom); }); else rotozoom(dt); },
-      defaults: { rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { rzzoom: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "munch", name: "Munching Squares", subtitle: "Munching squares · XOR pattern",
       help: "The hypnotic PDP-1 classic: each pixel is ((x XOR y) + time) masked to a value, mapped through the palette. Munch speed animates it, Square size sets the pixel chunkiness, Detail the wrap.",
-      params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "xor"], bakesOwnZoom: true,
+      params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "xor"], bakesOwnZoom: true,
       draw: dt => { const s = munchSeed(dt); if (useGL) glShaderDraw("munch", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uMask, s.mask); gl.uniform1f(u.uZoom, s.zoom); }); else munch(dt); },
-      defaults: { xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { xorspeed: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "moire", name: "Moiré", subtitle: "Moiré · interference shimmer",
       help: "Two sets of concentric rings drift over each other and interfere into shimmering moiré bands. Ring frequency sets how tight the rings are, Drift speed how fast the centres move, Blend fades between multiply and add.",
-      params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
+      params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
       draw: dt => { const s = moireSeed(dt); if (useGL) glShaderDraw("moire", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uZoom, s.zoom); }); else moire(dt); },
-      defaults: { mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { mofreq: ["low"] }, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
     { id: "newton", name: "Newton", subtitle: "Newton fractal · root basins",
       help: "The Newton fractal: each pixel is coloured by which root of z³−1 Newton's method converges to, plus how many steps it took, giving three interlocking basins with fractal borders. Root spin rotates it; Relaxation warps the convergence.",
-      params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
+      params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
       draw: dt => { const s = newtonSeed(dt); if (useGL) glShaderDraw("newton", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uRelax, s.relax); gl.uniform1f(u.uZoom, s.zoom); }); else newton(dt); },
-      defaults: { nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { nwspin: ["mid"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", presetName: "Multibrot", subtitle: "Multibrot · power sweep",
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
-      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
+      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
-      defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
+      defaults: { palcycle: [8, 8], mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: { mbexp: ["low"], banddim: ["high"] }, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
-      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
+      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
       draw: dt => { const s = copperSeed(dt); if (useGL) glShaderDraw("copper", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); else copperbars(dt); },
-      defaults: { cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: { cbwidth: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", presetName: "Attractor", subtitle: "Strange attractor · de Jong",
       help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow.",
-      params: ["ata", "atb", "atc", "atd", "points", "rise", "zoom", "camrx", "camry", "camrz"], helpTags: ["all", "attractor"],
+      params: ["ata", "atb", "atc", "atd", "points", "rise", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "attractor"],
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
-      defaults: { ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      defaults: { palcycle: [8, 8], ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: { ata: ["low"], atc: ["high"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
@@ -3266,7 +3304,7 @@
   function initExtras() { EFFECTS.forEach((_, k) => extras[k] = presetExtra(k)); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, morph: morphChk.checked, showBox: showBoxChk.checked, randSeed: randSeedChk.checked };
+    extras[e] = { palette: paletteSel.value, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked };
   }
   function loadExtra(e) {
     const x = extras[e];
@@ -3277,7 +3315,11 @@
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
     morphOnce = false;                // cancel a pending one-shot morph from a prior switch
     paletteSel.value = x.palette;
-    morphChk.checked = x.morph; morphing = x.morph;
+    // Migration: scenes saved before the Palette cycle slider carry only the old
+    // boolean. loadState has already applied any stored palcycle, so only seed the
+    // slider from `morph` when the scene predates it (morph off ⇒ pin at 0).
+    if (x.palcycleSeeded !== true && x.morph === false && palCycleOn()) setPalCycle(0, 0);
+    morphing = palCycleOn();
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
     suppressPersist = false;
   }
@@ -3672,10 +3714,23 @@
     if (morphing) startMorph(+paletteSel.value);
     else { morphOnce = false; setPalette(+paletteSel.value); }   // manual pick cancels a one-shot morph
   });
-  morphChk.addEventListener("change", () => {
-    morphing = morphChk.checked;
+  // The Palette cycle slider replaces the old auto-morph checkbox: any edit
+  // re-derives `morphing` and (re)starts or pins the blend.
+  function syncMorphFromSlider() {
+    const on = palCycleOn();
+    if (on === morphing) return;
+    morphing = on;
     if (morphing) startMorph(+paletteSel.value);
-  });
+    else { morphOnce = false; setPalette(+paletteSel.value); }   // pinned: settle on the shown palette
+  }
+  function setPalCycle(lo, hi) {
+    const a = el("palcycle-lo"), b = el("palcycle-hi");
+    if (!a || !b) return;
+    a.value = lo; b.value = hi;
+    a.dispatchEvent(new Event("input")); b.dispatchEvent(new Event("input"));
+  }
+  for (const id of ["palcycle-lo", "palcycle-hi"])
+    el(id).addEventListener("input", syncMorphFromSlider);
   // Persist any control change (slider drag, select, checkbox) — one delegated
   // listener over the whole panel covers them all. When a preset is selected the
   // edit is auto-saved into it; in "— custom —" it just updates the working scene.

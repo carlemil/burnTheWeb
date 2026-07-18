@@ -77,9 +77,9 @@ independent "scene" that remembers its own settings (see Controls):
 - **Palettes & glow** — fifteen classic demoscene-style palettes to choose from
   (Fire, Ice, Toxic, Copper, Purple, Rainbow, Grayscale, Electric, Amber, Matrix,
   Sunset, C64, CGA, Blood, Chrome), plus a subtle
-  additive bloom that makes the white-hot points glow. An optional auto-morph mode
-  continuously blends from the current palette to a random next one over 8 seconds,
-  on repeat.
+  additive bloom that makes the white-hot points glow. The palette-cycle slider
+  continuously blends from the current palette to a random next one, taking a time
+  drawn from its min–max range each cycle (set it to 0 to hold one palette).
 - **Banding** — an optional *filter* over whichever palette is active (not a
   palette of its own). It posterises the heat ramp into bands and dims
   alternating groups of three, turning any palette into crisp light/dark contour
@@ -98,7 +98,7 @@ time, eased, on repeat). Collapse the two thumbs together to pin a constant
 value, so a ranged slider also works as an ordinary one.
 
 **Each effect is a fully independent scene** — its sliders, beat chips, pulse
-shapes, palette, auto-morph, show-box and hold time are all remembered *separately
+shapes, palette, palette cycle, show-box and hold time are all remembered *separately
 per effect*, so
 tweaking Tetrafyer never touches AnimeJulia. Only auto-cycle on/off and the
 panel's open/closed state are shared. Everything is **saved to your browser** and
@@ -118,9 +118,11 @@ everything that belongs to it: its value, the **L / M / H** beat chips and
 shipped bounds back). Those bounds are saved — they persist in your browser, ride
 along in a **Share** link and go into your **Backup**.
 
-**The menu is three sections** — **Scene** (which preset, effect and palette),
-**Settings** (the selected effect's sliders) and **System** (audio, resolution and
-the diagnostics tools).
+**The menu is five foldable sections** — click a heading's chevron to collapse it:
+**System** (audio, resolution and the diagnostics tools; folded by default),
+**Backup, restore & share**, **Scene** (which preset and effect), **Effect
+settings** (the selected effect's sliders) and **Palette settings** (the ramp, how
+fast it cycles, and banding).
 
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
@@ -158,7 +160,7 @@ visibility is remembered per effect.
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of fifteen demoscene-style colour ramps. |
-| **Auto-morph palettes** | Continuously blend to a random palette over 8 seconds, on repeat. |
+| **Palette cycle** | How long one blend to a random palette takes, as a min–max range in seconds — each cycle picks a time inside it. Collapse both thumbs to **0** for a fixed palette that never cycles. (This replaced the old Auto-morph checkbox.) |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
 | **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
