@@ -1768,8 +1768,9 @@
     glPts[i] = x; glPts[i + 1] = y; glPts[i + 2] = v; glPtCount++;
   }
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
-  function plot(x, y, v) {
-    if (camOn()) {                      // camera: rotate the stamped point about the grid centre
+  // `raw` skips the camera (the credits are fixed chrome — see creditStamp).
+  function plot(x, y, v, raw) {
+    if (!raw && camOn()) {              // camera: rotate the stamped point about the grid centre
       const dx = x - fw * 0.5, dy = y - fh * 0.5;
       x = camM[0] * dx + camM[1] * dy + fw * 0.5;
       y = camM[2] * dx + camM[3] * dy + fh * 0.5;
@@ -3529,16 +3530,28 @@
     creditMask = m; creditMaskW = fw; creditMaskH = fh;
     return m;
   }
-  // Stamp the mask as heat. Called every sim tick while the credits are up; plot()
-  // applies the camera and clips, exactly as for any other stamped point.
+  // Stamp the mask as heat. Called every sim tick while the credits are up. The credits
+  // are fixed chrome, so they are the one thing on the heat grid the camera does *not*
+  // touch: plot(..., true) skips the camera rotation, and the display zoom is cancelled
+  // by gathering — the render pass maps heat pixel h to screen (h-c)*z+c, so a glyph
+  // texel must be written at (g-c)/z+c to land at its nominal spot. Same bakesOwnZoom
+  // ternary as glRender/render; if the two ever diverge the credits drift out of place.
   function creditStamp() {
     if (creditLeft <= 0) return;
     const m = creditRaster();
+    const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
+    const cx = fw * 0.5, cy = fh * 0.5;
     for (let y = 0; y < fh; y++) {
       const row = y * fw;
       for (let x = 0; x < fw; x++) {
-        const v = m[row + x];
-        if (v > 40) plot(x, y, v);
+        let v;
+        if (z === 1) { v = m[row + x]; }
+        else {
+          const sx = ((x - cx) * z + cx) | 0, sy = ((y - cy) * z + cy) | 0;
+          if (sx < 0 || sx >= fw || sy < 0 || sy >= fh) continue;
+          v = m[sy * fw + sx];
+        }
+        if (v > 40) plot(x, y, v, true);
       }
     }
   }

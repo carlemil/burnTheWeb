@@ -99,6 +99,18 @@ Fire on) rise and burn away with no undraw step. `creditRaster()` rasterises the
 once to an offscreen 2D canvas at heat resolution and caches the coverage mask per
 `fw`/`fh`; `creditStamp()` replays it every tick.
 
+The credits are the one thing on the heat grid the **camera does not touch** — they are
+fixed chrome, so a preset's rotation or zoom must not tilt or rescale the text. Two
+opt-outs, one per transform: `plot(x, y, v, raw)` takes a fourth argument that skips the
+`camOn()` rotation (only `creditStamp` passes it, so every other caller is unchanged), and
+`creditStamp` cancels the *display* zoom by gathering — the render pass maps heat pixel
+`h` to screen `(h−c)·z + c`, so a glyph texel is written at `(h−c)·z + c` sampled from the
+mask, landing it at its nominal screen spot. It uses the **same `bakesOwnZoom ? 1 : zoom`
+ternary as `glRender`/`render`**; if the three ever diverge the credits drift out of
+place. A `z === 1` fast path keeps the common case the original tight loop. At high zoom
+the glyphs are written into a smaller region and so read thinner — correct, since they end
+up the right size on screen.
+
 It is called from **two** places, because the two effect families reach the heat grid
 differently: inside `simulate()` for point effects (so the glyphs join that tick's stamp
 list), and in `frame()` right after `fx.draw(dt)` for shader effects (which overwrite the
@@ -552,6 +564,17 @@ preference disabled — and hash the same driven frames. Early frames must **dif
 drawing) and frames past the duration must be **byte-identical** (it left no trace).
 That pair is what makes "it disappears on schedule" a real assertion rather than an
 eyeball; a brightness/band heuristic can't tell thin glyphs from the effect's own structure.
+
+**Testing that the credits ignore the camera** is a *logic* assertion, not a pixel one
+(point-effect pixels aren't reproducible across runs). Inject an export hook just before
+the app IIFE closes, stub WebGL off so `fire` is the live buffer, then call `creditStamp()`
+directly with the camera set various ways and compare the set of lit `fire` indices: a
+rotated camera must stamp **byte-identical** indices, `zoom = 2` must halve the stamped
+bounding box while staying centred, and `plot(x, y, v)` *without* the raw flag must still
+be moved by the camera (or the opt-out silently disabled the camera for effects). Run the
+same probe against a copy with the fix reverted — both halves must go red, or the
+assertions aren't biting. Note the two reverts are separate one-token edits and a naive
+`.replace()` of `const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;` hits `glRender` first.
 
 **Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
 `requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes
