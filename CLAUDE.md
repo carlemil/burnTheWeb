@@ -426,13 +426,30 @@ because any later slider drag *did* autosave and retroactively captured the chip
   the promise re-activates with `resize()` + `setEffect(...)` itself. `shareUrl()` is
   therefore async too, and Share copies via `ClipboardItem`'s promise form so the user
   gesture survives (a plain `writeText` after an `await` is rejected by Safari).
-- **Share** encodes `{states, beats, pulses, plens, extras, effect, cycle, ranges}` (NOT
-  presets) as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
+- **Share** encodes **only the current scene** — `{states, beats, pulses, plens, extras,
+  effect, cam, beatTune, ranges}` where every per-effect map holds exactly **one** entry,
+  the effect on screen (NOT presets). It used to send all fifteen effects' settings;
+  "here is the thing I made" should send that thing, and the other fourteen were most of
+  the payload. Measured on a Tunnel scene: **JSON 6808 → 661 chars, URL 1492 → 601**.
+  The map *shape* is deliberately unchanged (`{ [effectIndex]: … }`, just shorter), which
+  is what makes it a one-function change: **no decoder change, and every old
+  all-effects link still decodes** — `applyBlob` iterates its own maps and skips keys the
+  blob omits, so absent effects simply keep the defaults `installShared` re-seeded. A
+  probe builds an old-style two-effect payload and asserts both still restore.
+  `cycle` and `ttl` are deliberately **dropped**: they are the recipient's own auto-cycle
+  preferences and sharing a scene is no reason to reach in and change them (`applyBlob`
+  guards every read of them, so omitting is safe). `beatTune` is now included, since it
+  became scene data. Delivered as a `?z=<deflate-raw+base64url>` URL (legacy `?s=` is
+  plain base64 and still decodes); `applyShared()` decodes on load and strips the param.
+  **`stripShareParam()` runs during startup**, so anything reading `location.search`
+  after load — a test, say — sees it already gone.
   `shareUrl()` builds it; **`pruneBeats()` diffs the beat chips against each
   effect's `presetBeat(e)` defaults and sends only what differs** — the full map
-  is every control × L/M/H × every effect and was a large part of the blob (49k-char URLs,
-  which chat clients truncate and TinyURL rejects; a truncated `?s=` silently
-  JSON.parse-fails and opens the default scene). **`prunePulses()` does the same for
+  is every control × L/M/H and was a large part of the blob back when every effect
+  rode along (49k-char URLs, which chat clients truncate and TinyURL rejects; a
+  truncated `?s=` silently JSON.parse-fails and opens the default scene). Still worth
+  keeping now that only one effect is sent: the pruning and the single-effect payload
+  compound rather than overlap. **`prunePulses()` does the same for
   the pulse shapes** (only sliders whose shape ≠ the effect default, almost always
   `snap`). Pruning is share-only: `fullSnapshot()` (localStorage/Backup) stays
   verbose, and `applyBlob` leaves any id/band/shape a blob omits at its seeded

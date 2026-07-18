@@ -4653,13 +4653,36 @@
     return out;
   };
 
-  // Build the share URL for the current scene: all effects' values, but not the
-  // browser-local saved presets. Decoded by applyShared() on load.
+  // Build the share URL for the current scene — and ONLY that scene: the effect on
+  // screen, not every effect you have ever touched. ("Build the share URL for the
+  // current scene" is a slice marker for tools/shareprobe.js — keep that line.)
+  // "Here is the thing I made" should send that thing; shipping fourteen other effects'
+  // settings along with it was noise the recipient never asked for, and it was most of
+  // the payload: a Tunnel scene went from 6808 to 661 chars of JSON.
+  //
+  // The map SHAPE is unchanged — `{ [effectIndex]: … }`, just with one entry — which is
+  // the whole trick: no decoder change, and every old link with all fifteen still
+  // decodes exactly as before. applyBlob skips keys a blob omits, and installShared
+  // re-seeds every map first, so the effects that are absent land on their defaults
+  // rather than inheriting whatever the recipient had.
+  //
+  // beatTune rides along now that it is scene data. `cycle` and `ttl` deliberately do
+  // NOT: they are the recipient's own auto-cycle preferences, and sharing a scene is no
+  // reason to reach in and change them. Same for resolution, which was never sent.
   async function shareUrl() {
     saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
-    const rounded = {};
-    for (const e in states) rounded[e] = roundMap(states[e]);
-    const blob = { states: rounded, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), plens: prunePlens(plenStates), extras, effect, cam: roundMap(readCam()), cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
+    const only = m => ({ [effect]: m[effect] });
+    const blob = {
+      states: { [effect]: roundMap(states[effect]) },
+      beats: pruneBeats(only(beatStates)),
+      pulses: prunePulses(only(pulseStates)),
+      plens: prunePlens(only(plenStates)),
+      extras: only(extras),
+      effect,
+      cam: roundMap(readCam()),
+      beatTune: collectBeatTune(),
+      ranges: collectRanges(),
+    };
     const json = JSON.stringify(serializeBlob(blob));   // effect stored as a stable id
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
     // through the effect's landing page when it has one (so social unfurls show
