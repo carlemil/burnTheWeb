@@ -262,6 +262,11 @@ Switching effects calls `saveState/saveBeat/savePulse/savePlen/saveExtra` for th
 effect and `loadState/loadBeat/loadPulse/loadPlen/loadExtra` for the incoming one, so each
 effect is a fully independent scene.
 
+**Beat chips ship unarmed.** Every effect's `beat` map is empty and the *unarmed*
+chip styling is deliberately colourless and dim — the per-band colours (L blue, M green,
+H red) apply only to `.on`. A vividly outlined chip reads as enabled even when nothing is
+armed, which is exactly how it used to look.
+
 **Beat-pulse shape & length.** When an armed slider (audio on + an L/M/H chip) gets a
 beat, `updateAnims` snaps it to the high thumb and decays `a.pulse` linearly 1→0 over
 **that slider's own** `pulseLen[id]` seconds (a `.plen` range in its pop-out box, bounds
@@ -317,8 +322,10 @@ so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`
   `snap`). Pruning is share-only: `fullSnapshot()` (localStorage/Backup) stays
   verbose, and `applyBlob` leaves any id/band/shape a blob omits at its seeded
   default, so a diff decodes identically and older full blobs still load. **Prune
-  against the descriptor's defaults, not against all-false** — several effects
-  default a chip *on*, and turning one off must survive.
+  against the descriptor's defaults, not against all-false** — the two happen to
+  coincide today (every effect ships `beat: {}`, so no chip is armed out of the
+  box), but the moment a descriptor arms one again, diffing against all-false
+  would silently drop the user turning it *off*.
 - **Share URL routing.** `OG_PAGES` maps an effect **id** → its static unfurl
   landing page `s/<n>/` (a numbered dir whose redirect forwards `?s=` to the app,
   so social unfurls show that effect's `og/` image). Only `sirpinfyer`/`tetrafyer`/

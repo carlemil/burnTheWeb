@@ -114,9 +114,11 @@ stack from the top down, so you can line up just the controls you're playing wit
 (This layout is per-session and isn't saved.) A box gives the slider room for
 everything that belongs to it: its value, the **L / M / H** beat chips and
 **pulse-shape** picker, a **Pulse** knob for how long its beat kick lasts, and a
-**min / max / step** row that retunes that slider's own range live (**↺** puts the
-shipped bounds back). Those bounds are saved — they persist in your browser, ride
-along in a **Share** link and go into your **Backup**.
+**min / max** row that retunes that slider's own range live. **↺ resets the whole
+slider** — value, bounds, beat chips, pulse shape and pulse length all go back to
+this effect's defaults, so a slider you've wandered somewhere strange is one click
+from sane. Custom bounds are saved: they persist in your browser, ride along in a
+**Share** link and go into your **Backup**.
 
 **The menu is five foldable sections** — click a heading's chevron to collapse it:
 **System** (audio, resolution and the diagnostics tools; folded by default),
@@ -135,7 +137,8 @@ bass line no longer masks the kick riding on top of it. The bar it has to clear
 adapts to the mix (it follows the recent flux, so a quiet verse still triggers),
 and the analysis runs on its own **100 Hz clock**, independent of the framerate,
 so beats stay in time even when the visual is working hard. Each ranged slider has three tiny **L / M / H**
-toggle chips: arm one and — while audio is on — the slider stops drifting and
+toggle chips, all **off** to start — they stay dim and colourless until you arm
+one, which lights it in that band's colour: arm one and — while audio is on — the slider stops drifting and
 instead rests at its low thumb, snapping to its high thumb on each beat in that
 band and dropping back over that slider's own **Pulse** time (0.2s by default, set
 per slider in its pop-out box; the range width sets how *big* the pulse is, the
