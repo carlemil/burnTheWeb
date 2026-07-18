@@ -2499,19 +2499,17 @@
   // ---- Strange attractors: de Jong map stamped into the fire heat grid (point effect) ----
   // The map itself is fully deterministic — same coefficients, same figure, every
   // frame. `atJit` scatters each stamped point by up to ±jit heat pixels, which
-  // dithers the hard threads into something softer and more alive. `atFix` picks
-  // *which* randomness: on, the jitter PRNG is re-seeded to SEED at the top of every
-  // stamp, so the same scatter lands in the same places each frame and the figure
-  // reads as a stable, slightly-thickened attractor; off, it free-runs on
-  // Math.random() and the threads shimmer. Fixed uses rnd() (the chaos PRNG), which
-  // is safe here: nothing else stamps on this effect, and the explicit re-seed means
-  // it doesn't matter what state the previous frame left it in.
-  let atA = 1.4, atB = -2.3, atC = 2.4, atD = -2.1, atJit = 0.5, atFix = true;
+  // dithers the hard threads into something softer. It runs free on Math.random(),
+  // deliberately clear of the chaos PRNG (like auto-morph) so it can never perturb
+  // the other point effects' sequences. There is no fixed-seed variant: the heat
+  // grid accumulates over many ticks, so a repeating scatter and a free one both
+  // fill the same ±jit neighbourhood within a few frames and look identical once
+  // glow and decay are over them. It was tried, and it was invisible.
+  let atA = 1.4, atB = -2.3, atC = 2.4, atD = -2.1, atJit = 0.5;
   function attractorStamp(xL, xR, yT, yB, n) {
     const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
     const sx = (xR - xL) * 0.22, sy = (yB - yT) * 0.22;   // map de Jong's ±2 range into the safe box
-    const jit = atJit, jr = atFix ? rnd : Math.random;
-    if (jit > 0 && atFix) rngState = SEED;                // same scatter every frame
+    const jit = atJit;
     let x = 0.1, y = 0.1;
     for (let i = 0; i < n; i++) {
       const nx = Math.sin(atA * y) - Math.cos(atB * x);
@@ -2519,8 +2517,8 @@
       x = nx; y = ny;
       if (i <= 20) continue;                              // skip the transient, then plot the attractor
       let px = cx + x * sx, py = cy + y * sy;
-      // Guarded so jit === 0 never touches the PRNG — that path stays byte-identical.
-      if (jit > 0) { px += (jr() - 0.5) * 2 * jit; py += (jr() - 0.5) * 2 * jit; }
+      // Guarded so jit === 0 stays byte-identical to the un-jittered map.
+      if (jit > 0) { px += (Math.random() - 0.5) * 2 * jit; py += (Math.random() - 0.5) * 2 * jit; }
       plot(px, py, 255);
     }
   }
@@ -3037,7 +3035,6 @@
     { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
     { key: "atd", host: "fx", group: "attractor", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => sig3(v), apply: v => atD = v, durScale: 10 },
     { key: "atjit", host: "fx", group: "attractor", type: "dual", label: "Point jitter", valId: "vAtJit", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "px", apply: v => atJit = v, durScale: 10 },
-    { key: "atfix", host: "fx", group: "attractor", type: "check", label: "Fixed jitter seed" },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which
@@ -3371,8 +3368,6 @@
   const randSeedChk = el("randseed");
   // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
   randSeedChk.addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
-  const atFixChk = el("atfix");
-  atFixChk.addEventListener("change", () => atFix = atFixChk.checked);
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");
@@ -3477,11 +3472,11 @@
       defaults: { palcycle: [8, 8], cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", presetName: "Attractor", subtitle: "Strange attractor · de Jong",
-      help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow. The map is exact, so Point jitter scatters each point a little to soften the threads — with Fixed jitter seed on, the same scatter lands every frame and the figure holds still; turn it off and the threads shimmer.",
-      params: ["ata", "atb", "atc", "atd", "atjit", "atfix", "points", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "attractor"],
+      help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow. The map is exact, so Point jitter scatters each point a little to soften the threads — set it to 0 for the bare, hard-edged curves.",
+      params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "attractor"],
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [8, 8], ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], atjit: [0.5, 0.5], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
-      beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true, atFix: true } },
+      beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -3843,7 +3838,7 @@
   const extras = {};
   function presetExtra(e) {
     const x = EFFECTS[e].extras;
-    return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, atFix: x.atFix !== false, filters: presetFilters(e) };
+    return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, filters: presetFilters(e) };
   }
   // Preset extras are copied verbatim by applyPreset, so a preset saved before
   // filters existed has no `filters` key — default it from the descriptor rather
@@ -3858,7 +3853,7 @@
   function initExtras() { EFFECTS.forEach((_, k) => extras[k] = presetExtra(k)); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked, atFix: atFixChk.checked,
+    extras[e] = { palette: paletteSel.value, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
       filters: FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id) };   // always registry order
   }
   function loadExtra(e) {
@@ -3867,8 +3862,6 @@
     showBoxChk.checked = x.showBox; showBox = x.showBox;
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
-    atFix = x.atFix !== false;        // ditto — a scene predating the jitter loads as fixed
-    atFixChk.checked = atFix;
     const fok = filtersOk(x.filters);                 // absent in pre-filter scenes
     activeIds = fok || new Set(presetFilters(e));
     if (!useGL) for (const f of FILTERS) if (f.cpuOk === false) activeIds.delete(f.id);

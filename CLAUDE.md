@@ -512,15 +512,16 @@ somewhere new each reload; toggling the checkbox re-rolls immediately.
 **Attractor point jitter.** The de Jong map is *exact* — same coefficients, same figure,
 no randomness anywhere on its path (it is a point effect but not a chaos game). **Point
 jitter** (`atjit`) scatters each stamped point by up to ±jit heat pixels to dither the
-hard threads; **Fixed jitter seed** (`atFix`, an `extras` field like `randSeed`, default
-on) picks *which* randomness. On ⇒ `attractorStamp` re-seeds `rngState = SEED` at the top
-of every stamp and draws from `rnd()`, so the same scatter lands in the same places each
-frame and the figure holds still. Off ⇒ `Math.random()`, free-running, and the threads
-shimmer. The explicit re-seed is load-bearing: unlike the `fractal2d`/tetra branches,
-**nothing re-seeds the PRNG before `simulate()` dispatches to a `stamp` hook** (each layer
-seeds itself), so without it "fixed" would inherit whatever the previous frame left.
-The `jit > 0` guard means jitter 0 never calls the PRNG at all, so that path — and the
-seed toggle's effect on it — stays byte-identical to the pre-jitter code.
+hard threads. It draws from `Math.random()`, deliberately clear of the chaos PRNG (same
+reasoning as auto-morph) so it can never perturb the other point effects. The `jit > 0`
+guard keeps jitter 0 byte-identical to the un-jittered map.
+
+**Don't add a fixed-seed toggle for it** — it was built, shipped and reverted. Pinning the
+scatter to a repeating sequence is invisible in practice: the heat grid accumulates over
+many ticks, so a repeating scatter and a free one both fill the same ±jit neighbourhood
+within a few frames, and glow + decay erase what little difference remains. The probe
+could prove the buffers differed frame to frame; a human watching the screen could not.
+A distinction only a pixel diff can see is not a user-facing control.
 
 ## Config & control gotchas
 
