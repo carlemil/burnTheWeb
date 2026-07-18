@@ -509,6 +509,19 @@ clear of the chaos PRNG) when the per-effect **Random seed** toggle (`randSeed`,
 every entry to AnimeJulia — first load, effect switch, and preset apply — so it opens
 somewhere new each reload; toggling the checkbox re-rolls immediately.
 
+**Attractor point jitter.** The de Jong map is *exact* — same coefficients, same figure,
+no randomness anywhere on its path (it is a point effect but not a chaos game). **Point
+jitter** (`atjit`) scatters each stamped point by up to ±jit heat pixels to dither the
+hard threads; **Fixed jitter seed** (`atFix`, an `extras` field like `randSeed`, default
+on) picks *which* randomness. On ⇒ `attractorStamp` re-seeds `rngState = SEED` at the top
+of every stamp and draws from `rnd()`, so the same scatter lands in the same places each
+frame and the figure holds still. Off ⇒ `Math.random()`, free-running, and the threads
+shimmer. The explicit re-seed is load-bearing: unlike the `fractal2d`/tetra branches,
+**nothing re-seeds the PRNG before `simulate()` dispatches to a `stamp` hook** (each layer
+seeds itself), so without it "fixed" would inherit whatever the previous frame left.
+The `jit > 0` guard means jitter 0 never calls the PRNG at all, so that path — and the
+seed toggle's effect on it — stays byte-identical to the pre-jitter code.
+
 ## Config & control gotchas
 
 `cfg = { points, speed, decay, scale, burn }` holds live fire state. Sliders are

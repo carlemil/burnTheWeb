@@ -53,7 +53,7 @@ independent "scene" that remembers its own settings (see Controls):
   - **Burning Ship** — a jagged, flame-like fractal (Julia's abs-fold cousin), sharing AnimeJulia's controls.
   - **Multibrot** — `z^power + c` with an animatable exponent that morphs the number of bulbs.
   - **Newton** — the three interlocking root-basins of `z³−1` with fractal borders (Root spin / Relaxation).
-  - **Attractor** — a de Jong strange attractor whose four coefficients a/b/c/d morph its delicate threads.
+  - **Attractor** — a de Jong strange attractor whose four coefficients a/b/c/d morph its delicate threads. **Point jitter** scatters each stamped point to soften them; **Fixed jitter seed** decides whether that scatter holds still frame to frame or shimmers.
 
 ## How it works
 
