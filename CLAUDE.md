@@ -491,6 +491,13 @@ Changes are verified by driving the page in headless Edge and reading a screensh
   `Document.prototype.hidden` if a timer gates on visibility). GoatCounter/GA stay
   inert on `file://`/`localhost`, so tests never emit analytics.
 
+**Testing a timed overlay** (the credits): drive the clock, stub WebGL off so pixels are
+readable, then run the page twice — once with `?credits=<short>` and once with the
+preference disabled — and hash the same driven frames. Early frames must **differ** (it is
+drawing) and frames past the duration must be **byte-identical** (it left no trace).
+That pair is what makes "it disappears on schedule" a real assertion rather than an
+eyeball; a brightness/band heuristic can't tell thin glyphs from the effect's own structure.
+
 **Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
 `requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes
 *shader* effects bit-reproducible — Plasma hashes identically across runs and builds, so
