@@ -64,7 +64,26 @@ call `juliaSeed()` themselves, or the Canvas2D path advances the orbit twice a f
 (it did, until fixed). `juliaSeed` = rim point on the scaled main cardioid **plus**
 the small riding circle of radius `juliaInnerR` at `ratio ×` the outer phase; the
 riding circle is what keeps the seed's neighbourhood varying instead of retracing
-one closed curve. `juliaprobe` locks all of this down.
+one closed curve.
+
+**Lap-speed easing.** The orbit is *not* swept at constant angular speed: `juliaSeed`
+scales each step by `EASE_K · (1 + JULIA_EASE_A·cos θ)`, so the seed sprints through
+the cardioid's cusp (θ=0, the start/end of a lap) and eases off at the back (θ=π).
+`JULIA_EASE_A = 0.5` ⇒ the cusp is exactly `(1+A)/(1−A)` = **3×** the back.
+**`EASE_K = 1/√(1−A²)` is load-bearing**: `∮dθ/(1+A·cos θ) = 2π/√(1−A²)`, so without
+it the same rpm would run ~15% slow — with it a lap takes exactly `1/rpm` minutes and
+every existing preset keeps its pace.
+
+The warp applies to the **outer phase only** — the riding circle keeps its steady rate,
+so its epicycles bunch up where the cardioid crawls (the back) and stretch where it
+sprints (the cusp); that unevenness is the point. Because lap *time* is preserved the
+inner still completes exactly `ratio` turns per lap, just unevenly distributed. Note the
+easing is symmetric about θ=π, so the two half-laps take **equal** time — the asymmetry
+is per quarter (a probe assertion got this wrong before the maths did). `juliaSeedAt`
+stays unwarped; the Cardioid debug view therefore **integrates** `dφ = ratio·dθ/ease(θ)`
+as it walks the path (via the shared `juliaEase`) instead of assuming φ is linear in θ,
+or the drawn epicycles would not match the ones on screen.
+`juliaprobe` locks all of this down.
 
 - **Point-accumulation effects** (Sirpinfyer, Tetrafyer, Attractor) run the fire sim and
   stamp points into the heat grid via `plot()`. `simulate()` dispatches to the

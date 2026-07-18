@@ -81,8 +81,16 @@ reset();
   const dt = 1 / 60, o0 = J.outer, i0 = J.inner;
   J.juliaSeed(dt);
   const dOuter = J.outer - o0, dInner = J.inner - i0;
-  ok(near(dOuter, dt * J.rpm * J.RPM, 1e-15), "outer advances rpm x RPM x dt");
-  ok(near(dInner, dOuter * J.ratio, 1e-15), "inner advances ratio x outer", "ratio " + (dInner / dOuter).toFixed(2));
+  // ...times the lap-speed easing at this angle (see 6b); o0 = 0 is the cusp,
+  // where the easing is at its maximum EASE_K * (1 + A).
+  const easeAt0 = (1 + 0.5) / Math.sqrt(1 - 0.25);
+  ok(near(dOuter, dt * J.rpm * J.RPM * easeAt0, 1e-15), "outer advances rpm x RPM x dt x ease",
+     "ease " + (dOuter / (dt * J.rpm * J.RPM)).toFixed(6));
+  // The riding circle is NOT eased — it advances at the plain rate, so at the
+  // cusp (where the outer is sped up) its per-step ratio to the outer is lower.
+  ok(near(dInner, dt * J.rpm * J.RPM * J.ratio, 1e-15), "inner advances at the un-eased ratio rate");
+  ok(near(dInner / dOuter, J.ratio / easeAt0, 1e-9), "inner is not dragged by the easing",
+     "inner:outer " + (dInner / dOuter).toFixed(3) + " vs unwarped " + J.ratio);
 }
 
 // --- 4. over one outer lap the seed makes `ratio` epicycles --------------------
@@ -139,6 +147,58 @@ reset();
   const big = J.juliaSeedAt(0.7, 2.1);
   ok(Math.hypot(big.cx - big.bx, big.cy - big.by) > 0, "riding circle survives an outer-radius change",
      "off-rim " + Math.hypot(big.cx - big.bx, big.cy - big.by).toFixed(4));
+}
+
+// --- 6b. lap-speed easing: 3:1 cusp-to-back, same lap time --------------------
+// The orbit sprints through the cusp and eases at the back on a cosine. Two
+// things must hold: the ratio is exactly 3, and the lap still takes 1/rpm minutes
+// (the naive 1+A·cos without EASE_K would run ~15% slow).
+reset();
+{
+  const dt = 1e-4;
+  const speedAt = th => {                       // instantaneous dθ/dt at lap angle th
+    J.outer = th; J.inner = 0;
+    const before = J.outer;
+    J.juliaSeed(dt);
+    return (J.outer - before) / dt;
+  };
+  const fast = speedAt(0), slow = speedAt(Math.PI);
+  ok(near(fast / slow, 3, 1e-9), "cusp is exactly 3x the back", "ratio " + (fast / slow).toFixed(6));
+  ok(near(speedAt(Math.PI / 2) / ((fast + slow) / 2), 1, 1e-9), "quarter-lap sits midway (cosine shape)");
+
+  // integrate a whole lap and compare with the constant-speed lap time
+  J.outer = 0; J.inner = 0; J.rpm = 1; J.ratio = 12;
+  const h = 1 / 2000;
+  let t = 0, guard = 0;
+  while (J.outer < Math.PI * 2 && guard++ < 5e6) { J.juliaSeed(h); t += h; }
+  const ideal = 60 / J.rpm;                     // 1 rpm ⇒ 60s per lap
+  ok(near(t, ideal, ideal * 0.002), "a lap still takes 1/rpm minutes", t.toFixed(3) + "s vs " + ideal + "s");
+
+  // The inner runs on its own steady clock, but because the lap TIME is preserved
+  // it still completes exactly `ratio` turns per lap — the turns are just
+  // distributed unevenly along the path (bunched where the cardioid crawls).
+  J.outer = 0; J.inner = 0;
+  let g = 0;
+  while (J.outer < Math.PI * 2 && g++ < 5e6) J.juliaSeed(h);
+  const turns = J.inner / (Math.PI * 2);
+  ok(near(turns, J.ratio, 0.02), "inner still turns `ratio` times per lap", turns.toFixed(3) + " vs " + J.ratio);
+  // ...and unevenly. NB the easing is symmetric about theta=pi, so the two HALF
+  // laps take equal time (each holds half the fast region) — the asymmetry shows
+  // up per quarter: the cusp quarter is quick, the back quarter is slow, so the
+  // steady inner circle lays down far fewer turns across the former.
+  const turnsOver = (from, to) => {
+    J.outer = from; J.inner = 0;
+    let n = 0;
+    while (J.outer < to && n++ < 5e6) J.juliaSeed(h);
+    return J.inner / (Math.PI * 2);
+  };
+  const cuspQ = turnsOver(0, Math.PI / 2), backQ = turnsOver(Math.PI / 2, Math.PI);
+  ok(backQ > cuspQ * 1.8, "epicycles bunch in the slow back, not spread evenly",
+     cuspQ.toFixed(2) + " turns across the cusp quarter vs " + backQ.toFixed(2) + " across the back");
+
+  // easing is a time warp only — the shape of the path is untouched
+  const p = J.juliaSeedAt(1.234, 5.678);
+  ok(isFinite(p.cx) && isFinite(p.cy), "juliaSeedAt stays pure (no easing baked into the path)");
 }
 
 // --- 7. every cardioid effect advances the orbit exactly once per frame -------

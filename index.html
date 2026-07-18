@@ -306,7 +306,7 @@
   /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
      (This replaced the one shared "Slider ranges" list in Diagnostics.) */
   #breakout .rng-edit {
-    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 5px; align-items: end;
+    display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: end;
     margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.18);
   }
   #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
@@ -499,8 +499,8 @@
   <div id="grp-ttl">
     <label>Preset TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="ttl-lo" min="0" max="180" step="1" value="10">
-      <input type="range" id="ttl-hi" min="0" max="180" step="1" value="30"></div>
+      <input type="range" id="ttl-lo" min="0" max="180" step="any" value="10">
+      <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
   </div>
 
   <!-- Effect: pick the visual. Its shape / motion sliders are in box 2. -->
@@ -1802,6 +1802,15 @@
   let juliaRatio = JULIA_RATIO_DEFAULT;                  // inner : outer spin multiple
   let juliaPhase = 0;                                    // start-position offset, in laps (0=1 wrap)
   let juliaOffX = 0;                                     // slide the whole orbit along the real axis
+  // Lap-speed easing: angular speed ∝ 1 + A·cos θ, so the fastest point (the
+  // cardioid's cusp, θ=0) runs (1+A)/(1−A) times the slowest (the back, θ=π).
+  // A = 0.5 ⇒ exactly 3:1. EASE_K keeps the lap *time* identical to a constant
+  // sweep, so the Cardioid RPM slider still means revolutions per minute.
+  const JULIA_EASE_A = 0.5;
+  const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);
+  // The warp at lap angle th. Shared by juliaSeed (which advances by it) and the
+  // Cardioid debug view (which integrates dφ/dθ = ratio/ease to draw the true path).
+  const juliaEase = th => EASE_K * (1 + JULIA_EASE_A * Math.cos(th));
 
   // Orbit phases accumulate per frame from the live rpm/ratio, so tuning or
   // animating either never teleports the seed. reseedJulia() sets the *start*:
@@ -1831,8 +1840,18 @@
     return { cx: bx + r * Math.cos(inner), cy: by + r * Math.sin(inner), bx, by };
   }
   function juliaSeed(dt) {
-    juliaOuter += dt * juliaBigRpm * RPM;                 // outer lap
-    juliaInner += dt * juliaBigRpm * juliaRatio * RPM;    // inner = ratio × outer
+    // Non-uniform traversal of the BIG loop only: the seed sprints through the cusp
+    // (θ=0, the start/end of a lap) and eases off at the back (θ=π), on a cosine —
+    // 3× faster at the cusp than at the back. EASE_K normalises it so a lap still
+    // takes exactly 1/rpm minutes: ∮dθ/(1+A·cosθ) = 2π/√(1−A²), so scaling by
+    // 1/√(1−A²) cancels it out; without it the same rpm would run ~15% slow.
+    // The riding circle is deliberately NOT eased — it keeps its steady rate, so
+    // its epicycles bunch up where the cardioid crawls and stretch out where it
+    // sprints. (Lap time is preserved, so it still completes `ratio` turns a lap.)
+    const th = juliaOuter + juliaPhase * Math.PI * 2;
+    const base = dt * juliaBigRpm * RPM;
+    juliaOuter += base * juliaEase(th);   // eased outer lap
+    juliaInner += base * juliaRatio;      // steady riding circle
     const p = juliaSeedAt(juliaOuter, juliaInner);
     const spanY = JULIA_SPAN / zoom, spanX = spanY * (fw / fh);
     return { cx: p.cx, cy: p.cy, spanX, spanY };
@@ -2573,61 +2592,66 @@
   // current effect's `params`. Adding a slider to a new effect = add a CONTROLS entry
   // and list its key in the descriptor's `params` — no hand-written HTML. Defaults for
   // the lo/hi thumbs are cosmetic (loadState overwrites them from the effect's defaults).
+  // Every slider readout goes through this: at most 3 significant digits, with
+  // trailing zeros trimmed — 0.00111, 0.0123, 21.5, 1000. Sliders are continuous
+  // (step="any"), so a fixed number of decimals would either hide real movement
+  // or print noise like 0.012340000000000001.
+  const sig3 = v => String(Number((+v).toPrecision(3)));
   const CONTROLS = [
     { key: "showbox", host: "fx", type: "check", label: "Show box" },
-    { key: "boxsize", host: "fx", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => v.toFixed(2) + "×", apply: v => boxSize = v, durScale: 10 },
+    { key: "boxsize", host: "fx", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
     { key: "points", host: "fx", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
     { key: "layers", host: "fx", type: "layers", label: "Layers", valId: "vLayers" },
-    { key: "speed", host: "fx", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => Math.round(v), apply: v => cfg.speed = v / 100 },
-    { key: "rise", host: "fx", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => Math.round(v), apply: v => cfg.decay = 128 * v / (v - 1) },
-    { key: "size", host: "fx", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => fractalSize = v, durScale: 10 },
-    { key: "rot", host: "fx", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
-    { key: "rpm", host: "fx", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => v.toFixed(2), apply: v => juliaBigRpm = v, durScale: 10 },
-    { key: "ratio", host: "fx", type: "dual", label: "Inner : outer ratio", valId: "vRatio", min: 1, max: 60, step: 0.5, lo: 21.5, hi: 21.5, fmt: v => v.toFixed(1) + "×", apply: v => juliaRatio = v },
-    { key: "inrad", host: "fx", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => v.toFixed(2), apply: v => juliaInnerR = v, durScale: 10 },
-    { key: "outrad", host: "fx", type: "dual", label: "Outer radius", valId: "vOutRad", min: 0.5, max: 2.5, step: 0.01, lo: 1.05, hi: 1.05, fmt: v => v.toFixed(2) + "×", apply: v => juliaOuterR = v, durScale: 10 },
-    { key: "phase", host: "fx", type: "dual", label: "Cardioid start", valId: "vPhase", min: 0, max: 0.1, step: 0.001, lo: 0, hi: 0, fmt: v => v.toFixed(2), apply: v => juliaPhase = v, durScale: 10 },
+    { key: "speed", host: "fx", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
+    { key: "rise", host: "fx", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
+    { key: "size", host: "fx", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => fractalSize = v, durScale: 10 },
+    { key: "rot", host: "fx", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
+    { key: "rpm", host: "fx", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => sig3(v), apply: v => juliaBigRpm = v, durScale: 10 },
+    { key: "ratio", host: "fx", type: "dual", label: "Inner : outer ratio", valId: "vRatio", min: 1, max: 60, step: 0.5, lo: 21.5, hi: 21.5, fmt: v => sig3(v) + "×", apply: v => juliaRatio = v },
+    { key: "inrad", host: "fx", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => juliaInnerR = v, durScale: 10 },
+    { key: "outrad", host: "fx", type: "dual", label: "Outer radius", valId: "vOutRad", min: 0.5, max: 2.5, step: 0.01, lo: 1.05, hi: 1.05, fmt: v => sig3(v) + "×", apply: v => juliaOuterR = v, durScale: 10 },
+    { key: "phase", host: "fx", type: "dual", label: "Cardioid start", valId: "vPhase", min: 0, max: 0.1, step: 0.001, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => juliaPhase = v, durScale: 10 },
     // Slides the whole seed orbit along the real axis. Slider units are hundredths
     // of the complex plane (like Drift speed), so ±50 walks the orbit ±0.5 — enough
     // to ride it off the cardioid into the bulbs and back.
-    { key: "cardx", host: "fx", type: "dual", label: "Cardioid X offset", valId: "vCardX", min: -50, max: 50, step: 1, lo: 0, hi: 0, fmt: v => (v > 0 ? "+" : "") + Math.round(v), apply: v => juliaOffX = v / 100, durScale: 10 },
+    { key: "cardx", host: "fx", type: "dual", label: "Cardioid X offset", valId: "vCardX", min: -50, max: 50, step: 1, lo: 0, hi: 0, fmt: v => (v > 0 ? "+" : "") + sig3(v), apply: v => juliaOffX = v / 100, durScale: 10 },
     { key: "randseed", host: "fx", type: "check", label: "Random seed each reload" },
-    { key: "pspeed", host: "fx", type: "dual", label: "Speed", valId: "vPspeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => plasmaSpeed = v, durScale: 10 },
-    { key: "pscale", host: "fx", type: "dual", label: "Scale", valId: "vPscale", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => plasmaScale = v, durScale: 10 },
-    { key: "pwarp", host: "fx", type: "dual", label: "Warp", valId: "vPwarp", min: 0, max: 2, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => v.toFixed(2), apply: v => plasmaWarp = v, durScale: 10 },
-    { key: "tunspeed", host: "fx", type: "dual", label: "Fly speed", valId: "vTunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => tunSpeed = v, durScale: 10 },
-    { key: "tuntwist", host: "fx", type: "dual", label: "Twist", valId: "vTunTwist", min: -2, max: 2, step: 0.05, lo: 0.3, hi: 0.3, fmt: v => v.toFixed(2), apply: v => tunTwist = v, durScale: 10 },
-    { key: "tunrings", host: "fx", type: "dual", label: "Ring density", valId: "vTunRings", min: 1, max: 30, step: 0.5, lo: 10, hi: 10, fmt: v => v.toFixed(1), apply: v => tunRings = v, durScale: 10 },
-    { key: "mbcount", host: "fx", type: "dual", label: "Ball count", valId: "vMbCount", min: 2, max: 16, step: 1, lo: 4, hi: 4, fmt: v => Math.round(v), apply: v => mbCount = Math.round(v), durScale: 10 },   // max must stay <= the FS_METABALL loop bound (its hard ceiling)
-    { key: "mbradius", host: "fx", type: "dual", label: "Ball size", valId: "vMbRadius", min: 0.04, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => v.toFixed(3), apply: v => mbRadius = v, durScale: 10 },
-    { key: "mbspeed", host: "fx", type: "dual", label: "Ball speed", valId: "vMbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => mbSpeed = v, durScale: 10 },
-    { key: "mbgain", host: "fx", type: "dual", label: "Gain", valId: "vMbGain", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2), apply: v => mbGain = v, durScale: 10 },
-    { key: "ksegments", host: "fx", type: "dual", label: "Segments", valId: "vKSeg", min: 3, max: 16, step: 1, lo: 6, hi: 6, fmt: v => Math.round(v), apply: v => kSeg = Math.round(v), durScale: 10 },
-    { key: "krotspeed", host: "fx", type: "dual", label: "Spin", valId: "vKRot", min: -1, max: 1, step: 0.02, lo: 0.2, hi: 0.2, fmt: v => v.toFixed(2), apply: v => kRotSpeed = v, durScale: 10 },
-    { key: "knoisespeed", host: "fx", type: "dual", label: "Flow", valId: "vKFlow", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => kNoiseSpeed = v, durScale: 10 },
-    { key: "rzrot", host: "fx", type: "dual", label: "Rotation", valId: "vRzRot", min: -2, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => v.toFixed(2), apply: v => rzRot = v, durScale: 10 },
-    { key: "rzzoom", host: "fx", type: "dual", label: "Zoom pulse", valId: "vRzZoom", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => v.toFixed(2), apply: v => rzZoomAmt = v, durScale: 10 },
-    { key: "rztile", host: "fx", type: "dual", label: "Tile density", valId: "vRzTile", min: 1, max: 12, step: 0.5, lo: 4, hi: 4, fmt: v => v.toFixed(1), apply: v => rzTile = v, durScale: 10 },
-    { key: "xorspeed", host: "fx", type: "dual", label: "Munch speed", valId: "vXorSpeed", min: 0, max: 80, step: 1, lo: 20, hi: 20, fmt: v => Math.round(v), apply: v => xorSpeed = v, durScale: 10 },
-    { key: "xorscale", host: "fx", type: "dual", label: "Square size", valId: "vXorScale", min: 0.1, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => (1 / v).toFixed(1) + "px", apply: v => xorScale = v, durScale: 10 },
-    { key: "xormask", host: "fx", type: "dual", label: "Detail", valId: "vXorMask", min: 15, max: 255, step: 1, lo: 255, hi: 255, fmt: v => Math.round(v), apply: v => xorMask = Math.round(v), durScale: 10 },
-    { key: "mofreq", host: "fx", type: "dual", label: "Ring frequency", valId: "vMoFreq", min: 2, max: 40, step: 0.5, lo: 10, hi: 10, fmt: v => v.toFixed(1), apply: v => moFreq = v, durScale: 10 },
-    { key: "modrift", host: "fx", type: "dual", label: "Drift speed", valId: "vMoDrift", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => moDrift = v, durScale: 10 },
-    { key: "momix", host: "fx", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => v.toFixed(2), apply: v => moMix = v, durScale: 10 },
-    { key: "nwspin", host: "fx", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => v.toFixed(2), apply: v => nwSpin = v, durScale: 10 },
-    { key: "nwrelax", host: "fx", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => v.toFixed(2), apply: v => nwRelax = v, durScale: 10 },
-    { key: "mbexp", host: "fx", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 3.5, fmt: v => v.toFixed(2), apply: v => mbPower = v, durScale: 10 },
-    { key: "cbcount", host: "fx", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => Math.round(v), apply: v => cbCount = Math.round(v), durScale: 10 },
-    { key: "cbspeed", host: "fx", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => cbSpeed = v, durScale: 10 },
-    { key: "cbwidth", host: "fx", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => v.toFixed(3), apply: v => cbWidth = v, durScale: 10 },
-    { key: "ata", host: "fx", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => v.toFixed(2), apply: v => atA = v, durScale: 10 },
-    { key: "atb", host: "fx", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => v.toFixed(2), apply: v => atB = v, durScale: 10 },
-    { key: "atc", host: "fx", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => v.toFixed(2), apply: v => atC = v, durScale: 10 },
-    { key: "atd", host: "fx", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => v.toFixed(2), apply: v => atD = v, durScale: 10 },
-    { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => v.toFixed(2) + "×", apply: v => zoom = v, durScale: 10 },
-    { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandLevel = v / 100 },
-    { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v), apply: v => bandGroup = v },
-    { key: "banddim", host: "band", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => Math.round(v) + "%", apply: v => bandDim = 1 - v / 100 },
+    { key: "pspeed", host: "fx", type: "dual", label: "Speed", valId: "vPspeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => plasmaSpeed = v, durScale: 10 },
+    { key: "pscale", host: "fx", type: "dual", label: "Scale", valId: "vPscale", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => plasmaScale = v, durScale: 10 },
+    { key: "pwarp", host: "fx", type: "dual", label: "Warp", valId: "vPwarp", min: 0, max: 2, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => plasmaWarp = v, durScale: 10 },
+    { key: "tunspeed", host: "fx", type: "dual", label: "Fly speed", valId: "vTunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => tunSpeed = v, durScale: 10 },
+    { key: "tuntwist", host: "fx", type: "dual", label: "Twist", valId: "vTunTwist", min: -2, max: 2, step: 0.05, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => tunTwist = v, durScale: 10 },
+    { key: "tunrings", host: "fx", type: "dual", label: "Ring density", valId: "vTunRings", min: 1, max: 30, step: 0.5, lo: 10, hi: 10, fmt: v => sig3(v), apply: v => tunRings = v, durScale: 10 },
+    { key: "mbcount", host: "fx", type: "dual", label: "Ball count", valId: "vMbCount", min: 2, max: 16, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => mbCount = Math.round(v), durScale: 10 },   // max must stay <= the FS_METABALL loop bound (its hard ceiling)
+    { key: "mbradius", host: "fx", type: "dual", label: "Ball size", valId: "vMbRadius", min: 0.04, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => mbRadius = v, durScale: 10 },
+    { key: "mbspeed", host: "fx", type: "dual", label: "Ball speed", valId: "vMbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => mbSpeed = v, durScale: 10 },
+    { key: "mbgain", host: "fx", type: "dual", label: "Gain", valId: "vMbGain", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => mbGain = v, durScale: 10 },
+    { key: "ksegments", host: "fx", type: "dual", label: "Segments", valId: "vKSeg", min: 3, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => kSeg = Math.round(v), durScale: 10 },
+    { key: "krotspeed", host: "fx", type: "dual", label: "Spin", valId: "vKRot", min: -1, max: 1, step: 0.02, lo: 0.2, hi: 0.2, fmt: v => sig3(v), apply: v => kRotSpeed = v, durScale: 10 },
+    { key: "knoisespeed", host: "fx", type: "dual", label: "Flow", valId: "vKFlow", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => kNoiseSpeed = v, durScale: 10 },
+    { key: "rzrot", host: "fx", type: "dual", label: "Rotation", valId: "vRzRot", min: -2, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => rzRot = v, durScale: 10 },
+    { key: "rzzoom", host: "fx", type: "dual", label: "Zoom pulse", valId: "vRzZoom", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => rzZoomAmt = v, durScale: 10 },
+    { key: "rztile", host: "fx", type: "dual", label: "Tile density", valId: "vRzTile", min: 1, max: 12, step: 0.5, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => rzTile = v, durScale: 10 },
+    { key: "xorspeed", host: "fx", type: "dual", label: "Munch speed", valId: "vXorSpeed", min: 0, max: 80, step: 1, lo: 20, hi: 20, fmt: v => sig3(v), apply: v => xorSpeed = v, durScale: 10 },
+    { key: "xorscale", host: "fx", type: "dual", label: "Square size", valId: "vXorScale", min: 0.1, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(1 / v) + "px", apply: v => xorScale = v, durScale: 10 },
+    { key: "xormask", host: "fx", type: "dual", label: "Detail", valId: "vXorMask", min: 15, max: 255, step: 1, lo: 255, hi: 255, fmt: v => sig3(v), apply: v => xorMask = Math.round(v), durScale: 10 },
+    { key: "mofreq", host: "fx", type: "dual", label: "Ring frequency", valId: "vMoFreq", min: 2, max: 40, step: 0.5, lo: 10, hi: 10, fmt: v => sig3(v), apply: v => moFreq = v, durScale: 10 },
+    { key: "modrift", host: "fx", type: "dual", label: "Drift speed", valId: "vMoDrift", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => moDrift = v, durScale: 10 },
+    { key: "momix", host: "fx", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => moMix = v, durScale: 10 },
+    { key: "nwspin", host: "fx", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => nwSpin = v, durScale: 10 },
+    { key: "nwrelax", host: "fx", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => nwRelax = v, durScale: 10 },
+    { key: "mbexp", host: "fx", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 3.5, fmt: v => sig3(v), apply: v => mbPower = v, durScale: 10 },
+    { key: "cbcount", host: "fx", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
+    { key: "cbspeed", host: "fx", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
+    { key: "cbwidth", host: "fx", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
+    { key: "ata", host: "fx", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => sig3(v), apply: v => atA = v, durScale: 10 },
+    { key: "atb", host: "fx", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => sig3(v), apply: v => atB = v, durScale: 10 },
+    { key: "atc", host: "fx", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
+    { key: "atd", host: "fx", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => sig3(v), apply: v => atD = v, durScale: 10 },
+    { key: "zoom", host: "fx", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
+    { key: "band", host: "band", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
+    { key: "bandsize", host: "band", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
+    { key: "banddim", host: "band", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
   ];
   function ctlHTML(c) {
     const open = '<div class="ctl" id="ctl-' + c.key + '">';
@@ -2640,8 +2664,11 @@
         '<input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
     const lbl = "<label>" + c.label + ' <span class="val" id="' + c.valId + '"></span></label>';
     if (c.type === "plain")
-      return open + lbl + '<input id="' + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="' + c.step + '" value="' + c.value + '"></div>';
-    const inp = t => '<input type="range" id="' + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="' + c.step + '" value="' + (t === "lo" ? c.lo : c.hi) + '">';
+      return open + lbl + '<input id="' + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
+    // step="any": sliders are continuous. A quantised step made the readout lie
+    // (a 0.001-step control formatted to 2dp looked like it jumped 0.01 -> 0.02),
+    // and every value is shown to 3 significant digits by sig3() instead.
+    const inp = t => '<input type="range" id="' + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
     return open + lbl + '<div class="dual"><div class="track"></div><div class="fill"></div>' + inp("lo") + inp("hi") + "</div></div>";
   }
   function buildControls() {
@@ -2656,7 +2683,7 @@
     input.addEventListener("input", update);
     update();
   }
-  bind("points", "vPoints", v => v, v => cfg.points = +v);
+  bind("points", "vPoints", v => sig3(v), v => cfg.points = +v);
 
   // Layers: the −/+ buttons drive a hidden number input (so it rides the normal
   // per-effect state/persist/preset machinery); each layer adds a smaller,
@@ -2787,7 +2814,7 @@
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
-  bindRange("ttl", "vTtl", v => Math.round(v) + "s", () => {}, 1, false);   // no chips
+  bindRange("ttl", "vTtl", v => sig3(v) + "s", () => {}, 1, false);   // no chips
 
   function updateAnims(now, dt) {
     for (const id in anims) {
@@ -3128,8 +3155,8 @@
     const out = {};
     for (const id in RNG_ORIG) {
       const inp = el(id), o = RNG_ORIG[id];
-      if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
-        out[id] = { min: inp.min, max: inp.max, step: inp.step };
+      if (inp && (inp.min !== o.min || inp.max !== o.max))
+        out[id] = { min: inp.min, max: inp.max };
     }
     return out;
   }
@@ -3142,9 +3169,9 @@
     if (!r || typeof r !== "object") return;
     for (const id in r) {
       const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
-      const mn = +v.min, mx = +v.max, sp = +v.step;
-      if (!isFinite(mn) || !isFinite(mx) || !isFinite(sp) || mx <= mn || sp <= 0) continue;
-      inp.min = String(mn); inp.max = String(mx); inp.step = String(sp);
+      const mn = +v.min, mx = +v.max;
+      if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
+      inp.min = String(mn); inp.max = String(mx);   // v.step (older blobs) ignored on purpose
     }
     rngSyncAll();                         // the in-box min/max/step fields follow
   }
@@ -3388,7 +3415,7 @@
     const box = document.createElement("div");
     box.className = "rng-edit";
     const fields = {};
-    for (const which of ["min", "max", "step"]) {
+    for (const which of ["min", "max"]) {          // no step: sliders are continuous
       const cell = document.createElement("label");
       cell.className = "rng-cell";
       cell.appendChild(document.createTextNode(which));
@@ -3409,10 +3436,10 @@
     rst.addEventListener("click", () => {
       for (const inp of els) {
         const o = RNG_ORIG[inp.id]; if (!o) continue;
-        inp.min = o.min; inp.max = o.max; inp.step = o.step;
+        inp.min = o.min; inp.max = o.max;
       }
       sync();
-      rngApply(els, "step", +els[0].step);   // re-clamp + re-dispatch (persists the reset)
+      rngApply(els, "min", +els[0].min);     // re-clamp + re-dispatch (persists the reset)
     });
     box.appendChild(rst);
     return box;
@@ -3922,14 +3949,19 @@
       i ? ctx.lineTo(X(p.bx), Y(p.by)) : ctx.moveTo(X(p.bx), Y(p.by));
     }
     ctx.stroke();
-    // the path the seed actually walks: one full outer lap with the riding circle
-    // spinning ratio× faster on top. Sampled fine enough for the highest ratio.
+    // The path the seed actually walks over one outer lap. The riding circle turns
+    // at a steady rate in *time* while the big loop is eased, so per unit of lap
+    // angle it advances dφ = ratio·dθ/ease(θ) — integrated here rather than assumed
+    // linear, so the drawn epicycles bunch and stretch exactly like the real orbit.
     const steps = Math.max(720, Math.min(9000, Math.ceil(Math.abs(juliaRatio) * 90)));
+    const dth = Math.PI * 2 / steps;
     ctx.lineWidth = 1; ctx.strokeStyle = "rgba(90,209,255,0.85)"; ctx.beginPath();
+    let phi = juliaInner;
     for (let i = 0; i <= steps; i++) {
-      const f = i / steps, o = juliaOuter + f * Math.PI * 2;
-      const p = juliaSeedAt(o, juliaInner + f * Math.PI * 2 * juliaRatio);
+      const o = juliaOuter + i * dth;
+      const p = juliaSeedAt(o, phi);
       i ? ctx.lineTo(X(p.cx), Y(p.cy)) : ctx.moveTo(X(p.cx), Y(p.cy));
+      phi += juliaRatio * dth / juliaEase(o + juliaPhase * Math.PI * 2);
     }
     ctx.stroke();
     // where it is right now: the riding circle, and the seed on its rim
