@@ -350,7 +350,26 @@
     gap: 10px; margin: 10px 0 3px; opacity: .85;
   }
   .ctl-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #panel .credit-line { margin: 6px 0 0; opacity: .85; line-height: 1.5; }
+  /* Credits: set like a demo's title screen rather than two flat sentences —
+     the scene role in glowing caps over the real name, handle picked out, each
+     entry hung off a thin gradient bar. */
+  #panel .credit { position: relative; margin: 10px 0 0; padding-left: 11px; }
+  #panel .credit::before {
+    content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 2px;
+    border-radius: 1px;
+    background: linear-gradient(180deg, #ffb15a, rgba(255, 140, 40, 0));
+  }
+  #panel .credit-role {
+    color: #ffb15a; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    text-shadow: 0 0 10px rgba(255, 120, 20, .75);
+  }
+  #panel .credit-name { opacity: .8; font-size: 11px; line-height: 1.5; }
+  /* keep "aka <handle>" together so a long name wraps as name / alias, never
+     stranding the "aka" at the end of a line */
+  #panel .credit-alias { white-space: nowrap; }
+  #panel .credit-aka { opacity: .45; }
+  #panel .credit-handle { color: #ffcf87; font-weight: bold; }
+  #panel .credit + label.check { margin-top: 12px; }
   /* Filters: the stackable post-FX checkboxes */
   #panel #filterlist { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 2px 0 4px; }
   #panel .filter-chk { margin: 4px 0 0; }
@@ -613,11 +632,18 @@
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </details>
 
-  <!-- Box — Credits. The same two lines the startup overlay burns into the fire. -->
+  <!-- Box — Credits. The same two people the startup overlay burns into the fire
+       (CREDITS in the script), split into role/name/handle so they can be styled. -->
   <details class="box">
   <summary class="box-t">Credits</summary>
-  <p class="credit-line">The Rastermancer — Carl-Emil Kjellstrand aka Erbsman</p>
-  <p class="credit-line">Warden of Waveforms — Kristian Saether aka The Dyze</p>
+  <div class="credit">
+    <div class="credit-role">The Rastermancer</div>
+    <div class="credit-name">Carl-Emil Kjellstrand <span class="credit-alias"><span class="credit-aka">aka</span> <span class="credit-handle">Erbsman</span></span></div>
+  </div>
+  <div class="credit">
+    <div class="credit-role">Warden of Waveforms</div>
+    <div class="credit-name">Kristian Saether <span class="credit-alias"><span class="credit-aka">aka</span> <span class="credit-handle">The Dyze</span></span></div>
+  </div>
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
   </details>
 
@@ -3495,6 +3521,9 @@
   // their pixels are stamped through the same plot() the effects use. So the text
   // catches the effect's own palette, glow and (if Fire is on) rises and burns away
   // by itself — it is the effect, not a layer on top of it. Nothing to undraw.
+  // Same two credits as the panel's Credits box, but flat: this is rasterised to a
+  // glyph mask, so it gets one plain string per line while the panel splits each into
+  // role / name / handle for styling. Change one, change the other.
   const CREDITS = [
     "The Rastermancer - Carl-Emil Kjellstrand aka Erbsman",
     "Warden of Waveforms - Kristian Saether aka The Dyze",
