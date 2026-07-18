@@ -161,7 +161,7 @@
   }
   #paused.hidden { display: none; }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
-  #reset {
+  #reset, #cardbtn {
     margin-top: 8px;
     width: 100%;
     padding: 7px 0;
@@ -174,15 +174,32 @@
     cursor: pointer;
     transition: background .15s;
   }
-  #reset:hover { background: rgba(255, 122, 26, 0.3); }
+  #reset:hover, #cardbtn:hover { background: rgba(255, 122, 26, 0.3); }
+  #cardbtn { background: transparent; opacity: .82; }   /* a dev tool: present, but quieter than Reset */
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
   #panel .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
   #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
+  /* The menu is three grouped boxes — what the scene IS (presets/effect/palette),
+     how it's tuned (this effect's sliders), and the app-wide stuff (audio,
+     resolution, diagnostics) — so the long list reads as sections, not one run-on. */
+  #panel .box {
+    margin: 12px 0 0; padding: 2px 12px 12px;
+    background: rgba(255, 140, 40, 0.045);
+    border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 9px;
+  }
+  #panel .box > .box-t {
+    margin: 0 -12px 8px; padding: 7px 12px 6px;
+    border-bottom: 1px solid rgba(255, 140, 40, 0.16);
+    color: #ffb15a; opacity: .95; letter-spacing: .05em; font-size: 11px; text-transform: uppercase;
+  }
+  #panel .box > .box-t + * { margin-top: 0; }
+  #panel .box > #diag { margin-top: 4px; }
   #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
   /* ---- Diagnostics: dev tools folded into the panel (frame counter, beat trace,
-         beat tuning, slider range editor). Formerly floating overlays. ---- */
+         beat tuning). Formerly floating overlays. Slider ranges are no longer here:
+         each slider edits its own bounds inside its pop-out box. ---- */
   #diag { margin-top: 12px; font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
   #diag > summary, #diag details > summary {
     cursor: pointer; list-style: none; color: #ffcf87; opacity: .85;
@@ -194,21 +211,13 @@
   #diag details[open] > summary::before { content: "\25BE "; }   /* ▾ */
   #diag details { margin: 4px 0 0; }
   #diag b { display: block; color: #ffcf87; margin-bottom: 6px; }
-  #diag .rng-head, #diag .rng-row { display: grid; grid-template-columns: 1fr 46px 46px 46px; gap: 4px; align-items: center; }
-  #diag .rng-head { color: #7d838a; margin-bottom: 3px; text-align: center; }
-  #diag .rng-row { margin-bottom: 3px; }
-  #diag .rng-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-  #diag .rng-f {
-    width: 100%; padding: 2px 4px; background: #16181b; color: #cfd3d8;
-    border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
-  }
   #diag .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
   #diag .rng-btns button {
     flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
     font: 11px ui-monospace, monospace; cursor: pointer;
   }
-  #diag #rngMsg, #diag #beatMsg { margin: 6px 0 0; color: #7d838a; font-size: 10px; line-height: 1.4; }
+  #diag #beatMsg { margin: 6px 0 0; color: #7d838a; font-size: 10px; line-height: 1.4; }
   #diag .beat-sec { color: #7d838a; margin: 8px 0 3px; }
   #diag .beat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
   #diag .beat-name { width: 32px; flex: none; }
@@ -266,11 +275,53 @@
   #breakout.empty { display: none; }
   #panel.hidden ~ #breakout { display: none; }      /* hide the column when the menu is hidden */
   #breakout .ctl {
-    position: relative; margin: 0; padding: 9px 14px 13px 26px;
+    position: relative; margin: 0; padding: 12px 14px 12px 30px;
     background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
-  #breakout label { display: block; margin: 0 0 3px; opacity: .85; }
+  /* A box has room the menu slot never had, so unstack it: the name + value get
+     their own line, the beat chips + pulse picker drop to a line of their own
+     (instead of being squeezed against the value), and the slider gets air. */
+  #breakout label {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+    margin: 0 0 6px; opacity: .85;
+  }
+  #breakout .val { float: none; order: 1; margin-left: auto; }
+  #breakout .bandchips { float: none; order: 2; flex-basis: 100%; gap: 4px; margin: 2px 0 0; }
+  #breakout .bandchips button { width: 22px; height: 18px; font-size: 10px; line-height: 16px; }
+  #breakout .bandchips select { height: 18px; margin-left: auto; padding: 0 2px; font-size: 10px; }
+  #breakout .dual { margin: 2px 0 4px; }
+  #breakout .ctl > input[type=range] { margin: 4px 0; }
+  /* Per-slider beat-pulse length: how long this slider's beat kick takes to fall
+     back. Only meaningful in a box (it's a per-slider knob), so it's hidden in the
+     menu and laid out as name · slider · readout here. */
+  #panel .plen { display: none; }
+  #breakout .plen {
+    display: flex; align-items: center; gap: 7px;
+    margin: 8px 0 0; font-size: 10px; opacity: .8;
+  }
+  #breakout .plen-name { flex: none; letter-spacing: .04em; }
+  #breakout .plen input[type=range] { flex: 1; min-width: 0; height: 12px; }
+  #breakout .plen-val { flex: none; min-width: 40px; text-align: right; color: #ffcf87; }
+  /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
+     (This replaced the one shared "Slider ranges" list in Diagnostics.) */
+  #breakout .rng-edit {
+    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 5px; align-items: end;
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.18);
+  }
+  #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
+  #breakout .rng-cell input {
+    display: block; width: 100%; margin-top: 3px; padding: 3px 4px;
+    background: rgba(0, 0, 0, 0.4); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
+    font: 10px ui-monospace, monospace;
+  }
+  #breakout .rng-rst {
+    width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
+    border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
+    font: 11px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #breakout .rng-rst:hover { background: rgba(255, 140, 40, 0.22); }
   /* +/- pop button. In a pop-out box it sits in the box's left gutter (absolute);
      on a menu row it's a static chip pinned to the right of the slider's name. */
   .poppable { position: relative; }
@@ -357,6 +408,30 @@
   #syncpop .sync-actions #sync-capture { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
   #syncpop .sync-actions .ghost { flex: 0 0 auto; background: transparent; opacity: .75; }
 
+  /* Cardioid debug view: the Mandelbrot set with the seed's orbit drawn on top */
+  #carddlg {
+    position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #carddlg.hidden { display: none; }
+  #carddlg .card-box {
+    position: relative; max-height: 92vh; overflow-y: auto; margin: 16px; padding: 18px 20px 16px;
+    background: rgba(14, 8, 5, 0.97); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    color: #ffdcb0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #carddlg h2 { margin: 0 30px 10px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #carddlg canvas { display: block; max-width: 100%; border: 1px solid rgba(255, 140, 40, 0.25); border-radius: 6px; }
+  #carddlg .card-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #carddlg .card-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #carddlg .card-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 0; font-size: 11px; opacity: .85; }
+  #carddlg .card-key i { display: inline-block; width: 10px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+  #carddlg #cardNums { margin: 8px 0 0; font-size: 11px; opacity: .7; }
+
   /* Restore-from-backup dialog */
   #restoredlg {
     position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
@@ -404,8 +479,11 @@
     <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current settings — needs the internet, and sends the scene to TinyURL">Short link</button>
   </div>
   <input type="file" id="presetsfile" accept="application/json,.json" style="display:none">
-  <hr class="sep">
 
+  <!-- Box 1 — Scene: what's playing. The three choosers (preset / effect / palette)
+       and the toggles that belong to each. Their sliders live in box 2. -->
+  <div class="box">
+  <div class="box-t">Scene</div>
   <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
   <label>Presets</label>
   <select id="preset"></select>
@@ -421,16 +499,12 @@
       <input type="range" id="ttl-lo" min="0" max="180" step="1" value="10">
       <input type="range" id="ttl-hi" min="0" max="180" step="1" value="30"></div>
   </div>
-  <hr class="sep">
 
-  <!-- Effect: pick the visual, then its shape / motion controls and the view zoom -->
+  <!-- Effect: pick the visual. Its shape / motion sliders are in box 2. -->
   <label>Effect</label>
   <select id="effect"><!-- options generated from the EFFECTS registry --></select>
 
-  <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
-  <hr class="sep">
-
-  <!-- Colour: the palette, its auto-morph, and the shader-effect banding filter -->
+  <!-- Colour: the palette and its auto-morph (the banding filter is in box 2) -->
   <label>Palette</label>
   <select id="palette">
     <option value="0">Fire</option>
@@ -450,12 +524,24 @@
     <option value="14">Chrome</option>
   </select>
   <label class="check"><input type="checkbox" id="morph" checked> Auto-morph palettes</label>
+  </div>
 
+  <!-- Box 2 — Settings: every slider of the selected effect (each a name + a +/-
+       launcher; the slider itself lives in its pop-out box), plus the banding
+       filter and the per-effect reset. -->
+  <div class="box">
+  <div class="box-t">Settings</div>
+  <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
-
+  <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
+  <button id="cardbtn" type="button" title="Show where the seed's cardioid orbit lands on the Mandelbrot set">Cardioid debug</button>
   <button id="reset" type="button">Reset this effect</button>
-  <hr class="sep">
+  </div>
 
+  <!-- Box 3 — System: app-wide, never part of a scene — audio input, render
+       resolution and the dev tools. -->
+  <div class="box">
+  <div class="box-t">System</div>
   <!-- Sound &amp; quality: music reactivity and the global render resolution -->
   <label>React to music <span class="val" id="vAudio">off</span></label>
   <div class="audiorow">
@@ -474,7 +560,6 @@
     <option value="3">Low</option>
     <option value="4">Potato</option>
   </select>
-  <hr class="sep">
 
   <!-- Diagnostics: the dev tools, folded into the one menu (were D/B/R/C/G keys). -->
   <details id="diag">
@@ -487,16 +572,8 @@
       <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
       <p id="beatMsg">Saved in your browser &amp; in Backups (not Share links or presets). Tune it beside the beat trace.</p>
     </details>
-    <details id="rngDetails">
-      <summary>Slider ranges</summary>
-      <b>Slider ranges — <span id="rngEff"></span></b>
-      <div class="rng-head"><span class="rng-name"></span><span>min</span><span>max</span><span>step</span></div>
-      <div id="rngBody"></div>
-      <div class="rng-btns"><button type="button" id="rngCopy">Copy changed</button><button type="button" id="rngReset">Reset</button></div>
-      <p id="rngMsg">Saved in your browser, shared in ?s= links and written to backups. Copy bakes them into index.html as shipped defaults.</p>
-    </details>
   </details>
-  <hr class="sep">
+  </div>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen</p>
 </div>
@@ -505,6 +582,22 @@
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
+
+<!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
+<div id="carddlg" class="hidden">
+  <div class="card-box">
+    <h2>Cardioid debug</h2>
+    <button type="button" class="card-close" id="card-close" aria-label="Close">×</button>
+    <canvas id="cardcv" width="420" height="330"></canvas>
+    <div class="card-key">
+      <span><i style="background:#ff7a1a"></i>seed cardioid</span>
+      <span><i style="background:#5ad1ff"></i>actual path</span>
+      <span><i style="background:#7ddc8a"></i>riding circle</span>
+      <span><i style="background:#fff"></i>seed c</span>
+    </div>
+    <p id="cardNums"></p>
+  </div>
+</div>
 
 <div id="restoredlg" class="hidden">
   <div class="rst-box">
@@ -1719,21 +1812,25 @@
   // Advance the two orbit phases one frame and return the seed c plus the
   // complex-plane span. Shared by the CPU loop and the GPU Julia shader so the
   // seed animation is identical on either path.
+  // The seed for a given pair of orbit phases — pure, so the Cardioid debug view
+  // can sample the whole path (and the live point) without advancing the animation.
+  function juliaSeedAt(outer, inner) {
+    // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
+    // scaled outward by the margin so it sits just outside the inner bound.
+    const th = outer + juliaPhase * Math.PI * 2, s = (1 + JULIA_MARGIN) * juliaOuterR;
+    const bx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
+    const by = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
+    // small circle riding on top, spinning ratio× faster than the big loop; its
+    // radius is the inner:outer slider × the reference outer radius.
+    const r = juliaInnerR;
+    return { cx: bx + r * Math.cos(inner), cy: by + r * Math.sin(inner), bx, by };
+  }
   function juliaSeed(dt) {
     juliaOuter += dt * juliaBigRpm * RPM;                 // outer lap
     juliaInner += dt * juliaBigRpm * juliaRatio * RPM;    // inner = ratio × outer
-    // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
-    // scaled outward by the margin so it sits just outside the inner bound.
-    const th = juliaOuter + juliaPhase * Math.PI * 2, s = (1 + JULIA_MARGIN) * juliaOuterR;
-    let cx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s;
-    let cy = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
-    // small circle riding on top, spinning ratio× faster than the big loop; its
-    // radius is the inner:outer slider × the reference outer radius.
-    const a2 = juliaInner, r = juliaInnerR;
-    cx += r * Math.cos(a2);
-    cy += r * Math.sin(a2);
+    const p = juliaSeedAt(juliaOuter, juliaInner);
     const spanY = JULIA_SPAN / zoom, spanX = spanY * (fw / fh);
-    return { cx, cy, spanX, spanY };
+    return { cx: p.cx, cy: p.cy, spanX, spanY };
   }
   function julia(dt) {
     const seed = juliaSeed(dt);
@@ -2120,6 +2217,7 @@
     }
     if (useGL) glRender();
     else render();
+    if (card && card.on) cardDraw();   // Cardioid debug view follows the live seed
 
     // Count only rendered frames (paused frames returned early above). FPS is a
     // sliding average over the last 3s: frames span (n-1) intervals across the
@@ -2572,7 +2670,8 @@
   const anims = {};
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
-  const PULSE_DROP = 0.2;   // s for a beat pulse to fall from the high thumb back to the low
+  const PULSE_DROP = 0.2;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
+  const PLEN_MIN = 0.02, PLEN_MAX = 3;   // bounds of the per-slider pulse-length slider (s)
 
   // Beat-pulse SHAPE (per slider, per effect). On a beat an armed slider snaps to
   // its high thumb and `a.pulse` decays linearly 1→0 over PULSE_DROP; the chosen
@@ -2592,6 +2691,12 @@
   const PULSE_DEFAULT = "snap";
   const pulseShape = {};       // id -> shape key : live per-effect selection (drives updateAnims)
   const pulseEls = {};         // id -> <select> : the shape pickers (never persisted)
+  // Beat-pulse LENGTH (per slider, per effect): how long that decay takes. It used
+  // to be the hardcoded PULSE_DROP for every slider; each slider now owns its own,
+  // set by a small range in its pop-out box, so a kick can flick one param and
+  // swell another. PULSE_DROP stays the default, so untouched scenes are unchanged.
+  const pulseLen = {};         // id -> seconds : live per-effect value (drives updateAnims)
+  const plenEls = {};          // id -> {inp,out} : the length slider + readout (never persisted)
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
   function makeChips(id, label) {
     beatReact[id] = { low: false, mid: false, high: false };
@@ -2624,7 +2729,26 @@
     pulseEls[id] = psel;
     pulseShape[id] = PULSE_DEFAULT;
     label.insertBefore(wrap, label.querySelector(".val"));   // right-edge column (before the value)
+    // How long that pulse lasts, for this slider. Sits under the chips in the
+    // pop-out box (there's no room for it in a menu row, and only a popped-out
+    // slider is being tuned). Its `input` bubbles to onEdit → persist + autosave.
+    pulseLen[id] = PULSE_DROP;
+    const row = document.createElement("div");
+    row.className = "plen";
+    const nm = document.createElement("span");
+    nm.className = "plen-name"; nm.textContent = "Pulse";
+    const sl = document.createElement("input");
+    sl.type = "range"; sl.id = "plen-" + id; sl.min = PLEN_MIN; sl.max = PLEN_MAX; sl.step = 0.01; sl.value = PULSE_DROP;
+    sl.title = "How long a beat pulse takes to fall back";
+    sl.setAttribute("aria-label", "Beat pulse length");
+    const out = document.createElement("span");
+    out.className = "plen-val"; out.textContent = plenFmt(PULSE_DROP);
+    sl.addEventListener("input", () => { pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
+    row.append(nm, sl, out);
+    plenEls[id] = { inp: sl, out };
+    label.parentNode.appendChild(row);   // foot of the control block (above the range editor)
   }
+  const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   function bindRange(id, valId, fmt, apply, durScale, beat) {
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
@@ -2635,7 +2759,7 @@
     hi.setAttribute("aria-label", nm + " (high)");
     const a = anims[id] = { lo, hi, apply, name: nm, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, pulse: 0 };
     function ui() {
-      // min/max are read live, not closed over: the range editor (see rngToggle)
+      // min/max are read live, not closed over: each box's range editor
       // rewrites them at runtime and the fill must follow.
       const mn = +lo.min, mx = +lo.max, span = (mx - mn) || 1;
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
@@ -2663,13 +2787,14 @@
       const br = beatReact[id];
       // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
       // drifting and only move on a beat — snap to the high thumb, drop back to
-      // the low thumb over PULSE_DROP seconds.
+      // the low thumb over this slider's own pulse length (default PULSE_DROP).
       const armed = audio.on && br && (br.low || br.mid || br.high);
 
       if (armed) {
         const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
+        const drop = pulseLen[id] > 0 ? pulseLen[id] : PULSE_DROP;
         if (beat) a.pulse = 1;                                   // immediate, significant
-        else a.pulse = a.pulse - dt / PULSE_DROP > 0 ? a.pulse - dt / PULSE_DROP : 0;
+        else a.pulse = a.pulse - dt / drop > 0 ? a.pulse - dt / drop : 0;
         const shape = PULSE_FN[pulseShape[id]] || PULSE_FN[PULSE_DEFAULT];
         a.apply(mn + shape(a.pulse) * (mx - mn));                // rest at mn, snap to mx, decay back along the chosen curve
         continue;
@@ -2743,7 +2868,7 @@
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
-      bakesOwnZoom: true, onEnter: () => reseedJulia(), draw: dt => { if (useGL) glJulia(juliaSeed(dt)); else julia(dt); },
+      bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { if (useGL) glJulia(juliaSeed(dt)); else julia(dt); },
       defaults: { band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], points: 1500 },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
@@ -2767,7 +2892,7 @@
     { id: "burningship", name: "Burning Ship", presetName: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band"],
-      bakesOwnZoom: true, onEnter: () => reseedJulia(),
+      bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(dt); },
       defaults: { band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052] },
       beat: { banddim: ["low"], zoom: ["mid"], phase: ["high"] }, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
@@ -2804,7 +2929,7 @@
     { id: "multibrot", name: "Multibrot", presetName: "Multibrot", subtitle: "Multibrot · power sweep",
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
       params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "randseed", "zoom", "band", "bandsize", "banddim"], helpTags: ["all", "julia", "band", "multibrot"],
-      bakesOwnZoom: true, onEnter: () => reseedJulia(),
+      bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(dt); },
       defaults: { mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052] },
       beat: { mbexp: ["low"], banddim: ["high"] }, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
@@ -2937,6 +3062,25 @@
   function loadPulse(e) { for (const id in pulseShape) pulseShape[id] = PULSE_FN[pulseStates[e][id]] ? pulseStates[e][id] : PULSE_DEFAULT; syncPulse(); }
   function syncPulse() { for (const id in pulseEls) pulseEls[id].value = pulseShape[id]; }
 
+  // Per-effect beat-pulse LENGTH, exactly parallel to pulseStates above. Seeded to
+  // the descriptor's optional `plen` map, else PULSE_DROP (the old hardcoded value).
+  const plenStates = {};
+  const plenOk = v => typeof v === "number" && isFinite(v) && v >= PLEN_MIN && v <= PLEN_MAX;
+  function presetPlen(e) {
+    const pt = {};
+    for (const id in pulseLen) pt[id] = PULSE_DROP;
+    const pp = EFFECTS[e].plen;
+    if (pp) for (const id in pp) if (id in pt && plenOk(pp[id])) pt[id] = pp[id];
+    return pt;
+  }
+  function initPlenStates() { EFFECTS.forEach((_, k) => plenStates[k] = presetPlen(k)); }
+  initPlenStates();
+  function savePlen(e) { for (const id in pulseLen) plenStates[e][id] = pulseLen[id]; }
+  function loadPlen(e) { for (const id in pulseLen) pulseLen[id] = plenOk(plenStates[e][id]) ? plenStates[e][id] : PULSE_DROP; syncPlen(); }
+  function syncPlen() {
+    for (const id in plenEls) { plenEls[id].inp.value = pulseLen[id]; plenEls[id].out.textContent = plenFmt(pulseLen[id]); }
+  }
+
   // Per-effect "extras": palette, auto-morph, show-box and Effect TTL are also
   // remembered per effect, so each effect is a fully independent scene.
   const extras = {};
@@ -2968,6 +3112,7 @@
   const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
   panel.querySelectorAll("input[type=range]").forEach(inp => {
     if (inp.closest("#diag")) return;   // Diagnostics' beat-tuning sliders aren't scene ranges
+    if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
     RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
   });
   function collectRanges() {              // { id: {min,max,step} } for bounds that differ from shipped
@@ -2979,6 +3124,11 @@
     }
     return out;
   }
+  // Each pop-out box's range editor registers a sync fn here, so bounds loaded from
+  // a blob (restore / share link) show up in the fields. Declared beside applyRanges
+  // because applyRanges calls it, and applyBlob can run before the boxes are built.
+  const rngSyncs = [];
+  function rngSyncAll() { rngSyncs.forEach(f => f()); }
   function applyRanges(r) {               // set custom bounds onto the slider elements (validated)
     if (!r || typeof r !== "object") return;
     for (const id in r) {
@@ -2987,6 +3137,7 @@
       if (!isFinite(mn) || !isFinite(mx) || !isFinite(sp) || mx <= mn || sp <= 0) continue;
       inp.min = String(mn); inp.max = String(mx); inp.step = String(sp);
     }
+    rngSyncAll();                         // the in-box min/max/step fields follow
   }
   // After bounds change mid-session, re-clamp stray values and re-run each slider's
   // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
@@ -3035,9 +3186,10 @@
     saveState(effect);                // fold the live sliders into the current effect
     saveBeat(effect);                 // ...the live beat toggles
     savePulse(effect);                // ...the live beat-pulse shapes
+    savePlen(effect);                 // ...their lengths
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
     return {
-      states, beats: beatStates, pulses: pulseStates, extras, effect,
+      states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
       ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       presets, curPreset,
@@ -3090,6 +3242,12 @@
         }
       }
     }
+    if (saved.plens) {                  // ...and their lengths (absent in pre-feature blobs → PULSE_DROP)
+      for (const k in plenStates) {
+        const ps = saved.plens[k]; if (!ps) continue;
+        for (const id in plenStates[k]) if (plenOk(ps[id])) plenStates[k][id] = ps[id];
+      }
+    }
     // Per-effect extras (palette / morph / show-box / TTL). Migrate a legacy blob
     // that stored these once at the root into every effect's extras.
     const legacy = saved.extras ? null : saved;
@@ -3139,7 +3297,7 @@
   resize();          // re-apply the restored render resolution (cfg.scale)
 
   function setEffect(i, save = true) {
-    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); saveExtra(effect); }  // remember outgoing
+    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
@@ -3151,15 +3309,18 @@
       else el("ctl-" + c.key).style.display = vis;
     });
     refreshBreakout();                // show/hide the pop-out boxes for this effect
+    // The Cardioid debug view only means anything for a Mandelbrot-seeded effect.
+    el("cardbtn").style.display = fx.cardioid ? "" : "none";
+    if (!fx.cardioid) cardOpen(false);
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
+    loadPlen(i);                      // ...and their lengths
     loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
     if (fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry
     if (fire) fire.fill(0);           // drop leftover heat when switching (CPU)
     if (fireNext) fireNext.fill(0);
     if (useGL && glReady) glClearHeat();
-    rngRefresh();                     // the range editor lists only this effect's sliders
     persist();
   }
 
@@ -3185,9 +3346,74 @@
     b.addEventListener("click", () => togglePop(key));
     return b;
   }
+  // ---- per-slider range editor (lives at the foot of the slider's pop-out box) --
+  // Sliders ship their min/max/step as HTML attributes; these fields retune the
+  // bounds of *this* slider live, against the running visual. It replaced the one
+  // shared "Slider ranges" list that used to sit in Diagnostics — the bounds belong
+  // next to the slider they bound, and only a popped-out slider is being tuned.
+  // Retuned bounds persist (localStorage), ride the ?s= share URL and go into
+  // backups (see collectRanges/applyRanges); ↺ restores the shipped ones. The
+  // fields don't persist themselves — rngApply dispatches `input` on the real
+  // slider, and the delegated onEdit turns that into a persist + autosave.
+  function ctlRangeInputs(key) {   // a dual's two thumbs share one set of bounds
+    const lo = el(key + "-lo"), hi = el(key + "-hi");
+    if (lo && hi) return [lo, hi];
+    const p = el(key);
+    return p && p.type === "range" ? [p] : [];
+  }
+  function rngApply(els, which, v) {
+    if (!isFinite(v)) return;
+    for (const inp of els) {
+      inp[which] = String(v);
+      // A value outside the new bounds would otherwise be clamped by the browser
+      // only on the next drag — clamp now and re-apply, so the visual, the readout
+      // and the fill all agree immediately (and the change persists).
+      const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
+      if (c !== +inp.value) inp.value = String(c);
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+  function makeRangeEditor(key) {
+    const els = ctlRangeInputs(key);
+    if (!els.length) return null;
+    const box = document.createElement("div");
+    box.className = "rng-edit";
+    const fields = {};
+    for (const which of ["min", "max", "step"]) {
+      const cell = document.createElement("label");
+      cell.className = "rng-cell";
+      cell.appendChild(document.createTextNode(which));
+      const f = document.createElement("input");
+      f.type = "number"; f.step = "any"; f.value = els[0][which];
+      f.title = ctlLabel(key) + " " + which;
+      f.addEventListener("input", () => rngApply(els, which, +f.value));
+      cell.appendChild(f);
+      box.appendChild(cell);
+      fields[which] = f;
+    }
+    const sync = () => { for (const w in fields) fields[w].value = els[0][w]; };
+    rngSyncs.push(sync);
+    const rst = document.createElement("button");
+    rst.type = "button"; rst.className = "rng-rst"; rst.textContent = "↺";
+    rst.title = "Restore this slider's shipped range";
+    rst.setAttribute("aria-label", ctlLabel(key) + ": restore the shipped range");
+    rst.addEventListener("click", () => {
+      for (const inp of els) {
+        const o = RNG_ORIG[inp.id]; if (!o) continue;
+        inp.min = o.min; inp.max = o.max; inp.step = o.step;
+      }
+      sync();
+      rngApply(els, "step", +els[0].step);   // re-clamp + re-dispatch (persists the reset)
+    });
+    box.appendChild(rst);
+    return box;
+  }
+
   POPPABLE.forEach(key => {
     const ctl = el("ctl-" + key);
     ctl.classList.add("poppable");
+    const rngEd = makeRangeEditor(key);
+    if (rngEd) ctl.appendChild(rngEd);         // bounds editor at the foot of the box
     ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
     const row = document.createElement("div");   // the launcher that stays in the menu slot
     row.className = "ctl-row";
@@ -3271,6 +3497,7 @@
   // edit is auto-saved into it; in "— custom —" it just updates the working scene.
   function onEdit(e) {
     if (e.target.closest("#diag")) return;   // dev tools persist themselves; never fold them into a preset
+    if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
     if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }
@@ -3286,10 +3513,12 @@
     states[effect] = presetState(effect);
     beatStates[effect] = presetBeat(effect);
     pulseStates[effect] = presetPulse(effect);
+    plenStates[effect] = presetPlen(effect);
     extras[effect] = presetExtra(effect);
     loadState(effect);                // apply to the live sliders
     loadBeat(effect);                 // ...the live chips
     loadPulse(effect);                // ...the live pulse shapes
+    loadPlen(effect);                 // ...and their lengths
     loadExtra(effect);                // ...and palette/morph/show-box/TTL
     persist();
   });
@@ -3334,12 +3563,22 @@
     }
     return out;
   }
+  // ...and for pulse lengths (almost always the default PULSE_DROP).
+  function prunePlens(all) {
+    const out = {};
+    for (const e in all) {
+      const def = presetPlen(e), keep = {};
+      for (const id in all[e]) if (all[e][id] !== (def[id] || PULSE_DROP)) keep[id] = all[e][id];
+      if (Object.keys(keep).length) out[e] = keep;
+    }
+    return out;
+  }
 
   // Build the share URL for the current scene: all effects' values, but not the
   // browser-local saved presets. Decoded by applyShared() on load.
   function shareUrl() {
-    saveState(effect); saveBeat(effect); savePulse(effect); saveExtra(effect);
-    const blob = { states, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
+    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
+    const blob = { states, beats: pruneBeats(beatStates), pulses: prunePulses(pulseStates), plens: prunePlens(plenStates), extras, effect, cycle: cycleChk.checked, ttl: [+el("ttl-lo").value, +el("ttl-hi").value], ranges: collectRanges() };
     const s = btoa(unescape(encodeURIComponent(JSON.stringify(serializeBlob(blob)))));   // effect stored as a stable id
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
     // through the effect's landing page when it has one (so social unfurls show
@@ -3397,17 +3636,18 @@
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
   function snapshotScene() {
-    saveState(effect); saveBeat(effect); savePulse(effect); saveExtra(effect);
+    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
     return {
       effect,
       state: JSON.parse(JSON.stringify(states[effect])),
       beat: JSON.parse(JSON.stringify(beatStates[effect])),
       pulse: JSON.parse(JSON.stringify(pulseStates[effect])),
+      plen: JSON.parse(JSON.stringify(plenStates[effect])),
       extra: JSON.parse(JSON.stringify(extras[effect])),
     };
   }
   function defaultPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), extra: presetExtra(e) }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e) }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -3432,6 +3672,12 @@
     if (saved) for (const id in base) if (typeof saved[id] === "string" && PULSE_FN[saved[id]]) base[id] = saved[id];
     return base;
   }
+  // ...and for its pulse lengths (no `plen` ⇒ every slider at PULSE_DROP).
+  function mergePlen(e, saved) {
+    const base = presetPlen(e);
+    if (saved) for (const id in base) if (plenOk(saved[id])) base[id] = saved[id];
+    return base;
+  }
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;
     applyingPreset = true;
@@ -3439,6 +3685,7 @@
     states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = JSON.parse(JSON.stringify(p.beat));
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
+    plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
     extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene (may snap the palette)
@@ -3515,7 +3762,7 @@
         const valid = arr
           .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
           .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
-                       state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), extra: p.extra }));
+                       state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen), extra: p.extra }));
         if (!valid.length) throw new Error("no valid presets in file");
         openRestore(parsed, valid, file.name);   // let the user pick what to restore + how
       } catch (err) { alert("Couldn't read backup: " + err.message); }
@@ -3568,6 +3815,7 @@
       const s = p.parsed;
       out.states = s.states; out.beats = s.beats; out.extras = s.extras;
       if (s.pulses) out.pulses = s.pulses;         // per-effect beat-pulse shapes (absent in pre-feature backups)
+      if (s.plens) out.plens = s.plens;            // ...and their lengths
       if (Number.isInteger(s.effect)) out.effect = s.effect;
       if (typeof s.cycle === "boolean") out.cycle = s.cycle;
       if (Array.isArray(s.ttl)) out.ttl = s.ttl;   // global preset TTL
@@ -3617,117 +3865,87 @@
     if (matchMedia("(prefers-reduced-motion: reduce)").matches)
       requestAnimationFrame(() => requestAnimationFrame(() => setPaused(true)));
   } catch (e) {}
-  // ---- slider range editor (Diagnostics ▸ "Slider ranges" section, or ?ranges=1) ----
-  // Sliders ship their min/max/step as HTML attributes; this overlay makes the
-  // bounds editable *live*, against the running visual, and lists only the sliders
-  // of the currently selected effect (it rebuilds on every setEffect).
+  // ---- Cardioid debug view ---------------------------------------------------
+  // AnimeJulia, Burning Ship and Multibrot all take their seed c from a point
+  // orbiting the Mandelbrot main cardioid (see juliaSeedAt) — but the sliders that
+  // shape that orbit (RPM / ratio / radii / start) are abstract until you can see
+  // where the orbit actually lands. This popup renders the Mandelbrot set in the
+  // c-plane and draws, live: the full seed cardioid, the path the seed really
+  // traces (cardioid + riding circle at the current ratio), the riding circle
+  // itself, and the seed's current position. Descriptor-gated on `cardioid: true`.
   //
-  // Retuned bounds now ARE persisted (localStorage), shared in the ?s= URL and
-  // written into preset backups — so a customized range survives a reload and
-  // travels with a shared/backed-up scene (see collectRanges/applyRanges above).
-  // "Copy changed" still exists to bake a range into index.html as a new shipped
-  // default; Reset restores the shipped bounds. RNG_ORIG (the pristine shipped
-  // bounds) is captured up top, before restore() can overwrite the live bounds.
-  // `var`, not `const`: setEffect() calls rngRefresh() during startup, before this
-  // line has run — a const would be in its temporal dead zone and throw.
-  var rng = { on: false, wired: false, body: null };
-  function rngRows() {
-    // One row per slider of the visible groups: a dual slider's -lo/-hi pair share
-    // one row (they must keep identical bounds), a plain range is a row of one.
-    const rows = new Map();
-    sceneRangeInputs().forEach(inp => {
-      if (inp.closest("#diag")) return;                         // skip the beat-tuning sliders in Diagnostics
-      const grp = inp.closest(".ctl, #grp-ttl");                // generated control wrapper (or the TTL group)
-      const base = inp.id.replace(/-(lo|hi)$/, "");
-      // A poppable slider's box lives in #breakout and is hidden while docked, so
-      // gate it on effect membership rather than display; other groups use display.
-      if (POPPABLE.includes(base)) { if (!EFFECTS[effect].params.includes(base)) return; }
-      else if (grp && grp.style.display === "none") return;     // not part of this effect
-      if (!rows.has(base)) {
-        const host = inp.closest(".dual") || inp;
-        const lbl = host.previousElementSibling;
-        const name = (lbl && lbl.childNodes[0] ? lbl.childNodes[0].nodeValue : base).trim();
-        rows.set(base, { name, els: [] });
+  // It samples juliaSeedAt() rather than juliaSeed(), so opening it never advances
+  // (or perturbs) the animation. State is transient: never persisted, never a preset.
+  const CARD_X0 = -2.35, CARD_X1 = 0.95;      // the slice of the c-plane we draw
+  // `var`, not `const`: setEffect() runs during startup, before this line is
+  // evaluated, and calls cardOpen() — a const would still be in its temporal dead
+  // zone and throw (same reason the old range editor's state was a `var`).
+  var card = { on: false, cv: null, ctx: null, bg: null };
+  function cardMandelbrot(w, h) {             // static: rendered once, then reused
+    const img = new ImageData(w, h), d = img.data;
+    const spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w), y0 = -spanY / 2;
+    for (let py = 0; py < h; py++) {
+      const cy = y0 + (py / h) * spanY;
+      for (let px = 0; px < w; px++) {
+        const cx = CARD_X0 + (px / w) * spanX;
+        let zx = 0, zy = 0, i = 0;
+        for (; i < 120 && zx * zx + zy * zy <= 4; i++) { const t = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = t; }
+        const o = (py * w + px) * 4;
+        // inside = near-black, outside = a cool grey ramp, so the amber overlay pops
+        const v = i >= 120 ? 10 : 24 + Math.round(Math.sqrt(i / 120) * 120);
+        d[o] = v * 0.78; d[o + 1] = v * 0.85; d[o + 2] = v; d[o + 3] = 255;
       }
-      rows.get(base).els.push(inp);
-      if (!RNG_ORIG[inp.id]) RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
-    });
-    return rows;
-  }
-  function rngApply(row, key, v) {
-    if (!isFinite(v)) return;
-    for (const inp of row.els) {
-      inp[key] = String(v);
-      // Values outside the new bounds would otherwise be silently clamped by the
-      // browser only on the next interaction — clamp now and re-apply, so the
-      // visual, the readout and the fill all agree immediately.
-      const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
-      if (c !== +inp.value) inp.value = String(c);
-      inp.dispatchEvent(new Event("input", { bubbles: true }));   // apply + persist via the delegated listener
     }
+    return img;
   }
-  function rngBuild() {
-    if (!rng.body) return;
-    rng.body.textContent = "";
-    for (const [base, row] of rngRows()) {
-      const line = document.createElement("div");
-      line.className = "rng-row";
-      const nm = document.createElement("span");
-      nm.className = "rng-name"; nm.textContent = row.name; nm.title = base;
-      line.appendChild(nm);
-      for (const key of ["min", "max", "step"]) {
-        const f = document.createElement("input");
-        f.type = "number"; f.className = "rng-f"; f.value = row.els[0][key];
-        f.step = "any"; f.title = base + " " + key;
-        f.addEventListener("input", () => rngApply(row, key, +f.value));
-        line.appendChild(f);
-      }
-      rng.body.appendChild(line);
+  function cardDraw() {
+    if (!card || !card.on || !card.ctx) return;
+    const w = card.cv.width, h = card.cv.height, ctx = card.ctx;
+    if (!card.bg) card.bg = cardMandelbrot(w, h);
+    ctx.putImageData(card.bg, 0, 0);
+    const spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w);
+    const X = cx => (cx - CARD_X0) / spanX * w;               // complex → canvas
+    const Y = cy => (cy + spanY / 2) / spanY * h;
+    // the bare seed cardioid (the big loop, before the riding circle is added)
+    ctx.lineWidth = 1.25; ctx.strokeStyle = "#ff7a1a"; ctx.beginPath();
+    for (let i = 0; i <= 360; i++) {
+      const p = juliaSeedAt(juliaOuter + (i / 360) * Math.PI * 2, 0);
+      i ? ctx.lineTo(X(p.bx), Y(p.by)) : ctx.moveTo(X(p.bx), Y(p.by));
     }
-  }
-  function rngCopy() {           // every slider whose bounds now differ from source
-    const out = [];
-    for (const id in RNG_ORIG) {
-      const inp = el(id), o = RNG_ORIG[id];
-      if (!inp || (inp.min === o.min && inp.max === o.max && inp.step === o.step)) continue;
-      out.push('id="' + id + '" min="' + inp.min + '" max="' + inp.max + '" step="' + inp.step + '"');
+    ctx.stroke();
+    // the path the seed actually walks: one full outer lap with the riding circle
+    // spinning ratio× faster on top. Sampled fine enough for the highest ratio.
+    const steps = Math.max(720, Math.min(9000, Math.ceil(Math.abs(juliaRatio) * 90)));
+    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(90,209,255,0.85)"; ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const f = i / steps, o = juliaOuter + f * Math.PI * 2;
+      const p = juliaSeedAt(o, juliaInner + f * Math.PI * 2 * juliaRatio);
+      i ? ctx.lineTo(X(p.cx), Y(p.cy)) : ctx.moveTo(X(p.cx), Y(p.cy));
     }
-    const txt = out.length ? out.join("\n") : "(no ranges changed)";
-    navigator.clipboard && navigator.clipboard.writeText(txt);
-    el("rngMsg").textContent = out.length ? "Copied " + out.length + " slider(s) — paste into index.html" : "No ranges changed.";
+    ctx.stroke();
+    // where it is right now: the riding circle, and the seed on its rim
+    const now = juliaSeedAt(juliaOuter, juliaInner);
+    const rpx = juliaInnerR / spanX * w;
+    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(125,220,138,0.9)";
+    ctx.beginPath(); ctx.arc(X(now.bx), Y(now.by), Math.max(1, rpx), 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(X(now.cx), Y(now.cy), 2.6, 0, Math.PI * 2); ctx.fill();
+    el("cardNums").textContent =
+      "c = " + now.cx.toFixed(4) + (now.cy < 0 ? " − " : " + ") + Math.abs(now.cy).toFixed(4) + "i" +
+      " · outer ×" + juliaOuterR.toFixed(2) + " · inner r " + juliaInnerR.toFixed(3) +
+      " · ratio " + juliaRatio.toFixed(2) + " · " + juliaBigRpm.toFixed(2) + " rpm";
   }
-  function rngReset() {
-    for (const id in RNG_ORIG) {
-      const inp = el(id), o = RNG_ORIG[id];
-      if (!inp) continue;
-      inp.min = o.min; inp.max = o.max; inp.step = o.step;
-      inp.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    el("rngMsg").textContent = "Restored the shipped bounds.";
-    rngBuild();
+  function cardOpen(on) {
+    if (!card) return;      // startup: setEffect runs before `var card` is initialized
+    card.on = on;
+    el("carddlg").classList.toggle("hidden", !on);
+    if (!on) return;
+    if (!card.ctx) { card.cv = el("cardcv"); card.ctx = card.cv.getContext("2d"); }
+    cardDraw();                    // paint immediately; frame() keeps it live after
   }
-  function rngWire() {            // the editor now lives in the panel's Diagnostics section (static markup)
-    if (rng.wired) return;
-    rng.wired = true;
-    rng.body = el("rngBody");
-    el("rngCopy").addEventListener("click", rngCopy);
-    el("rngReset").addEventListener("click", rngReset);
-    const d = el("rngDetails");   // open/close the <details> is the toggle
-    d.addEventListener("toggle", () => { rng.on = d.open; if (rng.on) rngRefresh(); });
-  }
-  function rngToggle(on) {        // programmatic open (e.g. ?ranges=1); users just click the summary
-    const d = el("rngDetails");
-    const want = on === undefined ? !d.open : !!on;
-    if (want) el("diag").open = true;   // reveal the parent Diagnostics section too
-    d.open = want;                       // fires 'toggle' → sets rng.on + refreshes
-  }
-  function rngRefresh() {        // called on every effect switch while the editor is open
-    if (!rng || !rng.on) return;
-    el("rngEff").textContent = effectSel.options[effect].text;
-    rngBuild();
-  }
-  rngWire();
-  if (/[?&]ranges=1/.test(location.search)) { setPanel(false); rngToggle(true); }
+  el("cardbtn").addEventListener("click", () => cardOpen(true));
+  el("card-close").addEventListener("click", () => cardOpen(false));
+  el("carddlg").addEventListener("click", e => { if (e.target === el("carddlg")) cardOpen(false); });   // backdrop
 
   // ---- beat-detection tuning (Diagnostics ▸ "Beat tuning" section, or ?beat=1) ----
   // Live sliders for the detector thresholds in beatCfg — meant to sit next to the
@@ -3812,7 +4030,7 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     if (e.key === "m" || e.key === "M") setPanel(!panel.classList.contains("hidden"));   // the one menu (dev tools live inside it now)
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
@@ -3829,8 +4047,10 @@
       { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
-      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back within 0.2s. Chips glow on the beats that drive them." },
+      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them." },
       { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
+      { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
+      { n: "Slider range (min / max / step)", w: "all", t: "The row at the foot of a slider's pop-out box retunes that slider's own bounds live, so you can push a control past its shipped limits (or make it finer). ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
       { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
       { n: "Box size", w: "tetra", t: "Tetrafyer only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
       { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
@@ -3847,6 +4067,7 @@
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
       { n: "Outer radius", w: "julia", t: "Scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward." },
+      { n: "Cardioid debug", w: "julia", t: "Opens the Mandelbrot set with this effect's seed orbit drawn on top: the full seed cardioid, the path the seed actually traces at the current ratio and radii, the small riding circle and the live seed point. Use it to see where the Cardioid RPM / ratio / radius / start settings put the seed — right at the frontier gives intricate fractals, too far inside gives solid blobs." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
       { n: "Random seed each reload", w: "julia", t: "AnimeJulia only — when on, the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to this effect. Turn off for a fixed, reproducible starting frame." },
       { n: "Speed", w: "plasma", t: "How fast the plasma's waves animate. 0 freezes the field." },

@@ -89,11 +89,13 @@ param/default that isn't a real control). Everything derives from the registry:
   is **transient** (not persisted). Because `#breakout` sits *outside* `#panel` (the
   panel's `backdrop-filter` + `overflow` would clip a fixed child), three things are
   wired to reach it too: the control-appearance CSS is scoped to `#panel …, #breakout …`;
-  the delegated `onEdit` (persist/autosave) is attached to `#breakout` as well; and the
-  range editor's slider scan uses `sceneRangeInputs()` (`#panel` + `#breakout`). Since a
-  poppable box is hidden while docked, `rngRows()` gates poppable sliders on
-  `effect.params` rather than on `display`. Element refs (`anims`, `el(id)`) are
+  the delegated `onEdit` (persist/autosave) is attached to `#breakout` as well; and
+  `sceneRangeInputs()` scans `#panel` + `#breakout`. Element refs (`anims`, `el(id)`) are
   location-independent, so a moved slider keeps animating, saving and loading unchanged.
+  A box holds, top→bottom: the label + value, the beat chips + pulse picker on their own
+  line, the slider, its **pulse-length** knob (`.plen`) and its **range editor**
+  (`.rng-edit`) — the last two exist only in a box (`#panel .plen { display:none }`,
+  and the editor is appended to the `.ctl` node when the box is built).
 - **Defaults** — `defaults` (slider values), `beat` (chip selections), `extras`
   (palette/morph/showBox/randSeed) seed `states[e]`/`beatStates[e]`/`extras[e]` via
   `presetState`/`presetBeat`/`presetExtra`. `defaults` includes a few render-affecting
@@ -106,28 +108,57 @@ param/default that isn't a real control). Everything derives from the registry:
   migrates pre-id blobs, so reordering/removing effects never corrupts saved presets.
   `effect` stays the runtime numeric index (registry position).
 
+**Per-slider range editor** (`makeRangeEditor`, at the foot of every pop-out box).
+`min`/`max`/`step` number fields + a ↺ (restore the shipped bounds from `RNG_ORIG`) for
+*that* slider — this replaced the one shared "Slider ranges" list in Diagnostics (and its
+"Copy changed" button; bake a bound by reading it off the field). `rngApply` writes the
+attribute onto the real slider(s) (a dual's two thumbs share one set), re-clamps the value
+and dispatches `input` on the **slider**, so the delegated `onEdit` persists it the normal
+way — the number fields themselves are skipped in `onEdit`. `applyRanges` calls
+`rngSyncAll()` so bounds arriving from a blob show up in the fields.
+
+**Cardioid debug** (`#carddlg`, button `#cardbtn`). Descriptor-gated on `cardioid: true`
+(AnimeJulia / Burning Ship / Multibrot — the effects seeded from a Mandelbrot point):
+a popup rendering the Mandelbrot set in the c-plane with the seed's full cardioid, the
+path it actually traces at the current ratio/radii, the riding circle and the live seed
+point drawn over it. It samples **`juliaSeedAt(outer, inner)`** — the pure part split out
+of `juliaSeed(dt)` — so opening it never advances the animation. `frame()` redraws it
+while open; the Mandelbrot bitmap is rendered once and cached. Transient: never persisted,
+never in a preset. `card` is a **`var`** and `cardOpen`/`cardDraw` early-return on a falsy
+`card`, because `setEffect` calls `cardOpen` during startup before the declaration runs.
+
+**Menu layout.** The panel is a header (title + Backup/Restore/Share/Short link as a 2×2
+`.presetrow.grid2`) followed by **three `.box` sections**: *Scene* (preset / effect /
+palette choosers + their toggles), *Settings* (`#fxctl`, `#bandctl`, Cardioid debug,
+Reset) and *System* (audio, resolution, Diagnostics).
+
 `setEffect(i, save)` shows the descriptor's `params` controls, runs `onEnter`, and swaps
-four parallel per-effect state maps:
+five parallel per-effect state maps:
 - `states[e]` — slider values (seeded from the descriptor's `defaults`).
 - `beatStates[e]` — the L/M/H beat-chip selections (seeded from `beat`).
 - `pulseStates[e]` — per-slider **beat-pulse shape** (a `PULSE_SHAPES` key; seeded
   from the descriptor's optional `pulse` map, else `"snap"`).
+- `plenStates[e]` — per-slider **beat-pulse length** in seconds (seeded from the
+  descriptor's optional `plen` map, else `PULSE_DROP`).
 - `extras[e]` — palette, auto-morph, show-box, random-seed (seeded from `extras`).
 
-Switching effects calls `saveState/saveBeat/savePulse/saveExtra` for the outgoing effect
-and `loadState/loadBeat/loadPulse/loadExtra` for the incoming one, so each effect is a
-fully independent scene.
+Switching effects calls `saveState/saveBeat/savePulse/savePlen/saveExtra` for the outgoing
+effect and `loadState/loadBeat/loadPulse/loadPlen/loadExtra` for the incoming one, so each
+effect is a fully independent scene.
 
-**Beat-pulse shape.** When an armed slider (audio on + an L/M/H chip) gets a beat,
-`updateAnims` snaps it to the high thumb and decays `a.pulse` linearly 1→0 over
-`PULSE_DROP`; the per-slider shape (`pulseShape[id]`, a `PULSE_FN` entry) *reshapes*
+**Beat-pulse shape & length.** When an armed slider (audio on + an L/M/H chip) gets a
+beat, `updateAnims` snaps it to the high thumb and decays `a.pulse` linearly 1→0 over
+**that slider's own** `pulseLen[id]` seconds (a `.plen` range in its pop-out box, bounds
+`PLEN_MIN`–`PLEN_MAX`, default `PULSE_DROP` = the old hardcoded 0.2s, so untouched scenes
+are unchanged); the per-slider shape (`pulseShape[id]`, a `PULSE_FN` entry) *reshapes*
 that decay into the applied value — `a.apply(mn + shape(a.pulse)*(mx-mn))`. Every
 `PULSE_SHAPES` fn maps the phase `p∈[0,1]` to an amplitude in `[0,1]` (so the value
 never leaves `[lo,hi]`), with `f(1)=1` (full at the beat) and `f(0)=0` (back to rest);
 `snap` is the identity, i.e. the shipped default reproduces the old linear fall exactly.
 A `<select>.pulsesel` per slider (built in `makeChips`, alongside the chips) drives
 `pulseShape[id]`; its `change` bubbles to the delegated `onEdit` (persist + autosave),
-like the palette `<select>`. `pulseEls`/`syncPulse` mirror `chipEls`/`syncChips`. `cycle` (auto-cycle on/off), **`ttl` (Preset TTL)**, `scale`
+like the palette `<select>`. `pulseEls`/`syncPulse` mirror `chipEls`/`syncChips`, and
+`plenEls`/`syncPlen`/`prunePlens`/`mergePlen` mirror the pulse-shape set one-for-one. `cycle` (auto-cycle on/off), **`ttl` (Preset TTL)**, `scale`
 (resolution) and panel open/closed are shared/global (top-level blob fields, not per
 effect and not in a preset). `frame()` routes shader effects (those with a `draw`
 hook) past the fire sim; `simulate()` stamps the 2D chaos game when `fractal2d`, else
@@ -143,7 +174,7 @@ effect's `defaults` change (it validates against `presetState(e)`, i.e. the
 descriptor's `defaults`). `mergePulse()` does the same for a preset's `pulse` map,
 so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`.
 `effect` in a saved preset is the stable string `id`.
-- Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, pulses, extras, effect,
+- Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, pulses, plens, extras, effect,
   ranges, beatTune, presets, curPreset, cycle, ttl, scale, panelOpen, audio}` — built by the
   single helper **`fullSnapshot()`**, which is *the* definition of "everything we
   remember." `persist()` and the Backup file both serialize exactly `fullSnapshot()`, so
@@ -158,8 +189,8 @@ so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`
   captures the shipped bounds up top (before `restore()` can overwrite them);
   `collectRanges()` stores only sliders whose bounds differ from shipped and
   `applyRanges()` sets them back. They ride in `localStorage`, the `?s=` URL and the
-  Backup file. The `rng` editor (below) writes them live via the normal persist path.
-- **Share** encodes `{states, beats, pulses, extras, effect, cycle, ranges}` (NOT
+  Backup file. Each slider's in-box range editor writes them live via the normal persist path.
+- **Share** encodes `{states, beats, pulses, plens, extras, effect, cycle, ranges}` (NOT
   presets) as a `?s=<base64>` URL; `applyShared()` decodes on load and strips the param.
   `shareUrl()` builds it; **`pruneBeats()` diffs the beat chips against each
   effect's `presetBeat(e)` defaults and sends only what differs** — the full map
@@ -242,13 +273,14 @@ otherwise collapse into one. Beats found between frames are **latched** in
 a fake clock.
 
 ### Diagnostics tools (not user settings)
-The three dev tools live in a `<details id="diag">` **Diagnostics** section at the
-bottom of the one panel (there are no dev keys — the whole UI opens via ☰ or **m**).
-They're off by default, never enter presets, and their open/closed state is never
-saved. Because they sit *inside* `#panel`, three panel-wide scans guard against them:
-`onEdit` (the delegated persist listener), `rngRows()` and `RNG_ORIG`/`refreshRangeUI`
-all early-return on `e.target.closest("#diag")` / `inp.closest("#diag")`, so a dev-tool
-edit never autosaves into a preset and the beat sliders never leak into the range list.
+The two dev tools live in a `<details id="diag">` **Diagnostics** section at the bottom
+of the System box (there are no dev keys — the whole UI opens via ☰ or **m**). They're
+off by default, never enter presets, and their open/closed state is never saved. Because
+they sit *inside* `#panel`, the panel-wide scans guard against them: `onEdit` (the
+delegated persist listener) and the `RNG_ORIG` capture early-return on
+`e.target.closest("#diag")` / `inp.closest("#diag")`, so a dev-tool edit never autosaves
+into a preset and the beat sliders never leak into the saved ranges. (The slider-range
+editor used to be the third tool here; it now lives per-slider in the pop-out boxes.)
 - **`dbg` — beat trace** (`#diagTrace` checkbox / `?debug=1`): still a floating
   `position:fixed` canvas (built by `dbgInit`), just toggled from the checkbox now:
   scrolling flux + adaptive threshold + beat ticks per band. The tool for diagnosing a
@@ -262,18 +294,8 @@ edit never autosaves into a preset and the beat sliders never leak into the rang
   its open/closed state, the values persist** (localStorage + Backup, not Share/presets
   — see the detector section). Reset restores `BEAT_DEFAULTS`. `beatUi` is separate from
   the many `beat*`/`BEAT_*` scene-audio names.
-- **`rng` — slider range editor** (`#rngDetails` `<details>` / `?ranges=1`): the
-  sliders' shipped `min`/`max`/`step` are HTML attributes; this edits them live (for the
-  *current effect* only — `setEffect` calls `rngRefresh`, `rngWire`/the `<details>`
-  toggle keep `rng.on` in sync). Unlike `dbg`, the **bounds it sets now persist** — the
-  editor's number fields live in `#diag` (guarded out of `onEdit`), but `rngApply`
-  dispatches `input` on the *real* slider (outside `#diag`), which the delegated `onEdit`
-  turns into a `persist()` (see Custom slider ranges above), so they save to
-  `localStorage`, ride the `?s=` share URL and go in the Backup file. "Copy changed"
-  still emits the attributes for baking into `index.html` as new shipped defaults; Reset
-  restores those defaults. Because of the editor, `bindRange`'s `ui()` reads
-  `lo.min`/`lo.max` **live** rather than closing over them, and `rng` is declared with
-  `var` (`setEffect` runs before its declaration is evaluated).
+Because slider bounds are editable at runtime (the per-box range editor), `bindRange`'s
+`ui()` reads `lo.min`/`lo.max` **live** rather than closing over them.
 
 ### "Sync with your music" nudge + analytics
 `#syncpop` is shown to users who haven't successfully started audio, at growing

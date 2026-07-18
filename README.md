@@ -108,11 +108,19 @@ opens an effect-aware help panel; a small **frame counter + rolling FPS** sits i
 the top-right corner.
 
 **Pop out a slider** — every slider has a small **+** button. Click it to break
-that slider (with its chips, pulse-shape dropdown and value) out into its own box
-in a column to the right of the menu; the menu keeps the slider's name with a **−**
-to put it back. Pop out several and the boxes stack from the top down, so you can
-line up just the controls you're playing with. (This layout is per-session and
-isn't saved.)
+that slider out into its own box in a column to the right of the menu; the menu
+keeps the slider's name with a **−** to put it back. Pop out several and the boxes
+stack from the top down, so you can line up just the controls you're playing with.
+(This layout is per-session and isn't saved.) A box gives the slider room for
+everything that belongs to it: its value, the **L / M / H** beat chips and
+**pulse-shape** picker, a **Pulse** knob for how long its beat kick lasts, and a
+**min / max / step** row that retunes that slider's own range live (**↺** puts the
+shipped bounds back). Those bounds are saved — they persist in your browser, ride
+along in a **Share** link and go into your **Backup**.
+
+**The menu is three sections** — **Scene** (which preset, effect and palette),
+**Settings** (the selected effect's sliders) and **System** (audio, resolution and
+the diagnostics tools).
 
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
@@ -127,12 +135,13 @@ and the analysis runs on its own **100 Hz clock**, independent of the framerate,
 so beats stay in time even when the visual is working hard. Each ranged slider has three tiny **L / M / H**
 toggle chips: arm one and — while audio is on — the slider stops drifting and
 instead rests at its low thumb, snapping to its high thumb on each beat in that
-band and dropping back within 0.2s (so the range width sets how big the pulse
-is). Beside the chips is a **pulse-shape** dropdown that picks the curve the value
+band and dropping back over that slider's own **Pulse** time (0.2s by default, set
+per slider in its pop-out box; the range width sets how *big* the pulse is, the
+pulse time how *long* it lasts). Beside the chips is a **pulse-shape** dropdown that picks the curve the value
 follows on the way back down — **Snap** (linear, the classic), **Pluck** (fast
 percussive drop), **Sustain** (holds high, then falls), **Ease** (smooth S-curve),
 **Bounce** (a few decaying bounces) or **Steps** (retro quantized). The chips and
-shapes are remembered per effect and persisted. Pinned sliders (thumbs
+shapes and pulse times are remembered per effect and persisted. Pinned sliders (thumbs
 together) have no range to pulse within, so widen a slider to make it react.
 Browsers can't silently re-grab tab/screen (or mic) audio after a reload, so the
 last source is remembered and re-opened on your **first click/keypress** after
@@ -186,7 +195,7 @@ tab/screen audio capture isn't available, so only **Mic** is shown.
 ## Diagnostics
 
 The tuning tools live in a collapsible **Diagnostics** section at the bottom of the
-menu (no more secret keys). They're off by default and never put in a preset (their
+menu's **System** box (no more secret keys). They're off by default and never put in a preset (their
 open/closed state isn't saved):
 
 - **Frame + FPS counter** — a checkbox that shows/hides the on-screen counter.
@@ -201,13 +210,13 @@ open/closed state isn't saved):
   **frequency range**. Unlike the trace, the values you set **are saved** (in your
   browser and in Backups — not in Share links or presets); **Reset** restores the
   shipped defaults.
-- **Slider ranges** (a collapsible section; also `?ranges=1`) — ships each slider's
-  min/max/step as an attribute, but lets you retune the bounds **live** for the
-  currently selected effect. Unlike the beat trace, **the bounds you set are
-  saved** — they persist in your browser, travel in a **Share** link and go into
-  your **Backup** — so you can fully customize each slider's input range. **Copy
-  changed** puts the new attributes on the clipboard for baking into `index.html`
-  as new shipped defaults; **Reset** restores those defaults.
+Two more tools sit outside that section: each slider's **min / max / step** row
+(in its pop-out box — see above), and **Cardioid debug**, a button in **Settings**
+for the effects whose seed orbits the Mandelbrot cardioid (AnimeJulia, Burning
+Ship, Multibrot). It opens the Mandelbrot set with that orbit drawn on top — the
+full seed cardioid, the path the seed actually traces at the current ratio and
+radii, the little riding circle and the live seed point — so you can see exactly
+where your **Cardioid RPM / ratio / radius / start** settings land.
 
 ## Running locally
 
