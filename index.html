@@ -348,6 +348,10 @@
     gap: 10px; margin: 10px 0 3px; opacity: .85;
   }
   .ctl-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Filters: the stackable post-FX checkboxes */
+  #panel #filterlist { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 2px 0 4px; }
+  #panel .filter-chk { margin: 4px 0 0; }
+  #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
   #panel .ctl-grp {
     margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
@@ -574,6 +578,13 @@
   <button id="reset" type="button">Reset this effect</button>
   </details>
 
+  <!-- Box — Filters: stackable post-FX. Ticking one reveals its parameters. -->
+  <details class="box" open>
+  <summary class="box-t">Filters</summary>
+  <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
+  <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
+  </details>
+
   <!-- Box — Palette settings: the ramp, how fast it cycles, and the banding filter. -->
   <details class="box" open>
   <summary class="box-t">Palette settings</summary>
@@ -724,6 +735,11 @@
   // every scene was authored under, so it stays the default everywhere.
   const BLOOM_DEFAULT = 0.35;
   let bloomAmt = BLOOM_DEFAULT;
+  // Which post-FX filters are on for the live effect. Declared up here (and read
+  // through a hoisted function) because bindRange runs a slider's apply() during
+  // wiring, long before the FILTERS registry block is evaluated.
+  let activeIds = new Set(["fire", "bloom"]);
+  function filterOn(id) { return activeIds.has(id); }
   // Camera rotation (radians) applied to each effect's own sampled space — see
   // camProg/camGlsl for the GL path and the camM matrix for the CPU path. Global on
   // purpose: it is NOT part of states[e] (no cam key in any effect's `defaults`),
@@ -1491,6 +1507,13 @@
     const src = curHeat, dst = 1 - curHeat;
     bindFbo(glFbo.heat[dst], fw, fh);
     gl.disable(gl.BLEND);
+    // No feedback filter ⇒ nothing carries over, so start from black. Clearing is
+    // essential: skipping it would leave 2-frames-stale heat in this buffer.
+    if (!filterOn("fire")) {
+      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      pendingDst = dst;
+      return;
+    }
     gl.useProgram(glProg.prop.p);
     bindTexUnit(0, glTex.heat[src]);
     gl.uniform1i(glProg.prop.u.uHeat, 0);
@@ -1714,6 +1737,8 @@
     if (useGL) {
       glBeginHeat();
       glPtCount = 0;             // start a fresh stamp list for this tick
+    } else if (!filterOn("fire")) {
+      fire.fill(0);              // Fire off: this tick's stamps stand alone
     } else {
       const decay = cfg.decay, src = fire, dst = fireNext;
       for (let x = 0; x < fw; x++) {
@@ -2717,7 +2742,7 @@
     { key: "points", host: "fx", group: "shape", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
     { key: "layers", host: "fx", group: "shape", type: "layers", label: "Layers", valId: "vLayers" },
     { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
-    { key: "rise", host: "fx", group: "shape", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
+
     { key: "size", host: "fx", group: "shape", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => fractalSize = v, durScale: 10 },
     { key: "rot", host: "fx", group: "shape", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
     { key: "rpm", host: "fx", group: "cardioid", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => sig3(v), apply: v => juliaBigRpm = v, durScale: 10 },
@@ -2774,6 +2799,11 @@
     // This replaced the old "Auto-morph palettes" checkbox — `morphing` is now
     // derived from the slider rather than stored separately.
     { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 120, step: 1, lo: 8, hi: 8, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
+    // ---- filter parameters. Contiguous, one group per filter, host "filter" so
+    // they render in the Filters box; shown only while their filter is ticked. ----
+    { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
+    { key: "burn", host: "filter", group: "f_fire", type: "dual", label: "Burn rate", valId: "vBurn", min: 20, max: 240, step: 1, lo: 120, hi: 120, fmt: v => sig3(v) + "/s", apply: v => cfg.burn = Math.max(1, v), durScale: 10 },
+    { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
     { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
@@ -2796,6 +2826,61 @@
     const inp = t => '<input type="range" id="' + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
     return open + lbl + '<div class="dual"><div class="track"></div><div class="fill"></div>' + inp("lo") + inp("hi") + "</div></div>";
   }
+  // The Filters checkbox list. Ticking one reveals its parameter group (see the
+  // dynamic `shown` set in setEffect) and re-derives the live chain. Built once —
+  // the list is the same for every effect, only the ticks differ.
+  function buildFilterUI() {
+    const host = el("filterlist");
+    FILTERS.forEach(f => {
+      const lab = document.createElement("label");
+      lab.className = "check filter-chk";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.id = "flt-" + f.id;
+      cb.addEventListener("change", () => {
+        if (cb.checked) activeIds.add(f.id); else activeIds.delete(f.id);
+        applyFilters();
+      });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(" " + f.name));
+      lab.title = f.help || f.name;
+      host.appendChild(lab);
+    });
+  }
+  // A control is visible when the current effect declares it OR it belongs to a
+  // ticked filter — so filter params appear and vanish with their checkbox without
+  // any effect needing to list them.
+  function shownKeys() {
+    const shown = new Set(EFFECTS[effect].params);
+    for (const f of activeFilters()) for (const k of f.params) shown.add(k);
+    return shown;
+  }
+  function refreshControlVisibility() {
+    const shown = shownKeys();
+    CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
+      const vis = shown.has(c.key) ? "" : "none";
+      if (rows[c.key]) rows[c.key].style.display = vis;
+      else el("ctl-" + c.key).style.display = vis;
+    });
+    for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
+      const hdr = el("grp-" + g);
+      if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
+    }
+    refreshBreakout();                // show/hide the pop-out boxes to match
+  }
+  function syncFilterUI() {
+    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = activeIds.has(f.id); });
+  }
+  // Re-derive everything a filter change affects: which param groups are visible,
+  // the bloom strength (off ⇒ 0), and the banked sim time (a fresh Fire shouldn't
+  // burst catch-up ticks). Called on every tick/untick and after loading a scene.
+  function applyFilters() {
+    syncFilterUI();
+    refreshControlVisibility();
+    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // the slider's apply respects this too
+    acc = 0;
+    if (!filterOn("fire")) { if (fire) fire.fill(0); if (fireNext) fireNext.fill(0); }
+    persist();
+  }
   // Controls carrying a `group` are rendered under a shared subheading (Camera,
   // Banding), so the Settings box reads as sections rather than one long list.
   // setEffect shows a heading only while at least one of its controls is in the
@@ -2805,13 +2890,15 @@
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
     attractor: "Attractor", camera: "Camera", other: "Other",
+    f_fire: "Fire", f_bloom: "Bloom",
     palette: "Palette", banding: "Banding",
   };
   function buildControls() {
-    const fxHost = el("fxctl"), bandHost = el("bandctl"), palHost = el("palctl");
+    const fxHost = el("fxctl"), bandHost = el("bandctl"), palHost = el("palctl"), filterHost = el("filterctl");
     let open = null;
     CONTROLS.forEach(c => {
-      const host = c.host === "band" ? bandHost : c.host === "pal" ? palHost : fxHost;
+      const host = c.host === "band" ? bandHost : c.host === "pal" ? palHost
+        : c.host === "filter" ? filterHost : fxHost;
       if (c.group !== open) {
         open = c.group;
         if (c.group) host.insertAdjacentHTML("beforeend",
@@ -3037,12 +3124,12 @@
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sirpinfyer", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
-      params: ["points", "layers", "speed", "rise", "size", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire"], fractal2d: true,
+      params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire"], fractal2d: true,
       defaults: { palcycle: [8, 8], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
       beat: { speed: ["high"], size: ["low"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks.",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "rise", "size", "rot", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire", "tetra"],
+      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire", "tetra"],
       defaults: { palcycle: [8, 8], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
       beat: { speed: ["low"], rise: ["high"], size: ["mid"] }, extras: { palette: "1", morph: true, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
@@ -3121,7 +3208,7 @@
       beat: { cbwidth: ["low"] }, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", presetName: "Attractor", subtitle: "Strange attractor · de Jong",
       help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow.",
-      params: ["ata", "atb", "atc", "atd", "points", "rise", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "attractor"],
+      params: ["ata", "atb", "atc", "atd", "points", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "attractor"],
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [8, 8], ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: { ata: ["low"], atc: ["high"] }, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
@@ -3177,8 +3264,55 @@
   // few render-affecting keys the effect doesn't display (e.g. band) at safe values so
   // switching to it resets them rather than inheriting the previous effect's.
   const states = {};
+  // ---- FILTERS: stackable post-FX applied after the effect renders ------------
+  // The fire simulation used to be hardwired to the three point effects; it is now
+  // one entry here, so any effect can have it. Two stages, split by whether the
+  // filter writes the RETAINED heat buffer:
+  //   feedback — mutates heat that survives to the next frame (Fire; later Echo/Fade).
+  //              Runs inside glBeginHeat, before the effect's output is MAX-injected.
+  //   post     — reads the palette-mapped image (later Blur/Pixelate/…); Bloom is the
+  //              existing glow composite, now with its strength under a filter.
+  // Order here is the order they apply — a checkbox list can't be reordered, so this
+  // is a design decision, not an implementation detail.
+  // `params` are CONTROLS keys shown only while the filter is ticked; `defaults`
+  // seed every effect's state (see presetState) so any effect can use any filter
+  // without editing all 19 descriptors. `cpu: false` marks a filter the Canvas2D
+  // fallback can't do — the UI greys those out rather than lying.
+  const FILTERS = [
+    { id: "fire",  name: "Fire",  stage: "feedback", params: ["burn"],
+      help: "Heat rises and cools, the classic fire sim — now available to every effect, not just the point ones.",
+      defaults: { rise: [130, 130], burn: [120, 120] } },
+    { id: "bloom", name: "Bloom", stage: "post", params: ["bloom"],
+      help: "Additive glow: a blurred copy of the scene added back over it.",
+      defaults: { bloom: [0.35, 0.35] } },
+  ];
+  const FILTER_BY_ID = {};
+  FILTERS.forEach(f => FILTER_BY_ID[f.id] = f);
+  const FILTER_DEFAULTS = {};                 // merged into every effect's state
+  FILTERS.forEach(f => Object.assign(FILTER_DEFAULTS, f.defaults));
+  buildFilterUI();                           // must follow FILTERS, not buildControls
+  // Which filters are on for the live effect, in registry order (never in stored
+  // order — reordering FILTERS must not remap a saved scene).
+  const activeFilters = () => FILTERS.filter(f => activeIds.has(f.id));
+  const hasFeedback = () => FILTERS.some(f => f.stage === "feedback" && activeIds.has(f.id));
+  function filtersOk(v) {                     // validate a stored list
+    if (!Array.isArray(v)) return null;
+    const seen = new Set();
+    for (const id of v) if (typeof id === "string" && FILTER_BY_ID[id]) seen.add(id);
+    return seen;
+  }
+  // A descriptor's default filter list. Point effects (no `draw` hook — including
+  // Attractor, which uses `stamp`) ship Fire on, so today's look is unchanged; every
+  // effect ships Bloom on, because the glow used to be unconditional.
+  function presetFilters(e) {
+    const d = EFFECTS[e].filters || (EFFECTS[e].draw ? ["bloom"] : ["fire", "bloom"]);
+    return d.slice();
+  }
   function presetState(e) {           // a fresh copy of effect e's default slider values
     const st = {}, d = EFFECTS[e].defaults;
+    // Filter params first, so an effect that names one (e.g. its own Flame rise)
+    // still wins. This is why adding a filter needs no edit to the 19 descriptors.
+    for (const id in FILTER_DEFAULTS) st[id] = FILTER_DEFAULTS[id].slice();
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
@@ -3317,11 +3451,25 @@
   // Per-effect "extras": palette, auto-morph, show-box and Effect TTL are also
   // remembered per effect, so each effect is a fully independent scene.
   const extras = {};
-  function presetExtra(e) { const x = EFFECTS[e].extras; return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed }; }
+  function presetExtra(e) {
+    const x = EFFECTS[e].extras;
+    return { palette: x.palette, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, filters: presetFilters(e) };
+  }
+  // Preset extras are copied verbatim by applyPreset, so a preset saved before
+  // filters existed has no `filters` key — default it from the descriptor rather
+  // than leaving the scene with no filters at all (which would kill fire and glow).
+  function mergeExtra(e, saved) {
+    const base = presetExtra(e);
+    if (saved) for (const k in base) if (saved[k] !== undefined) base[k] = saved[k];
+    const ok = filtersOk(saved && saved.filters);
+    base.filters = ok ? FILTERS.filter(f => ok.has(f.id)).map(f => f.id) : presetFilters(e);
+    return base;
+  }
   function initExtras() { EFFECTS.forEach((_, k) => extras[k] = presetExtra(k)); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked };
+    extras[e] = { palette: paletteSel.value, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
+      filters: FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id) };   // always registry order
   }
   function loadExtra(e) {
     const x = extras[e];
@@ -3329,6 +3477,10 @@
     showBoxChk.checked = x.showBox; showBox = x.showBox;
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
+    const fok = filtersOk(x.filters);                 // absent in pre-filter scenes
+    activeIds = fok || new Set(presetFilters(e));
+    syncFilterUI();
+    refreshControlVisibility();       // setEffect's earlier pass ran before we knew the filters
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
     morphOnce = false;                // cancel a pending one-shot morph from a prior switch
     paletteSel.value = x.palette;
@@ -3494,6 +3646,8 @@
     for (const k in extras) {
       const ex = saved.extras ? saved.extras[k] : legacy; if (!ex) continue;
       if (paletteOK(ex.palette)) extras[k].palette = ex.palette;
+      const fok = filtersOk(ex.filters);          // absent in pre-filter blobs ⇒ keep the default
+      if (fok) extras[k].filters = FILTERS.filter(f => fok.has(f.id)).map(f => f.id);
       if (typeof ex.morph === "boolean") extras[k].morph = ex.morph;
       if (typeof ex.showBox === "boolean") extras[k].showBox = ex.showBox;
       if (typeof ex.randSeed === "boolean") extras[k].randSeed = ex.randSeed;
@@ -3541,17 +3695,7 @@
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
     // show only the controls this effect declares (rendered from the CONTROLS schema)
-    const shown = new Set(fx.params);
-    CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
-      const vis = shown.has(c.key) ? "" : "none";
-      if (rows[c.key]) rows[c.key].style.display = vis;
-      else el("ctl-" + c.key).style.display = vis;
-    });
-    for (const g in CTL_GROUPS) {     // a heading shows only if the effect uses that group
-      const hdr = el("grp-" + g);
-      if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
-    }
-    refreshBreakout();                // show/hide the pop-out boxes for this effect
+    refreshControlVisibility();       // effect params + the ticked filters' params
     // The Cardioid debug view only means anything for a Mandelbrot-seeded effect.
     el("cardbtn").style.display = fx.cardioid ? "" : "none";
     if (!fx.cardioid) cardOpen(false);
@@ -3695,7 +3839,7 @@
   }
   function togglePop(key) { popped.has(key) ? dockCtl(key) : popCtl(key); }
   function refreshBreakout() {
-    const shown = new Set(EFFECTS[effect].params);
+    const shown = shownKeys();
     let anyVisible = false;
     for (const key of POPPABLE) {
       const vis = popped.has(key) && shown.has(key);   // shown only when popped AND used by this effect
@@ -3945,7 +4089,7 @@
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
     beginCamTween(p.cam);                                   // fly, don't snap (no p.cam ⇒ stay put)
-    extras[p.effect] = JSON.parse(JSON.stringify(p.extra));
+    extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     effectSel.value = p.effect;
     setEffect(p.effect, false);       // loads the just-installed scene (may snap the palette)
     // Switching preset always morphs the palette to a fresh random one — but blend it in

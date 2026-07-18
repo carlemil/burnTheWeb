@@ -92,6 +92,40 @@ or the drawn epicycles would not match the ones on screen.
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
+### Filters (post-FX)
+`FILTERS` is a second registry beside `EFFECTS`: stackable post-processing any effect can
+use, ticked in a checkbox list (registry order is the apply order — a checkbox list can't
+be reordered, so that order is a design decision). Two stages, split by **whether the
+filter writes the retained heat buffer**:
+- **feedback** (`Fire`; later Echo/Fade) — mutates heat that survives to the next frame,
+  so it runs inside `glBeginHeat` *before* the effect's output is MAX-injected. With no
+  feedback filter, `glBeginHeat` **clears** (skipping it would read 2-frames-stale heat)
+  and the CPU path zeroes `fire` instead of running the propagation loop.
+- **post** (`Bloom`; later Blur/Pixelate/…) — reads the palette-mapped image. Bloom is the
+  pre-existing glow composite with its strength under `bloomAmt`/`uBloom` (0 when off).
+
+A filter's `params` are ordinary CONTROLS keys (host `"filter"` → `#filterctl`, one
+`group` per filter, contiguous in the array). `refreshControlVisibility()` shows a control
+when the effect declares it **or** a ticked filter owns it, so `Flame rise` follows the
+Fire checkbox rather than living in any effect's `params`. `presetState` merges
+`FILTER_DEFAULTS` into every effect's state, so a new filter needs no edit to the 19
+descriptors — an effect that names the same key still wins.
+
+The **list** is per-effect in `extras[e].filters` (stable string ids, always written in
+registry order so reordering `FILTERS` can't remap a saved scene). Defaults preserve
+today: point effects — including Attractor, which uses `stamp`, not `draw` — get
+`["fire","bloom"]`, shader effects `["bloom"]`, because the glow used to be
+unconditional. **`mergeExtra` is mandatory**: `applyPreset` copies extras verbatim, so a
+preset saved before filters has no `filters` key and would otherwise load with no fire and
+no glow. Ordering trap: `setEffect` runs its visibility pass before `loadExtra` knows the
+new filter list, so `loadExtra` re-runs `refreshControlVisibility()`.
+
+Three ordering constraints bit during implementation and are load-bearing: the registry
+block must sit **above `presetState`** (which reads `FILTER_DEFAULTS`), `buildFilterUI()`
+must be called **after** the registry (not next to `buildControls`), and `activeIds` +
+`filterOn` live up with the render globals because `bindRange` runs a slider's `apply()`
+during wiring — all three were temporal-dead-zone crashes.
+
 ### Effects & per-effect "scenes"
 **The `EFFECTS` registry is the single source of truth per effect** — an array of
 descriptors `{id, name, presetName?, subtitle, help, params, helpTags, draw?/fractal2d,

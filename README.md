@@ -194,6 +194,21 @@ resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
 tab/screen audio capture isn't available, so only **Mic** is shown.
 
+## Filters
+
+Under **Filters** in the menu is a list of post-processing effects you can stack
+on top of whatever effect is running — tick as many as you like and they apply in
+order. Each one's settings appear underneath it while it's ticked, and the whole
+selection is remembered per effect and saved into presets.
+
+- **Fire** — the rising, cooling heat simulation. It used to be hardwired to the
+  three point effects; now any effect can burn. **Flame rise** sets how tall the
+  flames climb, **Burn rate** how many times a second the fire advances.
+- **Bloom** — the additive glow: a blurred copy of the scene added back over it.
+  **Strength** at 0 turns it off entirely.
+
+Untick everything for the raw effect with no post-processing.
+
 ## Diagnostics
 
 The tuning tools live in a collapsible **Diagnostics** section at the bottom of the
