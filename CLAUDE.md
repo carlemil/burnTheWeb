@@ -472,6 +472,20 @@ those on logic instead (e.g. compare tick sequences in Node) rather than pixels.
 `--virtual-time-budget` stops the page after a dozen-odd frames, so any timing comparison
 must drive its own clock rather than let the animation run.
 
+**The filter registry** has `tools/filterprobe.js` (`node tools/filterprobe.js index.html`,
+34 assertions): it slices the real `FILTERS` block and the extras helpers out of
+`index.html` and runs them against stub effects. It pins the invariants that are easy to
+break silently — every filter's params have defaults (else `presetState` can't seed
+them), feedback filters all precede post ones in the registry and Bloom is last, a
+stored list always applies in **registry** order, `filtersOk` drops unknown/duplicate/
+non-string ids, the point-vs-shader defaults (an effect with `stamp` but no `draw` counts
+as a point effect), and `presetState`'s seeded arrays are per-effect **copies**.
+One behaviour it deliberately locks: an **empty** stored list is honoured (turning every
+filter off is a real choice that must survive a round trip) and a list naming only retired
+filters ends up empty — only a *missing* `filters` key falls back to the descriptor
+default. It slices by markers: `// ---- FILTERS: stackable post-FX` … `function
+initStates(`, and `function presetExtra(` … `function initExtras(`.
+
 **The cardioid seed orbit** has its own probe, `tools/juliaprobe.js` (`node
 tools/juliaprobe.js index.html`): it slices the *real* seed source out of
 `index.html` (the constants block through `juliaSeedAt`/`juliaSeed`) and drives it
