@@ -27,12 +27,16 @@ independent "scene" that remembers its own settings (see Controls):
   (isotropic inertia, near-elastic restitution), so a corner-hit realistically
   kicks the solid into a tumble; each hit bursts a fading sphere of points out
   from the impact point. The chaos game runs in 3D between the physics-driven
-  vertices and is perspective-projected, and a slow orbit shows the box as solid 3D.
+  vertices and is perspective-projected. The view turns so you read the box as solid 3D:
+  **Rotation** yaws it and **Box nod** pitches it in a slow sine — both on sliders, and
+  both can be set to 0 to hold it still.
 - **AnimeJulia** — an animated Julia set. The seed `c` is orbited around the
   Mandelbrot plane along two stacked loops: a large slow loop tracing just
   outside the inner bound (the main cardioid, pushed slightly outward) so the
   Julia set stays intricate, plus a much smaller, faster circle riding on top
-  that only ever nudges the seed further out — never into the interior. The big
+  that keeps the seed's neighbourhood changing instead of retracing one closed curve
+  (wind **Inner radius** up far enough and it does dip inside, which is where the
+  solid-blob frames come from). The big
   loop turns slowly (a few hundredths of an rpm) and the small one a fair bit
   faster, so the fractal reshapes continuously. Per-pixel escape time is written
   as heat and coloured through the same palettes.
@@ -67,7 +71,8 @@ independent "scene" that remembers its own settings (see Controls):
   walk in 3D and perspective-projecting each point. Each point is stamped into the
   fire buffer as maximum heat, so flames rise out of the fractal.
 - **Moving geometry** — the triangle's corners drift on their own `sin`/`cos`
-  mixes driven by the wall clock, fit into a safe box (clear of the top 20% and
+  mixes driven by a phase that accumulates per simulation tick (not the wall clock,
+  so changing Drift speed eases the motion instead of teleporting it), fit into a safe box (clear of the top 20% and
   the left/right/bottom 5%) so the fractal never runs off the edges. The
   tetrahedron instead moves under the rigid-body physics described above,
   ricocheting off the walls of its container.
@@ -97,20 +102,15 @@ then wanders *erratically* between them (a random target reached over a random
 time, eased, on repeat). Collapse the two thumbs together to pin a constant
 value, so a ranged slider also works as an ordinary one.
 
-**Each effect is a fully independent scene** — its sliders, beat chips, pulse
-shapes, palette, palette cycle, show-box and hold time are all remembered *separately
-per effect*, so
-tweaking Tetrafyer never touches AnimeJulia. Only auto-cycle on/off and the
-panel's open/closed state are shared. Everything is **saved to your browser** and
+**Each effect is a fully independent scene** — its sliders, beat chips, pulse shapes
+and lengths, palette, palette cycle and show-box are all remembered *separately per
+effect*, so tweaking Tetrafyer never touches AnimeJulia. A handful of things are
+deliberately **shared** instead: auto-cycle and its hold time, the render resolution,
+the camera angles, and the panel's open/closed state. Everything is **saved to your browser** and
 restored on your next visit (persisted values that fall outside a slider's
 current range are ignored, so updates can't load junk). The **?** by the title
 opens an effect-aware help panel; a small **frame counter + rolling FPS** sits in
 the top-right corner.
-
-Each slider's menu row also shows small **beat dots** just left of that button —
-one per armed band, in the band's colour (L blue, M green, H red). They sit dim
-and light up on the beat that drives them, so you can see at a glance which
-sliders a preset has wired to the music without opening anything.
 
 **Pop out a slider** — every slider has a small **+** button. Click it to break
 that slider out into its own box in a column to the right of the menu; the menu
@@ -130,11 +130,17 @@ this effect's defaults, so a slider you've wandered somewhere strange is one cli
 from sane. Custom bounds are saved: they persist in your browser, ride along in a
 **Share** link and go into your **Backup**.
 
-**The menu is five foldable sections** — click a heading's chevron to collapse it:
+A slider's menu row also shows small **beat dots** just left of that **+** — one per
+armed band, in the band's colour (L blue, M green, H red). They sit dim and light up
+on the beat that drives them, so you can see at a glance which sliders a preset has
+wired to the music without opening a single box.
+
+**The menu is eight foldable sections** — click a heading's chevron to collapse it:
 **System** (audio, resolution and the diagnostics tools; folded by default),
 **Backup, restore & share**, **Scene** (which preset, and how long each is held),
-**Effects** (pick the visual, then its sliders) and **Palette settings** (the ramp,
-how fast it cycles, and banding).
+**Effects** (pick the visual, then its sliders), **Filters** (the post-processing
+stack), **Beat tuning** (how beats are detected), **Palette settings** (the ramp,
+how fast it cycles, and banding) and **Credits**.
 
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
@@ -163,8 +169,8 @@ last source is remembered and re-opened on your **first click/keypress** after
 the page loads.
 
 *(ranged)* controls are the two-thumb sliders described above; the rest are
-single sliders, dropdowns or toggles. Everything except auto-cycle and panel
-visibility is remembered per effect.
+single sliders, dropdowns or toggles. Everything is remembered per effect except
+the shared few listed above (auto-cycle, hold time, resolution, camera, panel state).
 
 | Control | What it does |
 | --- | --- |
@@ -178,10 +184,10 @@ visibility is remembered per effect.
 | **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
-| **Points** | Number of chaos-game points per frame (100–8000). *(Sirpinfyer / Tetrafyer.)* |
+| **Points** | Number of points stamped per frame (100–8000). *(Sirpinfyer / Tetrafyer / Attractor.)* |
 | **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sirpinfyer / Tetrafyer.)* |
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
-| **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). *(Sirpinfyer / Tetrafyer.)* |
+| **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). Belongs to the **Fire filter**, so it is available to any effect that has Fire ticked. |
 | **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sirpinfyer / Tetrafyer.)* |
 | **Rotation** *(ranged)* | Tetrafyer only — **yaw** rate in degrees/second for the scene orbit around the box. Ships drifting −5…5°/s; set both thumbs to 0 to hold still. |
 | **Box nod** *(ranged)* | Tetrafyer only — how far the view **pitches** up and down in its slow sine, in degrees (default ≈17°). 0 holds the box dead level. This is the drift that used to be hardcoded with no control. |
@@ -189,12 +195,16 @@ visibility is remembered per effect.
 | **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in, along with the spark-sphere burst each wall hit throws off. *(Tetrafyer.)* |
 | **Box size** *(ranged)* | How large the box the tetrahedra bounce inside is — bigger gives them more room. *(Tetrafyer.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
-| **Cardioid RPM** *(ranged)* | AnimeJulia only — how fast the big seed loop orbits the Mandelbrot cardioid. |
-| **Inner : outer ratio** *(ranged)* | AnimeJulia only — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
-| **Inner radius** *(ranged)* | AnimeJulia only — the size of the small circle riding on the seed. Small values keep the seed just outside the cardioid; large values can dip it inside. |
-| **Outer radius** *(ranged)* | AnimeJulia only — the scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward. |
-| **Cardioid start** *(ranged)* | AnimeJulia only — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
-| **Random seed each reload** | AnimeJulia only — when on (the default), the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to the effect. Turn off for a fixed, reproducible starting frame. |
+| **Camera X / Y / Z** *(ranged, degrees)* | Tilt and spin the whole scene in 3D — X and Y rock it away from you, Z rolls it in the plane of the screen. Shared across effects rather than per-effect, so it acts as a camera over whatever is running. |
+| **Power** | Multibrot only — the exponent in `z^power + c`, a whole number. Each step adds a bulb of symmetry, and adds a cusp to the seed's cardioid, so the orbit gains a fast/slow stretch with it. |
+| **Point jitter** *(ranged)* | Attractor only — scatters each plotted point by up to this many pixels to soften the map's hard threads. 0 gives the bare, razor-thin curves. |
+| **Cardioid RPM** *(ranged)* | AnimeJulia, Burning Ship and Multibrot — how fast the big seed loop orbits the cardioid, in rpm. |
+| **Inner : outer ratio** *(ranged)* | The cardioid-seeded effects — how many times the small seed circle spins per big-loop lap. Defaults to the hypocycloid ratio implied by the two circumferences (≈21.5×). |
+| **Inner radius** *(ranged)* | The cardioid-seeded effects — the size of the small circle riding on the seed. Small values keep the seed just outside the cardioid (intricate); large values swing it wider and can dip inside, giving solid-blob frames. |
+| **Outer radius** *(ranged)* | The cardioid-seeded effects — the scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward, further clear of the set. Burning Ship ships this high (1.4–1.9) for exactly that reason; wind it down and it washes out. |
+| **Cardioid start** *(ranged)* | The cardioid-seeded effects — an offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round). |
+| **Cardioid X offset** *(ranged)* | The cardioid-seeded effects — slides the whole orbit along the real axis. Negative walks it toward the bulbs and the spike, positive past the cusp. |
+| **Random seed each reload** | The cardioid-seeded effects — when on (the default), the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to the effect. Turn off for a fixed, reproducible starting frame. |
 | **Speed** *(ranged)* | Plasma only — how fast the waves animate (0 freezes the field). |
 | **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
@@ -262,7 +272,7 @@ open/closed state isn't saved):
 **Beat tuning has its own box** in the menu now, not a Diagnostics tool — because it is
 part of the scene rather than a dev setting. See below.
 Two more tools sit outside that section: each slider's **min / max / step** row
-(in its pop-out box — see above), and **Cardioid debug**, a button in **Settings**
+(in its pop-out box — see above), and **Cardioid debug**, a button in **Effects**
 for the effects whose seed orbits a cardioid (AnimeJulia, Burning Ship,
 Multibrot). It opens the fractal set the seed is riding — the Mandelbrot set, or
 the matching Multibrot set once you move Multibrot's **Power** off 2 — with that
