@@ -300,6 +300,14 @@
     background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
+  /* Which effect / filter the box belongs to. Controls are singletons reused across
+     effects, so "Speed" or "Size" alone doesn't say which one you popped — and with
+     several boxes stacked, two identically-named sliders are indistinguishable. */
+  #breakout .ctl-owner {
+    margin: 0 0 4px; color: #ffb15a; opacity: .62;
+    font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   /* A box has room the menu slot never had, so unstack it: the name + value get
      their own line, the beat chips + pulse picker drop to a line of their own
      (instead of being squeezed against the value), and the slider gets air. */
@@ -4420,9 +4428,27 @@
     return box;
   }
 
+  // Who a control belongs to, for the box title. CTL_GROUPS already carries the human
+  // name of every family — effects ("Plasma", "Cardioid seed"), the shared ones
+  // ("Camera", "Shape & motion") and the filters. Filters get an explicit prefix so
+  // "Fire" the filter can't be read as Fire the effect family.
+  function ctlOwner(key) {
+    const c = CONTROLS.find(x => x.key === key);
+    const g = c && c.group;
+    if (!g || !CTL_GROUPS[g]) return "";
+    return (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
+  }
   POPPABLE.forEach(key => {
     const ctl = el("ctl-" + key);
     ctl.classList.add("poppable");
+    // Title line, first child so it sits above the label. Only ever visible in
+    // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
+    const own = ctlOwner(key);
+    if (own) {
+      const t = document.createElement("div");
+      t.className = "ctl-owner"; t.textContent = own;
+      ctl.insertBefore(t, ctl.firstChild);
+    }
     const rngEd = makeRangeEditor(key);
     if (rngEd) ctl.appendChild(rngEd);         // bounds editor at the foot of the box
     ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)

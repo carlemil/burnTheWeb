@@ -111,7 +111,10 @@ the top-right corner.
 that slider out into its own box in a column to the right of the menu; the menu
 keeps the slider's name with a **−** to put it back. Pop out several and the boxes
 stack from the top down, so you can line up just the controls you're playing with.
-(This layout is per-session and isn't saved.) A box gives the slider room for
+(This layout is per-session and isn't saved.) Each box is titled with what it
+belongs to — the effect or the filter, e.g. *Camera*, *Plasma*, *Filter · Bloom* —
+so a stack of boxes reading "Speed", "Strength", "Size" stays readable. A box
+gives the slider room for
 everything that belongs to it: its value, the **L / M / H** beat chips and
 **pulse-shape** picker, a **Pulse** knob for how long its beat kick lasts, and a
 **min / max** row that retunes that slider's own range live. **↺ resets the whole

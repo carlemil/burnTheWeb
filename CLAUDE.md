@@ -273,10 +273,21 @@ param/default that isn't a real control). Everything derives from the registry:
   the delegated `onEdit` (persist/autosave) is attached to `#breakout` as well; and
   `sceneRangeInputs()` scans `#panel` + `#breakout`. Element refs (`anims`, `el(id)`) are
   location-independent, so a moved slider keeps animating, saving and loading unchanged.
-  A box holds, top→bottom: the label + value, the beat chips + pulse picker on their own
-  line, the slider, its **pulse-length** knob (`.plen`) and its **range editor**
-  (`.rng-edit`) — the last two exist only in a box (`#panel .plen { display:none }`,
-  and the editor is appended to the `.ctl` node when the box is built).
+  A box holds, top→bottom: the **owner line** (`.ctl-owner`), the label + value, the beat
+  chips + pulse picker on their own line, the slider, its **pulse-length** knob (`.plen`)
+  and its **range editor** (`.rng-edit`) — the last three exist only in a box
+  (`#panel .plen { display:none }`, and the owner line and editor are added to the `.ctl`
+  node when the box is built).
+  The **owner line** says which effect/filter the box belongs to, from `ctlOwner(key)` →
+  `CTL_GROUPS[control.group]`, with a `"Filter · "` prefix for the `f_*` groups so the
+  Fire *filter* can't read as the Fire *effect family*. It exists because controls are
+  singletons reused across effects, so a stack of boxes labelled "Speed", "Strength",
+  "Size" is unreadable — Plasma's Speed and Tunnel's Fly speed, or Bloom's Strength, are
+  otherwise indistinguishable once popped. It is safe to add unconditionally in
+  `POPPABLE.forEach` because a `.ctl` node is *only* ever visible inside `#breakout`; the
+  menu slot shows the `.ctl-row` launcher instead. (Non-poppable controls — `check`,
+  `layers` — keep their `.ctl` in the panel, which is why the line is added in the
+  poppable loop and not in `ctlHTML`.)
 - **Defaults** — `defaults` (slider values), `beat` (chip selections), `extras`
   (palette/morph/showBox/randSeed) seed `states[e]`/`beatStates[e]`/`extras[e]` via
   `presetState`/`presetBeat`/`presetExtra`. `defaults` includes a few render-affecting
