@@ -298,14 +298,16 @@ twice and it won't be pixel-identical — that's the demo running, not something
 ## Credits
 
 On startup the credits are **burned into the effect itself** rather than drawn over
-it: the two lines are rasterised and stamped into the fire's heat grid, so they
-pick up whatever palette and glow the running effect has, and — with the Fire
-filter on — rise and burn away by themselves after about three seconds.
+it: each person's role and name are rasterised and stamped into the fire's heat
+grid, so they pick up whatever palette and glow the running effect has. They hold
+for five seconds, then fade out over three — and with the Fire filter on they rise
+and burn away as they go, leaving nothing to undraw. The layout matches the
+**Credits** box in the menu, since both are generated from the same list.
 
-They're also listed under **Credits** at the foot of the menu, with a checkbox to
-stop them appearing on future visits (remembered in this browser only, and kept
-out of presets, share links and backups since it's a per-browser preference).
-`?credits=<seconds>` overrides the duration if you want a longer look.
+That menu box also has a checkbox to stop them appearing on future visits
+(remembered in this browser only, and kept out of presets, share links and backups
+since it's a per-browser preference). `?credits=<seconds>` overrides the **hold**
+if you want a longer look; the three-second fade is always added on top.
 
 ## Running locally
 

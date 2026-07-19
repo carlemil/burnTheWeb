@@ -130,6 +130,15 @@ once to an offscreen 2D canvas at heat resolution and caches the coverage mask p
 the `camOn()` rotation, so the text stays level whatever the preset's camera is doing.
 Only `creditStamp` passes it, so every other caller is byte-identical.
 
+**Timing is `CREDIT_HOLD` (5s) at full, then `CREDIT_FADE` (3s) ramping to nothing**;
+`CREDIT_S` is just their sum and `creditLeft` counts the whole thing down in rendered
+time. `creditAlpha()` is 1 while `creditLeft ≥ CREDIT_FADE`, then `creditLeft/CREDIT_FADE`.
+The `v > 40` threshold stays on the **raw** mask and only the plotted value is scaled —
+thresholding the *faded* value instead would drop the anti-aliased edges first and eat the
+glyphs from the outside in, which reads as erosion rather than a fade. `?credits=<s>`
+overrides the **hold**; the fade is always added on top, so `?credits=600` parks them on
+screen and still fades the same way.
+
 **Zoom is deliberately NOT cancelled**, and that is the interesting part, because it was
 built, shipped and reverted. Pre-dividing the mask by the live zoom is correct for *one*
 frame and wrong for the buffer: heat accumulates over many ticks, so every earlier tick's
