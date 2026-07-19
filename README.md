@@ -107,6 +107,11 @@ current range are ignored, so updates can't load junk). The **?** by the title
 opens an effect-aware help panel; a small **frame counter + rolling FPS** sits in
 the top-right corner.
 
+Each slider's menu row also shows small **beat dots** just left of that button —
+one per armed band, in the band's colour (L blue, M green, H red). They sit dim
+and light up on the beat that drives them, so you can see at a glance which
+sliders a preset has wired to the music without opening anything.
+
 **Pop out a slider** — every slider has a small **+** button. Click it to break
 that slider out into its own box in a column to the right of the menu; the menu
 keeps the slider's name with a **−** to put it back. Pop out several and the boxes

@@ -368,7 +368,23 @@
     display: flex; align-items: center; justify-content: space-between;
     gap: 10px; margin: 10px 0 3px; opacity: .85;
   }
-  .ctl-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* flex:1 so the name takes the slack and the dots sit right up against the +/-
+     button, rather than space-between spreading three children across the row. */
+  .ctl-row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Beat-trigger dots: which of L/M/H is armed for this slider, at a glance, without
+     popping every box open. A dot only exists while its band is armed; it sits dim and
+     lights up on that band's beat, the same cue the chip in the box gives. */
+  .ctl-dots { flex: none; display: flex; align-items: center; gap: 3px; }
+  .ctl-dot {
+    display: none; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; opacity: .34; transition: opacity .08s;
+  }
+  .ctl-dot.armed { display: block; }
+  .ctl-dot.d-low { color: #5a9cff; }      /* L — matches .bandchips button:nth-child(1).on */
+  .ctl-dot.d-mid { color: #45cf62; }      /* M */
+  .ctl-dot.d-high { color: #ff5f4d; }     /* H */
+  /* Audio off ⇒ nothing can trigger, so dim them like the chips (#panel.audio-off). */
+  #panel.audio-off .ctl-dot { opacity: .18; }
   /* Credits: set like a demo's title screen rather than two flat sentences —
      the scene role in glowing caps over the real name, handle picked out, each
      entry hung off a thin gradient bar. */
@@ -2940,6 +2956,18 @@
           el.style.boxShadow = "";
           el.style.transform = "";
         }
+        // ...and the menu row's dot for the same band: dim at rest, lit on the beat.
+        // Same pulse, quieter treatment — it is an overview, not the control.
+        const dot = dotEls[id] && dotEls[id][k];
+        if (dot) {
+          if (lit > 0.05) {
+            dot.style.opacity = (0.34 + lit * 0.66).toFixed(3);
+            dot.style.boxShadow = "0 0 " + (2 + lit * 7).toFixed(1) + "px " + BANDCOLOR[k];
+          } else {
+            dot.style.opacity = "";
+            dot.style.boxShadow = "";
+          }
+        }
       }
     }
   }
@@ -3291,6 +3319,7 @@
   const anims = {};
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
+  const dotEls = {};           // id -> {low,mid,high} : the menu row's beat dots (ditto)
   const PULSE_DROP = 0.2;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
   const PLEN_MIN = 0.02, PLEN_MAX = 3;   // bounds of the per-slider pulse-length slider (s)
 
@@ -3332,6 +3361,7 @@
       btn.addEventListener("click", () => {
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
+        syncDots();              // the menu row shows the same armed state
         // A <button> click fires neither input nor change, so the delegated onEdit
         // never sees it — do its job by hand, autosave included. Without the
         // autosave the chip reached localStorage but not the *selected preset*,
@@ -3976,6 +4006,13 @@
   function syncChips() {
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
     for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
+    syncDots();
+  }
+  // The menu row's dots mirror the armed chips, so the overview survives every path
+  // that changes them (loadBeat, Reset, a chip click) without a second sync to forget.
+  function syncDots() {
+    for (const id in dotEls) for (const k in dotEls[id])
+      dotEls[id][k].classList.toggle("armed", !!(beatReact[id] && beatReact[id][k]));
   }
 
   // Per-effect beat-pulse SHAPE, parallel to beatStates. pulseStates[effect][id] =
@@ -4479,6 +4516,21 @@
     const name = document.createElement("span");
     name.className = "ctl-row-name"; name.textContent = ctlLabel(key);
     row.appendChild(name);
+    // Beat dots, left of the +/- button. Only for sliders that have chips at all —
+    // `plain` controls are poppable but never armed, so they get no dots.
+    if (chipEls[key]) {
+      const dots = document.createElement("span");
+      dots.className = "ctl-dots";
+      dotEls[key] = {};
+      for (const b of ["low", "mid", "high"]) {
+        const d = document.createElement("i");
+        d.className = "ctl-dot d-" + b;
+        d.title = b + " beat";
+        dots.appendChild(d);
+        dotEls[key][b] = d;
+      }
+      row.appendChild(dots);
+    }
     row.appendChild(makePopBtn(key));            // +/- button, right of the name
     ctl.parentNode.insertBefore(row, ctl);       // row takes the control's menu slot
     breakout.appendChild(ctl);                   // full control lives in the column (hidden until popped)
@@ -5522,7 +5574,7 @@
       { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Part of a preset, so auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
-      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them." },
+      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them, and each menu row shows a small dot per armed band in the same colour — dim at rest, lit on the beat — so you can see what a preset has wired to the music without opening a single box." },
       { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
       { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or preset." },

@@ -408,6 +408,20 @@ chip styling is deliberately colourless and dim — the per-band colours (L blue
 H red) apply only to `.on`. A vividly outlined chip reads as enabled even when nothing is
 armed, which is exactly how it used to look.
 
+**Beat-trigger dots** (`.ctl-dot`, `dotEls`) give the same information *without* popping
+every box: each menu row carries up to three dots between the name and the `+`/`−` button,
+one per band, in the same colours as the chips. A dot is `display:none` unless its band is
+armed, sits at `opacity .34` when armed and idle, and is lit by `flashChips()` on that
+band's beat — same `audio.pulse` the chips ride, quieter treatment, because it is an
+overview rather than the control. So the shape of a preset's beat mapping reads straight
+off the menu. Two things keep it honest: `syncDots()` is called *from* `syncChips()` rather
+than alongside it, so every path that arms a chip (`loadBeat`, Reset, a chip click) updates
+both and none can be forgotten; and dots are built only for keys present in `chipEls`, so
+a `plain` control like `points` — poppable but never armable — correctly gets none.
+`#panel.audio-off .ctl-dot` dims them when nothing can trigger, matching `.bandchips`.
+`flashChips` only runs while `audio.on`, plus once on the way down, which is what clears
+the inline lit styles back to the CSS default.
+
 **Beat-pulse shape & length.** When an armed slider (audio on + an L/M/H chip) gets a
 beat, `updateAnims` snaps it to the high thumb and decays `a.pulse` linearly 1→0 over
 **that slider's own** `pulseLen[id]` seconds (a `.plen` range in its pop-out box, bounds
