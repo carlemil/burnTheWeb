@@ -4586,6 +4586,15 @@
   // *different* saved preset.
   let nextSwitch = 0;
   cycleChk.addEventListener("change", () => { cycleOn = cycleChk.checked; nextSwitch = 0; syncTtlEnabled(); });
+  // Stop the cycler dead. Called when the user has just deliberately put a specific
+  // scene on screen — creating a preset, or restoring a backup. Without it the next
+  // tick of the TTL would swap that scene straight back out, which reads as "my new
+  // preset wasn't selected" when in fact it was selected and then cycled away from.
+  function stopCycling() {
+    if (!cycleOn && !nextSwitch) return;
+    cycleOn = false; cycleChk.checked = false; nextSwitch = 0;
+    syncTtlEnabled();
+  }
   function ttlMs() {
     const a = Math.min(+el("ttl-lo").value, +el("ttl-hi").value);
     const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
@@ -5017,6 +5026,7 @@
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
     curPreset = presets.length - 1;
+    stopCycling();                    // ...and keep it on screen (see stopCycling)
     dockAll();                        // back to just the menu (see Break-out boxes)
     rebuildPresetOptions();
     persist();
@@ -5315,6 +5325,12 @@
     }
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
     if (p.hasBeat && el("rst-beat").checked) out.beatTune = p.parsed.beatTune;
+    // Land on the restored scene and stay there. This has to be written into the blob
+    // rather than calling stopCycling(), because applyRestore reloads the page — a live
+    // toggle would be thrown away. Set last so it also overrides the file's own `cycle`
+    // read a few lines up: whatever the backup was saved with, you want to *see* what
+    // you just restored, not have the cycler move off it seconds later.
+    out.cycle = false;
     // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
     localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
     location.reload();
@@ -5576,7 +5592,7 @@
     // (see the EFFECTS registry). "all" shows on every effect; "band" on every
     // shader effect with a Banding slider; the rest are per-effect tags.
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Rename renames the selected one; Delete removes it. The first entry, “— unsaved scene —”, is not a preset but a mode: while it is selected nothing is auto-saved, so you can tweak freely without altering anything you have stored. You also land there whenever the live scene is not one of your presets — after changing effect, after deleting a preset, or when opening a shared link. At the top, Backup writes one file per preset (plus a settings file), so sending someone a single scene means sending one file; Restore takes as many of those files as you select, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset, selects it and turns auto-cycle off so it stays up; Rename renames the selected one; Delete removes it. The first entry, “— unsaved scene —”, is not a preset but a mode: while it is selected nothing is auto-saved, so you can tweak freely without altering anything you have stored. You also land there whenever the live scene is not one of your presets — after changing effect, after deleting a preset, or when opening a shared link. At the top, Backup writes one file per preset (plus a settings file), so sending someone a single scene means sending one file; Restore takes as many of those files as you select, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Part of a preset, so auto-cycle can switch it for you." },

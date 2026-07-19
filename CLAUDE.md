@@ -449,6 +449,14 @@ fast GPU must not tank a phone), audio on/off (needs a user gesture), the `randS
 orbit re-roll, the `Date.now()` chaos seed, and every accumulated phase (`simT`,
 `spinAngle`, `*Time`). A shared scene is the same *configuration*, not the same *frame*.
 
+**Creating a preset and restoring a backup both stop the cycler** (`stopCycling()`).
+Auto-cycle is on by default, so `createPreset` selected the new preset correctly and then
+the very next TTL tick swapped it straight back out — which reads as "my new preset wasn't
+selected" when in fact it was, and then got cycled away from. `applyRestore` can't call
+`stopCycling()` because it reloads the page, so it writes `out.cycle = false` into the blob
+instead, set **last** so it also overrides the backup file's own `cycle`: whatever the
+backup was saved with, you want to see what you just restored.
+
 **Switching effect leaves the selected preset** (drops the menu to "— unsaved scene —") rather
 than rewriting it. A preset carries its own effect, so the delegated autosave used to
 fold the switch straight into it: pick "Sirpinfyer", switch to Tunnel, and your
