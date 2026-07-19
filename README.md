@@ -51,7 +51,7 @@ independent "scene" that remembers its own settings (see Controls):
   - **Munching Squares** — the hypnotic `(x XOR y) + t` pattern with self-similar nested squares.
   - **Copper Bars** — horizontal gradient raster bars sliding up and down on sine motion.
   - **Burning Ship** — a jagged, flame-like fractal (Julia's abs-fold cousin), sharing AnimeJulia's controls.
-  - **Multibrot** — `z^power + c` with an animatable exponent that morphs the number of bulbs. The seed orbits the boundary of the matching **degree-`power`** set, not the plain Mandelbrot cardioid, so the fractal keeps its delicate filigree as the exponent sweeps instead of flooding solid.
+  - **Multibrot** — `z^power + c`, where **Power** is a whole number stepping 2, 3, 4… and each step adds a bulb of symmetry. The seed orbits the boundary of the matching **degree-`power`** set, not the plain Mandelbrot cardioid, so the fractal keeps its delicate filigree as the exponent steps instead of flooding solid. That cardioid gains a cusp per step (`power−1` of them), and the seed sprints through every cusp and eases off in between — so raising Power adds fast-slow stretches to the orbit as well as bulbs to the fractal.
   - **Newton** — the three interlocking root-basins of `z³−1` with fractal borders (Root spin / Relaxation).
   - **Attractor** — a de Jong strange attractor whose four coefficients a/b/c/d morph its delicate threads. **Point jitter** scatters each stamped point to soften them — set it to 0 for the bare, hard-edged curves.
 

@@ -27,7 +27,7 @@ const code =
   "  set rpm(v) { juliaBigRpm = v }, get rpm() { return juliaBigRpm }," +
   "  set ratio(v) { juliaRatio = v }, get ratio() { return juliaRatio }," +
   "  set phase(v) { juliaPhase = v }, set offX(v) { juliaOffX = v }," +
-  "  set power(v) { juliaPower = v }, get power() { return juliaPower }, cardioidAt," +
+  "  set power(v) { juliaPower = v }, get power() { return juliaPower }, cardioidAt, juliaEase," +
   "  RPM, JULIA_MARGIN, JULIA_RATIO_DEFAULT };";
 const J = new Function(code)();
 
@@ -304,6 +304,95 @@ reset();
      "integer powers sit further outside than fractional ones (branch-cut effect)",
      "d=3 " + insideFrac(3, 3).toFixed(1) + "% vs d=2.5 " + insideFrac(2.5, 2.5).toFixed(1) + "%");
   J.power = 2;
+}
+
+// --- 9. the lap-speed warp tracks the cusp count (power − 1) ------------------
+// The degree-d cardioid has exactly d−1 cusps (dc/dθ = 0 needs e^{i(d−1)θ} = 1), and
+// the whole point of the easing is to sprint through a cusp and ease off between them.
+// A fixed cos(θ) would crawl straight through every cusp but the first.
+{
+  const TWO_PI = Math.PI * 2;
+
+  // Where the cusps actually are, from the geometry — not from the ease function.
+  const cuspAngles = d => {
+    const n = d - 1, out = [];
+    for (let k = 0; k < n; k++) out.push(k * TWO_PI / n);
+    return out;
+  };
+
+  // |dc/dθ| — vanishes at a cusp.
+  const speedAt = (th, d) => {
+    const R = Math.pow(d, -1 / (d - 1)), Rd = Math.pow(R, d), h = 1e-6;
+    const c = t => [R * Math.cos(t) - Rd * Math.cos(d * t), R * Math.sin(t) - Rd * Math.sin(d * t)];
+    const a = c(th - h), b = c(th + h);
+    return Math.hypot(b[0] - a[0], b[1] - a[1]) / (2 * h);
+  };
+
+  for (const d of [2, 3, 4, 5]) {
+    J.power = d;
+    // the geometric cusps really are cusps
+    const worstCusp = Math.max(...cuspAngles(d).map(th => speedAt(th, d)));
+    ok(worstCusp < 1e-3, "power " + d + ": all " + (d - 1) + " cusp angles are cusps",
+       "max |dc/dθ| there = " + worstCusp.toExponential(1));
+
+    // ...and the ease is at its maximum on every one of them
+    const atCusps = cuspAngles(d).map(th => J.juliaEase(th));
+    const emax = Math.max(...atCusps), emin = Math.min(...atCusps);
+    ok(Math.abs(emax - emin) < 1e-12, "power " + d + ": every cusp gets the same top speed",
+       emin.toFixed(6) + " … " + emax.toFixed(6));
+
+    // count the ease maxima over a lap — must equal the cusp count
+    const N = 3600, v = [];
+    for (let i = 0; i < N; i++) v.push(J.juliaEase(i / N * TWO_PI));
+    let peaks = 0, dips = 0;
+    for (let i = 0; i < N; i++) {
+      const p = v[(i - 1 + N) % N], c0 = v[i], n = v[(i + 1) % N];
+      if (c0 > p && c0 >= n) peaks++;
+      if (c0 < p && c0 <= n) dips++;
+    }
+    ok(peaks === d - 1 && dips === d - 1,
+       "power " + d + ": " + (d - 1) + " fast stretches and " + (d - 1) + " slow ones",
+       peaks + " peaks / " + dips + " dips");
+
+    // the 3:1 cusp-to-back ratio survives at every power
+    ok(Math.abs(emax / Math.min(...v) - 3) < 1e-6, "power " + d + ": cusp is still 3× the slowest",
+       (emax / Math.min(...v)).toFixed(6));
+
+    // lap TIME is unchanged: ∮dθ/ease == 2π for every n, so rpm still means rpm
+    let integral = 0;
+    const M = 200000;
+    for (let i = 0; i < M; i++) integral += 1 / J.juliaEase((i + 0.5) / M * TWO_PI);
+    integral *= TWO_PI / M;
+    ok(Math.abs(integral - TWO_PI) < 1e-6, "power " + d + ": a lap still takes exactly 1/rpm",
+       integral.toFixed(9) + " vs 2π = " + TWO_PI.toFixed(9));
+  }
+
+  // power 2 must be the original cos(θ) exactly — AnimeJulia and Burning Ship
+  J.power = 2;
+  const K = 1 / Math.sqrt(1 - 0.5 * 0.5);
+  let worst = 0;
+  for (let i = 0; i <= 720; i++) {
+    const th = i / 720 * TWO_PI;
+    worst = Math.max(worst, Math.abs(J.juliaEase(th) - K * (1 + 0.5 * Math.cos(th))));
+  }
+  ok(worst === 0, "power 2 easing is bit-identical to the original cos(θ)", "max |Δ| = " + worst);
+}
+
+// --- 10. the Power slider is integer-only ------------------------------------
+// apply() rounds, so the live exponent is whole even though the thumbs animate
+// continuously between them — which is what keeps power−1 (the cusp count) an integer.
+{
+  const i = src.indexOf('key: "mbexp"');
+  if (i < 0) throw new Error("probe: no mbexp control");
+  const line = src.slice(i, src.indexOf("\n", i));
+  ok(/apply:\s*v\s*=>\s*mbPower\s*=\s*Math\.round\(v\)/.test(line),
+     "mbexp apply() rounds to an integer");
+  ok(/step:\s*1\b/.test(line), "mbexp declares an integer step");
+  const dm = src.indexOf('id: "multibrot"');
+  const defs = src.slice(dm, src.indexOf("beat: {}", dm));
+  const mb = defs.match(/mbexp:\s*\[([-\d.]+),\s*([-\d.]+)\]/);
+  ok(mb && Number.isInteger(+mb[1]) && Number.isInteger(+mb[2]),
+     "the shipped mbexp default is a pair of integers", mb ? mb[0] : "not found");
 }
 
 console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");

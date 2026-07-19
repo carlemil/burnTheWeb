@@ -2178,9 +2178,28 @@
   // sweep, so the Cardioid RPM slider still means revolutions per minute.
   const JULIA_EASE_A = 0.5;
   const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);
+  // Which exponent's locus the seed orbits. 2 for AnimeJulia and Burning Ship;
+  // Multibrot's draw sets it from the live Power slider every frame, and setEffect
+  // puts it back to 2 on the way out. Declared HERE, above juliaEase, because that
+  // arrow reads it — leaving it below worked only as long as nothing called the ease
+  // during startup, and this file has been bitten by exactly that three times.
+  let juliaPower = 2;
   // The warp at lap angle th. Shared by juliaSeed (which advances by it) and the
   // Cardioid debug view (which integrates dφ/dθ = ratio/ease to draw the true path).
-  const juliaEase = th => EASE_K * (1 + JULIA_EASE_A * Math.cos(th));
+  //
+  // The cos runs at (power − 1) because that is exactly how many **cusps** the
+  // degree-d cardioid has. dc/dθ = 0 needs e^{i(d−1)θ} = 1, so the cusps sit at
+  // θ = 2πk/(d−1), k = 0…d−2 — one for d=2 (the classic cardioid), two for d=3,
+  // three for d=4. Sprinting through each cusp and easing off between them is the
+  // whole point of the warp, so the number of fast/slow stretches has to track the
+  // number of cusps or the seed crawls straight through half of them.
+  //
+  // EASE_K still normalises the lap time for *every* n: ∮dθ/(1+A·cos nθ) = 2π/√(1−A²)
+  // whatever the integer n, because the substitution u = nθ just covers the cosine's
+  // period n times. So a lap stays exactly 1/rpm minutes at any power and no existing
+  // preset changes pace. (Verified numerically for n = 1…4.) At power 2 this is
+  // cos(1·θ) — the original expression, unchanged.
+  const juliaEase = th => EASE_K * (1 + JULIA_EASE_A * Math.cos((juliaPower - 1) * th));
 
   // Orbit phases accumulate per frame from the live rpm/ratio, so tuning or
   // animating either never teleports the seed. reseedJulia() sets the *start*:
@@ -2188,10 +2207,6 @@
   // fractal opens somewhere new), or a fixed 0 when off (fully reproducible).
   // Uses Math.random(), kept clear of the chaos-game PRNG (see Determinism).
   let juliaOuter = 0, juliaInner = 0;
-  // Which exponent's locus the seed orbits. 2 for AnimeJulia and Burning Ship;
-  // Multibrot's draw sets it from the live Power slider every frame, and setEffect
-  // puts it back to 2 on the way out.
-  let juliaPower = 2;
   // The seed is only interesting where the *connectedness locus* is — the set of c
   // for which the filled Julia set of z^d+c is connected. For d=2 that is the
   // Mandelbrot set and its period-1 boundary is the familiar cardioid. For any other
@@ -3092,7 +3107,14 @@
     { key: "momix", host: "fx", group: "moire", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => moMix = v, durScale: 10 },
     { key: "nwspin", host: "fx", group: "newton", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => nwSpin = v, durScale: 10 },
     { key: "nwrelax", host: "fx", group: "newton", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => nwRelax = v, durScale: 10 },
-    { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 3.5, fmt: v => sig3(v), apply: v => mbPower = v, durScale: 10 },
+    // Integer only. The thumbs still animate continuously — apply() rounds, so the
+    // live exponent is always a whole number. Fractional powers were never really
+    // sound: z^d uses the principal branch of the log, discontinuous across the
+    // negative real axis, so their connectedness locus is a ragged object the seed
+    // orbit can't track cleanly (measured ~40–55% of a lap inside it, vs ~20% at
+    // integer powers). Rounding also makes power−1 — the cusp count the easing keys
+    // off — a whole number, which is what makes the warp line up with the cusps.
+    { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 1, lo: 2, hi: 4, fmt: v => String(Math.round(v)), apply: v => mbPower = Math.round(v), durScale: 10 },
     { key: "cbcount", host: "fx", group: "copper", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
     { key: "cbspeed", host: "fx", group: "copper", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
     { key: "cbwidth", host: "fx", group: "copper", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
@@ -3529,12 +3551,12 @@
       defaults: { palcycle: [8, 8], nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", presetName: "Multibrot", subtitle: "Multibrot · power sweep",
-      help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
+      help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Power is a whole number and steps 2, 3, 4… — each step adds a bulb of symmetry. The seed rides the matching degree-power cardioid, which has power−1 cusps, and the orbit sprints through every one of them and eases off in between.",
       params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // juliaPower BEFORE juliaSeed: the orbit must ride this frame's power, not the last one's.
       draw: dt => { juliaPower = mbPower; const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
-      defaults: { palcycle: [8, 8], mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
+      defaults: { palcycle: [8, 8], mbexp: [2, 4], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: {}, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
@@ -5474,7 +5496,7 @@
       { n: "Blend", w: "moire", t: "Moiré only — fades the two ring sets between multiply (0, dark webs) and add (1, bright overlaps)." },
       { n: "Root spin", w: "newton", t: "Newton only — rotates the whole basin structure; negative spins the other way." },
       { n: "Relaxation", w: "newton", t: "Newton only — the Newton step size (1 = standard). Away from 1 warps and swirls the basin boundaries." },
-      { n: "Power", w: "multibrot", t: "Multibrot only — the exponent in z^power + c. 2 is the Julia set; sweep up for more symmetric bulbs (3, 4, …), with smooth shapes at fractional values." },
+      { n: "Power", w: "multibrot", t: "Multibrot only — the exponent in z^power + c, a whole number. 2 is the Julia set; step up for more symmetric bulbs (3, 4, …). It also sets the shape of the seed orbit: the cardioid gains a cusp per step, and the seed sprints through each cusp and slows between them." },
       { n: "Bar count", w: "copper", t: "Copper bars only — how many horizontal bars slide up and down (1–12)." },
       { n: "Bar speed", w: "copper", t: "Copper bars only — how fast the bars bob on their sine paths (0 holds them still)." },
       { n: "Bar width", w: "copper", t: "Copper bars only — the thickness of each gradient bar." },

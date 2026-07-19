@@ -94,16 +94,33 @@ components. The probe therefore asserts *matched beats mismatched by ≥20 point
 perfection — the honest property, and the one that goes red if `juliaPower` stops tracking.
 
 **Lap-speed easing.** The orbit is *not* swept at constant angular speed: `juliaSeed`
-scales each step by `EASE_K · (1 + JULIA_EASE_A·cos θ)`, so the seed sprints through
-the cardioid's cusp (θ=0, the start/end of a lap) and eases off at the back (θ=π).
-`JULIA_EASE_A = 0.5` ⇒ the cusp is exactly `(1+A)/(1−A)` = **3×** the back.
-**`EASE_K = 1/√(1−A²)` is load-bearing**: `∮dθ/(1+A·cos θ) = 2π/√(1−A²)`, so without
-it the same rpm would run ~15% slow — with it a lap takes exactly `1/rpm` minutes and
-every existing preset keeps its pace.
+scales each step by `EASE_K · (1 + JULIA_EASE_A·cos((power−1)·θ))`, so the seed sprints
+through every cusp of the cardioid and eases off between them.
+`JULIA_EASE_A = 0.5` ⇒ a cusp is exactly `(1+A)/(1−A)` = **3×** the slowest point.
+
+**The `power−1` is the cusp count, not a tuning knob.** The degree-d cardioid
+`c = z − z^d` has `dc/dθ = 0` exactly where `e^{i(d−1)θ} = 1`, i.e. at `θ = 2πk/(d−1)` —
+**`d−1` cusps**: one at power 2 (the classic cardioid), two at 3, three at 4. A fixed
+`cos θ` would sprint through the first cusp and crawl straight through all the others,
+which is the opposite of the intent. This is also why **Multibrot's Power is an integer**
+(`apply` rounds; the thumbs still animate continuously between them): a fractional power
+makes `power−1` fractional, the warp no longer closes over a lap, and the locus itself is
+ragged anyway because `z^d` uses the principal branch.
+
+**`EASE_K = 1/√(1−A²)` is load-bearing**, and works unchanged at every power:
+`∮dθ/(1+A·cos nθ) = 2π/√(1−A²)` for *any* integer `n`, since `u = nθ` just covers the
+cosine's period `n` times. So a lap takes exactly `1/rpm` minutes at any power and every
+existing preset keeps its pace; without `EASE_K` the same rpm would run ~15% slow.
+At power 2 the whole expression is `cos(1·θ)` — bit-identical to the original, which is
+what leaves AnimeJulia and Burning Ship untouched.
+
+`juliaPower` is declared **above `juliaEase`** on purpose: the arrow reads it, and leaving
+it below only worked while nothing called the ease during startup — this file has been
+bitten by exactly that three times.
 
 The warp applies to the **outer phase only** — the riding circle keeps its steady rate,
-so its epicycles bunch up where the cardioid crawls (the back) and stretch where it
-sprints (the cusp); that unevenness is the point. Because lap *time* is preserved the
+so its epicycles bunch up where the cardioid crawls and stretch where it sprints; that
+unevenness is the point. Because lap *time* is preserved the
 inner still completes exactly `ratio` turns per lap, just unevenly distributed. Note the
 easing is symmetric about θ=π, so the two half-laps take **equal** time — the asymmetry
 is per quarter (a probe assertion got this wrong before the maths did). `juliaSeedAt`
