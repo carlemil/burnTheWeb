@@ -271,7 +271,7 @@ param/default that isn't a real control). Everything derives from the registry:
   calls it first (covering effect switches, preset applies and the auto-cycle), and so do
   `createPreset`, the Delete handler and the preset `<select>`'s `change`. That last one
   docks **up front, before dispatching**, because it has to cover both branches — picking a
-  preset would dock anyway via `applyPreset` → `setEffect`, but **"— custom —" never reaches
+  preset would dock anyway via `applyPreset` → `setEffect`, but **"— unsaved scene —" never reaches
   `setEffect`**, and leaning on that chain would make the behaviour quietly depend on where
   `setEffect` happens to call `dockAll`. Rename deliberately does *not* dock: the scene is
   unchanged, only its label. `dockAll` goes through `dockCtl` per key rather than clearing
@@ -449,7 +449,7 @@ fast GPU must not tank a phone), audio on/off (needs a user gesture), the `randS
 orbit re-roll, the `Date.now()` chaos seed, and every accumulated phase (`simT`,
 `spinAngle`, `*Time`). A shared scene is the same *configuration*, not the same *frame*.
 
-**Switching effect leaves the selected preset** (drops the menu to "— custom —") rather
+**Switching effect leaves the selected preset** (drops the menu to "— unsaved scene —") rather
 than rewriting it. A preset carries its own effect, so the delegated autosave used to
 fold the switch straight into it: pick "Sirpinfyer", switch to Tunnel, and your
 Sirpinfyer preset silently became a Tunnel scene under its old name. Suppressing autosave
