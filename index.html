@@ -4953,6 +4953,7 @@
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
     curPreset = presets.length - 1;
+    dockAll();                        // back to just the menu (see Break-out boxes)
     rebuildPresetOptions();
     persist();
   }
@@ -4975,10 +4976,18 @@
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
     presets.splice(curPreset, 1);
     curPreset = -1;
+    dockAll();
     rebuildPresetOptions();
     persist();
   });
-  presetSel.addEventListener("change", () => { const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1; });
+  // dockAll() up front covers BOTH branches — picking a preset and dropping to
+  // "— custom —". Selecting a preset would dock anyway via applyPreset → setEffect,
+  // but "— custom —" never reaches setEffect, and relying on that chain would make
+  // this quietly depend on where setEffect happens to call dockAll.
+  presetSel.addEventListener("change", () => {
+    dockAll();
+    const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1;
+  });
 
   // ---- Backup: ONE FILE PER PRESET, so a single scene can be sent to someone ----
   // The backup used to be one big .json holding everything. That is a fine backup and a
@@ -5442,15 +5451,16 @@
     // (see the EFFECTS registry). "all" shows on every effect; "band" on every
     // shader effect with a Banding slider; the rest are per-effect tags.
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Rename renames the selected one; Delete removes it. Choose “— custom —” to tweak freely without touching any saved preset. At the top, Backup downloads everything (all presets and settings) as a file and Restore loads a backup back, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
+      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset; Rename renames the selected one; Delete removes it. Choose “— custom —” to tweak freely without touching any saved preset. At the top, Backup writes one file per preset (plus a settings file), so sending someone a single scene means sending one file; Restore takes as many of those files as you select, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
-      { n: "Effect", w: "all", t: "Which visual is running. Part of a preset; auto-cycle can switch it for you." },
+      { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Part of a preset, so auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
-      { n: "Auto-morph palettes", w: "all", t: "Continuously cross-fades to a random palette every 8 seconds." },
+      { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them." },
       { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
+      { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or preset." },
       { n: "Slider range (min / max / step)", w: "all", t: "The row at the foot of a slider's pop-out box retunes that slider's own bounds live, so you can push a control past its shipped limits (or make it finer). ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
       { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
       { n: "Box size", w: "tetra", t: "Tetrafyer only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
@@ -5460,18 +5470,29 @@
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
       { n: "Layers", w: "fire", t: "− / + stack extra copies of the fractal (up to 6). Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own." },
       { n: "Drift speed", w: "fire", t: "Sirpinfyer: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
-      { n: "Flame rise", w: "fire", t: "How tall flames climb before fading — linear in height." },
       { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sirpinfyer's triangle or Tetrafyer's tetrahedron (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
-      { n: "Rotation", w: "tetra", t: "Tetrafyer only — spin rate in degrees per second for the scene orbit around the box. 0 holds still." },
+      { n: "Rotation", w: "tetra", t: "Tetrafyer only — the yaw rate in degrees per second for the scene orbit around the box. It ships drifting between −5 and 5, so the box is never quite still; pinch both thumbs to 0 to stop it." },
+      { n: "Box nod", w: "tetra", t: "Tetrafyer only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
+      { n: "Nod speed", w: "tetra", t: "Tetrafyer only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
+      { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin the whole scene in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. These are global — they stay put as you switch effects and are not part of any one effect's settings — so they act as a camera over whatever is running. The startup credits deliberately ignore them and stay level." },
+      { n: "Filters", w: "all", t: "A stack of post-effects any visual can use, ticked in the Filters section; they apply in the order listed. Fire and Fade pixel feed back into the picture, building up over successive frames; the rest are passes over the finished image. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
+      { n: "Fire", w: "all", t: "The classic rising-fire feedback: heat drifts upward and cools each frame, so whatever the effect draws sprouts flames. Flame rise sets how tall they climb before fading (linear in height); Burn rate how many simulation steps run per second — faster is livelier and flickerier." },
+      { n: "Fade pixel", w: "all", t: "Keeps a fraction of the previous frame instead of clearing it, leaving motion trails. Keep near 1 smears almost forever; lower values fade quickly. Stacks with Fire." },
+      { n: "Pixelate", w: "all", t: "Chunks the image into blocks. Block sets the size — a direct route to a lo-fi console look." },
+      { n: "Blur / sharpen", w: "all", t: "One kernel doing both: negative Amount blurs, positive sharpens, 0 is off. Radius sets how far it reaches, so a wide soft blur and a tight crisp edge come from the same pass." },
+      { n: "Edge", w: "all", t: "Edge detection over the finished image — Amount fades between the original and the outlines it finds." },
+      { n: "Posterize", w: "all", t: "Crushes the colours to a fixed number of Levels, turning smooth gradients into flat bands." },
+      { n: "Mirror", w: "all", t: "Reflects the image about its centre. Axis picks horizontal, vertical or both (kaleidoscope-style quadrants)." },
+      { n: "Bloom", w: "all", t: "The additive glow around the brightest areas. Strength 0 turns it off entirely — this is the glow that used to be permanent." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
       { n: "Outer radius", w: "julia", t: "Scale of the big cardioid loop the seed traces. Larger values push the whole orbit outward." },
-      { n: "Cardioid debug", w: "julia", t: "Opens the Mandelbrot set with this effect's seed orbit drawn on top: the full seed cardioid, the path the seed actually traces at the current ratio and radii, the small riding circle and the live seed point. Use it to see where the Cardioid RPM / ratio / radius / start settings put the seed — right at the frontier gives intricate fractals, too far inside gives solid blobs." },
+      { n: "Cardioid debug", w: "julia", t: "Opens the fractal set this effect's seed is riding — the Mandelbrot set, or the matching Multibrot set once Multibrot's Power is above 2 — with the orbit drawn on top: the full seed cardioid, the path the seed actually traces at the current ratio and radii, the small riding circle and the live seed point. Use it to see where the Cardioid RPM / ratio / radius / start settings put the seed: right at the frontier gives intricate fractals, too far inside gives solid blobs. It floats rather than blocking the menu, so you can drag the sliders and watch the orbit redraw." },
       { n: "Cardioid X offset", w: "julia", t: "Slides the whole seed orbit left or right along the real axis (0 = the Mandelbrot cardioid's own position). Negative walks it toward the bulbs and the spike; positive pushes it out past the cusp. Use Cardioid debug to see where it lands." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
-      { n: "Random seed each reload", w: "julia", t: "AnimeJulia only — when on, the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to this effect. Turn off for a fixed, reproducible starting frame." },
+      { n: "Random seed each reload", w: "julia", t: "When on, the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to this effect. Turn off for a fixed, reproducible starting frame. Applies to all three cardioid-seeded effects (AnimeJulia, Burning Ship, Multibrot)." },
       { n: "Speed", w: "plasma", t: "How fast the plasma's waves animate. 0 freezes the field." },
       { n: "Scale", w: "plasma", t: "Spatial frequency of the waves — how fine or coarse the interference pattern is." },
       { n: "Warp", w: "plasma", t: "Domain warp: bends the waves into swirls. 0 = clean straight interference; higher = turbulent." },
@@ -5500,6 +5521,7 @@
       { n: "Bar count", w: "copper", t: "Copper bars only — how many horizontal bars slide up and down (1–12)." },
       { n: "Bar speed", w: "copper", t: "Copper bars only — how fast the bars bob on their sine paths (0 holds them still)." },
       { n: "Bar width", w: "copper", t: "Copper bars only — the thickness of each gradient bar." },
+      { n: "Point jitter", w: "attractor", t: "Attractor only — scatters each plotted point by up to this many pixels, softening the map's hard threads into something more alive. The de Jong map is exact, so 0 gives the bare, razor-thin curves." },
       { n: "Coeff a", w: "attractor", t: "Attractor only — the a coefficient of the de Jong map; one of the four shape knobs. Arm its L/M/H chips to morph on the beat." },
       { n: "Coeff b", w: "attractor", t: "Attractor only — the b coefficient of the de Jong map." },
       { n: "Coeff c", w: "attractor", t: "Attractor only — the c coefficient of the de Jong map." },

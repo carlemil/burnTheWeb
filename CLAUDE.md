@@ -288,12 +288,16 @@ param/default that isn't a real control). Everything derives from the registry:
   `setEffect` — shows a box iff `popped.has(key) && effect.params.has(key)` and toggles
   `#breakout.empty`. `setEffect` toggles the **menu row** for poppable keys (the box
   itself is left to `refreshBreakout`) and the control node directly for the rest. State
-  is **transient** (not persisted). `setEffect` also calls **`dockAll()`** first: a switch
-  swaps every slider, chip and palette, so a column left over from the previous scene is
-  stale furniture — you start clean and re-pop what you want. It runs on *every*
-  `setEffect`, including a same-effect preset apply (also a new scene) and the auto-cycle's,
-  and it goes through `dockCtl` per key rather than clearing the set, so the menu rows'
-  `+`/`−` buttons can't desync from `popped`. Because `#breakout` sits *outside* `#panel` (the
+  is **transient** (not persisted). **`dockAll()`** empties the column whenever the scene
+  changes, so a stack left over from the previous one isn't stale furniture: `setEffect`
+  calls it first (covering effect switches, preset applies and the auto-cycle), and so do
+  `createPreset`, the Delete handler and the preset `<select>`'s `change`. That last one
+  docks **up front, before dispatching**, because it has to cover both branches — picking a
+  preset would dock anyway via `applyPreset` → `setEffect`, but **"— custom —" never reaches
+  `setEffect`**, and leaning on that chain would make the behaviour quietly depend on where
+  `setEffect` happens to call `dockAll`. Rename deliberately does *not* dock: the scene is
+  unchanged, only its label. `dockAll` goes through `dockCtl` per key rather than clearing
+  the set, so the menu rows' `+`/`−` buttons can't desync from `popped`. Because `#breakout` sits *outside* `#panel` (the
   panel's `backdrop-filter` + `overflow` would clip a fixed child), three things are
   wired to reach it too: the control-appearance CSS is scoped to `#panel …, #breakout …`;
   the delegated `onEdit` (persist/autosave) is attached to `#breakout` as well; and

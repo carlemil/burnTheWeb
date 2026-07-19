@@ -111,7 +111,9 @@ the top-right corner.
 that slider out into its own box in a column to the right of the menu; the menu
 keeps the slider's name with a **−** to put it back. Pop out several and the boxes
 stack from the top down, so you can line up just the controls you're playing with.
-(This layout is per-session and isn't saved.) Each box is titled with what it
+(This layout is per-session and isn't saved — it clears whenever the scene changes:
+switching effect, picking or creating or deleting a preset, or dropping to
+"— custom —".) Each box is titled with what it
 belongs to — the effect or the filter, e.g. *Camera*, *Plasma*, *Filter · Bloom* —
 so a stack of boxes reading "Speed", "Strength", "Size" stays readable. A box
 gives the slider room for
