@@ -155,6 +155,46 @@ washed out, Outer radius is the first thing to check.
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
+### Fractal flames — the one effect that does NOT use the heat buffer
+`Fractal Flame` is Draves's IFS: a chaos game whose functions each end in a nonlinear
+warp, with brightness from **log density** and hue carried along the orbit. It is a
+point effect (`stamp` hook, no `draw`) but it cannot ride the heat pipeline, because
+heat is **R8 and every write is MAX** — a density histogram would saturate on the first
+hit, and density is the whole point. So it keeps its own `flHist` **Float32Array of
+`[sumR, sumG, sumB, count]` per cell** and resolves that to RGB itself.
+
+It rejoins the pipeline at `glFbo.native`: the descriptor sets **`rgb: true`**, and both
+`glRender` (via `FS_BLIT` + `glTex.flame`) and the CPU `render()` branch on that flag to
+take the resolved image instead of mapping heat through the ramp. Everything downstream
+still applies — post-FX chain, zoom, transitions, bloom. **Banding does not**, because
+that filter rewrites the 256-entry ramp in index space and this effect never indexes the
+ramp per pixel. The palette picker and cycling *do* still work: the ramp supplies each
+function's colour, which is exactly Draves's scheme.
+
+Four things are load-bearing, and each was measured rather than guessed:
+- **Its own sample budget (`flpts`, 5k–150k), not the shared `points` slider.** `points`
+  caps at 8000/tick, which over ~100k cells leaves most cells never hit — measured as
+  95% of the frame in the darkest eighth. Flames need orders of magnitude more samples.
+- **The tone map normalises to `maxC * 0.2`, not `maxC`.** A chaos game puts a few cells
+  far above the rest; dividing by that one outlier crushes everything else into the
+  bottom of the range. Letting the densest fifth clip to white is brighter *and* truer —
+  flames are meant to blow out at the core.
+- **The colour coordinate is `c = (c + f.col) * 0.5` per step**, so hue records which
+  functions the orbit flowed through. That coherence is why this effect needed RGB
+  rather than a palette index.
+- **The IFS comes from the `flseed` slider**, not `Math.random()`, so a preset reproduces
+  its flame exactly and dragging the seed rolls a new one.
+
+The chaos game runs on the **CPU on both paths** (as the other point effects do); GL only
+blits the resolved RGBA. GL/CPU parity is therefore structural rather than something to
+maintain — confirmed by rendering one seed both ways and getting the same shape.
+
+**Testing note:** the live canvas does **not** survive a Chromium headless screenshot —
+even a solid control patch drawn straight onto `#fire` vanishes, while DOM elements above
+it render fine. Snapshot it with `canvas.toDataURL()` into an `<img>` and screenshot that.
+Several "it renders black" conclusions came from this before a control patch pinned it on
+the harness.
+
 ### Credits overlay
 The startup credits render on **their own canvas** (`#creditcv`, `z-index: 4`,
 `pointer-events: none`) drawn by `creditDraw()` from `frame()` **after** `glRender()`/

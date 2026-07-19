@@ -1,6 +1,6 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **fifteen effects** in three families,
+A GPU demoscene visual: a collection of **sixteen effects** in three families,
 all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, or a de
@@ -16,7 +16,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 
 ## Effects
 
-An **Effect** selector at the top of the panel's **Effects** section switches between fifteen visuals
+An **Effect** selector at the top of the panel's **Effects** section switches between sixteen visuals
 that share the same palette, glow and music-reactivity pipeline — but each is an
 independent "scene" that remembers its own settings (see Controls):
 
@@ -58,6 +58,7 @@ independent "scene" that remembers its own settings (see Controls):
   - **Multibrot** — `z^power + c`, where **Power** is a whole number stepping 2, 3, 4… and each step adds a bulb of symmetry. The seed orbits the boundary of the matching **degree-`power`** set, not the plain Mandelbrot cardioid, so the fractal keeps its delicate filigree as the exponent steps instead of flooding solid. That cardioid gains a cusp per step (`power−1` of them), and the seed sprints through every cusp and eases off in between — so raising Power adds fast-slow stretches to the orbit as well as bulbs to the fractal.
   - **Newton** — the three interlocking root-basins of `z³−1` with fractal borders (Root spin / Relaxation).
   - **Attractor** — a de Jong strange attractor whose four coefficients a/b/c/d morph its delicate threads. **Point jitter** scatters each stamped point to soften them — set it to 0 for the bare, hard-edged curves.
+  - **Fractal Flame** — Scott Draves's fractal flames. Same chaos game as Sirpinfyer (pick one of a few functions at random, apply it, plot where you land, repeat) but each function ends in a **nonlinear warp** — swirl, spherical, horseshoe, polar and nine more — and that is where the smoky, organic texture comes from. Brightness is the **logarithm** of how often each pixel was hit, so the dense cores and the faint outer filaments are visible in the same image; that HDR tone map is what makes it glow rather than clip to a white blob. Colour follows the **dynamics, not the position**: a colour coordinate rides along the orbit, blending halfway toward each function's palette entry at every step, so a region's hue records which functions flowed through it — which is why the colour regions look coherent instead of noisy. **Shape seed** rolls a whole new flame, **Warp** walks back toward a plain blocky IFS, **Symmetry** folds it into 2–8 arms, **Exposure** sets how long the image accumulates before it forgets (hold it at the top for a long exposure, drop it for trails), and **Gamma** shapes the falloff. Choosing a palette still recolours it, since the palette is where the functions get their colours; **Banding** is the one thing that does not apply.
 
 ## How it works
 
@@ -175,7 +176,7 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | Control | What it does |
 | --- | --- |
 | **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, selects it, and switches auto-cycle off so it stays on screen; **Delete** removes the selected one. Pick "— unsaved scene —" to tweak without touching a saved preset. Switching to a different **effect** keeps you on the preset you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the preset keeps its **name**, so one called "Sirpinfyer" that you switch to Tunnel stays called Sirpinfyer until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a preset leaves the previous effect on screen to burn away under the new one rather than cutting to black (visible whenever the incoming scene has the Fire or Fade pixel filter on), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the preset's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** saves **one `.json` per preset**, each named after the preset, plus a `_settings.json` holding everything that isn't a preset (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution). One file per preset is the point: to send someone a scene, send them that one file. In Chrome and Edge you pick a folder **once, ever** — it is remembered from then on, and each backup lands in its own dated folder, `BurnTheWeb/<date-time>/`. Shift-click **Backup** to choose a different folder. Other browsers download the files individually with the date in the name. **Restore** takes as many files as you select — a whole backup folder, or the single preset a friend sent you. A dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning — only the ones your selection actually contains) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. Older single-file backups still restore. |
-| **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
+| **Effect** | Switch between all sixteen effects listed above, in dropdown order (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of fifteen demoscene-style colour ramps. |
@@ -388,3 +389,4 @@ source has been used. A **Google Analytics 4** hook (page views plus custom
 events like Capture-button clicks) is active via the `GA_MEASUREMENT_ID`
 constant. Clearing that constant back to `""` makes the whole hook inert again —
 no script loaded, nothing sent.
+
