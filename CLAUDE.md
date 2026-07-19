@@ -129,6 +129,25 @@ as it walks the path (via the shared `juliaEase`) instead of assuming φ is line
 or the drawn epicycles would not match the ones on screen.
 `juliaprobe` locks all of this down.
 
+**Burning Ship rides the wrong cardioid too — and it does not matter. Measured, twice.**
+Its connectedness locus is the Burning Ship set (iterate the critical point 0 under
+`zy = 2|zx·zy| + cy; zx = zx² − zy² + cx`), not the Mandelbrot cardioid the seed traces,
+so in principle it has exactly the bug Multibrot had. In practice it does not, because its
+shipped `outrad` is **[1.4, 1.9]** where AnimeJulia's is 1.05 — whoever tuned it pushed the
+orbit out by eye until it looked right, which empirically compensates. Sweeping a full lap
+(720 outer × 24 inner phases) against the real ship locus: **4.6–31% inside across its
+drift range, ~17% typical**, versus AnimeJulia's own **27.1%** against the Mandelbrot at its
+defaults. Burning Ship is *better* than the reference scene, and screenshots agree — small
+bright clusters with filigree, a disconnected Julia set, not a filled blob.
+
+So: **do not "fix" this.** There is no closed form for the ship boundary, tracing it
+numerically is real work, and it would change every Burning Ship preset for no visible
+gain. The one thing worth knowing is that the compensation is a *magic number, not a
+correction*: drag Outer radius down toward AnimeJulia-like values and it degrades fast —
+28% inside at 1.2, 39% at 1.05, 45% at 1.0 — noticeably worse than AnimeJulia at the same
+setting, because the curve genuinely is wrong for this family. If Burning Ship ever looks
+washed out, Outer radius is the first thing to check.
+
 - **Point-accumulation effects** (Sirpinfyer, Tetrafyer, Attractor) run the fire sim and
   stamp points into the heat grid via `plot()`. `simulate()` dispatches to the
   descriptor's **`stamp(box)`** hook if present (Attractor), else the `fractal2d` (2D
