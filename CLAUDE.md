@@ -136,62 +136,40 @@ or the drawn epicycles would not match the ones on screen.
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
-### Credits burn-in
-The startup credits are stamped into the **heat grid** through the same `plot()` the
-effects use, not drawn as an overlay — so they take the effect's palette, glow and (with
-Fire on) rise and burn away with no undraw step. `creditRaster()` rasterises the two lines
-once to an offscreen 2D canvas at heat resolution and caches the coverage mask per
-`fw`/`fh`; `creditStamp()` replays it every tick.
+### Credits overlay
+The startup credits render on **their own canvas** (`#creditcv`, `z-index: 4`,
+`pointer-events: none`) drawn by `creditDraw()` from `frame()` **after** `glRender()`/
+`render()` — so they sit above the effect *and* above the whole post-filter chain, and
+below the menu at `z-index: 10`.
 
-**Rotation** does not touch them: `plot(x, y, v, raw)` takes a fourth argument that skips
-the `camOn()` rotation, so the text stays level whatever the preset's camera is doing.
-Only `creditStamp` passes it, so every other caller is byte-identical.
+**They used to be stamped into the heat grid** through the same `plot()` the effects use,
+which gave them the palette and let them burn away with the fire — genuinely nicer, and
+the reason the old design existed. It was abandoned because the post filters mangled
+them: Pixelate blocked the glyphs up, Mirror doubled them, Edge reduced them to outlines.
+Chrome you cannot read is not chrome. Consequences of the move, all of them wins except
+the first: no palette tie-in and no burn-away; but immunity to the camera and to display
+zoom **for free** (an overlay is not in the buffer those transform), no accumulation
+smear, and the panel's *actual* colours instead of a one-channel brightness stand-in —
+role `#ffb15a`, name white at `.8`, "aka" at `.45`, handle `#ffcf87`, straight off
+`#panel .credit-*`. Each run is drawn twice, once with a dark halo and once with a warm
+glow, so it stays legible over a bright frame without looking like a caption.
+
+Gone with it: `creditStamp`, `creditRaster`, the `fw`/`fh` mask cache, `creditZoomCap`,
+and `plot`'s fourth `raw` argument (added solely so the credits could skip the camera —
+every caller wants the camera now). `CREDITS` still drives **both** the overlay and the
+panel's Credits box via `buildCreditList()`, so the two cannot drift.
 
 **Timing is `CREDIT_HOLD` (5s) at full, then `CREDIT_FADE` (3s) ramping to nothing**;
-`CREDIT_S` is just their sum and `creditLeft` counts the whole thing down in rendered
-time. `creditAlpha()` is 1 while `creditLeft ≥ CREDIT_FADE`, then `creditLeft/CREDIT_FADE`.
-The `v > 40` threshold stays on the **raw** mask and only the plotted value is scaled —
-thresholding the *faded* value instead would drop the anti-aliased edges first and eat the
-glyphs from the outside in, which reads as erosion rather than a fade. `?credits=<s>`
-overrides the **hold**; the fade is always added on top, so `?credits=600` parks them on
-screen and still fades the same way.
+`CREDIT_S` is their sum and `creditLeft` counts the whole thing down in **rendered** time
+(`dt` from the frame loop), not wall clock — a backgrounded tab stops rAF, and a
+wall-clock timer would run the credits out unseen. `creditAlpha()` is 1 while
+`creditLeft >= CREDIT_FADE`, then `creditLeft/CREDIT_FADE`. `?credits=<s>` overrides the
+**hold**; the fade is always added on top, so `?credits=600` parks them on screen and
+still fades the same way. Once expired `creditDraw` clears the layer once and sets
+`display: none`, so it costs nothing for the rest of the session.
 
-**Zoom is deliberately NOT cancelled**, and that is the interesting part, because it was
-built, shipped and reverted. Pre-dividing the mask by the live zoom is correct for *one*
-frame and wrong for the buffer: heat accumulates over many ticks, so every earlier tick's
-glyphs sit at a stale scale and a drifting zoom (Sirpinfyer ships `0.9–1.65`) smears the
-text outward in proportion to its distance from centre — the widest line worst. Freezing
-the zoom instead doesn't help either: the display pass still scales the buffer, so a fixed
-`1/z₀` is just a constant size offset, i.e. behaviourally identical to not cancelling.
-**Zoom is a property of the whole buffer, and the credits live in the buffer.**
-
-What the credits do instead is *size themselves for* the zoom: `creditZoomCap()` reads the
-Zoom slider's **high thumb** (the ceiling of the drift, 1 for `bakesOwnZoom` effects) and
-`creditRaster` fits the text to `fw · 0.88 / cap`. Without it the text runs off both edges
-at the top of the drift. The cap is part of the mask cache key alongside `fw`/`fh`; it only
-changes when the user drags the slider, so the mask still almost never rebuilds.
-
-**Layout mirrors the panel's Credits box**, because both are generated from the one
-`CREDITS` array (`{role, name, handle}`) — `buildCreditList()` builds the DOM, `creditRaster`
-the glyph mask, so they cannot drift apart. The burn-in reproduces the panel's hierarchy in
-the only channel a heat grid has, **brightness**: role and handle full, name `.8`, the
-"aka" `.45` — the literal opacities from `#panel .credit-name` / `-aka`. The role line is
-uppercased, letter-spaced and drawn at `0.8×` the name size, matching the CSS. Name lines
-are laid out **left-to-right by hand** rather than with `textAlign: "center"`, because a
-name line is three runs in three different fonts and only their *total* width is centred.
-
-It is called from **two** places, because the two effect families reach the heat grid
-differently: inside `simulate()` for point effects (so the glyphs join that tick's stamp
-list), and in `frame()` right after `fx.draw(dt)` for shader effects (which overwrite the
-whole heat texture each frame, so the credits have to go on top). On GL the latter needs
-`glBlitPoints()` — the MAX-blended point draw split out of `glDrawPoints` so it can run
-*without* the `curHeat` flip the point path owns.
-
-`creditLeft` counts down in **rendered** time (`dt` from the frame loop), not wall clock:
-a backgrounded tab stops rAF, and a wall-clock timer would burn the credits away unseen.
-`?credits=<seconds>` overrides the duration (same spirit as `?debug=1`). The on/off
-preference lives in its own `localStorage` key, deliberately **not** in the scene blob —
-it is a per-browser choice, not part of a shared or backed-up scene.
+The on/off preference lives in its own `localStorage` key, deliberately **not** in the
+scene blob — it is a per-browser choice, not part of a shared or backed-up scene.
 
 ### Filters (post-FX)
 `FILTERS` is a second registry beside `EFFECTS`: stackable post-processing any effect can
@@ -845,31 +823,26 @@ the Blob back), and stub `fetch` so Short link resolves without TinyURL. Run it 
 once as-is, once with `ClipboardItem` hidden — since the two clipboard paths are different
 code and only the fallback runs on older Safari/Firefox.
 
-**Testing a timed overlay** (the credits): drive the clock, stub WebGL off so pixels are
-readable, then run the page twice — once with `?credits=<short>` and once with the
-preference disabled — and hash the same driven frames. Early frames must **differ** (it is
-drawing) and frames past the duration must be **byte-identical** (it left no trace).
-That pair is what makes "it disappears on schedule" a real assertion rather than an
-eyeball; a brightness/band heuristic can't tell thin glyphs from the effect's own structure.
+**Testing the credits overlay.** It is a separate canvas, so read *it* rather than the
+composited frame: `getImageData` on `#creditcv` and count pixels with alpha > 8. That
+gives a clean "is it painting / is it fading / has it stopped" signal with no risk of
+confusing glyphs for the effect's own structure. Assert the layer properties too — its own
+canvas, `pointer-events: none`, z-index above `#fire` but under the menu — since those are
+what actually make it immune to the filters.
 
-**Testing that the credits ignore the camera** is a *logic* assertion, not a pixel one
-(point-effect pixels aren't reproducible across runs). Inject an export hook just before
-the app IIFE closes, stub WebGL off so `fire` is the live buffer, then call `creditStamp()`
-directly with the camera set various ways and compare the set of lit `fire` indices: a
-rotated camera must stamp **byte-identical** indices, and `plot(x, y, v)` *without* the raw
-flag must still be moved by the camera (or the opt-out silently disabled the camera for
-effects). Run the same probe against a copy with the fix reverted, or the assertions
-aren't biting.
+**The claim to nail is that credits no longer touch heat**: fill `fire` with zeros, put
+the credits up, call `creditDraw()`, and assert the buffer still sums to zero. Do *not*
+try to prove it by running `simulate()` with credits up and down and diffing the heat —
+`simT` advances between the two runs, so the geometry moves and the buffers differ for
+reasons that have nothing to do with credits. (That exact mistake cost a red assertion
+here; the direct test is both simpler and actually about the thing.)
 
-**That probe is also a standing lesson in what a single-stamp assertion cannot see.** The
-zoom-cancellation it originally covered passed cleanly — one `creditStamp` into a *cleared*
-buffer really did land where the maths said. The bug only exists across *accumulated*
-ticks with a *drifting* zoom, which the probe never exercised. For anything that writes the
-retained heat buffer, a green logic probe is necessary and not sufficient: also drive a few
-hundred real frames and **look at the screenshot**. For credit layout specifically, measure
-the mask directly (walk `creditRaster()`'s rows, group contiguous ones into lines, and check
-each line's width against `fw` and its centre against `fw/2`) — that separates a raster bug
-from a display-path bug in one shot, which eyeballing the composited frame cannot.
+**A standing lesson from the version that stamped into the buffer.** Its zoom-cancellation
+probe passed cleanly — one stamp into a *cleared* buffer really did land where the maths
+said — while the bug only existed across *accumulated* ticks with a *drifting* zoom, which
+the probe never exercised. For anything that writes the retained heat buffer, a green logic
+probe is necessary and not sufficient: drive a few hundred real frames and **look at the
+screenshot** as well.
 
 **Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
 `requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes

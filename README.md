@@ -304,12 +304,12 @@ twice and it won't be pixel-identical — that's the demo running, not something
 
 ## Credits
 
-On startup the credits are **burned into the effect itself** rather than drawn over
-it: each person's role and name are rasterised and stamped into the fire's heat
-grid, so they pick up whatever palette and glow the running effect has. They hold
-for five seconds, then fade out over three — and with the Fire filter on they rise
-and burn away as they go, leaving nothing to undraw. The layout matches the
-**Credits** box in the menu, since both are generated from the same list.
+On startup the credits appear over whatever is running — each person's role and
+name, in the same layout as the **Credits** box in the menu, since both are
+generated from the same list. They hold for five seconds, then fade out over
+three. They are drawn on their own layer above the visual, so they stay readable
+whatever effect and filters you have on (Pixelate and Mirror used to chew them
+up), and they ignore the camera and zoom.
 
 That menu box also has a checkbox to stop them appearing on future visits
 (remembered in this browser only, and kept out of presets, share links and backups

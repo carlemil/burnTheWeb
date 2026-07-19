@@ -28,6 +28,13 @@
     height: 100vh;
     image-rendering: auto;
   }
+  /* Startup credits. Their own layer above the render so no effect, and no post
+     filter (Pixelate, Mirror, Edge…), can chew them up — but below the menu at
+     z-index 10, and click-through, so nothing about the UI changes while they run. */
+  #creditcv {
+    position: fixed; inset: 0; z-index: 4;
+    pointer-events: none; display: none;
+  }
   #panel {
     position: fixed;
     top: 58px;
@@ -546,6 +553,7 @@
 </head>
 <body>
 <canvas id="fire"></canvas>
+<canvas id="creditcv"></canvas>
 
 <div id="panel" class="hidden">
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
@@ -1836,9 +1844,10 @@
     glPts[i] = x; glPts[i + 1] = y; glPts[i + 2] = v; glPtCount++;
   }
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
-  // `raw` skips the camera (the credits are fixed chrome — see creditStamp).
-  function plot(x, y, v, raw) {
-    if (!raw && camOn()) {              // camera: rotate the stamped point about the grid centre
+  // (It briefly took a `raw` flag to let the credits skip the camera; they render on
+  // their own layer now, so every caller wants the camera and the flag is gone.)
+  function plot(x, y, v) {
+    if (camOn()) {                      // camera: rotate the stamped point about the grid centre
       const dx = x - fw * 0.5, dy = y - fh * 0.5;
       x = camM[0] * dx + camM[1] * dy + fw * 0.5;
       y = camM[2] * dx + camM[3] * dy + fh * 0.5;
@@ -2008,7 +2017,6 @@
     // 1) propagate existing fire upward (cgtutor averaging, with decay).
     beginHeatTick();
 
-    creditStamp();                    // credits burn in with the effect's own points
 
     // 2) stamp the Sierpiński fractal as fresh heat via the chaos game.
     // Keep it inside a safe box (top 20% and left/right/bottom 5% excluded) so
@@ -2713,16 +2721,12 @@
       fx.draw(dt);                    // shader effect: writes the heat tex directly from its seed
       if (retain && !useGL)
         for (let i = 0; i < fire.length; i++) if (fireKeep[i] > fire[i]) fire[i] = fireKeep[i];
-      if (creditLeft > 0) {           // ...then burn the credits over it
-        glPtCount = 0;
-        creditStamp();
-        if (useGL) { bindFbo(glFbo.heat[curHeat], fw, fh); glBlitPoints(); }
-      }
     } else {
       for (let i = 0; i < ticks; i++) simulate(now);
     }
     if (useGL) glRender();
     else render();
+    creditDraw();                      // above the finished image — effects and filters both
     if (card && card.on) cardDraw();   // Cardioid debug view follows the live seed
 
     // Count only rendered frames (paused frames returned early above). FPS is a
@@ -3664,12 +3668,10 @@
     { role: "Warden of Waveforms", name: "Kristian Saether", handle: "The Dyze" },
   ];
   const CREDIT_AKA = " aka ";
-  // The burn-in follows the panel's layout — ROLE on its own line above the name,
-  // "aka <handle>" trailing it — but the heat grid has only one channel, so
-  // *brightness* stands in for the panel's colour and opacity: role and handle burn
-  // full (accent / bold), the name a little softer, the "aka" dim. The numbers are
-  // the opacities from #panel .credit-name / -aka.
-  const CR_ROLE = 1, CR_NAME = .8, CR_AKA = .45, CR_HANDLE = 1;
+  // The overlay follows the panel's layout — ROLE on its own line above the name,
+  // "aka <handle>" trailing it — and these are the panel's own opacities, straight from
+  // #panel .credit-name (.8) and .credit-aka (.45), with role and handle at full.
+  const CR_ROLE = 1, CR_NAME = .8, CR_AKA = .45;
   // Build the panel's Credits box from the same array.
   (function buildCreditList() {
     const host = el("creditlist");
@@ -3702,106 +3704,99 @@
   const CREDIT_FADE = 3;              // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
   const CREDIT_KEY = "burnTheWeb.credits.v1";
-  let creditLeft = 0, creditMask = null, creditMaskW = 0, creditMaskH = 0, creditMaskZ = 0;
-  // The credits sit in the heat buffer, so the display zoom magnifies them like
-  // everything else — and Zoom is a *ranged* slider that drifts (Sirpinfyer ships
-  // 0.9–1.65), so sizing the text to the raw frame would run it off both edges at the
-  // top of the drift. Fit against the effect's zoom *ceiling* instead: the high thumb,
-  // which only moves when the user drags it, so the mask cache still almost never
-  // rebuilds. bakesOwnZoom effects force display zoom to 1, same as glRender/render.
-  function creditZoomCap() {
-    if (EFFECTS[effect].bakesOwnZoom) return 1;
-    const lo = el("zoom-lo"), hi = el("zoom-hi");
-    return Math.max(1, lo ? +lo.value : 1, hi ? +hi.value : 1);
+  let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
+  // The credits render on their OWN canvas above the effect, not stamped into the heat
+  // grid. They used to be stamped — which gave them the palette and let them burn away
+  // with the fire, but also fed them through the post-filter chain, so Pixelate blocked
+  // them up, Mirror doubled them and Edge reduced them to outlines. Chrome you cannot
+  // read is not chrome. Drawing them on top costs the palette tie-in and buys legibility
+  // under every effect and every filter, plus immunity to the camera and to zoom for
+  // free (an overlay is not in the buffer those transform).
+  //
+  // Being a real 2D layer also means the panel's actual colours instead of a
+  // one-channel brightness stand-in — role amber, name white, "aka" dim, handle bright
+  // — matching #panel .credit-role / -name / -aka / -handle directly.
+  const CR_COL = { role: "#ffb15a", name: "rgba(255,255,255,", aka: "rgba(255,255,255,", handle: "#ffcf87" };
+  function creditLayer() {
+    if (!creditCv) { creditCv = el("creditcv"); creditCtx = creditCv.getContext("2d"); }
+    return creditCtx;
   }
-  // Rasterise once, at heat resolution, into a 0..255 coverage mask.
-  function creditRaster() {
-    const zc = creditZoomCap();
-    if (creditMask && creditMaskW === fw && creditMaskH === fh && creditMaskZ === zc) return creditMask;
-    const c = document.createElement("canvas");
-    c.width = fw; c.height = fh;
-    const g = c.getContext("2d");
-    g.fillStyle = "#000"; g.fillRect(0, 0, fw, fh);
-    // Laid out left-to-right by hand rather than with textAlign:center, because a
-    // name line is three runs in three fonts and only their *total* is centred.
+  // Paint the credits at the current fade. Called from frame() AFTER the render, so it
+  // lands over the finished image — filters included.
+  function creditDraw() {
+    const g = creditLayer();
+    if (!g) return;
+    const w = window.innerWidth, h = window.innerHeight;
+    if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
+    g.clearRect(0, 0, w, h);
+    if (creditLeft <= 0) {                 // done: clear once, then get out of the way
+      if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
+      return;
+    }
+    if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
+    const a = creditAlpha();
     g.textAlign = "left"; g.textBaseline = "middle";
     const MONO = "px ui-monospace, Consolas, monospace";
-    const roleSize = p => Math.max(5, Math.round(p * 0.8));   // panel: 10px role vs 11px name
-    const spacing = p => Math.max(1, Math.round(p * 0.12));   // panel: letter-spacing .12em
-    const segsOf = cr => [[cr.name, CR_NAME, false], [CREDIT_AKA, CR_AKA, false], [cr.handle, CR_HANDLE, true]];
-    const nameW = (cr, p) => segsOf(cr).reduce((w, s) => {
-      g.font = (s[2] ? "bold " : "") + p + MONO;
-      return w + g.measureText(s[0]).width;
+    const roleSize = q => Math.max(9, Math.round(q * 0.8));   // panel: 10px role vs 11px name
+    const spacing = q => Math.max(1, Math.round(q * 0.12));    // panel: letter-spacing .12em
+    // Laid out left-to-right by hand rather than with textAlign:center, because a name
+    // line is three runs in three fonts and only their *total* is centred.
+    const segsOf = cr => [[cr.name, CR_COL.name + (CR_NAME * a) + ")", false],
+                          [CREDIT_AKA, CR_COL.aka + (CR_AKA * a) + ")", false],
+                          [cr.handle, CR_COL.handle, true]];
+    const nameW = (cr, q) => segsOf(cr).reduce((acc, sg) => {
+      g.font = (sg[2] ? "bold " : "") + q + MONO;
+      return acc + g.measureText(sg[0]).width;
     }, 0);
-    const roleW = (cr, p) => {                  // measured *with* the letter-spacing on
-      g.letterSpacing = spacing(p) + "px";
-      g.font = "bold " + roleSize(p) + MONO;
-      const w = g.measureText(cr.role.toUpperCase()).width;
+    const roleW = (cr, q) => {                 // measured *with* the letter-spacing on
+      g.letterSpacing = spacing(q) + "px";
+      g.font = "bold " + roleSize(q) + MONO;
+      const wd = g.measureText(cr.role.toUpperCase()).width;
       g.letterSpacing = "0px";
-      return w;
+      return wd;
     };
-    // Shrink until the widest line of either kind fits the margin, at full zoom.
-    const budget = fw * 0.88 / zc;
-    let px = Math.max(6, Math.floor(fw / 26));
-    for (let i = 0; i < 40 && px > 5; i++) {
+    let px = Math.max(11, Math.floor(w / 34));
+    for (let i = 0; i < 60 && px > 10; i++) {
       const widest = Math.max(...CREDITS.map(cr => Math.max(nameW(cr, px), roleW(cr, px))));
-      if (widest <= budget) break;
+      if (widest <= w * 0.88) break;
       px--;
     }
-    const rpx = roleSize(px), roleLh = rpx * 1.7, nameLh = px * 1.5, gap = px * 1.1;
+    const rpx = roleSize(px), roleLh = rpx * 1.9, nameLh = px * 1.5, gap = px * 1.2;
     const blockH = CREDITS.length * (roleLh + nameLh) + (CREDITS.length - 1) * gap;
-    let y = fh * 0.5 - blockH / 2 + roleLh / 2;
+    let y = h * 0.5 - blockH / 2 + roleLh / 2;
+    // A soft dark halo under the text so it stays readable over a bright frame, then
+    // the warm glow that keeps it looking like part of the demo rather than a caption.
     for (const cr of CREDITS) {
       const t = cr.role.toUpperCase();
       g.letterSpacing = spacing(px) + "px";
       g.font = "bold " + rpx + MONO;
-      g.fillStyle = "rgba(255,255,255," + CR_ROLE + ")";
-      g.fillText(t, (fw - g.measureText(t).width) / 2, y);
+      g.shadowColor = "rgba(0,0,0," + (0.85 * a) + ")"; g.shadowBlur = Math.round(px * 0.7);
+      g.fillStyle = CR_COL.role; g.globalAlpha = CR_ROLE * a;
+      g.fillText(t, (w - g.measureText(t).width) / 2, y);
+      g.shadowColor = "rgba(255,140,40," + (0.75 * a) + ")"; g.shadowBlur = Math.round(px * 0.5);
+      g.fillText(t, (w - g.measureText(t).width) / 2, y);
+      g.globalAlpha = 1;
       g.letterSpacing = "0px";
       y += roleLh / 2 + nameLh / 2;
-      let x = (fw - nameW(cr, px)) / 2;         // sets g.font as it measures — reset below
-      for (const [txt, a, bold] of segsOf(cr)) {
+      let x = (w - nameW(cr, px)) / 2;         // sets g.font as it measures — reset below
+      for (const [txt, col, bold] of segsOf(cr)) {
         g.font = (bold ? "bold " : "") + px + MONO;
-        g.fillStyle = "rgba(255,255,255," + a + ")";
+        g.shadowColor = "rgba(0,0,0," + (0.85 * a) + ")"; g.shadowBlur = Math.round(px * 0.7);
+        g.fillStyle = col; g.globalAlpha = bold ? a : 1;   // bold handle carries its alpha here
         g.fillText(txt, x, y);
+        g.shadowColor = "rgba(255,180,90," + (0.6 * a) + ")"; g.shadowBlur = Math.round(px * 0.45);
+        g.fillText(txt, x, y);
+        g.globalAlpha = 1;
         x += g.measureText(txt).width;
       }
+      g.shadowBlur = 0; g.shadowColor = "transparent";
       y += nameLh / 2 + gap + roleLh / 2;
     }
-    const d = g.getImageData(0, 0, fw, fh).data;
-    const m = new Uint8Array(fw * fh);
-    for (let i = 0, j = 0; i < m.length; i++, j += 4) m[i] = d[j];
-    creditMask = m; creditMaskW = fw; creditMaskH = fh; creditMaskZ = zc;
-    return m;
   }
-  // Stamp the mask as heat. Called every sim tick while the credits are up.
-  // plot(..., true) skips the camera *rotation*, so the text stays level whatever the
-  // preset's camera is doing. The display **zoom** is deliberately NOT cancelled here,
-  // and that is not an oversight — it was tried and reverted. The heat grid accumulates
-  // over many ticks, so writing the mask pre-divided by the live zoom leaves every
-  // earlier tick's glyphs at a stale scale, and a drifting zoom (Sirpinfyer ships
-  // 0.9–1.65) smears the text outward in proportion to its distance from centre. Nor
-  // does freezing the zoom help: the display pass still scales it, so a fixed 1/z0 is
-  // just a constant size offset — identical behaviour to not cancelling at all. Zoom is
-  // a property of the whole buffer, and the credits live in the buffer.
-  // The last CREDIT_FADE seconds ramp the stamped heat down to nothing rather than
-  // cutting out. The threshold stays on the *raw* mask so the same texels are stamped
-  // the whole way down — thresholding the faded value instead would drop the
-  // anti-aliased edges first and eat the glyphs from the outside in.
+  // The last CREDIT_FADE seconds ramp the whole layer down to nothing rather than
+  // cutting out.
   function creditAlpha() {
     return creditLeft >= CREDIT_FADE ? 1 : Math.max(0, creditLeft / CREDIT_FADE);
-  }
-  function creditStamp() {
-    if (creditLeft <= 0) return;
-    const m = creditRaster();
-    const a = creditAlpha();
-    for (let y = 0; y < fh; y++) {
-      const row = y * fw;
-      for (let x = 0; x < fw; x++) {
-        const v = m[row + x];
-        if (v > 40) plot(x, y, a === 1 ? v : v * a, true);
-      }
-    }
   }
   function creditsEnabled() {
     try { return localStorage.getItem(CREDIT_KEY) !== "off"; } catch (e) { return true; }
