@@ -198,7 +198,7 @@ visibility is remembered per effect.
 | **Speed** *(ranged)* | Plasma only — how fast the waves animate (0 freezes the field). |
 | **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
-| **Reset this effect** | Restore only the current effect's settings to their defaults (other effects and shared controls are left alone). |
+| **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
 | **Share** | Copies a URL that reopens the page with **the scene you're looking at** — the current effect and everything about it, including its beat tuning and camera. Your other effects' settings and your saved presets stay local to your browser. Your auto-cycle and hold-time settings aren't sent either, so opening someone's link doesn't rearrange your own. Works offline — the whole scene rides in the link. |
 | **Short link** | Copies a short `tinyurl.com` link to the same scene. Needs the internet, and hands the share URL to TinyURL to store — use **Share** if you'd rather nothing left your browser. The scene is deflated into the link, so it is around a tenth of the size it used to be — short enough that TinyURL accepts it and chat apps stop truncating it. |
 

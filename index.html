@@ -637,7 +637,7 @@
   <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button id="cardbtn" type="button" title="Show where the seed's cardioid orbit lands on the Mandelbrot set">Cardioid debug</button>
-  <button id="reset" type="button">Reset this effect</button>
+  <button id="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
   </details>
 
   <!-- Box — Filters: stackable post-FX. Ticking one reveals its parameters. -->
@@ -4668,11 +4668,22 @@
     pulseStates[effect] = presetPulse(effect);
     plenStates[effect] = presetPlen(effect);
     extras[effect] = presetExtra(effect);
+    // Shipped BOUNDS too, matching the per-slider ↺ — this used to reset every value
+    // and leave a slider you had widened still widened, so "reset" left the control
+    // measurably not as it ships. Same scope as the values above (every key in this
+    // effect's defaults, filter params included), and bounds go first so loadState's
+    // values validate against them rather than the custom ones.
+    for (const key in states[effect])
+      for (const inp of ctlRangeInputs(key)) {
+        const o = RNG_ORIG[inp.id];
+        if (o) { inp.min = o.min; inp.max = o.max; }
+      }
     loadState(effect);                // apply to the live sliders
     loadBeat(effect);                 // ...the live chips
     loadPulse(effect);                // ...the live pulse shapes
     loadPlen(effect);                 // ...and their lengths
     loadExtra(effect);                // ...and palette/morph/show-box/TTL
+    rngSyncAll();                     // the in-box min/max fields follow the restored bounds
     persist();
   });
 

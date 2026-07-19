@@ -808,7 +808,13 @@ wired via `bindRange(id, valId, fmt, apply, durScale, beat)` and registered in
   left/right/bottom 5% excluded) via `plot()`; Size/Rotation scale & spin the
   corners about the box centre and can push points past those bounds.
 - `cfg.scale` changes need a `resize()` to reallocate buffers.
-- **Reset** restores only the current effect's `state`/`beat`/`extra` to presets;
+- **Reset** restores the current effect's `state`/`beat`/`pulse`/`plen`/`extra` **and the
+  shipped slider bounds** (`RNG_ORIG`, over every key in `presetState(effect)` — filter
+  params included — before `loadState`, so values validate against the restored bounds,
+  then `rngSyncAll()` so the in-box min/max fields follow). It used to reset every value
+  and leave a widened slider still widened, which made "reset" measurably untrue; the
+  per-slider ↺ (`resetControl`) had always done bounds, so the two now agree. It touches
+  only the current effect;
   other effects and the shared controls are untouched.
 
 ## Testing (no framework — headless verification)
