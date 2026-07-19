@@ -2742,6 +2742,12 @@
     flBytes = new Uint8Array(flRGBA.buffer);       // same memory, for texImage2D
   }
   function flClear() { if (flHist) flHist.fill(0); }
+  // Tone-map lookup tables — see flResolve. The log table is built once and covers counts
+  // up to 64k; past that the curve has long since saturated, so clamping costs nothing.
+  const flLogLut = new Float32Array(65536);
+  for (let i = 0; i < flLogLut.length; i++) flLogLut[i] = Math.log(i + 1);
+  const flPowLut = new Float32Array(1024);
+  let flPowG = -1;
 
   // The nonlinear warps. Each takes the affine result and pushes it somewhere organic —
   // this is where the flame texture comes from; the affine part only positions the piece.
@@ -2865,12 +2871,20 @@
     // and truer to the look: flames are supposed to blow out at the core.
     const ref = maxC * 0.2 > 1 ? maxC * 0.2 : 1;
     const invLogMax = 1 / Math.log(ref + 1);
-    const g = 1 / (flGamma > 0.1 ? flGamma : 0.1);
+    // Both transcendentals come out of the inner loop. This runs once per CELL per FRAME
+    // — measured at 976x558 that is 545k Math.log plus 545k Math.pow every frame, which
+    // dominated everything else the effect does, the chaos game included. log() becomes a
+    // table over integer counts (they only matter up to where the curve saturates) and
+    // pow() a 1k-entry curve rebuilt when gamma moves.
+    const g = flGamma > 0.1 ? flGamma : 0.1;
+    if (flPowG !== g) { for (let i = 0; i < 1024; i++) flPowLut[i] = Math.pow(i / 1023, 1 / g); flPowG = g; }
+    const LOG = flLogLut, LOGN = LOG.length - 1;
     for (let o = 0; o < H.length; o += 4) {
       const cnt = H[o + 3];
       if (cnt <= 0) { out[o] = 0; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 255; continue; }
-      let a = Math.log(cnt + 1) * invLogMax;
-      a = Math.pow(a > 1 ? 1 : a, g);
+      const ci = cnt < LOGN ? cnt | 0 : LOGN;
+      let a = LOG[ci] * invLogMax;
+      a = flPowLut[(a < 1 ? a * 1023 : 1023) | 0];
       const inv = a / cnt;
       out[o] = H[o] * inv; out[o + 1] = H[o + 1] * inv; out[o + 2] = H[o + 2] * inv;
       out[o + 3] = 255;
