@@ -583,9 +583,11 @@ because any later slider drag *did* autosave and retroactively captured the chip
   `serializeBlob` so `effect` is the stable id. `curPreset` is deliberately **not** in
   `_settings.json`: it is an index into a list that no longer travels as a list.
   - **Delivery** splits on `showDirectoryPicker`. Chromium: write into
-    `BurnTheWeb/<scene>-backup/<YYYY-MM-DD_HHMM>/`, where `<scene>` is the selected
-    preset's name (`safeName`, falling back to `scene` in "— custom —") so successive
-    backups of one scene group together. Everything else: one download
+    `BurnTheWeb/<YYYY-MM-DD_HHMM>/` — one dated folder per backup, all siblings. There
+    was briefly a `<scene>-backup/` level in between, named after the selected preset;
+    it was wrong, because a backup is *every* preset, so it described the wrong thing
+    and split one backup history across as many folders as you had presets.
+    Everything else: one download
     per file, named `backup-<stamp> - <preset>.json`, **spaced ~150ms apart** because
     browsers drop back-to-back downloads. The fallback flattens rather than nests
     because the HTML spec has user agents sanitize path components out of `a.download`

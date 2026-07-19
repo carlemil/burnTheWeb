@@ -5150,10 +5150,6 @@
     await bkPut(root);
     return root;
   }
-  // Folder names have to survive a filesystem: no separators or reserved characters,
-  // and never empty (a blank name would throw in getDirectoryHandle).
-  const safeName = (s, fallback) =>
-    (String(s || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60)) || fallback;
   // Chromium can write a real folder; everything else gets flat files with the stamp in
   // the name. Nesting via `a.download` is not an option for the fallback — the HTML spec
   // has user agents sanitize path components out of the filename, so "backup-x/y.json"
@@ -5166,11 +5162,11 @@
       try { root = await backupRoot(forcePick); }
       catch (e) { btn.textContent = "Backup"; return; }        // user cancelled the picker
       try {
-        // BurnTheWeb / <scene>-backup / <date-time> — grouped by scene so successive
-        // backups of the same one sit together and older ones stay put.
-        const scene = safeName(curPreset >= 0 && presets[curPreset] ? presets[curPreset].name : "", "scene");
+        // BurnTheWeb / <date-time>. No per-scene folder in between: a backup is *every*
+        // preset, so naming it after whichever one happened to be selected described the
+        // wrong thing and split one backup's history across as many folders as you had
+        // presets. One dated folder per backup, all of them siblings.
         let dir = await root.getDirectoryHandle("BurnTheWeb", { create: true });
-        dir = await dir.getDirectoryHandle(scene + "-backup", { create: true });
         dir = await dir.getDirectoryHandle(stamp, { create: true });
         for (const f of files) {
           const fh = await dir.getFileHandle(f.name, { create: true });
