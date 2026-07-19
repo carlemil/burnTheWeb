@@ -3628,10 +3628,33 @@
     if (typeof v === "number") v = LEGACY_EFFECT_IDS[v];
     return EFFECTS.findIndex(f => f.id === v);
   }
+  // The per-effect maps are keyed by registry POSITION, which only means anything in the
+  // build that wrote them. They get the same id treatment as `effect` at the storage
+  // edge — otherwise reordering or removing an effect silently reattaches every saved
+  // scene to whichever effect now sits at that index, in localStorage, Backups and
+  // share links alike. Presets were already safe (their `effect` is an id); these maps
+  // were the hole in that guarantee, and the failure is invisible until someone reorders.
+  const EFFECT_MAPS = ["states", "beats", "pulses", "plens", "extras"];
+  function keysToIds(m) {                          // { 3: {...} } → { plasma: {...} }
+    const out = {};
+    for (const k in m) { const f = EFFECTS[+k]; if (f) out[f.id] = m[k]; }
+    return out;
+  }
+  function keysToIdx(m) {                          // ...and back, tolerating legacy keys
+    const out = {};
+    for (const k in m) {
+      // A numeric key is a blob written before this change. The registry has only ever
+      // been appended to, so the position it recorded is still the right one.
+      const i = /^\d+$/.test(k) ? +k : effectIndexFromId(k);
+      if (i >= 0 && EFFECTS[i]) out[i] = m[k];     // an id we no longer ship is dropped
+    }
+    return out;
+  }
   function serializeBlob(b) {                      // numeric effect indices → ids, for storage
     const out = { ...b };
     if (typeof b.effect === "number") out.effect = effectId(b.effect);
     if (Array.isArray(b.presets)) out.presets = b.presets.map(p => (p && typeof p.effect === "number" ? { ...p, effect: effectId(p.effect) } : p));
+    for (const f of EFFECT_MAPS) if (b[f] && typeof b[f] === "object") out[f] = keysToIds(b[f]);
     return out;
   }
   function deserializeBlob(b) {                    // ids (or legacy numbers) → numeric indices; drops unknown-effect presets
@@ -3643,6 +3666,7 @@
       const i = effectIndexFromId(p.effect);
       return i >= 0 ? { ...p, effect: i } : null;
     }).filter(Boolean);
+    for (const f of EFFECT_MAPS) if (b[f] && typeof b[f] === "object") out[f] = keysToIdx(b[f]);
     return out;
   }
   // Per-effect slider presets, loaded whenever an effect becomes active (manual
@@ -4081,14 +4105,28 @@
     // instead of being deleted here and written straight back out by saveExtra.
     activeIds = fok || new Set(presetFilters(e));
     syncFilterUI();
+    // Re-derive bloom now that activeIds belongs to the INCOMING scene. setEffect runs
+    // loadState before loadExtra, so the bloom slider's apply() has already fired once
+    // against the outgoing scene's filter list and computed the wrong strength. Nothing
+    // visible comes of it today — updateAnims re-applies every slider each frame, before
+    // the frame renders — but that makes correctness depend on bloom staying an animated
+    // slider and on the frame loop's ordering, neither of which this line needs.
+    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;
     refreshControlVisibility();       // setEffect's earlier pass ran before we knew the filters
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
     morphOnce = false;                // cancel a pending one-shot morph from a prior switch
     paletteSel.value = x.palette;
-    // Migration: scenes saved before the Palette cycle slider carry only the old
-    // boolean. loadState has already applied any stored palcycle, so only seed the
-    // slider from `morph` when the scene predates it (morph off ⇒ pin at 0).
-    if (x.palcycleSeeded !== true && x.morph === false && palCycleOn()) setPalCycle(0, 0);
+    // Migration: scenes saved before the Palette cycle slider carry only the old `morph`
+    // boolean. loadState has already applied any stored palcycle, so seed the slider from
+    // `morph` when the two disagree — morph off ⇒ pin at 0.
+    // Safe to run for every scene, not just pre-slider ones: saveExtra writes `morph` as
+    // palCycleOn(), so a scene saved since the slider existed can only reach here with
+    // morph false AND a live cycle if its stored palcycle was missing or failed
+    // applyBlob's bounds check — and honouring `morph` is the right answer there too.
+    // (There used to be an `x.palcycleSeeded !== true` guard in front of this. Nothing
+    // ever set that flag, so it was always true — dead weight that read like a real
+    // condition.)
+    if (x.morph === false && palCycleOn()) setPalCycle(0, 0);
     morphing = palCycleOn();
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
     suppressPersist = false;

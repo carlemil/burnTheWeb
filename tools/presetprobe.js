@@ -140,7 +140,52 @@ const D = P.BEAT_DEFAULTS;
   ok(/presetSel\.value\s*=\s*"-1"/.test(src2), "...and the menu follows");
 }
 
-// --- 4. backup file naming + shape normalization ------------------------------
+// --- 4. saved scenes survive a registry reorder -------------------------------
+// The per-effect maps used to be stored keyed by registry position, so reordering or
+// removing an effect silently handed every saved scene to whichever effect now sat at
+// that index — in localStorage, Backups and share links. Nothing surfaces it until
+// someone reorders EFFECTS, at which point everyone's saved settings are already wrong.
+// Serialize under one registry, deserialize under a shuffled one, and check the values
+// followed their effect rather than their slot.
+{
+  const mk = ids => ids.map(id => ({ id }));
+  const build = ids => new Function("EFFECTS",
+    cut("  const LEGACY_EFFECT_IDS", "  // Per-effect slider presets") +
+    "\nreturn { serializeBlob, deserializeBlob };")(mk(ids));
+
+  const A = ["sirpinfyer", "tetrafyer", "animejulia", "plasma", "tunnel"];
+  const wrote = build(A).serializeBlob({
+    effect: 4,                                   // tunnel
+    states: { 0: { points: 111 }, 3: { pspeed: 333 }, 4: { tunspeed: 444 } },
+    extras: { 3: { palette: "3" }, 4: { palette: "9" } },
+  });
+  ok(typeof wrote.states.tunnel === "object" && wrote.states.plasma.pspeed === 333,
+     "stored scenes are keyed by stable id, not by position", Object.keys(wrote.states).join(","));
+
+  // Same data read back by a build where the registry has been shuffled and one effect
+  // removed. Nothing else about the blob changes.
+  const B = ["plasma", "tunnel", "sirpinfyer", "animejulia"];   // tetrafyer retired
+  const read = build(B).deserializeBlob(JSON.parse(JSON.stringify(wrote)));
+  ok(read.effect === 1, "`effect` still resolves to tunnel's new index", String(read.effect));
+  ok(read.states[0] && read.states[0].pspeed === 333, "plasma's scene followed plasma to index 0",
+     JSON.stringify(read.states[0]));
+  ok(read.states[1] && read.states[1].tunspeed === 444, "tunnel's scene followed tunnel to index 1",
+     JSON.stringify(read.states[1]));
+  ok(read.states[2] && read.states[2].points === 111, "sirpinfyer's scene followed it to index 2",
+     JSON.stringify(read.states[2]));
+  ok(read.extras[0].palette === "3" && read.extras[1].palette === "9",
+     "extras follow their effect too, not just states");
+  ok(Object.keys(read.states).length === 3, "the retired effect's scene is dropped, not misfiled",
+     Object.keys(read.states).join(","));
+
+  // Blobs written before this change carry numeric keys; the registry has only ever been
+  // appended to, so those positions are still correct and must load unchanged.
+  const legacy = build(A).deserializeBlob({ effect: "plasma", states: { 0: { points: 7 }, 3: { pspeed: 8 } } });
+  ok(legacy.states[0].points === 7 && legacy.states[3].pspeed === 8,
+     "a pre-id blob's numeric keys still load", JSON.stringify(Object.keys(legacy.states)));
+}
+
+// --- 5. backup file naming + shape normalization ------------------------------
 const B = new Function(
   cut("  const WIN_RESERVED", "  function stampNow(") +
   cut("  function normalizeBackup(", "  el(\"importpresets\")") +

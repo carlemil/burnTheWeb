@@ -324,8 +324,20 @@ param/default that isn't a real control). Everything derives from the registry:
   zoom to 1 when `bakesOwnZoom`; `setEffect` runs `onEnter`; `renderHelp` filters by `helpTags`.
 - **Identity** — persistence uses the **stable string `id`**, not the numeric index:
   `serializeBlob`/`deserializeBlob` convert at the storage edge and `LEGACY_EFFECT_IDS`
-  migrates pre-id blobs, so reordering/removing effects never corrupts saved presets.
+  migrates pre-id blobs, so reordering/removing effects never corrupts saved data.
   `effect` stays the runtime numeric index (registry position).
+  That covers **two** things, and for a long time it only covered one. `effect` and
+  `presets[].effect` were converted, but the per-effect maps (`states`, `beats`,
+  `pulses`, `plens`, `extras`) were still stored keyed by registry *position* — so a
+  reorder handed every saved scene to whichever effect had moved into that slot, in
+  localStorage, Backups and share links alike, while presets stayed correct. `EFFECT_MAPS`
+  + `keysToIds`/`keysToIdx` close that: keys go out as ids and come back as indices, a
+  numeric key is read as a pre-id blob (the registry has only ever been appended to, so
+  its recorded position is still right), and an id that no longer ships is dropped rather
+  than misfiled. `presetprobe` serializes under one registry and deserializes under a
+  shuffled one to prove scenes follow their effect — the failure is otherwise invisible
+  until the day someone actually reorders `EFFECTS`, by which point every user's saved
+  settings are already wrong.
 
 **Per-slider range editor** (`makeRangeEditor`, at the foot of every pop-out box).
 `min`/`max`/`step` number fields + a ↺ (restore the shipped bounds from `RNG_ORIG`) for
