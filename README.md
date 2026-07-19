@@ -219,6 +219,43 @@ resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
 tab/screen audio capture isn't available, so only **Mic** is shown.
 
+## Transitions
+
+When one preset gives way to the next, the change is blended rather than cut. Some
+scenes always did this on their own — anything with **Fire** or **Fade pixel** on
+keeps its buffer, so the old picture burns or smears away under the new one. Scenes
+with neither redraw from scratch every frame, so they used to snap over in a single
+frame.
+
+A transition is now chosen automatically for each switch, from nine:
+
+| | |
+| --- | --- |
+| **Cut** | No blend. Picked when the buffers already dissolve for you. |
+| **Burn off** | Lends the old scene the fire's decay for the length of the switch, so it burns away even under an effect that has no filter on. |
+| **Crossfade** | Straight dissolve between the two. |
+| **Dip to black** | Down to black in the middle and back up. |
+| **Flash** | A bright bloom over the join. |
+| **Pixelate through** | Blocks grow, the scene changes at the coarsest point, blocks shrink again. |
+| **Blur through** | The same shape, with blur instead of blocks. |
+| **Wipe** | A soft edge travels across. |
+| **Iris** | The new scene opens out from the centre. |
+
+The choice isn't random for its own sake — each one knows which switches it flatters.
+A crossfade between two full-screen fields looks lovely, but crossfading a sparse
+point cloud against a dense one just looks like a double exposure, so those get the
+ones that break the picture up (pixelate, blur, wipe) — they destroy the image exactly
+where it changes, which is what hides the join. Big jumps in palette lean toward dip
+and flash. Scenes that already dissolve on their own mostly get left alone.
+
+**Transition** (in the **Scene** box, under Preset TTL) sets how long they take, as a
+min–max range in seconds — each switch draws a length from it. Collapse both thumbs to
+**0** for a hard cut, which is exactly how the app behaved before.
+
+One thing to know: during a transition the outgoing scene is a frozen frame, not still
+running. Two effects can't be rendered at once here. At well under a second it reads
+the way a video mixer's dissolve does.
+
 ## Filters
 
 Under **Filters** in the menu is a list of post-processing effects you can stack

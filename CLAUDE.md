@@ -190,6 +190,51 @@ still fades the same way. Once expired `creditDraw` clears the layer once and se
 The on/off preference lives in its own `localStorage` key, deliberately **not** in the
 scene blob — it is a per-browser choice, not part of a shared or backed-up scene.
 
+### Preset transitions
+`TRANSITIONS` is a third registry beside `EFFECTS` and `FILTERS`: how one preset gives way
+to the next. It exists because the dissolve `setEffect` gives you for free only works when
+something **retains** the buffer — with Fire or Fade ticked the old heat decays under the
+new scene, but with no feedback filter `glBeginHeat`/`applyFilters` rewrite the buffer on
+frame one *by design*, so those switches cut hard. That is 12 of 15 effects at their
+shipped defaults.
+
+Nine entries, each a `mode` of the single **`FS_TRANS`** pass: `cut`, `burnoff`,
+`crossfade`, `dip`, `flash`, `pixelate`, `blur`, `wipe`, `iris`. Two need no pass at all —
+`cut` does nothing, and **`burnoff` lends retention**: `hasFeedback()` returns true while
+`transBurning()`, so a scene with no feedback filter decays its predecessor exactly like
+the ones that already work. That one is the cheapest and most native of the set.
+
+**Where the pass runs matters.** `glRender` sends the zoom output to `glFbo.post[0]`
+instead of `glFbo.scene` while a transition is live, then `FS_TRANS` writes `glFbo.scene`
+— so the blend happens *before* the glow, and the bloom follows the blended image instead
+of a frozen glow fighting a live one. Zero cost when idle: the branch just picks the
+normal FBO. `render()` mirrors all seven visible modes with canvas ops (`globalAlpha`,
+`filter: blur()`, a downsample/upsample pair for pixelate, `destination-in` clipping for
+wipe/iris).
+
+**The outgoing frame is frozen**, not kept live: `transBegin` copies `glTex.scene` into
+`glTex.prev` with `copyTexSubImage2D` (CPU: `drawImage` into `transOff`). Rendering both
+scenes at once would need two live copies of state that is singleton here. For a
+sub-second transition it reads like a video switcher's dissolve; it is the one real
+compromise in the design.
+
+**Auto-picking** is `fits(a, b) → weight`, `0` = never, then a weighted random draw over
+the survivors. Both sides are `sceneInfo()` summaries — `{dense, retains, palette}` — so
+the choice costs nothing: **no pixel readback**, just descriptors. `dense` is `!!fx.draw`
+(a full-screen shader vs a sparse point cloud), `retains` is read from the *incoming
+preset's* stored filter list before it is applied, and `palDist` walks the two ramps that
+are already in memory. The rules that fall out: either side retains ⇒ favour `cut`;
+both dense ⇒ favour `crossfade` (crossfading sparse against dense just reads as a double
+exposure); density differs ⇒ favour the structure-destroying `pixelate`/`blur`/`wipe`,
+which wreck the image exactly when it changes; palettes far apart ⇒ favour `dip`/`flash`.
+
+The **Transition** slider (Scene box, beside Preset TTL) is a [min,max] seconds range
+drawn per switch like `ttlMs`/`morphMs`, scaling each transition's own `dur`. Both thumbs
+at **0 = cut**, which is the old behaviour exactly. Global, not per-effect and not in a
+preset — same class as auto-cycle and TTL, and `tdur` rides in `fullSnapshot`.
+`trans.t` advances in **rendered** time from `frame()`, like the credits, so a
+backgrounded tab cannot burn through a transition unseen.
+
 ### Filters (post-FX)
 `FILTERS` is a second registry beside `EFFECTS`: stackable post-processing any effect can
 use, ticked in a checkbox list (registry order is the apply order — a checkbox list can't

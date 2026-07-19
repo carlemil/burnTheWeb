@@ -623,6 +623,13 @@
       <input type="range" id="ttl-lo" min="0" max="180" step="any" value="10">
       <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
   </div>
+  <!-- How long a preset change takes to blend. Both thumbs at 0 = cut straight over. -->
+  <div id="grp-tdur">
+    <label>Transition <span class="val" id="vTdur"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="tdur-lo" min="0" max="3" step="any" value="0.45">
+      <input type="range" id="tdur-hi" min="0" max="3" step="any" value="0.9"></div>
+  </div>
 
   </details>
 
@@ -1557,6 +1564,52 @@
       o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, 1.0);
     }`;
     // zoom about centre (fire modes); Julia passes zoom=1
+    // Preset transitions. One pass, one mode uniform, run only while a transition is
+    // live — between the zoom pass and the glow, so the blend picks up the bloom too
+    // rather than having a frozen glow crossfade against a live one.
+    // uT is 0→1 across the transition; uK = 1-|2t-1| is the "how far from the ends"
+    // hump every mid-point effect (dip, flash, pixelate, blur) rides.
+    const FS_TRANS = `#version 300 es
+    precision highp float;
+    uniform sampler2D uNew, uPrev; uniform float uT; uniform int uMode; uniform vec2 uSize;
+    in vec2 vUv; out vec4 o;
+    vec3 boxBlur(sampler2D t, vec2 uv, float r) {
+      if (r < 0.6) return texture(t, uv).rgb;
+      vec2 px = r / uSize;
+      vec3 c = vec3(0.0);
+      for (int y = -2; y <= 2; y++)
+        for (int x = -2; x <= 2; x++)
+          c += texture(t, uv + vec2(float(x), float(y)) * px).rgb;
+      return c / 25.0;
+    }
+    void main(){
+      float t = clamp(uT, 0.0, 1.0);
+      float k = 1.0 - abs(2.0 * t - 1.0);        // 0 at the ends, 1 at the midpoint
+      float half_ = step(0.5, t);                 // 0 = still showing the old scene
+      vec3 a = texture(uPrev, vUv).rgb, b = texture(uNew, vUv).rgb, c;
+      if (uMode == 0) {                           // crossfade
+        c = mix(a, b, t);
+      } else if (uMode == 1) {                    // dip to black through the middle
+        c = mix(a, b, half_) * (1.0 - k);
+      } else if (uMode == 2) {                    // flash
+        c = mix(a, b, half_) + vec3(k * k);
+      } else if (uMode == 3) {                    // pixelate through
+        float blk = 1.0 + 46.0 * k * k;
+        vec2 g = uSize / blk;
+        vec2 uv = (floor(vUv * g) + 0.5) / g;
+        c = mix(texture(uPrev, uv).rgb, texture(uNew, uv).rgb, half_);
+      } else if (uMode == 4) {                    // blur through
+        float r = 7.0 * k * k;
+        c = mix(boxBlur(uPrev, vUv, r), boxBlur(uNew, vUv, r), half_);
+      } else if (uMode == 5) {                    // wipe, soft edge
+        float e = smoothstep(vUv.x - 0.14, vUv.x + 0.14, t * 1.28 - 0.14);
+        c = mix(a, b, e);
+      } else {                                    // iris
+        float d = length((vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0)) / 0.75;
+        c = mix(a, b, smoothstep(d - 0.2, d + 0.2, t * 1.4 - 0.2));
+      }
+      o = vec4(c, 1.0);
+    }`;
     const FS_ZOOM = `#version 300 es
     precision highp float;
     uniform sampler2D uSrc; uniform float uZoom;
@@ -1614,6 +1667,7 @@
     glProg.fade = makeProg(VS_QUAD, FS_FADE, ["uHeat", "uKeep"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
+    glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
     glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow", "uBloom"]);
 
@@ -1630,6 +1684,9 @@
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
     ];
+    // The outgoing frame, frozen at the moment of the switch (see transBegin).
+    glTex.prev = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.prev = createFbo(glTex.prev);
     glFbo.post = [createFbo(glTex.post[0]), createFbo(glTex.post[1])];
     glTex.blur1 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.blur1 = createFbo(glTex.blur1);
@@ -1666,6 +1723,7 @@
     resizeTex(glTex.blur2, fw, fh);
     resizeTex(glTex.post[0], fw, fh);
     resizeTex(glTex.post[1], fw, fh);
+    resizeTex(glTex.prev, fw, fh);
   }
   function glClearHeat() {
     gl.disable(gl.BLEND);
@@ -1803,11 +1861,25 @@
     const postSrc = glPostChain();
     // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
     const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
-    bindFbo(glFbo.scene, fw, fh);
+    // While a transition runs, zoom lands in a scratch buffer and the transition pass
+    // below produces glTex.scene instead — so the blend happens BEFORE the glow, and
+    // the bloom follows the blend rather than a frozen glow fighting a live one.
+    const tActive = transActive();
+    bindFbo(tActive ? glFbo.post[0] : glFbo.scene, fw, fh);
     gl.useProgram(glProg.zoom.p);
     bindTexUnit(0, postSrc); gl.uniform1i(glProg.zoom.u.uSrc, 0);
     gl.uniform1f(glProg.zoom.u.uZoom, z);
     drawQuad();
+    if (tActive) {                    // B2) blend the frozen outgoing frame with this one
+      bindFbo(glFbo.scene, fw, fh);
+      gl.useProgram(glProg.trans.p);
+      bindTexUnit(0, glTex.post[0]); gl.uniform1i(glProg.trans.u.uNew, 0);
+      bindTexUnit(1, glTex.prev); gl.uniform1i(glProg.trans.u.uPrev, 1);
+      gl.uniform1f(glProg.trans.u.uT, trans.t);
+      gl.uniform1i(glProg.trans.u.uMode, trans.mode);
+      gl.uniform2f(glProg.trans.u.uSize, fw, fh);
+      drawQuad();
+    }
     // C) horizontal blur
     bindFbo(glFbo.blur1, fw, fh);
     gl.useProgram(glProg.blur.p);
@@ -2633,6 +2705,44 @@
     // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes
     // scale the rendered image here. Scale about the canvas centre; clear first
     // when zoomed out so no smeared border remains.
+    // CPU mirror of the transition pass — same modes, canvas ops instead of a shader.
+    if (transActive() && transOff) {
+      const t = Math.max(0, Math.min(1, trans.t)), k = 1 - Math.abs(2 * t - 1), m = trans.mode;
+      const g = offCtx, W = off.width, H = off.height;
+      g.save();
+      if (m === 0) {                                   // crossfade
+        g.globalAlpha = 1 - t; g.drawImage(transOff, 0, 0);
+      } else if (m === 3 || m === 4) {                 // pixelate / blur through
+        if (t < 0.5) { g.globalAlpha = 1; g.drawImage(transOff, 0, 0); }
+        if (m === 3) {                                  // down- then up-sample
+          const bs = Math.max(1, Math.round(1 + 46 * k * k));
+          const sw = Math.max(1, Math.round(W / bs)), sh = Math.max(1, Math.round(H / bs));
+          if (bs > 1 && !transTmp) transTmp = document.createElement("canvas");
+          if (bs > 1) {
+            transTmp.width = sw; transTmp.height = sh;
+            const tg = transTmp.getContext("2d");
+            tg.imageSmoothingEnabled = true; tg.drawImage(off, 0, 0, sw, sh);
+            g.imageSmoothingEnabled = false; g.clearRect(0, 0, W, H);
+            g.drawImage(transTmp, 0, 0, sw, sh, 0, 0, W, H);
+            g.imageSmoothingEnabled = true;
+          }
+        } else if (k > 0.02) { g.filter = "blur(" + (7 * k * k).toFixed(1) + "px)"; g.drawImage(off, 0, 0); g.filter = "none"; }
+      } else if (m === 5 || m === 6) {                 // wipe / iris: reveal the new scene
+        g.globalCompositeOperation = "destination-in";
+        if (m === 5) { g.fillStyle = "#fff"; g.fillRect(0, 0, W * Math.min(1, t * 1.28), H); }
+        else { g.fillStyle = "#fff"; g.beginPath(); g.arc(W / 2, H / 2, Math.hypot(W, H) * t * 0.72, 0, Math.PI * 2); g.fill(); }
+        g.globalCompositeOperation = "destination-over";
+        g.drawImage(transOff, 0, 0);
+      } else {                                         // dip / flash: hold the old half, then veil
+        g.globalAlpha = 1;
+        if (t < 0.5) g.drawImage(transOff, 0, 0);
+        g.globalCompositeOperation = m === 2 ? "lighter" : "source-atop";
+        g.globalAlpha = m === 2 ? k * k : k;
+        g.fillStyle = m === 2 ? "#fff" : "#000";
+        g.fillRect(0, 0, W, H);
+      }
+      g.restore();
+    }
     const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
     ctx.save();
     if (z !== 1) {
@@ -2693,6 +2803,7 @@
     }
 
     if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
+    transStep(dt);                          // ...and so does the preset transition
     camMat();                         // fold this frame's camera angles into the 2x2 map
     if (useGL) uploadPalette();       // push the (possibly morphed) palette
 
@@ -3438,6 +3549,9 @@
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
   bindRange("ttl", "vTtl", v => sig3(v) + "s", () => {}, 1, false);   // no chips
+  // Transition length, same shape as TTL: a range in seconds, read per switch by
+  // transBegin. Pinch both thumbs to 0 for a hard cut. No chips, no per-effect state.
+  bindRange("tdur", "vTdur", v => v <= 0 ? "cut" : sig3(v) + "s", () => {}, 1, false);
 
   function updateAnims(now, dt) {
     for (const id in anims) {
@@ -3906,7 +4020,9 @@
   // Which filters are on for the live effect, in registry order (never in stored
   // order — reordering FILTERS must not remap a saved scene).
   const activeFilters = () => FILTERS.filter(f => filterOn(f.id));
-  const hasFeedback = () => FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));
+  // transBurning(): a "burn off" transition lends retention to a scene that has none,
+  // so the outgoing image decays under it instead of being wiped on the first frame.
+  const hasFeedback = () => transBurning() || FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));
   function filtersOk(v) {                     // validate a stored list
     if (!Array.isArray(v)) return null;
     const seen = new Set();
@@ -3919,6 +4035,123 @@
   function presetFilters(e) {
     const d = EFFECTS[e].filters || (EFFECTS[e].draw ? ["bloom"] : ["fire", "bloom"]);
     return d.slice();
+  }
+  // ---- TRANSITIONS: how one preset gives way to the next ---------------------
+  // Scenes that retain heat (Fire / Fade ticked) already dissolve on their own —
+  // setEffect leaves the old heat in place and it decays under the new scene. Scenes
+  // with no feedback filter rewrite the buffer on their first frame by design, so they
+  // used to cut hard. These cover that gap.
+  //
+  // Every one is a mode of the single FS_TRANS pass, run between the zoom and the glow
+  // on a frozen copy of the outgoing frame (glTex.prev). Freezing is the tradeoff:
+  // rendering both scenes at once would need two live copies of state that is singleton
+  // here. For a sub-second transition it reads the way a video switcher's dissolve does.
+  //
+  // `fits(a, b)` returns a *weight* for a switch from scene a to scene b — 0 means
+  // "never pick me for this pair". Both sides are {dense, retains, palette} summaries,
+  // so the choice costs nothing: no pixel readback, just the descriptors.
+  const TRANS_DUR = { fast: 0.45, mid: 0.6, slow: 0.75 };
+  const TRANSITIONS = [
+    // Nothing at all. Only sensible when the buffers already blend for us.
+    { id: "cut", name: "Cut", mode: -1, dur: 0,
+      fits: (a, b) => (a.retains || b.retains) ? 3 : 0.2 },
+    // Retention borrowed for the length of the transition: the incoming scene
+    // MAX-blends over decaying old heat, exactly like the scenes that already work.
+    { id: "burnoff", name: "Burn off", mode: -1, dur: TRANS_DUR.slow, burn: true,
+      fits: (a, b) => b.retains ? 0 : 2.5 },
+    { id: "crossfade", name: "Crossfade", mode: 0, dur: TRANS_DUR.slow,
+      // Two full-screen fields blend beautifully; a sparse point cloud crossfaded
+      // against a dense field just looks like a double exposure.
+      fits: (a, b) => (a.dense && b.dense) ? 3 : (a.dense !== b.dense ? 0.3 : 1) },
+    { id: "dip", name: "Dip to black", mode: 1, dur: TRANS_DUR.mid,
+      // Always defensible; earns its keep most when the palettes jump.
+      fits: (a, b) => 1 + 2 * palDist(a.palette, b.palette) },
+    { id: "flash", name: "Flash", mode: 2, dur: TRANS_DUR.fast,
+      fits: (a, b) => 0.8 + 1.6 * palDist(a.palette, b.palette) },
+    // The structure-destroying pair: they wreck the image exactly when it changes,
+    // which is what rescues switches a crossfade would ghost through.
+    { id: "pixelate", name: "Pixelate through", mode: 3, dur: TRANS_DUR.slow,
+      fits: (a, b) => a.dense !== b.dense ? 3 : 1.2 },
+    { id: "blur", name: "Blur through", mode: 4, dur: TRANS_DUR.slow,
+      fits: (a, b) => a.dense !== b.dense ? 2 : 1.2 },
+    { id: "wipe", name: "Wipe", mode: 5, dur: TRANS_DUR.mid,
+      fits: (a, b) => a.dense !== b.dense ? 2 : 1 },
+    { id: "iris", name: "Iris", mode: 6, dur: TRANS_DUR.mid,
+      fits: (a, b) => a.dense !== b.dense ? 1.6 : 0.9 },
+  ];
+  // 0 = same palette, 1 = maximally different. Cheap: the ramps are already in memory.
+  function palDist(i, j) {
+    if (i === j) return 0;
+    const A = PALETTES[i], B = PALETTES[j];
+    if (!A || !B) return 0.5;
+    let d = 0;
+    for (let k = 32; k < 256; k += 32) {
+      const a = A.fn(k), b = B.fn(k);
+      d += (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])) / 765;
+    }
+    return Math.min(1, d / 7);
+  }
+  // A scene summary for fits(): dense = fills the frame (shader effects) vs a sparse
+  // point cloud; retains = has a feedback filter, so its buffer survives frame to frame.
+  function sceneInfo(e, filters, palette) {
+    const fx = EFFECTS[e];
+    const f = filtersOk(filters) || new Set(presetFilters(e));
+    return {
+      dense: !!fx.draw,
+      retains: FILTERS.some(x => x.stage === "feedback" && f.has(x.id)),
+      palette: +palette || 0,
+    };
+  }
+  // Weighted pick among the transitions that fit this pair at all.
+  function pickTransition(a, b) {
+    const w = TRANSITIONS.map(t => Math.max(0, t.fits(a, b)));
+    const total = w.reduce((x, y) => x + y, 0);
+    if (total <= 0) return TRANSITIONS[0];
+    let r = Math.random() * total;
+    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return TRANSITIONS[i]; }
+    return TRANSITIONS[0];
+  }
+  // Live transition state. `t` counts 0→1 in RENDERED time, like the credits, so a
+  // backgrounded tab doesn't burn through it unseen.
+  const trans = { on: false, t: 0, dur: 0, mode: -1, burn: false, id: "cut" };
+  function transActive() { return trans.on && trans.mode >= 0; }
+  // Borrowed retention: hasFeedback() consults this, so a burn-off transition makes
+  // even a no-filter scene decay its predecessor instead of wiping it.
+  function transBurning() { return trans.on && trans.burn; }
+  function transLen() {                      // [min,max] seconds from the slider; 0 = off
+    const a = Math.min(+el("tdur-lo").value, +el("tdur-hi").value);
+    const b = Math.max(+el("tdur-lo").value, +el("tdur-hi").value);
+    return { a: a, b: b };
+  }
+  // Freeze the outgoing frame and start a transition into scene `to`.
+  function transBegin(to) {
+    const len = transLen();
+    if (len.b <= 0) return;                  // slider pinned at 0 ⇒ transitions off
+    const from = sceneInfo(effect, extras[effect] && extras[effect].filters, +paletteSel.value);
+    const pick = pickTransition(from, to);
+    const scale = (len.a + Math.random() * (len.b - len.a)) / TRANS_DUR.slow;
+    trans.on = true; trans.t = 0; trans.id = pick.id;
+    trans.mode = pick.mode; trans.burn = !!pick.burn;
+    trans.dur = Math.max(0.05, pick.dur * scale);
+    if (pick.mode < 0) return;               // cut / burn-off need no frozen copy
+    if (useGL && glReady) {                  // snapshot glTex.scene → glTex.prev
+      gl.bindFramebuffer(gl.FRAMEBUFFER, glFbo.scene);
+      gl.bindTexture(gl.TEXTURE_2D, glTex.prev);
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, fw, fh);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } else if (off && off.width) {
+      if (!transOff) transOff = document.createElement("canvas");
+      if (transOff.width !== off.width || transOff.height !== off.height) {
+        transOff.width = off.width; transOff.height = off.height;
+      }
+      transOff.getContext("2d").drawImage(off, 0, 0);
+    }
+  }
+  let transOff = null, transTmp = null;      // CPU path's frozen copy + downsample scratch
+  function transStep(dt) {
+    if (!trans.on) return;
+    trans.t += dt / trans.dur;
+    if (trans.t >= 1) { trans.on = false; trans.t = 0; trans.mode = -1; trans.burn = false; }
   }
   function presetState(e) {           // a fresh copy of effect e's default slider values
     const st = {}, d = EFFECTS[e].defaults;
@@ -4161,14 +4394,32 @@
   // beat chips, pulse shape and pulse length. The box's ↺ used to restore only the
   // range, which left a slider you had wandered off into a strange place still
   // strange. Bounds go first, so the value below validates against them.
+  // A control's shipped default straight from the CONTROLS schema — the source of truth
+  // for sliders no effect's `defaults` mentions. Dual sliders carry lo/hi, plain ones a
+  // single `value`; checkboxes have neither and reset elsewhere.
+  function ctlDefault(key) {
+    const c = CONTROLS.find(x => x.key === key);
+    if (!c) return undefined;
+    if (c.type === "dual") return [c.lo, c.hi];
+    if (c.type === "plain") return c.value;
+    return undefined;
+  }
   function resetControl(key) {
     const els = ctlRangeInputs(key);
     for (const inp of els) {
       const o = RNG_ORIG[inp.id]; if (!o) continue;
       inp.min = o.min; inp.max = o.max;
     }
-    // presetState merges the filter defaults, so a filter's params reset too.
-    const v = presetState(effect)[key];
+    // presetState merges the filter defaults, so a filter's params reset too — but it
+    // only knows keys the effect declares in `defaults`, and plenty of on-screen sliders
+    // are not among them. The camera is the case that bit: camrx/camry/camrz are in most
+    // effects' `params`, so they are right there with a ↺ next to them, yet deliberately
+    // absent from every `defaults` because they live in `cam`. presetState returned
+    // undefined, the branch below fell through, and the button silently reset the bounds
+    // and the beat chips while leaving the value exactly where it was. Fall back to the
+    // shipped default from the CONTROLS schema, which every slider has by construction.
+    const st = presetState(effect);
+    const v = st[key] !== undefined ? st[key] : ctlDefault(key);
     if (Array.isArray(v)) {
       const lo = el(key + "-lo"), hi = el(key + "-hi");
       if (lo && hi) { lo.value = v[0]; hi.value = v[1]; }
@@ -4286,6 +4537,7 @@
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
+      tdur: [+el("tdur-lo").value, +el("tdur-hi").value],   // transition length (ditto)
       scale: cfg.scale,                              // render resolution (global)
       panelOpen: !panel.classList.contains("hidden"),
       audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
@@ -4362,6 +4614,11 @@
     if (Array.isArray(savedTtl) && ok("ttl-lo", savedTtl[0]) && ok("ttl-lo", savedTtl[1])) {
       el("ttl-lo").value = savedTtl[0]; el("ttl-hi").value = savedTtl[1];
       el("ttl-lo").dispatchEvent(new Event("input")); el("ttl-hi").dispatchEvent(new Event("input"));
+    }
+    // Transition length, same treatment: global, absent in pre-feature blobs ⇒ shipped.
+    if (Array.isArray(saved.tdur) && ok("tdur-lo", saved.tdur[0]) && ok("tdur-lo", saved.tdur[1])) {
+      el("tdur-lo").value = saved.tdur[0]; el("tdur-hi").value = saved.tdur[1];
+      el("tdur-lo").dispatchEvent(new Event("input")); el("tdur-hi").dispatchEvent(new Event("input"));
     }
     if ([1, 1.5, 2, 3, 4].includes(saved.scale)) { cfg.scale = saved.scale; resSel.value = String(saved.scale); }
     if (Number.isInteger(saved.effect) && EFFECTS[saved.effect]) effectSel.value = saved.effect;
@@ -5051,6 +5308,9 @@
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;
     applyingPreset = true;
+    // Start the transition BEFORE anything is swapped: it freezes the frame that is
+    // still on screen, and picks its mode by comparing the outgoing scene to this one.
+    transBegin(sceneInfo(p.effect, p.extra && p.extra.filters, p.extra && p.extra.palette));
     const fromRamp = paletteBase.slice();   // the palette on screen right now — blend away from it
     // Bounds FIRST, matching applyBlob's ordering: loadState below assigns straight to
     // el.value, which the DOM silently clamps to the slider's current min/max — so a
@@ -5652,6 +5912,7 @@
       { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset, selects it and turns auto-cycle off so it stays up; Rename renames the selected one; Delete removes it. The first entry, “— unsaved scene —”, is not a preset but a mode: while it is selected nothing is auto-saved, so you can tweak freely without altering anything you have stored. You also land there whenever the live scene is not one of your presets — after deleting a preset, when opening a shared link, or after switching to an effect you have no preset for. At the top, Backup writes one file per preset (plus a settings file), so sending someone a single scene means sending one file; Restore takes as many of those files as you select, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets. Creating a preset or restoring a backup switches it off, so the scene you just chose stays on screen." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
+      { n: "Transition", w: "all", t: "How long a preset change takes to blend, as a range in seconds — each switch draws a length from it. A suitable transition is chosen automatically for the two scenes involved: a crossfade between two full-screen effects, something that breaks the picture up (pixelate, blur, wipe) when a sparse point cloud meets a dense field, a dip or flash when the palettes jump, and often nothing at all when the scenes already dissolve on their own through Fire or Fade pixel. Collapse both thumbs to 0 to cut straight over instead." },
       { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching lands you on that effect's own preset if you have one, so you keep working on a named scene; your previous preset is left untouched. Part of a preset, so auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
