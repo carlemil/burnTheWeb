@@ -381,6 +381,16 @@ Switching effects calls `saveState/saveBeat/savePulse/savePlen/saveExtra` for th
 effect and `loadState/loadBeat/loadPulse/loadPlen/loadExtra` for the incoming one, so each
 effect is a fully independent scene.
 
+**`setEffect` deliberately does not clear the heat buffer.** It used to
+(`fire.fill(0)` + `glClearHeat()`), which blinked the screen to black on every switch —
+including every auto-cycle preset change, a few seconds apart. Leaving the outgoing
+effect's heat in place lets it decay *under* the incoming scene, so the switch dissolves
+instead. It only reads as a fade when the incoming scene has a **feedback filter** (Fire
+or Fade pixel) to decay it; with none, `applyFilters`/`glBeginHeat` rewrite the whole
+buffer on the first frame regardless — that is the clean-slate contract those paths
+already document, not a regression. `acc = 0` still resets, so no banked sim time carries
+across.
+
 **Beat chips ship unarmed.** Every effect's `beat` map is empty and the *unarmed*
 chip styling is deliberately colourless and dim — the per-band colours (L blue, M green,
 H red) apply only to `.on`. A vividly outlined chip reads as enabled even when nothing is
