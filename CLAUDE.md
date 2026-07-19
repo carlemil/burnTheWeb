@@ -580,13 +580,32 @@ because any later slider drag *did* autosave and retroactively captured the chip
   file is `{app, kind: "preset", version, preset}` and each is routed through
   `serializeBlob` so `effect` is the stable id. `curPreset` is deliberately **not** in
   `_settings.json`: it is an index into a list that no longer travels as a list.
-  - **Delivery** splits on `showDirectoryPicker`. Chromium: pick a location once, create
-    `backup-<YYYY-MM-DD_HHMM>/`, write the files into it. Everything else: one download
+  - **Delivery** splits on `showDirectoryPicker`. Chromium: write into
+    `BurnTheWeb/<scene>-backup/<YYYY-MM-DD_HHMM>/`, where `<scene>` is the selected
+    preset's name (`safeName`, falling back to `scene` in "— custom —") so successive
+    backups of one scene group together. Everything else: one download
     per file, named `backup-<stamp> - <preset>.json`, **spaced ~150ms apart** because
     browsers drop back-to-back downloads. The fallback flattens rather than nests
     because the HTML spec has user agents sanitize path components out of `a.download`
     — `"backup-x/y.json"` arrives as one mangled file, not a folder, so nesting that way
     is not an option anywhere.
+  - **The folder is asked for once, then remembered.** A `FileSystemDirectoryHandle` is
+    structured-cloneable, so it lives in IndexedDB (`burnTheWeb.fs`) — localStorage can't
+    hold one, it only stores strings. `backupRoot()` reuses the stored handle when
+    `queryPermission` still says `granted` (silent) or `requestPermission` returns granted
+    (a one-click chip, *not* a folder browser); anything else falls through to a fresh
+    pick. **Shift-clicking Backup forces a re-pick** — that is the only way to move it, so
+    it is spelled out in the button's `title`. A write failure (folder deleted, grant
+    revoked) calls `bkClear()` so the next click re-picks instead of failing forever.
+  - **`bkStore` must always resolve.** Every IDB step is wrapped, because a throw inside
+    an IDB event handler leaves the promise pending *forever* and hangs Backup rather than
+    merely skipping the cache — `put()` throws `DataCloneError` wherever handles aren't
+    cloneable. The probe found this by accident and it is a real failure mode, not a test
+    artifact.
+  - Probing this needs **both** stubs: a fake `showDirectoryPicker` *and* a fake
+    `indexedDB` — and the latter must go in via `Object.defineProperty`, since plain
+    assignment to `window.indexedDB` silently no-ops in Chromium and the app then quietly
+    uses the real one (which rejects a fake, non-cloneable handle).
   - **`safeFileName`** exists because a preset name is free text that becomes a filename:
     it strips path separators and Windows-illegal characters and control codes, trims,
     drops trailing dots/spaces (Windows removes them silently), escapes reserved device

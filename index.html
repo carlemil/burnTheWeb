@@ -571,7 +571,7 @@
   <details class="box">
   <summary class="box-t">Backup, restore &amp; share</summary>
   <div class="presetrow grid2">
-    <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers">Backup</button>
+    <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
     <button id="share" class="audbtn" type="button" title="Copy a link that opens the scene you're looking at">Share</button>
     <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current scene — needs the internet, and sends the scene to TinyURL">Short link</button>
@@ -5046,19 +5046,79 @@
                  text: JSON.stringify({ app: "burnTheWeb", kind: "settings", version: 1, settings }, null, 2) });
     return files;
   }
+  // ---- remembering the backup folder ----------------------------------------
+  // A browser cannot write to Downloads unprompted; real folders need a directory
+  // handle the user picked. But a handle is structured-cloneable, so it can be kept
+  // in IndexedDB and reused — the picker then appears once, ever, instead of on every
+  // backup. (localStorage is no good here: it only stores strings.)
+  const BK_DB = "burnTheWeb.fs", BK_STORE = "handles", BK_KEY = "backupRoot";
+  function bkStore(mode, fn) {
+    return new Promise((res, rej) => {
+      if (!window.indexedDB) return res(null);
+      const rq = indexedDB.open(BK_DB, 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore(BK_STORE);
+      rq.onerror = () => res(null);                 // private mode etc — just re-pick
+      rq.onsuccess = () => {
+        const db = rq.result;
+        let t, out;
+        // Every step here can throw, and a throw inside an IDB event handler would
+        // leave this promise pending forever — which would hang Backup, not just skip
+        // the cache. put() in particular throws DataCloneError wherever directory
+        // handles aren't structured-cloneable. Always resolve; the caller re-picks.
+        try {
+          t = db.transaction(BK_STORE, mode);
+          out = fn(t.objectStore(BK_STORE));
+        } catch (e) { db.close(); return res(null); }
+        t.oncomplete = () => { db.close(); res(out && out.result !== undefined ? out.result : null); };
+        t.onerror = t.onabort = () => { db.close(); res(null); };
+      };
+    });
+  }
+  const bkGet = () => bkStore("readonly", s => s.get(BK_KEY));
+  const bkPut = h => bkStore("readwrite", s => s.put(h, BK_KEY));
+  const bkClear = () => bkStore("readwrite", s => s.delete(BK_KEY));
+  // A stored handle can go stale (folder deleted) or lose its grant. queryPermission
+  // is silent when still granted; requestPermission is a one-click chip, not a folder
+  // browser. Anything else ⇒ fall through to a fresh pick.
+  async function bkUsable(h) {
+    if (!h || !h.queryPermission) return false;
+    try {
+      const opt = { mode: "readwrite" };
+      if (await h.queryPermission(opt) === "granted") return true;
+      return await h.requestPermission(opt) === "granted";
+    } catch (e) { return false; }
+  }
+  async function backupRoot(forcePick) {
+    if (!forcePick) {
+      const saved = await bkGet();
+      if (await bkUsable(saved)) return saved;
+    }
+    const root = await window.showDirectoryPicker({ mode: "readwrite", id: "btwBackup" });
+    await bkPut(root);
+    return root;
+  }
+  // Folder names have to survive a filesystem: no separators or reserved characters,
+  // and never empty (a blank name would throw in getDirectoryHandle).
+  const safeName = (s, fallback) =>
+    (String(s || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60)) || fallback;
   // Chromium can write a real folder; everything else gets flat files with the stamp in
   // the name. Nesting via `a.download` is not an option for the fallback — the HTML spec
   // has user agents sanitize path components out of the filename, so "backup-x/y.json"
   // arrives as one mangled file rather than a folder.
-  async function runBackup(btn) {
+  async function runBackup(btn, forcePick) {
     const files = backupFiles(), stamp = stampNow();
     const say = (msg, ms) => { btn.textContent = msg; setTimeout(() => btn.textContent = "Backup", ms || 2200); };
     if (window.showDirectoryPicker) {
       let root;
-      try { root = await window.showDirectoryPicker({ mode: "readwrite", id: "btwBackup" }); }
+      try { root = await backupRoot(forcePick); }
       catch (e) { btn.textContent = "Backup"; return; }        // user cancelled the picker
       try {
-        const dir = await root.getDirectoryHandle("backup-" + stamp, { create: true });
+        // BurnTheWeb / <scene>-backup / <date-time> — grouped by scene so successive
+        // backups of the same one sit together and older ones stay put.
+        const scene = safeName(curPreset >= 0 && presets[curPreset] ? presets[curPreset].name : "", "scene");
+        let dir = await root.getDirectoryHandle("BurnTheWeb", { create: true });
+        dir = await dir.getDirectoryHandle(scene + "-backup", { create: true });
+        dir = await dir.getDirectoryHandle(stamp, { create: true });
         for (const f of files) {
           const fh = await dir.getFileHandle(f.name, { create: true });
           const w = await fh.createWritable();
@@ -5067,7 +5127,12 @@
         }
         say("Saved " + files.length + " files");
         track("backup_folder", { files: files.length });
-      } catch (e) { say("Backup failed"); }
+      } catch (e) {
+        // A remembered folder that has been deleted or revoked lands here. Drop it so
+        // the next click picks afresh rather than failing forever.
+        await bkClear();
+        say("Backup failed — click again");
+      }
       return;
     }
     // One download per file, spaced out: fired back-to-back, browsers drop all but the
@@ -5076,10 +5141,10 @@
     say("Saving " + files.length + " files…", 400 + files.length * 150);
     track("backup_files", { files: files.length });
   }
-  el("exportpresets").addEventListener("click", () => {
+  el("exportpresets").addEventListener("click", e => {
     const btn = el("exportpresets");
     btn.textContent = "Saving…";
-    runBackup(btn);
+    runBackup(btn, e.shiftKey);      // shift ⇒ re-pick the folder (see the button's title)
   });
   // Fold every shape we have ever written into the one the restore path understands:
   // a single-preset file, a _settings.json, a whole-library snapshot (the old Backup),
