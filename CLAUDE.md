@@ -476,6 +476,16 @@ selected" when in fact it was, and then got cycled away from. `applyRestore` can
 instead, set **last** so it also overrides the backup file's own `cycle`: whatever the
 backup was saved with, you want to see what you just restored.
 
+**Switching effect prefers that effect's own preset.** `effectSel`'s change handler looks
+for a preset whose `effect` matches and **applies** it — so you land on a real named scene
+rather than "— unsaved scene —" on every single effect change. It must be *applied*, not
+merely selected: selecting alone would leave the live scene ≠ the preset, and the first
+slider drag would autosave whatever was on screen over it. `applyPreset` runs `setEffect`
+with `save=false`, so the **outgoing** effect's scene is saved explicitly first or its live
+tweaks are lost. Only when no preset uses that effect does it fall back to dropping the
+selection. Either way the original guarantee holds: a preset is never rewritten to a
+different effect — the new selection is a preset that *already is* the new effect.
+
 **Switching effect leaves the selected preset** (drops the menu to "— unsaved scene —") rather
 than rewriting it. A preset carries its own effect, so the delegated autosave used to
 fold the switch straight into it: pick "Sirpinfyer", switch to Tunnel, and your
