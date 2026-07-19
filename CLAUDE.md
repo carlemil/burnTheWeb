@@ -66,6 +66,33 @@ the small riding circle of radius `juliaInnerR` at `ratio ×` the outer phase; t
 riding circle is what keeps the seed's neighbourhood varying instead of retracing
 one closed curve.
 
+**Which cardioid depends on the exponent.** The seed is only interesting just *outside*
+the **connectedness locus** — the set of `c` for which the filled Julia set of `z^d + c`
+is connected. Inside it, the filled set has interior that never escapes, so the render
+pins whole regions at `i >= maxIter` ⇒ max palette. For `d = 2` the locus is the
+Mandelbrot set and its period-1 boundary is the familiar cardioid. For any other `d` it
+is the **degree-d Multibrot set**, whose period-1 boundary is a *different* curve:
+`c = z − z^d` on `|z| = d^(−1/(d−1))` (from the fixed point `z^d + c = z` with neutral
+multiplier `|d·z^(d−1)| = 1`). `cardioidAt(th, d)` is that curve.
+
+This was hardcoded to the `d = 2` cardioid whatever the Power slider said, and Multibrot
+ships Power *drifting* 2→3.5, so ~3/4 of every lap put the seed inside the real locus —
+a solid white blob instead of dendrites. `juliaPower` carries the exponent: `setEffect`
+resets it to 2 and Multibrot's `draw` sets it from `mbPower` **before** calling
+`juliaSeed`, so the orbit rides this frame's power. At `d = 2` the formula reduces to
+`|z| = 0.5`, `c = z − z²` — **bit-identical** (every power involved is exact in binary
+floating point), which is what keeps AnimeJulia, Burning Ship and every `d = 2` preset
+unchanged; `juliaprobe` asserts `max |Δ| == 0` over a full lap.
+
+Two residuals worth knowing, both measured by the probe rather than hand-waved:
+the inside-the-locus fraction is **not** 0 even at `d = 2` (≈15%) — scaling the cardioid
+radially by `JULIA_MARGIN` walks the seed through the period-2 bulb near θ=π, and those
+fat Julia sets are part of AnimeJulia's shipped look. And **fractional powers stay worse
+than integer ones** (≈40–55% vs ≈20%): `z^d` uses the principal branch, discontinuous
+across the negative real axis, so their locus is a messier object with more attached
+components. The probe therefore asserts *matched beats mismatched by ≥20 points*, not
+perfection — the honest property, and the one that goes red if `juliaPower` stops tracking.
+
 **Lap-speed easing.** The orbit is *not* swept at constant angular speed: `juliaSeed`
 scales each step by `EASE_K · (1 + JULIA_EASE_A·cos θ)`, so the seed sprints through
 the cardioid's cusp (θ=0, the start/end of a lap) and eases off at the back (θ=π).
@@ -274,13 +301,20 @@ way — the number fields themselves are skipped in `onEdit`. `applyRanges` call
 **Cardioid debug** (`#carddlg`, button `#cardbtn`). Descriptor-gated on `cardioid: true`
 (AnimeJulia / Burning Ship / Multibrot — the effects seeded from a Mandelbrot point):
 a **floating panel** (bottom-right, `z-index: 5` like `#breakout`, **no backdrop and not
-a modal**) rendering the Mandelbrot set in the c-plane with the seed's full cardioid, the
+a modal**) rendering the connectedness locus in the c-plane with the seed's full cardioid, the
 path it actually traces at the current ratio/radii, the riding circle and the live seed
 point drawn over it. Non-modal on purpose: you tune the orbit sliders *while watching it*,
 so it must never intercept a click — don't reintroduce a backdrop or click-outside-closes. It samples **`juliaSeedAt(outer, inner)`** — the pure part split out
 of `juliaSeed(dt)`, which also applies the **`cardx`** slider's `juliaOffX` real-axis
 shift — so opening it never advances the animation and it always shows the true orbit. `frame()` redraws it
-while open; the Mandelbrot bitmap is rendered once and cached. Transient: never persisted,
+while open. The backdrop is **`cardLocus(w, h, d)`** — the Mandelbrot set at power 2, the
+degree-d Multibrot otherwise, matching whatever the seed is actually riding. Drawing the
+Mandelbrot under a Multibrot orbit made the panel *lie*: the seed looked comfortably
+outside the set while sitting deep inside the locus that governs it. Since Power drifts
+continuously, the bitmap is quantised to `CARD_POW_Q` (= the slider's own step) and
+rendered at **half resolution** into an offscreen canvas that `drawImage` scales up —
+a full-res 120-iteration repaint per frame is far too slow for a debug overlay. It keeps
+an integer-2 fast path (no `pow`/`atan2` per step). Transient: never persisted,
 never in a preset. `card` is a **`var`** and `cardOpen`/`cardDraw` early-return on a falsy
 `card`, because `setEffect` calls `cardOpen` during startup before the declaration runs.
 

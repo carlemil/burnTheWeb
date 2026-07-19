@@ -51,7 +51,7 @@ independent "scene" that remembers its own settings (see Controls):
   - **Munching Squares** — the hypnotic `(x XOR y) + t` pattern with self-similar nested squares.
   - **Copper Bars** — horizontal gradient raster bars sliding up and down on sine motion.
   - **Burning Ship** — a jagged, flame-like fractal (Julia's abs-fold cousin), sharing AnimeJulia's controls.
-  - **Multibrot** — `z^power + c` with an animatable exponent that morphs the number of bulbs.
+  - **Multibrot** — `z^power + c` with an animatable exponent that morphs the number of bulbs. The seed orbits the boundary of the matching **degree-`power`** set, not the plain Mandelbrot cardioid, so the fractal keeps its delicate filigree as the exponent sweeps instead of flooding solid.
   - **Newton** — the three interlocking root-basins of `z³−1` with fractal borders (Root spin / Relaxation).
   - **Attractor** — a de Jong strange attractor whose four coefficients a/b/c/d morph its delicate threads. **Point jitter** scatters each stamped point to soften them — set it to 0 for the bare, hard-edged curves.
 
@@ -253,11 +253,13 @@ open/closed state isn't saved):
 part of the scene rather than a dev setting. See below.
 Two more tools sit outside that section: each slider's **min / max / step** row
 (in its pop-out box — see above), and **Cardioid debug**, a button in **Settings**
-for the effects whose seed orbits the Mandelbrot cardioid (AnimeJulia, Burning
-Ship, Multibrot). It opens the Mandelbrot set with that orbit drawn on top — the
-full seed cardioid, the path the seed actually traces at the current ratio and
-radii, the little riding circle and the live seed point — so you can see exactly
-where your **Cardioid RPM / ratio / radius / start / X offset** settings land.
+for the effects whose seed orbits a cardioid (AnimeJulia, Burning Ship,
+Multibrot). It opens the fractal set the seed is riding — the Mandelbrot set, or
+the matching Multibrot set once you move Multibrot's **Power** off 2 — with that
+orbit drawn on top: the full seed cardioid, the path the seed actually traces at
+the current ratio and radii, the little riding circle and the live seed point, so
+you can see exactly where your **Cardioid RPM / ratio / radius / start / X
+offset** settings land.
 It's a floating panel, not a modal: the menu stays live underneath it, so you can
 drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
 

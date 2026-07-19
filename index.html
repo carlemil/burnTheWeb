@@ -2180,6 +2180,30 @@
   // fractal opens somewhere new), or a fixed 0 when off (fully reproducible).
   // Uses Math.random(), kept clear of the chaos-game PRNG (see Determinism).
   let juliaOuter = 0, juliaInner = 0;
+  // Which exponent's locus the seed orbits. 2 for AnimeJulia and Burning Ship;
+  // Multibrot's draw sets it from the live Power slider every frame, and setEffect
+  // puts it back to 2 on the way out.
+  let juliaPower = 2;
+  // The seed is only interesting where the *connectedness locus* is — the set of c
+  // for which the filled Julia set of z^d+c is connected. For d=2 that is the
+  // Mandelbrot set and its period-1 boundary is the familiar cardioid. For any other
+  // d it is the degree-d **Multibrot** set, and its period-1 boundary is a different
+  // curve: a fixed point solves z^d + c = z ⟹ c = z − z^d, and the component
+  // boundary is where the multiplier d·z^(d−1) has modulus 1 ⟹ |z| = d^(−1/(d−1)).
+  //
+  // This used to be hardcoded to the d=2 cardioid whatever the Power slider said, so
+  // Multibrot (which ships Power drifting 2→3.5) spent ~3/4 of every lap with its seed
+  // buried *inside* the real locus — where the filled Julia set is one fat blob whose
+  // interior never escapes, hence huge areas pinned at max palette instead of the
+  // expected dendrites.
+  //
+  // At d=2 this reduces to |z| = 2⁻¹ = 0.5 and c = z − z² = 0.5e^{iθ} − 0.25e^{2iθ},
+  // i.e. **bit-identical** to the old expression (every power here is exact in binary
+  // floating point), so AnimeJulia and Burning Ship are untouched.
+  function cardioidAt(th, d) {
+    const R = Math.pow(d, -1 / (d - 1)), rd = Math.pow(R, d), a = th * d;
+    return [R * Math.cos(th) - rd * Math.cos(a), R * Math.sin(th) - rd * Math.sin(a)];
+  }
   function reseedJulia() {
     juliaOuter = randSeed ? Math.random() * Math.PI * 2 : 0;
     juliaInner = randSeed ? Math.random() * Math.PI * 2 : 0;
@@ -2190,12 +2214,14 @@
   // The seed for a given pair of orbit phases — pure, so the Cardioid debug view
   // can sample the whole path (and the live point) without advancing the animation.
   function juliaSeedAt(outer, inner) {
-    // large loop: main cardioid boundary c0 = 0.5·e^{iθ} − 0.25·e^{2iθ},
-    // scaled outward by the margin so it sits just outside the inner bound.
+    // large loop: the period-1 boundary of the connectedness locus, scaled outward by
+    // the margin so it sits just *outside* it — which is what makes the Julia set
+    // intricate rather than a solid blob (see cardioidAt).
     const th = outer + juliaPhase * Math.PI * 2, s = (1 + JULIA_MARGIN) * juliaOuterR;
+    const c0 = cardioidAt(th, juliaPower);
     // juliaOffX slides the whole orbit (cardioid + riding circle) along the real axis
-    const bx = (0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th)) * s + juliaOffX;
-    const by = (0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)) * s;
+    const bx = c0[0] * s + juliaOffX;
+    const by = c0[1] * s;
     // small circle riding on top, spinning ratio× faster than the big loop; its
     // radius is the inner:outer slider × the reference outer radius.
     const r = juliaInnerR;
@@ -3498,7 +3524,8 @@
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Sweep Power up from 2 and the number of symmetric bulbs morphs — with smooth fractional shapes in between.",
       params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
-      draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
+      // juliaPower BEFORE juliaSeed: the orbit must ride this frame's power, not the last one's.
+      draw: dt => { juliaPower = mbPower; const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
       defaults: { palcycle: [8, 8], mbexp: [2, 3.5], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: {}, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
@@ -4295,6 +4322,7 @@
     effect = i;
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
+    juliaPower = 2;                   // Multibrot's draw overrides this every frame
     dockAll();                        // new scene ⇒ empty pop-out column (see Break-out boxes)
     // show only the controls this effect declares (rendered from the CONTROLS schema)
     refreshControlVisibility();       // effect params + the ticked filters' params
@@ -5161,29 +5189,53 @@
   // `var`, not `const`: setEffect() runs during startup, before this line is
   // evaluated, and calls cardOpen() — a const would still be in its temporal dead
   // zone and throw (same reason the old range editor's state was a `var`).
-  var card = { on: false, cv: null, ctx: null, bg: null };
-  function cardMandelbrot(w, h) {             // static: rendered once, then reused
-    const img = new ImageData(w, h), d = img.data;
+  var card = { on: false, cv: null, ctx: null, bg: null, bgPow: 0 };
+  // The backdrop is the connectedness locus the seed is *actually* riding — the
+  // Mandelbrot set at power 2, the degree-d Multibrot otherwise. Drawing the
+  // Mandelbrot under a Multibrot orbit made the view lie: the seed looked safely
+  // outside the set while really sitting deep inside the locus that governs it.
+  //
+  // Power drifts continuously, so this is quantised to CARD_POW_Q and rendered at
+  // half resolution into an offscreen canvas (drawImage scales it back up). A full-res
+  // repaint every frame at 120 iterations is far too slow for a debug overlay.
+  const CARD_POW_Q = 0.05;                    // = the Power slider's own step
+  const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
+  function cardLocus(w, h, d) {
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const img = new ImageData(w, h), px32 = img.data;
     const spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w), y0 = -spanY / 2;
+    const sq = d === 2;                       // integer-2 fast path: no pow/atan2 per step
     for (let py = 0; py < h; py++) {
       const cy = y0 + (py / h) * spanY;
       for (let px = 0; px < w; px++) {
         const cx = CARD_X0 + (px / w) * spanX;
-        let zx = 0, zy = 0, i = 0;
-        for (; i < 120 && zx * zx + zy * zy <= 4; i++) { const t = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = t; }
+        // Iterate the critical point z=0 — bounded ⇔ c is in the locus.
+        let zx = 0, zy = 0, i = 0, mag2 = 0;
+        for (; i < 120 && mag2 <= 4; i++) {
+          if (sq) { const t = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = t; }
+          else {
+            const r = Math.pow(Math.sqrt(mag2), d), a = Math.atan2(zy, zx) * d;
+            zx = r * Math.cos(a) + cx; zy = r * Math.sin(a) + cy;
+          }
+          mag2 = zx * zx + zy * zy;
+        }
         const o = (py * w + px) * 4;
         // inside = near-black, outside = a cool grey ramp, so the amber overlay pops
-        const v = i >= 120 ? 10 : 24 + Math.round(Math.sqrt(i / 120) * 120);
-        d[o] = v * 0.78; d[o + 1] = v * 0.85; d[o + 2] = v; d[o + 3] = 255;
+        const v = mag2 <= 4 ? 10 : 24 + Math.round(Math.sqrt(i / 120) * 120);
+        px32[o] = v * 0.78; px32[o + 1] = v * 0.85; px32[o + 2] = v; px32[o + 3] = 255;
       }
     }
-    return img;
+    cv.getContext("2d").putImageData(img, 0, 0);
+    return cv;
   }
   function cardDraw() {
     if (!card || !card.on || !card.ctx) return;
     const w = card.cv.width, h = card.cv.height, ctx = card.ctx;
-    if (!card.bg) card.bg = cardMandelbrot(w, h);
-    ctx.putImageData(card.bg, 0, 0);
+    const pq = cardPowQ();
+    if (!card.bg || card.bgPow !== pq) { card.bg = cardLocus(w >> 1, h >> 1, pq); card.bgPow = pq; }
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(card.bg, 0, 0, w, h);       // half-res locus, scaled up
     const spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w);
     const X = cx => (cx - CARD_X0) / spanX * w;               // complex → canvas
     const Y = cy => (cy + spanY / 2) / spanY * h;
@@ -5219,7 +5271,8 @@
     el("cardNums").textContent =
       "c = " + now.cx.toFixed(4) + (now.cy < 0 ? " − " : " + ") + Math.abs(now.cy).toFixed(4) + "i" +
       " · outer ×" + juliaOuterR.toFixed(2) + " · inner r " + juliaInnerR.toFixed(3) +
-      " · ratio " + juliaRatio.toFixed(2) + " · " + juliaBigRpm.toFixed(2) + " rpm";
+      " · ratio " + juliaRatio.toFixed(2) + " · " + juliaBigRpm.toFixed(2) + " rpm" +
+      (juliaPower === 2 ? "" : " · power " + juliaPower.toFixed(2));
   }
   function cardOpen(on) {
     if (!card) return;      // startup: setEffect runs before `var card` is initialized

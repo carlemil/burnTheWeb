@@ -27,6 +27,7 @@ const code =
   "  set rpm(v) { juliaBigRpm = v }, get rpm() { return juliaBigRpm }," +
   "  set ratio(v) { juliaRatio = v }, get ratio() { return juliaRatio }," +
   "  set phase(v) { juliaPhase = v }, set offX(v) { juliaOffX = v }," +
+  "  set power(v) { juliaPower = v }, get power() { return juliaPower }, cardioidAt," +
   "  RPM, JULIA_MARGIN, JULIA_RATIO_DEFAULT };";
 const J = new Function(code)();
 
@@ -222,6 +223,87 @@ reset();
     const body = src.slice(i, i + 400);
     ok(!/juliaSeed\(/.test(body), fn.slice(9, -1) + "() takes the seed instead of re-advancing it");
   }
+}
+
+// --- 8. the orbit follows the *degree-d* locus, not always the d=2 cardioid ---
+// The seed is only interesting just OUTSIDE the connectedness locus of z^d+c. It used
+// to ride the d=2 cardioid whatever the Power slider said, so Multibrot (Power drifts
+// 2→3.5) spent ~3/4 of each lap with the seed buried inside the real locus — a filled
+// Julia blob pinned at max palette instead of dendrites.
+{
+  // c is in the degree-d locus iff the critical point z=0 stays bounded.
+  const inLocus = (cx, cy, d, N = 400) => {
+    let zx = 0, zy = 0;
+    for (let i = 0; i < N; i++) {
+      const m2 = zx * zx + zy * zy;
+      if (m2 > 4) return false;
+      const r = Math.pow(Math.sqrt(m2), d), a = Math.atan2(zy, zx) * d;
+      zx = r * Math.cos(a) + cx; zy = r * Math.sin(a) + cy;
+    }
+    return true;
+  };
+
+  // d=2 must reduce to the classic cardioid EXACTLY — that is what keeps AnimeJulia
+  // and Burning Ship (and every d=2 preset) byte-identical.
+  let worst = 0;
+  for (let i = 0; i <= 720; i++) {
+    const th = i / 720 * Math.PI * 2;
+    const got = J.cardioidAt(th, 2);
+    const want = [0.5 * Math.cos(th) - 0.25 * Math.cos(2 * th),
+                  0.5 * Math.sin(th) - 0.25 * Math.sin(2 * th)];
+    worst = Math.max(worst, Math.abs(got[0] - want[0]), Math.abs(got[1] - want[1]));
+  }
+  ok(worst === 0, "cardioidAt(θ,2) is bit-identical to the classic cardioid",
+     "max |Δ| = " + worst);
+
+  // The generalized curve must actually be the period-1 boundary: on it, the fixed
+  // point's multiplier |d·z^(d−1)| == 1. Check via c = z − z^d at |z| = d^(−1/(d−1)).
+  for (const d of [2, 2.5, 3, 3.5, 5]) {
+    const R = Math.pow(d, -1 / (d - 1));
+    const mult = d * Math.pow(R, d - 1);
+    ok(Math.abs(mult - 1) < 1e-12, "power " + d + ": boundary multiplier is 1",
+       "|λ| = " + mult.toFixed(15));
+  }
+
+  // Sweep a lap and measure how much of it lands inside the locus (= a filled blob
+  // pinned at max palette, instead of dendrites). `orbitPower` is what the seed rides,
+  // `iterPower` what the shader iterates — the bug was these disagreeing.
+  J.outerR = 1.05; J.innerR = 0; J.phase = 0; J.offX = 0;
+  const insideFrac = (orbitPower, iterPower) => {
+    J.power = orbitPower;
+    let inside = 0;
+    const N = 360;
+    for (let i = 0; i < N; i++) {
+      const p = J.juliaSeedAt(i / N * Math.PI * 2, 0);
+      if (inLocus(p.cx, p.cy, iterPower)) inside++;
+    }
+    return 100 * inside / N;
+  };
+
+  // Note this is NOT 0% even at d=2: scaling the cardioid radially by the margin walks
+  // the seed through the period-2 bulb near θ=π, and those fat Julia sets are part of
+  // AnimeJulia's shipped look. So the assertion is *matched vs mismatched*, not zero.
+  const base2 = insideFrac(2, 2);
+  ok(base2 < 30, "power 2 baseline (shipped AnimeJulia behaviour) is mostly outside",
+     base2.toFixed(1) + "% inside");
+
+  // The real regression guard: riding the matching locus must be dramatically better
+  // than riding the d=2 cardioid while iterating at d. 20 points is well clear of the
+  // 23–57 point gaps measured, and would go red the moment juliaPower stopped tracking.
+  for (const d of [2.5, 3, 3.5]) {
+    const matched = insideFrac(d, d);      // fixed: orbit follows the power
+    const mismatched = insideFrac(2, d);   // bug: orbit pinned to the d=2 cardioid
+    ok(matched <= mismatched - 20,
+       "power " + d + ": matching the locus beats the old d=2-always orbit",
+       matched.toFixed(1) + "% inside vs " + mismatched.toFixed(1) + "% before");
+  }
+  // Fractional powers stay worse than integer ones — the principal branch of z^d is
+  // discontinuous across the negative real axis, so their locus is a messier object.
+  // Recorded, not asserted away: if someone later makes these clean, this is the note.
+  ok(insideFrac(3, 3) < insideFrac(2.5, 2.5),
+     "integer powers sit further outside than fractional ones (branch-cut effect)",
+     "d=3 " + insideFrac(3, 3).toFixed(1) + "% vs d=2.5 " + insideFrac(2.5, 2.5).toFixed(1) + "%");
+  J.power = 2;
 }
 
 console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");
