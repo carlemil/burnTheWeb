@@ -4906,38 +4906,27 @@
   }
   el("ttl-lo").addEventListener("input", () => nextSwitch = 0);   // reschedule on retune
   el("ttl-hi").addEventListener("input", () => nextSwitch = 0);
-  // Switching effect must never REWRITE the selected preset. A preset is a whole scene
-  // *including* its effect, so the delegated autosave used to fold the switch straight
-  // into it: pick "Sirpinfyer", switch to Tunnel, and your Sirpinfyer preset silently
-  // became a Tunnel scene under its old name. Skipping just this one event would not be
-  // enough either — the preset would keep its old effect until the very next slider drag
-  // autosaved the new one into it.
+  // Switching effect is an EDIT TO THE SELECTED PRESET, not a reason to leave it.
   //
-  // Two ways out, and we prefer the first. If a preset already exists FOR the new effect,
-  // apply it: autosave then writes that effect's scene into that effect's own preset,
-  // which is correct, and you land on a real named scene instead of "— unsaved scene —"
-  // every single time you change effect. `applyPreset` must actually be applied, not just
-  // selected — selecting alone would leave the live scene ≠ the preset, and the first
-  // slider drag would overwrite the preset with whatever happened to be on screen.
-  // It runs with save=false, so save the OUTGOING effect's scene first or its live tweaks
-  // are lost.
+  // This has now been all three ways round, so the reasoning is worth keeping. It used
+  // to deselect (drop to "— unsaved scene —"), because the delegated autosave folded the
+  // switch into the selected preset and a preset carries its own effect: pick
+  // "Sirpinfyer", switch to Tunnel, and that preset became a Tunnel scene under its old
+  // name. Then it auto-selected a preset belonging to the new effect, which kept you on a
+  // named scene but still moved you off *your* one.
   //
-  // Failing that (you deleted that effect's preset), fall back to dropping the selection:
-  // autosavePreset() early-returns while curPreset < 0. This listener is on the select
-  // itself, so it runs in the target phase, before the delegated onEdit bubbles up to
-  // #panel — the deselect always wins the race. Assigning presetSel.value does not fire
-  // `change`, so applyPreset is not re-entered.
+  // Both were solving for the wrong thing. A preset is "my scene", and changing its
+  // effect is just another edit to it — the same as moving a slider. So: stay put, and
+  // fold the new effect straight in. The consequence is real and intended, not a bug to
+  // re-fix later: a preset named after the effect it started as will keep that name after
+  // you change the effect. Rename it if that bothers you.
+  //
+  // autosavePreset() early-returns while curPreset < 0, so "— unsaved scene —" still
+  // behaves as a scratch mode and nothing is written.
   effectSel.addEventListener("change", () => {
-    const i = +effectSel.value;
-    const match = presets.findIndex(p => p.effect === i);
-    if (match >= 0) {
-      if (states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect); }
-      applyPreset(match);
-      nextSwitch = 0;
-      return;
-    }
-    if (curPreset >= 0) { curPreset = -1; presetSel.value = "-1"; }
-    setEffect(i);
+    setEffect(+effectSel.value);
+    autosavePreset();
+    persist();
     nextSwitch = 0;
   });
   paletteSel.addEventListener("change", () => {
@@ -5913,7 +5902,7 @@
       { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets. Creating a preset or restoring a backup switches it off, so the scene you just chose stays on screen." },
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Transition", w: "all", t: "How long a preset change takes to blend, as a range in seconds — each switch draws a length from it. A suitable transition is chosen automatically for the two scenes involved: a crossfade between two full-screen effects, something that breaks the picture up (pixelate, blur, wipe) when a sparse point cloud meets a dense field, a dip or flash when the palettes jump, and often nothing at all when the scenes already dissolve on their own through Fire or Fade pixel. Collapse both thumbs to 0 to cut straight over instead." },
-      { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching lands you on that effect's own preset if you have one, so you keep working on a named scene; your previous preset is left untouched. Part of a preset, so auto-cycle can switch it for you." },
+      { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching keeps the preset you have selected and folds the change into it, like any other edit — so you carry on working on your scene. The preset keeps its name, so rename it if it no longer suits. Part of a preset, so auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them, and each menu row shows a small dot per armed band in the same colour — dim at rest, lit on the beat — so you can see what a preset has wired to the music without opening a single box." },

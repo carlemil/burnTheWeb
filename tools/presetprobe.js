@@ -127,17 +127,17 @@ const D = P.BEAT_DEFAULTS;
   ok(!threw, "a short/sparse bands array doesn't throw (reachable from a hand-edited backup)");
 }
 
-// --- 3. switching effect must leave the selected preset, not rewrite it -------
-// The delegated autosave folds any panel edit into the selected preset, and a preset
-// carries its own effect — so without an explicit deselect here, picking a preset and
-// then switching effect rewrote that preset to the new effect under its old name. The
-// corruption is silent and permanent, which is why it is worth a structural assertion
-// as well as the headless behaviour test.
+// --- 3. switching effect stays on the selected preset and folds the change in ----
+// This has been all three ways round: deselect, auto-select a preset for the new effect,
+// and now stay put. A preset is "my scene" and its effect is just another field of it, so
+// the switch is an edit like any other. The knock-on is intended: a preset keeps its name
+// when you change its effect. Asserted structurally because the previous two behaviours
+// both looked reasonable in isolation and someone will be tempted to "fix" this again.
 {
   const src2 = cut('effectSel.addEventListener("change"', "paletteSel.addEventListener(");
-  ok(/curPreset\s*=\s*-1/.test(src2),
-     "the effect chooser drops to '— custom —' (autosavePreset early-returns below 0)");
-  ok(/presetSel\.value\s*=\s*"-1"/.test(src2), "...and the menu follows");
+  ok(!/curPreset\s*=\s*-1/.test(src2), "the effect chooser no longer deselects the preset");
+  ok(/autosavePreset\(\)/.test(src2), "...it folds the new effect into the selected preset");
+  ok(/setEffect\(/.test(src2), "...and still switches the effect");
 }
 
 // --- 4. saved scenes survive a registry reorder -------------------------------

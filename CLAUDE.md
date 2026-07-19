@@ -533,26 +533,28 @@ selected" when in fact it was, and then got cycled away from. `applyRestore` can
 instead, set **last** so it also overrides the backup file's own `cycle`: whatever the
 backup was saved with, you want to see what you just restored.
 
-**Switching effect prefers that effect's own preset.** `effectSel`'s change handler looks
-for a preset whose `effect` matches and **applies** it — so you land on a real named scene
-rather than "— unsaved scene —" on every single effect change. It must be *applied*, not
-merely selected: selecting alone would leave the live scene ≠ the preset, and the first
-slider drag would autosave whatever was on screen over it. `applyPreset` runs `setEffect`
-with `save=false`, so the **outgoing** effect's scene is saved explicitly first or its live
-tweaks are lost. Only when no preset uses that effect does it fall back to dropping the
-selection. Either way the original guarantee holds: a preset is never rewritten to a
-different effect — the new selection is a preset that *already is* the new effect.
+**Switching effect stays on the selected preset and folds the change into it.** The
+handler is three lines — `setEffect`, `autosavePreset`, `persist` — and this has now been
+all three ways round, so the history is worth keeping.
 
-**Switching effect leaves the selected preset** (drops the menu to "— unsaved scene —") rather
-than rewriting it. A preset carries its own effect, so the delegated autosave used to
-fold the switch straight into it: pick "Sirpinfyer", switch to Tunnel, and your
-Sirpinfyer preset silently became a Tunnel scene under its old name. Suppressing autosave
-for just that one event would not have been enough — the preset would keep its old effect
-only until the next slider drag wrote the new one in. Deselecting fixes both, because
-`autosavePreset()` early-returns while `curPreset < 0`. The deselect lives in the effect
-`<select>`'s own listener, which runs in the **target phase**, before the delegated
-`onEdit` bubbles up to `#panel` — that ordering is what makes it win the race. Assigning
-`presetSel.value` does not fire `change`, so `applyPreset` is not re-entered.
+It first **deselected** (dropped to "— unsaved scene —"), because the delegated autosave
+folded the switch into the selected preset and a preset carries its own effect: pick
+"Sirpinfyer", switch to Tunnel, and that preset became a Tunnel scene under its old name.
+Suppressing autosave for just that one event would not have helped — the preset kept its
+old effect only until the next slider drag wrote the new one in. Then it **auto-selected**
+a preset belonging to the new effect, which kept you on a named scene but still moved you
+off *your* one.
+
+Both were solving for the wrong thing. A preset is "my scene", and its effect is just
+another field of it, so changing the effect is an edit like moving a slider. The knock-on
+is **intended, not a bug to re-fix**: a preset named after the effect it started as keeps
+that name after you change the effect. Rename it, or don't.
+
+`autosavePreset()` still early-returns while `curPreset < 0`, so "— unsaved scene —"
+remains a genuine scratch mode — switching effect there writes nothing to any preset.
+`presetprobe` asserts the *current* rule structurally (no `curPreset = -1`, an
+`autosavePreset()` call, a `setEffect()` call) precisely because the two previous
+behaviours both looked reasonable in isolation and will tempt someone to "fix" this again.
 
 Presets are **local to the browser**. Selecting one links edits to it: `onEdit` → `autosavePreset()`
 writes the current scene straight back into the selected preset (no manual save).
