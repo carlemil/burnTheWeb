@@ -413,10 +413,27 @@
   #panel .credit-handle { color: #ffcf87; font-weight: bold; }
   #panel .credit + label.check { margin-top: 12px; }
   /* Filters: the stackable post-FX checkboxes */
-  #panel #filterlist { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 2px 0 4px; }
-  /* Stage subheading inside the 2-column checkbox grid — it has to span both columns
-     or it takes one cell and shunts the checkboxes into a ragged stagger. */
-  #panel #filterlist .filter-grp { grid-column: 1 / -1; }
+  /* One column. Two columns fitted the checkboxes but not their names, and once each
+     filter grew a foldable body there was nowhere sensible for it to open into. */
+  #panel #filterlist { margin: 2px 0 4px; }
+  /* One filter: a <details> whose summary carries the chevron, the tick and the name,
+     and whose body holds that filter's own params — so they fold away with it instead
+     of stacking up in one long list below. */
+  #panel .filter-sec > summary {
+    display: flex; align-items: center; gap: 6px;
+    margin: 3px 0 0; padding: 1px 0; cursor: pointer; list-style: none;
+  }
+  #panel .filter-sec > summary::-webkit-details-marker { display: none; }
+  #panel .filter-sec > summary::before { content: "▸"; opacity: .75; font-size: 11px; width: 9px; color: #ffb15a; }
+  #panel .filter-sec[open] > summary::before { content: "▾"; }
+  #panel .filter-sec > summary input { margin: 0; }
+  #panel .filter-sec > summary .filter-name { flex: 1 1 auto; min-width: 0; }
+  /* Nothing ticked ⇒ nothing to configure: grey the row and drop the chevron, so an
+     empty body can't be opened onto. */
+  #panel .filter-sec.idle > summary { opacity: .62; }
+  #panel .filter-sec.idle > summary::before { visibility: hidden; }
+  #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
+  #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
   #panel .filter-chk { margin: 4px 0 0; }
   #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
@@ -3665,8 +3682,13 @@
   // filters change what the next frame starts from, post ones repaint the image, and
   // screen ones sit on the finished frame.
   const STAGE_NAMES = { feedback: "Feedback (heat)", post: "Post (image)", screen: "Screen (final)" };
+  // One <details> per filter: chevron + tick + name in the summary, that filter's own
+  // params in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's
+  // .ctl-row launcher next to its .ctl — moving the .ctl into a body afterwards would
+  // strand the row in #filterctl.
+  const filterSecs = {};
   function buildFilterUI() {
-    const host = el("filterlist");
+    const host = el("filterlist"), ctlHost = el("filterctl");
     let openStage = null;
     FILTERS.forEach(f => {
       if (f.stage !== openStage) {
@@ -3676,26 +3698,47 @@
         h.textContent = STAGE_NAMES[f.stage] || f.stage;
         host.appendChild(h);
       }
-      const lab = document.createElement("label");
-      lab.className = "check filter-chk";
+      const sec = document.createElement("details");
+      sec.className = "filter-sec";
+      const sum = document.createElement("summary");
       const cb = document.createElement("input");
       cb.type = "checkbox"; cb.id = "flt-" + f.id;
+      // The tick sits inside the summary, so its click must not also fold the section.
+      cb.addEventListener("click", e => e.stopPropagation());
       cb.addEventListener("change", () => {
         if (cb.checked) activeIds.add(f.id); else activeIds.delete(f.id);
+        syncFilterSec(f.id);
+        if (cb.checked && !sec.open) sec.open = true;   // reveal what you just enabled
         applyFilters();
       });
-      lab.appendChild(cb);
-      lab.appendChild(document.createTextNode(" " + f.name));
-      lab.title = f.help || f.name;
+      const nm = document.createElement("span");
+      nm.className = "filter-name"; nm.textContent = f.name;
+      sum.appendChild(cb); sum.appendChild(nm);
+      sum.title = f.help || f.name;
+      sec.appendChild(sum);
+      const body = document.createElement("div");
+      body.className = "filter-body";
+      // Adopt this filter's controls out of the flat #filterctl list.
+      (f.params || []).forEach(k => { const n = el("ctl-" + k); if (n) body.appendChild(n); });
+      sec.appendChild(body);
       // A GPU-only filter on the Canvas2D fallback: disable it visibly rather than
       // leaving a checkbox that silently does nothing.
       if (f.cpuOk === false && !useGL) {
         cb.disabled = true;
-        lab.classList.add("off");
-        lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
+        sec.classList.add("off");
+        sum.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
       }
-      host.appendChild(lab);
+      filterSecs[f.id] = sec;
+      host.appendChild(sec);
     });
+    if (ctlHost) ctlHost.style.display = "none";   // now empty; keep the node for scans
+  }
+  // Unticked ⇒ the body has nothing in it worth opening, so fold it and say so.
+  function syncFilterSec(id) {
+    const sec = filterSecs[id], cb = el("flt-" + id);
+    if (!sec || !cb) return;
+    sec.classList.toggle("idle", !cb.checked);
+    if (!cb.checked) sec.open = false;
   }
   // A control is visible when the current effect declares it OR it belongs to a
   // ticked filter — so filter params appear and vanish with their checkbox without
@@ -3719,7 +3762,7 @@
     refreshBreakout();                // show/hide the pop-out boxes to match
   }
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = activeIds.has(f.id); });
+    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = activeIds.has(f.id); syncFilterSec(f.id); });
   }
   // Re-derive everything a filter change affects: which param groups are visible,
   // the bloom strength (off ⇒ 0), and the banked sim time (a fresh Fire shouldn't

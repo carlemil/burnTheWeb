@@ -324,6 +324,24 @@ unavailable here" and survives the round trip. `cpuBlocked` is filled by the FIL
 block but declared up with the render globals, and is empty until then — which is what
 keeps `filterOn` safe to call during slider wiring, long before the registry exists.
 
+**The filter list is one column of foldable sections.** Each filter is a `<details>`:
+the summary carries the chevron, its checkbox and its name; the body holds that filter's
+own params, adopted out of the flat `#filterctl` list by `buildFilterUI`. It was a
+two-column checkbox grid with every param stacked in one list underneath, which stopped
+fitting once the registry grew past a handful of filters.
+
+Three things are load-bearing. `buildFilterUI` must run **before** the `POPPABLE` pass —
+it moves each `#ctl-<key>` into a body, and the pop-out pass later inserts that slider's
+`.ctl-row` launcher next to it; do it the other way round and the row is stranded in
+`#filterctl`. The checkbox lives *inside* the summary, so its click handler calls
+`stopPropagation()` or ticking a filter would also fold it. And `syncFilterSec` keeps the
+fold honest for programmatic changes — `syncFilterUI` calls it per filter, so loading a
+preset or switching effect leaves an unticked filter collapsed and greyed rather than
+open onto an empty body.
+
+`#filterctl` survives as an empty hidden node: the panel-wide scans still walk it, and
+removing it would mean touching `buildControls`'s host routing for no gain.
+
 A filter's `params` are ordinary CONTROLS keys (host `"filter"` → `#filterctl`, one
 `group` per filter, contiguous in the array). `refreshControlVisibility()` shows a control
 when the effect declares it **or** a ticked filter owns it, so `Flame rise` follows the
