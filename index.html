@@ -5343,6 +5343,7 @@
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
     return {
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
+      layers: stackOut(),                            // the live stack (null ⇒ one item, omitted)
       cam: readCam(),                                // the global camera (not per effect)
       ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
@@ -5434,6 +5435,14 @@
     }
     if ([1, 1.5, 2, 3, 4].includes(saved.scale)) { cfg.scale = saved.scale; resSel.value = String(saved.scale); }
     if (Number.isInteger(saved.effect) && EFFECTS[saved.effect]) effectSel.value = saved.effect;
+    // The stack, AFTER the states above: installStack thaws item 0 into states[...], so
+    // running it earlier would have the per-effect restore overwrite the item's values.
+    // A blob with no `layers` leaves the single default item alone — which is every blob
+    // written before this feature, and every non-stacked one written after it.
+    if (Array.isArray(saved.layers) && saved.layers.length) {
+      installStack(mergeLayers(saved));
+      effectSel.value = stack[0].fx;
+    }
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);
       curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length) ? saved.curPreset : -1;
@@ -5460,6 +5469,9 @@
   function installShared(d) {
     if (!d) return false;
     initStates(); initBeatStates(); initPulseStates(); initPlenStates(); initExtras();
+    // Same reason as the five above: a shared scene with no `layers` must land as ONE
+    // item, not inherit whatever stack the recipient happened to have built.
+    installStack([newStackItem(0)]);
     applyBlob(d, true);
     curPreset = -1;                  // a shared scene isn't one of your saved presets
     return true;
@@ -5969,6 +5981,12 @@
       beatTune: collectBeatTune(),
       ranges: collectRanges(),
     };
+    // A stacked scene sends its whole stack; a single-effect one sends nothing extra and
+    // the payload is byte-identical to what it has always been. The per-effect maps above
+    // still describe item 0, so an OLD client opening a stacked link renders that item
+    // rather than failing — a graceful degrade, not an error.
+    const st = stackOut();
+    if (st) blob.layers = st;
     const json = JSON.stringify(serializeBlob(blob));   // effect stored as a stable id
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
     // through the effect's landing page when it has one (so social unfurls show
@@ -6063,6 +6081,9 @@
       beatTune: collectBeatTune(),
       ranges: collectRanges(),
       extra: JSON.parse(JSON.stringify(extras[effect])),
+      // Null (and dropped by JSON) whenever the stack holds one item, so a non-stacked
+      // preset is exactly the shape it has always been.
+      layers: stackOut(),
     };
   }
   function defaultPresets() {
@@ -6111,12 +6132,82 @@
     if (saved) for (const id in base) if (plenOk(saved[id])) base[id] = saved[id];
     return base;
   }
+  // ---- the stack in a preset / blob ------------------------------------------
+  // A stack rides as an OPTIONAL `layers` array. When it holds one item nothing is
+  // emitted at all (see stackOut), so every scene saved, shared or backed up before
+  // this feature — and every one saved after it that doesn't stack — is byte-for-byte
+  // what it always was. Backward compatibility by construction rather than by testing,
+  // the same discipline as "?s= decodes forever".
+  // Function declarations, NOT const arrows: mergeLayers runs from applyBlob during
+  // restore(), which is hundreds of lines above this block, so a const would be in the
+  // temporal dead zone and throw. That aborts the rest of startup, and the symptom you
+  // actually see is a later TDZ error on `nextSwitch` inside frame() — this file has
+  // been bitten by the same shape before (see `card` and `beatUi`, both var for it).
+  function blendOk(v) { return v === "add" ? "add" : "max"; }
+  function gainOk(v) { return (typeof v === "number" && isFinite(v)) ? Math.min(1, Math.max(0, v)) : 1; }
+  // One item, with its effect as the stable string id (converted at the storage edge
+  // like every other effect reference). The selected item's values live in the DOM, so
+  // freeze first — a caller that forgets loses the user's most recent edit.
+  function stackItemOut(L) {
+    return { effect: effectId(L.fx), state: L.state, beat: L.beat, pulse: L.pulse,
+      plen: L.plen, blend: L.blend, gain: L.gain, mute: !!L.mute };
+  }
+  function stackOut() {
+    if (stack.length <= 1) return null;          // one item ⇒ emit nothing
+    freezeItem(stack[stackSel]);
+    const out = stack.map(stackItemOut);
+    thawItem(stack[stackSel]);                   // put the selected item back on the DOM
+    return out;
+  }
+  // Rebuild a stack from a preset/blob. Falls back to a single item described by the
+  // legacy top-level fields, which is exactly what a pre-feature preset carries.
+  function mergeLayers(p) {
+    const raw = Array.isArray(p.layers) ? p.layers.slice(0, STACK_MAX) : null;
+    const out = [];
+    for (const r of (raw || [])) {
+      if (!r) continue;
+      const e = typeof r.effect === "number" ? r.effect : effectIndexFromId(r.effect);
+      if (e < 0 || !EFFECTS[e]) continue;        // effect no longer ships: drop, never misfile
+      const L = newStackItem(e);
+      // Each item merges against ITS OWN effect. Merging one item's state against a
+      // different effect's defaults silently drops every key that effect declares.
+      L.state = mergeState(e, r.state);
+      L.beat = mergeBeat(e, r.beat);
+      L.pulse = mergePulse(e, r.pulse);
+      L.plen = mergePlen(e, r.plen);
+      L.blend = blendOk(r.blend);
+      L.gain = gainOk(r.gain);
+      L.mute = !!r.mute;
+      out.push(L);
+    }
+    if (!out.length) {                           // pre-feature preset, or every item dropped
+      const e = EFFECTS[p.effect] ? p.effect : 0;
+      const L = newStackItem(e);
+      L.state = mergeState(e, p.state); L.beat = mergeBeat(e, p.beat);
+      L.pulse = mergePulse(e, p.pulse); L.plen = mergePlen(e, p.plen);
+      out.push(L);
+    }
+    return out;
+  }
+  // Install a rebuilt stack and select its first item. The caller runs setEffect after.
+  // Every item inherits the CURRENT phase clocks rather than the fresh ones newStackItem
+  // seeds: accumulated phase deliberately does not travel with a preset ("the same
+  // configuration, not the same frame"), so applying one must not rewind simT/plasmaTime
+  // and snap every animation back to its start. Items diverge from here as they run.
+  function installStack(items) {
+    const now = phaseSnapshot();
+    for (const L of items) L.phase = Object.assign({}, now);
+    stack = items;
+    stackSel = 0;
+    thawItem(stack[0]);
+  }
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;
     applyingPreset = true;
     // Start the transition BEFORE anything is swapped: it freezes the frame that is
     // still on screen, and picks its mode by comparing the outgoing scene to this one.
-    transBegin(sceneInfo(p.effect, p.extra && p.extra.filters, p.extra && p.extra.palette));
+    transBegin(sceneInfo(p.effect, p.extra && p.extra.filters, p.extra && p.extra.palette,
+      Array.isArray(p.layers) ? p.layers.map(r => effectIndexFromId(r && r.effect)) : null));
     const fromRamp = paletteBase.slice();   // the palette on screen right now — blend away from it
     // Bounds FIRST, matching applyBlob's ordering: loadState below assigns straight to
     // el.value, which the DOM silently clamps to the slider's current min/max — so a
@@ -6129,8 +6220,12 @@
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
     beginCamTween(p.cam);                                   // fly, don't snap (no p.cam ⇒ stay put)
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
-    effectSel.value = p.effect;
-    setEffect(p.effect, false);       // loads the just-installed scene (may snap the palette)
+    // The stack, after applyRanges for the same reason the four maps are: every item's
+    // values are validated against the live bounds. installStack thaws item 0, which
+    // overwrites states[...] for its effect — so it must run before setEffect reads them.
+    installStack(mergeLayers(p));
+    effectSel.value = stack[0].fx;
+    setEffect(stack[0].fx, false);    // loads the just-installed scene (may snap the palette)
     // Blend the palette in from whatever was on screen (fromRamp) rather than snapping.
     // WHERE it blends to depends on whether the palette cycle is running: with cycling on,
     // head for a fresh random palette and keep going — that is the whole point of cycling.
@@ -6382,7 +6477,8 @@
         .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
         .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
                      state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
-                     cam: p.cam, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra }));
+                     cam: p.cam, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
+                     layers: Array.isArray(p.layers) ? p.layers : undefined }));
       if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
       const label = files.length === 1 ? files[0].name : files.length + " files";
       openRestore(parsed, valid, label);   // let the user pick what to restore + how
