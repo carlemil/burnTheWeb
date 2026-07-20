@@ -2091,19 +2091,20 @@
 
 
     // 2) stamp the Sierpiński fractal as fresh heat via the chaos game.
-    // Keep it inside a safe box (top 20% and left/right/bottom 5% excluded) so
-    // it never touches the screen edges. Effect 0 is the 2D triangle; effect 1
-    // is the 3D tetrahedron. Both re-seed the PRNG to SEED each frame, so only
-    // the moving geometry reshapes the fractal — no random shimmer.
-    const xL = fw * 0.05, xR = fw * 0.95;
-    const yT = fh * 0.20, yB = fh * 0.95;
+    // Keep it inside a safe box — a single heat pixel of margin on every side, so
+    // it fills the frame without stamping into the very edge row/column. Effect 0
+    // is the 2D triangle; effect 1 is the 3D tetrahedron. Both re-seed the PRNG to
+    // SEED each frame, so only the moving geometry reshapes the fractal — no
+    // random shimmer.
+    const xL = 1, xR = fw - 1;
+    const yT = 1, yB = fh - 1;
     const n = cfg.points;
     // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
     if (EFFECTS[effect].stamp) {
       EFFECTS[effect].stamp(xL, xR, yT, yB, n);   // point-accumulation effect (e.g. attractors)
     } else if (EFFECTS[effect].fractal2d) {
-      // Sirpinfyer — 2D triangle. Three corners drift on their own sin/cos mix,
+      // Sierpiński — 2D triangle. Three corners drift on their own sin/cos mix,
       // scaled (Size) about the safe-box centre. Layers stacks progressively
       // smaller, fewer-point, differently-seeded copies.
       const hx = w => xL + (w + 1) * (xR - xL) * 0.5;
@@ -3627,7 +3628,7 @@
   // `bakesOwnZoom` = zoom is baked into the shader so display zoom is forced to 1;
   // `onEnter()` = run on switching to this effect.
   const EFFECTS = [
-    { id: "sirpinfyer", name: "Sirpinfyer", subtitle: "Sierpiński triangle · classic fire",
+    { id: "sirpinfyer", name: "Sierpiński", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
       params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire"], fractal2d: true,
       defaults: { palcycle: [8, 8], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
@@ -5917,8 +5918,8 @@
       { n: "Darkness", w: "band", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
       { n: "Layers", w: "fire", t: "− / + stack extra copies of the fractal (up to 6). Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own." },
-      { n: "Drift speed", w: "fire", t: "Sirpinfyer: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
-      { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sirpinfyer's triangle or Tetrafyer's tetrahedron (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
+      { n: "Drift speed", w: "fire", t: "Sierpiński: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
+      { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sierpiński's triangle or Tetrafyer's tetrahedron (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
       { n: "Rotation", w: "tetra", t: "Tetrafyer only — the yaw rate in degrees per second for the scene orbit around the box. It ships drifting between −5 and 5, so the box is never quite still; pinch both thumbs to 0 to stop it." },
       { n: "Box nod", w: "tetra", t: "Tetrafyer only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
       { n: "Nod speed", w: "tetra", t: "Tetrafyer only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },

@@ -20,7 +20,7 @@ An **Effect** selector at the top of the panel's **Effects** section switches be
 that share the same palette, glow and music-reactivity pipeline — but each is an
 independent "scene" that remembers its own settings (see Controls):
 
-- **Sirpinfyer** — the classic 2D Sierpiński-**triangle** fire described below.
+- **Sierpiński** — the classic 2D Sierpiński-**triangle** fire described below.
 - **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** that
   is a rigid body **bouncing inside a rubbery box** in front of a fixed camera.
   Each of the four corners collides with the walls under impulse-based physics
@@ -66,14 +66,14 @@ independent "scene" that remembers its own settings (see Controls):
   algorithm from [Lode's computer graphics tutorial](https://lodev.org/cgtutor/fire.html).
 - **Sierpiński seed** — the fractal is generated with the
   [chaos game](https://en.wikipedia.org/wiki/Sierpi%C5%84ski_triangle): repeatedly
-  jump halfway toward a randomly chosen corner. **Sirpinfyer** uses a 2D triangle
+  jump halfway toward a randomly chosen corner. **Sierpiński** uses a 2D triangle
   (three corners); **Tetrafyer** uses a 3D tetrahedron (four vertices), running the
   walk in 3D and perspective-projecting each point. Each point is stamped into the
   fire buffer as maximum heat, so flames rise out of the fractal.
 - **Moving geometry** — the triangle's corners drift on their own `sin`/`cos`
   mixes driven by a phase that accumulates per simulation tick (not the wall clock,
-  so changing Drift speed eases the motion instead of teleporting it), fit into a safe box (clear of the top 20% and
-  the left/right/bottom 5%) so the fractal never runs off the edges. The
+  so changing Drift speed eases the motion instead of teleporting it), fit into a safe box that fills the frame with a
+  single pixel of margin on every side. The
   tetrahedron instead moves under the rigid-body physics described above,
   ricocheting off the walls of its container.
 - **Deterministic point cloud** — the chaos game uses a seeded PRNG (mulberry32)
@@ -174,8 +174,8 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 
 | Control | What it does |
 | --- | --- |
-| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, selects it, and switches auto-cycle off so it stays on screen; **Delete** removes the selected one. Pick "— unsaved scene —" to tweak without touching a saved preset. Switching to a different **effect** keeps you on the preset you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the preset keeps its **name**, so one called "Sirpinfyer" that you switch to Tunnel stays called Sirpinfyer until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a preset leaves the previous effect on screen to burn away under the new one rather than cutting to black (visible whenever the incoming scene has the Fire or Fade pixel filter on), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the preset's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** saves **one `.json` per preset**, each named after the preset, plus a `_settings.json` holding everything that isn't a preset (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution). One file per preset is the point: to send someone a scene, send them that one file. In Chrome and Edge you pick a folder **once, ever** — it is remembered from then on, and each backup lands in its own dated folder, `BurnTheWeb/<date-time>/`. Shift-click **Backup** to choose a different folder. Other browsers download the files individually with the date in the name. **Restore** takes as many files as you select — a whole backup folder, or the single preset a friend sent you. A dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning — only the ones your selection actually contains) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. Older single-file backups still restore. |
-| **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sirpinfyer, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
+| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, selects it, and switches auto-cycle off so it stays on screen; **Delete** removes the selected one. Pick "— unsaved scene —" to tweak without touching a saved preset. Switching to a different **effect** keeps you on the preset you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the preset keeps its **name**, so one called "Sierpiński" that you switch to Tunnel stays called Sierpiński until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a preset leaves the previous effect on screen to burn away under the new one rather than cutting to black (visible whenever the incoming scene has the Fire or Fade pixel filter on), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the preset's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** saves **one `.json` per preset**, each named after the preset, plus a `_settings.json` holding everything that isn't a preset (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution). One file per preset is the point: to send someone a scene, send them that one file. In Chrome and Edge you pick a folder **once, ever** — it is remembered from then on, and each backup lands in its own dated folder, `BurnTheWeb/<date-time>/`. Shift-click **Backup** to choose a different folder. Other browsers download the files individually with the date in the name. **Restore** takes as many files as you select — a whole backup folder, or the single preset a friend sent you. A dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning — only the ones your selection actually contains) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. Older single-file backups still restore. |
+| **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sierpiński, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of fifteen demoscene-style colour ramps. |
@@ -184,11 +184,11 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
-| **Points** | Number of points stamped per frame (100–8000). *(Sirpinfyer / Tetrafyer / Attractor.)* |
-| **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sirpinfyer / Tetrafyer.)* |
-| **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sirpinfyer / Tetrafyer.)* |
+| **Points** | Number of points stamped per frame (100–8000). *(Sierpiński / Tetrafyer / Attractor.)* |
+| **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sierpiński / Tetrafyer.)* |
+| **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sierpiński / Tetrafyer.)* |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). Belongs to the **Fire filter**, so it is available to any effect that has Fire ticked. |
-| **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sirpinfyer / Tetrafyer.)* |
+| **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sierpiński / Tetrafyer.)* |
 | **Rotation** *(ranged)* | Tetrafyer only — **yaw** rate in degrees/second for the scene orbit around the box. Ships drifting −5…5°/s; set both thumbs to 0 to hold still. |
 | **Box nod** *(ranged)* | Tetrafyer only — how far the view **pitches** up and down in its slow sine, in degrees (default ≈17°). 0 holds the box dead level. This is the drift that used to be hardcoded with no control. |
 | **Nod speed** *(ranged)* | Tetrafyer only — multiplier on how fast that nod swings. 0 freezes it mid-swing; the swing is also scaled by Drift speed, as it always was. |

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A single self-contained demoscene visual published as a GitHub Pages site at
 https://carlemil.github.io/burnTheWeb/. A registry of effects (see below) in three
 families, all sharing one palette + glow + banding + beat-reactive pipeline:
-- **Fire / point-accumulation** — Sirpinfyer (2D Sierpiński triangle), Tetrafyer (3D
+- **Fire / point-accumulation** — Sierpiński (2D Sierpiński triangle, id `sirpinfyer`), Tetrafyer (3D
   bouncing tetrahedron), Attractor (de Jong): stamp points into a rising-fire heat grid.
 - **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton: per-pixel escape/
   iteration fractals.
@@ -148,7 +148,7 @@ correction*: drag Outer radius down toward AnimeJulia-like values and it degrade
 setting, because the curve genuinely is wrong for this family. If Burning Ship ever looks
 washed out, Outer radius is the first thing to check.
 
-- **Point-accumulation effects** (Sirpinfyer, Tetrafyer, Attractor) run the fire sim and
+- **Point-accumulation effects** (Sierpiński, Tetrafyer, Attractor) run the fire sim and
   stamp points into the heat grid via `plot()`. `simulate()` dispatches to the
   descriptor's **`stamp(box)`** hook if present (Attractor), else the `fractal2d` (2D
   chaos game) / tetra branches. Adding one = a descriptor with a `stamp` hook, no `draw`.
@@ -539,7 +539,7 @@ all three ways round, so the history is worth keeping.
 
 It first **deselected** (dropped to "— unsaved scene —"), because the delegated autosave
 folded the switch into the selected preset and a preset carries its own effect: pick
-"Sirpinfyer", switch to Tunnel, and that preset became a Tunnel scene under its old name.
+"Sierpiński", switch to Tunnel, and that preset became a Tunnel scene under its old name.
 Suppressing autosave for just that one event would not have helped — the preset kept its
 old effect only until the next slider drag wrote the new one in. Then it **auto-selected**
 a preset belonging to the new effect, which kept you on a named scene but still moved you
@@ -654,7 +654,7 @@ because any later slider drag *did* autosave and retroactively captured the chip
   would silently drop the user turning it *off*.
 - **Share URL routing.** `OG_PAGES` maps an effect **id** → its static unfurl
   landing page `s/<n>/` (a numbered dir whose redirect forwards `?s=` to the app,
-  so social unfurls show that effect's `og/` image). Only `sirpinfyer`/`tetrafyer`/
+  so social unfurls show that effect's `og/` image). Only `Sierpiński`/`tetrafyer`/
   `animejulia`/`plasma` have one; `shareUrl()` links the app root for every other
   effect, because `s/<n>/` would 404 and a 404 forwards nothing. (Each landing page is
   `location.replace("../../" + location.search + location.hash)` — the *whole* query
@@ -900,9 +900,10 @@ wired via `bindRange(id, valId, fmt, apply, durScale, beat)` and registered in
   `morphStep` settles via `setPalette(morphTargetIndex)`) and a continuing cycle when on.
   The frame loop runs `morphStep` when `morphing || morphOnce`; a manual palette pick or a
   plain scene load clears `morphOnce`.
-- The Sierpiński chaos game is stamped inside a **safe box** (top 20% and
-  left/right/bottom 5% excluded) via `plot()`; Size/Rotation scale & spin the
-  corners about the box centre and can push points past those bounds.
+- The Sierpiński chaos game is stamped inside a **safe box** — the whole heat grid
+  less a 1px margin on every side — via `plot()`; Size/Rotation scale & spin the
+  corners about the box centre and can push points past those bounds. The box is
+  shared by all three point effects (Sierpiński, Tetrafyer, Attractor).
 - `cfg.scale` changes need a `resize()` to reallocate buffers.
 - **Reset** restores the current effect's `state`/`beat`/`pulse`/`plen`/`extra` **and the
   shipped slider bounds** (`RNG_ORIG`, over every key in `presetState(effect)` — filter
@@ -961,7 +962,7 @@ screenshot** as well.
 **Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
 `requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes
 *shader* effects bit-reproducible — Plasma hashes identically across runs and builds, so
-it works as a before/after gate. The **point effects do not**: Sirpinfyer/Tetrafyer hash
+it works as a before/after gate. The **point effects do not**: Sierpiński/Tetrafyer hash
 differently between two runs of the *same* file, so a fire-path pixel diff is noise. Gate
 those on logic instead (e.g. compare tick sequences in Node) rather than pixels. Also note
 `--virtual-time-budget` stops the page after a dozen-odd frames, so any timing comparison
