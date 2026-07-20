@@ -695,6 +695,21 @@ fast GPU must not tank a phone), audio on/off (needs a user gesture), the `randS
 orbit re-roll, the `Date.now()` chaos seed, and every accumulated phase (`simT`,
 `spinAngle`, `*Time`). A shared scene is the same *configuration*, not the same *frame*.
 
+**The first-visit preset library** is built once, when `presets.length === 0` (no saved
+blob). It is `defaultPresets()` — one per effect — with **`DEFAULT_SCENE` prepended and
+applied** so a brand-new visitor opens on the shipped scene (`JuliaBgTet`, a three-layer
+stack) rather than bare Sierpiński. `DEFAULT_SCENE` is a real exported preset stored in the
+**wire format** (effect *ids*, pruned to its deltas — `applyPreset` re-merges every map
+onto the effect defaults, so omitted keys cost nothing; only beat/pulse/plen are pruned,
+since their defaults are universal, while state maps are kept whole so nothing can silently
+drift). `defaultScenePreset()` runs it through `deserializeBlob` to numeric indices and
+returns null if it names a retired effect, in which case the visit falls back to the
+per-effect defaults. The fresh visit then `persist()`s once, so a reload rebuilds the scene
+from saved live state (no re-morph) instead of re-applying. A **returning** visitor never
+enters this branch — their `presets` come from `restore()` — so nothing here touches an
+existing library. To change the opening scene, export a preset from the app and replace
+`DEFAULT_SCENE`.
+
 **Creating a preset and restoring a backup both stop the cycler** (`stopCycling()`).
 Auto-cycle is on by default, so `createPreset` selected the new preset correctly and then
 the very next TTL tick swapped it straight back out — which reads as "my new preset wasn't
