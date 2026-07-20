@@ -3150,28 +3150,39 @@
     // Keep the repeated-subtraction form, not `acc -= ticks*step`: 1/60 and 1/120
     // aren't exact binary fractions, and the two round differently enough to gain
     // or lose a tick over a few seconds — which shifts the fire's phase.
-    const fx = EFFECTS[effect];
     const step = 1 / cfg.burn;
     let ticks = 0;
     while (acc >= step && ticks < 4) { acc -= step; ticks++; }
-    if (fx.draw) {
-      // A shader effect overwrites the whole heat buffer, so with a feedback filter
-      // ticked we advance the retained heat first and then MAX-composite this frame's
-      // output over it. On the CPU the mirror still writes every cell unconditionally,
-      // so we hand it the *other* buffer (a pointer swap, not a per-frame memcpy) and
-      // merge afterwards. With no feedback filter none of this runs and the clean-slate
-      // path is untouched.
-      const retain = hasFeedback();
-      if (retain) {
-        for (let i = 0; i < ticks; i++) heatFeedbackTick();
-        if (!useGL) { const keep = fireKeep; fireKeep = fire; fire = keep; }
+    // Every stack item draws into the one heat buffer, in list order. A muted item is
+    // skipped entirely — it must cost nothing and leave nothing behind.
+    for (const L of stack) {
+      if (L.mute) continue;
+      installStackItem(L);              // this item's animated values into the globals
+      const fx = EFFECTS[L.fx];
+      if (fx.draw) {
+        // A shader effect overwrites the whole heat buffer, so with a feedback filter
+        // ticked we advance the retained heat first and then MAX-composite this frame's
+        // output over it. On the CPU the mirror still writes every cell unconditionally,
+        // so we hand it the *other* buffer (a pointer swap, not a per-frame memcpy) and
+        // merge afterwards. With no feedback filter none of this runs and the clean-slate
+        // path is untouched.
+        const retain = hasFeedback();
+        if (retain) {
+          for (let i = 0; i < ticks; i++) heatFeedbackTick();
+          if (!useGL) { const keep = fireKeep; fireKeep = fire; fire = keep; }
+        }
+        fx.draw(dt);                    // shader effect: writes the heat tex directly from its seed
+        if (retain && !useGL)
+          for (let i = 0; i < fire.length; i++) if (fireKeep[i] > fire[i]) fire[i] = fireKeep[i];
+      } else {
+        for (let i = 0; i < ticks; i++) simulate(now);
       }
-      fx.draw(dt);                    // shader effect: writes the heat tex directly from its seed
-      if (retain && !useGL)
-        for (let i = 0; i < fire.length; i++) if (fireKeep[i] > fire[i]) fire[i] = fireKeep[i];
-    } else {
-      for (let i = 0; i < ticks; i++) simulate(now);
     }
+    // Epilogue install: everything after the loop — glRender, render(), cardDraw —
+    // reads these globals outside any item's turn, so leave them holding the SELECTED
+    // item's values rather than whatever the last item happened to set. Without this
+    // the Cardioid debug panel silently tracks the wrong effect.
+    installStackItem(stack[stackSel]);
     if (useGL) glRender();
     else render();
     creditDraw();                      // above the finished image — effects and filters both
@@ -3835,6 +3846,46 @@
   // value wanders erratically inside it — a random target reached over a random
   // duration, eased, repeating. Collapse the thumbs (lo==hi) to pin a constant
   // value, so a ranged slider still works as an ordinary one.
+  // ---- the effect STACK ------------------------------------------------------
+  // A scene is an ordered list of effects composited into the one heat buffer, not a
+  // single effect. Deliberately NOT called "layers" anywhere in the code: `layers` is
+  // already a control key (layerCount / LAYER_MAX — the count of progressively smaller
+  // copies of the *fractal*), and it is persisted in every states[e]. "Layer" is the
+  // user-facing word in the menu and the README only.
+  //
+  // An item carries only what belongs to one effect. The palette, the filter chain,
+  // the camera, beat tuning and slider ranges are scene-level and live where they
+  // always did — see snapshotScene.
+  //
+  // `state`/`beat`/`pulse`/`plen` are frozen copies, and are NULL while the item is
+  // selected: the selected item's live store is the DOM, exactly as it has always
+  // been. Exactly one of "selected" / "holds numbers" is true for an item, ever.
+  const STACK_MAX = 4;
+  function newStackItem(fx) {
+    return { fx, state: null, beat: null, pulse: null, plen: null,
+      blend: "max", gain: 1, mute: false, anim: {}, phase: {} };
+  }
+  let stack = [newStackItem(0)], stackSel = 0;
+  const selItem = () => stack[stackSel];
+  // The four accessors that make the "DOM is the selected item's store" rule work.
+  // With a one-item stack they all short-circuit to today's singletons on every call,
+  // which is what makes the stack refactor inert rather than merely tested.
+  function bandOf(L, id) {
+    if (L === stack[stackSel]) { const a = anims[id]; return a ? [+a.lo.value, +a.hi.value] : null; }
+    const v = L.state && L.state[id];
+    return Array.isArray(v) ? v : null;
+  }
+  const beatOf = (L, id) => L === stack[stackSel] ? beatReact[id] : (L.beat && L.beat[id]);
+  const shapeOf = (L, id) => L === stack[stackSel] ? pulseShape[id] : (L.pulse && L.pulse[id]);
+  const plenOf = (L, id) => L === stack[stackSel] ? pulseLen[id] : (L.plen && L.plen[id]);
+  // The selected item's animation phase IS the singleton animPhase record — not a copy
+  // seeded from it. Seeding lazily from the DOM instead would diverge on the first
+  // frame for any slider whose thumbs moved between wiring and the first tick (restore,
+  // loadState), because the original code seeds `val` once at bind time and never again.
+  function itemAnim(L, id) {
+    if (L === stack[stackSel]) return animPhase[id];
+    return L.anim[id] || (L.anim[id] = newPhase(bandOf(L, id) ? bandOf(L, id)[0] : 0));
+  }
   const anims = {};
   // Mutable animation phase, split out of the anims entry: `val` is where the erratic
   // drift currently sits, `out` is the value last handed to apply() (they differ while
@@ -4025,11 +4076,40 @@
     st.out = st.val;
     if (doApply) a.apply(st.val);
   }
+  // The loop is KEY-major, not item-major, and that ordering is load-bearing: every
+  // fresh drift segment draws twice from Math.random, so stepping key-by-key keeps a
+  // one-item stack drawing in exactly the sequence the un-stacked code did, and the
+  // rendered frames stay bit-identical. Item-major would be equally correct and would
+  // silently change every scene.
+  // Scene keys (palette, banding, camera, zoom, filter params) step once from the DOM
+  // and apply immediately — frame() reads cfg.burn, cfg.decay, zoom and bloomAmt
+  // between here and the draw. Layer keys are computed only; installStackItem() puts
+  // each item's values into the globals just before that item draws.
   function updateAnims(now, dt) {
     for (const id in anims) {
-      const a = anims[id], st = animPhase[id];
-      const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
-      stepAnim(a, st, mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true);
+      const a = anims[id];
+      if (a.scene) {
+        const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
+        stepAnim(a, animPhase[id], mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true);
+        continue;
+      }
+      for (const L of stack) {
+        const b = bandOf(L, id);
+        if (!b) continue;                 // this item's effect doesn't carry the key
+        stepAnim(a, itemAnim(L, id), Math.min(b[0], b[1]), Math.max(b[0], b[1]),
+          beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false);
+      }
+    }
+  }
+  // Push one stack item's animated values into the module-level globals the effects
+  // read (plasmaSpeed, cfg.points, juliaOuterR, …). Scene keys are skipped — they were
+  // applied in updateAnims and must not be rewritten per item.
+  function installStackItem(L) {
+    for (const id in anims) {
+      const a = anims[id];
+      if (a.scene) continue;
+      const st = L === stack[stackSel] ? animPhase[id] : L.anim[id];
+      if (st) a.apply(st.out);
     }
   }
 
@@ -5198,6 +5278,11 @@
   function setEffect(i, save = true) {
     if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
+    // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
+    // editor-side use of it (shownKeys, refreshBreakout, resetControl, ctlOwner, the
+    // cardioid button, OG_PAGES) keeps its exact meaning; only the render path reads
+    // the stack. Assigned in this one place, so the two cannot drift apart.
+    stack[stackSel].fx = i;
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
     juliaPower = 2;                   // Multibrot's draw overrides this every frame
