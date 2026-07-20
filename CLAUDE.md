@@ -561,6 +561,119 @@ effect and not in a preset). `frame()` routes shader effects (those with a `draw
 hook) past the fire sim; `simulate()` stamps the 2D chaos game when `fractal2d`, else
 the 3D tetra.
 
+### The effect stack (layers)
+A scene is an **ordered list of up to 4 effects** composited into the one heat buffer,
+not a single effect. `stack` is the list, `stackSel` the selected index, `STACK_MAX` = 4.
+
+**Never call it `layers` in code.** `layers` is already a CONTROLS key (`layerCount` /
+`LAYER_MAX` — the count of progressively smaller copies of the *fractal*) and it is
+persisted in every `states[e]`. "Layer" is the user-facing word in the menu and README
+only. `stackSel`, not `slot`: `slot` is already a local in both ping-pong loops.
+
+**`effect` survives as the SELECTED item's effect**, assigned only in `setEffect`. That
+is what keeps this feature small — every editor-side use (`shownKeys`,
+`refreshControlVisibility`, `refreshBreakout`, `resetControl`, `ctlOwner`, the cardioid
+button, `OG_PAGES`) keeps its exact meaning and needed no edit. Only the render path
+reads `stack`. If `EFFECTS[effect]` ever reappears in a render path it will render the
+selected item's descriptor for *every* item — invisible whenever two items share an
+effect.
+
+**The DOM is the store for the selected item; every other item holds plain numbers.**
+`loadState` has always written the DOM and dispatched synthetic `input` rather than
+calling the CONTROLS `apply` functions, so this adopts the existing arrangement instead
+of fighting it. `bandOf`/`beatOf`/`shapeOf`/`plenOf` are one branch each and
+short-circuit to the existing singletons whenever the stack holds one item — which is
+what made the refactor inert *by construction* rather than by testing.
+`freezeItem`/`thawItem` move an item between the two representations and **null the
+record on thaw**: exactly one of "selected" / "holds numbers" is true for an item, ever.
+A path that reads a frozen record without freezing first silently loses the user's last
+edit — the failure class the `chipEdited()` history documents.
+
+**Animation is split scene vs layer.** `bindRange` tags each `anims` entry `scene` from
+CONTROLS (`host !== "fx" || group === "camera"`) — the palette, banding, the camera,
+display zoom and every filter param. Scene keys step once per frame from the DOM and
+apply immediately, because `frame()` reads `cfg.burn`, `cfg.decay`, `zoom` and
+`bloomAmt` between `updateAnims` and the draw. Layer keys are stepped once per item and
+only *computed*; `installStackItem(L)` pushes that item's values into the globals just
+before it draws. That split is what shrank "N animation engines" to "N copies of the
+handful of keys an effect actually owns".
+
+`updateAnims` is **key-major, not item-major**, and that ordering is load-bearing: each
+fresh drift segment draws twice from `Math.random`, so stepping key-by-key keeps a
+one-item stack drawing in exactly the sequence the un-stacked code did. Item-major is
+equally correct and would silently change every existing scene.
+
+An **epilogue `installStackItem(stack[stackSel])`** runs after the loop, because
+`glRender`, `render()` and `cardDraw` read these globals outside any item's turn.
+Without it the Cardioid debug panel tracks whichever item drew last.
+
+Beats need no per-item work: `beatReact`/`pulseShape`/`pulseLen` stay singletons for the
+selected item, and because the stack loop lives *inside* `updateAnims`, every item sees
+the same latched `audio.beatNow[]`. **`clearBeats()` must stay after the whole loop** —
+hoisting the loop into `frame()` around `updateAnims` leaves items 2–4 never pulsing,
+which reads as flaky beat detection.
+
+**Phase clocks are per item, via `PHASE_VARS`** — a name/getter/setter table over all 16
+accumulators (`simT`, `spinAngle`, `nodPhase`, `juliaOuter/Inner`, `plasmaTime`, …),
+installed before an item draws and captured after. **Add a line when you add an effect
+that accumulates a clock**, or two items running it share one clock and render as a
+single slightly brighter copy — no error, no probe, the most easily missed thing here.
+A table rather than renaming the 16 into one object because `juliaprobe` slices the real
+`juliaOuter`/`juliaInner` source out of this file by marker.
+`installStack` seeds every item's phase from the **current** clocks, not the fresh ones
+`newStackItem` makes: accumulated phase deliberately does not travel with a preset, so
+applying one must not rewind `simT` and snap every animation back to its start.
+
+**Compositing.** Each item renders into a scratch heat texture (`glTex.layer`) and is
+merged into the shared buffer by `glMergeLayer(blend, gain)` — `FS_MERGE`, one pass.
+`glShaderDraw` lost its retain branch and always overwrites the scratch with blending
+off (its simpler pre-existing path, so no effect shader changed); that alone fixed two
+shader effects in one frame destroying each other when neither had a feedback filter
+forcing MAX on. **Gain must be a multiply inside the shader, not a blend factor**:
+`blendEquation(MAX)` ignores `blendFunc`, so gain via blend state works for Add and is
+silently dropped for Max. That asymmetry is the whole reason the pass exists.
+`glMergeLayer` restores BLEND **and** `blendEquation` **and** `blendFunc` — Add is the
+only thing in the file that touches `blendFunc`, so nothing else would put it back, and
+`glPostChain`/`postPass` assume blending is off.
+
+**Point items own the tick loop.** `simulate()` propagates *and* stamps per tick, ticks
+run ~2× per frame at the shipped burn rate, and the two interleave. Advancing the heat
+once per frame — which is what the design originally called for — would visibly change
+every point effect whenever `ticks > 1`. So: one `beginHeatTick()` per tick, then every
+point item stamps and blits into it (`glPtCount` reset per item so each carries its own
+blend/gain), `curHeat = pendingDst` once at the end of the tick; shader items draw once
+per frame afterwards. `stampTick(L, now)` is the reusable stamp half, `simulate(now)`
+the thin wrapper the Canvas2D path still uses. With no point items and no retention,
+`glClearHeatCurrent()` clears without flipping — **not** `glBeginHeat`'s no-chain branch,
+which clears the *other* buffer and would flip the parity `heatprobe` pins.
+
+**The Canvas2D fallback renders ONE item** (the first unmuted). CPU mirrors assign
+rather than MAX, so a second would erase the first, and each is a full per-pixel JS loop
+on exactly the machines with no GPU.
+
+**`stackZoom()`** replaces the two `bakesOwnZoom` reads: display zoom is scene-level and
+applied once to the composite, so *any* item that bakes its own forces it to 1. Visible
+and intended consequence — adding a shader item to a point scene un-zooms the point item.
+
+**Persistence: an optional `layers` array.** When the stack holds one item **nothing is
+emitted at all** (`stackOut` returns null), so every scene saved, shared or backed up
+before the feature — and every non-stacked one after it — is byte-for-byte unchanged.
+Backward compatibility by construction, the same discipline as "`?s=` decodes forever".
+`mergeLayers` is the `mergeExtra` of this feature: truncates to `STACK_MAX`, drops items
+whose effect id no longer ships rather than misfiling them, clamps gain, defaults blend,
+and runs every per-item map through its own `merge*` **against that item's own effect**
+(merging one item's state against another effect's defaults silently drops every key
+that effect declares). No `layers` key ⇒ one item from the legacy top-level fields.
+`installShared` re-seeds a single-item stack for the same reason it re-seeds the five
+maps: otherwise a shared non-stacked scene inherits the recipient's stack.
+**`blendOk`/`gainOk` are function declarations, not const arrows** — `mergeLayers` runs
+from `applyBlob` during `restore()`, hundreds of lines above where they sit, so a const
+is in the temporal dead zone; that aborts startup and the error you actually *see* is a
+later TDZ on `nextSwitch` inside `frame()`. Same shape as `card` and `beatUi`.
+
+`?stack=plasma,tunnel` builds a stack at startup by effect id — a dev hook in the spirit
+of `?debug=1`, never persisted.
+
 ### Presets & persistence
 A **preset** is a named full-scene snapshot, built by `snapshotScene()`:
 `{name, effect, state, beat, pulse, plen, cam, beatTune, ranges, extra}`.
@@ -1027,6 +1140,28 @@ software-rendered, so give `--virtual-time-budget` several seconds for anything 
 the fire to build up. `tools/heatprobe.js` still earns its keep — it pins ping-pong
 *parity*, which a screenshot cannot see — but "a headless browser has no usable WebGL" is
 no longer a reason to skip driving the real renderer.
+
+**The pixel gate is BISTABLE — treat a single mismatch as inconclusive.** Measured over
+~25 runs while building the effect stack: a Plasma scene with no filters returns the same
+hash roughly 9 times in 10, and a Plasma + Fire scene only about 3 times in 4. The
+alternates are *stable values*, not noise (the same second hash keeps recurring), which
+points at a startup race rather than floating-point drift, and both files under test show
+it — so it is a property of the harness, not of any change. **Always re-run a mismatch
+2–3 times before believing it.** A false "regression" here cost real time twice, and once
+sent a correct change looking for a bug that was not there. What the gate is genuinely
+good for is a *repeated* mismatch, which is a real signal: that is how the preset-apply
+phase rewind was caught.
+
+Harness requirements, both learned by getting them wrong:
+- **Inject before the app**, into `<head>`. Stubbing rAF after the app has initialised
+  lets real frames advance `simT` and the palette morph for however long startup took,
+  and two runs of the same file then differ every time.
+- **Do not clear the rAF queue** before driving. `frame()` re-arms itself, so clearing
+  leaves nothing to call and *every* configuration hashes to the untouched startup
+  frame — which looks like a stable, meaningful result and is not one.
+- Stub `Math.random` too (`updateAnims` draws drift targets from it), and read pixels
+  with `readPixels` in the **same task** as the last frame — WebGL clears the drawing
+  buffer once the page composites.
 
 **Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
 `requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes

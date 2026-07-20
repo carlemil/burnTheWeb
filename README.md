@@ -16,9 +16,10 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 
 ## Effects
 
-An **Effect** selector at the top of the panel's **Effects** section switches between fifteen visuals
+An **Effect** selector in the panel's **Effects** section switches between fifteen visuals
 that share the same palette, glow and music-reactivity pipeline — but each is an
-independent "scene" that remembers its own settings (see Controls):
+independent "scene" that remembers its own settings (see Controls). You can also **stack
+up to four of them at once** — see Layers below:
 
 - **Sierpiński** — the classic 2D Sierpiński-**triangle** fire described below.
 - **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** that
@@ -255,6 +256,40 @@ min–max range in seconds — each switch draws a length from it. Collapse both
 One thing to know: during a transition the outgoing scene is a frozen frame, not still
 running. Two effects can't be rendered at once here. At well under a second it reads
 the way a video mixer's dissolve does.
+
+## Layers
+
+A scene can stack **up to four effects at once**, composited into the same fire buffer.
+The **Layers** list sits at the top of the **Effects** section, one row per layer, and
+they combine in list order.
+
+Click a row to select it — the **Effect** chooser and every slider below then edit *that*
+layer, so each one keeps its own settings, its own drifting sliders and its own beat
+reactions. **+ Add layer** adds another (it starts as a copy of the selected layer's
+effect; change it with the Effect chooser). Each row also carries:
+
+- **▲ ▼** — move the layer up or down the order.
+- **●** — mute it. A muted layer costs nothing and leaves nothing behind, which makes it
+  the quickest way to see what a layer is actually contributing.
+- **MAX / ADD** — how it combines with the layers below. **Max** keeps the brighter of
+  the two, which is how the fire buffer has always worked and is the safe default.
+  **Add** sums them, which is brighter and more saturated but clips to white where
+  layers overlap — turn the layer's strength down to taste.
+- The **strength** slider — how much of the layer reaches the composite, from nothing to
+  full.
+- **✕** — remove it.
+
+Layers are part of the scene: they save into presets, ride along in backups, and travel
+in share links. A scene with a single layer is stored exactly the way it always was, so
+every preset, backup and link made before layers existed still opens unchanged.
+
+Two things worth knowing. Palette, filters, camera, beat tuning and the render resolution
+are **scene-wide**, not per layer — the filters run once on the finished composite. And
+because display **Zoom** is applied once to that composite, adding a shader effect (which
+does its own optical zoom) to a point-based scene will stop the point effect zooming.
+
+On machines without WebGL the Canvas2D fallback renders the first unmuted layer only:
+stacking is a GPU feature, and each extra layer there would be a full software render.
 
 ## Filters
 
