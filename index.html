@@ -2215,7 +2215,7 @@
     // A2) the post-FX chain, in registry order, ping-ponging between post[0]/[1]
     const postSrc = glPostChain();
     // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
-    const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
+    const z = stackZoom();
     // While a transition runs, zoom lands in a scratch buffer and the transition pass
     // below produces glTex.scene instead — so the blend happens BEFORE the glow, and
     // the bloom follows the blend rather than a frozen glow fighting a live one.
@@ -3130,7 +3130,7 @@
       }
       g.restore();
     }
-    const z = EFFECTS[effect].bakesOwnZoom ? 1 : zoom;
+    const z = stackZoom();
     ctx.save();
     if (z !== 1) {
       ctx.fillStyle = "#000";
@@ -3239,8 +3239,10 @@
           beginHeatTick();                       // one propagation per tick, shared
           for (const L of ptItems) {
             installStackItem(L);
+            installPhase(L);                     // this item's own drift/spin clocks
             glPtCount = 0;                       // a fresh point list per item...
             stampTick(L, now);
+            capturePhase(L);
             glBlitPoints(L.blend, L.gain);       // ...so each blits with its own blend/gain
           }
           curHeat = pendingDst;                  // close the tick once, after every item
@@ -3256,7 +3258,9 @@
       // SHADER items draw once per frame, each into the scratch buffer, then composite.
       for (const L of shItems) {
         installStackItem(L);
-        EFFECTS[L.fx].draw(dt);
+        installPhase(L);
+        EFFECTS[L.fx].draw(dt);                  // *Seed(dt) advances this item's clocks
+        capturePhase(L);
         glMergeLayer(L.blend, L.gain);
       }
     }
@@ -3265,6 +3269,7 @@
     // item's values rather than whatever the last item happened to set. Without this
     // the Cardioid debug panel silently tracks the wrong effect.
     installStackItem(stack[stackSel]);
+    installPhase(stack[stackSel]);
     if (useGL) glRender();
     else render();
     creditDraw();                      // above the finished image — effects and filters both
@@ -3928,6 +3933,43 @@
   // value wanders erratically inside it — a random target reached over a random
   // duration, eased, repeating. Collapse the thumbs (lo==hi) to pin a constant
   // value, so a ranged slider still works as an ordinary one.
+  // Every accumulated phase clock in the app, as name + getter + setter. These are
+  // `let` bindings scattered through the effect sections, so a generic loop cannot
+  // reach them by name — hence the table. It is the authoritative list: ADD A LINE
+  // HERE when you add an effect that accumulates a clock, or two stack items running
+  // that effect will share one clock and render as a single slightly brighter copy.
+  // That failure has no error and no probe; it is the most easily missed thing in the
+  // whole stack feature.
+  // (Deliberately a table rather than renaming all sixteen into one `phase` object:
+  // juliaprobe slices the real juliaOuter/juliaInner source out of this file by marker,
+  // and a rename would break that slice for no gain.)
+  const PHASE_VARS = [
+    ["simT", () => simT, v => simT = v],
+    ["spinAngle", () => spinAngle, v => spinAngle = v],
+    ["nodPhase", () => nodPhase, v => nodPhase = v],
+    ["juliaOuter", () => juliaOuter, v => juliaOuter = v],
+    ["juliaInner", () => juliaInner, v => juliaInner = v],
+    ["plasmaTime", () => plasmaTime, v => plasmaTime = v],
+    ["tunTime", () => tunTime, v => tunTime = v],
+    ["tunTwistPhase", () => tunTwistPhase, v => tunTwistPhase = v],
+    ["mbTime", () => mbTime, v => mbTime = v],
+    ["kRotPhase", () => kRotPhase, v => kRotPhase = v],
+    ["kNoiseTime", () => kNoiseTime, v => kNoiseTime = v],
+    ["rzAngle", () => rzAngle, v => rzAngle = v],
+    ["rzTime", () => rzTime, v => rzTime = v],
+    ["xorTime", () => xorTime, v => xorTime = v],
+    ["moTime", () => moTime, v => moTime = v],
+    ["nwPhase", () => nwPhase, v => nwPhase = v],
+    ["cbTime", () => cbTime, v => cbTime = v],
+  ];
+  const phaseSnapshot = () => { const o = {}; for (const p of PHASE_VARS) o[p[0]] = p[1](); return o; };
+  // Taken once, here, while every clock still holds its declared starting value — a new
+  // stack item starts from these rather than from whatever the previously drawn item
+  // left in the globals.
+  const PHASE_INIT = phaseSnapshot();
+  function installPhase(L) { for (const p of PHASE_VARS) if (p[0] in L.phase) p[2](L.phase[p[0]]); }
+  function capturePhase(L) { for (const p of PHASE_VARS) L.phase[p[0]] = p[1](); }
+
   // ---- the effect STACK ------------------------------------------------------
   // A scene is an ordered list of effects composited into the one heat buffer, not a
   // single effect. Deliberately NOT called "layers" anywhere in the code: `layers` is
@@ -3945,10 +3987,17 @@
   const STACK_MAX = 4;
   function newStackItem(fx) {
     return { fx, state: null, beat: null, pulse: null, plen: null,
-      blend: "max", gain: 1, mute: false, anim: {}, phase: {} };
+      blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   let stack = [newStackItem(0)], stackSel = 0;
   const selItem = () => stack[stackSel];
+  // Display zoom is scene-level and applied ONCE, to the composite. An effect that
+  // bakes zoom into its own shader has already consumed it, so applying it again would
+  // zoom that item twice. "Any", not "all": an unzoomed point item is a smaller lie
+  // than a doubly-zoomed fractal. A one-item stack reduces to the original rule exactly.
+  // Visible consequence, and intended: adding a shader item to a point scene un-zooms
+  // the point item.
+  const stackZoom = () => stack.some(L => !L.mute && EFFECTS[L.fx].bakesOwnZoom) ? 1 : zoom;
   // The four accessors that make the "DOM is the selected item's store" rule work.
   // With a one-item stack they all short-circuit to today's singletons on every call,
   // which is what makes the stack refactor inert rather than merely tested.
@@ -4776,11 +4825,14 @@
   }
   // A scene summary for fits(): dense = fills the frame (shader effects) vs a sparse
   // point cloud; retains = has a feedback filter, so its buffer survives frame to frame.
-  function sceneInfo(e, filters, palette) {
+  // `fxList` (optional) describes a whole stack: the scene is dense if ANY live item
+  // fills the frame, since that is what a crossfade would be blending against. Omitted
+  // ⇒ the single effect `e`, which is what a pre-stack preset carries.
+  function sceneInfo(e, filters, palette, fxList) {
     const fx = EFFECTS[e];
     const f = filtersOk(filters) || new Set(presetFilters(e));
     return {
-      dense: !!fx.draw,
+      dense: fxList && fxList.length ? fxList.some(i => !!(EFFECTS[i] && EFFECTS[i].draw)) : !!fx.draw,
       retains: FILTERS.some(x => x.stage === "feedback" && f.has(x.id)),
       palette: +palette || 0,
     };
@@ -4810,7 +4862,9 @@
   function transBegin(to) {
     const len = transLen();
     if (len.b <= 0) return;                  // slider pinned at 0 ⇒ transitions off
-    const from = sceneInfo(effect, extras[effect] && extras[effect].filters, +paletteSel.value);
+    // The outgoing side is the live stack, not just the selected item.
+    const from = sceneInfo(effect, extras[effect] && extras[effect].filters, +paletteSel.value,
+      stack.filter(L => !L.mute).map(L => L.fx));
     const pick = pickTransition(from, to);
     const scale = (len.a + Math.random() * (len.b - len.a)) / TRANS_DUR.slow;
     trans.on = true; trans.t = 0; trans.id = pick.id;
@@ -4920,6 +4974,81 @@
     }
     suppressPersist = false;
   }
+
+  // ---- stack item lifecycle --------------------------------------------------
+  // Freezing copies the DOM (and the singleton chip/pulse/plen maps, and the live
+  // animation phase) into the item's own record; thawing does the reverse and NULLS the
+  // record, so exactly one of "selected" / "holds numbers" is true for an item. Any path
+  // that reads a frozen record without freezing first silently loses the user's last
+  // edit — the failure class the chipEdited() history in CLAUDE.md documents.
+  function freezeItem(L) {
+    const st = states[L.fx] || {};
+    L.state = {}; L.beat = {}; L.pulse = {}; L.plen = {};
+    for (const id in st) {
+      L.state[id] = Array.isArray(st[id])
+        ? [+el(id + "-lo").value, +el(id + "-hi").value]
+        : +el(id).value;
+    }
+    for (const id in beatReact) L.beat[id] = Object.assign({}, beatReact[id]);
+    for (const id in pulseShape) L.pulse[id] = pulseShape[id];
+    for (const id in pulseLen) L.plen[id] = pulseLen[id];
+    L.anim = {};
+    for (const id in animPhase) L.anim[id] = Object.assign({}, animPhase[id]);
+    capturePhase(L);
+  }
+  function thawItem(L) {
+    if (L.state) states[L.fx] = mergeState(L.fx, L.state);
+    if (L.beat) beatStates[L.fx] = mergeBeat(L.fx, L.beat);
+    if (L.pulse) pulseStates[L.fx] = mergePulse(L.fx, L.pulse);
+    if (L.plen) plenStates[L.fx] = mergePlen(L.fx, L.plen);
+    // The selected item's phase records ARE the singletons from here on.
+    for (const id in L.anim) if (animPhase[id]) Object.assign(animPhase[id], L.anim[id]);
+    installPhase(L);
+    L.state = L.beat = L.pulse = L.plen = null;
+    L.anim = {};
+  }
+  function selectStack(j) {
+    if (j === stackSel || !stack[j]) return;
+    freezeItem(stack[stackSel]);
+    stackSel = j;
+    thawItem(stack[j]);
+    setEffect(stack[j].fx, false);   // docks the pop-outs and reloads the five maps
+    syncStackUI();
+  }
+  function addStackItem(fx) {
+    if (stack.length >= STACK_MAX) return;
+    freezeItem(stack[stackSel]);
+    const L = newStackItem(fx === undefined ? effect : fx);
+    // A fresh item is seeded from its effect's shipped defaults, not from the item that
+    // happened to be selected — mergeState against its OWN effect, or every key that
+    // effect declares would be dropped.
+    L.state = mergeState(L.fx, presetState(L.fx));
+    L.beat = mergeBeat(L.fx, presetBeat(L.fx));
+    L.pulse = mergePulse(L.fx, presetPulse(L.fx));
+    L.plen = mergePlen(L.fx, presetPlen(L.fx));
+    stack.push(L);
+    stackSel = stack.length - 1;
+    thawItem(L);
+    setEffect(L.fx, false);
+    syncStackUI();
+  }
+  function removeStackItem(j) {
+    if (stack.length <= 1 || !stack[j]) return;
+    stack.splice(j, 1);
+    if (stackSel >= stack.length) stackSel = stack.length - 1;
+    else if (j < stackSel) stackSel--;
+    thawItem(stack[stackSel]);
+    setEffect(stack[stackSel].fx, false);
+    syncStackUI();
+  }
+  function moveStackItem(j, d) {
+    const k = j + d;
+    if (!stack[j] || !stack[k]) return;
+    const t = stack[j]; stack[j] = stack[k]; stack[k] = t;
+    if (stackSel === j) stackSel = k; else if (stackSel === k) stackSel = j;
+    syncStackUI(); persist();
+  }
+  function syncStackUI() {}          // replaced when the layer list UI lands
 
   // Per-effect beat-toggle state, parallel to `states`. beatStates[effect][id] =
   // {low,mid,high}; the live `beatReact` reflects the current effect and drives
@@ -6338,6 +6467,22 @@
   // Initial paint: setEffect → loadExtra applies the restored effect's palette,
   // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
   setEffect(+effectSel.value, false);
+  // ?stack=plasma,sirpinfyer[,…] builds a stack at startup, by effect id. A dev hook in
+  // the spirit of ?debug=1 — it exists so the render path can be driven before the layer
+  // list UI lands, and it stays useful for reproducing a stack from a bug report.
+  // Never persisted: it seeds the live stack and nothing writes it back out.
+  {
+    const m = location.search.match(/[?&]stack=([^&]+)/);
+    if (m) {
+      const ids = decodeURIComponent(m[1]).split(",").map(s => s.trim()).filter(Boolean);
+      for (let k = 1; k < ids.length && stack.length < STACK_MAX; k++) {
+        const fx = effectIndexFromId(ids[k]);
+        if (fx >= 0) addStackItem(fx);
+      }
+      const first = effectIndexFromId(ids[0]);
+      if (first >= 0) { selectStack(0); setEffect(first); }
+    }
+  }
   if (presets.length === 0) { presets = defaultPresets(); curPreset = effect; }   // first visit: one preset per effect
   rebuildPresetOptions();
   syncTtlEnabled();                   // match the Preset TTL enabled-state to the restored cycle toggle
