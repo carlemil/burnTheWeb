@@ -414,6 +414,9 @@
   #panel .credit + label.check { margin-top: 12px; }
   /* Filters: the stackable post-FX checkboxes */
   #panel #filterlist { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 2px 0 4px; }
+  /* Stage subheading inside the 2-column checkbox grid — it has to span both columns
+     or it takes one cell and shunts the checkboxes into a ragged stagger. */
+  #panel #filterlist .filter-grp { grid-column: 1 / -1; }
   #panel .filter-chk { margin: 4px 0 0; }
   #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
@@ -797,6 +800,7 @@
   const glTex = {};           // textures (heat pair + colour/blur/palette)
   const glFbo = {};           // framebuffers matching the textures
   let quadVao = null, ptVao = null, ptVbo = null, ptVboCap = 0;
+  let glSampLin = null;       // LINEAR sampler object for the warp feedback passes
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
@@ -827,6 +831,21 @@
   // wiring, long before the FILTERS registry block is evaluated.
   let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
     edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1;
+  // Feedback warps (Echo / Zoom feedback / Swirl / Diffuse). Each carries its own
+  // Keep, so it decays standalone instead of saturating to white when it is the only
+  // feedback filter ticked — Fade is a separate filter you may or may not stack.
+  let echoDist = 2, echoAng = 90, echoKeep = 0.94,
+    zfbScale = 1.02, zfbKeep = 0.94, swirlSpin = 2, swirlKeep = 0.94,
+    diffRad = 1, diffKeep = 0.97;
+  // Post warps / colour
+  let twistAmt = 1.2, wedgeSeg = 6, wedgeRot = 0, glitchAmt = 0.05, glitchRows = 8,
+    halfDot = 4, halfAmt = 0.8, threshLevel = 0.5, threshAmt = 0.8, chromaAmt = 1;
+  // Screen stage (after the glow, at display resolution)
+  let barrelAmt = 0.15, scanAmt = 0.35, scanCount = 240, vigAmt = 0.4, grainAmt = 0.08;
+  // Wall time for the post/screen passes that animate on their own (Slice glitch,
+  // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
+  // so a stubbed-rAF pixel gate stays reproducible.
+  let postTime = 0;
   let activeIds = new Set(["fire", "bloom"]);
   // GPU-only filters on the Canvas2D fallback. They are masked HERE, at the point of
   // use, and never removed from activeIds — that set is what saveExtra writes back, so
@@ -1548,12 +1567,144 @@
       float e = clamp(sqrt(gx*gx + gy*gy) * uAmount, 0.0, 1.0);
       o = vec4(mix(texture(uSrc, vUv).rgb, vec3(e), clamp(uAmount, 0.0, 1.0)), 1.0);
     }`;
+    // Rotate uv about the centre by an amount that falls off with radius — the middle
+    // of the image spins and the rim stays put, so straight structure curls into it.
+    const FS_TWIST = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float a = uAmount * (1.0 - clamp(length(c) / 0.7, 0.0, 1.0));
+      float s = sin(a), co = cos(a);
+      c = mat2(co, -s, s, co) * c;
+      c.x /= asp;
+      o = vec4(texture(uSrc, clamp(c + 0.5, 0.0, 1.0)).rgb, 1.0);
+    }`;
+    // N-segment kaleidoscope fold. Mirror is the X/Y special case of this; here the
+    // wedge count is free, so it applies the Kaleidoscope effect's trick to any effect.
+    const FS_WEDGE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uSeg; uniform float uRot;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float seg = 6.28318531 / max(2.0, floor(uSeg + 0.5));
+      float a = atan(c.y, c.x) + uRot;
+      a = mod(a, seg);
+      a = abs(a - seg * 0.5);                     // fold the wedge onto itself
+      vec2 p = vec2(cos(a), sin(a)) * length(c);
+      p.x /= asp;
+      o = vec4(texture(uSrc, clamp(p + 0.5, 0.0, 1.0)).rgb, 1.0);
+    }`;
+    // Horizontal slice displacement. Rows are bucketed into slices, each slice hashed
+    // to an offset, and the hash re-rolls in steps of uTime so it stutters rather than
+    // sliding. Only the slices past the gate move, so the image tears instead of shearing.
+    const FS_GLITCH = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uRows; uniform float uTime;
+    in vec2 vUv; out vec4 o;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){
+      float slice = floor(vUv.y * uSize.y / max(1.0, uRows));
+      float t = floor(uTime * 12.0);
+      float h = hash(vec2(slice, t));
+      float gate = step(0.62, hash(vec2(slice + 31.7, t)));
+      float off = (h - 0.5) * 2.0 * uAmount * gate;
+      o = vec4(texture(uSrc, vec2(clamp(vUv.x + off, 0.0, 1.0), vUv.y)).rgb, 1.0);
+    }`;
+    // Rotated dot screen: each cell's dot radius grows with the local luminance, the
+    // way a printed halftone does. Posterize flattens the ramp into bands; this one
+    // keeps the ramp and spends texture on it instead.
+    const FS_HALFTONE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uDot; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      float s = sin(0.4), co = cos(0.4);
+      vec2 p = mat2(co, -s, s, co) * (vUv * uSize) / max(1.5, uDot);
+      float d = length(fract(p) - 0.5) * 2.0;
+      float cover = smoothstep(d + 0.35, d - 0.35, sqrt(l) * 1.25);
+      o = vec4(mix(c, c * cover, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // Solarize: invert everything above a luminance level, blended in by uAmount.
+    const FS_THRESH = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uLevel; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      vec3 s = (l > uLevel) ? (1.0 - c) : c;
+      o = vec4(mix(c, s, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // Radial RGB split — the channels are sampled at spreading offsets, so the image
+    // fringes cyan/red toward the corners the way a cheap lens does.
+    const FS_CHROMA = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 d = (vUv - 0.5) * uAmount * 0.02;
+      float r = texture(uSrc, clamp(vUv + d, 0.0, 1.0)).r;
+      float g = texture(uSrc, vUv).g;
+      float b = texture(uSrc, clamp(vUv - d, 0.0, 1.0)).b;
+      o = vec4(r, g, b, 1.0);
+    }`;
     // Feedback: fade the retained heat toward black each tick (phosphor trails).
     const FS_FADE = `#version 300 es
     precision highp float;
     uniform highp sampler2D uHeat; uniform float uKeep;
     in vec2 vUv; out vec4 o;
     void main(){ o = vec4(texture(uHeat, vUv).r * uKeep, 0.0, 0.0, 1.0); }`;
+    // Feedback: resample the retained heat through an affine warp, then decay it.
+    // ONE program serving three filters — Echo (uShift), Zoom feedback (uScale) and
+    // Swirl (uSpin) are the same operation with the other two terms at identity, so
+    // they share a pass rather than triplicating it. Sampling is bilinear via a
+    // sampler object (see glSampLin): the heat textures are NEAREST because the fire
+    // propagation wants exact texels, and a sub-pixel warp read through NEAREST
+    // quantises into chunky rings instead of drifting smoothly.
+    // Off-buffer reads return 0 rather than clamping, or the edge row smears inward.
+    const FS_HWARP = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform vec2 uSize;
+    uniform vec2 uShift; uniform float uScale; uniform float uSpin; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5;
+      c.x *= asp;                                  // work in a square space so a spin is round
+      c /= max(0.001, uScale);
+      float s = sin(uSpin), co = cos(uSpin);
+      c = mat2(co, -s, s, co) * c;
+      c.x /= asp;
+      vec2 uv = c + 0.5 + uShift;
+      float h = 0.0;
+      if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) h = texture(uHeat, uv).r;
+      o = vec4(h * uKeep, 0.0, 0.0, 1.0);
+    }`;
+    // Feedback: 9-tap blur of the retained heat — it bleeds sideways instead of only
+    // rising, which turns Fire's flames into smoke.
+    const FS_DIFFUSE = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform vec2 uSize; uniform float uRadius; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 t = uRadius / uSize;
+      float sum = 0.0, wsum = 0.0;
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          float w = (x == 0 && y == 0) ? 4.0 : ((x == 0 || y == 0) ? 2.0 : 1.0);
+          sum += texture(uHeat, vUv + vec2(float(x), float(y)) * t).r * w;
+          wsum += w;
+        }
+      }
+      o = vec4(sum / wsum * uKeep, 0.0, 0.0, 1.0);
+    }`;
     const FS_PAL = `#version 300 es
     precision highp float;
     uniform sampler2D uHeat; uniform sampler2D uPal;
@@ -1644,6 +1795,47 @@
       vec3 glow = texture(uGlow, uv).rgb;
       o = vec4(base + glow*uBloom, 1.0);
     }`;
+    // ---- screen stage: runs on the composited image, at DISPLAY resolution -------
+    // These four are the "it is a screen you are looking at" layer, and they only read
+    // right on top of the bloom — a vignette under an additive glow gets lit back up,
+    // and scanlines under it bloom into mush. The post chain runs before the composite
+    // by design, so they cannot be post filters; hence the third stage.
+    const FS_BARREL = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 c = vUv - 0.5;
+      vec2 uv = c * (1.0 + uAmount * dot(c, c) * 4.0) + 0.5;
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
+      o = vec4(texture(uSrc, uv).rgb, 1.0);
+    }`;
+    const FS_SCAN = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount; uniform float uCount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float s = 0.5 + 0.5 * cos(vUv.y * max(1.0, uCount) * 6.28318531);
+      o = vec4(texture(uSrc, vUv).rgb * (1.0 - uAmount * s), 1.0);
+    }`;
+    const FS_VIGNETTE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      float d = length((vUv - 0.5) * vec2(asp, 1.0));
+      float v = 1.0 - uAmount * smoothstep(0.35, 0.9, d);
+      o = vec4(texture(uSrc, vUv).rgb * v, 1.0);
+    }`;
+    const FS_GRAIN = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uTime;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float n = fract(sin(dot(vUv * uSize + uTime * 137.0, vec2(12.9898, 78.233))) * 43758.5453);
+      o = vec4(clamp(texture(uSrc, vUv).rgb + (n - 0.5) * uAmount, 0.0, 1.0), 1.0);
+    }`;
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize"]);
@@ -1664,7 +1856,28 @@
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
     glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
     glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
+    glProg.twist = makeProg(VS_QUAD, FS_TWIST, ["uSrc", "uSize", "uAmount"]);
+    glProg.wedge = makeProg(VS_QUAD, FS_WEDGE, ["uSrc", "uSize", "uSeg", "uRot"]);
+    glProg.glitch = makeProg(VS_QUAD, FS_GLITCH, ["uSrc", "uSize", "uAmount", "uRows", "uTime"]);
+    glProg.halftone = makeProg(VS_QUAD, FS_HALFTONE, ["uSrc", "uSize", "uDot", "uAmount"]);
+    glProg.thresh = makeProg(VS_QUAD, FS_THRESH, ["uSrc", "uLevel", "uAmount"]);
+    glProg.chroma = makeProg(VS_QUAD, FS_CHROMA, ["uSrc", "uAmount"]);
+    glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
+    glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
+    glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);
+    glProg.grain = makeProg(VS_QUAD, FS_GRAIN, ["uSrc", "uSize", "uAmount", "uTime"]);
+    glProg.hwarp = makeProg(VS_QUAD, FS_HWARP, ["uHeat", "uSize", "uShift", "uScale", "uSpin", "uKeep"]);
+    glProg.diffuse = makeProg(VS_QUAD, FS_DIFFUSE, ["uHeat", "uSize", "uRadius", "uKeep"]);
     glProg.fade = makeProg(VS_QUAD, FS_FADE, ["uHeat", "uKeep"]);
+    // Bilinear view of the heat textures for the warp feedback filters, without
+    // changing the textures themselves (the fire propagation reads exact texels and
+    // must stay NEAREST). Bound on unit 0 for the warp pass only, then unbound —
+    // a sampler sticks to the unit, not the program.
+    glSampLin = gl.createSampler();
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
@@ -1684,6 +1897,14 @@
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
     ];
+    // Screen-stage ping-pong. Unlike every other buffer here these are DISPLAY sized,
+    // not fire-grid sized: scanlines and grain are about the screen you are looking at,
+    // and rendering them at fw×fh then upscaling would blur them into nothing.
+    glTex.screen = [
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.screen = [createFbo(glTex.screen[0]), createFbo(glTex.screen[1])];
     // The outgoing frame, frozen at the moment of the switch (see transBegin).
     glTex.prev = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.prev = createFbo(glTex.prev);
@@ -1724,6 +1945,11 @@
     resizeTex(glTex.post[0], fw, fh);
     resizeTex(glTex.post[1], fw, fh);
     resizeTex(glTex.prev, fw, fh);
+    // Display-sized, not fire-sized — see the declaration. Guarded because glResize
+    // can run before the canvas has been laid out.
+    const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
+    resizeTex(glTex.screen[0], sw, sh);
+    resizeTex(glTex.screen[1], sw, sh);
   }
   function glClearHeat() {
     gl.disable(gl.BLEND);
@@ -1771,6 +1997,74 @@
       src = dst; dst = 1 - dst;
     }
     pendingDst = src;             // FBO stays bound; the effect draws into it next
+  }
+  // The shared warp pass behind Echo / Zoom feedback / Swirl. `dist` is in heat
+  // pixels, the angles in degrees. LINEAR is bound for the duration via a sampler
+  // object and released after — it rides the texture *unit*, so leaving it on would
+  // silently soften the next thing sampled there (the fire propagation, notably).
+  function glWarpFeedback(src, dist, angDeg, scale, spinDeg, keep) {
+    const P = glProg.hwarp, a = angDeg * Math.PI / 180;
+    gl.useProgram(P.p);
+    bindTexUnit(0, src);
+    gl.bindSampler(0, glSampLin);
+    gl.uniform1i(P.u.uHeat, 0);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    gl.uniform2f(P.u.uShift, -Math.cos(a) * dist / fw, -Math.sin(a) * dist / fh);
+    gl.uniform1f(P.u.uScale, scale);
+    gl.uniform1f(P.u.uSpin, spinDeg * Math.PI / 180);
+    gl.uniform1f(P.u.uKeep, keep);
+    drawQuad();
+    gl.bindSampler(0, null);
+  }
+  // Canvas2D mirrors of the four warp/diffuse feedback filters. They exist so the
+  // fallback keeps its retention: a feedback filter marked cpuOk:false would leave
+  // the buffer with nothing to carry heat over, which is a far bigger visual change
+  // than a greyed-out post filter. Row order differs from GL's texture space, so a
+  // given angle drags the opposite way vertically on this path — self-consistent
+  // either way, since it is a direction knob feeding back into itself.
+  let warpBuf = null;
+  function warpScratch() {
+    if (!warpBuf || warpBuf.length !== fire.length) warpBuf = new Uint8Array(fire.length);
+    warpBuf.set(fire);
+    return warpBuf;
+  }
+  function heatWarpCPU(dist, angDeg, scale, spinDeg, keep) {
+    const s = warpScratch(), a = angDeg * Math.PI / 180, sp = spinDeg * Math.PI / 180;
+    const asp = fw / fh, sn = Math.sin(sp), cs = Math.cos(sp), sc = Math.max(0.001, scale);
+    const shx = -Math.cos(a) * dist / fw, shy = -Math.sin(a) * dist / fh;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        let cx = ((x + 0.5) / fw - 0.5) * asp, cy = (y + 0.5) / fh - 0.5;
+        cx /= sc; cy /= sc;
+        const rx = cs * cx - sn * cy, ry = sn * cx + cs * cy;
+        const u = rx / asp + 0.5 + shx, v = ry + 0.5 + shy;
+        let h = 0;
+        if (u >= 0 && u <= 1 && v >= 0 && v <= 1) h = bilinearHeat(s, u * fw - 0.5, v * fh - 0.5);
+        fire[y * fw + x] = h * keep;
+      }
+    }
+  }
+  function bilinearHeat(buf, fx, fy) {
+    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx - x0, ty = fy - y0;
+    const xa = Math.min(fw - 1, Math.max(0, x0)), xb = Math.min(fw - 1, Math.max(0, x0 + 1));
+    const ya = Math.min(fh - 1, Math.max(0, y0)), yb = Math.min(fh - 1, Math.max(0, y0 + 1));
+    const t = buf[ya * fw + xa] + (buf[ya * fw + xb] - buf[ya * fw + xa]) * tx;
+    const b = buf[yb * fw + xa] + (buf[yb * fw + xb] - buf[yb * fw + xa]) * tx;
+    return t + (b - t) * ty;
+  }
+  function heatDiffuseCPU(rad, keep) {
+    const s = warpScratch(), r = Math.max(1, Math.round(rad));
+    for (let y = 0; y < fh; y++) {
+      const yu = Math.max(0, y - r), yd = Math.min(fh - 1, y + r);
+      for (let x = 0; x < fw; x++) {
+        const xl = Math.max(0, x - r), xr = Math.min(fw - 1, x + r);
+        const sum = s[y * fw + x] * 4
+          + (s[y * fw + xl] + s[y * fw + xr] + s[yu * fw + x] + s[yd * fw + x]) * 2
+          + s[yu * fw + xl] + s[yu * fw + xr] + s[yd * fw + xl] + s[yd * fw + xr];
+        fire[y * fw + x] = sum / 16 * keep;
+      }
+    }
   }
   // Draw the collected stamps into the currently bound FBO with MAX blending.
   // Split out of glDrawPoints so the credits can stamp over a shader effect's heat
@@ -1891,12 +2185,36 @@
     bindTexUnit(0, glTex.blur1); gl.uniform1i(glProg.blur.u.uSrc, 0);
     gl.uniform2f(glProg.blur.u.uDir, 0, 1 / fh);
     drawQuad();
-    // E) composite to the screen
-    bindDefault(canvas.width, canvas.height);
+    // E) composite — to the screen, or into the screen-stage chain if one is ticked
+    const scr = activeFilters().filter(f => f.stage === "screen" && f.gl);
+    const sw = canvas.width, sh = canvas.height;
+    if (scr.length) bindFbo(glFbo.screen[0], sw, sh); else bindDefault(sw, sh);
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
     gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    drawQuad();
+    // F) the screen chain, ping-ponging at display resolution; the LAST pass is the
+    // one that reaches the default framebuffer, so an empty chain (above) still
+    // composites straight to it and costs nothing.
+    if (scr.length) {
+      let src = glTex.screen[0], slot = 1;
+      scr.forEach((f, i) => {
+        const last = i === scr.length - 1;
+        if (last) bindDefault(sw, sh); else bindFbo(glFbo.screen[slot], sw, sh);
+        f.gl(src, sw, sh);
+        if (!last) { src = glTex.screen[slot]; slot = 1 - slot; }
+      });
+    }
+  }
+  // One screen pass. Same shape as postPass, but uSize is the DISPLAY size rather
+  // than the fire grid — a scanline count means nothing against fw/fh.
+  function screenPass(name, src, w, h, setU) {
+    const P = glProg[name];
+    gl.useProgram(P.p);
+    bindTexUnit(0, src); gl.uniform1i(P.u.uSrc, 0);
+    if (P.u.uSize) gl.uniform2f(P.u.uSize, w, h);
+    if (setU) setU(P.u);
     drawQuad();
   }
 
@@ -2803,6 +3121,7 @@
       bandLive = bandLevel > 0.001;
     }
 
+    postTime += dt;                         // clock for the self-animating post/screen passes
     if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
     transStep(dt);                          // ...and so does the preset transition
     camMat();                         // fold this frame's camera angles into the 2x2 map
@@ -3285,13 +3604,37 @@
     { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
     { key: "burn", host: "filter", group: "f_fire", type: "dual", label: "Burn rate", valId: "vBurn", min: 20, max: 240, step: 1, lo: 120, hi: 120, fmt: v => sig3(v) + "/s", apply: v => cfg.burn = Math.max(1, v), durScale: 10 },
     { key: "fade", host: "filter", group: "f_fade", type: "dual", label: "Keep", valId: "vFade", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => fadeKeep = v, durScale: 10 },
+    { key: "diffuse", host: "filter", group: "f_diffuse", type: "dual", label: "Spread", valId: "vDiffuse", min: 0.5, max: 6, step: 0.1, lo: 1, hi: 1, fmt: v => sig3(v) + "px", apply: v => diffRad = v, durScale: 10 },
+    { key: "diffkeep", host: "filter", group: "f_diffuse", type: "dual", label: "Keep", valId: "vDiffKeep", min: 0.5, max: 1, step: 0.001, lo: 0.97, hi: 0.97, fmt: v => sig3(v * 100) + "%", apply: v => diffKeep = v, durScale: 10 },
+    { key: "echo", host: "filter", group: "f_echo", type: "dual", label: "Distance", valId: "vEcho", min: 0, max: 8, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v) + "px", apply: v => echoDist = v, durScale: 10 },
+    { key: "echoang", host: "filter", group: "f_echo", type: "dual", label: "Angle", valId: "vEchoAng", min: 0, max: 360, step: 1, lo: 90, hi: 90, fmt: v => sig3(v) + "°", apply: v => echoAng = v, durScale: 10 },
+    { key: "echokeep", host: "filter", group: "f_echo", type: "dual", label: "Keep", valId: "vEchoKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => echoKeep = v, durScale: 10 },
+    { key: "zfb", host: "filter", group: "f_zoomfb", type: "dual", label: "Scale", valId: "vZfb", min: 0.9, max: 1.1, step: 0.001, lo: 1.02, hi: 1.02, fmt: v => sig3(v) + "×", apply: v => zfbScale = v, durScale: 10 },
+    { key: "zfbkeep", host: "filter", group: "f_zoomfb", type: "dual", label: "Keep", valId: "vZfbKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => zfbKeep = v, durScale: 10 },
+    { key: "swirl", host: "filter", group: "f_swirl", type: "dual", label: "Spin", valId: "vSwirl", min: -15, max: 15, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v) + "°", apply: v => swirlSpin = v, durScale: 10 },
+    { key: "swirlkeep", host: "filter", group: "f_swirl", type: "dual", label: "Keep", valId: "vSwirlKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => swirlKeep = v, durScale: 10 },
+    { key: "twist", host: "filter", group: "f_twist", type: "dual", label: "Amount", valId: "vTwist", min: -4, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v), apply: v => twistAmt = v, durScale: 10 },
+    { key: "wedgeseg", host: "filter", group: "f_wedge", type: "dual", label: "Segments", valId: "vWedgeSeg", min: 2, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => wedgeSeg = v, durScale: 10 },
+    { key: "wedgerot", host: "filter", group: "f_wedge", type: "dual", label: "Spin", valId: "vWedgeRot", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => wedgeRot = v, durScale: 10 },
+    { key: "glitch", host: "filter", group: "f_glitch", type: "dual", label: "Amount", valId: "vGlitch", min: 0, max: 0.5, step: 0.005, lo: 0.05, hi: 0.05, fmt: v => sig3(v * 100) + "%", apply: v => glitchAmt = v, durScale: 10 },
+    { key: "glitchrows", host: "filter", group: "f_glitch", type: "dual", label: "Slice height", valId: "vGlitchRows", min: 1, max: 40, step: 1, lo: 8, hi: 8, fmt: v => sig3(v) + "px", apply: v => glitchRows = v, durScale: 10 },
     { key: "pixel", host: "filter", group: "f_pixelate", type: "dual", label: "Block", valId: "vPixel", min: 2, max: 40, step: 1, lo: 6, hi: 6, fmt: v => sig3(v) + "px", apply: v => pixelBlock = v, durScale: 10 },
     { key: "soften", host: "filter", group: "f_soften", type: "dual", label: "Amount", valId: "vSoften", min: -1, max: 2, step: 0.01, lo: -0.6, hi: -0.6, fmt: v => v < 0 ? "blur " + sig3(-v) : "sharp " + sig3(v), apply: v => softenAmt = v, durScale: 10 },
     { key: "softrad", host: "filter", group: "f_soften", type: "dual", label: "Radius", valId: "vSoftRad", min: 0.5, max: 6, step: 0.1, lo: 1.5, hi: 1.5, fmt: v => sig3(v) + "px", apply: v => softenRad = v, durScale: 10 },
     { key: "edge", host: "filter", group: "f_edge", type: "dual", label: "Amount", valId: "vEdge", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => edgeAmt = v, durScale: 10 },
     { key: "poster", host: "filter", group: "f_poster", type: "dual", label: "Levels", valId: "vPoster", min: 2, max: 16, step: 1, lo: 5, hi: 5, fmt: v => sig3(Math.round(v)), apply: v => posterLevels = v, durScale: 10 },
+    { key: "halfdot", host: "filter", group: "f_halftone", type: "dual", label: "Dot size", valId: "vHalfDot", min: 2, max: 20, step: 0.5, lo: 4, hi: 4, fmt: v => sig3(v) + "px", apply: v => halfDot = v, durScale: 10 },
+    { key: "halfamt", host: "filter", group: "f_halftone", type: "dual", label: "Amount", valId: "vHalfAmt", min: 0, max: 1, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => halfAmt = v, durScale: 10 },
+    { key: "threshlvl", host: "filter", group: "f_thresh", type: "dual", label: "Level", valId: "vThreshLvl", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => threshLevel = v, durScale: 10 },
+    { key: "threshamt", host: "filter", group: "f_thresh", type: "dual", label: "Amount", valId: "vThreshAmt", min: 0, max: 1, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => threshAmt = v, durScale: 10 },
+    { key: "chroma", host: "filter", group: "f_chroma", type: "dual", label: "Amount", valId: "vChroma", min: 0, max: 6, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => chromaAmt = v, durScale: 10 },
     { key: "mirror", host: "filter", group: "f_mirror", type: "dual", label: "Axis", valId: "vMirror", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["", "X", "Y", "Both"][Math.round(v)] || "X", apply: v => mirrorMode = Math.round(v), durScale: 10 },
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
+    { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
+    { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
+    { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 10, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
+    { key: "vignette", host: "filter", group: "f_vignette", type: "dual", label: "Amount", valId: "vVignette", min: 0, max: 1, step: 0.01, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => vigAmt = v, durScale: 10 },
+    { key: "grain", host: "filter", group: "f_grain", type: "dual", label: "Amount", valId: "vGrain", min: 0, max: 0.5, step: 0.005, lo: 0.08, hi: 0.08, fmt: v => sig3(v), apply: v => grainAmt = v, durScale: 10 },
     { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
     { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
@@ -3317,9 +3660,22 @@
   // The Filters checkbox list. Ticking one reveals its parameter group (see the
   // dynamic `shown` set in setEffect) and re-derives the live chain. Built once —
   // the list is the same for every effect, only the ticks differ.
+  // Subheadings per stage. With two dozen checkboxes a flat list reads as a wall,
+  // and the split is the one thing a user needs to understand about them: feedback
+  // filters change what the next frame starts from, post ones repaint the image, and
+  // screen ones sit on the finished frame.
+  const STAGE_NAMES = { feedback: "Feedback (heat)", post: "Post (image)", screen: "Screen (final)" };
   function buildFilterUI() {
     const host = el("filterlist");
+    let openStage = null;
     FILTERS.forEach(f => {
+      if (f.stage !== openStage) {
+        openStage = f.stage;
+        const h = document.createElement("div");
+        h.className = "ctl-grp filter-grp";
+        h.textContent = STAGE_NAMES[f.stage] || f.stage;
+        host.appendChild(h);
+      }
       const lab = document.createElement("label");
       lab.className = "check filter-chk";
       const cb = document.createElement("input");
@@ -3388,6 +3744,10 @@
     attractor: "Attractor", camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
+    f_diffuse: "Diffuse", f_echo: "Echo", f_zoomfb: "Zoom feedback", f_swirl: "Swirl",
+    f_twist: "Twist", f_wedge: "Wedge fold", f_glitch: "Slice glitch",
+    f_halftone: "Halftone", f_thresh: "Solarize", f_chroma: "Chromatic aberration",
+    f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
     palette: "Palette", banding: "Banding",
   };
   function buildControls() {
@@ -3952,12 +4312,19 @@
 
   // ---- FILTERS: stackable post-FX applied after the effect renders ------------
   // The fire simulation used to be hardwired to the three point effects; it is now
-  // one entry here, so any effect can have it. Two stages, split by whether the
-  // filter writes the RETAINED heat buffer:
-  //   feedback — mutates heat that survives to the next frame (Fire; later Echo/Fade).
-  //              Runs inside glBeginHeat, before the effect's output is MAX-injected.
-  //   post     — reads the palette-mapped image (later Blur/Pixelate/…); Bloom is the
-  //              existing glow composite, now with its strength under a filter.
+  // one entry here, so any effect can have it. Three stages, split by where in the
+  // pipeline the filter writes — and they must be listed in that order (filterprobe):
+  //   feedback — mutates heat that survives to the next frame (Fire, Fade, Diffuse,
+  //              Echo, Zoom feedback, Swirl). Runs inside glBeginHeat, before the
+  //              effect's output is MAX-injected. Each carries its own Keep: a pure
+  //              displacement conserves heat, so a warp with nothing decaying it
+  //              saturates to white on its own.
+  //   post     — reads the palette-mapped image; Bloom is the existing glow composite,
+  //              now with its strength under a filter, and closes this stage.
+  //   screen   — runs AFTER that composite, at display resolution (glRender step F).
+  //              A vignette under an additive glow just gets lit back up, and a
+  //              scanline count means nothing against the fire grid — hence a stage
+  //              of its own rather than four more post filters.
   // Order here is the order they apply — a checkbox list can't be reordered, so this
   // is a design decision, not an implementation detail.
   // `params` are CONTROLS keys shown only while the filter is ticked; `defaults`
@@ -3987,6 +4354,48 @@
         drawQuad();
       },
       cpuFeedback: () => { for (let i = 0; i < fire.length; i++) fire[i] = fire[i] * fadeKeep; } },
+    { id: "diffuse", name: "Diffuse", stage: "feedback", params: ["diffuse", "diffkeep"],
+      help: "Heat bleeds sideways as well as up — Fire's flames turn to smoke.",
+      defaults: { diffuse: [1, 1], diffkeep: [0.97, 0.97] },
+      glFeedback: src => {
+        const P = glProg.diffuse;
+        gl.useProgram(P.p);
+        bindTexUnit(0, src); gl.uniform1i(P.u.uHeat, 0);
+        gl.uniform2f(P.u.uSize, fw, fh);
+        gl.uniform1f(P.u.uRadius, diffRad);
+        gl.uniform1f(P.u.uKeep, diffKeep);
+        drawQuad();
+      },
+      cpuFeedback: () => heatDiffuseCPU(diffRad, diffKeep) },
+    { id: "echo", name: "Echo", stage: "feedback", params: ["echo", "echoang", "echokeep"],
+      help: "Trails drag in a direction instead of just dimming in place.",
+      defaults: { echo: [2, 2], echoang: [90, 90], echokeep: [0.94, 0.94] },
+      glFeedback: src => glWarpFeedback(src, echoDist, echoAng, 1, 0, echoKeep),
+      cpuFeedback: () => heatWarpCPU(echoDist, echoAng, 1, 0, echoKeep) },
+    { id: "zoomfb", name: "Zoom feedback", stage: "feedback", params: ["zfb", "zfbkeep"],
+      help: "The retained heat is rescaled about the centre every tick — over 1 it rushes outward into an endless tunnel, under 1 it falls inward.",
+      defaults: { zfb: [1.02, 1.02], zfbkeep: [0.94, 0.94] },
+      glFeedback: src => glWarpFeedback(src, 0, 0, zfbScale, 0, zfbKeep),
+      cpuFeedback: () => heatWarpCPU(0, 0, zfbScale, 0, zfbKeep) },
+    { id: "swirl", name: "Swirl", stage: "feedback", params: ["swirl", "swirlkeep"],
+      help: "The retained heat is rotated about the centre every tick, so trails spiral. Stack it with Zoom feedback for a vortex.",
+      defaults: { swirl: [2, 2], swirlkeep: [0.94, 0.94] },
+      glFeedback: src => glWarpFeedback(src, 0, 0, 1, swirlSpin, swirlKeep),
+      cpuFeedback: () => heatWarpCPU(0, 0, 1, swirlSpin, swirlKeep) },
+    { id: "twist", cpuOk: false, name: "Twist", stage: "post", params: ["twist"],
+      help: "Spin the middle of the image and leave the rim — straight structure curls into the centre.",
+      defaults: { twist: [1.2, 1.2] },
+      gl: src => postPass("twist", src, u => gl.uniform1f(u.uAmount, twistAmt)) },
+    { id: "wedge", cpuOk: false, name: "Wedge fold", stage: "post", params: ["wedgeseg", "wedgerot"],
+      help: "Fold the image into N mirrored wedges — Mirror's X/Y fold generalised to a kaleidoscope, for any effect.",
+      defaults: { wedgeseg: [6, 6], wedgerot: [0, 0] },
+      gl: src => postPass("wedge", src, u => { gl.uniform1f(u.uSeg, wedgeSeg); gl.uniform1f(u.uRot, wedgeRot * Math.PI / 180); }) },
+    { id: "glitch", cpuOk: false, name: "Slice glitch", stage: "post", params: ["glitch", "glitchrows"],
+      help: "Tear horizontal slices sideways at random. Arm the amount to a beat and it rips on the hit.",
+      defaults: { glitch: [0.05, 0.05], glitchrows: [8, 8] },
+      gl: src => postPass("glitch", src, u => {
+        gl.uniform1f(u.uAmount, glitchAmt); gl.uniform1f(u.uRows, glitchRows); gl.uniform1f(u.uTime, postTime);
+      }) },
     { id: "pixelate", cpuOk: false, name: "Pixelate", stage: "post", params: ["pixel"],
       help: "Snap the image to a coarse grid of blocks.",
       defaults: { pixel: [6, 6] },
@@ -4003,6 +4412,18 @@
       help: "Quantise the colours into flat bands.",
       defaults: { poster: [5, 5] },
       gl: src => postPass("posterize", src, u => gl.uniform1f(u.uLevels, posterLevels)) },
+    { id: "halftone", cpuOk: false, name: "Halftone", stage: "post", params: ["halfdot", "halfamt"],
+      help: "A rotated dot screen whose dots grow with brightness — the print look. Posterize flattens the ramp; this one spends texture on it.",
+      defaults: { halfdot: [4, 4], halfamt: [0.8, 0.8] },
+      gl: src => postPass("halftone", src, u => { gl.uniform1f(u.uDot, halfDot); gl.uniform1f(u.uAmount, halfAmt); }) },
+    { id: "thresh", cpuOk: false, name: "Solarize", stage: "post", params: ["threshlvl", "threshamt"],
+      help: "Invert everything above a brightness level — Posterize's nastier cousin.",
+      defaults: { threshlvl: [0.5, 0.5], threshamt: [0.8, 0.8] },
+      gl: src => postPass("thresh", src, u => { gl.uniform1f(u.uLevel, threshLevel); gl.uniform1f(u.uAmount, threshAmt); }) },
+    { id: "chroma", cpuOk: false, name: "Chromatic aberration", stage: "post", params: ["chroma"],
+      help: "Split the red and blue channels radially, so the image fringes toward the corners like a cheap lens.",
+      defaults: { chroma: [1, 1] },
+      gl: src => postPass("chroma", src, u => gl.uniform1f(u.uAmount, chromaAmt)) },
     { id: "mirror", cpuOk: false, name: "Mirror", stage: "post", params: ["mirror"],
       help: "Fold the image about its centre — X, Y or both.",
       defaults: { mirror: [1, 1] },
@@ -4010,6 +4431,25 @@
     { id: "bloom", name: "Bloom", stage: "post", params: ["bloom"],
       help: "Additive glow: a blurred copy of the scene added back over it.",
       defaults: { bloom: [0.35, 0.35] } },
+    // ---- screen stage: on top of the composite, at display resolution ----
+    // Bloom is still the last *post* entry — these run after it, which is the whole
+    // reason the stage exists (a vignette under an additive glow gets lit back up).
+    { id: "barrel", cpuOk: false, name: "Barrel distortion", stage: "screen", params: ["barrel"],
+      help: "Bulge the image as if it were painted on the front of a CRT.",
+      defaults: { barrel: [0.15, 0.15] },
+      gl: (src, w, h) => screenPass("barrel", src, w, h, u => gl.uniform1f(u.uAmount, barrelAmt)) },
+    { id: "scanlines", cpuOk: false, name: "Scanlines", stage: "screen", params: ["scan", "scancount"],
+      help: "Darken alternating rows — the raster you are pretending to be.",
+      defaults: { scan: [0.35, 0.35], scancount: [240, 240] },
+      gl: (src, w, h) => screenPass("scan", src, w, h, u => { gl.uniform1f(u.uAmount, scanAmt); gl.uniform1f(u.uCount, scanCount); }) },
+    { id: "vignette", cpuOk: false, name: "Vignette", stage: "screen", params: ["vignette"],
+      help: "Fall off toward the corners.",
+      defaults: { vignette: [0.4, 0.4] },
+      gl: (src, w, h) => screenPass("vignette", src, w, h, u => gl.uniform1f(u.uAmount, vigAmt)) },
+    { id: "grain", cpuOk: false, name: "Film grain", stage: "screen", params: ["grain"],
+      help: "Animated noise over the finished frame.",
+      defaults: { grain: [0.08, 0.08] },
+      gl: (src, w, h) => screenPass("grain", src, w, h, u => { gl.uniform1f(u.uAmount, grainAmt); gl.uniform1f(u.uTime, postTime); }) },
   ];
   const FILTER_BY_ID = {};
   FILTERS.forEach(f => FILTER_BY_ID[f.id] = f);

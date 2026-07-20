@@ -29,6 +29,12 @@ const stubs = `
   const glProg = new Proxy({}, { get: () => ({ p: null, u: {} }) });
   const glTex = { heat: [null, null], post: [null, null], native: null };
   function bindTexUnit() {} function drawQuad() {} function postPass() {} function el() { return null; }
+  function screenPass() {} function glWarpFeedback() {} function heatWarpCPU() {} function heatDiffuseCPU() {}
+  let echoDist = 2, echoAng = 90, echoKeep = 0.94, zfbScale = 1.02, zfbKeep = 0.94,
+      swirlSpin = 2, swirlKeep = 0.94, diffRad = 1, diffKeep = 0.97, postTime = 0;
+  let twistAmt = 1.2, wedgeSeg = 6, wedgeRot = 0, glitchAmt = 0.05, glitchRows = 8,
+      halfDot = 4, halfAmt = 0.8, threshLevel = 0.5, threshAmt = 0.8, chromaAmt = 1;
+  let barrelAmt = 0.15, scanAmt = 0.35, scanCount = 240, vigAmt = 0.4, grainAmt = 0.08;
   function buildFilterUI() {}   // DOM-only; the registry calls it right after defining FILTERS
   const EFFECTS = [
     { id: "sirpinfyer", extras: {}, defaults: { points: 3850 } },                 // point effect: no draw hook
@@ -56,7 +62,7 @@ const ids = F.FILTERS.map(f => f.id);
 // --- 1. registry shape --------------------------------------------------------
 ok(ids.length >= 8, "at least 8 filters registered", ids.join(","));
 ok(new Set(ids).size === ids.length, "no duplicate filter ids");
-ok(F.FILTERS.every(f => f.stage === "feedback" || f.stage === "post"),
+ok(F.FILTERS.every(f => ["feedback", "post", "screen"].indexOf(f.stage) >= 0),
    "every filter declares a known stage");
 ok(F.FILTERS.every(f => Array.isArray(f.params) && f.params.length >= 0), "every filter declares params");
 ok(F.FILTERS.every(f => f.defaults && Object.keys(f.defaults).length), "every filter ships defaults");
@@ -65,6 +71,11 @@ ok(F.FILTERS.every(f => f.params.every(k => k in f.defaults)),
 // Bloom is the composite strength, not a chain pass; everything else post needs one.
 ok(F.FILTERS.filter(f => f.stage === "post" && f.id !== "bloom").every(f => typeof f.gl === "function"),
    "post filters (bar Bloom) have a gl pass");
+ok(F.FILTERS.filter(f => f.stage === "screen").every(f => typeof f.gl === "function"),
+   "screen filters have a gl pass");
+// A screen pass runs after the composite, which the Canvas2D path never performs.
+ok(F.FILTERS.filter(f => f.stage === "screen").every(f => f.cpuOk === false),
+   "screen filters are all marked GPU-only");
 ok(F.FILTERS.filter(f => f.stage === "feedback").every(f => typeof f.glFeedback === "function"),
    "feedback filters have a glFeedback pass");
 
@@ -75,12 +86,18 @@ ok(F.FILTERS.filter(f => f.stage === "feedback").every(f => typeof f.glFeedback 
   const applied = F.FILTERS.filter(f => set.has(f.id)).map(f => f.id);
   ok(JSON.stringify(applied) === JSON.stringify(ids),
      "a reversed stored list still applies in registry order");
-  // Fire/Fade must precede the post filters, or feedback would run after the image pass
-  const firstPost = F.FILTERS.findIndex(f => f.stage === "post");
-  const lastFeedback = F.FILTERS.map(f => f.stage).lastIndexOf("feedback");
+  // The three stages must appear in pipeline order: feedback writes the heat the next
+  // frame starts from, post repaints the image, screen sits on the finished composite.
+  const stages = F.FILTERS.map(f => f.stage);
+  const firstPost = stages.indexOf("post"), lastFeedback = stages.lastIndexOf("feedback");
+  const firstScreen = stages.indexOf("screen"), lastPost = stages.lastIndexOf("post");
   ok(lastFeedback < firstPost, "all feedback filters precede all post filters",
      "lastFeedback " + lastFeedback + " < firstPost " + firstPost);
-  ok(ids[ids.length - 1] === "bloom", "Bloom is last (it is the final composite)");
+  ok(firstScreen < 0 || lastPost < firstScreen, "all post filters precede all screen filters",
+     "lastPost " + lastPost + " < firstScreen " + firstScreen);
+  // Bloom is the composite, so it closes the post stage — the screen filters that
+  // follow it in the registry run after that composite, not inside the chain.
+  ok(ids[lastPost] === "bloom", "Bloom is the last post filter (it is the composite)");
 }
 
 // --- 3. filtersOk tolerates junk ---------------------------------------------

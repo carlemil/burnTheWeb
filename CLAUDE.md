@@ -238,19 +238,58 @@ backgrounded tab cannot burn through a transition unseen.
 ### Filters (post-FX)
 `FILTERS` is a second registry beside `EFFECTS`: stackable post-processing any effect can
 use, ticked in a checkbox list (registry order is the apply order — a checkbox list can't
-be reordered, so that order is a design decision). Two stages, split by **whether the
-filter writes the retained heat buffer**:
-- **feedback** (`Fire`, `Fade pixel`; later Echo) — mutates heat that survives to the next
+be reordered, so that order is a design decision). **Three** stages, split by **where in
+the pipeline the filter writes** — and the registry must list them in that order, which
+`filterprobe` asserts:
+- **feedback** (`Fire`, `Fade pixel`, `Diffuse`, `Echo`, `Zoom feedback`, `Swirl`) —
+  mutates heat that survives to the next
   frame, so it runs inside `glBeginHeat` *before* the effect's output is MAX-injected. With
   no feedback filter, `glBeginHeat` **clears** (skipping it would read 2-frames-stale heat)
   and the CPU path zeroes `fire` instead of running the propagation loop.
-- **post** (Pixelate, Blur/sharpen, Edge, Posterize, Mirror, Bloom) — read the
+  Echo/Zoom feedback/Swirl are **one program**, `FS_HWARP`, driven through
+  `glWarpFeedback(src, dist, ang, scale, spin, keep)` — they are the same affine resample
+  with the other terms at identity, so they share a pass instead of triplicating it.
+  Two things about that pass are load-bearing. It samples through **`glSampLin`, a WebGL2
+  sampler object**, because the heat textures are `NEAREST` (the fire propagation reads
+  exact texels and must stay that way) and a sub-pixel warp read through `NEAREST`
+  quantises into chunky rings instead of drifting; a sampler binds to the **texture unit**,
+  not the program, so it is unbound immediately after or it silently softens whatever is
+  sampled on unit 0 next. And **each of the four carries its own `Keep`** rather than
+  leaning on Fade: a pure displacement conserves heat, so a warp ticked on its own with
+  nothing to decay it saturates to white within seconds. Four sliders labelled "Keep" in
+  four groups is exactly what the pop-out box's owner line (`ctlOwner`) exists to
+  disambiguate.
+  All four have **CPU mirrors** (`heatWarpCPU`/`heatDiffuseCPU`, sharing `bilinearHeat` and
+  a `warpBuf` scratch) — unlike a post filter, a feedback filter marked `cpuOk: false`
+  would leave the fallback with *nothing carrying heat over*, a far bigger visual change
+  than a greyed-out checkbox. Row order differs from GL's texture space, so a given angle
+  drags the opposite way vertically on that path; it feeds back into itself either way.
+- **post** (Twist, Wedge fold, Slice glitch, Pixelate, Blur/sharpen, Edge, Posterize,
+  Halftone, Solarize, Chromatic aberration, Mirror, Bloom) — read the
   palette-mapped image. `glPostChain()` ping-pongs them through `glTex.post[0]/[1]`
   between FS_PAL and FS_ZOOM and **returns `glTex.native` untouched when the chain is
   empty** — it must not run a pass-through copy, since an extra RGBA8 sample through a
   nominally identity pass can shift a value by a LSB and read as a brightness change.
   Bloom has no pass of its own: it is the pre-existing glow composite with its strength
   under `bloomAmt`/`uBloom` (0 when off).
+- **screen** (Barrel distortion, Scanlines, Vignette, Film grain) — run **after** the
+  composite, in `glRender` step F, at **display resolution**. Both halves of that are the
+  reason the stage exists rather than these being four more post filters. *After* the
+  composite because the post chain runs between FS_PAL and FS_ZOOM, i.e. under the glow —
+  and a vignette under an additive glow gets lit back up, scanlines under it bloom into
+  mush. *Display resolution* because a scanline count means nothing against `fw×fh`;
+  `glTex.screen[0..1]` are the only buffers here sized to `canvas.width/height`, resized
+  in `glResize` (which is safe because `resize()` sets the canvas dimensions **first**).
+  The chain's **last** pass is the one that binds the default framebuffer, so an empty
+  chain still composites straight to the screen and costs nothing — same "no pass-through
+  copy" rule as `glPostChain`. They are all `cpuOk: false`: the Canvas2D path never
+  performs the composite these sit on top of. `screenPass` mirrors `postPass` but feeds
+  `uSize` the display size.
+
+**Two filters animate on their own** (Slice glitch, Film grain) and read **`postTime`**,
+accumulated from the frame loop's `dt` — deliberately not `performance.now()`, which would
+break the stubbed-rAF pixel gate's reproducibility, and not `simT`, which does not advance
+for shader effects.
 
 `glBeginHeat` runs the feedback chain — every ticked `stage: "feedback"` filter's
 `glFeedback(srcTex)` in registry order, one ping-pong pass each — with **`pendingDst` set
@@ -959,6 +998,18 @@ the probe never exercised. For anything that writes the retained heat buffer, a 
 probe is necessary and not sufficient: drive a few hundred real frames and **look at the
 screenshot** as well.
 
+**Headless CAN run WebGL2 — via SwiftShader.** Launch Edge with
+`--enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader` and `initGL()`
+succeeds, so the **GL path is testable after all**: shaders actually compile and link, and
+the screenshot shows the GPU pipeline rather than the Canvas2D mirror. This is how the 12
+shaders of the filter expansion were verified — tick every checkbox, then assert
+`gl.getError() === 0` and a console-error count of 0 (a failed link is silent otherwise:
+`useProgram(null)` just draws nothing, which reads as a dark scene). Expect ~8–15 fps
+software-rendered, so give `--virtual-time-budget` several seconds for anything that needs
+the fire to build up. `tools/heatprobe.js` still earns its keep — it pins ping-pong
+*parity*, which a screenshot cannot see — but "a headless browser has no usable WebGL" is
+no longer a reason to skip driving the real renderer.
+
 **Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
 `requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes
 *shader* effects bit-reproducible — Plasma hashes identically across runs and builds, so
@@ -969,10 +1020,12 @@ those on logic instead (e.g. compare tick sequences in Node) rather than pixels.
 must drive its own clock rather than let the animation run.
 
 **The filter registry** has `tools/filterprobe.js` (`node tools/filterprobe.js index.html`,
-34 assertions): it slices the real `FILTERS` block and the extras helpers out of
+37 assertions): it slices the real `FILTERS` block and the extras helpers out of
 `index.html` and runs them against stub effects. It pins the invariants that are easy to
 break silently — every filter's params have defaults (else `presetState` can't seed
-them), feedback filters all precede post ones in the registry and Bloom is last, a
+them), the three stages appear in pipeline order (feedback → post → screen) with Bloom
+last **among the post ones** (it is the composite the screen stage sits on top of), every
+screen filter is `cpuOk: false`, a
 stored list always applies in **registry** order, `filtersOk` drops unknown/duplicate/
 non-string ids, the point-vs-shader defaults (an effect with `stamp` but no `draw` counts
 as a point effect), and `presetState`'s seeded arrays are per-effect **copies**.
@@ -1003,9 +1056,10 @@ applyPreset(` … `function createPreset(`, and `const valid = arr` … `if (!va
 
 **The GL heat-tick feedback chain** has `tools/heatprobe.js` (`node tools/heatprobe.js
 index.html`, 24 assertions): it slices the real `glBeginHeat` and runs it against a
-recording stub `gl`. It exists because **a headless browser has no usable WebGL** — the
-pixel harness can only ever drive the Canvas2D path, so the GL ping-pong parity is
-invisible to it. It asserts, for chains of 0–4 passes from either starting buffer, that
+recording stub `gl`. It exists because ping-pong **parity is invisible to a screenshot** —
+a chain that lands in the wrong buffer still renders a plausible frame — so even now that
+SwiftShader lets the harness drive the real GL path (see above), this is the only thing
+checking it. It asserts, for chains of 0–4 passes from either starting buffer, that
 `pendingDst` names the buffer the *last* pass wrote, that no pass samples its own render
 target (undefined behaviour in WebGL), and that the final FBO is still bound on exit. The
 two-pass case (Fire + Fade, the only one a user can hit today) is the one that

@@ -258,41 +258,75 @@ the way a video mixer's dissolve does.
 
 ## Filters
 
-Under **Filters** in the menu is a list of post-processing effects you can stack
-on top of whatever effect is running — tick as many as you like and they apply in
-order. Each one's settings appear underneath it while it's ticked, and the whole
-selection is remembered per effect and saved into presets.
+Under **Filters** in the menu is a list of twenty-two post-processing effects you
+can stack on top of whatever effect is running — tick as many as you like and they
+apply in order. Each one's settings appear underneath it while it's ticked, and the
+whole selection is remembered per effect and saved into presets. The list is split
+into the three stages of the pipeline, which is the one thing worth understanding
+about them: **feedback** filters change what the *next* frame starts from, **post**
+filters repaint the image, and **screen** filters sit on the finished frame.
+
+**Feedback (heat)** — these run on the retained heat, before the effect's fresh
+output is mixed in, so they're what trails and long exposures are made of. Each
+carries its own **Keep**, so it decays on its own rather than piling up to white.
 
 - **Fire** — the rising, cooling heat simulation. It used to be hardwired to the
   three point effects; now any effect can burn. **Flame rise** sets how tall the
   flames climb, **Burn rate** how many times a second the fire advances.
 - **Fade pixel** — every pixel keeps a fraction of its brightness each tick, so
   the image smears into phosphor trails. **Keep** near 100% holds almost forever.
+- **Diffuse** — heat bleeds sideways as well as up, so Fire's flames turn to smoke.
+- **Echo** — trails drag in a **Direction** instead of just dimming in place.
+- **Zoom feedback** — the retained heat is rescaled about the centre every tick.
+  Over 1× it rushes outward into an endless tunnel; under 1× it falls inward.
+- **Swirl** — the same, rotating instead of scaling, so trails spiral. Stack it
+  with Zoom feedback for a vortex.
+
+**Post (image)** — these repaint the palette-mapped picture.
+
+- **Twist** — spin the middle of the image and leave the rim, so straight
+  structure curls into the centre.
+- **Wedge fold** — fold the picture into N mirrored **Segments**: Mirror's trick
+  generalised to a kaleidoscope, available to every effect.
+- **Slice glitch** — tear horizontal slices sideways at random. Arm **Amount** to
+  a beat and the picture rips on the hit.
 - **Pixelate** — snap the picture to a coarse grid. **Block** is the cell size.
 - **Blur / sharpen** — one knob: negative blurs, positive sharpens (unsharp mask),
   with its own **Radius**.
 - **Edge** — a Sobel outline that traces the shapes instead of filling them.
 - **Posterize** — quantise the colours into flat bands. **Levels** sets how many.
+- **Halftone** — a rotated dot screen whose dots grow with brightness: the print
+  look. Posterize flattens the ramp, this one spends texture on it.
+- **Solarize** — invert everything above a brightness **Level**.
+- **Chromatic aberration** — split red and blue radially, so the picture fringes
+  toward the corners the way a cheap lens does.
 - **Mirror** — fold the image about its centre, on **X**, **Y** or both.
 - **Bloom** — the additive glow: a blurred copy of the scene added back over it.
   **Strength** at 0 turns it off entirely.
 
-Untick everything for the raw effect with no post-processing. Fire and Fade run
-on the retained heat, before the effect's fresh output is mixed in; the rest work
-on the finished colour image, so they behave the way their names suggest.
+**Screen (final)** — these go on top of the finished, glowing frame, at your
+display's real resolution rather than the fire grid's. They're the "it's a screen
+you're looking at" layer, and they only read right after the bloom — a vignette
+*under* an additive glow just gets lit back up again.
 
-That first pair is what decides whether the picture starts from a clean slate.
-With neither ticked, every frame is drawn fresh over black — which is what the
-shader effects (Plasma, the fractals, Tunnel, …) have always done. Tick Fire or
-Fade and the previous frame stays put, decayed or drifting upward, with the new
-frame laid over the top wherever it's brighter. That's where trails, smears and
-long exposures come from. Worth knowing: with Fire and Fade both unticked there
-is nothing to dim what's already on screen, so anything bright stays bright —
-retention is only interesting when something is fading it.
+- **Barrel distortion** — bulge the image as if it were painted on a CRT.
+- **Scanlines** — darken alternating rows. **Lines** sets how many across the height.
+- **Vignette** — fall off toward the corners.
+- **Film grain** — animated noise over the whole frame.
 
-On machines without WebGL the app falls back to a Canvas2D renderer, and the
-filters that are GPU passes (Pixelate, Blur/sharpen, Edge, Posterize, Mirror) are
-greyed out there rather than pretending to work. Fire, Fade and Bloom run on both.
+Untick everything for the raw effect with no post-processing.
+
+The feedback group is what decides whether the picture starts from a clean slate.
+With none of them ticked, every frame is drawn fresh over black — which is what
+the shader effects (Plasma, the fractals, Tunnel, …) have always done. Tick any
+one and the previous frame stays put — decayed, drifting upward, dragged sideways
+or spun — with the new frame laid over the top wherever it's brighter. That's
+where trails, smears and long exposures come from.
+
+On machines without WebGL the app falls back to a Canvas2D renderer. Every
+feedback filter runs on both paths, so the fallback keeps its trails; the filters
+that are GPU passes — everything under Post except Bloom, and all four Screen
+ones — are greyed out there rather than pretending to work.
 
 ## Diagnostics
 
