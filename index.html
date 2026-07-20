@@ -3836,6 +3836,13 @@
   // duration, eased, repeating. Collapse the thumbs (lo==hi) to pin a constant
   // value, so a ranged slider still works as an ordinary one.
   const anims = {};
+  // Mutable animation phase, split out of the anims entry: `val` is where the erratic
+  // drift currently sits, `out` is the value last handed to apply() (they differ while
+  // a slider is beat-armed — the pulse must NOT move the drift position, or a slider
+  // resumes drifting from wherever the last beat left it). One record per key today;
+  // one record per key PER LAYER once effects stack.
+  const animPhase = {};
+  const newPhase = v => ({ val: v, out: v, from: v, to: v, t0: 0, dur: 1, pulse: 0 });
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
   const dotEls = {};           // id -> {low,mid,high} : the menu row's beat dots (ditto)
@@ -3923,7 +3930,7 @@
     label.parentNode.appendChild(row);   // foot of the control block (above the range editor)
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
-  function bindRange(id, valId, fmt, apply, durScale, beat) {
+  function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
     const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     // a11y: each dual slider is two anonymous inputs — name the low/high thumbs.
@@ -3931,7 +3938,18 @@
     const nm = (lbl && lbl.childNodes[0] ? lbl.childNodes[0].nodeValue : id).trim();
     lo.setAttribute("aria-label", nm + " (low)");
     hi.setAttribute("aria-label", nm + " (high)");
-    const a = anims[id] = { lo, hi, apply, name: nm, durScale: durScale || 1, val: +lo.value, from: +lo.value, to: +lo.value, t0: 0, dur: 1, pulse: 0 };
+    // The DEFINITION lives here; the mutable animation PHASE lives in animPhase[id]
+    // (see newPhase). They are split because a stack of effects needs one phase record
+    // per layer per key while sharing one definition, one pair of DOM thumbs and one
+    // apply closure. With a single layer there is exactly one phase record and the
+    // behaviour is identical.
+    // `scene` marks a control that belongs to the whole scene rather than to one
+    // effect — the palette, banding, the camera, display zoom and every filter param.
+    // Those animate once per frame no matter how many effects are stacked. Derived
+    // from CONTROLS (host/group), NOT from the FILTERS registry, which is defined
+    // further down the file and does not exist yet when this wiring runs.
+    const a = anims[id] = { lo, hi, apply, name: nm, durScale: durScale || 1, scene: scene !== false };
+    animPhase[id] = newPhase(+lo.value);
     function ui() {
       // min/max are read live, not closed over: each box's range editor
       // rewrites them at runtime and the fill must follow.
@@ -3945,54 +3963,73 @@
     lo.addEventListener("input", () => { if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
     hi.addEventListener("input", () => { if (+hi.value < +lo.value) lo.value = hi.value; ui(); });
     if (beat !== false) makeChips(id, lo.closest(".dual").previousElementSibling);
-    ui(); apply(a.val);
+    ui(); apply(animPhase[id].val);
   }
+  // A control belongs to the SCENE rather than to one effect when it is not an effect
+  // control at all (palette, banding, filter params — hosts other than "fx") or when it
+  // is the shared camera/display zoom. Everything else is owned by whichever effect
+  // declares it, and gets one animation phase per stacked layer.
+  const isSceneCtl = c => c.host !== "fx" || c.group === "camera";
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
-  CONTROLS.filter(c => c.type === "dual").forEach(c => bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat));
+  CONTROLS.filter(c => c.type === "dual").forEach(c => bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c)));
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
-  bindRange("ttl", "vTtl", v => sig3(v) + "s", () => {}, 1, false);   // no chips
+  bindRange("ttl", "vTtl", v => sig3(v) + "s", () => {}, 1, false, true);   // no chips; scene-level
   // Transition length, same shape as TTL: a range in seconds, read per switch by
   // transBegin. Pinch both thumbs to 0 for a hard cut. No chips, no per-effect state.
-  bindRange("tdur", "vTdur", v => v <= 0 ? "cut" : sig3(v) + "s", () => {}, 1, false);
+  bindRange("tdur", "vTdur", v => v <= 0 ? "cut" : sig3(v) + "s", () => {}, 1, false, true);
 
+  // Advance ONE slider's animation by one frame. `a` is the definition (anims[id]),
+  // `st` the mutable phase — a separate argument because a stack of effects keeps one
+  // phase record per layer against the same definition. The band [mn,mx], the beat
+  // arming, the pulse shape and the pulse length are all passed in for the same reason:
+  // for the selected layer they come from the DOM and the singleton maps, for any other
+  // layer from that layer's stored copy.
+  // `doApply` false computes the value without touching the global, so the stack loop
+  // can install each layer's values immediately before that layer draws.
+  function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply) {
+    // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
+    // drifting and only move on a beat — snap to the high thumb, drop back to
+    // the low thumb over this slider's own pulse length (default PULSE_DROP).
+    const armed = audio.on && br && (br.low || br.mid || br.high);
+
+    if (armed) {
+      const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
+      const drop = plen > 0 ? plen : PULSE_DROP;
+      if (beat) st.pulse = 1;                                    // immediate, significant
+      else st.pulse = st.pulse - dt / drop > 0 ? st.pulse - dt / drop : 0;
+      const fn = PULSE_FN[shape] || PULSE_FN[PULSE_DEFAULT];
+      // Deliberately writes `out`, not `val`: the drift position must survive the
+      // pulse untouched, so unarming resumes the wander where it left off.
+      st.out = mn + fn(st.pulse) * (mx - mn);                    // rest at mn, snap to mx, decay back along the chosen curve
+      if (doApply) a.apply(st.out);
+      return;
+    }
+
+    // otherwise: erratic wander between [mn,mx] (pinned ⇒ constant)
+    if (mx - mn < 1e-9) {
+      st.val = mn;
+    } else {
+      let f = (now - st.t0) / st.dur;
+      if (f >= 1) {                      // begin a fresh erratic segment
+        st.from = st.val;
+        st.to = mn + Math.random() * (mx - mn);
+        st.t0 = now; st.dur = (350 + Math.random() * 1650) * a.durScale;
+        f = 0;
+      }
+      const s = f * f * (3 - 2 * f);     // smoothstep between targets
+      st.val = st.from + (st.to - st.from) * s;
+      st.val = st.val < mn ? mn : st.val > mx ? mx : st.val;
+    }
+    st.out = st.val;
+    if (doApply) a.apply(st.val);
+  }
   function updateAnims(now, dt) {
     for (const id in anims) {
-      const a = anims[id];
+      const a = anims[id], st = animPhase[id];
       const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
-      const br = beatReact[id];
-      // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
-      // drifting and only move on a beat — snap to the high thumb, drop back to
-      // the low thumb over this slider's own pulse length (default PULSE_DROP).
-      const armed = audio.on && br && (br.low || br.mid || br.high);
-
-      if (armed) {
-        const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
-        const drop = pulseLen[id] > 0 ? pulseLen[id] : PULSE_DROP;
-        if (beat) a.pulse = 1;                                   // immediate, significant
-        else a.pulse = a.pulse - dt / drop > 0 ? a.pulse - dt / drop : 0;
-        const shape = PULSE_FN[pulseShape[id]] || PULSE_FN[PULSE_DEFAULT];
-        a.apply(mn + shape(a.pulse) * (mx - mn));                // rest at mn, snap to mx, decay back along the chosen curve
-        continue;
-      }
-
-      // otherwise: erratic wander between [mn,mx] (pinned ⇒ constant)
-      if (mx - mn < 1e-9) {
-        a.val = mn;
-      } else {
-        let f = (now - a.t0) / a.dur;
-        if (f >= 1) {                      // begin a fresh erratic segment
-          a.from = a.val;
-          a.to = mn + Math.random() * (mx - mn);
-          a.t0 = now; a.dur = (350 + Math.random() * 1650) * a.durScale;
-          f = 0;
-        }
-        const s = f * f * (3 - 2 * f);     // smoothstep between targets
-        a.val = a.from + (a.to - a.from) * s;
-        a.val = a.val < mn ? mn : a.val > mx ? mx : a.val;
-      }
-      a.apply(a.val);
+      stepAnim(a, st, mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true);
     }
   }
 
