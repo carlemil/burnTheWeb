@@ -1554,15 +1554,6 @@
     uniform highp sampler2D uHeat; uniform float uKeep;
     in vec2 vUv; out vec4 o;
     void main(){ o = vec4(texture(uHeat, vUv).r * uKeep, 0.0, 0.0, 1.0); }`;
-    // Straight texture copy. Used only to get an RGB effect's own resolved image into
-    // glFbo.native in place of the palette pass. Deliberately its own program rather than
-    // FS_ZOOM at uZoom=1: an identity that holds by coincidence is the kind of coupling
-    // that breaks silently the day someone edits the zoom maths.
-    const FS_BLIT = `#version 300 es
-    precision highp float;
-    uniform sampler2D uSrc;
-    in vec2 vUv; out vec4 o;
-    void main(){ o = vec4(texture(uSrc, vUv).rgb, 1.0); }`;
     const FS_PAL = `#version 300 es
     precision highp float;
     uniform sampler2D uHeat; uniform sampler2D uPal;
@@ -1675,9 +1666,6 @@
     glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
     glProg.fade = makeProg(VS_QUAD, FS_FADE, ["uHeat", "uKeep"]);
     glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
-    glProg.blit = makeProg(VS_QUAD, FS_BLIT, ["uSrc"]);
-    // Where an RGB effect (fractal flames) hands its resolved image to the pipeline.
-    glTex.flame = createTex(gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -1862,25 +1850,13 @@
     drawQuad();
   }
   function glRender() {
-    // A) heat → palette colour (native fire resolution). An RGB effect (fractal flames)
-    // resolved its own colour on the CPU — the chaos game runs there anyway — so it
-    // uploads that instead of indexing the ramp. Everything downstream is untouched:
-    // the post chain, zoom, transitions and bloom all still see glFbo.native.
+    // A) heat → palette colour (native fire resolution)
     bindFbo(glFbo.native, fw, fh);
     gl.disable(gl.BLEND);
-    if (EFFECTS[effect].rgb) {
-      flResolve();
-      gl.bindTexture(gl.TEXTURE_2D, glTex.flame);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, flBytes);
-      gl.useProgram(glProg.blit.p);
-      bindTexUnit(0, glTex.flame); gl.uniform1i(glProg.blit.u.uSrc, 0);
-      drawQuad();
-    } else {
     gl.useProgram(glProg.pal.p);
     bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
     bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
     drawQuad();
-    }
     // A2) the post-FX chain, in registry order, ping-ponging between post[0]/[1]
     const postSrc = glPostChain();
     // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
@@ -2722,179 +2698,8 @@
     }
   }
 
-  // ---- Fractal flames (Draves) ------------------------------------------------
-  // The chaos game again, but this one cannot ride the heat buffer. Heat is R8 and every
-  // write is MAX, so a density histogram would saturate on the first hit — and flames get
-  // their whole look from density. So this effect keeps its OWN float histogram
-  // [sumR, sumG, sumB, count] per cell and resolves it to RGB itself, which is also what
-  // lets it carry colour-by-structure: hue comes from the orbit, not from the pixel's
-  // brightness. It rejoins the normal pipeline at glFbo.native, so zoom, the post-FX
-  // chain, transitions and bloom all still apply. Banding does not — that filter rewrites
-  // the 256-entry ramp in index space, and this effect never indexes the ramp per pixel.
-  let flHist = null, flRGBA = null, flBytes = null, flW = 0, flH = 0;
-  // Slider-driven, declared here because bindRange fires each apply() during wiring.
-  let flSeed = 7, flWarp = 1, flVarMix = 0.5, flSym = 1, flGamma = 2.2, flRetain = 0.97, flPts = 50000;
-  function flEnsure() {
-    if (flHist && flW === fw && flH === fh) return;
-    flW = fw; flH = fh;
-    flHist = new Float32Array(fw * fh * 4);
-    flRGBA = new Uint8ClampedArray(fw * fh * 4);   // clamped: the tone map can overshoot
-    flBytes = new Uint8Array(flRGBA.buffer);       // same memory, for texImage2D
-  }
-  function flClear() { if (flHist) flHist.fill(0); }
-  // Tone-map lookup tables — see flResolve. The log table is built once and covers counts
-  // up to 64k; past that the curve has long since saturated, so clamping costs nothing.
-  const flLogLut = new Float32Array(65536);
-  for (let i = 0; i < flLogLut.length; i++) flLogLut[i] = Math.log(i + 1);
-  const flPowLut = new Float32Array(1024);
-  let flPowG = -1;
-
-  // The nonlinear warps. Each takes the affine result and pushes it somewhere organic —
-  // this is where the flame texture comes from; the affine part only positions the piece.
-  // Draves's numbering/formulae; `th` is atan2(x, y) as in the paper, not the usual order.
-  const FL_VARS = 12;
-  const flOut = [0, 0];
-  function flVar(k, x, y) {
-    const r2 = x * x + y * y, r = Math.sqrt(r2), th = Math.atan2(x, y);
-    let nx, ny;
-    switch (k) {
-      case 1: nx = Math.sin(x); ny = Math.sin(y); break;                                   // sinusoidal
-      case 2: { const d = r2 > 1e-12 ? r2 : 1e-12; nx = x / d; ny = y / d; break; }        // spherical
-      case 3: { const s = Math.sin(r2), c = Math.cos(r2); nx = x * s - y * c; ny = x * c + y * s; break; }  // swirl
-      case 4: { const d = r > 1e-12 ? r : 1e-12; nx = (x - y) * (x + y) / d; ny = 2 * x * y / d; break; }   // horseshoe
-      case 5: nx = th / Math.PI; ny = r - 1; break;                                        // polar
-      case 6: nx = r * Math.sin(th + r); ny = r * Math.cos(th - r); break;                 // handkerchief
-      case 7: nx = r * Math.sin(th * r); ny = -r * Math.cos(th * r); break;                // heart
-      case 8: { const a = th / Math.PI; nx = a * Math.sin(Math.PI * r); ny = a * Math.cos(Math.PI * r); break; }  // disc
-      case 9: { const d = r > 1e-12 ? r : 1e-12; nx = (Math.cos(th) + Math.sin(r)) / d; ny = (Math.sin(th) - Math.cos(r)) / d; break; }  // spiral
-      case 10: { const d = r > 1e-12 ? r : 1e-12; nx = Math.sin(th) / d; ny = r * Math.cos(th); break; }   // hyperbolic
-      case 11: nx = Math.sin(th) * Math.cos(r); ny = Math.cos(th) * Math.sin(r); break;    // diamond
-      default: nx = x; ny = y;                                                             // 0: linear
-    }
-    flOut[0] = nx; flOut[1] = ny;
-  }
-
-  // The IFS itself, derived deterministically from the Shape seed slider — so a preset
-  // reproduces its flame exactly, and dragging the seed rolls a new one. Each function
-  // gets an affine map, two variations to blend, a weight, and a palette coordinate.
-  let flIFSSeed = null, flIFSCache = null;
-  function flIFS() {
-    const seed = Math.round(flSeed);
-    if (flIFSCache && flIFSSeed === seed) return flIFSCache;
-    let s = (Math.imul(seed + 1, 2654435761)) >>> 0;
-    const rnd = () => {                       // mulberry32, private to the flame
-      s = (s + 0x6D2B79F5) | 0;
-      let t = Math.imul(s ^ s >>> 15, 1 | s);
-      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
-    const R = () => rnd() * 2 - 1;
-    const n = 3 + ((rnd() * 2) | 0);          // 3 or 4 functions
-    const fns = [];
-    for (let i = 0; i < n; i++)
-      fns.push({ a: R(), b: R(), c: R(), d: R(), e: R() * 0.8, f: R() * 0.8,
-                 col: rnd(), w: 0.4 + rnd(),
-                 v1: (rnd() * FL_VARS) | 0, v2: (rnd() * FL_VARS) | 0, mix: rnd() });
-    let tot = 0; for (const f of fns) tot += f.w;
-    let acc = 0; for (const f of fns) { acc += f.w / tot; f.cum = acc; }
-    fns[fns.length - 1].cum = 1;              // guard the top of the range against fp drift
-    flIFSSeed = seed; flIFSCache = fns;
-    return fns;
-  }
-
-  // One tick of the chaos game, accumulated into the histogram. Called through the
-  // descriptor's `stamp` hook, so it gets the same safe box as the other point effects.
-  function flameStamp(xL, xR, yT, yB, _n) {
-    const n = Math.round(flPts);        // its own budget — see the flpts control
-    flEnsure();
-    const H = flHist;
-    // Exposure: the histogram is a long exposure that survives between ticks, so a still
-    // flame converges instead of flickering. Below 1 it forgets, which is what turns an
-    // animated flame into trails rather than mush. At exactly 1 nothing is forgotten.
-    if (flRetain < 1) { const k = flRetain; for (let i = 0; i < H.length; i++) H[i] *= k; }
-    const fns = flIFS(), nf = fns.length;
-    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
-    const sc = Math.min(xR - xL, yB - yT) * 0.45;
-    const sym = Math.max(1, Math.round(flSym)), symStep = 2 * Math.PI / sym;
-    let x = Math.random() * 2 - 1, y = Math.random() * 2 - 1, c = Math.random();
-    for (let i = 0; i < n; i++) {
-      const u = Math.random();
-      let f = fns[nf - 1];
-      for (let j = 0; j < nf; j++) if (u <= fns[j].cum) { f = fns[j]; break; }
-      const ax = f.a * x + f.b * y + f.e, ay = f.c * x + f.d * y + f.f;
-      flVar(f.v1, ax, ay); const x1 = flOut[0], y1 = flOut[1];
-      flVar(f.v2, ax, ay); const x2 = flOut[0], y2 = flOut[1];
-      const m = f.mix * flVarMix;
-      const wx = x1 + (x2 - x1) * m, wy = y1 + (y2 - y1) * m;
-      // Warp blends from the bare affine map toward the variation result, so turning it
-      // down walks the effect back to a plain (blocky) IFS — the Sierpinski end of things.
-      x = ax + (wx - ax) * flWarp;
-      y = ay + (wy - ay) * flWarp;
-      c = (c + f.col) * 0.5;              // colour follows the dynamics, half-way each step
-      if (i < 20) continue;               // burn-in: let the point settle onto the attractor
-      if (!isFinite(x) || !isFinite(y)) { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; continue; }
-      let px = x, py = y;
-      if (sym > 1) {                      // rotational symmetry, one random arm per plot
-        const a2 = ((Math.random() * sym) | 0) * symStep, ca = Math.cos(a2), sa = Math.sin(a2);
-        px = x * ca - y * sa; py = x * sa + y * ca;
-      }
-      let sx = cx + px * sc, sy = cy + py * sc;
-      if (camOn()) {                      // same 2x2 map plot() applies, about the grid centre
-        const dx = sx - fw * 0.5, dy = sy - fh * 0.5;
-        sx = camM[0] * dx + camM[1] * dy + fw * 0.5;
-        sy = camM[2] * dx + camM[3] * dy + fh * 0.5;
-      }
-      const xi = sx | 0, yi = sy | 0;
-      if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) continue;
-      // The palette supplies the function colours, so picking a palette (and cycling it)
-      // still means something here even though the per-pixel ramp lookup does not.
-      const col = palette[((c * 255) | 0) & 255];   // & binds tighter than |: parenthesise
-      const o = (yi * fw + xi) * 4;
-      H[o] += col & 255; H[o + 1] += (col >> 8) & 255; H[o + 2] += (col >> 16) & 255;
-      H[o + 3] += 1;
-    }
-  }
-
-  // Log-density tone mapping — the step that makes it look like anything. Hit counts span
-  // orders of magnitude, so plotting them raw clips the core to a white blob and loses the
-  // filaments entirely. log(count) compresses that range; the mean colour of the hits
-  // gives the hue, and gamma sets how hard the falloff reads.
-  function flResolve() {
-    flEnsure();
-    const H = flHist, out = flRGBA;
-    let maxC = 0;
-    for (let i = 3; i < H.length; i += 4) if (H[i] > maxC) maxC = H[i];
-    // Normalise against a FRACTION of the peak, not the peak itself. A chaos game puts a
-    // few cells orders of magnitude above the rest, and dividing by that one outlier maps
-    // everything else into the bottom of the range — measured: 95% of the frame in the
-    // darkest eighth. Letting the densest fifth clip to white instead is both brighter
-    // and truer to the look: flames are supposed to blow out at the core.
-    const ref = maxC * 0.2 > 1 ? maxC * 0.2 : 1;
-    const invLogMax = 1 / Math.log(ref + 1);
-    // Both transcendentals come out of the inner loop. This runs once per CELL per FRAME
-    // — measured at 976x558 that is 545k Math.log plus 545k Math.pow every frame, which
-    // dominated everything else the effect does, the chaos game included. log() becomes a
-    // table over integer counts (they only matter up to where the curve saturates) and
-    // pow() a 1k-entry curve rebuilt when gamma moves.
-    const g = flGamma > 0.1 ? flGamma : 0.1;
-    if (flPowG !== g) { for (let i = 0; i < 1024; i++) flPowLut[i] = Math.pow(i / 1023, 1 / g); flPowG = g; }
-    const LOG = flLogLut, LOGN = LOG.length - 1;
-    for (let o = 0; o < H.length; o += 4) {
-      const cnt = H[o + 3];
-      if (cnt <= 0) { out[o] = 0; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 255; continue; }
-      const ci = cnt < LOGN ? cnt | 0 : LOGN;
-      let a = LOG[ci] * invLogMax;
-      a = flPowLut[(a < 1 ? a * 1023 : 1023) | 0];
-      const inv = a / cnt;
-      out[o] = H[o] * inv; out[o + 1] = H[o + 1] * inv; out[o + 2] = H[o + 2] * inv;
-      out[o + 3] = 255;
-    }
-  }
-
   function render() {
-    // An RGB effect resolves its own colour; everything else maps heat through the ramp.
-    if (EFFECTS[effect].rgb) { flResolve(); img.data.set(flRGBA); }
-    else for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
+    for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
     offCtx.putImageData(img, 0, 0);
 
     // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes
@@ -3461,18 +3266,6 @@
     { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
     { key: "atd", host: "fx", group: "attractor", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => sig3(v), apply: v => atD = v, durScale: 10 },
     { key: "atjit", host: "fx", group: "attractor", type: "dual", label: "Point jitter", valId: "vAtJit", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "px", apply: v => atJit = v, durScale: 10 },
-    // Fractal flame. `flseed` picks the IFS itself, so dragging it rolls a whole new
-    // flame — it is the one slider here that changes the shape rather than shading it.
-    // Its own point budget, not the shared `points` slider: that caps at 8000, which for
-    // a chaos game spread over ~100k cells means most cells are never hit and the image
-    // is a sparse dusting rather than a flame. Flames want orders of magnitude more.
-    { key: "flpts", host: "fx", group: "flame", type: "dual", label: "Samples", valId: "vFlPts", min: 5000, max: 150000, step: 5000, lo: 50000, hi: 50000, fmt: v => Math.round(v / 1000) + "k", apply: v => flPts = v, durScale: 40 },
-    { key: "flseed", host: "fx", group: "flame", type: "dual", label: "Shape seed", valId: "vFlSeed", min: 0, max: 999, step: 1, lo: 7, hi: 7, fmt: v => "#" + Math.round(v), apply: v => flSeed = v, durScale: 40 },
-    { key: "flwarp", host: "fx", group: "flame", type: "dual", label: "Warp", valId: "vFlWarp", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => Math.round(v * 100) + "%", apply: v => flWarp = v, durScale: 20 },
-    { key: "flvar", host: "fx", group: "flame", type: "dual", label: "Variation mix", valId: "vFlVar", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => Math.round(v * 100) + "%", apply: v => flVarMix = v, durScale: 20 },
-    { key: "flsym", host: "fx", group: "flame", type: "dual", label: "Symmetry", valId: "vFlSym", min: 1, max: 8, step: 1, lo: 1, hi: 1, fmt: v => Math.round(v) === 1 ? "none" : Math.round(v) + "-fold", apply: v => flSym = v, durScale: 40 },
-    { key: "flgamma", host: "fx", group: "flame", type: "dual", label: "Gamma", valId: "vFlGamma", min: 0.5, max: 4, step: 0.05, lo: 2.2, hi: 2.2, fmt: v => sig3(v), apply: v => flGamma = v, durScale: 20 },
-    { key: "flretain", host: "fx", group: "flame", type: "dual", label: "Exposure", valId: "vFlRetain", min: 0.5, max: 1, step: 0.005, lo: 0.97, hi: 0.97, fmt: v => v >= 1 ? "hold" : sig3(v * 100) + "%", apply: v => flRetain = v, durScale: 20 },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which
@@ -3591,7 +3384,7 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", flame: "Fractal flame", camera: "Camera", other: "Other",
+    attractor: "Attractor", camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
     palette: "Palette", banding: "Banding",
@@ -3913,14 +3706,6 @@
       draw: dt => { juliaPower = mbPower; const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
       defaults: { palcycle: [8, 8], mbexp: [2, 4], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: {}, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
-    { id: "flame", name: "Fractal Flame", presetName: "Fractal Flame", subtitle: "Fractal flame · IFS chaos game",
-      help: "Draves's fractal flames. The chaos game again — pick one of a few functions at random, apply it, plot where you land, repeat — but each function pushes its result through a nonlinear warp (swirl, spherical, horseshoe, polar…), which is where the organic texture comes from. Brightness is the LOG of how often each pixel was hit, so the dense cores and the faint outer filaments are visible at once; that HDR tone map is what makes it glow. Colour follows the dynamics rather than position: a colour coordinate is carried along the orbit and blended halfway toward each function's palette entry, so a region's hue records which functions flowed through it. Shape seed rolls a whole new flame; Warp walks back toward a plain blocky IFS; Exposure sets how long the image accumulates before it forgets. Picking a palette still recolours it (the palette supplies the function colours) — Banding does not apply, since this effect never indexes the ramp per pixel.",
-      params: ["flseed", "flwarp", "flvar", "flsym", "flgamma", "flretain", "flpts", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "flame"],
-      // rgb: resolves its own colour instead of writing heat — see the flame block.
-      rgb: true, filters: ["bloom"], onEnter: () => flClear(),
-      stamp: (xL, xR, yT, yB, n) => flameStamp(xL, xR, yT, yB, n),
-      defaults: { palcycle: [8, 8], flseed: [7, 7], flwarp: [1, 1], flvar: [0.35, 0.75], flsym: [1, 1], flgamma: [2.2, 2.2], flretain: [0.97, 0.97], flpts: [50000, 50000], points: 2500, zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1, rise: [130, 130] },
-      beat: {}, extras: { palette: "9", morph: true, showBox: false, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
       params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
