@@ -787,8 +787,8 @@ orbit re-roll, the `Date.now()` chaos seed, and every accumulated phase (`simT`,
 
 **The first-visit preset library** is built once, when `presets.length === 0` (no saved
 blob). It is `defaultPresets()` — one per effect — with **`DEFAULT_SCENE` prepended and
-applied** so a brand-new visitor opens on the shipped scene (`JuliaBgTet`, a three-layer
-stack) rather than bare Sierpiński. `DEFAULT_SCENE` is a real exported preset stored in the
+applied** so a brand-new visitor opens on the shipped scene (`JuliaBgTet`, a four-layer
+Rasta-palette stack) rather than bare Sierpiński. `DEFAULT_SCENE` is a real exported preset stored in the
 **wire format** (effect *ids*, pruned to its deltas — `applyPreset` re-merges every map
 onto the effect defaults, so omitted keys cost nothing; only beat/pulse/plen are pruned,
 since their defaults are universal, while state maps are kept whole so nothing can silently
