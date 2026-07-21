@@ -80,7 +80,8 @@ up to four of them at once** — see Layers below:
 - **Deterministic point cloud** — the chaos game uses a seeded PRNG (mulberry32)
   that resets to the same value every frame, so the point *sequence* is identical
   each frame. Only the moving geometry reshapes the fractal — no random shimmer.
-- **Palettes & glow** — fifteen classic demoscene-style palettes to choose from
+- **Palettes & glow** — nineteen classic demoscene-style palettes (including a set of
+  Rastafari ramps), each shown as a gradient swatch you click to preview and pick
   (Fire, Ice, Toxic, Copper, Purple, Rainbow, Grayscale, Electric, Amber, Matrix,
   Sunset, C64, CGA, Blood, Chrome), plus a subtle
   additive bloom that makes the white-hot points glow. The palette-cycle slider
@@ -179,7 +180,7 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sierpiński, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
-| **Palette** | Pick one of fifteen demoscene-style colour ramps. |
+| **Palette** | Pick one of nineteen colour ramps — each is shown as a gradient swatch, so you preview the colours instead of reading a name. Click one to select it; the active ramp is highlighted. |
 | **Palette cycle** | How long one blend to a random palette takes, as a min–max range in seconds — each cycle picks a time inside it. Collapse both thumbs to **0** for a fixed palette that never cycles. (This replaced the old Auto-morph checkbox.) |
 | **Palette hold** | How long to rest on each palette before the next blend begins, as a min–max range in seconds — a fresh dwell is drawn each time. At **0** (the default) the palette cross-fades continuously; raise it to pause on each palette between changes. Only applies while Palette cycle is running. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |

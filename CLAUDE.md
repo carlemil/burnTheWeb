@@ -500,6 +500,18 @@ the palette — `morphing` is now *derived* (`palCycleOn()`), not stored, and
 written for backward compatibility, and `loadExtra` seeds the slider to 0 for a scene
 saved with `morph:false` before the slider existed.
 
+**Palette preview picker.** The `#palette <select>` is the palette **value store** but is
+**hidden** (`buildPalSwatches` sets `display:none`); the visible control is `#palswatches`,
+a gradient swatch per `PALETTES` entry built from `palGradientCss(i)`. A swatch click just
+sets `paletteSel.value` and dispatches a bubbling `change`, so the existing morph/`setPalette`
+handler and the delegated persist/autosave fire exactly as a manual dropdown pick did — the
+swatches add **no** state or persistence. `syncPalSwatches()` mirrors the active highlight
+from `paletteSel.value`; it is called wherever the value changes programmatically
+(`showMorphTarget` during a cycle, `applyLayerExtras` on a layer/effect switch, and the
+`change` handler). Because the swatches build from `PALETTES`, adding a palette needs an
+entry there **and** a matching `<option>` in the select (its value is the index, still read
+for validation). Keep the select in the DOM: a JS failure leaves the native dropdown usable.
+
 `setEffect(i, save)` shows the descriptor's `params` controls, runs `onEnter`, and swaps
 five parallel per-effect state maps:
 - `states[e]` — slider values (seeded from the descriptor's `defaults`).

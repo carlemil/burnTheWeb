@@ -106,6 +106,20 @@
     cursor: pointer;
   }
   #panel select option { background: #1a0f08; color: #ffcf87; }
+  /* Palette preview picker: a gradient swatch per palette, replacing the plain
+     dropdown (the <select> stays as the value store, hidden once JS builds these). */
+  #palswatches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
+  .palsw {
+    position: relative; height: 24px; padding: 0; border-radius: 5px;
+    border: 1px solid rgba(255, 140, 40, 0.35); cursor: pointer; overflow: hidden;
+  }
+  .palsw-n {
+    position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+    font: 11px/1 ui-monospace, Menlo, Consolas, monospace; color: #fff;
+    text-shadow: 0 1px 1px #000, 0 0 3px #000; pointer-events: none; letter-spacing: .2px;
+  }
+  .palsw.active { border-color: #ffcf87; box-shadow: 0 0 0 1px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.55); }
+  .palsw:focus-visible { outline: 2px solid #ffb15a; outline-offset: 1px; }
   #panel .check {
     display: flex;
     align-items: center;
@@ -749,7 +763,12 @@
     <option value="12">CGA</option>
     <option value="13">Blood</option>
     <option value="14">Chrome</option>
+    <option value="15">One love</option>
+    <option value="16">Rasta Red</option>
+    <option value="17">Rasta Green</option>
+    <option value="18">Rasta Yellow</option>
   </select>
+  <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </details>
@@ -1037,6 +1056,12 @@
     { name: "CGA", fn: grad([[0, [0, 0, 0]], [0.35, [0, 0, 170]], [0.55, [0, 170, 170]], [0.75, [255, 85, 255]], [1, [255, 255, 255]]]) },
     { name: "Blood", fn: grad([[0, [0, 0, 0]], [0.35, [50, 0, 0]], [0.6, [150, 0, 10]], [0.8, [225, 40, 30]], [0.92, [255, 140, 110]], [1, [255, 230, 215]]]) },
     { name: "Chrome", fn: grad([[0, [0, 0, 0]], [0.25, [20, 30, 55]], [0.45, [90, 110, 140]], [0.62, [200, 215, 235]], [0.75, [70, 90, 120]], [0.9, [180, 200, 225]], [1, [255, 255, 255]]]) },
+    // Rastafari palettes — green / gold / red. "One love" runs the full tricolor;
+    // the other three each lean on one of the three colours.
+    { name: "One love", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
+    { name: "Rasta Red", fn: grad([[0, [0, 0, 0]], [0.25, [15, 70, 25]], [0.5, [190, 20, 20]], [0.72, [240, 60, 30]], [0.88, [255, 200, 40]], [1, [255, 245, 215]]]) },
+    { name: "Rasta Green", fn: grad([[0, [0, 0, 0]], [0.28, [0, 60, 20]], [0.52, [0, 150, 50]], [0.72, [120, 205, 40]], [0.88, [245, 205, 30]], [1, [235, 255, 205]]]) },
+    { name: "Rasta Yellow", fn: grad([[0, [0, 0, 0]], [0.26, [45, 55, 0]], [0.5, [205, 150, 0]], [0.72, [255, 215, 30]], [0.88, [255, 240, 120]], [1, [255, 255, 225]]]) },
   ];
 
   // ---- Banded stripes: a *filter* over whatever palette is active, not a
@@ -1141,7 +1166,7 @@
     return n;
   }
   // reflect the palette we're heading toward in the dropdown
-  function showMorphTarget() { el("palette").value = morphTargetIndex; }
+  function showMorphTarget() { el("palette").value = morphTargetIndex; syncPalSwatches(); }
   // Start a morph FROM an explicit base ramp (a live snapshot of what's on
   // screen) TO a target palette index — so the blend begins exactly where we
   // are, with no snap. We paint the start frame immediately so a switch made
@@ -4623,6 +4648,52 @@
     el("ttl-lo").disabled = el("ttl-hi").disabled = !on;
   }
   const paletteSel = el("palette");
+  // ---- palette preview picker -----------------------------------------------
+  // A gradient swatch per palette, so you can SEE each ramp instead of reading a
+  // name off a dropdown. The swatches are pure presentation + a click that drives
+  // the existing <select> (set value + dispatch change), so the morph/setPalette
+  // handler and the delegated persist/autosave fire exactly as a manual pick does —
+  // no new state, no new persistence. The <select> stays in the DOM as the value
+  // store (showMorphTarget/applyLayerExtras still set it, validation still reads its
+  // options); JS hides it, so a JS failure leaves the native dropdown usable.
+  function palGradientCss(i) {
+    const fn = PALETTES[i].fn, stops = [], N = 24;
+    for (let s = 0; s <= N; s++) {
+      const c = fn(Math.round(s / N * 255));
+      stops.push("rgb(" + clamp(c[0]) + "," + clamp(c[1]) + "," + clamp(c[2]) + ") " + Math.round(s / N * 100) + "%");
+    }
+    return "linear-gradient(to right, " + stops.join(",") + ")";
+  }
+  function syncPalSwatches() {
+    const host = el("palswatches");
+    if (!host) return;
+    const cur = paletteSel.value;
+    host.querySelectorAll(".palsw").forEach(b => b.classList.toggle("active", b.dataset.pal === cur));
+  }
+  function buildPalSwatches() {
+    const host = el("palswatches");
+    if (!host) return;
+    host.innerHTML = "";
+    PALETTES.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "palsw"; b.dataset.pal = String(i);
+      b.style.background = palGradientCss(i);
+      b.title = p.name;
+      const n = document.createElement("span");
+      n.className = "palsw-n"; n.textContent = p.name;
+      b.appendChild(n);
+      b.addEventListener("click", () => {
+        paletteSel.value = String(i);
+        paletteSel.dispatchEvent(new Event("change", { bubbles: true }));   // morph/setPalette + persist
+        syncPalSwatches();
+      });
+      host.appendChild(b);
+    });
+    paletteSel.classList.add("pal-hidden");   // the swatches are the control now; keep the select for its value
+    paletteSel.style.display = "none";
+    syncPalSwatches();
+  }
+  buildPalSwatches();
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
   const randSeedChk = el("randseed");
@@ -5643,6 +5714,7 @@
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     morphing = palCycleOn();
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
+    syncPalSwatches();                // highlight this layer's palette in the preview picker
     captureLayerExtras(L);            // concrete from here, so it serializes and stops falling back
     suppressPersist = false;
   }
@@ -6271,6 +6343,7 @@
     // while morphing, a manual pick restarts the blend from that palette
     if (morphing) startMorph(+paletteSel.value);
     else { morphOnce = false; setPalette(+paletteSel.value); }   // manual pick cancels a one-shot morph
+    syncPalSwatches();                                           // keep the preview highlight in step
   });
   // The Palette cycle slider replaces the old auto-morph checkbox: any edit
   // re-derives `morphing` and (re)starts or pins the blend.
