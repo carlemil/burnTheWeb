@@ -837,6 +837,12 @@
 
   const canvas = document.getElementById("fire");
 
+  // Max effects in one stack. Declared up here (far above the stack code that owns it)
+  // because initGL() — called during startup, long before the stack block — allocates
+  // STACK_MAX per-layer heat/palette buffers; a `const` down by newStackItem would be
+  // in the temporal dead zone at that call. Same hoisting reason as `card`/`beatUi`.
+  const STACK_MAX = 4;
+
   // Prefer a WebGL2 renderer (the whole fire/Julia/palette/glow pipeline runs on
   // the GPU); fall back to the original Canvas2D path when WebGL2 is missing. A
   // canvas can only ever hold ONE context type, so we try webgl2 first and only
@@ -1367,6 +1373,68 @@
     uniform highp sampler2D uSrc; uniform float uGain;
     in vec2 vUv; out vec4 o;
     void main(){ o = vec4(texture(uSrc, vUv).r * uGain, 0.0, 0.0, 1.0); }`;
+    // ---- OKLab per-layer colour merge (multi-layer stacks only) ----------------
+    // Each stacked effect keeps its OWN palette: its scratch heat is mapped through
+    // its own LUT to an sRGB colour, then blended into an accumulator in OKLab so
+    // hues combine perceptually instead of turning to grey. The accumulator ping-pongs
+    // (a colour blend is not a GPU blend-func); its alpha carries the running brightness
+    // weight, scaled by WMAX so it fits an 8-bit channel (≤ STACK_MAX layers). Björn
+    // Ottosson's sRGB↔OKLab. uBlend: 0 = brightness-weighted (screen L + weighted-mean
+    // hue), 1 = max (the brighter layer wins the pixel). Gain scales each layer's weight.
+    const OKLAB_GLSL = `
+      const float WMAX = 4.0;
+      float s2l(float c){ return c <= 0.04045 ? c/12.92 : pow((c+0.055)/1.055, 2.4); }
+      float l2s(float c){ return c <= 0.0031308 ? 12.92*c : 1.055*pow(c, 1.0/2.4) - 0.055; }
+      vec3 srgb2oklab(vec3 c){
+        vec3 lin = vec3(s2l(c.r), s2l(c.g), s2l(c.b));
+        float l = 0.4122214708*lin.r + 0.5363325363*lin.g + 0.0514459929*lin.b;
+        float m = 0.2119034982*lin.r + 0.6806995451*lin.g + 0.1073969566*lin.b;
+        float s = 0.0883024619*lin.r + 0.2817188376*lin.g + 0.6299787005*lin.b;
+        float l_=pow(l,1.0/3.0), m_=pow(m,1.0/3.0), s_=pow(s,1.0/3.0);
+        return vec3(0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_,
+                    1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_,
+                    0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_);
+      }
+      vec3 oklab2srgb(vec3 lab){
+        float l_ = lab.x + 0.3963377774*lab.y + 0.2158037573*lab.z;
+        float m_ = lab.x - 0.1055613458*lab.y - 0.0638541728*lab.z;
+        float s_ = lab.x - 0.0894841775*lab.y - 1.2914855480*lab.z;
+        float l=l_*l_*l_, m=m_*m_*m_, s=s_*s_*s_;
+        vec3 lin = vec3( 4.0767416621*l - 3.3077115913*m + 0.2309699292*s,
+                        -1.2684380046*l + 2.6097574011*m - 0.3413193965*s,
+                        -0.0041960863*l - 0.7034186147*m + 1.7076147010*s);
+        return clamp(vec3(l2s(lin.r), l2s(lin.g), l2s(lin.b)), 0.0, 1.0);
+      }`;
+    const FS_OKMERGE = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform sampler2D uPal; uniform sampler2D uAcc;
+    uniform float uGain; uniform int uBlend;
+    in vec2 vUv; out vec4 o;` + OKLAB_GLSL + `
+    void main(){
+      float h = texture(uHeat, vUv).r;
+      float idx = (floor(h*255.0 + 0.5) + 0.5) / 256.0;
+      vec3 col = texture(uPal, vec2(idx, 0.5)).rgb;      // this layer's own colour
+      vec4 acc = texture(uAcc, vUv);
+      float accW = acc.a * WMAX;
+      vec3 labC = srgb2oklab(col);
+      float w = clamp(labC.x * uGain, 0.0, WMAX);        // weight = perceptual L · gain
+      float accEps = accW + w;
+      if (accEps < 1.0e-4) { o = vec4(0.0, 0.0, 0.0, 0.0); return; }   // nothing lit here yet
+      vec3 labA = srgb2oklab(acc.rgb);
+      vec3 outLab; float outW;
+      if (uBlend == 1) {                                 // max: brighter layer wins
+        float lc = labC.x * uGain;
+        outLab = lc > labA.x ? vec3(lc, labC.yz) : labA;
+        outW = max(accW, w);
+      } else {                                           // brightness-weighted
+        float Lc = clamp(labC.x * uGain, 0.0, 0.999);
+        float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);  // screen lightness
+        vec2 ab = (labA.yz * accW + labC.yz * w) / accEps;   // hue ∝ brightness
+        outLab = vec3(Lout, ab);
+        outW = accW + w;
+      }
+      o = vec4(oklab2srgb(outLab), clamp(outW / WMAX, 0.0, 1.0));
+    }`;
     // Julia escape-time, ported 1:1 from julia()
     const FS_JULIA = `#version 300 es
     precision highp float;
@@ -1944,6 +2012,7 @@
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
     glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
+    glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uHeat", "uPal", "uAcc", "uGain", "uBlend"]);
     glProg.julia = camProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
     glProg.plasma = camProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
     glProg.tunnel = camProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
@@ -2010,6 +2079,26 @@
     // another the way two glShaderDraw calls into the shared buffer used to.
     glTex.layer = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glFbo.layer = createFbo(glTex.layer);
+    // Per-layer state for multi-layer stacks (see the frame loop / glLayerBeginHeat).
+    // Each slot gets its own persistent heat pair (so it retains its own fire/feedback),
+    // its own 256×1 palette LUT, so every stacked effect keeps its own colours. The
+    // colour accumulator ping-pongs (glTex.color[0/1]); layers blend into it in OKLab.
+    glTex.heatL = []; glFbo.heatL = []; glTex.palL = [];
+    for (let i = 0; i < STACK_MAX; i++) {
+      const a = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+      const b = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+      glTex.heatL.push([a, b]);
+      glFbo.heatL.push([createFbo(a), createFbo(b)]);
+      const p = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, p);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      glTex.palL.push(p);
+    }
+    glTex.color = [
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.color = [createFbo(glTex.color[0]), createFbo(glTex.color[1])];
     glTex.screen = [
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
@@ -2056,6 +2145,12 @@
     resizeTex(glTex.post[1], fw, fh);
     resizeTex(glTex.prev, fw, fh);
     resizeTex(glTex.layer, fw, fh);
+    for (let i = 0; i < STACK_MAX; i++) {
+      resizeTex(glTex.heatL[i][0], fw, fh);
+      resizeTex(glTex.heatL[i][1], fw, fh);
+    }
+    resizeTex(glTex.color[0], fw, fh);
+    resizeTex(glTex.color[1], fw, fh);
     // Display-sized, not fire-sized — see the declaration. Guarded because glResize
     // can run before the canvas has been laid out.
     const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
@@ -2251,6 +2346,171 @@
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
+  // ---- per-layer colour compositing (multi-layer stacks) ---------------------
+  // A single-layer scene renders exactly as it always has (shared heat → one palette
+  // in glRender). With TWO OR MORE live layers, each layer is coloured with its OWN
+  // palette and the results are blended in OKLab (glOkMerge), so every stacked effect
+  // keeps its own colours instead of the whole stack sharing the selected layer's.
+  // The pieces:
+  //   • a persistent heat pair + feedback PER layer (glTex.heatL[slot]) — each effect
+  //     retains its own fire/trails, using that layer's own filter set (L.filters);
+  //   • an independent palette-morph clock per layer (layerPal[slot]), so layers cycle
+  //     on their own schedules drawn from the shared Palette cycle / hold sliders;
+  //   • an RGBA8 ping-pong accumulator (glTex.color) that layers blend into in order.
+  // glColorTex holds the finished accumulator for glRender; null ⇒ the classic path.
+  let glColorTex = null;
+  const layerCur = [0, 0, 0, 0];         // which of heatL[slot][0/1] is live, per slot
+  const layerPal = [];                   // per-slot palette-morph state (see stepLayerPal)
+  const palScratch = new Uint8Array(256 * 4);
+  // Bake a smooth base ramp (+ the live banding filter) into RGBA bytes for a LUT upload.
+  // Mirrors composePalette, but writes an arbitrary target instead of the global palette.
+  function bakeLayerBytes(base, now, out) {
+    const t = now * 0.001, on = bandLevel > 0.001;
+    for (let x = 0; x < 256; x++) {
+      let r = base[x * 3], g = base[x * 3 + 1], b = base[x * 3 + 2];
+      if (on) {
+        const band = (x / 256 * BAND_COUNT) | 0;
+        const ci = (((band + 0.5) / BAND_COUNT) * 256) | 0;
+        const dim = ((band / bandGroup) | 0) % 2 === 0 ? 1 : bandDim;
+        const amt = bandLevel * (0.6 + 0.4 * Math.sin(t * 0.9 - x * 0.05));
+        r += (base[ci * 3] * dim - r) * amt;
+        g += (base[ci * 3 + 1] * dim - g) * amt;
+        b += (base[ci * 3 + 2] * dim - b) * amt;
+      }
+      const j = x * 4;
+      out[j] = clamp(r); out[j + 1] = clamp(g); out[j + 2] = clamp(b); out[j + 3] = 255;
+    }
+    out[0] = out[1] = out[2] = 0;        // index 0 stays black
+  }
+  // Which palette this layer colours with. The SELECTED layer's store is the DOM (its
+  // L.palette is null while selected, exactly like state/beat), so read the live dropdown
+  // — otherwise editing the palette wouldn't update the layer until you deselected it.
+  // Others use their captured L.palette, falling back to the effect's default.
+  function layerPalIndex(L) {
+    let raw;
+    if (L === stack[stackSel]) raw = +paletteSel.value;
+    else { const fx = extras[L.fx] || presetExtra(L.fx); raw = +(L.palette != null ? L.palette : fx.palette); }
+    return Math.max(0, Math.min(PALETTES.length - 1, raw | 0));
+  }
+  // Advance ONE layer's palette clock and return its current base ramp. Reuses the
+  // global cycle/hold timing (morphMs/holdMs) but keeps its own from/to/target, so
+  // layers drift out of phase with each other and with the selected-layer morph.
+  function stepLayerPal(slot, palIdx, now) {
+    let st = layerPal[slot];
+    if (!st) st = layerPal[slot] = { pal: -1, cur: new Float32Array(768), from: null, to: null, tIdx: 0, start: 0, dur: 1, hold: 0 };
+    if (st.pal !== palIdx) {                       // first use, or the user changed this layer's palette
+      const target = paletteRGB(palIdx);
+      if (st.pal < 0) st.cur.set(target);          // first use snaps; a later change morphs from current
+      st.from = Float32Array.from(st.cur);
+      st.to = target; st.tIdx = palIdx; st.pal = palIdx;
+      st.start = now; st.dur = morphMs(); st.hold = 0;
+    }
+    if (!palCycleOn()) { st.cur.set(st.to); return st.cur; }   // pinned: rest on the chosen palette
+    if (st.hold) {
+      if (now < st.hold) return st.cur;
+      st.hold = 0; st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
+      st.start = now; st.dur = morphMs();
+    }
+    let f = (now - st.start) / st.dur;
+    if (f >= 1) {
+      const h = holdMs();
+      if (h > 0) { st.cur.set(st.to); st.hold = now + h; return st.cur; }
+      st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
+      st.start = now; st.dur = morphMs(); f = 0;
+    }
+    const from = st.from, to = st.to, cur = st.cur;
+    for (let i = 0; i < 768; i++) cur[i] = from[i] + (to[i] - from[i]) * f;
+    return cur;
+  }
+  // This layer's feedback filters, as pass objects — its OWN set (L.filters), not the
+  // scene-wide one. Reuses the exact glFeedback hooks glBeginHeat runs (they only need
+  // a source texture and a bound FBO), so per-layer fire/trails come for free.
+  function layerFeedbackChain(L) {
+    const ids = filtersOk(L.filters) || filtersOk((extras[L.fx] || presetExtra(L.fx)).filters) || new Set(presetFilters(L.fx));
+    return FILTERS.filter(f => f.stage === "feedback" && f.glFeedback && ids.has(f.id));
+  }
+  // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
+  // wrote (the buffer left bound), so the caller can stamp/inject into it. Deliberately
+  // NOT glBeginHeat itself — that one stays byte-identical for the shared path heatprobe
+  // pins; this duplicates ~10 lines to keep the two paths independent.
+  function glLayerBeginHeat(slot, src, chain) {
+    let s = src, d = 1 - src;
+    gl.disable(gl.BLEND);
+    if (!chain.length) {                           // nothing retains ⇒ start from black
+      bindFbo(glFbo.heatL[slot][d], fw, fh);
+      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      return d;
+    }
+    for (const f of chain) {
+      bindFbo(glFbo.heatL[slot][d], fw, fh);
+      f.glFeedback(glTex.heatL[slot][s]);
+      s = d; d = 1 - d;
+    }
+    return s;
+  }
+  // Render one layer's heat into its own slot buffer and return the texture holding it.
+  // Point layers own the tick loop (propagate + stamp per tick, into their pair); shader
+  // layers draw once, and if they carry feedback filters MAX their output onto the
+  // retained pair, else colour the scratch directly. Gain is applied later, in glOkMerge.
+  function renderLayerHeat(L, slot, fx, dt, now, ticks) {
+    const chain = layerFeedbackChain(L);
+    if (!fx.draw) {                                // POINT layer
+      let cur = layerCur[slot];
+      for (let t = 0; t < ticks; t++) {
+        cur = glLayerBeginHeat(slot, cur, chain);  // propagate into the other buffer, leave it bound
+        glPtCount = 0;
+        installStackItem(L); installPhase(L); stampTick(L, now); capturePhase(L);
+        glBlitPoints(L.blend, 1);                  // stamp into the bound buffer (gain deferred)
+      }
+      layerCur[slot] = cur;
+      return glTex.heatL[slot][cur];
+    }
+    installStackItem(L); installPhase(L); fx.draw(dt); capturePhase(L);   // → glTex.layer
+    if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
+    let cur = layerCur[slot];
+    for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
+    bindFbo(glFbo.heatL[slot][cur], fw, fh);       // MAX the fresh shader output onto it
+    const P = glProg.merge;
+    gl.useProgram(P.p);
+    bindTexUnit(0, glTex.layer); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
+    gl.enable(gl.BLEND); gl.blendEquation(gl.MAX);
+    drawQuad();
+    gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ZERO);
+    layerCur[slot] = cur;
+    return glTex.heatL[slot][cur];
+  }
+  // Blend one layer's palette-mapped colour into the accumulator, in OKLab.
+  function glOkMerge(heatTex, palTex, blend, gain, accSrc, dstFbo) {
+    bindFbo(dstFbo, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg.okmerge;
+    gl.useProgram(P.p);
+    bindTexUnit(0, heatTex); gl.uniform1i(P.u.uHeat, 0);
+    bindTexUnit(1, palTex);  gl.uniform1i(P.u.uPal, 1);
+    bindTexUnit(2, accSrc);  gl.uniform1i(P.u.uAcc, 2);
+    gl.uniform1f(P.u.uGain, gain === undefined ? 1 : gain);
+    gl.uniform1i(P.u.uBlend, blend === "max" ? 1 : 0);
+    drawQuad();
+  }
+  // The whole multi-layer colour path: render each live layer's heat + palette, blend
+  // them in OKLab, and leave the result in glColorTex for glRender.
+  function renderStackColor(live, dt, now, ticks) {
+    let acc = 0;
+    bindFbo(glFbo.color[0], fw, fh);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
+    for (const L of live) {
+      const slot = stack.indexOf(L), fx = EFFECTS[L.fx];
+      const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);
+      const base = stepLayerPal(slot, layerPalIndex(L), now);
+      bakeLayerBytes(base, now, palScratch);
+      gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
+      glOkMerge(heatTex, glTex.palL[slot], L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc]);
+      acc = 1 - acc;
+    }
+    glColorTex = glTex.color[acc];
+  }
   function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }
   function glPlasma(s) { glShaderDraw("plasma", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); }
 
@@ -2259,10 +2519,11 @@
   // texture holds the result. An empty chain returns glTex.native untouched — it
   // must NOT run a pass-through copy, since an extra RGBA8 sample through a
   // nominally identity pass can shift values by a LSB and show as a brightness change.
-  function glPostChain() {
+  function glPostChain(src0) {
+    const start = src0 || glTex.native;
     const chain = activeFilters().filter(f => f.stage === "post" && f.gl);
-    if (!chain.length) return glTex.native;
-    let src = glTex.native, slot = 0;
+    if (!chain.length) return start;
+    let src = start, slot = 0;
     for (const f of chain) {
       bindFbo(glFbo.post[slot], fw, fh);
       f.gl(src);
@@ -2281,15 +2542,23 @@
     drawQuad();
   }
   function glRender() {
-    // A) heat → palette colour (native fire resolution)
-    bindFbo(glFbo.native, fw, fh);
-    gl.disable(gl.BLEND);
-    gl.useProgram(glProg.pal.p);
-    bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
-    bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
-    drawQuad();
+    // A) heat → palette colour (native fire resolution). A multi-layer stack has
+    // already coloured and OKLab-blended its layers into glColorTex (each with its own
+    // palette), so skip the single shared-palette map and start the chain from it.
+    let colorSrc;
+    if (glColorTex) {
+      colorSrc = glColorTex;
+    } else {
+      bindFbo(glFbo.native, fw, fh);
+      gl.disable(gl.BLEND);
+      gl.useProgram(glProg.pal.p);
+      bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
+      bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
+      drawQuad();
+      colorSrc = glTex.native;
+    }
     // A2) the post-FX chain, in registry order, ping-ponging between post[0]/[1]
-    const postSrc = glPostChain();
+    const postSrc = glPostChain(colorSrc);
     // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
     const z = stackZoom();
     // While a transition runs, zoom lands in a scratch buffer and the transition pass
@@ -3305,7 +3574,12 @@
       } else {
         for (let i = 0; i < ticks; i++) simulate(now);
       }
+    } else if (live.length > 1) {
+      // MULTI-LAYER: colour each layer with its OWN palette and blend in OKLab, so a
+      // stack of effects keeps its distinct colours instead of sharing one palette.
+      renderStackColor(live, dt, now, ticks);
     } else {
+      glColorTex = null;               // one live layer ⇒ the classic single-palette path
       // POINT items own the tick loop, because propagation and stamping must interleave:
       // propagate, stamp, propagate, stamp. Hoisting the propagation out to once per
       // frame would visibly change every point effect whenever ticks > 1 — which is the
@@ -4061,7 +4335,6 @@
   // `state`/`beat`/`pulse`/`plen` are frozen copies, and are NULL while the item is
   // selected: the selected item's live store is the DOM, exactly as it has always
   // been. Exactly one of "selected" / "holds numbers" is true for an item, ever.
-  const STACK_MAX = 4;
   function newStackItem(fx) {
     // `palette`/`filters` are per-LAYER (not per-effect), so two layers of the same
     // effect can look different. null means "not captured yet" — applyLayerExtras fills

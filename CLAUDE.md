@@ -655,6 +655,45 @@ silently dropped for Max. That asymmetry is the whole reason the pass exists.
 only thing in the file that touches `blendFunc`, so nothing else would put it back, and
 `glPostChain`/`postPass` assume blending is off.
 
+**Per-layer palettes — two render paths, gated on the live-layer count.** The merge above
+is *heat-space*: every layer flattens into one grayscale buffer that `glRender` colours
+**once**, through the selected layer's palette — so a stacked scene used to render entirely
+in one ramp. That path is still exactly what runs for a **single** live layer (`live.length
+<= 1`), byte-for-byte, which is what keeps `heatprobe`/`filterprobe` and the shader pixel
+gate green. With **two or more** live layers, `frame()` calls **`renderStackColor`** instead:
+each layer is coloured with its **own** palette and the results are blended in **OKLab**, so
+every effect keeps its colours and overlaps mix perceptually instead of muddying to grey.
+The pieces (all just above `glJulia`):
+- **Per-layer heat + feedback.** Each layer owns a persistent heat pair `glTex.heatL[slot]`
+  and runs its OWN feedback filters (`L.filters`) via **`glLayerBeginHeat`** — a copy of
+  `glBeginHeat`'s ping-pong on that pair (NOT `glBeginHeat` itself, which stays untouched so
+  the `heatprobe` slice is unchanged). It reuses the exact `glFeedback` hooks, which only
+  need a source texture and a bound FBO. So each point *and* shader effect retains its own
+  fire/trails in its own colour. `renderLayerHeat` drives it: point layers propagate+stamp
+  per tick into their pair; shader layers draw into `glTex.layer`, then MAX onto the retained
+  pair if they carry feedback, else colour the scratch directly. Feedback filter *params*
+  (decay, keep, …) are still the scene-level (selected-layer) values — only the on/off SET
+  is per layer; that bounded compromise is why the colour, not the physics, is what differs.
+- **Independent palette cycling.** `stepLayerPal(slot)` is a per-slot morph clock — its own
+  from/to/target/hold — drawing durations from the shared Palette-cycle / hold sliders
+  (`morphMs`/`holdMs`), so layers drift out of phase. `bakeLayerBytes` bakes its ramp
+  (+ the live banding filter) into `glTex.palL[slot]`. `layerPalIndex` reads the **live
+  dropdown** for the SELECTED layer (its store is the DOM, `L.palette` is null while
+  selected — reading `L.palette` there would ignore live edits) and the captured `L.palette`
+  for the rest.
+- **OKLab blend.** `glOkMerge` (shader `FS_OKMERGE`, `OKLAB_GLSL` helpers) maps a layer's
+  heat through its LUT, converts sRGB↔OKLab, and blends into an RGBA8 ping-pong accumulator
+  `glTex.color[0/1]`: `uBlend 0` = brightness-weighted (screen lightness + hue averaged **by
+  brightness**, weight carried in alpha × `WMAX`), `uBlend 1` = max (the brighter layer wins
+  the pixel). `L.gain` scales each layer's weight, applied ONCE here (heat is rendered at
+  gain 1). `glColorTex` holds the finished accumulator; `glRender` starts its post/zoom/glow
+  chain from it and skips the shared-palette `FS_PAL` — everything downstream already works
+  in RGB, so only step A changed (and `glPostChain` gained a source-texture argument).
+The Canvas2D fallback is untouched: it renders one item in one palette, as always.
+`STACK_MAX` is declared up by the canvas/GL setup, not down by `newStackItem`, because
+`initGL` allocates the per-layer buffers during startup — a `const` down there would be in
+the temporal dead zone at that call (same reason as `card`/`beatUi`).
+
 **Point items own the tick loop.** `simulate()` propagates *and* stamps per tick, ticks
 run ~2× per frame at the shipped burn rate, and the two interleave. Advancing the heat
 once per frame — which is what the design originally called for — would visibly change

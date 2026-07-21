@@ -272,10 +272,11 @@ effect; change it with the Effect chooser). Each row also carries:
 - **▲ ▼** — move the layer up or down the order.
 - **●** — mute it. A muted layer costs nothing and leaves nothing behind, which makes it
   the quickest way to see what a layer is actually contributing.
-- **MAX / ADD** — how it combines with the layers below. **Max** keeps the brighter of
-  the two, which is how the fire buffer has always worked and is the safe default.
-  **Add** sums them, which is brighter and more saturated but clips to white where
-  layers overlap — turn the layer's strength down to taste.
+- **MAX / ADD** — how it combines with the layers below. Because each layer carries its
+  own palette (below), a multi-layer stack blends in **colour**, in the perceptual OKLab
+  space, so hues mix cleanly instead of muddying to grey. **Max** keeps the brighter layer
+  at each pixel — clean separation, the safe default. **Add** blends the layers weighted by
+  brightness, so each colour shows in proportion to how bright it is where they overlap.
 - The **strength** slider — how much of the layer reaches the composite, from nothing to
   full.
 - **✕** — remove it.
@@ -284,10 +285,14 @@ Layers are part of the scene: they save into presets, ride along in backups, and
 in share links. A scene with a single layer is stored exactly the way it always was, so
 every preset, backup and link made before layers existed still opens unchanged.
 
-Two things worth knowing. Palette, filters, camera, beat tuning and the render resolution
-are **scene-wide**, not per layer — the filters run once on the finished composite. And
-because display **Zoom** is applied once to that composite, adding a shader effect (which
-does its own optical zoom) to a point-based scene will stop the point effect zooming.
+Each layer keeps its **own palette** and its **own feedback filters** (Fire, Fade, and the
+other trail effects), so every effect in a stack shows in its own colours — set a layer's
+palette from the **Palette** chooser while that layer is selected, and it is remembered per
+layer. With the palette cycle running, layers even morph on their own schedules. The
+post-processing filters (Blur, Bloom, Edge, and the rest), the camera, beat tuning and the
+render resolution stay **scene-wide** — they run once on the finished composite. And because
+display **Zoom** is applied once to that composite, adding a shader effect (which does its
+own optical zoom) to a point-based scene will stop the point effect zooming.
 
 On machines without WebGL the Canvas2D fallback renders the first unmuted layer only:
 stacking is a GPU feature, and each extra layer there would be a full software render.
