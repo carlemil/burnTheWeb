@@ -1284,7 +1284,7 @@ installBeatTune(`, `function snapshotScene()` … `function defaultPresets(`, `f
 applyPreset(` … `function createPreset(`, and `const valid = arr` … `if (!valid.length)`.
 
 **The GL heat-tick feedback chain** has `tools/heatprobe.js` (`node tools/heatprobe.js
-index.html`, 24 assertions): it slices the real `glBeginHeat` and runs it against a
+index.html`, 50 assertions): it slices the real `glBeginHeat` and runs it against a
 recording stub `gl`. It exists because ping-pong **parity is invisible to a screenshot** —
 a chain that lands in the wrong buffer still renders a plausible frame — so even now that
 SwiftShader lets the harness drive the real GL path (see above), this is the only thing
@@ -1293,8 +1293,11 @@ checking it. It asserts, for chains of 0–4 passes from either starting buffer,
 target (undefined behaviour in WebGL), and that the final FBO is still bound on exit. The
 two-pass case (Fire + Fade, the only one a user can hit today) is the one that
 distinguishes `pendingDst = src` from the `1 - curHeat` bug — flipping that one token
-turns 12 of these red. It slices by markers: `function glBeginHeat(` … `function
-glBlitPoints(`.
+turns 12 of these red. It also pins **`glLayerBeginHeat`**, the per-layer twin the
+multi-layer colour path uses (same parity, but a pure function that *returns* the last-
+written buffer rather than setting `pendingDst`) — a copy that could silently drift from
+`glBeginHeat`. It slices by markers: `function glBeginHeat(` … `function glBlitPoints(`,
+and `function glLayerBeginHeat(` … `function renderLayerHeat(`.
 
 **The cardioid seed orbit** has its own probe, `tools/juliaprobe.js` (`node
 tools/juliaprobe.js index.html`): it slices the *real* seed source out of

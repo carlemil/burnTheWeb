@@ -8,7 +8,8 @@
 // and it only misbehaves when TWO feedback filters are ticked at once (with one pass
 // the right and wrong answers coincide). That is exactly the kind of bug that ships.
 //
-// It slices by source markers, so keep them: `function glBeginHeat(` … `function glBlitPoints(`.
+// It slices by source markers, so keep them: `function glBeginHeat(` … `function glBlitPoints(`,
+// and `function glLayerBeginHeat(` … `function renderLayerHeat(` for the per-layer twin.
 const fs = require("fs");
 const html = fs.readFileSync(process.argv[2] || "index.html", "utf8");
 const s0 = html.indexOf("<script>"), s1 = html.indexOf("</script>", s0);
@@ -111,6 +112,48 @@ for (const n of [0, 1, 2, 3]) {
      "glBeginHeat selects on stage === feedback, not on a hardcoded filter id");
   ok(cut("  function glBeginHeat(", "  function glBlitPoints(").includes("f.glFeedback"),
      "...and dispatches through the filter's own glFeedback hook");
+}
+
+// --- 7. glLayerBeginHeat: the per-LAYER twin, same parity on a private pair ----
+// The multi-layer colour path gives each stacked effect its own heat pair. glLayerBeginHeat
+// is glBeginHeat re-expressed as a pure function of (slot, src, chain) that RETURNS the
+// buffer the last pass wrote (rather than setting the module pendingDst), so the caller can
+// stamp/inject into it. It has the identical two-filter parity bug class, invisible to a
+// screenshot the same way — so pin it the same way. glBeginHeat itself stays untouched
+// (sections 1–6 above); this just checks the copy hasn't drifted from it.
+const layerStubs = `
+  let fw = 8, fh = 8;
+  const log = [];
+  const glTex = { heatL: [[{ tex: 0 }, { tex: 1 }]] };
+  const glFbo = { heatL: [[{ fbo: 0 }, { fbo: 1 }]] };
+  let bound = -1;
+  function bindFbo(f) { bound = f.fbo; log.push("bind:" + f.fbo); }
+  const gl = { BLEND: 1, COLOR_BUFFER_BIT: 2, disable() {}, clearColor() {},
+               clear() { log.push("clear:" + bound); } };
+`;
+const layerCode = layerStubs + cut("  function glLayerBeginHeat(", "  function renderLayerHeat(") +
+  "\nreturn { run(n, start) { log.length = 0;" +
+  "  const chain = Array.from({length: n}, (_, i) => ({ glFeedback: src => log.push('f' + i + ':' + src.tex + '->' + bound) }));" +
+  "  const ret = glLayerBeginHeat(0, start, chain); return { ret, log: log.slice(), bound }; } };";
+const HL = new Function(layerCode)();
+
+for (const start of [0, 1]) {
+  const r = HL.run(0, start);
+  ok(r.ret === 1 - start && r.log.join(",") === "bind:" + (1 - start) + ",clear:" + (1 - start),
+     "layer empty chain clears the other buffer and returns it (src=" + start + ")",
+     "ret " + r.ret + " | " + r.log.join(","));
+}
+for (const start of [0, 1]) {
+  for (let n = 1; n <= 4; n++) {
+    const r = HL.run(n, start);
+    const expect = (start + n) % 2;
+    ok(r.ret === expect, "layer " + n + " pass(es) from src=" + start + " return buffer " + expect,
+       "ret " + r.ret + " | " + r.log.join(","));
+    const self = r.log.filter(l => l.includes("->")).filter(l => { const [i, o] = l.split(":")[1].split("->"); return i === o; });
+    ok(!self.length, "layer " + n + " pass(es): none samples its own render target (src=" + start + ")", self.join(",") || "clean");
+    ok(r.bound === r.ret, "layer " + n + " pass(es): the returned FBO is still bound on exit (src=" + start + ")",
+       "bound " + r.bound + " vs ret " + r.ret);
+  }
 }
 
 console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");

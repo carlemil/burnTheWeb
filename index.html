@@ -1382,7 +1382,7 @@
     // Ottosson's sRGB↔OKLab. uBlend: 0 = brightness-weighted (screen L + weighted-mean
     // hue), 1 = max (the brighter layer wins the pixel). Gain scales each layer's weight.
     const OKLAB_GLSL = `
-      const float WMAX = 4.0;
+      const float WMAX = 4.0;   // >= STACK_MAX: the running weight is stored as alpha·WMAX
       float s2l(float c){ return c <= 0.04045 ? c/12.92 : pow((c+0.055)/1.055, 2.4); }
       float l2s(float c){ return c <= 0.0031308 ? 12.92*c : 1.055*pow(c, 1.0/2.4) - 0.055; }
       vec3 srgb2oklab(vec3 c){
