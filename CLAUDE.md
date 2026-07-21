@@ -589,6 +589,25 @@ record on thaw**: exactly one of "selected" / "holds numbers" is true for an ite
 A path that reads a frozen record without freezing first silently loses the user's last
 edit — the failure class the `chipEdited()` history documents.
 
+**Palette and the filter stack are per-layer**, stored on the item as `L.palette` +
+`L.filters` (not in the per-effect `extras[e]` map, so two layers of one effect can look
+different). The live `paletteSel.value` + `activeIds` are the SELECTED layer's — the same
+"DOM is the store for the selected item" rule. `loadExtra` handles only the still-per-effect
+bits (show-box, random-seed, the palette-cycle migration); `applyLayerExtras(L)` puts a
+layer's palette + filters live (falling back to the effect's stored/default extras when the
+field is null — a fresh layer, or a scene saved before per-layer, which is what makes an old
+stacked scene still load with every layer sharing one palette), and `captureLayerExtras`
+reads them back. `freezeItem` captures on deselect; the lifecycle applies on select.
+**The load-order trap:** `setEffect` ends in `persist()`, which snapshots the stack by
+freezing the selected item — so switching layers runs a `stageLayerExtras(L)` (the two
+assignments `captureLayerExtras` reads) BEFORE `setEffect`, or that persist would stamp the
+OUTGOING layer's palette/filters onto the incoming one and collapse both to one look. That
+bug is invisible on first glance and cost a full debug pass. Consequence worth knowing:
+changing a layer's effect via the chooser KEEPS its palette/filters (they belong to the
+layer, not the effect) — a deliberate change from the old per-effect behaviour. Single-layer
+scenes are byte-identical to before (verified on the deterministic Canvas2D path, since the
+SwiftShader GPU path is bistable and can't gate this).
+
 **Animation is split scene vs layer.** `bindRange` tags each `anims` entry `scene` from
 CONTROLS (`host !== "fx" || group === "camera"`) — the palette, banding, the camera,
 display zoom and every filter param. Scene keys step once per frame from the DOM and
@@ -664,6 +683,9 @@ whose effect id no longer ships rather than misfiling them, clamps gain, default
 and runs every per-item map through its own `merge*` **against that item's own effect**
 (merging one item's state against another effect's defaults silently drops every key
 that effect declares). No `layers` key ⇒ one item from the legacy top-level fields.
+Each item also carries `palette` + `filters`; an item that omits them (a scene saved
+before per-layer palette) falls back to the scene's top-level `extra`, so every layer of
+an old stacked scene loads sharing the one palette it had.
 `installShared` re-seeds a single-item stack for the same reason it re-seeds the five
 maps: otherwise a shared non-stacked scene inherits the recipient's stack.
 **`blendOk`/`gainOk` are function declarations, not const arrows** — `mergeLayers` runs

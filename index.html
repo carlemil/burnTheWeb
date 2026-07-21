@@ -4031,7 +4031,12 @@
   // been. Exactly one of "selected" / "holds numbers" is true for an item, ever.
   const STACK_MAX = 4;
   function newStackItem(fx) {
+    // `palette`/`filters` are per-LAYER (not per-effect), so two layers of the same
+    // effect can look different. null means "not captured yet" — applyLayerExtras fills
+    // them from the effect's stored/default extras on first use. They can't be seeded
+    // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
     return { fx, state: null, beat: null, pulse: null, plen: null,
+      palette: null, filters: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   let stack = [newStackItem(0)], stackSel = 0;
@@ -5053,6 +5058,7 @@
     L.anim = {};
     for (const id in animPhase) L.anim[id] = Object.assign({}, animPhase[id]);
     capturePhase(L);
+    captureLayerExtras(L);            // this layer's palette + filters, from the live globals
   }
   function thawItem(L) {
     if (L.state) states[L.fx] = mergeState(L.fx, L.state);
@@ -5070,7 +5076,9 @@
     freezeItem(stack[stackSel]);
     stackSel = j;
     thawItem(stack[j]);
+    stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
     setEffect(stack[j].fx, false);   // docks the pop-outs and reloads the five maps
+    applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
     syncStackUI();
   }
   function addStackItem(fx) {
@@ -5084,10 +5092,14 @@
     L.beat = mergeBeat(L.fx, presetBeat(L.fx));
     L.pulse = mergePulse(L.fx, presetPulse(L.fx));
     L.plen = mergePlen(L.fx, presetPlen(L.fx));
+    L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
+    L.filters = presetFilters(L.fx);
     stack.push(L);
     stackSel = stack.length - 1;
     thawItem(L);
+    stageLayerExtras(L);
     setEffect(L.fx, false);
+    applyLayerExtras(L);
     syncStackUI();
   }
   function removeStackItem(j) {
@@ -5096,7 +5108,9 @@
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
     thawItem(stack[stackSel]);
+    stageLayerExtras(stack[stackSel]);
     setEffect(stack[stackSel].fx, false);
+    applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
     syncStackUI();
   }
   function moveStackItem(j, d) {
@@ -5274,42 +5288,57 @@
     extras[e] = { palette: paletteSel.value, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
       filters: FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id) };   // always registry order
   }
+  // The per-EFFECT half of a scene's extras: show-box and the random-seed toggle stay
+  // keyed by effect. Palette and the filter stack are per-LAYER now — see applyLayerExtras.
   function loadExtra(e) {
     const x = extras[e];
     suppressPersist = true;
     showBoxChk.checked = x.showBox; showBox = x.showBox;
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
-    const fok = filtersOk(x.filters);                 // absent in pre-filter scenes
-    // Keep the stored list intact even for filters this device can't run — filterOn()
-    // masks them (cpuBlocked), so they stay ticked-but-greyed and survive a round trip
-    // instead of being deleted here and written straight back out by saveExtra.
-    activeIds = fok || new Set(presetFilters(e));
+    // Migration: scenes saved before the Palette cycle slider carry only the old `morph`
+    // boolean. loadState has already applied any stored palcycle, so pin the cycle when
+    // the old flag says off. palcycle is per-effect state, so this stays here.
+    if (x.morph === false && palCycleOn()) setPalCycle(0, 0);
+    suppressPersist = false;
+  }
+  // Capture the live palette + filter stack into a layer, so its look is remembered
+  // independently of any other layer that happens to run the same effect.
+  function captureLayerExtras(L) {
+    L.palette = paletteSel.value;
+    L.filters = FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id);
+  }
+  // Put a layer's palette + filter SET onto the live globals — just the two values
+  // captureLayerExtras reads back — WITHOUT the UI/morph work. This must run before
+  // setEffect when switching layers, because setEffect ends in persist(), which snapshots
+  // the stack by freezing the selected layer; without this it would capture the OUTGOING
+  // layer's palette/filters onto the incoming one, collapsing both to the same look.
+  function stageLayerExtras(L) {
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    activeIds = filtersOk(L.filters) || filtersOk(fx.filters) || new Set(presetFilters(L.fx));
+    paletteSel.value = L.palette != null ? L.palette : fx.palette;
+  }
+  // Push a layer's palette + filters onto the live globals. Called after setEffect for
+  // whichever layer is now selected — selecting a layer, adding one, applying a preset,
+  // startup. A null field (a fresh layer, or a scene saved before per-layer extras) falls
+  // back to the effect's stored/default extras, which is what preserves how old scenes
+  // looked (every same-effect layer shared one palette). The fallback is then captured,
+  // so from that point the layer owns concrete values that serialize.
+  function applyLayerExtras(L) {
+    suppressPersist = true;
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    // Keep a stored list intact even for filters this device can't run — filterOn() masks
+    // them (cpuBlocked), so they stay ticked-but-greyed and survive a round trip.
+    activeIds = filtersOk(L.filters) || filtersOk(fx.filters) || new Set(presetFilters(L.fx));
     syncFilterUI();
-    // Re-derive bloom now that activeIds belongs to the INCOMING scene. setEffect runs
-    // loadState before loadExtra, so the bloom slider's apply() has already fired once
-    // against the outgoing scene's filter list and computed the wrong strength. Nothing
-    // visible comes of it today — updateAnims re-applies every slider each frame, before
-    // the frame renders — but that makes correctness depend on bloom staying an animated
-    // slider and on the frame loop's ordering, neither of which this line needs.
-    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;
-    refreshControlVisibility();       // setEffect's earlier pass ran before we knew the filters
+    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // bloom follows this layer's filters
+    refreshControlVisibility();       // filter param rows follow the active list
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
     morphOnce = false;                // cancel a pending one-shot morph from a prior switch
-    paletteSel.value = x.palette;
-    // Migration: scenes saved before the Palette cycle slider carry only the old `morph`
-    // boolean. loadState has already applied any stored palcycle, so seed the slider from
-    // `morph` when the two disagree — morph off ⇒ pin at 0.
-    // Safe to run for every scene, not just pre-slider ones: saveExtra writes `morph` as
-    // palCycleOn(), so a scene saved since the slider existed can only reach here with
-    // morph false AND a live cycle if its stored palcycle was missing or failed
-    // applyBlob's bounds check — and honouring `morph` is the right answer there too.
-    // (There used to be an `x.palcycleSeeded !== true` guard in front of this. Nothing
-    // ever set that flag, so it was always true — dead weight that read like a real
-    // condition.)
-    if (x.morph === false && palCycleOn()) setPalCycle(0, 0);
+    paletteSel.value = L.palette != null ? L.palette : fx.palette;
     morphing = palCycleOn();
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
+    captureLayerExtras(L);            // concrete from here, so it serializes and stops falling back
     suppressPersist = false;
   }
 
@@ -5630,7 +5659,9 @@
     unzipFromB64(z[1]).then(json => {
       if (!json || !installShared(parse(json))) return;
       resize();
+      stageLayerExtras(stack[stackSel]);
       setEffect(+effectSel.value, false);
+      applyLayerExtras(stack[stackSel]);   // the shared scene's selected-layer palette + filters
     });
   }
   function atobSafe(s) { try { return decodeURIComponent(escape(atob(s))); } catch (e) { return ""; } }
@@ -6338,7 +6369,7 @@
   // freeze first — a caller that forgets loses the user's most recent edit.
   function stackItemOut(L) {
     return { effect: effectId(L.fx), state: L.state, beat: L.beat, pulse: L.pulse,
-      plen: L.plen, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      plen: L.plen, palette: L.palette, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -6363,6 +6394,15 @@
       L.beat = mergeBeat(e, r.beat);
       L.pulse = mergePulse(e, r.pulse);
       L.plen = mergePlen(e, r.plen);
+      // Per-layer palette + filters. Absent (a scene saved before this) ⇒ fall back to
+      // the scene's top-level extra, which is what every layer shared before — so an old
+      // stacked scene still loads looking the way it did. null ⇒ applyLayerExtras defaults
+      // it from the effect. `p.extra` exists on a preset; a blob has no top-level extra,
+      // and its per-effect extras (already installed) are the fallback applyLayerExtras uses.
+      const tex = p.extra || {};
+      L.palette = r.palette != null ? r.palette : (tex.palette != null ? tex.palette : null);
+      const fset = filtersOk(r.filters) || filtersOk(tex.filters);
+      L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       L.blend = blendOk(r.blend);
       L.gain = gainOk(r.gain);
       L.mute = !!r.mute;
@@ -6373,6 +6413,10 @@
       const L = newStackItem(e);
       L.state = mergeState(e, p.state); L.beat = mergeBeat(e, p.beat);
       L.pulse = mergePulse(e, p.pulse); L.plen = mergePlen(e, p.plen);
+      const tex = p.extra || {};                 // the single layer takes the scene's palette + filters
+      L.palette = tex.palette != null ? tex.palette : null;
+      const fset = filtersOk(tex.filters);
+      L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       out.push(L);
     }
     return out;
@@ -6413,7 +6457,9 @@
     // overwrites states[...] for its effect — so it must run before setEffect reads them.
     installStack(mergeLayers(p));
     effectSel.value = stack[0].fx;
+    stageLayerExtras(stack[0]);       // before setEffect's persist, as when selecting a layer
     setEffect(stack[0].fx, false);    // loads the just-installed scene (may snap the palette)
+    applyLayerExtras(stack[0]);        // slot 0's palette + filters go live (beginMorph blends to them)
     // Blend the palette in from whatever was on screen (fromRamp) rather than snapping.
     // WHERE it blends to depends on whether the palette cycle is running: with cycling on,
     // head for a fresh random palette and keep going — that is the whole point of cycling.
@@ -6748,9 +6794,10 @@
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
 
-  // Initial paint: setEffect → loadExtra applies the restored effect's palette,
-  // morph, show-box and TTL; then arm persistence so setup doesn't overwrite it.
+  // Initial paint: setEffect loads the restored effect's per-effect extras (show-box,
+  // random-seed), then applyLayerExtras puts the selected layer's palette + filters live.
   setEffect(+effectSel.value, false);
+  applyLayerExtras(stack[stackSel]);
   // ?stack=plasma,sirpinfyer[,…] builds a stack at startup, by effect id. A dev hook in
   // the spirit of ?debug=1 — it exists so the render path can be driven before the layer
   // list UI lands, and it stays useful for reproducing a stack from a bug report.
@@ -6764,7 +6811,7 @@
         if (fx >= 0) addStackItem(fx);
       }
       const first = effectIndexFromId(ids[0]);
-      if (first >= 0) { selectStack(0); setEffect(first); }
+      if (first >= 0) { selectStack(0); setEffect(first); applyLayerExtras(stack[0]); }
     }
   }
   syncStackUI();                      // draw the layer rows for the restored stack
