@@ -181,6 +181,7 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of fifteen demoscene-style colour ramps. |
 | **Palette cycle** | How long one blend to a random palette takes, as a min–max range in seconds — each cycle picks a time inside it. Collapse both thumbs to **0** for a fixed palette that never cycles. (This replaced the old Auto-morph checkbox.) |
+| **Palette hold** | How long to rest on each palette before the next blend begins, as a min–max range in seconds — a fresh dwell is drawn each time. At **0** (the default) the palette cross-fades continuously; raise it to pause on each palette between changes. Only applies while Palette cycle is running. |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
 | **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |

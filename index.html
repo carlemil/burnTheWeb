@@ -1092,7 +1092,7 @@
   // dual slider. Both thumbs at 0 pins the palette (what the old "Auto-morph"
   // checkbox unticked used to do). palCycleLive is the slider's animated value;
   // morphMs() draws each cycle's duration from the thumbs, like ttlMs().
-  let palCycleLive = 8;
+  let palCycleLive = 8, palHoldLive = 0;
   function palCycleBand() {
     const lo = el("palcycle-lo"), hi = el("palcycle-hi");
     if (!lo || !hi) return [8, 8];
@@ -1104,8 +1104,21 @@
     const s = a + Math.random() * (b - a);
     return Math.max(0.2, s) * 1000;                              // never divide by ~0
   }
+  // How long to HOLD an arrived palette before starting the next morph — a [min,max]
+  // seconds range, a fresh draw per hold. Both thumbs at 0 (the shipped default, so
+  // every existing scene keeps its old continuous morph) means no hold at all.
+  function palHoldBand() {
+    const lo = el("palhold-lo"), hi = el("palhold-hi");
+    if (!lo || !hi) return [0, 0];
+    return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
+  }
+  function holdMs() {
+    const [a, b] = palHoldBand();
+    return (a + Math.random() * (b - a)) * 1000;
+  }
   let morphing = false, morphFrom = null, morphTo = null, morphStart = 0,
-    morphTargetIndex = 0, morphInit = false, morphOnce = false;   // morphOnce: a single transition (preset switch) even when auto-morph is off
+    morphTargetIndex = 0, morphInit = false, morphOnce = false,   // morphOnce: a single transition (preset switch) even when auto-morph is off
+    morphHoldUntil = 0;   // while > now, sit on the arrived palette (Palette hold) before the next morph
 
   function paletteRGB(i) {
     const fn = PALETTES[i].fn, arr = new Float32Array(256 * 3);
@@ -1140,18 +1153,36 @@
   }
   function startMorph(fromIndex) { beginMorph(paletteRGB(fromIndex), pickOther(fromIndex)); }
   let morphDur = MORPH_MS;
+  // Begin the next auto-morph from the palette we just arrived on.
+  function morphNext(now) {
+    morphFrom = morphTo;                    // target becomes current, pick a new one
+    morphTargetIndex = pickOther(morphTargetIndex);
+    morphTo = paletteRGB(morphTargetIndex);
+    morphStart = now;
+    morphDur = morphMs();                   // each cycle draws its own transition time
+    showMorphTarget();
+  }
   function morphStep(now) {
-    if (morphInit) { morphStart = now; morphDur = morphMs(); morphInit = false; }
+    if (morphInit) { morphStart = now; morphDur = morphMs(); morphInit = false; morphHoldUntil = 0; }
+    // Holding on the arrived palette (Palette hold) — sit still until the timer expires,
+    // then start the next morph. composePalette still runs so the banding filter animates.
+    if (morphHoldUntil) {
+      if (now < morphHoldUntil) { composePalette(now); return; }
+      morphHoldUntil = 0;
+      morphNext(now);
+    }
     let f = (now - morphStart) / morphDur;
     if (f >= 1) {                           // arrived
       if (!morphing) { morphOnce = false; setPalette(morphTargetIndex); return; }   // one-shot: settle on the target
-      morphFrom = morphTo;                  // auto-morph: target becomes current, pick a new one
-      morphTargetIndex = pickOther(morphTargetIndex);
-      morphTo = paletteRGB(morphTargetIndex);
-      morphStart = now;
-      morphDur = morphMs();               // each cycle draws its own hold time
+      const hold = holdMs();
+      if (hold > 0) {                       // land exactly on the target and dwell before the next
+        paletteBase.set(morphTo);
+        morphHoldUntil = now + hold;
+        composePalette(now);
+        return;
+      }
+      morphNext(now);                       // no hold ⇒ continuous morph, exactly as before
       f = 0;
-      showMorphTarget();
     }
     const from = morphFrom, to = morphTo;
     for (let i = 0, len = 256 * 3; i < len; i++) {
@@ -3759,6 +3790,7 @@
     // This replaced the old "Auto-morph palettes" checkbox — `morphing` is now
     // derived from the slider rather than stored separately.
     { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 120, step: 1, lo: 8, hi: 8, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
+    { key: "palhold", host: "pal", group: "palette", type: "dual", label: "Palette hold", valId: "vPalHold", min: 0, max: 120, step: 1, lo: 0, hi: 0, fmt: v => v <= 0 ? "none" : sig3(v) + "s", apply: v => palHoldLive = v, durScale: 10, beat: false },
     // ---- filter parameters. Contiguous, one group per filter, host "filter" so
     // they render in the Filters box; shown only while their filter is ticked. ----
     { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
@@ -4344,94 +4376,94 @@
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sierpiński", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
-      params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire"], fractal2d: true,
-      defaults: { palcycle: [8, 8], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
+      params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire"], fractal2d: true,
+      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
       beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks. The box drifts because two things turn it: Rotation yaws it (it drifts −5…5°/s out of the box — set both thumbs to 0 to stop it) and Box nod pitches it up and down in a slow sine. Box nod 0 holds it level; Nod speed scales how fast it swings.",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "fire", "tetra"],
-      defaults: { palcycle: [8, 8], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], nod: [17.2, 17.2], nodspd: [1, 1], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
+      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
+      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], nod: [17.2, 17.2], nodspd: [1, 1], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
       beat: {}, extras: { palette: "1", morph: true, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", presetName: "Phat julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { const s = juliaSeed(dt); if (useGL) glJulia(s); else julia(s); },
-      defaults: { palcycle: [8, 8], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
       beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", presetName: "Plasma 1", subtitle: "Plasma · sinusoidal interference",
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
-      params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
+      params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
       bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); },
-      defaults: { palcycle: [8, 8], band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
       beat: {}, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "tunnel", name: "Tunnel", subtitle: "Tunnel · demoscene flythrough",
       help: "A classic demoscene tunnel: the screen is polar-mapped so concentric rings rush toward the vanishing point. Fly speed drives you forward; Twist rotates the pipe.",
-      params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
+      params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
       draw: dt => { const s = tunnelSeed(dt); if (useGL) glShaderDraw("tunnel", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uRings, s.rings); gl.uniform1f(u.uZoom, s.zoom); }); else tunnel(dt); },
-      defaults: { palcycle: [8, 8], tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "metaballs", name: "Metaballs", subtitle: "Metaballs · gooey blobs",
       help: "Blobby fields that merge and split like lava-lamp goo — a sum of inverse-square fields from moving centres, soft-saturated. Turn up Banding for hard iso-contour shells.",
-      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
+      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
       draw: dt => { const s = metaSeed(dt); if (useGL) glShaderDraw("metaball", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRadius, s.radius); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); else metaballs(dt); },
-      defaults: { palcycle: [8, 8], mbcount: [5, 5], mbradius: [0.16, 0.2], mbspeed: [0.6, 1.2], mbgain: [0.8, 1.5], zoom: [1, 1], band: [40, 70], bandsize: [1, 3], banddim: [15, 40] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], mbcount: [5, 5], mbradius: [0.16, 0.2], mbspeed: [0.6, 1.2], mbgain: [0.8, 1.5], zoom: [1, 1], band: [40, 70], bandsize: [1, 3], banddim: [15, 40] },
       beat: {}, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
     { id: "burningship", name: "Burning Ship", presetName: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(s); },
-      defaults: { palcycle: [8, 8], band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
       beat: {}, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
     { id: "kaleidoscope", name: "Kaleidoscope", subtitle: "Kaleidoscope · mirrored symmetry",
       help: "A moving field folded into mirror-symmetric wedges, like looking down a kaleidoscope. Segments sets the symmetry, Spin rotates the whole thing, Flow animates the pattern. Add banding for sharp mandala rings.",
-      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
+      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
       draw: dt => { const s = kaleidoSeed(dt); if (useGL) glShaderDraw("kaleido", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSeg, s.seg); gl.uniform1f(u.uRot, s.rot); gl.uniform1f(u.uZoom, s.zoom); }); else kaleidoscope(dt); },
-      defaults: { palcycle: [8, 8], ksegments: [6, 6], krotspeed: [0.1, 0.3], knoisespeed: [0.6, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], ksegments: [6, 6], krotspeed: [0.1, 0.3], knoisespeed: [0.6, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "rotozoom", name: "Rotozoomer", subtitle: "Rotozoomer · rotate + zoom",
       help: "The classic Amiga rotozoomer: a tiled grid texture spun and pulse-zoomed in real time. Rotation sets the spin, Zoom pulse the breathing scale, Tile density how fine the grid is.",
-      params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
+      params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
       draw: dt => { const s = rotozoomSeed(dt); if (useGL) glShaderDraw("rotozoom", u => { gl.uniform1f(u.uAngle, s.angle); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uTile, s.tile); gl.uniform1f(u.uZoom, s.zoom); }); else rotozoom(dt); },
-      defaults: { palcycle: [8, 8], rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
     { id: "munch", name: "Munching Squares", subtitle: "Munching squares · XOR pattern",
       help: "The hypnotic PDP-1 classic: each pixel is ((x XOR y) + time) masked to a value, mapped through the palette. Munch speed animates it, Square size sets the pixel chunkiness, Detail the wrap.",
-      params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "xor"], bakesOwnZoom: true,
+      params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "xor"], bakesOwnZoom: true,
       draw: dt => { const s = munchSeed(dt); if (useGL) glShaderDraw("munch", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uMask, s.mask); gl.uniform1f(u.uZoom, s.zoom); }); else munch(dt); },
-      defaults: { palcycle: [8, 8], xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "moire", name: "Moiré", subtitle: "Moiré · interference shimmer",
       help: "Two sets of concentric rings drift over each other and interfere into shimmering moiré bands. Ring frequency sets how tight the rings are, Drift speed how fast the centres move, Blend fades between multiply and add.",
-      params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
+      params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
       draw: dt => { const s = moireSeed(dt); if (useGL) glShaderDraw("moire", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uZoom, s.zoom); }); else moire(dt); },
-      defaults: { palcycle: [8, 8], mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
     { id: "newton", name: "Newton", subtitle: "Newton fractal · root basins",
       help: "The Newton fractal: each pixel is coloured by which root of z³−1 Newton's method converges to, plus how many steps it took, giving three interlocking basins with fractal borders. Root spin rotates it; Relaxation warps the convergence.",
-      params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
+      params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
       draw: dt => { const s = newtonSeed(dt); if (useGL) glShaderDraw("newton", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uRelax, s.relax); gl.uniform1f(u.uZoom, s.zoom); }); else newton(dt); },
-      defaults: { palcycle: [8, 8], nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", presetName: "Multibrot", subtitle: "Multibrot · power sweep",
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Power is a whole number and steps 2, 3, 4… — each step adds a bulb of symmetry. The seed rides the matching degree-power cardioid, which has power−1 cusps, and the orbit sprints through every one of them and eases off in between.",
-      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
+      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // juliaPower BEFORE juliaSeed: the orbit must ride this frame's power, not the last one's.
       draw: dt => { juliaPower = mbPower; const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
-      defaults: { palcycle: [8, 8], mbexp: [2, 4], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], mbexp: [2, 4], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
       beat: {}, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
-      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
+      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
       draw: dt => { const s = copperSeed(dt); if (useGL) glShaderDraw("copper", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); else copperbars(dt); },
-      defaults: { palcycle: [8, 8], cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", presetName: "Attractor", subtitle: "Strange attractor · de Jong",
       help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow. The map is exact, so Point jitter scatters each point a little to soften the threads — set it to 0 for the bare, hard-edged curves.",
-      params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "palcycle"], helpTags: ["all", "attractor"],
+      params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "attractor"],
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
-      defaults: { palcycle: [8, 8], ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], atjit: [0.5, 0.5], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], atjit: [0.5, 0.5], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
@@ -7082,6 +7114,7 @@
       { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching keeps the preset you have selected and folds the change into it, like any other edit — so you carry on working on your scene. The preset keeps its name, so rename it if it no longer suits. Part of a preset, so auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
       { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
+      { n: "Palette hold", w: "all", t: "How long to rest on each palette before starting the next cross-fade, as a range in seconds — a fresh dwell is drawn each time. At 0 (the default) the colours cross-fade continuously with no pause; raise it to sit on each palette for a while between changes. Only matters while Palette cycle is running." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them, and each menu row shows a small dot per armed band in the same colour — dim at rest, lit on the beat — so you can see what a preset has wired to the music without opening a single box." },
       { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
