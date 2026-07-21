@@ -4205,6 +4205,19 @@
   // layer from that layer's stored copy.
   // `doApply` false computes the value without touching the global, so the stack loop
   // can install each layer's values immediately before that layer draws.
+  // Snap an animated value onto the slider's step grid, so an animating slider only ever
+  // lands on values a manual drag could — a slider [3,11] step 2 sits on 3/5/7/9/11 and
+  // never 6 or 5.5. Anchored to the slider's `min` (native HTML range semantics — a drag
+  // snaps to min + n·step), then clamped into the live band. Only the OUTPUT is snapped;
+  // the drift integrator (st.val) stays continuous so the motion between grid points is
+  // smooth and can't get wedged. step "any"/0 ⇒ returned unchanged.
+  function snapStep(a, v, mn, mx) {
+    const step = a.lo ? +a.lo.step : NaN;
+    if (!(step > 0)) return v;
+    const base = +a.lo.min;
+    const q = base + Math.round((v - base) / step) * step;
+    return q < mn ? mn : q > mx ? mx : q;
+  }
   function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply) {
     // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
     // drifting and only move on a beat — snap to the high thumb, drop back to
@@ -4219,7 +4232,7 @@
       const fn = PULSE_FN[shape] || PULSE_FN[PULSE_DEFAULT];
       // Deliberately writes `out`, not `val`: the drift position must survive the
       // pulse untouched, so unarming resumes the wander where it left off.
-      st.out = mn + fn(st.pulse) * (mx - mn);                    // rest at mn, snap to mx, decay back along the chosen curve
+      st.out = snapStep(a, mn + fn(st.pulse) * (mx - mn), mn, mx);   // rest at mn, snap to mx, decay back along the chosen curve
       if (doApply) a.apply(st.out);
       return;
     }
@@ -4239,8 +4252,8 @@
       st.val = st.from + (st.to - st.from) * s;
       st.val = st.val < mn ? mn : st.val > mx ? mx : st.val;
     }
-    st.out = st.val;
-    if (doApply) a.apply(st.val);
+    st.out = snapStep(a, st.val, mn, mx);
+    if (doApply) a.apply(st.out);
   }
   // The loop is KEY-major, not item-major, and that ordering is load-bearing: every
   // fresh drift segment draws twice from Math.random, so stepping key-by-key keeps a
