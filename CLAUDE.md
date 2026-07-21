@@ -620,14 +620,19 @@ layer, not the effect) — a deliberate change from the old per-effect behaviour
 scenes are byte-identical to before (verified on the deterministic Canvas2D path, since the
 SwiftShader GPU path is bistable and can't gate this).
 
-**Animation is split scene vs layer.** `bindRange` tags each `anims` entry `scene` from
-CONTROLS (`host !== "fx" || group === "camera"`) — the palette, banding, the camera,
-display zoom and every filter param. Scene keys step once per frame from the DOM and
-apply immediately, because `frame()` reads `cfg.burn`, `cfg.decay`, `zoom` and
-`bloomAmt` between `updateAnims` and the draw. Layer keys are stepped once per item and
-only *computed*; `installStackItem(L)` pushes that item's values into the globals just
-before it draws. That split is what shrank "N animation engines" to "N copies of the
-handful of keys an effect actually owns".
+**Animation is split scene vs layer.** `bindRange` tags each `anims` entry `scene` via
+`isSceneCtl` — the palette, banding, the camera and display zoom. **Most filter params are
+now LAYER keys** (per stacked effect), so each effect in a stack carries its own filter
+settings; only `SHARED_FILTER_KEYS` stay scene-wide — `burn` (the sim tick-rate, a shared
+clock), `bloom` (the glow), and the four screen filters (`barrel`/`scan`/`scancount`/
+`vignette`/`grain`), because those act on the ONE finished image. Scene keys step once per
+frame from the DOM and apply immediately; layer keys are stepped once per item and only
+*computed*, then `installStackItem(L)` pushes that item's values into the globals just
+before it draws. **Feedback filter params are read during propagation, which in the
+single-layer path runs BEFORE `installStackItem`** — so the single-layer branch of `frame()`
+calls `installStackItem(live[0])` up front to apply them (the same values `updateAnims` used
+to apply directly, so a one-layer scene stays byte-identical). The CPU path already installs
+before it simulates, so it needed no change.
 
 `updateAnims` is **key-major, not item-major**, and that ordering is load-bearing: each
 fresh drift segment draws twice from `Math.random`, so stepping key-by-key keeps a
@@ -683,9 +688,10 @@ The pieces (all just above `glJulia`):
   need a source texture and a bound FBO. So each point *and* shader effect retains its own
   fire/trails in its own colour. `renderLayerHeat` drives it: point layers propagate+stamp
   per tick into their pair; shader layers draw into `glTex.layer`, then MAX onto the retained
-  pair if they carry feedback, else colour the scratch directly. Feedback filter *params*
-  (decay, keep, …) are still the scene-level (selected-layer) values — only the on/off SET
-  is per layer; that bounded compromise is why the colour, not the physics, is what differs.
+  pair if they carry feedback, else colour the scratch directly. It calls `installStackItem(L)`
+  first, so the layer's OWN feedback params (decay, keep, …) — now layer keys — are in the
+  globals the `glFeedback` hooks read. `burn` (tick-rate) is the one feedback param kept
+  scene-wide, so all layers share the sim clock.
 - **Independent palette cycling.** `stepLayerPal(slot)` is a per-slot morph clock — its own
   from/to/target/hold — drawing durations from the shared Palette-cycle / hold sliders
   (`morphMs`/`holdMs`), so layers drift out of phase. `bakeLayerBytes` bakes its ramp
@@ -693,14 +699,25 @@ The pieces (all just above `glJulia`):
   dropdown** for the SELECTED layer (its store is the DOM, `L.palette` is null while
   selected — reading `L.palette` there would ignore live edits) and the captured `L.palette`
   for the rest.
-- **OKLab blend.** `glOkMerge` (shader `FS_OKMERGE`, `OKLAB_GLSL` helpers) maps a layer's
-  heat through its LUT, converts sRGB↔OKLab, and blends into an RGBA8 ping-pong accumulator
-  `glTex.color[0/1]`: `uBlend 0` = brightness-weighted (screen lightness + hue averaged **by
-  brightness**, weight carried in alpha × `WMAX`), `uBlend 1` = max (the brighter layer wins
-  the pixel). `L.gain` scales each layer's weight, applied ONCE here (heat is rendered at
-  gain 1). `glColorTex` holds the finished accumulator; `glRender` starts its post/zoom/glow
-  chain from it and skips the shared-palette `FS_PAL` — everything downstream already works
-  in RGB, so only step A changed (and `glPostChain` gained a source-texture argument).
+- **Per-layer colour + post filters + OKLab blend.** For each layer: `glColorizeLayer` maps
+  its heat through its LUT to RGB (`glTex.layerCol`, via `FS_PAL`); `glLayerPostChain(L)` runs
+  that layer's OWN **post** filters (Wedge, Twist, Edge, …) on it, using `L.filters` and the
+  per-layer params `installStackItem` just installed (the `f.gl` hooks read those globals);
+  then `glOkMerge` blends the finished RGB into an RGBA8 ping-pong accumulator `glTex.color[0/1]`
+  in OKLab — `uBlend 0` = brightness-weighted (screen lightness + hue averaged **by
+  brightness**, weight in alpha × `WMAX`), `uBlend 1` = max (brighter layer wins). `L.gain`
+  scales the weight, applied ONCE here (heat/colour are rendered at gain 1). `FS_OKMERGE` takes
+  a finished RGB layer (`uLayer`), NOT heat+palette — the palette map moved out to
+  `glColorizeLayer` so post filters can sit between it and the blend. Bloom has no `f.gl` hook
+  (it's the glow), so it drops out of the per-layer chain and stays whole-scene. `glColorTex`
+  holds the accumulator; `glRender` starts from it, skips the shared-palette `FS_PAL` **and the
+  composite-level `glPostChain`** (posts already ran per layer) — only the screen filters + glow
+  still touch the blended image. `glPostChain` gained a source-texture argument.
+- **Menu grouping mirrors the behaviour.** `buildFilterUI` groups the checkbox list by
+  `filterGroup(f)`, not raw stage: feedback → "Per-effect · heat & trails", post (minus Bloom)
+  → "Per-effect · image", Bloom + screen → "Whole scene · final image" — each with a caption.
+  Bloom lands in the whole-scene group because it is registry-last among `post`, so the group
+  key changes at the right boundary without reordering `FILTERS`.
 The Canvas2D fallback is untouched: it renders one item in one palette, as always.
 `STACK_MAX` is declared up by the canvas/GL setup, not down by `newStackItem`, because
 `initGL` allocates the per-layer buffers during startup — a `const` down there would be in

@@ -286,14 +286,16 @@ Layers are part of the scene: they save into presets, ride along in backups, and
 in share links. A scene with a single layer is stored exactly the way it always was, so
 every preset, backup and link made before layers existed still opens unchanged.
 
-Each layer keeps its **own palette** and its **own feedback filters** (Fire, Fade, and the
-other trail effects), so every effect in a stack shows in its own colours — set a layer's
-palette from the **Palette** chooser while that layer is selected, and it is remembered per
-layer. With the palette cycle running, layers even morph on their own schedules. The
-post-processing filters (Blur, Bloom, Edge, and the rest), the camera, beat tuning and the
-render resolution stay **scene-wide** — they run once on the finished composite. And because
-display **Zoom** is applied once to that composite, adding a shader effect (which does its
-own optical zoom) to a point-based scene will stop the point effect zooming.
+Each layer keeps its **own palette and its own filters**, so every effect in a stack shows
+in its own colours and is shaped on its own — set a layer's palette and tick its filters
+while that layer is selected, and they are remembered per layer. With the palette cycle
+running, layers even morph on their own schedules. The **Filters** list says which is which:
+the **Per-effect** filters (Fire, Fade and the trail effects; Wedge fold, Twist, Edge and
+the rest of the image filters) run on each effect on its own, before the layers blend; the
+**Whole-scene** filters (Bloom, Scanlines, Vignette, Film grain, Barrel) plus the camera,
+beat tuning and render resolution act once on the finished, blended picture. Because display
+**Zoom** is applied once to that composite, adding a shader effect (which does its own
+optical zoom) to a point-based scene will stop the point effect zooming.
 
 On machines without WebGL the Canvas2D fallback renders the first unmuted layer only:
 stacking is a GPU feature, and each extra layer there would be a full software render.
