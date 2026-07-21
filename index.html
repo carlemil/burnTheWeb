@@ -311,10 +311,19 @@
      effects, so "Speed" or "Size" alone doesn't say which one you popped — and with
      several boxes stacked, two identically-named sliders are indistinguishable. */
   #breakout .ctl-owner {
+    display: flex; align-items: center; gap: 6px;
     margin: 0 0 4px; color: #ffb15a; opacity: .62;
     font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  #breakout .ctl-owner .own-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The per-box help ?, mirroring the panel's own #help-btn but smaller. Pushed to the
+     right of the owner line so every box carries one in the same place. */
+  #breakout .ctl-help {
+    flex: none; margin-left: auto; width: 15px; height: 15px; padding: 0;
+    border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.5); background: transparent;
+    color: #ffb15a; font: 10px/1 ui-monospace, monospace; cursor: help; opacity: .85;
+  }
+  #breakout .ctl-help:hover { background: rgba(255, 122, 26, 0.35); opacity: 1; }
   /* A box has room the menu slot never had, so unstack it: the name + value get
      their own line, the beat chips + pulse picker drop to a line of their own
      (instead of being squeezed against the value), and the slider gets air. */
@@ -496,6 +505,7 @@
   #help h2 { margin: 0 24px 8px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #help p { margin: 0 0 10px; opacity: .9; }
   #help .help-intro { opacity: .68; font-size: 11.5px; }
+  #help .help-owner { margin: -4px 0 10px; color: #ffb15a; opacity: .6; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
   #help dl { margin: 4px 0 0; }
   #help dt { color: #ffcf87; margin-top: 11px; }
   #help dd { margin: 2px 0 0; opacity: .82; }
@@ -5772,12 +5782,20 @@
     ctl.classList.add("poppable");
     // Title line, first child so it sits above the label. Only ever visible in
     // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
+    // Always built (even with no owner group) so it can carry the per-box help ?.
     const own = ctlOwner(key);
-    if (own) {
-      const t = document.createElement("div");
-      t.className = "ctl-owner"; t.textContent = own;
-      ctl.insertBefore(t, ctl.firstChild);
-    }
+    const t = document.createElement("div");
+    t.className = "ctl-owner";
+    const ownTxt = document.createElement("span");
+    ownTxt.className = "own-txt"; ownTxt.textContent = own;
+    t.appendChild(ownTxt);
+    const hb = document.createElement("button");
+    hb.type = "button"; hb.className = "ctl-help"; hb.textContent = "?";
+    hb.title = "What " + ctlLabel(key) + " does";
+    hb.setAttribute("aria-label", ctlLabel(key) + " — help");
+    hb.addEventListener("click", e => { e.stopPropagation(); openCtlHelp(key); });
+    t.appendChild(hb);
+    ctl.insertBefore(t, ctl.firstChild);
     const rngEd = makeRangeEditor(key);
     if (rngEd) ctl.appendChild(rngEd);         // bounds editor at the foot of the box
     ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
@@ -7101,6 +7119,32 @@
   }
   function openHelp() { renderHelp(); helpEl.classList.remove("hidden"); }
   function closeHelp() { helpEl.classList.add("hidden"); }
+  // The per-box ? — reuses the same modal as the panel help, but focused on one slider:
+  // its own blurb (a filter param uses the filter's description; an effect control matches
+  // its HELP entry, disambiguated by the live effect's tags — "Drift speed" and "Rotation"
+  // each mean two different things), then the shared note on how a slider box works.
+  function ctlHelpBlurb(key) {
+    const label = ctlLabel(key);
+    const f = FILTERS.find(x => Array.isArray(x.params) && x.params.includes(key));
+    if (f) return { owner: "Filter · " + f.name, body: f.help || "" };
+    const tags = (EFFECTS[effect] && EFFECTS[effect].helpTags) || [];
+    const cands = HELP.sliders.filter(s => s.n === label || s.n.split(" / ")[0] === label);
+    const s = cands.find(x => tags.includes(x.w)) || cands[0];
+    return { owner: ctlOwner(key), body: s ? s.t : "" };
+  }
+  const RANGE_BLURB = () => (HELP.sliders.find(s => s.n === "Slider range (min / max / step)") || {}).t || "";
+  function openCtlHelp(key) {
+    const { owner, body } = ctlHelpBlurb(key);
+    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
+    html += "<h2>" + ctlLabel(key) + "</h2>";
+    if (owner) html += '<p class="help-owner">' + owner + "</p>";
+    if (body) html += "<p>" + body + "</p>";
+    html += '<p class="help-intro">' + HELP.intro + "</p>";
+    const rb = RANGE_BLURB(); if (rb) html += '<p class="help-intro">' + rb + "</p>";
+    html += "</div>";
+    helpEl.innerHTML = html;
+    helpEl.classList.remove("hidden");
+  }
   el("help-btn").addEventListener("click", openHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
 
