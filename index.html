@@ -342,7 +342,7 @@
   /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
      (This replaced the one shared "Slider ranges" list in Diagnostics.) */
   #breakout .rng-edit {
-    display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: end;
+    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; align-items: end;
     margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.18);
   }
   #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
@@ -5305,8 +5305,8 @@
     const out = {};
     for (const id in RNG_ORIG) {
       const inp = el(id), o = RNG_ORIG[id];
-      if (inp && (inp.min !== o.min || inp.max !== o.max))
-        out[id] = { min: inp.min, max: inp.max };
+      if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
+        out[id] = { min: inp.min, max: inp.max, step: inp.step };
     }
     return out;
   }
@@ -5333,7 +5333,7 @@
     const els = ctlRangeInputs(key);
     for (const inp of els) {
       const o = RNG_ORIG[inp.id]; if (!o) continue;
-      inp.min = o.min; inp.max = o.max;
+      inp.min = o.min; inp.max = o.max; inp.step = o.step;
     }
     // presetState merges the filter defaults, so a filter's params reset too — but it
     // only knows keys the effect declares in `defaults`, and plenty of on-screen sliders
@@ -5372,14 +5372,18 @@
   function applyRanges(r) {
     for (const id in RNG_ORIG) {
       const inp = el(id), o = RNG_ORIG[id];
-      if (inp) { inp.min = o.min; inp.max = o.max; }
+      if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
     if (!r || typeof r !== "object") { rngSyncAll(); return; }
     for (const id in r) {
       const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
-      inp.min = String(mn); inp.max = String(mx);   // v.step (older blobs) ignored on purpose
+      inp.min = String(mn); inp.max = String(mx);
+      // Honour a saved step; a blob that omits it (older ones, and every non-stepped
+      // scene) keeps the shipped step set in the reset loop above. A saved 0 means the
+      // author made the slider continuous, so it overrides a shipped integer step.
+      if (v.step !== undefined) { const sp = +v.step; inp.step = isFinite(sp) && sp > 0 ? String(sp) : "any"; }
     }
     rngSyncAll();                         // the in-box min/max/step fields follow
   }
@@ -5685,15 +5689,23 @@
     const p = el(key);
     return p && p.type === "range" ? [p] : [];
   }
+  // A slider's `step` attribute as a NUMBER for the editor field: "any" (continuous) and
+  // any non-numeric read back as 0, so the field's "0 = continuous" convention is total.
+  const stepFieldVal = s => { const n = +s; return isFinite(n) && n > 0 ? String(n) : "0"; };
   function rngApply(els, which, v) {
     if (!isFinite(v)) return;
     for (const inp of els) {
-      inp[which] = String(v);
-      // A value outside the new bounds would otherwise be clamped by the browser
-      // only on the next drag — clamp now and re-apply, so the visual, the readout
-      // and the fill all agree immediately (and the change persists).
-      const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
-      if (c !== +inp.value) inp.value = String(c);
+      if (which === "step") {
+        // 0 (or empty/negative) ⇒ continuous, i.e. step="any"; otherwise snap to v.
+        inp.step = v > 0 ? String(v) : "any";
+      } else {
+        inp[which] = String(v);
+        // A value outside the new bounds would otherwise be clamped by the browser
+        // only on the next drag — clamp now and re-apply, so the visual, the readout
+        // and the fill all agree immediately (and the change persists).
+        const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
+        if (c !== +inp.value) inp.value = String(c);
+      }
       inp.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
@@ -5703,19 +5715,25 @@
     const box = document.createElement("div");
     box.className = "rng-edit";
     const fields = {};
-    for (const which of ["min", "max"]) {          // no step: sliders are continuous
+    for (const which of ["min", "max", "step"]) {
       const cell = document.createElement("label");
       cell.className = "rng-cell";
       cell.appendChild(document.createTextNode(which));
       const f = document.createElement("input");
-      f.type = "number"; f.step = "any"; f.value = els[0][which];
-      f.title = ctlLabel(key) + " " + which;
+      f.type = "number"; f.step = "any";
+      f.value = which === "step" ? stepFieldVal(els[0].step) : els[0][which];
+      // "step" 0 leaves the slider continuous; any positive value snaps its thumbs to
+      // that increment. It only affects manual dragging — the animation drives the value
+      // as a free float regardless — so it is a drag-resolution knob, not a quantiser.
+      f.title = which === "step"
+        ? ctlLabel(key) + " step (0 = continuous)"
+        : ctlLabel(key) + " " + which;
       f.addEventListener("input", () => rngApply(els, which, +f.value));
       cell.appendChild(f);
       box.appendChild(cell);
       fields[which] = f;
     }
-    const sync = () => { for (const w in fields) fields[w].value = els[0][w]; };
+    const sync = () => { for (const w in fields) fields[w].value = w === "step" ? stepFieldVal(els[0].step) : els[0][w]; };
     rngSyncs.push(sync);
     const rst = document.createElement("button");
     rst.type = "button"; rst.className = "rng-rst"; rst.textContent = "↺";
@@ -5941,7 +5959,7 @@
     for (const key in states[effect])
       for (const inp of ctlRangeInputs(key)) {
         const o = RNG_ORIG[inp.id];
-        if (o) { inp.min = o.min; inp.max = o.max; }
+        if (o) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
       }
     loadState(effect);                // apply to the live sliders
     loadBeat(effect);                 // ...the live chips
