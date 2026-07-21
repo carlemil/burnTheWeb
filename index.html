@@ -6117,6 +6117,7 @@
     // cardioid button, OG_PAGES) keeps its exact meaning; only the render path reads
     // the stack. Assigned in this one place, so the two cannot drift apart.
     stack[stackSel].fx = i;
+    effectSel.value = i;              // the chooser follows, so selecting a layer shows its effect
     syncStackUI();                    // the selected row's name follows the chooser
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
