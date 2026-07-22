@@ -401,6 +401,14 @@
   /* flex:1 so the name takes the slack and the dots sit right up against the +/-
      button, rather than space-between spreading three children across the row. */
   .ctl-row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A control that currently does nothing because another setting neutralises it: greyed,
+     its +/- button dead, and a click flashes the blocker (set in refreshBlocked). */
+  .ctl-row.ctl-blocked, #breakout .ctl.ctl-blocked { opacity: .32; }
+  .ctl-row.ctl-blocked { cursor: help; }
+  .ctl-row.ctl-blocked .ctl-pop { pointer-events: none; opacity: .5; }
+  @keyframes ctlflash { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,140,40,0); background: transparent; }
+                        25%, 65% { box-shadow: 0 0 0 2px rgba(255,140,40,0.95); background: rgba(255,140,40,0.28); } }
+  .ctl-row.ctl-flash { animation: ctlflash 1.4s ease; border-radius: 6px; }
   /* Beat-trigger dots: which of L/M/H is armed for this slider, at a glance, without
      popping every box open. A dot only exists while its band is armed; it sits dim and
      lights up on that band's beat, the same cue the chip in the box gives. */
@@ -4445,6 +4453,36 @@
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
     refreshBreakout();                // show/hide the pop-out boxes to match
+    refreshBlocked(shown);            // grey any control another setting has neutralised
+  }
+  // A control that does nothing while another slider sits at its neutral value (a dual
+  // whose HIGH thumb is 0 — i.e. turned fully off, so the drift can never leave 0). Keyed
+  // blocked-control → the blocker it depends on. Extend by adding an entry.
+  const CTL_BLOCKED = { bandsize: "band", banddim: "band", nodspd: "nod" };
+  function ctlHi(key) { const a = anims[key]; return a ? (a.hi ? +a.hi.value : +a.lo.value) : 1; }
+  // Grey the blocked control's menu row + box, kill its +/- button, and stash the blocker
+  // on the row so a click can flash it. Reads live thumb values, so it must run on edits too.
+  function refreshBlocked(shown) {
+    shown = shown || shownKeys();
+    for (const key in CTL_BLOCKED) {
+      const by = CTL_BLOCKED[key];
+      const blocked = shown.has(key) && ctlHi(by) === 0;
+      const row = rows[key], box = el("ctl-" + key);
+      if (row) {
+        row.classList.toggle("ctl-blocked", blocked);
+        row.dataset.blocker = blocked ? by : "";
+        row.title = blocked ? "Does nothing while " + ctlLabel(by) + " is 0 — click to highlight it" : "";
+      }
+      if (box) box.classList.toggle("ctl-blocked", blocked);
+    }
+  }
+  // Draw the eye to a control: open its section, scroll it into view, and pulse it once.
+  function flashCtl(key) {
+    const row = rows[key]; if (!row) return;
+    const sec = row.closest("details"); if (sec) sec.open = true;
+    row.scrollIntoView({ block: "nearest" });
+    row.classList.remove("ctl-flash"); void row.offsetWidth; row.classList.add("ctl-flash");
+    setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
   function syncFilterUI() {
     FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = activeIds.has(f.id); syncFilterSec(f.id); });
@@ -6689,9 +6727,17 @@
   function onEdit(e) {
     if (e.target.closest("#diag")) return;   // dev tools persist themselves; never fold them into a preset
     if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
+    refreshBlocked();                        // a thumb move can neutralise (or free) a dependent control
     if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }
+  // Click a greyed (blocked) control row → flash the setting that's neutralising it, so it's
+  // obvious what to change first. The +/- button is pointer-events:none while blocked, so a
+  // click here can only be on the row body.
+  panel.addEventListener("click", e => {
+    const row = e.target.closest(".ctl-row.ctl-blocked");
+    if (row && row.dataset.blocker) flashCtl(row.dataset.blocker);
+  });
   // Beat chips are <button>s, so they never fire input/change and the delegated
   // listener above can't see them. Same body, minus the target-based guards.
   function chipEdited() {

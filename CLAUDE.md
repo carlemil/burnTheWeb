@@ -525,6 +525,17 @@ the palette — `morphing` is now *derived* (`palCycleOn()`), not stored, and
 written for backward compatibility, and `loadExtra` seeds the slider to 0 for a scene
 saved with `morph:false` before the slider existed.
 
+**Blocked controls.** A slider that currently does nothing because another is at its neutral
+value is greyed, its `+`/`−` button killed, and a click flashes the blocker so you know what to
+change first. `CTL_BLOCKED` maps a blocked key → the blocker key (e.g. `bandsize`/`banddim` →
+`band`, `nodspd` → `nod`); a control counts as *off* when its dual's **high thumb is 0** (`ctlHi`),
+so the drift can never leave 0 — a stable read off the thumb, not the animated value. `refreshBlocked`
+toggles `.ctl-blocked` on the menu row + its `#breakout` box and stashes the blocker in
+`row.dataset.blocker`; it runs from `refreshControlVisibility` (effect switch) **and `onEdit`** (a
+live thumb drag can neutralise or free a dependent). A delegated `#panel` click on a blocked row
+calls `flashCtl(blocker)` — opens its section, scrolls it in, pulses it (`.ctl-flash`, a one-shot
+keyframe restarted via `void offsetWidth`). Extend by adding a `CTL_BLOCKED` entry.
+
 **Reverse colours** (`#palrev`) flips the palette's colour order **per layer** — it mirrors
 `palette` exactly: a live global `paletteReverse` is the selected layer's value, stored on the
 item as `L.paletteRev` (and in `extras[e].paletteRev` for the single-layer fallback), with
