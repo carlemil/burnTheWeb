@@ -270,7 +270,7 @@ layer, so each one keeps its own settings, its own drifting sliders and its own 
 reactions. **+ Add layer** adds another (it starts as a copy of the selected layer's
 effect; change it with the Effect chooser). Each row also carries:
 
-- **▲ ▼** — move the layer up or down the order.
+- **⠿** — the grab handle: drag it up or down to reorder the layer in the stack.
 - **●** — mute it. A muted layer costs nothing and leaves nothing behind, which makes it
   the quickest way to see what a layer is actually contributing.
 - **MAX / ADD** — how it combines with the layers below. Because each layer carries its

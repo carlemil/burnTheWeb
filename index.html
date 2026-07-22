@@ -437,24 +437,40 @@
   #panel .credit + label.check { margin-top: 12px; }
   /* Filters: the stackable post-FX checkboxes */
   /* ---- layer stack rows ---- */
-  #panel #stacklist { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 5px; }
+  #panel #stacklist { display: flex; flex-direction: column; gap: 4px; margin: 3px 0 7px; }
   #panel .lyr {
     /* Two rows: the effect name gets a line of its own, the controls sit under it. One
        line fitted, but only by squeezing the name to three characters and an ellipsis —
        and the name is the one thing you actually read when scanning a stack. */
-    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 5px;
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px;
     align-items: center;
-    padding: 4px 5px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
+    padding: 6px 7px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
     background: rgba(255, 140, 40, 0.05); cursor: pointer;
   }
   /* The selected layer is the one the Effect chooser and every slider below edit, so it
      has to be unmistakable — everything else in the box refers to it. */
   #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
   #panel .lyr.muted .lyr-name { opacity: .4; text-decoration: line-through; }
-  #panel .lyr-name { font-size: 11px; color: #ffcf87; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #panel .lyr-ord { display: flex; flex-direction: column; gap: 1px; grid-row: 1 / 3; }
-  #panel .lyr-ctl { display: flex; align-items: center; gap: 5px; }
+  #panel .lyr-name { font-size: 11px; color: #ffcf87; padding: 1px 0 0; letter-spacing: .2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Drag handle: spans both rows like the old arrow column did. touch-action:none so a
+     touch-drag reorders instead of scrolling the panel; the row it lives on live-moves
+     among its siblings while held (see syncStackUI's pointerdown). */
+  #panel .lyr-grab {
+    grid-row: 1 / 3; align-self: stretch; width: 15px;
+    display: flex; align-items: center; justify-content: center;
+    color: #ffb15a; opacity: .5; font: 13px/1 monospace;
+    cursor: grab; user-select: none; touch-action: none; border-radius: 4px;
+  }
+  #panel .lyr-grab:hover { opacity: 1; background: rgba(255, 140, 40, 0.18); }
+  #panel .lyr-grab.off { opacity: .18; cursor: default; background: none; }
+  #panel .lyr.dragging { opacity: .92; border-color: #ff8c28; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.55); }
+  #panel .lyr.dragging .lyr-grab { cursor: grabbing; opacity: 1; }
+  /* Spread the row controls: mute · blend sit left, the gain slider grows to fill the
+     freed space, remove is pushed to the right edge. Gives every component breathing room
+     and a longer, more usable gain slider than the old fixed 38px. */
+  #panel .lyr-ctl { display: flex; align-items: center; gap: 7px; padding-top: 1px; }
   #panel .lyr-ctl .sp { flex: 1; }
+  #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
   #panel .lyr b {
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
     background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
@@ -5552,13 +5568,6 @@
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
     syncStackUI();
   }
-  function moveStackItem(j, d) {
-    const k = j + d;
-    if (!stack[j] || !stack[k]) return;
-    const t = stack[j]; stack[j] = stack[k]; stack[k] = t;
-    if (stackSel === j) stackSel = k; else if (stackSel === k) stackSel = j;
-    syncStackUI(); persist();
-  }
   // ---- the layer list ----
   // One row per stack item: reorder, name, mute, blend, gain, remove. Blend/gain/mute
   // are deliberately NOT CONTROLS entries — that registry is per-key singletons and
@@ -5577,17 +5586,45 @@
       // row is the target; the buttons inside stopPropagation so they don't also select.
       row.addEventListener("click", () => selectStack(j));
 
-      const ord = document.createElement("div");
-      ord.className = "lyr-ord";
-      const up = document.createElement("b"), dn = document.createElement("b");
-      up.textContent = "▲"; dn.textContent = "▼";
-      up.title = "Move up (drawn earlier)"; dn.title = "Move down (drawn later)";
-      if (j === 0) up.classList.add("off");
-      if (j === stack.length - 1) dn.classList.add("off");
-      up.addEventListener("click", e => { e.stopPropagation(); moveStackItem(j, -1); });
-      dn.addEventListener("click", e => { e.stopPropagation(); moveStackItem(j, 1); });
-      ord.appendChild(up); ord.appendChild(dn);
-      row.appendChild(ord);
+      // Grab handle → drag to reorder. It captures the pointer and live-moves this row
+      // among its siblings (insertBefore/appendChild) as the pointer crosses each row's
+      // midpoint; on release the stack array is rebuilt to match the DOM order. Pointer
+      // capture is on the handle, a child of the row, so moving the row keeps the capture.
+      // Selection is left untouched — you drag to reorder, click the row body to select.
+      row._item = L;
+      const grab = document.createElement("div");
+      grab.className = "lyr-grab" + (stack.length < 2 ? " off" : "");
+      grab.textContent = "⠿";
+      grab.title = "Drag to reorder — layers higher in the list draw first (underneath)";
+      grab.setAttribute("aria-label", "Drag to reorder layer");
+      grab.addEventListener("click", e => e.stopPropagation());
+      grab.addEventListener("pointerdown", e => {
+        if (stack.length < 2) return;
+        e.preventDefault(); e.stopPropagation();
+        grab.setPointerCapture(e.pointerId);
+        row.classList.add("dragging");
+        const onMove = ev => {
+          const after = [...host.children].find(r =>
+            r !== row && ev.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
+          if (after) host.insertBefore(row, after); else host.appendChild(row);
+        };
+        const onUp = () => {
+          grab.releasePointerCapture(e.pointerId);
+          grab.removeEventListener("pointermove", onMove);
+          grab.removeEventListener("pointerup", onUp);
+          grab.removeEventListener("pointercancel", onUp);
+          row.classList.remove("dragging");
+          const sel = stack[stackSel];
+          const order = [...host.children].map(r => r._item);
+          stack.length = 0; stack.push(...order);
+          stackSel = stack.indexOf(sel);
+          syncStackUI(); persist(); autosavePreset();
+        };
+        grab.addEventListener("pointermove", onMove);
+        grab.addEventListener("pointerup", onUp);
+        grab.addEventListener("pointercancel", onUp);
+      });
+      row.appendChild(grab);
 
       const nm = document.createElement("div");
       nm.className = "lyr-name"; nm.textContent = EFFECTS[L.fx].name;
