@@ -5619,8 +5619,8 @@
           const others = [...host.querySelectorAll(".lyr")].filter(r => r !== row);
           to = 0;
           for (const r of others) {
-            const b = r.getBoundingClientRect();
-            if (ev.clientY < b.top + b.offsetHeight / 2) break;
+            const b = r.getBoundingClientRect();     // DOMRect: .height, NOT .offsetHeight
+            if (ev.clientY < b.top + b.height / 2) break;
             to++;
           }
           host.insertBefore(marker, others[to] || null);   // a sibling move; the row stays put
