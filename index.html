@@ -2636,18 +2636,25 @@
   // retained pair, else colour the scratch directly. Gain is applied later, in glOkMerge.
   function renderLayerHeat(L, slot, fx, dt, now, ticks) {
     const chain = layerFeedbackChain(L);
+    // Install THIS layer's params + phase up front, so everything below reads them: the feedback
+    // propagation (its decay), the feedback filters (their keeps — Fade/Echo/Diffuse/Swirl), the
+    // heat→colour map AND its post-filter chain. Doing it here rather than inside the point tick
+    // loop means it also runs on frames with ticks==0 (common at high framerate) — otherwise a
+    // point layer's trails/colour/post inherited the previously-drawn (or selected) layer's params
+    // and read as belonging to another layer. Shader layers already installed first; this unifies.
+    installStackItem(L); installPhase(L);
     if (!fx.draw) {                                // POINT layer
       let cur = layerCur[slot];
       for (let t = 0; t < ticks; t++) {
         cur = glLayerBeginHeat(slot, cur, chain);  // propagate into the other buffer, leave it bound
         glPtCount = 0;
-        installStackItem(L); installPhase(L); stampTick(L, now); capturePhase(L);
+        stampTick(L, now); capturePhase(L);
         glBlitPoints(L.blend, 1);                  // stamp into the bound buffer (gain deferred)
       }
       layerCur[slot] = cur;
       return glTex.heatL[slot][cur];
     }
-    installStackItem(L); installPhase(L); fx.draw(dt); capturePhase(L);   // → glTex.layer
+    fx.draw(dt); capturePhase(L);                  // → glTex.layer (params installed above)
     if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
     let cur = layerCur[slot];
     for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
