@@ -1536,6 +1536,25 @@
       // to exactly this; colour/luminosity/difference need something below to act on, and
       // without this guard would render the first layer black (they read the empty acc's L).
       if (accW < 1.0e-4) { o = vec4(oklab2srgb(layerLab), clamp(w / WMAX, 0.0, 1.0)); return; }
+      // Per-channel sRGB blends (8–15): operate straight on the two sRGB triples, no OKLab
+      // round-trip — that is what gives them their characteristic per-channel behaviour. All
+      // sit past the guard above, so a (below) is always a real, lit colour. c is this
+      // layer's gained colour. Each returns directly; alpha marks the pixel lit for the next.
+      {
+        vec3 a = clamp(acc.rgb, 0.0, 1.0), c = clamp(col * uGain, 0.0, 1.0);
+        float wUp = clamp((accW + w) / WMAX, 0.0, 1.0), wKeep = clamp(max(accW, w) / WMAX, 0.0, 1.0);
+        if (uBlend == 8)  { o = vec4(a * c, wKeep); return; }                                  // multiply: darken, rich saturated overlaps
+        if (uBlend == 9)  { vec3 lo = 2.0*a*c, hi = 1.0 - 2.0*(1.0-a)*(1.0-c);                 // overlay: multiply on dark, screen on light
+                            o = vec4(mix(lo, hi, step(0.5, a)), wUp); return; }
+        if (uBlend == 10) { o = vec4(clamp(a / max(1.0 - c, 1.0e-3), 0.0, 1.0), wUp); return; } // colour dodge: neon blowout
+        if (uBlend == 11) { o = vec4(clamp(1.0 - (1.0 - a) / max(c, 1.0e-3), 0.0, 1.0), wKeep); return; } // colour burn: crushed shadows
+        if (uBlend == 12) { uvec3 ai = uvec3(a*255.0 + 0.5), ci = uvec3(c*255.0 + 0.5);        // XOR: bitwise interference (munching-squares)
+                            o = vec4(vec3(ai ^ ci) / 255.0, wUp); return; }
+        if (uBlend == 13) { o = vec4(clamp(c*c / max(1.0 - a, 1.0e-3), 0.0, 1.0), wUp); return; } // reflect/glow: this layer's highlights flare
+        if (uBlend == 14) { o = vec4(clamp(1.0 - abs(1.0 - a - c), 0.0, 1.0), wUp); return; }   // negation: bright where they agree, inverted where they collide
+        if (uBlend == 15) { bool even = mod(floor(gl_FragCoord.y), 2.0) < 1.0;                  // interleave: scanline A/B, zero colour mixing
+                            o = vec4(even ? c : a, wKeep); return; }
+      }
       vec3 labA = srgb2oklab(acc.rgb);
       vec3 outLab; float outW;
       if (uBlend == 1) {                                 // max: brighter layer wins
@@ -1573,6 +1592,32 @@
         vec2 abWin = layerWins ? labC.yz : labA.yz;      // winner's hue + chroma, unmixed
         float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);   // screen lightness
         outLab = vec3(Lout, abWin);
+        outW = accW + w;
+      } else if (uBlend == 16) {                         // HSV hyper-vivid: max L, max chroma, punchier hue
+        // Louder than OKL: take the greater lightness AND the greater chroma, and point that
+        // chroma along whichever layer is punchier (chroma×brightness). Overlaps read as the
+        // brightest, most saturated resolution of the two — no rim averaging to soften it.
+        float Ca = length(labA.yz), Cb = length(labC.yz);
+        vec2 da = Ca > 1.0e-5 ? labA.yz / Ca : vec2(0.0);
+        vec2 db = Cb > 1.0e-5 ? labC.yz / Cb : vec2(0.0);
+        vec2 hue = (Cb * w >= Ca * accW) ? db : da;       // punchier layer's hue direction
+        if (Ca < 1.0e-5 && Cb < 1.0e-5) hue = vec2(0.0);
+        outLab = vec3(max(labA.x, Lc), hue * max(Ca, Cb));
+        outW = accW + w;
+      } else if (uBlend == 17) {                         // average: plain 50/50 perceptual mean
+        // The calm opposite of screen/add — an even mean of both layers in OKLab. Soft and
+        // painterly; on near-opposite hues it will pass a little toward grey, by design.
+        outLab = 0.5 * (labA + layerLab);
+        outW = max(accW, w);
+      } else if (uBlend == 18) {                         // complement push: overlap → dominant hue's opposite
+        // Rotate the overlap 180° from the DOMINANT layer's hue — a colour you cannot reach by
+        // mixing the two (reds bleed cyan, greens bleed magenta). Chroma = max, lightness screens.
+        float Ca = length(labA.yz), Cb = length(labC.yz);
+        vec2 domAB = (Cb * w >= Ca * accW) ? labC.yz : labA.yz;
+        float dc = length(domAB);
+        vec2 comp = dc > 1.0e-5 ? -domAB / dc : vec2(1.0, 0.0);   // opposite direction on the wheel
+        float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);   // screen lightness
+        outLab = vec3(Lout, comp * max(Ca, Cb));
         outW = accW + w;
       } else {                                           // 0 = add: brightness-weighted screen
         float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);  // screen lightness
@@ -2712,6 +2757,17 @@
     { id: "rgb",   label: "RGB", u: 5, tip: "RGB — screens the red, green and blue channels independently, so overlapping layers keep their full colour instead of merging to one hue." },
     { id: "okl",   label: "OKL", u: 6, tip: "Vivid — blends the two hues around the colour wheel (chroma-weighted) and keeps the higher saturation, so overlaps stay fully saturated instead of greying out. Red + green → vivid orange-yellow." },
     { id: "dom",   label: "DOM", u: 7, tip: "Dominant — at each pixel the more colourful layer keeps its exact hue (no mixing), lightness screened. Maximum saturation, crisp boundaries between the two palettes." },
+    { id: "mul",   label: "MUL", u: 8, tip: "Multiply — colours multiply per channel, so overlaps darken into rich, saturated ink. The natural opposite of Add; great for carving shadow on a bright scene." },
+    { id: "ovl",   label: "OVL", u: 9, tip: "Overlay — multiplies where the layer below is dark and screens where it is light, hard-boosting contrast. Darks crush, lights pop." },
+    { id: "ddg",   label: "DDG", u: 10, tip: "Colour dodge — wherever this layer is bright, the layers below bloom toward pure white/colour. Neon blowout, intense highlights." },
+    { id: "brn",   label: "BRN", u: 11, tip: "Colour burn — the dark twin of dodge: deep, crushed, saturated shadows wherever this layer is dark. Moody and heavy." },
+    { id: "xor",   label: "XOR", u: 12, tip: "Bitwise XOR of the 8-bit channels — hard interference bands that shift as the layers move. The munching-squares / demoscene glitch look." },
+    { id: "rfl",   label: "RFL", u: 13, tip: "Reflect / glow — this layer's own highlights flare like neon tubes while dark areas stay dark. Like dodge, concentrated on this layer's brights." },
+    { id: "neg",   label: "NEG", u: 14, tip: "Negation — bright where the two layers agree, inverted where they collide. A trippy pseudo-solarize that never fully darkens." },
+    { id: "int",   label: "INT", u: 15, tip: "Interleave — even scanlines show this layer, odd lines the one below. A CRT/dither way to combine two scenes with zero colour mixing." },
+    { id: "hsv",   label: "HSV", u: 16, tip: "Hyper-vivid — takes the greater lightness AND chroma of the two, hue from the punchier layer. Louder than OKL; overlaps read maximally bright and saturated." },
+    { id: "avg",   label: "AVG", u: 17, tip: "Average — a plain 50/50 perceptual mean of both layers in OKLab. Soft and painterly, the calm opposite of the screen/add family." },
+    { id: "cmp",   label: "CMP", u: 18, tip: "Complement push — overlaps rotate to the opposite hue of the dominant layer: reds bleed cyan, greens bleed magenta. Alien colour you can't get by mixing." },
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
   // Blend one layer's finished RGB colour into the accumulator, in OKLab.
