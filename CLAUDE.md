@@ -481,15 +481,21 @@ freehand have no cusps, and constant-rate advance over `2π` already gives a `1/
 whole ease/EASE_K apparatus is cardioid-only. The **default (cardioid + ride on) reproduces the
 original seed math byte-for-byte**, which is what keeps `juliaprobe` and every existing scene
 unchanged; all of this lives inside the `const RPM … function julia(` slice the probe drives.
-Config is **per-effect scene data** in `extras[e]` (`seedPath`/`seedRide`/`seedPts`), so it saves,
-shares (points rounded to 4dp + capped by `seedPtsOk`), and rides in presets/backups —
-`presetExtra` defaults it (no descriptor edit) and `mergeExtra` sanitises it. Because it's
-per-effect, each stacked cardioid layer must draw with its own shape: **`installSeedPath(L)`**
-(called from `installStackItem` for `cardioid` effects) installs `extras[L.fx]`'s config into the
-globals per layer, caching the spline by the points array's identity (`seedSplineCache`). `extras[e]`
-is authoritative even for the selected effect (`saveExtra` mirrors every editor edit into it), so
-there's no special case. Editor wiring: mode buttons / the `Riding circle` box / `Clear` set the
-globals then `commitSeedPath()` (`saveExtra`+`persist`+`autosavePreset`); **freehand** captures a
+Config is **per-LAYER scene data** — `L.seedPath`/`seedRide`/`seedPts` on the stack item, mirroring
+`palette`/`paletteRev` exactly — so two layers of the same effect keep separate orbits. It saves,
+shares (points rounded to 4dp + capped by `seedPtsOk`) and rides in presets/backups through the
+layer serialization (`stackItemOut`/`mergeLayers`), with `extras[e]` (`presetExtra`/`saveExtra`/
+`mergeExtra`) as the per-effect **fallback** for a fresh layer or a scene saved before per-layer seed.
+Each stacked cardioid layer draws with its own shape: **`installSeedPath(L)`** (from `installStackItem`
+for `cardioid` effects) installs `L.seed*` (fallback `extras`) into the globals per layer, and the
+epilogue restores the selected layer's for the editor. **`captureSeed(L)`** (folded into
+`captureLayerExtras`, plus on every drag-move and `commitSeedPath`) writes the live globals back to the
+layer — a drag swaps in a NEW `seedPts` array (never mutate in place) so the per-layer `seedSplineFor`
+`WeakMap` cache invalidates and the render loop can't clobber the drag. `stageLayerExtras`/
+`applyLayerExtras` install the seed from the layer (NOT `loadExtra` — that would capture the effect
+default over the staged layer path during `setEffect`'s persist-freeze, the load-order trap). Editor
+wiring: mode buttons / the `Riding circle` box / `Clear` set the globals then `commitSeedPath()`
+(`captureSeed`+`saveExtra`+`persist`+`autosavePreset`); **freehand** captures a
 pointer stroke on `#cardcv`, thins it by min-spacing, and on release `resampleClosed`s it to evenly
 spaced control points before fitting. `syncOrbitUI()` reflects the live state onto the controls and
 is called from `loadExtra` (scene/layer switch) and on open. `seedDrawing` (the in-progress stroke)

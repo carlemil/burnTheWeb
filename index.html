@@ -4634,6 +4634,7 @@
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
     return { fx, state: null, beat: null, pulse: null, plen: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null,
+      seedPath: null, seedRide: null, seedPts: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   let stack = [newStackItem(0)], stackSel = 0;
@@ -4910,24 +4911,36 @@
     }
     if (EFFECTS[L.fx].cardioid) installSeedPath(L);
   }
-  // Seed-path config is per-effect (extras), so each stacked cardioid layer must draw with
-  // ITS effect's shape — the render loop mutates the seed globals per layer. extras[e] is
-  // the authoritative store even for the selected effect (saveExtra mirrors every edit into
-  // it), so reading it here is correct for every layer without a special case. The spline is
-  // cached by the points array's identity, so it only recompiles when the points change.
-  const seedSplineCache = {};
-  function layerSeedSpline(e, x) {
-    const c = seedSplineCache[e];
-    if (c && c.pts === x.seedPts) return c.sp;
-    const sp = buildSeedSpline(x.seedPts);
-    seedSplineCache[e] = { pts: x.seedPts, sp };
+  // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
+  // effect keep separate orbits. The render loop installs each layer's config into the seed
+  // globals before it draws; the epilogue restores the selected layer's, which is what the
+  // editor (cardDraw) reads. A layer that hasn't captured its own — a fresh layer, or a scene
+  // saved before per-layer seed — falls back to the effect's extras. The spline is cached per
+  // layer by the points array's identity, so it recompiles only when those points change (an
+  // edit swaps in a NEW array, which is what invalidates it — never mutate seedPts in place).
+  const seedSplineCache = new WeakMap();
+  function layerSeedPts(L) {
+    return L.seedPts != null ? L.seedPts : (extras[L.fx] || presetExtra(L.fx)).seedPts;
+  }
+  function seedSplineFor(L) {
+    const pts = layerSeedPts(L), c = seedSplineCache.get(L);
+    if (c && c.pts === pts) return c.sp;
+    const sp = buildSeedSpline(pts);
+    seedSplineCache.set(L, { pts, sp });
     return sp;
   }
   function installSeedPath(L) {
-    const x = extras[L.fx] || presetExtra(L.fx);
-    seedPathMode = seedModeOk(x.seedPath);
-    seedRideOn = x.seedRide !== false;
-    seedSpline = layerSeedSpline(L.fx, x);
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    seedPathMode = seedModeOk(L.seedPath != null ? L.seedPath : fx.seedPath);
+    seedRideOn = (L.seedRide != null ? L.seedRide : fx.seedRide) !== false;
+    seedPts = layerSeedPts(L);
+    seedSpline = seedSplineFor(L);
+  }
+  // Capture the live seed globals into a layer — its orbit path, remembered per layer.
+  function captureSeed(L) {
+    L.seedPath = seedPathMode;
+    L.seedRide = seedRideOn;
+    L.seedPts = seedPts;
   }
 
   const effectSel = el("effect");
@@ -5764,6 +5777,7 @@
     L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
     L.paletteRev = presetExtra(L.fx).paletteRev;
     L.paletteBg = presetExtra(L.fx).paletteBg;
+    { const px = presetExtra(L.fx); L.seedPath = px.seedPath; L.seedRide = px.seedRide; L.seedPts = px.seedPts; }
     L.filters = presetFilters(L.fx);
     stack.push(L);
     stackSel = stack.length - 1;
@@ -6028,15 +6042,9 @@
     showBoxChk.checked = x.showBox; showBox = x.showBox;
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
-    // Seed path: install the incoming effect's shape into the live globals and (re)compile
-    // its freehand spline. seedModeOk defaults a missing/retired value to cardioid, so any
-    // scene saved before the Orbit editor loads exactly as before.
-    seedPathMode = seedModeOk(x.seedPath);
-    seedRideOn = x.seedRide !== false;
-    seedPts = seedPtsOk(x.seedPts);
-    seedSpline = buildSeedSpline(seedPts);
-    seedHistory = []; seedDragIdx = -1; seedHover = -1;   // fresh editing session per scene
-    syncOrbitUI();
+    // The seed PATH is per-LAYER now (stageLayerExtras / applyLayerExtras install it from the
+    // layer), NOT here — loadExtra must not touch it, or setEffect's persist-freeze would
+    // capture the effect default over the staged layer path (the load-order trap).
     // Migration: scenes saved before the Palette cycle slider carry only the old `morph`
     // boolean. loadState has already applied any stored palcycle, so pin the cycle when
     // the old flag says off. palcycle is per-effect state, so this stays here.
@@ -6049,6 +6057,7 @@
     L.palette = paletteSel.value;
     L.paletteRev = paletteReverse;
     L.paletteBg = paletteBg;
+    captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
     L.filters = FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id);
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
@@ -6062,6 +6071,7 @@
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
+    installSeedPath(L);              // seed globals = this layer's orbit path, before the persist-freeze
   }
   // Push a layer's palette + filters onto the live globals. Called after setEffect for
   // whichever layer is now selected — selecting a layer, adding one, applying a preset,
@@ -6085,6 +6095,9 @@
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
     if (el("palrev")) el("palrev").checked = paletteReverse;
     if (el("palbg")) el("palbg").value = paletteBg;
+    installSeedPath(L);              // seed globals = this layer's orbit path
+    seedHistory = []; seedDragIdx = -1; seedHover = -1;   // fresh editing session per layer
+    syncOrbitUI();                   // reflect this layer's mode / ride / points in the editor
     morphing = palCycleOn();
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
     syncPalSwatches();                // highlight this layer's palette in the preview picker
@@ -7146,7 +7159,9 @@
   // freeze first — a caller that forgets loses the user's most recent edit.
   function stackItemOut(L) {
     return { effect: effectId(L.fx), state: L.state, beat: L.beat, pulse: L.pulse,
-      plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
+      seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts,
+      filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -7180,6 +7195,9 @@
       L.palette = r.palette != null ? r.palette : (tex.palette != null ? tex.palette : null);
       L.paletteRev = r.paletteRev != null ? !!r.paletteRev : (tex.paletteRev != null ? !!tex.paletteRev : null);
       L.paletteBg = r.paletteBg != null ? bgOk(r.paletteBg) : (tex.paletteBg != null ? bgOk(tex.paletteBg) : null);
+      L.seedPath = r.seedPath != null ? seedModeOk(r.seedPath) : (tex.seedPath != null ? seedModeOk(tex.seedPath) : null);
+      L.seedRide = r.seedRide != null ? r.seedRide !== false : (tex.seedRide != null ? tex.seedRide !== false : null);
+      L.seedPts = r.seedPts != null ? seedPtsOk(r.seedPts) : (tex.seedPts != null ? seedPtsOk(tex.seedPts) : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       L.blend = blendOk(r.blend);
@@ -7196,6 +7214,9 @@
       L.palette = tex.palette != null ? tex.palette : null;
       L.paletteRev = tex.paletteRev != null ? !!tex.paletteRev : null;
       L.paletteBg = tex.paletteBg != null ? bgOk(tex.paletteBg) : null;
+      L.seedPath = tex.seedPath != null ? seedModeOk(tex.seedPath) : null;
+      L.seedRide = tex.seedRide != null ? tex.seedRide !== false : null;
+      L.seedPts = tex.seedPts != null ? seedPtsOk(tex.seedPts) : null;
       const fset = filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       out.push(L);
@@ -7822,7 +7843,7 @@
   }
   // Commit a seed-path edit: mirror the live globals into the selected effect's extras and
   // fold it into the scene, exactly like a slider — the seed-path is per-effect scene data.
-  function commitSeedPath() { saveExtra(effect); persist(); autosavePreset(); }
+  function commitSeedPath() { captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
   // Resample a raw stroke to N evenly (arc-length) spaced control points, so the spline snaps
   // to a clean loop regardless of how fast the pointer moved. buildSeedSpline then closes it.
   function resampleClosed(stroke) {
@@ -7891,8 +7912,11 @@
     cv.addEventListener("pointermove", e => {
       const c = cardEventToC(e);
       if (seedDragIdx >= 0) {
-        seedPts[seedDragIdx] = [c[0] - juliaOffX, c[1]];
+        // New array (not in-place) so the per-layer spline cache invalidates; capture into
+        // the layer each move so the render loop's installSeedPath can't clobber the drag.
+        seedPts = seedPts.map((p, i) => i === seedDragIdx ? [c[0] - juliaOffX, c[1]] : p);
         seedSpline = buildSeedSpline(seedPts);           // live reshape
+        captureSeed(stack[stackSel]);
       } else if (seedDrawing) {
         const last = seedDrawing[seedDrawing.length - 1];
         if (Math.hypot(c[0] - last[0], c[1] - last[1]) > (CARD_X1 - CARD_X0) * 0.006) seedDrawing.push(c);
