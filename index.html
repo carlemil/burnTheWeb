@@ -1520,6 +1520,16 @@
       vec3 labC = srgb2oklab(col);
       float w = clamp(labC.x * uGain, 0.0, WMAX);        // weight = perceptual L · gain
       if (accW + w < 1.0e-4) { o = vec4(0.0); return; }  // nothing lit here yet
+      // Per-channel (RGB) screen: blend red, green and blue INDEPENDENTLY so overlapping
+      // layers keep their full colour instead of collapsing to one OKLab lightness+hue.
+      // Straight on sRGB, no colour-space round-trip — that is what preserves the detail.
+      // First layer is handled for free: screening against the empty (black) accumulator
+      // returns the gained layer exactly. Alpha just marks the pixel lit, like the other modes.
+      if (uBlend == 5) {
+        vec3 c = clamp(col * uGain, 0.0, 1.0);
+        o = vec4(1.0 - (1.0 - acc.rgb) * (1.0 - c), clamp((accW + w) / WMAX, 0.0, 1.0));
+        return;
+      }
       float Lc = clamp(labC.x * uGain, 0.0, 0.999);      // this layer's gained lightness
       vec3 layerLab = vec3(Lc, labC.yz);
       // Nothing underneath yet ⇒ every mode just shows the layer. add/max already reduce
@@ -2668,6 +2678,7 @@
     { id: "diff",  label: "DIF", u: 2, tip: "Difference — |below − this| in OKLab. Psychedelic where the layers disagree, dark where they match." },
     { id: "color", label: "COL", u: 3, tip: "Colour — keeps the brightness of the layers below, repainted in this layer's hue." },
     { id: "lum",   label: "LUM", u: 4, tip: "Luminosity — this layer's brightness wearing the hue of the layers below." },
+    { id: "rgb",   label: "RGB", u: 5, tip: "RGB — screens the red, green and blue channels independently, so overlapping layers keep their full colour instead of merging to one hue." },
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
   // Blend one layer's finished RGB colour into the accumulator, in OKLab.
