@@ -396,14 +396,26 @@ open/closed state isn't saved):
 **Beat tuning has its own box** in the menu now, not a Diagnostics tool — because it is
 part of the scene rather than a dev setting. See below.
 Two more tools sit outside that section: each slider's **min / max / step** row
-(in its pop-out box — see above), and **Cardioid debug**, a button in **Effects**
+(in its pop-out box — see above), and the **Orbit editor**, a button in **Effects**
 for the effects whose seed orbits a cardioid (AnimeJulia, Burning Ship,
 Multibrot). It opens the fractal set the seed is riding — the Mandelbrot set, or
 the matching Multibrot set once you move Multibrot's **Power** off 2 — with that
-orbit drawn on top: the full seed cardioid, the path the seed actually traces at
-the current ratio and radii, the little riding circle and the live seed point, so
-you can see exactly where your **Cardioid RPM / ratio / radius / start / X
-offset** settings land.
+orbit drawn on top: the base curve, the path the seed actually traces at the
+current ratio and radii, the little riding circle and the live seed point, so you
+can see exactly where your **Cardioid RPM / ratio / radius / start / X offset**
+settings land.
+
+It also lets you **choose the shape the seed follows**, per effect:
+- **Cardioid** — the classic path just outside the set's main cardioid (the default).
+- **Circle** — a plain circle, sized by **Outer radius** and slid by **Cardioid X offset**.
+- **Freehand** — drag on the canvas to draw a loop; it snaps to a smooth **closed spline**
+  the seed then traces at even speed. **Clear** starts over.
+
+The **Riding circle** checkbox toggles the small epicycle that keeps the seed's
+neighbourhood varying — leave it on for the lively look, turn it off to follow the
+bare curve exactly. The shape, the toggle and any drawn loop are saved with the
+scene and travel in presets, backups and share links.
+
 It's a floating panel, not a modal: the menu stays live underneath it, so you can
 drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
 

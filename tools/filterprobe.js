@@ -25,6 +25,8 @@ const stubs = `
       edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1;
   let activeIds = new Set(["fire", "bloom"]);
   function filterOn(id) { return activeIds.has(id); }
+  const SEED_MODES = { cardioid: 1, circle: 1, freehand: 1 };   // seed-path validation, defined in another slice
+  const seedModeOk = m => SEED_MODES[m] ? m : "cardioid";
   const gl = new Proxy({}, { get: () => () => {} });
   const glProg = new Proxy({}, { get: () => ({ p: null, u: {} }) });
   const glTex = { heat: [null, null], post: [null, null], native: null };

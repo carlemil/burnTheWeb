@@ -124,7 +124,7 @@ unevenness is the point. Because lap *time* is preserved the
 inner still completes exactly `ratio` turns per lap, just unevenly distributed. Note the
 easing is symmetric about θ=π, so the two half-laps take **equal** time — the asymmetry
 is per quarter (a probe assertion got this wrong before the maths did). `juliaSeedAt`
-stays unwarped; the Cardioid debug view therefore **integrates** `dφ = ratio·dθ/ease(θ)`
+stays unwarped; the Orbit editor therefore **integrates** `dφ = ratio·dθ/ease(θ)`
 as it walks the path (via the shared `juliaEase`) instead of assuming φ is linear in θ,
 or the drawn epicycles would not match the ones on screen.
 `juliaprobe` locks all of this down.
@@ -450,25 +450,50 @@ and dispatches `input` on the **slider**, so the delegated `onEdit` persists it 
 way — the number fields themselves are skipped in `onEdit`. `applyRanges` calls
 `rngSyncAll()` so bounds arriving from a blob show up in the fields.
 
-**Cardioid debug** (`#carddlg`, button `#cardbtn`). Descriptor-gated on `cardioid: true`
-(AnimeJulia / Burning Ship / Multibrot — the effects seeded from a Mandelbrot point):
-a **floating panel** (bottom-right, `z-index: 5` like `#breakout`, **no backdrop and not
-a modal**) rendering the connectedness locus in the c-plane with the seed's full cardioid, the
-path it actually traces at the current ratio/radii, the riding circle and the live seed
-point drawn over it. Non-modal on purpose: you tune the orbit sliders *while watching it*,
-so it must never intercept a click — don't reintroduce a backdrop or click-outside-closes. It samples **`juliaSeedAt(outer, inner)`** — the pure part split out
-of `juliaSeed(dt)`, which also applies the **`cardx`** slider's `juliaOffX` real-axis
-shift — so opening it never advances the animation and it always shows the true orbit. `frame()` redraws it
-while open. The backdrop is **`cardLocus(w, h, d)`** — the Mandelbrot set at power 2, the
-degree-d Multibrot otherwise, matching whatever the seed is actually riding. Drawing the
-Mandelbrot under a Multibrot orbit made the panel *lie*: the seed looked comfortably
-outside the set while sitting deep inside the locus that governs it. Since Power drifts
-continuously, the bitmap is quantised to `CARD_POW_Q` (= the slider's own step) and
-rendered at **half resolution** into an offscreen canvas that `drawImage` scales up —
-a full-res 120-iteration repaint per frame is far too slow for a debug overlay. It keeps
-an integer-2 fast path (no `pow`/`atan2` per step). Transient: never persisted,
-never in a preset. `card` is a **`var`** and `cardOpen`/`cardDraw` early-return on a falsy
-`card`, because `setEffect` calls `cardOpen` during startup before the declaration runs.
+**Orbit editor** (`#carddlg`, button `#cardbtn`, formerly "Cardioid debug"). Descriptor-gated
+on `cardioid: true` (AnimeJulia / Burning Ship / Multibrot — the effects seeded from a
+Mandelbrot point): a **floating panel** (bottom-right, `z-index: 5` like `#breakout`, **no
+backdrop and not a modal**) rendering the connectedness locus in the c-plane with the seed's
+base curve, the path it actually traces at the current ratio/radii, the riding circle and the
+live seed point drawn over it. Non-modal on purpose: you tune the orbit sliders *while watching
+it*, so it must never intercept a click — don't reintroduce a backdrop or click-outside-closes.
+It samples **`juliaSeedAt(outer, inner)`** — the pure part split out of `juliaSeed(dt)`, which
+also applies the **`cardx`** slider's `juliaOffX` real-axis shift — so opening it never advances
+the animation and it always shows the true orbit. `frame()` redraws it while open. The backdrop
+is **`cardLocus(w, h, d)`** — the Mandelbrot set at power 2, the degree-d Multibrot otherwise,
+matching whatever the seed is actually riding. Drawing the Mandelbrot under a Multibrot orbit
+made the panel *lie*: the seed looked comfortably outside the set while sitting deep inside the
+locus that governs it. Since Power drifts continuously, the bitmap is quantised to `CARD_POW_Q`
+(= the slider's own step) and rendered at **half resolution** into an offscreen canvas that
+`drawImage` scales up — a full-res 120-iteration repaint per frame is far too slow for a debug
+overlay. It keeps an integer-2 fast path (no `pow`/`atan2` per step). `card` is a **`var`** and
+`cardOpen`/`cardDraw` early-return on a falsy `card`, because `setEffect` calls `cardOpen` during
+startup before the declaration runs.
+
+**Seed PATH shape.** The editor also *chooses* the base curve, via **`seedPathMode`**
+(`"cardioid"` | `"circle"` | `"freehand"`), a per-path **`seedRideOn`** toggle, and freehand
+**`seedPts`** (compiled to an arc-length LUT `seedSpline`). **`basePathAt(th)`** is the fork:
+cardioid = the old `cardioidAt(th, power)·(1+MARGIN)·outerR + offX`; circle = a plain circle at
+that same scale; freehand = **`seedSplineAt`** on a closed periodic Catmull-Rom through `seedPts`,
+traversed by **arc length** so speed is even. `juliaSeedAt` adds the riding circle only when
+`seedRideOn` (radius 0 otherwise). **`juliaEase` is a flat 1 off the cardioid** — circle and
+freehand have no cusps, and constant-rate advance over `2π` already gives a `1/rpm` lap, so the
+whole ease/EASE_K apparatus is cardioid-only. The **default (cardioid + ride on) reproduces the
+original seed math byte-for-byte**, which is what keeps `juliaprobe` and every existing scene
+unchanged; all of this lives inside the `const RPM … function julia(` slice the probe drives.
+Config is **per-effect scene data** in `extras[e]` (`seedPath`/`seedRide`/`seedPts`), so it saves,
+shares (points rounded to 4dp + capped by `seedPtsOk`), and rides in presets/backups —
+`presetExtra` defaults it (no descriptor edit) and `mergeExtra` sanitises it. Because it's
+per-effect, each stacked cardioid layer must draw with its own shape: **`installSeedPath(L)`**
+(called from `installStackItem` for `cardioid` effects) installs `extras[L.fx]`'s config into the
+globals per layer, caching the spline by the points array's identity (`seedSplineCache`). `extras[e]`
+is authoritative even for the selected effect (`saveExtra` mirrors every editor edit into it), so
+there's no special case. Editor wiring: mode buttons / the `Riding circle` box / `Clear` set the
+globals then `commitSeedPath()` (`saveExtra`+`persist`+`autosavePreset`); **freehand** captures a
+pointer stroke on `#cardcv`, thins it by min-spacing, and on release `resampleClosed`s it to evenly
+spaced control points before fitting. `syncOrbitUI()` reflects the live state onto the controls and
+is called from `loadExtra` (scene/layer switch) and on open. `seedDrawing` (the in-progress stroke)
+is transient; the committed shape is not.
 
 **Camera on the CPU path.** The 12 shader effects' CPU mirrors call `camPix(x, y)` per
 pixel (writing the scratch pair `camPX`/`camPY` rather than allocating), which applies the
@@ -482,7 +507,7 @@ row until you rotate, and then they aren't.
 sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is
 **transient**, like Diagnostics): *System* (audio, resolution, Diagnostics — collapsed by
 default), *Backup, restore & share* (the 2×2 `.presetrow.grid2`), *Scene* (the preset
-chooser, auto-cycle and TTL), *Effects* (`#effect`, `#fxctl`, Cardioid debug, Reset) and
+chooser, auto-cycle and TTL), *Effects* (`#effect`, `#fxctl`, Orbit editor, Reset) and
 *Palette settings* (`#palette`, `#palctl`, `#bandctl`). `buildControls` routes a control by
 `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
 The **Effect chooser sits in *Effects*, above `#fxctl`** — with the sliders it drives
@@ -641,7 +666,7 @@ equally correct and would silently change every existing scene.
 
 An **epilogue `installStackItem(stack[stackSel])`** runs after the loop, because
 `glRender`, `render()` and `cardDraw` read these globals outside any item's turn.
-Without it the Cardioid debug panel tracks whichever item drew last.
+Without it the Orbit editor tracks whichever item drew last.
 
 Beats need no per-item work: `beatReact`/`pulseShape`/`pulseLen` stay singletons for the
 selected item, and because the stack loop lives *inside* `updateAnims`, every item sees
