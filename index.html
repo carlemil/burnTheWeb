@@ -817,6 +817,9 @@
   </select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
+  <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
+    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="black">Black</option><option value="white">White</option><option value="palette">Palette</option></select>
+  </label>
   <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </details>
@@ -1054,6 +1057,9 @@
   // so unlit areas stay dark. The active one is baked into `palette` (ABGR).
   const palette = new Uint32Array(256);       // final ABGR pixels the render reads
   let paletteReverse = false;                 // reverse colour order (per-layer; the selected layer's live value)
+  let paletteBg = "black";                    // background (heat 0): "black" | "white" | "palette" (per-layer)
+  const BG_MODES = { black: 1, white: 1, palette: 1 };
+  const bgOk = v => BG_MODES[v] ? v : "black";
   const paletteBase = new Float32Array(256 * 3);   // the smooth, unbanded RGB ramp
   const clamp = v => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
 
@@ -1177,7 +1183,10 @@
     // the forced black below — so the dark background stays black while the ramp runs the
     // other way. Applied after banding, so the stripes simply run the other direction too.
     if (paletteReverse) for (let x = 1; x <= 127; x++) { const t = palette[x]; palette[x] = palette[256 - x]; palette[256 - x] = t; }
-    palette[0] = 0xFF000000; // opaque black
+    // Background (heat 0): black (default), white, or the palette's own colour-0 (leave as
+    // composed). Everything else keeps the old forced-black behaviour byte-for-byte.
+    if (paletteBg === "white") palette[0] = 0xFFFFFFFF;
+    else if (paletteBg !== "palette") palette[0] = 0xFF000000; // opaque black
     paletteDirty = true;      // composePalette is the only writer ⇒ flag GL re-upload
   }
   setPalette(0);
@@ -2468,7 +2477,7 @@
   const palScratch = new Uint8Array(256 * 4);
   // Bake a smooth base ramp (+ the live banding filter) into RGBA bytes for a LUT upload.
   // Mirrors composePalette, but writes an arbitrary target instead of the global palette.
-  function bakeLayerBytes(base, now, out, rev) {
+  function bakeLayerBytes(base, now, out, rev, bg) {
     const t = now * 0.001, on = bandLevel > 0.001;
     for (let x = 0; x < 256; x++) {
       let r = base[x * 3], g = base[x * 3 + 1], b = base[x * 3 + 2];
@@ -2484,12 +2493,15 @@
       const j = x * 4;
       out[j] = clamp(r); out[j + 1] = clamp(g); out[j + 2] = clamp(b); out[j + 3] = 255;
     }
-    // Reverse colour order (per-layer): flip 1..255, keep 0 black — same as composePalette.
+    // Reverse colour order (per-layer): flip 1..255, keep 0 as the background — same as composePalette.
     if (rev) for (let x = 1; x <= 127; x++) {
       const a = x * 4, b = (256 - x) * 4;
       for (let k = 0; k < 4; k++) { const tmp = out[a + k]; out[a + k] = out[b + k]; out[b + k] = tmp; }
     }
-    out[0] = out[1] = out[2] = 0;        // index 0 stays black
+    // Background (heat 0): black (default), white, or the layer palette's own colour-0 (leave as baked).
+    if (bg === "white") { out[0] = out[1] = out[2] = 255; }
+    else if (bg !== "palette") { out[0] = out[1] = out[2] = 0; }
+    out[3] = 255;
   }
   // Which palette this layer colours with. The SELECTED layer's store is the DOM (its
   // L.palette is null while selected, exactly like state/beat), so read the live dropdown
@@ -2508,6 +2520,12 @@
     if (L.paletteRev != null) return !!L.paletteRev;
     const fx = extras[L.fx] || presetExtra(L.fx);
     return !!fx.paletteRev;
+  }
+  function layerPalBg(L) {
+    if (L === stack[stackSel]) return paletteBg;
+    if (L.paletteBg != null) return bgOk(L.paletteBg);
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    return bgOk(fx.paletteBg);
   }
   // Advance ONE layer's palette clock and return its current base ramp. Reuses the
   // global cycle/hold timing (morphMs/holdMs) but keeps its own from/to/target, so
@@ -2663,7 +2681,7 @@
       const slot = stack.indexOf(L), fx = EFFECTS[L.fx];
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
       const base = stepLayerPal(slot, layerPalIndex(L), now);
-      bakeLayerBytes(base, now, palScratch, layerPalRev(L));
+      bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
       gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
       const colTex = glLayerPostChain(L, glColorizeLayer(heatTex, glTex.palL[slot]));
@@ -4615,7 +4633,7 @@
     // them from the effect's stored/default extras on first use. They can't be seeded
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
     return { fx, state: null, beat: null, pulse: null, plen: null,
-      palette: null, paletteRev: null, filters: null,
+      palette: null, paletteRev: null, paletteBg: null, filters: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   let stack = [newStackItem(0)], stackSel = 0;
@@ -5745,6 +5763,7 @@
     L.plen = mergePlen(L.fx, presetPlen(L.fx));
     L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
     L.paletteRev = presetExtra(L.fx).paletteRev;
+    L.paletteBg = presetExtra(L.fx).paletteBg;
     L.filters = presetFilters(L.fx);
     stack.push(L);
     stackSel = stack.length - 1;
@@ -5964,7 +5983,7 @@
   const extras = {};
   function presetExtra(e) {
     const x = EFFECTS[e].extras;
-    return { palette: x.palette, paletteRev: !!x.paletteRev, morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, filters: presetFilters(e),
+    return { palette: x.palette, paletteRev: !!x.paletteRev, paletteBg: bgOk(x.paletteBg), morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, filters: presetFilters(e),
       seedPath: seedModeOk(x.seedPath), seedRide: x.seedRide !== false, seedPts: seedPtsOk(x.seedPts) };
   }
   // Freehand control points are free-form scene data (they ride in localStorage, presets,
@@ -5990,12 +6009,13 @@
     base.seedRide = base.seedRide !== false;          // preset/blob may or may not carry
     base.seedPts = seedPtsOk(base.seedPts);
     base.paletteRev = !!base.paletteRev;
+    base.paletteBg = bgOk(base.paletteBg);
     return base;
   }
   function initExtras() { EFFECTS.forEach((_, k) => extras[k] = presetExtra(k)); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
+    extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
       filters: FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id),   // always registry order
       // Seed-path config for the selected effect. Points are rounded to trim share links.
       seedPath: seedPathMode, seedRide: seedRideOn, seedPts: seedPts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) };
@@ -6028,6 +6048,7 @@
   function captureLayerExtras(L) {
     L.palette = paletteSel.value;
     L.paletteRev = paletteReverse;
+    L.paletteBg = paletteBg;
     L.filters = FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id);
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
@@ -6040,6 +6061,7 @@
     activeIds = filtersOk(L.filters) || filtersOk(fx.filters) || new Set(presetFilters(L.fx));
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
+    paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
   }
   // Push a layer's palette + filters onto the live globals. Called after setEffect for
   // whichever layer is now selected — selecting a layer, adding one, applying a preset,
@@ -6060,7 +6082,9 @@
     morphOnce = false;                // cancel a pending one-shot morph from a prior switch
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
+    paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
     if (el("palrev")) el("palrev").checked = paletteReverse;
+    if (el("palbg")) el("palbg").value = paletteBg;
     morphing = palCycleOn();
     if (morphing) startMorph(+paletteSel.value); else setPalette(+paletteSel.value);
     syncPalSwatches();                // highlight this layer's palette in the preview picker
@@ -6704,6 +6728,14 @@
     paletteDirty = true;
     captureLayerExtras(stack[stackSel]);   // so the selected layer owns the new value at once
   });
+  // Background (heat 0): black / white / palette. Same re-bake + capture path as reverse.
+  const palbgSel = el("palbg");
+  palbgSel.addEventListener("change", () => {
+    paletteBg = bgOk(palbgSel.value);
+    composePalette(0);
+    paletteDirty = true;
+    captureLayerExtras(stack[stackSel]);
+  });
   // The Palette cycle slider replaces the old auto-morph checkbox: any edit
   // re-derives `morphing` and (re)starts or pins the blend.
   function syncMorphFromSlider() {
@@ -7114,7 +7146,7 @@
   // freeze first — a caller that forgets loses the user's most recent edit.
   function stackItemOut(L) {
     return { effect: effectId(L.fx), state: L.state, beat: L.beat, pulse: L.pulse,
-      plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -7147,6 +7179,7 @@
       const tex = p.extra || {};
       L.palette = r.palette != null ? r.palette : (tex.palette != null ? tex.palette : null);
       L.paletteRev = r.paletteRev != null ? !!r.paletteRev : (tex.paletteRev != null ? !!tex.paletteRev : null);
+      L.paletteBg = r.paletteBg != null ? bgOk(r.paletteBg) : (tex.paletteBg != null ? bgOk(tex.paletteBg) : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       L.blend = blendOk(r.blend);
@@ -7162,6 +7195,7 @@
       const tex = p.extra || {};                 // the single layer takes the scene's palette + filters
       L.palette = tex.palette != null ? tex.palette : null;
       L.paletteRev = tex.paletteRev != null ? !!tex.paletteRev : null;
+      L.paletteBg = tex.paletteBg != null ? bgOk(tex.paletteBg) : null;
       const fset = filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       out.push(L);

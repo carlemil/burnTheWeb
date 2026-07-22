@@ -547,6 +547,14 @@ bake choke points: `composePalette` (single-layer/CPU `palette[]`) and `bakeLaye
 banding just runs the stripes the other way. Because it flips the baked bytes rather than the
 palette function, it needs no change to `paletteRGB`/morph.
 
+**Background** (`#palbg`) sets what heat-0 (unlit) pixels show, **per layer**: `paletteBg` ∈
+`"black"` (default, byte-identical to the old forced black) | `"white"` | `"palette"` (leave
+index 0 as the composed colour). Same per-layer plumbing as `paletteRev` (`L.paletteBg`,
+`extras[e].paletteBg`, `layerPalBg(L)`, `bgOk` validation — also stubbed in `filterprobe`), applied
+at the same two choke points: `composePalette` forces `palette[0]` and `bakeLayerBytes(…, bg)` forces
+`out[0]`. In a multi-layer scene it is genuinely per-layer — a layer's unlit pixels take its own
+background colour into the OKLab blend — so "white" is most useful on a bottom/background layer.
+
 **Palette preview picker.** The `#palette <select>` is the palette **value store** but is
 **hidden** (`buildPalSwatches` sets `display:none`); the visible control is `#palswatches`,
 a gradient swatch per `PALETTES` entry built from `palGradientCss(i)`. A swatch click just
