@@ -6272,6 +6272,10 @@
   function applyBeatTune(t) { if (t) installBeatTune(mergeBeatTune(t)); }
 
   const STORE_KEY = "burnTheWeb.v1";
+  // App version stamped into exported files (Backup) so you can tell which build wrote them.
+  // Calendar-versioned (YYYY.MM.DD); bump it on a notable change or release. Distinct from the
+  // per-file `version` field, which is the file-format schema version (still 1).
+  const APP_VERSION = "2026.07.22";
   let persistReady = false, suppressPersist = false;
   // The single source of truth for "everything the user can change and we remember":
   // both localStorage (persist) and the Backup file are this exact object, so a new
@@ -7373,7 +7377,7 @@
       used.add(base.toLowerCase());
       const one = serializeBlob({ presets: [p] }).presets[0];   // effect → stable id
       files.push({ name: base + ".json",
-                   text: JSON.stringify({ app: "burnTheWeb", kind: "preset", version: 1, preset: one }, null, 2) });
+                   text: JSON.stringify({ app: "burnTheWeb", kind: "preset", version: 1, appVersion: APP_VERSION, preset: one }, null, 2) });
     }
     // Everything that is not a preset. curPreset is deliberately left out: it is an index
     // into a list that no longer travels as a list, so it could only ever point at the
@@ -7381,7 +7385,7 @@
     const settings = serializeBlob(snap);
     delete settings.presets; delete settings.curPreset;
     files.push({ name: "_settings.json",
-                 text: JSON.stringify({ app: "burnTheWeb", kind: "settings", version: 1, settings }, null, 2) });
+                 text: JSON.stringify({ app: "burnTheWeb", kind: "settings", version: 1, appVersion: APP_VERSION, settings }, null, 2) });
     return files;
   }
   // ---- remembering the backup folder ----------------------------------------
