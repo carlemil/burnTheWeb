@@ -1518,19 +1518,6 @@
       }
       o = vec4(oklab2srgb(outLab), clamp(outW / WMAX, 0.0, 1.0));
     }`;
-    // Layer blend modes for the OKLab colour merge (used when 2+ layers are live). `u` is
-    // the FS_OKMERGE branch above; the array order is the cycle order of a row's blend
-    // button. max + add are unchanged (u 1/0); diff/colour/lum are the new ones and only
-    // act in the multi-layer colour path — a lone layer has nothing to blend against, and
-    // the heat-space fallbacks (glBlitPoints/glMergeLayer) treat them as MAX.
-    const BLEND_MODES = [
-      { id: "max",   label: "MAX", u: 1, tip: "Max — the brighter layer wins each pixel. Clean separation; the safe default." },
-      { id: "add",   label: "ADD", u: 0, tip: "Add — screens the layers' brightness and averages their hue by brightness. Overlaps glow brighter." },
-      { id: "diff",  label: "DIF", u: 2, tip: "Difference — |below − this| in OKLab. Psychedelic where the layers disagree, dark where they match." },
-      { id: "color", label: "COL", u: 3, tip: "Colour — keeps the brightness of the layers below, repainted in this layer's hue." },
-      { id: "lum",   label: "LUM", u: 4, tip: "Luminosity — this layer's brightness wearing the hue of the layers below." },
-    ];
-    const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
     // Julia escape-time, ported 1:1 from julia()
     const FS_JULIA = `#version 300 es
     precision highp float;
@@ -2608,6 +2595,20 @@
     }
     return s;
   }
+  // Layer blend modes for the OKLab colour merge (used when 2+ layers are live). `u` is the
+  // FS_OKMERGE branch; the array order is the cycle order of a row's blend button. max + add
+  // are unchanged (u 1/0); diff/colour/lum are the new ones and only act in the multi-layer
+  // colour path — a lone layer has nothing to blend against, and the heat-space fallbacks
+  // (glBlitPoints/glMergeLayer) treat them as MAX. MUST be top-level (not inside initGL,
+  // where FS_OKMERGE lives): syncStackUI, glOkMerge and blendOk all read it from IIFE scope.
+  const BLEND_MODES = [
+    { id: "max",   label: "MAX", u: 1, tip: "Max — the brighter layer wins each pixel. Clean separation; the safe default." },
+    { id: "add",   label: "ADD", u: 0, tip: "Add — screens the layers' brightness and averages their hue by brightness. Overlaps glow brighter." },
+    { id: "diff",  label: "DIF", u: 2, tip: "Difference — |below − this| in OKLab. Psychedelic where the layers disagree, dark where they match." },
+    { id: "color", label: "COL", u: 3, tip: "Colour — keeps the brightness of the layers below, repainted in this layer's hue." },
+    { id: "lum",   label: "LUM", u: 4, tip: "Luminosity — this layer's brightness wearing the hue of the layers below." },
+  ];
+  const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
   // Blend one layer's finished RGB colour into the accumulator, in OKLab.
   function glOkMerge(layerTex, blend, gain, accSrc, dstFbo) {
     bindFbo(dstFbo, fw, fh);
