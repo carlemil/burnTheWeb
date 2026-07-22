@@ -463,8 +463,10 @@
   }
   #panel .lyr-grab:hover { opacity: 1; background: rgba(255, 140, 40, 0.18); }
   #panel .lyr-grab.off { opacity: .18; cursor: default; background: none; }
-  #panel .lyr.dragging { opacity: .92; border-color: #ff8c28; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.55); }
+  #panel .lyr.dragging { position: relative; z-index: 3; opacity: .92; border-color: #ff8c28; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.55); }
   #panel .lyr.dragging .lyr-grab { cursor: grabbing; opacity: 1; }
+  /* The insertion line shown while dragging — a bright rule between two rows. */
+  #panel .lyr-drop { height: 0; border-top: 2px solid #ff8c28; border-radius: 2px; box-shadow: 0 0 6px rgba(255, 140, 40, 0.9); }
   /* Spread the row controls: mute · blend sit left, the gain slider grows to fill the
      freed space, remove is pushed to the right edge. Gives every component breathing room
      and a longer, more usable gain slider than the old fixed 38px. */
@@ -5587,11 +5589,14 @@
       row.addEventListener("click", () => selectStack(j));
 
       // Grab handle → drag to reorder. It captures the pointer and live-moves this row
-      // among its siblings (insertBefore/appendChild) as the pointer crosses each row's
-      // midpoint; on release the stack array is rebuilt to match the DOM order. Pointer
-      // capture is on the handle, a child of the row, so moving the row keeps the capture.
-      // Selection is left untouched — you drag to reorder, click the row body to select.
-      row._item = L;
+      // among its siblings. The dragged row is NEVER re-parented mid-drag — it only rides
+      // the pointer via `transform: translateY` (which doesn't change layout, so the other
+      // rows stay put and their midpoints stay valid) while a drop-marker line shows where
+      // it will land. Moving the row's DOM node would detach the handle that holds the
+      // pointer capture, and Chromium drops capture on reparent — which killed the drag
+      // after the first pixel. The actual reorder happens once, on release. Selection is
+      // left untouched — you drag to reorder, click the row body to select.
+      const from = j;
       const grab = document.createElement("div");
       grab.className = "lyr-grab" + (stack.length < 2 ? " off" : "");
       grab.textContent = "⠿";
@@ -5602,21 +5607,37 @@
         if (stack.length < 2) return;
         e.preventDefault(); e.stopPropagation();
         grab.setPointerCapture(e.pointerId);
+        const startY = e.clientY;
         row.classList.add("dragging");
+        const marker = document.createElement("div");
+        marker.className = "lyr-drop";
+        let to = from;                       // insertion index within the list MINUS the row
         const onMove = ev => {
-          const after = [...host.children].find(r =>
-            r !== row && ev.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
-          if (after) host.insertBefore(row, after); else host.appendChild(row);
+          row.style.transform = "translateY(" + (ev.clientY - startY) + "px)";
+          // Scan only the other rows: their rects are stable (untransformed), whereas the
+          // dragged row's rect rides the pointer. `to` = how many of them sit above it.
+          const others = [...host.querySelectorAll(".lyr")].filter(r => r !== row);
+          to = 0;
+          for (const r of others) {
+            const b = r.getBoundingClientRect();
+            if (ev.clientY < b.top + b.offsetHeight / 2) break;
+            to++;
+          }
+          host.insertBefore(marker, others[to] || null);   // a sibling move; the row stays put
         };
         const onUp = () => {
           grab.releasePointerCapture(e.pointerId);
           grab.removeEventListener("pointermove", onMove);
           grab.removeEventListener("pointerup", onUp);
           grab.removeEventListener("pointercancel", onUp);
+          marker.remove();
+          row.style.transform = "";
           row.classList.remove("dragging");
+          if (to === from) return;                       // dropped where it started
           const sel = stack[stackSel];
-          const order = [...host.children].map(r => r._item);
-          stack.length = 0; stack.push(...order);
+          // `to` indexes the array with the dragged item already removed, so splice-out
+          // then splice-in at `to` directly (no gap adjustment needed).
+          stack.splice(to, 0, stack.splice(from, 1)[0]);
           stackSel = stack.indexOf(sel);
           syncStackUI(); persist(); autosavePreset();
         };
