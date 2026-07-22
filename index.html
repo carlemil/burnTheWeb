@@ -5769,7 +5769,7 @@
     stackSel = j;
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
-    setEffect(stack[j].fx, false);   // docks the pop-outs and reloads the five maps
+    setEffect(stack[j].fx, false, false);   // reloads the maps for editing; enter=false ⇒ no reseed, the layer keeps running
     applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
     syncStackUI();
   }
@@ -5804,7 +5804,7 @@
     else if (j < stackSel) stackSel--;
     thawItem(stack[stackSel]);
     stageLayerExtras(stack[stackSel]);
-    setEffect(stack[stackSel].fx, false);
+    setEffect(stack[stackSel].fx, false, false);   // re-selecting a surviving layer ⇒ no reseed
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
     syncStackUI();
   }
@@ -6446,7 +6446,11 @@
   applyShared();
   resize();          // re-apply the restored render resolution (cfg.scale)
 
-  function setEffect(i, save = true) {
+  // `enter` = this is a *fresh* entry into the effect (first load, an effect switch, a preset
+  // apply) — run its onEnter (AnimeJulia re-rolls its random seed start) and drop banked sim
+  // time. Merely RE-SELECTING an existing stack layer to edit it passes enter=false: the
+  // layer keeps running exactly as it was, so selecting a layer never changes the render.
+  function setEffect(i, save = true, enter = true) {
     if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
     // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
@@ -6470,8 +6474,8 @@
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
     loadPlen(i);                      // ...and their lengths
     loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
-    if (fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry
-    acc = 0;                          // don't carry banked sim time across a switch
+    if (enter && fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry — but NOT on a layer re-select
+    if (enter) acc = 0;               // don't carry banked sim time across a switch (kept on a re-select)
     // The heat buffer is deliberately NOT cleared here. Leaving the outgoing effect's
     // heat in place lets it decay under the incoming scene instead of the screen
     // blinking to black — the switch becomes a dissolve, which matters most on
