@@ -525,6 +525,17 @@ the palette — `morphing` is now *derived* (`palCycleOn()`), not stored, and
 written for backward compatibility, and `loadExtra` seeds the slider to 0 for a scene
 saved with `morph:false` before the slider existed.
 
+**Reverse colours** (`#palrev`) flips the palette's colour order **per layer** — it mirrors
+`palette` exactly: a live global `paletteReverse` is the selected layer's value, stored on the
+item as `L.paletteRev` (and in `extras[e].paletteRev` for the single-layer fallback), with
+`layerPalRev(L)` the read-through (live checkbox for the selected, `L.paletteRev` else). It flips
+indices **1..255** of the final baked LUT (255↔1, …, 128 fixed), leaving index 0 as the forced
+black — so the dark/background end stays black while the ramp runs the other way. Applied at both
+bake choke points: `composePalette` (single-layer/CPU `palette[]`) and `bakeLayerBytes(…, rev)`
+(per-layer `palL[]`, re-baked every frame so a toggle needs no cache bust). Reversing *after*
+banding just runs the stripes the other way. Because it flips the baked bytes rather than the
+palette function, it needs no change to `paletteRGB`/morph.
+
 **Palette preview picker.** The `#palette <select>` is the palette **value store** but is
 **hidden** (`buildPalSwatches` sets `display:none`); the visible control is `#palswatches`,
 a gradient swatch per `PALETTES` entry built from `palGradientCss(i)`. A swatch click just
