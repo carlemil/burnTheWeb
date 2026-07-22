@@ -4919,8 +4919,14 @@
   // layer by the points array's identity, so it recompiles only when those points change (an
   // edit swaps in a NEW array, which is what invalidates it — never mutate seedPts in place).
   const seedSplineCache = new WeakMap();
+  // The fallback for a layer that hasn't captured its own seed is the DESCRIPTOR default
+  // (presetExtra ⇒ empty freehand / cardioid), NOT the runtime `extras[L.fx]`. extras is the
+  // per-effect *last-used* value that `saveExtra` overwrites on every edit, so falling back to
+  // it made every not-yet-drawn same-effect layer mirror the last loop drawn — the "all layers
+  // share one polygon" bug. A layer with a concrete `L.seedPts` (drawn, or loaded from a scene
+  // that stored it) is unaffected either way.
   function layerSeedPts(L) {
-    return L.seedPts != null ? L.seedPts : (extras[L.fx] || presetExtra(L.fx)).seedPts;
+    return L.seedPts != null ? L.seedPts : presetExtra(L.fx).seedPts;
   }
   function seedSplineFor(L) {
     const pts = layerSeedPts(L), c = seedSplineCache.get(L);
@@ -4930,7 +4936,7 @@
     return sp;
   }
   function installSeedPath(L) {
-    const fx = extras[L.fx] || presetExtra(L.fx);
+    const fx = presetExtra(L.fx);
     seedPathMode = seedModeOk(L.seedPath != null ? L.seedPath : fx.seedPath);
     seedRideOn = (L.seedRide != null ? L.seedRide : fx.seedRide) !== false;
     seedPts = layerSeedPts(L);
