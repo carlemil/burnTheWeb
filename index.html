@@ -2569,7 +2569,12 @@
   // scene-wide one. Reuses the exact glFeedback hooks glBeginHeat runs (they only need
   // a source texture and a bound FBO), so per-layer fire/trails come for free.
   function layerFeedbackChain(L) {
-    const ids = filtersOk(L.filters) || filtersOk((extras[L.fx] || presetExtra(L.fx)).filters) || new Set(presetFilters(L.fx));
+    // Fallback is the DESCRIPTOR default (presetFilters), NOT runtime extras[L.fx]. extras is
+    // the per-effect *last-used* filter set that saveExtra overwrites on every edit, so falling
+    // back to it made every not-yet-captured same-effect layer mirror the last one edited — the
+    // "all layers share one filter set" bug (identical in shape to the seedPts one, see
+    // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
+    const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
     return FILTERS.filter(f => f.stage === "feedback" && f.glFeedback && ids.has(f.id));
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
@@ -2639,7 +2644,7 @@
   // are free during renderStackColor. Bloom has no gl hook (it is the scene glow) so it is
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
-    const set = filtersOk(L.filters) || filtersOk((extras[L.fx] || presetExtra(L.fx)).filters) || new Set(presetFilters(L.fx));
+    const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
     const chain = FILTERS.filter(f => f.stage === "post" && f.gl && set.has(f.id));
     if (!chain.length) return src;
     let s = src, slot = 0;
@@ -6081,7 +6086,7 @@
   // layer's palette/filters onto the incoming one, collapsing both to the same look.
   function stageLayerExtras(L) {
     const fx = extras[L.fx] || presetExtra(L.fx);
-    activeIds = filtersOk(L.filters) || filtersOk(fx.filters) || new Set(presetFilters(L.fx));
+    activeIds = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // per-layer, then descriptor default — never runtime extras[L.fx] (see layerFeedbackChain)
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
@@ -6098,7 +6103,7 @@
     const fx = extras[L.fx] || presetExtra(L.fx);
     // Keep a stored list intact even for filters this device can't run — filterOn() masks
     // them (cpuBlocked), so they stay ticked-but-greyed and survive a round trip.
-    activeIds = filtersOk(L.filters) || filtersOk(fx.filters) || new Set(presetFilters(L.fx));
+    activeIds = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // per-layer, then descriptor default — never runtime extras[L.fx] (see layerFeedbackChain)
     syncFilterUI();
     bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // bloom follows this layer's filters
     refreshControlVisibility();       // filter param rows follow the active list
