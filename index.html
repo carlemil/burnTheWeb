@@ -4918,7 +4918,13 @@
   const SHARED_FILTER_KEYS = new Set(["burn", "bloom", "barrel", "scan", "scancount", "vignette", "grain"]);
   const isSceneCtl = c => c.host === "filter"
     ? SHARED_FILTER_KEYS.has(c.key)                       // filter params: per-layer unless shared
-    : (c.host !== "fx" || c.group === "camera");
+    // Camera ROTATION (camrx/camry/camrz) is scene-wide — it maps the one finished composite.
+    // But `zoom` is PER-LAYER: the shader effects bake it into their own optical zoom (uZoom),
+    // so a stack of them needs each layer's own value. Left scene-wide, the global zoom followed
+    // whichever layer was selected and every baked-zoom layer zoomed with it — the "scene zooms
+    // when I pick a different layer" bug. Display zoom (non-baking effects) still reads the global
+    // via stackZoom(), forced to 1 whenever any live layer bakes its own — so nothing regresses.
+    : (c.host !== "fx" || (c.group === "camera" && c.key !== "zoom"));
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
   CONTROLS.filter(c => c.type === "dual").forEach(c => bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c)));
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
