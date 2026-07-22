@@ -1764,7 +1764,11 @@
       }
       float v;
       if (i >= 160) { v = 255.0; }
-      else { float nu = log(0.5 * log(mag2) * INVLN2) * INVLN2; float f = (float(i) + 1.0 - nu) / 160.0; v = f <= 0.0 ? 0.0 : 255.0 * sqrt(f); }
+      // Renormalized escape count: the OUTER log base is the degree d (uPower), not 2 —
+      // hard-coding INVLN2 here left the fractional term unable to cancel the integer
+      // iteration bands whenever d != 2, so each contour reset to a darker shade. The
+      // inner INVLN2 stays: it normalizes by the bailout radius (2), independent of d.
+      else { float nu = log(0.5 * log(mag2) * INVLN2) / log(uPower); float f = (float(i) + 1.0 - nu) / 160.0; v = f <= 0.0 ? 0.0 : 255.0 * sqrt(f); }
       o = vec4(clamp(v, 0.0, 255.0)/255.0, 0.0, 0.0, 1.0);
     }`;
     // Copper bars: horizontal gradient bars sliding up/down on sine motion.
@@ -3618,7 +3622,7 @@
         }
         let v;
         if (i >= maxIter) v = 255;
-        else { const nu = Math.log(0.5 * Math.log(mag2) * invLn2) * invLn2; const f = (i + 1 - nu) / maxIter; v = f <= 0 ? 0 : 255 * Math.sqrt(f); }
+        else { const nu = Math.log(0.5 * Math.log(mag2) * invLn2) / Math.log(d); const f = (i + 1 - nu) / maxIter; v = f <= 0 ? 0 : 255 * Math.sqrt(f); }  // outer base = degree d, not 2 (see FS_MULTIBROT)
         fire[idx++] = v;
       }
     }
