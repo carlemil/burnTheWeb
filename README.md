@@ -273,11 +273,20 @@ effect; change it with the Effect chooser). Each row also carries:
 - **⠿** — the grab handle: drag it up or down to reorder the layer in the stack.
 - **●** — mute it. A muted layer costs nothing and leaves nothing behind, which makes it
   the quickest way to see what a layer is actually contributing.
-- **MAX / ADD** — how it combines with the layers below. Because each layer carries its
-  own palette (below), a multi-layer stack blends in **colour**, in the perceptual OKLab
-  space, so hues mix cleanly instead of muddying to grey. **Max** keeps the brighter layer
-  at each pixel — clean separation, the safe default. **Add** blends the layers weighted by
-  brightness, so each colour shows in proportion to how bright it is where they overlap.
+- **Blend** — how it combines with the layers below; click to cycle. Because each layer
+  carries its own palette (below), a multi-layer stack blends in **colour**, in the
+  perceptual OKLab space, so hues mix cleanly instead of muddying to grey. Five modes:
+  - **MAX** — the brighter layer wins each pixel. Clean separation, the safe default.
+  - **ADD** — screens the layers' brightness and averages their hue by brightness, so
+    each colour shows in proportion to how bright it is where they overlap.
+  - **DIF** *(difference)* — `|below − this|`. Psychedelic where the two disagree, dark
+    where they match.
+  - **COL** *(colour)* — keeps the **brightness** of the layers below, repainted in **this**
+    layer's hue.
+  - **LUM** *(luminosity)* — the inverse: this layer's brightness wearing the hue of the
+    layers below.
+  DIF, COL and LUM only do anything with two or more layers — a lone layer has nothing
+  underneath to blend against.
 - The **strength** slider — how much of the layer reaches the composite, from nothing to
   full.
 - **✕** — remove it.

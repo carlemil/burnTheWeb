@@ -704,8 +704,18 @@ The pieces (all just above `glJulia`):
   that layer's OWN **post** filters (Wedge, Twist, Edge, …) on it, using `L.filters` and the
   per-layer params `installStackItem` just installed (the `f.gl` hooks read those globals);
   then `glOkMerge` blends the finished RGB into an RGBA8 ping-pong accumulator `glTex.color[0/1]`
-  in OKLab — `uBlend 0` = brightness-weighted (screen lightness + hue averaged **by
-  brightness**, weight in alpha × `WMAX`), `uBlend 1` = max (brighter layer wins). `L.gain`
+  in OKLab. The blend mode is the `L.blend` id → `BLEND_MODES[].u` → the `FS_OKMERGE`
+  branch: `0` add = brightness-weighted (screen lightness + hue averaged **by brightness**,
+  weight in alpha × `WMAX`), `1` max (brighter layer wins), `2` diff (`|below − this|`),
+  `3` colour (below's L, this layer's hue), `4` luminosity (this layer's L, below's hue).
+  **`BLEND_MODES` is the single source of truth** — the row's cycling blend button, `glOkMerge`'s
+  uniform, and `blendOk`'s validation all read it, so adding a mode is one array entry plus one
+  shader branch. A **`accW < ε` guard** returns the plain layer before the branch, so the modes
+  that read the accumulator's lightness (diff/colour/lum) don't render the first layer black; add
+  and max reduce to exactly that guard when there's nothing below, so they stay unchanged. The
+  heat-space fallbacks (`glBlitPoints`/`glMergeLayer`, used for point stamping and the single-layer
+  path) only understand `add` vs everything-else-is-MAX, which is fine — the new modes are colour-
+  space only and a lone layer has nothing to blend against. `L.gain`
   scales the weight, applied ONCE here (heat/colour are rendered at gain 1). `FS_OKMERGE` takes
   a finished RGB layer (`uLayer`), NOT heat+palette — the palette map moved out to
   `glColorizeLayer` so post filters can sit between it and the blend. Bloom has no `f.gl` hook

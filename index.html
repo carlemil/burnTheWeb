@@ -1464,23 +1464,48 @@
       float accW = acc.a * WMAX;
       vec3 labC = srgb2oklab(col);
       float w = clamp(labC.x * uGain, 0.0, WMAX);        // weight = perceptual L · gain
-      float accEps = accW + w;
-      if (accEps < 1.0e-4) { o = vec4(0.0, 0.0, 0.0, 0.0); return; }   // nothing lit here yet
+      if (accW + w < 1.0e-4) { o = vec4(0.0); return; }  // nothing lit here yet
+      float Lc = clamp(labC.x * uGain, 0.0, 0.999);      // this layer's gained lightness
+      vec3 layerLab = vec3(Lc, labC.yz);
+      // Nothing underneath yet ⇒ every mode just shows the layer. add/max already reduce
+      // to exactly this; colour/luminosity/difference need something below to act on, and
+      // without this guard would render the first layer black (they read the empty acc's L).
+      if (accW < 1.0e-4) { o = vec4(oklab2srgb(layerLab), clamp(w / WMAX, 0.0, 1.0)); return; }
       vec3 labA = srgb2oklab(acc.rgb);
       vec3 outLab; float outW;
       if (uBlend == 1) {                                 // max: brighter layer wins
-        float lc = labC.x * uGain;
-        outLab = lc > labA.x ? vec3(lc, labC.yz) : labA;
+        outLab = Lc > labA.x ? layerLab : labA;
         outW = max(accW, w);
-      } else {                                           // brightness-weighted
-        float Lc = clamp(labC.x * uGain, 0.0, 0.999);
+      } else if (uBlend == 2) {                          // difference: |below − this|, per channel
+        outLab = abs(labA - layerLab);
+        outW = max(accW, w);
+      } else if (uBlend == 3) {                          // colour: below's lightness, this layer's hue
+        outLab = vec3(labA.x, labC.yz);
+        outW = max(accW, w);
+      } else if (uBlend == 4) {                          // luminosity: this layer's lightness, below's hue
+        outLab = vec3(Lc, labA.yz);
+        outW = max(accW, w);
+      } else {                                           // 0 = add: brightness-weighted screen
         float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);  // screen lightness
-        vec2 ab = (labA.yz * accW + labC.yz * w) / accEps;   // hue ∝ brightness
+        vec2 ab = (labA.yz * accW + labC.yz * w) / (accW + w);   // hue ∝ brightness
         outLab = vec3(Lout, ab);
         outW = accW + w;
       }
       o = vec4(oklab2srgb(outLab), clamp(outW / WMAX, 0.0, 1.0));
     }`;
+    // Layer blend modes for the OKLab colour merge (used when 2+ layers are live). `u` is
+    // the FS_OKMERGE branch above; the array order is the cycle order of a row's blend
+    // button. max + add are unchanged (u 1/0); diff/colour/lum are the new ones and only
+    // act in the multi-layer colour path — a lone layer has nothing to blend against, and
+    // the heat-space fallbacks (glBlitPoints/glMergeLayer) treat them as MAX.
+    const BLEND_MODES = [
+      { id: "max",   label: "MAX", u: 1, tip: "Max — the brighter layer wins each pixel. Clean separation; the safe default." },
+      { id: "add",   label: "ADD", u: 0, tip: "Add — screens the layers' brightness and averages their hue by brightness. Overlaps glow brighter." },
+      { id: "diff",  label: "DIF", u: 2, tip: "Difference — |below − this| in OKLab. Psychedelic where the layers disagree, dark where they match." },
+      { id: "color", label: "COL", u: 3, tip: "Colour — keeps the brightness of the layers below, repainted in this layer's hue." },
+      { id: "lum",   label: "LUM", u: 4, tip: "Luminosity — this layer's brightness wearing the hue of the layers below." },
+    ];
+    const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
     // Julia escape-time, ported 1:1 from julia()
     const FS_JULIA = `#version 300 es
     precision highp float;
@@ -2567,7 +2592,7 @@
     bindTexUnit(0, layerTex); gl.uniform1i(P.u.uLayer, 0);
     bindTexUnit(1, accSrc);   gl.uniform1i(P.u.uAcc, 1);
     gl.uniform1f(P.u.uGain, gain === undefined ? 1 : gain);
-    gl.uniform1i(P.u.uBlend, blend === "max" ? 1 : 0);
+    gl.uniform1i(P.u.uBlend, (BLEND_BY_ID[blend] || BLEND_MODES[0]).u);
     drawQuad();
   }
   // The whole multi-layer colour path: render each live layer's heat, colour it with its
@@ -5665,14 +5690,16 @@
       });
       ctl.appendChild(mute);
 
-      // A toggle rather than a <select>: the panel is narrow, and a dropdown for two
-      // options cost enough width that the effect name was squeezed to one letter.
+      // A cycling label rather than a <select>: the panel is narrow, and a dropdown cost
+      // enough width that the effect name was squeezed to one letter. Every mode's label is
+      // three chars so the row width doesn't jump. Click advances through BLEND_MODES.
       const bl = document.createElement("b");
-      bl.textContent = L.blend === "add" ? "ADD" : "MAX";
-      bl.title = "How this layer combines with the ones below it — Max keeps the brighter of the two, Add sums them and clips to white where they overlap. Click to switch.";
+      const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
+      bl.textContent = bm.label;
+      bl.title = bm.tip + " (click to cycle blend modes)";
       bl.addEventListener("click", e => {
         e.stopPropagation();
-        L.blend = L.blend === "add" ? "max" : "add";
+        L.blend = BLEND_MODES[(BLEND_MODES.indexOf(bm) + 1) % BLEND_MODES.length].id;
         syncStackUI(); persist(); autosavePreset();
       });
       ctl.appendChild(bl);
@@ -6862,7 +6889,7 @@
   // temporal dead zone and throw. That aborts the rest of startup, and the symptom you
   // actually see is a later TDZ error on `nextSwitch` inside frame() — this file has
   // been bitten by the same shape before (see `card` and `beatUi`, both var for it).
-  function blendOk(v) { return v === "add" ? "add" : "max"; }
+  function blendOk(v) { return BLEND_BY_ID[v] ? v : "max"; }
   function gainOk(v) { return (typeof v === "number" && isFinite(v)) ? Math.min(1, Math.max(0, v)) : 1; }
   // One item, with its effect as the stable string id (converted at the storage edge
   // like every other effect reference). The selected item's values live in the DOM, so
