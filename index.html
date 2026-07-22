@@ -1550,6 +1550,30 @@
       } else if (uBlend == 4) {                          // luminosity: this layer's lightness, below's hue
         outLab = vec3(Lc, labA.yz);
         outW = max(accW, w);
+      } else if (uBlend == 6) {                          // OKLCh vivid: blend hue on the RIM, chroma = max
+        // Straight (a,b) averaging cancels toward the grey centre for near-opposite hues
+        // (red vs green) — the muddiness. Instead average the two UNIT hue directions
+        // (chroma×brightness weighted) and renormalise, which walks the hue around the
+        // wheel's rim, then scale by the LARGER of the two chromas so the overlap stays
+        // as saturated as its most saturated input. Lightness screens like add.
+        float Ca = length(labA.yz), Cb = length(labC.yz);
+        vec2 da = Ca > 1.0e-5 ? labA.yz / Ca : vec2(0.0);
+        vec2 db = Cb > 1.0e-5 ? labC.yz / Cb : vec2(0.0);
+        vec2 dir = da * (Ca * accW) + db * (Cb * w);      // chroma·brightness pulls the hue
+        float dl = length(dir);
+        vec2 hue = dl > 1.0e-5 ? dir / dl : (Ca >= Cb ? da : db);   // hues cancel ⇒ keep the punchier one
+        float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);   // screen lightness
+        outLab = vec3(Lout, hue * max(Ca, Cb));
+        outW = accW + w;
+      } else if (uBlend == 7) {                          // dominant hue: no mixing — the punchier layer's colour wins
+        // At each pixel whichever layer has the greater chroma×brightness keeps its EXACT
+        // hue+chroma; only lightness screens. No third hue is ever produced, so the two
+        // palettes stay pure with a crisp boundary — maximum saturation, hard edges.
+        bool layerWins = length(labC.yz) * w >= length(labA.yz) * accW;
+        vec2 abWin = layerWins ? labC.yz : labA.yz;      // winner's hue + chroma, unmixed
+        float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);   // screen lightness
+        outLab = vec3(Lout, abWin);
+        outW = accW + w;
       } else {                                           // 0 = add: brightness-weighted screen
         float Lout = 1.0 - (1.0 - labA.x) * (1.0 - Lc);  // screen lightness
         vec2 ab = (labA.yz * accW + labC.yz * w) / (accW + w);   // hue ∝ brightness
@@ -2679,6 +2703,8 @@
     { id: "color", label: "COL", u: 3, tip: "Colour — keeps the brightness of the layers below, repainted in this layer's hue." },
     { id: "lum",   label: "LUM", u: 4, tip: "Luminosity — this layer's brightness wearing the hue of the layers below." },
     { id: "rgb",   label: "RGB", u: 5, tip: "RGB — screens the red, green and blue channels independently, so overlapping layers keep their full colour instead of merging to one hue." },
+    { id: "okl",   label: "OKL", u: 6, tip: "Vivid — blends the two hues around the colour wheel (chroma-weighted) and keeps the higher saturation, so overlaps stay fully saturated instead of greying out. Red + green → vivid orange-yellow." },
+    { id: "dom",   label: "DOM", u: 7, tip: "Dominant — at each pixel the more colourful layer keeps its exact hue (no mixing), lightness screened. Maximum saturation, crisp boundaries between the two palettes." },
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
   // Blend one layer's finished RGB colour into the accumulator, in OKLab.
