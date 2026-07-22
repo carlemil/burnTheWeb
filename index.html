@@ -173,6 +173,10 @@
     -webkit-backdrop-filter: blur(6px);
   }
   #frames.hidden { display: none; }
+  /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
+     clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
+  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
+  body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -832,7 +836,7 @@
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
   </details>
 
-  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen</p>
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
@@ -8031,10 +8035,20 @@
   el("diagTrace").checked = dbg.on;
   el("diagTrace").addEventListener("change", e => dbgToggle(e.target.checked));
 
+  // Hide-all-UI mode: strip every button, the fps counter and the whole menu for a clean
+  // capture — from ?hideui in the URL, or the "h" key. Transient (never persisted); the menu's
+  // own open/closed state is untouched, so bringing the UI back restores it exactly.
+  const setUiHidden = h => document.body.classList.toggle("ui-hidden", h);
+  {
+    const v = new URLSearchParams(location.search).get("hideui");
+    if (v !== null && !/^(0|false|off|no)$/i.test(v)) setUiHidden(true);
+  }
+
   window.addEventListener("keydown", e => {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     if (e.key === "m" || e.key === "M") setPanel(!panel.classList.contains("hidden"));   // the one menu (dev tools live inside it now)
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
+    else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
     else if (e.key === "Escape") { closeHelp(); closeRestore(); cardOpen(false); }
   });
 

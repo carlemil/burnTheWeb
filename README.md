@@ -216,7 +216,10 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Short link** | Copies a short `tinyurl.com` link to the same scene. Needs the internet, and hands the share URL to TinyURL to store — use **Share** if you'd rather nothing left your browser. The scene is deflated into the link, so it is around a tenth of the size it used to be — short enough that TinyURL accepts it and chat apps stop truncating it. |
 
 Press **M** or **☰** to toggle the menu, **F** or **⛶** for fullscreen (works on
-mobile too), and click the canvas to pause. The frame + FPS counter is a checkbox in
+mobile too), **H** to hide all the UI (buttons, FPS counter and menu — press again
+to bring it back), and click the canvas to pause. Add **`?hideui`** to the URL to
+open with the UI already hidden — handy for a clean screen recording or a kiosk.
+The frame + FPS counter is a checkbox in
 the menu's **Diagnostics** section. A **Resolution** control drops the render
 resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
