@@ -625,6 +625,7 @@
   #carddlg .card-ride { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px; }
   #carddlg .card-ride input { accent-color: #ff7a1a; cursor: pointer; }
   #carddlg canvas.draw { cursor: crosshair; touch-action: none; }
+  #carddlg canvas.editpts { cursor: move; touch-action: none; }
   #carddlg .card-hint { margin: 8px 0 0; font-size: 11px; opacity: .6; }
   #carddlg .card-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 0; font-size: 11px; opacity: .85; }
   #carddlg .card-key i { display: inline-block; width: 10px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
@@ -839,13 +840,15 @@
         <button type="button" class="cardmode" data-mode="freehand">Freehand</button>
       </span>
       <label class="card-ride" title="The small circle riding on the base curve that keeps the seed's neighbourhood varying"><input type="checkbox" id="cardRide"> Riding circle</label>
+      <button type="button" class="cardmode" id="cardEdit" title="Edit mode — drag the control points to reshape the loop">Edit</button>
+      <button type="button" class="cardmode" id="cardUndo" title="Undo the last change">Undo</button>
       <button type="button" class="cardmode" id="cardClear" title="Clear the freehand loop">Clear</button>
     </div>
     <canvas id="cardcv" width="630" height="495"></canvas>
     <p class="card-hint" id="cardHint">Drag on the canvas to draw a loop — it snaps to a smooth closed spline the seed then follows.</p>
     <div class="card-key">
       <span><i style="background:#ff7a1a"></i>base path</span>
-      <span><i style="background:#5ad1ff"></i>actual path</span>
+      <span><i style="background:#5ad1ff"></i>seed bounds (±inner r)</span>
       <span><i style="background:#7ddc8a"></i>riding circle</span>
       <span><i style="background:#fff"></i>seed c</span>
     </div>
@@ -3254,13 +3257,16 @@
       const R = (1 + JULIA_MARGIN) * juliaOuterR;   // Outer-radius slider scales it, like the cardioid
       return [R * Math.cos(th) + juliaOffX, R * Math.sin(th)];
     }
-    if (seedPathMode === "freehand" && seedSpline) {
-      const p = seedSplineAt(seedSpline, th / (Math.PI * 2));   // th sweeps 0→2π = one lap of the loop
-      return [p[0] + juliaOffX, p[1]];
+    if (seedPathMode === "freehand") {
+      // Freehand is strict: it does NOT fall back to the cardioid. With a loop drawn, the
+      // seed follows the spline; with nothing drawn yet it simply holds at a neutral point,
+      // so both the editor and the render show only the selected shape, never a stray cardioid.
+      if (seedSpline) { const p = seedSplineAt(seedSpline, th / (Math.PI * 2)); return [p[0] + juliaOffX, p[1]]; }
+      return [juliaOffX, 0];
     }
-    // cardioid (and the fallback for freehand before anything is drawn): the period-1
-    // boundary of the connectedness locus, scaled outward by the margin so the seed sits
-    // just *outside* it — which is what makes the Julia set intricate rather than a blob.
+    // cardioid: the period-1 boundary of the connectedness locus, scaled outward by the
+    // margin so the seed sits just *outside* it — which is what makes the Julia set
+    // intricate rather than a blob.
     const c0 = cardioidAt(th, juliaPower), s = (1 + JULIA_MARGIN) * juliaOuterR;
     return [c0[0] * s + juliaOffX, c0[1] * s];
   }
@@ -5950,6 +5956,7 @@
     seedRideOn = x.seedRide !== false;
     seedPts = seedPtsOk(x.seedPts);
     seedSpline = buildSeedSpline(seedPts);
+    seedHistory = []; seedDragIdx = -1; seedHover = -1;   // fresh editing session per scene
     syncOrbitUI();
     // Migration: scenes saved before the Palette cycle slider carry only the old `morph`
     // boolean. loadState has already applied any stored palcycle, so pin the cycle when
@@ -7530,7 +7537,11 @@
   // evaluated, and calls cardOpen() — a const would still be in its temporal dead
   // zone and throw (same reason the old range editor's state was a `var`).
   var card = { on: false, cv: null, ctx: null, bg: null, bgPow: 0 };
-  var seedDrawing = null;                     // the in-progress freehand stroke (c-plane pts)
+  var seedDrawing = null;                     // the in-progress freehand stroke (base-plane pts)
+  var seedEdit = false;                        // freehand sub-mode: false = draw, true = drag points
+  var seedDragIdx = -1;                        // control point being dragged (edit mode), -1 = none
+  var seedHover = -1;                          // control point under the cursor (edit mode)
+  var seedHistory = [];                        // undo stack of seedPts snapshots (transient, per session)
   // The backdrop is the connectedness locus the seed is *actually* riding — the
   // Mandelbrot set at power 2, the degree-d Multibrot otherwise. Drawing the
   // Mandelbrot under a Multibrot orbit made the view lie: the seed looked safely
@@ -7580,18 +7591,28 @@
     const spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w);
     const X = cx => (cx - CARD_X0) / spanX * w;               // complex → canvas
     const Y = cy => (cy + spanY / 2) / spanY * h;
-    // the bare base path (the outer loop, before the riding circle) — cardioid, circle or
-    // the freehand spline, whichever this effect's seedPathMode selects (via juliaSeedAt).
-    ctx.lineWidth = 1.25; ctx.strokeStyle = "#ff7a1a"; ctx.beginPath();
-    for (let i = 0; i <= 360; i++) {
-      const p = juliaSeedAt(juliaOuter + (i / 360) * Math.PI * 2, 0);
-      i ? ctx.lineTo(X(p.bx), Y(p.by)) : ctx.moveTo(X(p.bx), Y(p.by));
+    // the bare base path (the outer loop, before the riding circle) — cardioid, circle or the
+    // freehand spline, whichever this effect's seedPathMode selects (via juliaSeedAt). Only ONE
+    // shape is ever drawn, the selected one; freehand with nothing drawn shows no curve at all.
+    const fhEmpty = seedPathMode === "freehand" && !seedSpline;
+    if (!fhEmpty) {
+      ctx.lineWidth = 1.25; ctx.strokeStyle = "#ff7a1a"; ctx.beginPath();
+      for (let i = 0; i <= 360; i++) {
+        const p = juliaSeedAt(juliaOuter + (i / 360) * Math.PI * 2, 0);
+        i ? ctx.lineTo(X(p.bx), Y(p.by)) : ctx.moveTo(X(p.bx), Y(p.by));
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
-    // freehand control points (the snap targets), so you can see the loop you drew
+    // freehand control points (the snap targets) — bigger and ringed in edit mode, with the
+    // hovered/dragged one lit white, so you can see and grab them.
     if (seedPathMode === "freehand" && seedPts.length) {
-      ctx.fillStyle = "rgba(255,207,135,0.9)";
-      for (const p of seedPts) { ctx.beginPath(); ctx.arc(X(p[0] + juliaOffX), Y(p[1]), 2, 0, Math.PI * 2); ctx.fill(); }
+      for (let i = 0; i < seedPts.length; i++) {
+        const px = X(seedPts[i][0] + juliaOffX), py = Y(seedPts[i][1]);
+        const hot = i === seedDragIdx || (seedDragIdx < 0 && i === seedHover);
+        ctx.beginPath(); ctx.arc(px, py, seedEdit ? (hot ? 6 : 4.5) : 2, 0, Math.PI * 2);
+        ctx.fillStyle = hot ? "#fff" : "rgba(255,207,135,0.9)"; ctx.fill();
+        if (seedEdit) { ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,140,40,0.85)"; ctx.stroke(); }
+      }
     }
     // the in-progress stroke while drawing
     if (seedDrawing && seedDrawing.length) {
@@ -7600,22 +7621,24 @@
       ctx.stroke();
     }
     const now = juliaSeedAt(juliaOuter, juliaInner);
-    if (seedRideOn) {
-      // The path the seed actually walks over one outer lap. The riding circle turns at a
-      // steady rate in *time* while the outer loop is eased, so per unit of lap angle it
-      // advances dφ = ratio·dθ/ease(θ) — integrated here, not assumed linear, so the drawn
-      // epicycles bunch and stretch exactly like the real orbit. (ease = 1 off the cardioid.)
-      const steps = Math.max(720, Math.min(9000, Math.ceil(Math.abs(juliaRatio) * 90)));
-      const dth = Math.PI * 2 / steps;
-      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(90,209,255,0.85)"; ctx.beginPath();
-      let phi = juliaInner;
-      for (let i = 0; i <= steps; i++) {
-        const o = juliaOuter + i * dth;
-        const p = juliaSeedAt(o, phi);
-        i ? ctx.lineTo(X(p.cx), Y(p.cy)) : ctx.moveTo(X(p.cx), Y(p.cy));
-        phi += juliaRatio * dth / juliaEase(o + juliaPhase * Math.PI * 2);
+    if (seedRideOn && juliaInnerR > 1e-6 && !fhEmpty) {
+      // The riding circle keeps the seed within `inner r` of the base path at all times, so
+      // the seed's reachable region is a tube of that radius around it. Draw the tube's inner
+      // and outer bounds — the base path offset by ±inner-r along its local normal — rather
+      // than the epicycle spiral, which animates and is hard to read while you draw/tune.
+      const steps = 360, dth = Math.PI * 2 / steps, d = juliaInnerR;
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(90,209,255,0.75)";
+      for (const side of [1, -1]) {
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+          const th = juliaOuter + i * dth;
+          const a = juliaSeedAt(th + dth * 0.5, 0), b = juliaSeedAt(th - dth * 0.5, 0), p = juliaSeedAt(th, 0);
+          let tx = a.bx - b.bx, ty = a.by - b.by; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+          const ox = p.bx + side * d * ty, oy = p.by - side * d * tx;   // normal = (ty, −tx)
+          i ? ctx.lineTo(X(ox), Y(oy)) : ctx.moveTo(X(ox), Y(oy));
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
       // the riding circle where it is right now
       const rpx = juliaInnerR / spanX * w;
       ctx.lineWidth = 1; ctx.strokeStyle = "rgba(125,220,138,0.9)";
@@ -7638,9 +7661,18 @@
     const ride = el("cardRide"); if (!ride) return;
     ride.checked = seedRideOn;
     document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === seedPathMode));
-    const clr = el("cardClear"); if (clr) clr.classList.toggle("off", seedPathMode !== "freehand");
-    const cv = el("cardcv"); if (cv) cv.classList.toggle("draw", seedPathMode === "freehand");
-    const hint = el("cardHint"); if (hint) hint.style.display = seedPathMode === "freehand" ? "" : "none";
+    const fh = seedPathMode === "freehand";
+    const clr = el("cardClear"); if (clr) clr.classList.toggle("off", !fh);
+    const ed = el("cardEdit"); if (ed) { ed.classList.toggle("off", !fh); ed.classList.toggle("on", fh && seedEdit); }
+    const un = el("cardUndo"); if (un) un.classList.toggle("off", !fh || !seedHistory.length);
+    const cv = el("cardcv"); if (cv) { cv.classList.toggle("draw", fh && !seedEdit); cv.classList.toggle("editpts", fh && seedEdit); }
+    const hint = el("cardHint");
+    if (hint) {
+      hint.style.display = fh ? "" : "none";
+      hint.textContent = seedEdit
+        ? "Edit: drag the control points to reshape the loop. Undo steps back one change at a time."
+        : "Draw: drag on the canvas to sketch a loop — it snaps to a smooth closed spline the seed then follows.";
+    }
   }
   function cardOpen(on) {
     if (!card) return;      // startup: setEffect runs before `var card` is initialized
@@ -7692,31 +7724,77 @@
     }
     return out;
   }
+  // Snapshot the current control points onto the undo stack, BEFORE a mutation. Undo pops
+  // one snapshot at a time. Transient per session; cleared on scene/layer switch (loadExtra).
+  function pushSeedHistory() {
+    seedHistory.push(seedPts.map(p => p.slice()));
+    if (seedHistory.length > 50) seedHistory.shift();
+    syncOrbitUI();
+  }
   document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b =>
-    b.addEventListener("click", () => { seedPathMode = seedModeOk(b.dataset.mode); syncOrbitUI(); commitSeedPath(); }));
+    b.addEventListener("click", () => { seedPathMode = seedModeOk(b.dataset.mode); seedHover = -1; syncOrbitUI(); commitSeedPath(); }));
   el("cardRide").addEventListener("change", () => { seedRideOn = el("cardRide").checked; commitSeedPath(); });
-  el("cardClear").addEventListener("click", () => { seedPts = []; seedSpline = null; seedDrawing = null; commitSeedPath(); });
-  // Freehand: drag on the canvas to draw the loop. Points accumulate (thinned by a minimum
-  // spacing) while held; on release the stroke is resampled + fitted to a closed spline.
+  el("cardEdit").addEventListener("click", () => { seedEdit = !seedEdit; seedHover = -1; syncOrbitUI(); });
+  el("cardUndo").addEventListener("click", () => {
+    if (!seedHistory.length) return;
+    seedPts = seedHistory.pop();
+    seedSpline = buildSeedSpline(seedPts);
+    commitSeedPath(); syncOrbitUI();
+  });
+  el("cardClear").addEventListener("click", () => {
+    if (!seedPts.length && !seedSpline) return;
+    pushSeedHistory(); seedPts = []; seedSpline = null; seedDrawing = null; commitSeedPath();
+  });
+  // Freehand canvas interaction. DRAW mode: drag to sketch a loop (points thinned by a min
+  // spacing, resampled + fitted to a closed spline on release). EDIT mode: drag an existing
+  // control point to reshape the loop live. Points are stored in BASE coords (offX subtracted)
+  // so they land exactly where you put them regardless of the X-offset slider.
   {
     const cv = el("cardcv");
+    const HIT = () => (CARD_X1 - CARD_X0) * 0.028;      // grab radius in c-units (~12px)
+    const nearestPt = c => {
+      let bi = -1, bd = HIT();
+      for (let i = 0; i < seedPts.length; i++) {
+        const d = Math.hypot(c[0] - (seedPts[i][0] + juliaOffX), c[1] - seedPts[i][1]);
+        if (d < bd) { bd = d; bi = i; }
+      }
+      return bi;
+    };
     cv.addEventListener("pointerdown", e => {
       if (seedPathMode !== "freehand") return;
       e.preventDefault(); cv.setPointerCapture(e.pointerId);
-      seedDrawing = [cardEventToC(e)];
+      if (seedEdit) {
+        const idx = nearestPt(cardEventToC(e));
+        if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }
+      } else {
+        seedDrawing = [cardEventToC(e)];
+      }
     });
     cv.addEventListener("pointermove", e => {
-      if (!seedDrawing) return;
-      const p = cardEventToC(e), last = seedDrawing[seedDrawing.length - 1];
-      if (Math.hypot(p[0] - last[0], p[1] - last[1]) > (CARD_X1 - CARD_X0) * 0.006) seedDrawing.push(p);
+      const c = cardEventToC(e);
+      if (seedDragIdx >= 0) {
+        seedPts[seedDragIdx] = [c[0] - juliaOffX, c[1]];
+        seedSpline = buildSeedSpline(seedPts);           // live reshape
+      } else if (seedDrawing) {
+        const last = seedDrawing[seedDrawing.length - 1];
+        if (Math.hypot(c[0] - last[0], c[1] - last[1]) > (CARD_X1 - CARD_X0) * 0.006) seedDrawing.push(c);
+      } else if (seedEdit) {
+        seedHover = nearestPt(c);                        // hover highlight
+      }
     });
     const finish = () => {
+      if (seedDragIdx >= 0) { seedDragIdx = -1; commitSeedPath(); return; }   // history pushed on grab
       if (!seedDrawing) return;
       const stroke = seedDrawing; seedDrawing = null;
-      if (stroke.length >= 4) { seedPts = resampleClosed(stroke); seedSpline = buildSeedSpline(seedPts); commitSeedPath(); }
+      if (stroke.length >= 4) {
+        pushSeedHistory();
+        seedPts = resampleClosed(stroke).map(p => [p[0] - juliaOffX, p[1]]);
+        seedSpline = buildSeedSpline(seedPts);
+        commitSeedPath();
+      }
     };
     cv.addEventListener("pointerup", finish);
-    cv.addEventListener("pointercancel", () => { seedDrawing = null; });
+    cv.addEventListener("pointercancel", () => { seedDrawing = null; seedDragIdx = -1; });
   }
   // No backdrop click-to-close: it's a floating panel, not a modal — clicking it
   // (or anything behind it) must keep working while the view stays up.
