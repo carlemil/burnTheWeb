@@ -6104,11 +6104,12 @@
     if (j === stackSel || !stack[j]) return;
     freezeItem(stack[stackSel]);
     stackSel = j;
+    const pops = stack[j].popped, card = stack[j].cardOn;   // read BEFORE setEffect's persist re-freezes and wipes them
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
     setEffect(stack[j].fx, false, false);   // reloads the maps for editing; enter=false ⇒ no reseed, the layer keeps running
     applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
-    restoreLayerUi(stack[j]);        // ...and re-open the pop-out boxes / Orbit editor it had open
+    restoreLayerUi(stack[j], pops, card);   // ...and re-open the pop-out boxes / Orbit editor it had open
     syncStackUI();
   }
   function addStackItem(fx) {
@@ -6133,7 +6134,7 @@
     stageLayerExtras(L);
     setEffect(L.fx, false);
     applyLayerExtras(L);
-    restoreLayerUi(L);               // a fresh layer has none open ⇒ starts on a clean editing surface
+    restoreLayerUi(L, null, false);  // a fresh layer has none open ⇒ starts on a clean editing surface
     syncStackUI();
   }
   function removeStackItem(j) {
@@ -6141,11 +6142,12 @@
     stack.splice(j, 1);
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
+    const pops = stack[stackSel].popped, card = stack[stackSel].cardOn;   // before setEffect's persist wipes them
     thawItem(stack[stackSel]);
     stageLayerExtras(stack[stackSel]);
     setEffect(stack[stackSel].fx, false, false);   // re-selecting a surviving layer ⇒ no reseed
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
-    restoreLayerUi(stack[stackSel]);     // ...and its remembered pop-out boxes / Orbit editor
+    restoreLayerUi(stack[stackSel], pops, card);   // ...and its remembered pop-out boxes / Orbit editor
     syncStackUI();
   }
   // ---- the layer list ----
@@ -7020,16 +7022,19 @@
     }
     breakout.classList.toggle("empty", !anyVisible);
   }
-  // Re-open the pop-out boxes + Orbit editor a layer had open when it was last selected
-  // (captured by freezeItem). Called AFTER setEffect, which dockAll()s the column and — for
-  // a non-cardioid effect — closes the Orbit editor, so this rebuilds that layer's surface
-  // on top of a clean slate. Keys the layer no longer uses stay in `popped` but are hidden
-  // by refreshBreakout, exactly like the global popped set already behaves.
-  function restoreLayerUi(L) {
+  // Re-open the pop-out boxes + Orbit editor a layer had open when last selected. Called
+  // AFTER setEffect, which dockAll()s the column and — for a non-cardioid effect — closes the
+  // Orbit editor, so this rebuilds that layer's surface on a clean slate. Keys the layer no
+  // longer uses stay in `popped` but are hidden by refreshBreakout, like the global set.
+  // `pops`/`card` are passed EXPLICITLY, captured before setEffect ran: setEffect ends in
+  // persist() → stackOut() → freezeItem(selected), which re-captures L.popped from the
+  // now-empty live `popped` (dockAll just cleared it) and would wipe the stored value before
+  // we read it — the same freeze-during-persist trap the layer-extras code documents.
+  function restoreLayerUi(L, pops, card) {
     if (!L) return;
     const fx = EFFECTS[L.fx];
-    cardOpen(!!L.cardOn && !!(fx && fx.cardioid));   // Orbit editor: only meaningful for cardioid effects
-    if (L.popped) for (const key of L.popped) if (el("ctl-" + key)) popCtl(key);
+    cardOpen(!!card && !!(fx && fx.cardioid));        // Orbit editor: only meaningful for cardioid effects
+    if (pops) for (const key of pops) if (el("ctl-" + key)) popCtl(key);
   }
 
   // A preset is a named full scene (effect + all its settings). Auto-cycle holds
