@@ -7096,8 +7096,10 @@
     persist();
   });
   paletteSel.addEventListener("change", () => {
-    // while morphing, a manual pick restarts the blend from that palette
-    if (morphing) startMorph(+paletteSel.value);
+    // A manual pick must land on the palette you chose. While cycling, blend TO it from
+    // what's on screen (then the cycle carries on from there) — NOT startMorph(), which
+    // heads to a random OTHER palette and made a click look like it selected at random.
+    if (morphing) beginMorph(paletteBase.slice(), +paletteSel.value);
     else { morphOnce = false; setPalette(+paletteSel.value); }   // manual pick cancels a one-shot morph
     syncPalSwatches();                                           // keep the preview highlight in step
   });
