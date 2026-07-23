@@ -757,11 +757,11 @@
 
   </details>
 
-  <!-- Box — Screen filters: whole-scene FX applied once to the finished, blended
-       picture (Bloom + the screen-stage filters). Scene-wide, not per layer — their
-       checkboxes are routed here by buildFilterUI (the "Whole scene" group). -->
+  <!-- Box — Scene filters: whole-scene FX applied once to the finished, blended picture
+       (Bloom + the screen-stage filters). SCENE-GLOBAL — one on/off + value shared across
+       every layer (sceneOn / sceneFx), routed here by buildFilterUI (the "Whole scene" group). -->
   <details class="box" open>
-  <summary class="box-t">Screen filters</summary>
+  <summary class="box-t">Scene filters</summary>
   <div id="screenfilterlist"><!-- whole-scene filter checkboxes, routed here from buildFilterUI --></div>
   <div id="screenfilterctl"><!-- (unused host; params are adopted into each filter's body) --></div>
   </details>
@@ -787,7 +787,7 @@
 
   <!-- Box — Effects & Filters: pick the selected layer's visual, its sliders, its
        per-layer filters, and its palette. Everything here edits the SELECTED layer;
-       whole-scene FX live in the Screen filters box above. -->
+       whole-scene FX live in the Scene filters box above. -->
   <details class="box" open>
   <summary class="box-t">Effects &amp; Filters</summary>
   <label>Effect</label>
@@ -1011,7 +1011,21 @@
   // by the FILTERS block; empty until then, which is why filterOn stays safe to call
   // during slider wiring (bindRange runs apply() long before the registry exists).
   const cpuBlocked = new Set();
-  function filterOn(id) { return activeIds.has(id) && !cpuBlocked.has(id); }
+  // The whole-scene ("Scene filters") FX are SCENE-GLOBAL, not per layer: their on/off and
+  // their slider values are one setting shared across every layer/effect. On/off lives in
+  // `sceneOn` (not per-layer activeIds); values live in the DOM as singletons that loadState
+  // /saveState/freezeItem skip (so switching layers never reloads them), persisted as the
+  // top-level `sceneFx` blob field — modelled on the camera. The per-layer L.filters/states[e]
+  // may still carry these ids/keys but they are INERT: filterOn and the checkbox route scene
+  // filters through sceneOn, and the per-layer render chains exclude them by stage anyway.
+  const SCENE_FILTER_IDS = new Set(["bloom", "barrel", "scanlines", "vignette", "grain"]);
+  const SCENE_FILTER_KEYS = ["bloom", "barrel", "scan", "scancount", "vignette", "grain"];   // their dual-slider param keys
+  const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
+  let sceneOn = new Set(["bloom"]);            // scene-global on/off; bloom on = the old unconditional glow
+  function filterOn(id) {
+    const on = isSceneFilter(id) ? sceneOn.has(id) : activeIds.has(id);
+    return on && !cpuBlocked.has(id);
+  }
   // Camera rotation (radians) applied to each effect's own sampled space — see
   // camProg/camGlsl for the GL path and the camM matrix for the CPU path. Global on
   // purpose: it is NOT part of states[e] (no cam key in any effect's `defaults`),
@@ -4692,9 +4706,9 @@
     let openKey = null;
     FILTERS.forEach(f => {
       const g = filterGroup(f);
-      // The "Whole scene · final image" group lives in the Screen filters box; the
-      // per-effect groups stay in the Effects & Filters box. The box titles already say
-      // "Screen filters", so the scene group needs no in-box caption of its own.
+      // The "Whole scene · final image" group lives in the Scene filters box; the
+      // per-effect groups stay in the Effects & Filters box. The box title already says
+      // "Scene filters", so the scene group needs no in-box caption of its own.
       const dest = g.key === "scene" ? screenHost : host;
       if (g.key !== openKey) {
         openKey = g.key;
@@ -4716,7 +4730,8 @@
       // The tick sits inside the summary, so its click must not also fold the section.
       cb.addEventListener("click", e => e.stopPropagation());
       cb.addEventListener("change", () => {
-        if (cb.checked) activeIds.add(f.id); else activeIds.delete(f.id);
+        const set = isSceneFilter(f.id) ? sceneOn : activeIds;   // scene filters toggle the scene-global set
+        if (cb.checked) set.add(f.id); else set.delete(f.id);
         syncFilterSec(f.id);
         if (cb.checked && !sec.open) sec.open = true;   // reveal what you just enabled
         applyFilters();
@@ -4802,7 +4817,7 @@
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = activeIds.has(f.id); syncFilterSec(f.id); });
+    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = (isSceneFilter(f.id) ? sceneOn : activeIds).has(f.id); syncFilterSec(f.id); });
   }
   // Re-derive everything a filter change affects: which param groups are visible,
   // the bloom strength (off ⇒ 0), and the banked sim time (a fresh Fire shouldn't
@@ -6018,6 +6033,37 @@
     }
     return Object.keys(out).length ? out : null;
   }
+  // Scene filters (Bloom + the screen-stage FX) are scene-global — read/write their on/off
+  // and dual-slider values as one blob, exactly like the camera (readCam/writeCam/camOk).
+  function readSceneFx() {
+    const vals = {};
+    for (const k of SCENE_FILTER_KEYS) { const lo = el(k + "-lo"); if (lo) vals[k] = [+lo.value, +el(k + "-hi").value]; }
+    return { on: [...sceneOn], vals };
+  }
+  function sceneFxOk(sf) {           // validate a stored sceneFx against the live filter ids + bounds
+    if (!sf || typeof sf !== "object") return null;
+    const on = Array.isArray(sf.on) ? sf.on.filter(id => SCENE_FILTER_IDS.has(id)) : null;
+    const vals = {};
+    const raw = sf.vals && typeof sf.vals === "object" ? sf.vals : {};
+    for (const k of SCENE_FILTER_KEYS) {
+      const v = raw[k], lo = el(k + "-lo"); if (!Array.isArray(v) || !lo) continue;
+      const mn = +lo.min, mx = +lo.max, a = +v[0], b = +v[1];
+      if (isFinite(a) && isFinite(b) && a >= mn && a <= mx && b >= mn && b <= mx) vals[k] = [a, b];
+    }
+    return (on || Object.keys(vals).length) ? { on, vals } : null;
+  }
+  function writeSceneFx(sf) {
+    if (!sf) return;
+    if (Array.isArray(sf.on)) sceneOn = new Set(sf.on.filter(id => SCENE_FILTER_IDS.has(id)));
+    for (const k of SCENE_FILTER_KEYS) {
+      const v = sf.vals && sf.vals[k]; if (!Array.isArray(v)) continue;
+      el(k + "-lo").value = v[0]; el(k + "-hi").value = v[1];
+      el(k + "-lo").dispatchEvent(new Event("input"));
+      el(k + "-hi").dispatchEvent(new Event("input"));
+    }
+    syncFilterUI();                  // the scene-filter checkboxes follow sceneOn
+    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;
+  }
   function beginCamTween(to) {
     const t = camOk(to); if (!t) return;
     camTween = { from: readCam(), to: t, t0: 0 };
@@ -6043,6 +6089,7 @@
   function saveState(e) {
     const st = states[e];
     for (const id in st) {
+      if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global (sceneFx), not per-effect
       st[id] = Array.isArray(st[id])
         ? [+el(id + "-lo").value, +el(id + "-hi").value]
         : +el(id).value;
@@ -6052,6 +6099,7 @@
     suppressPersist = true;           // the per-slider input events below would
     const st = states[e];             // otherwise persist a half-loaded state
     for (const id in st) {
+      if (SCENE_FILTER_KEYS.includes(id)) continue;   // don't reload scene-filter values on a switch — they're scene-global
       const v = st[id];
       if (Array.isArray(v)) {
         el(id + "-lo").value = v[0]; el(id + "-hi").value = v[1];
@@ -6072,6 +6120,7 @@
     const st = states[L.fx] || {};
     L.state = {}; L.beat = {}; L.pulse = {}; L.plen = {};
     for (const id in st) {
+      if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global, not per-layer
       L.state[id] = Array.isArray(st[id])
         ? [+el(id + "-lo").value, +el(id + "-hi").value]
         : +el(id).value;
@@ -6633,6 +6682,7 @@
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted)
       cam: readCam(),                                // the global camera (not per effect)
+      sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       presets, curPreset,
@@ -6687,6 +6737,18 @@
       }
     }
     if (saved.cam) writeCam(camOk(saved.cam));   // global camera (absent in pre-feature blobs → 0°)
+    if (saved.sceneFx) writeSceneFx(sceneFxOk(saved.sceneFx));   // scene-global Scene filters (on/off + values)
+    else {   // pre-feature blob: Scene filters lived per-effect — lift the selected effect's onto the global set
+      const e = Number.isInteger(saved.effect) ? saved.effect : 0;
+      const src = (Array.isArray(saved.layers) && saved.layers[0] && saved.layers[0].filters)
+        || (saved.extras && saved.extras[e] && saved.extras[e].filters);
+      const fset = filtersOk(src);
+      const on = fset ? [...fset].filter(isSceneFilter) : [];
+      const st = (saved.states && saved.states[e]) || {};
+      const vals = {};
+      for (const k of SCENE_FILTER_KEYS) if (Array.isArray(st[k])) vals[k] = st[k];
+      writeSceneFx({ on: on.length ? on : ["bloom"], vals });   // default to bloom on (the old unconditional glow)
+    }
     if (saved.plens) {                  // ...and their lengths (absent in pre-feature blobs → PULSE_DROP)
       for (const k in plenStates) {
         const ps = saved.plens[k]; if (!ps) continue;
@@ -6757,6 +6819,7 @@
   function installShared(d) {
     if (!d) return false;
     initStates(); initBeatStates(); initPulseStates(); initPlenStates(); initExtras();
+    sceneOn = new Set(["bloom"]);     // same reason: a shared scene omitting sceneFx must not inherit the recipient's Scene filters
     // Same reason as the five above: a shared scene with no `layers` must land as ONE
     // item, not inherit whatever stack the recipient happened to have built.
     installStack([newStackItem(0)]);
@@ -7348,6 +7411,7 @@
       extras: only(extras),
       effect,
       cam: roundMap(readCam()),
+      sceneFx: readSceneFx(),         // the scene-global Scene filters travel with a share link
       beatTune: collectBeatTune(),
       ranges: collectRanges(),
     };
@@ -7448,6 +7512,7 @@
       // outside the recipient's slider bounds is silently clamped by the DOM, so a
       // preset authored with a widened bound would quietly animate differently.
       cam: readCam(),
+      sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
       beatTune: collectBeatTune(),
       ranges: collectRanges(),
       extra: JSON.parse(JSON.stringify(extras[effect])),
@@ -7629,6 +7694,7 @@
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
     beginCamTween(p.cam);                                   // fly, don't snap (no p.cam ⇒ stay put)
+    if (p.sceneFx) writeSceneFx(sceneFxOk(p.sceneFx));       // scene-global Scene filters (absent ⇒ keep current)
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     // The stack, after applyRanges for the same reason the four maps are: every item's
     // values are validated against the live bounds. installStack thaws item 0, which
@@ -7889,7 +7955,7 @@
         .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
         .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
                      state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
-                     cam: p.cam, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
+                     cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                      layers: Array.isArray(p.layers) ? p.layers : undefined }));
       if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
       const label = files.length === 1 ? files[0].name : files.length + " files";
