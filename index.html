@@ -1870,6 +1870,69 @@
       }
       o = vec4(heat, 0.0, 0.0, 1.0);
     }`;
+    // ---- Geometric shape effects: SDF fragment shaders that write heat, coloured by
+    // the palette + glow like every other effect. All aspect-correct against fw/fh and
+    // bake their own zoom (uZoom). camProg wraps them, so gl_FragCoord carries the camera.
+    // Polygon: one rotating regular N-gon; uThick hollows it (1 = filled, →0 = thin ring).
+    const FS_POLYGON = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uSpin; uniform float uSides; uniform float uRad; uniform float uThick; uniform float uZoom;
+    out vec4 o;
+    const float TAU = 6.2831853;
+    void main(){
+      vec2 p = gl_FragCoord.xy/uSize - 0.5; p.x *= uSize.x/uSize.y; p /= uZoom;
+      float a = atan(p.y, p.x) + uSpin, seg = TAU/uSides;
+      float rp = length(p) * cos(mod(a, seg) - seg*0.5) / cos(seg*0.5);   // circumradius coord: = uRad on the edge
+      float aa = 1.5/uSize.y, ir = uRad*(1.0 - uThick);
+      // smoothstep needs edge0 < edge1 (edge0 >= edge1 is UB in GLSL), so ascend + invert.
+      float heat = clamp(smoothstep(ir-aa, ir+aa, rp) - smoothstep(uRad-aa, uRad+aa, rp), 0.0, 1.0);
+      o = vec4(heat, 0.0, 0.0, 1.0);
+    }`;
+    // Shape grid: a tiled lattice of one shape (circle↔square via uSquare), each cell
+    // pulsing in size out of phase with its neighbours.
+    const FS_SHAPEGRID = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCells; uniform float uDot; uniform float uSquare; uniform float uPulse; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      vec2 p = gl_FragCoord.xy/uSize - 0.5; p.x *= uSize.x/uSize.y; p /= uZoom;
+      vec2 g = p * uCells; vec2 cell = floor(g); vec2 f = fract(g) - 0.5;
+      float rad = uDot * (1.0 + uPulse*sin(uTime + cell.x*0.7 + cell.y*1.3));
+      float d = mix(length(f), max(abs(f.x), abs(f.y)), uSquare);
+      float aa = 1.5/uSize.y * uCells;
+      o = vec4(clamp(1.0 - smoothstep(rad-aa, rad+aa, d), 0.0, 1.0), 0.0, 0.0, 1.0);   // ascend + invert (GLSL smoothstep needs edge0<edge1)
+    }`;
+    // Concentric rings: nested N-gon (or circle) contours marching outward over time.
+    const FS_CONCENTRIC = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uSides; uniform float uCount; uniform float uThick; uniform float uSpin; uniform float uZoom;
+    out vec4 o;
+    const float TAU = 6.2831853;
+    void main(){
+      vec2 p = gl_FragCoord.xy/uSize - 0.5; p.x *= uSize.x/uSize.y; p /= uZoom;
+      float a = atan(p.y, p.x) + uSpin, seg = TAU/uSides;
+      float rp = length(p) * cos(mod(a, seg) - seg*0.5) / cos(seg*0.5);
+      float band = abs(fract(rp*uCount - uTime) - 0.5) * 2.0;            // 0 at a ring centre, 1 between
+      float th = clamp(uThick, 0.02, 0.98);
+      o = vec4(clamp(1.0 - smoothstep(1.0 - th, 1.0, band), 0.0, 1.0), 0.0, 0.0, 1.0);   // ascend + invert
+    }`;
+    // Bouncing shapes: a few shapes whose centres (uPos, computed on the CPU) drift and
+    // bounce off the edges. Tick on a Fade / Fire feedback filter for glow trails.
+    const FS_BOUNCE = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform vec2 uPos[8]; uniform float uCount; uniform float uRad; uniform float uSquare; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      vec2 uv = (gl_FragCoord.xy/uSize - 0.5)/uZoom + 0.5;
+      float asp = uSize.x/uSize.y, aa = 2.0/uSize.y, heat = 0.0; int n = int(uCount);
+      for (int i=0;i<8;i++){
+        if (i>=n) break;
+        vec2 d = uv - uPos[i]; d.x *= asp;
+        float dist = mix(length(d), max(abs(d.x), abs(d.y)), uSquare);
+        heat = max(heat, 1.0 - smoothstep(uRad-aa, uRad+aa, dist));   // ascend + invert
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     // ---- post-FX passes. All RGB, all read the palette-mapped image, so they
     // behave as named (an Edge in palette-INDEX space would find edges where there
@@ -2224,6 +2287,10 @@
     glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.polygon = camProg(VS_QUAD, FS_POLYGON, ["uSize", "uSpin", "uSides", "uRad", "uThick", "uZoom"]);
+    glProg.shapegrid = camProg(VS_QUAD, FS_SHAPEGRID, ["uSize", "uTime", "uCells", "uDot", "uSquare", "uPulse", "uZoom"]);
+    glProg.concentric = camProg(VS_QUAD, FS_CONCENTRIC, ["uSize", "uTime", "uSides", "uCount", "uThick", "uSpin", "uZoom"]);
+    glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
@@ -3764,6 +3831,91 @@
     }
   }
 
+  // ---- Geometric shape effects (CPU mirrors of FS_POLYGON / FS_SHAPEGRID / FS_CONCENTRIC
+  // / FS_BOUNCE). Each *Seed(dt) advances this frame's phase and is called ONCE per frame
+  // in the descriptor's draw hook; the mirror TAKES that seed and never re-seeds, so the
+  // Canvas2D path can't advance the clock twice a frame (the trap the cardioid effects hit).
+  const SH_TAU = 6.2831853;
+  const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
+  const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
+  // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  let pgSides = 5, pgRad = 0.35, pgThick = 1, pgSpinSpeed = 0.4, pgSpin = 0;
+  function polygonSeed(dt) { pgSpin += dt * pgSpinSpeed; return { spin: pgSpin, sides: pgSides, rad: pgRad, thick: pgThick, zoom }; }
+  function polygon(s) {
+    const seg = SH_TAU / s.sides, cs = Math.cos(seg * 0.5), asp = fw / fh, aa = 1.5 / fh, ir = s.rad * (1 - s.thick);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom, py = (camPY / fh - 0.5) / s.zoom;
+      const a = Math.atan2(py, px) + s.spin, rp = Math.hypot(px, py) * Math.cos(shMod(a, seg) - seg * 0.5) / cs;
+      fire[idx++] = Math.max(0, Math.min(1, shStep(s.rad + aa, s.rad - aa, rp) - shStep(ir + aa, ir - aa, rp))) * 255;
+    }
+  }
+  // Shape grid: a tiled lattice of circles↔squares, each cell pulsing out of phase.
+  let sgCells = 9, sgDot = 0.3, sgSquare = 0, sgPulse = 0.35, sgSpeed = 1.2, sgTime = 0;
+  function shapegridSeed(dt) { sgTime += dt * sgSpeed; return { t: sgTime, cells: sgCells, dot: sgDot, square: sgSquare, pulse: sgPulse, zoom }; }
+  function shapegrid(s) {
+    const asp = fw / fh, aa = 1.5 / fh * s.cells;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const gx = (camPX / fw - 0.5) * asp / s.zoom * s.cells, gy = (camPY / fh - 0.5) / s.zoom * s.cells;
+      const cx = Math.floor(gx), cy = Math.floor(gy), fx = gx - cx - 0.5, fy = gy - cy - 0.5;
+      const rad = s.dot * (1 + s.pulse * Math.sin(s.t + cx * 0.7 + cy * 1.3));
+      const d = (1 - s.square) * Math.hypot(fx, fy) + s.square * Math.max(Math.abs(fx), Math.abs(fy));
+      fire[idx++] = Math.max(0, Math.min(1, shStep(rad + aa, rad - aa, d))) * 255;
+    }
+  }
+  // Concentric rings: nested N-gon contours marching outward.
+  let coSides = 6, coCount = 6, coThick = 0.4, coSpeed = 0.6, coSpinSpeed = 0.1, coTime = 0, coSpin = 0;
+  function concentricSeed(dt) { coTime += dt * coSpeed; coSpin += dt * coSpinSpeed; return { t: coTime, spin: coSpin, sides: coSides, count: coCount, thick: coThick, zoom }; }
+  function concentric(s) {
+    const seg = SH_TAU / s.sides, cs = Math.cos(seg * 0.5), asp = fw / fh, th = Math.max(0.02, Math.min(0.98, s.thick));
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom, py = (camPY / fh - 0.5) / s.zoom;
+      const a = Math.atan2(py, px) + s.spin, rp = Math.hypot(px, py) * Math.cos(shMod(a, seg) - seg * 0.5) / cs;
+      const ph = rp * s.count - s.t, band = Math.abs((ph - Math.floor(ph)) - 0.5) * 2;
+      fire[idx++] = Math.max(0, Math.min(1, shStep(1, 1 - th, band))) * 255;
+    }
+  }
+  // Bouncing shapes: centres are a pure triangle-wave function of ONE clock (bnTime), so
+  // the motion reflects off the walls yet stays phase-trackable (no mutable velocity state).
+  const BN_MAX = 8;
+  let bnCount = 4, bnRad = 0.09, bnSquare = 0.6, bnSpeed = 1, bnTime = 0;
+  const bnFreqX = [0.31, 0.44, 0.27, 0.52, 0.37, 0.48, 0.29, 0.41];
+  const bnFreqY = [0.42, 0.29, 0.51, 0.34, 0.47, 0.26, 0.45, 0.33];
+  const bnPhX = [0.0, 0.37, 0.72, 0.15, 0.58, 0.91, 0.24, 0.66];
+  const bnPhY = [0.5, 0.12, 0.83, 0.41, 0.09, 0.74, 0.55, 0.28];
+  const bnPos = new Float32Array(BN_MAX * 2);
+  const shTri = u => { u = u - 2 * Math.floor(u / 2); return Math.abs(u - 1); };   // period-2 triangle, 0..1
+  function bounceSeed(dt) {
+    bnTime += dt * bnSpeed;
+    const span = 1 - 2 * bnRad;
+    for (let i = 0; i < BN_MAX; i++) {
+      bnPos[i * 2] = bnRad + span * shTri(bnTime * bnFreqX[i] + bnPhX[i] * 2);
+      bnPos[i * 2 + 1] = bnRad + span * shTri(bnTime * bnFreqY[i] + bnPhY[i] * 2);
+    }
+    return { pos: bnPos, count: Math.round(bnCount), rad: bnRad, square: bnSquare, zoom };
+  }
+  function bounce(s) {
+    const asp = fw / fh, aa = 2 / fh, n = s.count;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX / fw - 0.5) / s.zoom + 0.5, uy = (camPY / fh - 0.5) / s.zoom + 0.5;
+      let heat = 0;
+      for (let i = 0; i < n; i++) {
+        const dx = (ux - s.pos[i * 2]) * asp, dy = uy - s.pos[i * 2 + 1];
+        const dist = (1 - s.square) * Math.hypot(dx, dy) + s.square * Math.max(Math.abs(dx), Math.abs(dy));
+        const h = shStep(s.rad + aa, s.rad - aa, dist);
+        if (h > heat) heat = h;
+      }
+      fire[idx++] = Math.max(0, Math.min(1, heat)) * 255;
+    }
+  }
+
   // ---- Strange attractors: de Jong map stamped into the fire heat grid (point effect) ----
   // The map itself is fully deterministic — same coefficients, same figure, every
   // frame. `atJit` scatters each stamped point by up to ±jit heat pixels, which
@@ -4413,6 +4565,28 @@
     { key: "cbcount", host: "fx", group: "copper", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
     { key: "cbspeed", host: "fx", group: "copper", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
     { key: "cbwidth", host: "fx", group: "copper", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
+    // Geometric shapes — Polygon
+    { key: "pgsides", host: "fx", group: "polygon", type: "dual", label: "Sides", valId: "vPgSides", min: 3, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => pgSides = Math.round(v), durScale: 10 },
+    { key: "pgrad", host: "fx", group: "polygon", type: "dual", label: "Size", valId: "vPgRad", min: 0.1, max: 0.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => pgRad = v, durScale: 10 },
+    { key: "pgthick", host: "fx", group: "polygon", type: "dual", label: "Thickness", valId: "vPgThick", min: 0, max: 1, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => pgThick = v, durScale: 10 },
+    { key: "pgspin", host: "fx", group: "polygon", type: "dual", label: "Spin", valId: "vPgSpin", min: -2, max: 2, step: 0.05, lo: 0.4, hi: 0.4, fmt: v => sig3(v) + "×", apply: v => pgSpinSpeed = v, durScale: 10 },
+    // Shape grid
+    { key: "sgcells", host: "fx", group: "shapegrid", type: "dual", label: "Density", valId: "vSgCells", min: 2, max: 24, step: 1, lo: 9, hi: 9, fmt: v => sig3(v), apply: v => sgCells = Math.round(v), durScale: 10 },
+    { key: "sgdot", host: "fx", group: "shapegrid", type: "dual", label: "Size", valId: "vSgDot", min: 0.05, max: 0.6, step: 0.01, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => sgDot = v, durScale: 10 },
+    { key: "sgsquare", host: "fx", group: "shapegrid", type: "dual", label: "Squareness", valId: "vSgSquare", min: 0, max: 1, step: 0.02, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => sgSquare = v, durScale: 10 },
+    { key: "sgpulse", host: "fx", group: "shapegrid", type: "dual", label: "Pulse", valId: "vSgPulse", min: 0, max: 1, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => sgPulse = v, durScale: 10 },
+    { key: "sgspeed", host: "fx", group: "shapegrid", type: "dual", label: "Pulse speed", valId: "vSgSpeed", min: 0, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => sgSpeed = v, durScale: 10 },
+    // Concentric rings
+    { key: "cosides", host: "fx", group: "concentric", type: "dual", label: "Sides", valId: "vCoSides", min: 3, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coSides = Math.round(v), durScale: 10 },
+    { key: "cocount", host: "fx", group: "concentric", type: "dual", label: "Ring count", valId: "vCoCount", min: 1, max: 20, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coCount = v, durScale: 10 },
+    { key: "cothick", host: "fx", group: "concentric", type: "dual", label: "Thickness", valId: "vCoThick", min: 0.02, max: 0.98, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => coThick = v, durScale: 10 },
+    { key: "cospeed", host: "fx", group: "concentric", type: "dual", label: "March speed", valId: "vCoSpeed", min: -3, max: 3, step: 0.05, lo: 0.6, hi: 0.6, fmt: v => sig3(v) + "×", apply: v => coSpeed = v, durScale: 10 },
+    { key: "cospin", host: "fx", group: "concentric", type: "dual", label: "Spin", valId: "vCoSpin", min: -2, max: 2, step: 0.05, lo: 0.1, hi: 0.1, fmt: v => sig3(v) + "×", apply: v => coSpinSpeed = v, durScale: 10 },
+    // Bouncing shapes
+    { key: "bncount", host: "fx", group: "bounce", type: "dual", label: "Count", valId: "vBnCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => bnCount = Math.round(v), durScale: 10 },
+    { key: "bnrad", host: "fx", group: "bounce", type: "dual", label: "Size", valId: "vBnRad", min: 0.02, max: 0.25, step: 0.005, lo: 0.09, hi: 0.09, fmt: v => sig3(v), apply: v => bnRad = v, durScale: 10 },
+    { key: "bnsquare", host: "fx", group: "bounce", type: "dual", label: "Squareness", valId: "vBnSquare", min: 0, max: 1, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => bnSquare = v, durScale: 10 },
+    { key: "bnspeed", host: "fx", group: "bounce", type: "dual", label: "Speed", valId: "vBnSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bnSpeed = v, durScale: 10 },
     { key: "ata", host: "fx", group: "attractor", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => sig3(v), apply: v => atA = v, durScale: 10 },
     { key: "atb", host: "fx", group: "attractor", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => sig3(v), apply: v => atB = v, durScale: 10 },
     { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
@@ -4648,7 +4822,8 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", camera: "Camera", other: "Other",
+    attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
     f_diffuse: "Diffuse", f_echo: "Echo", f_zoomfb: "Zoom feedback", f_swirl: "Swirl",
@@ -4727,6 +4902,11 @@
     ["moTime", () => moTime, v => moTime = v],
     ["nwPhase", () => nwPhase, v => nwPhase = v],
     ["cbTime", () => cbTime, v => cbTime = v],
+    ["pgSpin", () => pgSpin, v => pgSpin = v],
+    ["sgTime", () => sgTime, v => sgTime = v],
+    ["coTime", () => coTime, v => coTime = v],
+    ["coSpin", () => coSpin, v => coSpin = v],
+    ["bnTime", () => bnTime, v => bnTime = v],
   ];
   const phaseSnapshot = () => { const o = {}; for (const p of PHASE_VARS) o[p[0]] = p[1](); return o; };
   // Taken once, here, while every clock still holds its declared starting value — a new
@@ -5250,6 +5430,31 @@
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [8, 8], palhold: [0, 0], ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], atjit: [0.5, 0.5], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
+    // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
+    { id: "polygon", name: "Polygon", subtitle: "Polygon · rotating N-gon",
+      help: "A single rotating regular polygon drawn as a signed-distance field. Sides morphs triangle → square → … → circle; Size scales it, Spin rotates it (negative reverses), and Thickness hollows it out — 1 is solid, low values leave a thin outline. Arm Size or Spin to a beat to make it throb.",
+      params: ["pgsides", "pgrad", "pgthick", "pgspin", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      draw: dt => { const s = polygonSeed(dt); if (useGL) glShaderDraw("polygon", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uSides, s.sides); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uZoom, s.zoom); }); else polygon(s); },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], pgsides: [5, 5], pgrad: [0.35, 0.35], pgthick: [1, 1], pgspin: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "8", morph: true, showBox: true, randSeed: true } },
+    { id: "shapegrid", name: "Shape grid", subtitle: "Shape grid · pulsing lattice",
+      help: "A tiled lattice of one shape. Density sets how many cells fill the screen, Size the shape within each cell, Squareness morphs circle → square, and Pulse (with Pulse speed) makes every cell breathe out of phase with its neighbours. Reads like a pulsing dot-grid or checkerboard.",
+      params: ["sgcells", "sgdot", "sgsquare", "sgpulse", "sgspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      draw: dt => { const s = shapegridSeed(dt); if (useGL) glShaderDraw("shapegrid", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCells, s.cells); gl.uniform1f(u.uDot, s.dot); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uPulse, s.pulse); gl.uniform1f(u.uZoom, s.zoom); }); else shapegrid(s); },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], sgcells: [9, 9], sgdot: [0.3, 0.3], sgsquare: [0, 0], sgpulse: [0.35, 0.35], sgspeed: [1.2, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
+    { id: "concentric", name: "Concentric rings", subtitle: "Concentric · shape tunnel",
+      help: "Nested polygon (or circle) contours radiating out from the centre and marching outward over time — a hypnotic target / shape-tunnel. Sides sets the shape, Ring count how tightly packed the rings are, March speed how fast they travel (negative pulls inward), Thickness the ring width, and Spin rotates the whole thing.",
+      params: ["cosides", "cocount", "cothick", "cospeed", "cospin", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      draw: dt => { const s = concentricSeed(dt); if (useGL) glShaderDraw("concentric", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSides, s.sides); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uZoom, s.zoom); }); else concentric(s); },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], cosides: [6, 6], cocount: [6, 6], cothick: [0.4, 0.4], cospeed: [0.6, 0.6], cospin: [0.1, 0.1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
+    { id: "bounce", name: "Bouncing shapes", subtitle: "Bouncing shapes · DVD-logo drift",
+      help: "A handful of shapes drifting and bouncing off the edges, DVD-logo style. Count sets how many, Size how big, Squareness morphs circle → square, and Speed how fast they travel. Tick a Fade pixel or Fire feedback filter to give them glowing trails.",
+      params: ["bncount", "bnrad", "bnsquare", "bnspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      draw: dt => { const s = bounceSeed(dt); if (useGL) glShaderDraw("bounce", u => { gl.uniform2fv(u.uPos, s.pos); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uZoom, s.zoom); }); else bounce(s); },
+      defaults: { palcycle: [8, 8], palhold: [0, 0], bncount: [4, 4], bnrad: [0.09, 0.09], bnsquare: [0.6, 0.6], bnspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
