@@ -1,25 +1,35 @@
-# ordered list of JS slices concatenated (verbatim) into the IIFE body by tools/build.js
-00-globals.js
-10-palette.js
-20-gl-shaders.js
-30-gl-pipeline.js
-40-fire-physics.js
-45-animation.js
-50-effects-shaders.js
-55-effects-points.js
-60-audio.js
-65-controls.js
-70-stack.js
-74-effects-registry.js
-76-credits.js
-78-filters.js
-80-transitions.js
-82-stack-lifecycle.js
-84-ranges-tuning.js
-86-breakout.js
-88-share.js
-90-presets.js
-92-backup-restore.js
-94-orbit-editor.js
-96-beat-tuning-ui.js
-98-help-misc.js
+# tools/build.js concatenates these JS slices VERBATIM into the IIFE body, in THIS order.
+# This list is the load/execution order and is load-bearing (TDZ + forward-reference traps
+# documented in CLAUDE.md) — do NOT reorder. Files are NAMED by subsystem instead, so a
+# directory listing groups related code (audio-*, effects-*, orbit-*, persist-*, render-*,
+# stack-*, ui-*) even where execution order keeps the pieces apart.
+boot-globals.js
+palette.js
+render-gl-shaders.js
+render-gl-pipeline.js
+fire-physics.js
+anim-updateanims.js
+effects-julia.js
+orbit-seed.js
+effects-shader-mirrors.js
+effects-points.js
+frame-loop.js
+audio-detector.js
+controls-schema.js
+stack-core.js
+palette-picker.js
+effects-registry.js
+credits.js
+filters.js
+transitions.js
+stack-lifecycle.js
+controls-slider-ranges.js
+audio-tuning-data.js
+controls-breakout.js
+persist-share.js
+persist-presets.js
+persist-backup-restore.js
+orbit-editor.js
+audio-tuning-ui.js
+ui-diagnostics.js
+ui-help-misc.js

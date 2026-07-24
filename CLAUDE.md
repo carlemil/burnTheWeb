@@ -26,9 +26,16 @@ changes.
 ## Build
 
 - **Source of truth is `src/`, not `index.html`.** `src/styles.css` is the CSS;
-  `src/*.js` are ordered JS slices (order in `src/manifest.txt`); `src/index.template.html`
-  is the HTML shell with `{{CSS}}` / `{{JS}}` markers. **Never hand-edit `index.html`** —
-  it is regenerated and your edit will be lost (and rejected by the drift guard).
+  `src/*.js` are JS slices whose **concatenation order is `src/manifest.txt`** (that order is
+  load-bearing — TDZ + forward-reference traps below — so don't reorder it). Files are **named
+  by subsystem, not by order**, so a directory listing groups related code even where execution
+  order keeps the pieces apart: `audio-*` (detector / tuning-data / tuning-ui), `render-*` (GL
+  shaders / pipeline), `effects-*`, `orbit-*` (seed / editor), `persist-*` (share / presets /
+  backup-restore), `stack-*`, `controls-*`, `ui-*`. `src/index.template.html` is the HTML shell
+  with `{{CSS}}` / `{{JS}}` markers. **Never hand-edit `index.html`** — it is regenerated and
+  your edit will be lost (and rejected by the drift guard). To move code between files, cut/paste
+  between `src/*.js` and rebuild; keep each moved block in the same manifest position (the build
+  will not be byte-identical if you reorder across the concatenation seams).
 - **`node tools/build.js`** rebuilds `index.html` from `src/`. It joins the JS slices with
   the empty string and substitutes via split/join (not `String.replace`, whose `$` handling
   would corrupt the JS), so the output is a **byte-for-byte** reproduction of the source. The

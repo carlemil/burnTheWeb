@@ -45,31 +45,43 @@ if (rebuilt !== html) throw new Error("self-check failed: template does not roun
 // --- slice the JS body at unique section markers ---------------------------
 // Each entry starts a new file. The first starts at body offset 0. Markers are
 // snapped back to the start of their line so files begin cleanly.
+// Files are named by SUBSYSTEM so a directory listing groups related code
+// alphabetically (all audio-*, effects-*, orbit-*, persist-*, render-*, stack-*,
+// ui-* cluster together) — that is the cohesion, achieved WITHOUT reordering.
+// The array order IS the execution order (= manifest = concatenation order), so
+// the build stays byte-identical; scattered subsystems that cannot be made
+// adjacent in execution are instead made adjacent in the listing by name.
 const SLICES = [
-  { file: "00-globals.js",            marker: null },  // canvas + GL globals + initGL
-  { file: "10-palette.js",            marker: "// ---- palettes (classic demoscene style) ----" },
-  { file: "20-gl-shaders.js",         marker: "//  WebGL2 renderer" },
-  { file: "30-gl-pipeline.js",        marker: "// ---- post-FX passes. All RGB" },
-  { file: "40-fire-physics.js",       marker: "// ---- Tetrafyer rigid-body physics" },
-  { file: "45-animation.js",          marker: "// ---- animation ----" },
-  { file: "50-effects-shaders.js",    marker: "// ---- AnimeJulia: animated Julia set" },
-  { file: "55-effects-points.js",     marker: "// ---- Geometric shape effects (CPU mirrors" },
-  { file: "60-audio.js",              marker: "// ---- controls ----" },
-  { file: "65-controls.js",           marker: "// ---- per-effect controls, generated" },
-  { file: "70-stack.js",              marker: "// ---- the effect STACK" },
-  { file: "74-effects-registry.js",   marker: "// ---- effect registry: the single source" },
-  { file: "76-credits.js",            marker: "// ---- Credits ---" },
-  { file: "78-filters.js",            marker: "// ---- FILTERS: stackable post-FX" },
-  { file: "80-transitions.js",        marker: "// ---- TRANSITIONS: how one preset" },
-  { file: "82-stack-lifecycle.js",    marker: "// ---- stack item lifecycle" },
-  { file: "84-ranges-tuning.js",      marker: "// ---- custom slider ranges" },
-  { file: "86-breakout.js",           marker: "// ---- Break-out boxes" },
-  { file: "88-share.js",              marker: "// ---- share payload codec" },
-  { file: "90-presets.js",            marker: "// ---- presets: named full-scene" },
-  { file: "92-backup-restore.js",     marker: "// ---- Backup: ONE FILE PER PRESET" },
-  { file: "94-orbit-editor.js",       marker: "// ---- Orbit editor ---" },
-  { file: "96-beat-tuning-ui.js",     marker: "// ---- beat-detection tuning (its own" },
-  { file: "98-help-misc.js",          marker: "// ---- help popup: effect-aware" },
+  { file: "boot-globals.js",            marker: null },  // canvas + GL globals + initGL
+  { file: "palette.js",                 marker: "// ---- palettes (classic demoscene style) ----" },
+  { file: "render-gl-shaders.js",       marker: "//  WebGL2 renderer" },
+  { file: "render-gl-pipeline.js",      marker: "// ---- post-FX passes. All RGB" },
+  { file: "fire-physics.js",            marker: "// ---- Tetrafyer rigid-body physics" },
+  { file: "anim-updateanims.js",        marker: "// ---- animation ----" },
+  { file: "effects-julia.js",           marker: "// ---- AnimeJulia: animated Julia set" },
+  { file: "orbit-seed.js",              marker: "// ---- seed PATH shape" },
+  { file: "effects-shader-mirrors.js",  marker: "// ---- Plasma: old-school" },
+  { file: "effects-points.js",          marker: "// ---- Geometric shape effects (CPU mirrors" },
+  { file: "frame-loop.js",              marker: "  function render() {" },
+  { file: "audio-detector.js",          marker: "// ---- controls ----" },
+  { file: "controls-schema.js",         marker: "// ---- per-effect controls, generated" },
+  { file: "stack-core.js",              marker: "// ---- the effect STACK" },
+  { file: "palette-picker.js",          marker: "// ---- palette preview picker" },
+  { file: "effects-registry.js",        marker: "// ---- effect registry: the single source" },
+  { file: "credits.js",                 marker: "// ---- Credits ---" },
+  { file: "filters.js",                 marker: "// ---- FILTERS: stackable post-FX" },
+  { file: "transitions.js",             marker: "// ---- TRANSITIONS: how one preset" },
+  { file: "stack-lifecycle.js",         marker: "// ---- stack item lifecycle" },
+  { file: "controls-slider-ranges.js",  marker: "// ---- custom slider ranges" },
+  { file: "audio-tuning-data.js",       marker: "// ---- beat-detection tuning — per-preset" },
+  { file: "controls-breakout.js",       marker: "// ---- Break-out boxes" },
+  { file: "persist-share.js",           marker: "// ---- share payload codec" },
+  { file: "persist-presets.js",         marker: "// ---- presets: named full-scene" },
+  { file: "persist-backup-restore.js",  marker: "// ---- Backup: ONE FILE PER PRESET" },
+  { file: "orbit-editor.js",            marker: "// ---- Orbit editor ---" },
+  { file: "audio-tuning-ui.js",         marker: "// ---- beat-detection tuning (its own" },
+  { file: "ui-diagnostics.js",          marker: "// ---- Diagnostics checkboxes" },
+  { file: "ui-help-misc.js",            marker: "// ---- help popup: effect-aware" },
 ];
 
 // resolve each marker to a line-start offset within jsBody
@@ -96,7 +108,11 @@ fs.mkdirSync(srcDir, { recursive: true });
 fs.writeFileSync(path.join(srcDir, "styles.css"), css);
 fs.writeFileSync(path.join(srcDir, "index.template.html"), template);
 fs.writeFileSync(path.join(srcDir, "manifest.txt"),
-  "# ordered list of JS slices concatenated (verbatim) into the IIFE body by tools/build.js\n" +
+  "# tools/build.js concatenates these JS slices VERBATIM into the IIFE body, in THIS order.\n" +
+  "# This list is the load/execution order and is load-bearing (TDZ + forward-reference traps\n" +
+  "# documented in CLAUDE.md) — do NOT reorder. Files are NAMED by subsystem instead, so a\n" +
+  "# directory listing groups related code (audio-*, effects-*, orbit-*, persist-*, render-*,\n" +
+  "# stack-*, ui-*) even where execution order keeps the pieces apart.\n" +
   pieces.map(p => p.file).join("\n") + "\n");
 for (const p of pieces) fs.writeFileSync(path.join(srcDir, p.file), p.text);
 
