@@ -858,6 +858,7 @@
         <button type="button" class="cardmode" data-mode="circle">Circle</button>
         <button type="button" class="cardmode" data-mode="freehand">Freehand</button>
       </span>
+      <button type="button" class="cardmode" id="cardPause" title="Pause the seed motion" aria-label="Pause the seed motion">⏸</button>
       <label class="card-ride" title="The small circle riding on the base curve that keeps the seed's neighbourhood varying"><input type="checkbox" id="cardRide"> Riding circle</label>
       <button type="button" class="cardmode" id="cardEdit" title="Edit mode — drag the control points to reshape the loop">Edit</button>
       <button type="button" class="cardmode" id="cardUndo" title="Undo the last change">Undo</button>
@@ -3434,6 +3435,10 @@
   // fractal opens somewhere new), or a fixed 0 when off (fully reproducible).
   // Uses Math.random(), kept clear of the chaos-game PRNG (see Determinism).
   let juliaOuter = 0, juliaInner = 0;
+  // Freeze the seed orbit while the Orbit editor's pause button is on: juliaSeed advances the
+  // phase by `dt`, so a zero dt holds it put (the fractal and the editor's seed dot both stop).
+  // Transient — cleared when the editor closes (see cardOpen).
+  let orbitPaused = false;
   // The seed is only interesting where the *connectedness locus* is — the set of c
   // for which the filled Julia set of z^d+c is connected. For d=2 that is the
   // Mandelbrot set and its period-1 boundary is the familiar cardioid. For any other
@@ -3532,7 +3537,7 @@
     // its epicycles bunch up where the cardioid crawls and stretch out where it
     // sprints. (Lap time is preserved, so it still completes `ratio` turns a lap.)
     const th = juliaOuter + juliaPhase * Math.PI * 2;
-    const base = dt * juliaBigRpm * RPM;
+    const base = (orbitPaused ? 0 : dt) * juliaBigRpm * RPM;   // paused ⇒ hold the phase (Orbit editor pause button)
     juliaOuter += base * juliaEase(th);   // eased outer lap
     juliaInner += base * juliaRatio;      // steady riding circle
     const p = juliaSeedAt(juliaOuter, juliaInner);
@@ -8307,11 +8312,21 @@
         : "Draw: drag on the canvas to sketch a loop — it snaps to a smooth closed spline the seed then follows.";
     }
   }
+  // Pause / resume the seed orbit. The button toggles between the pause and play glyphs;
+  // closing the editor resumes (so the motion never stays frozen once the editor is gone).
+  function setOrbitPaused(p) {
+    orbitPaused = p;
+    const b = el("cardPause"); if (!b) return;
+    const t = p ? "Resume the seed motion" : "Pause the seed motion";
+    b.textContent = p ? "▶" : "⏸";
+    b.title = t; b.setAttribute("aria-label", t);
+    b.classList.toggle("on", p);
+  }
   function cardOpen(on) {
     if (!card) return;      // startup: setEffect runs before `var card` is initialized
     card.on = on;
     el("carddlg").classList.toggle("hidden", !on);
-    if (!on) return;
+    if (!on) { setOrbitPaused(false); return; }   // closing resumes the motion
     if (!card.ctx) { card.cv = el("cardcv"); card.ctx = card.cv.getContext("2d"); }
     syncOrbitUI();
     cardDraw();                    // paint immediately; frame() keeps it live after
@@ -8326,6 +8341,7 @@
 
   el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
   el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });
+  el("cardPause").addEventListener("click", () => setOrbitPaused(!orbitPaused));
 
   // ---- Orbit editor interaction ----
   // Canvas pixel → c-plane coordinate (accounts for the canvas being CSS-scaled to fit).
