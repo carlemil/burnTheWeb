@@ -410,6 +410,14 @@
   .ctl-row.ctl-blocked, #breakout .ctl.ctl-blocked { opacity: .32; }
   .ctl-row.ctl-blocked { cursor: help; }
   .ctl-row.ctl-blocked .ctl-pop { pointer-events: none; opacity: .5; }
+  /* Modified-from-default: an amber dot before the name on the menu row, and a left accent
+     on the pop-out box, so you can see at a glance which sliders you've moved off default. */
+  .ctl-row.ctl-changed .ctl-row-name::before {
+    content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px;
+    border-radius: 50%; background: #ffb15a; vertical-align: middle;
+    box-shadow: 0 0 4px rgba(255, 140, 40, 0.75);
+  }
+  #breakout .ctl.ctl-changed { box-shadow: inset 3px 0 0 -1px #ffb15a; }
   @keyframes ctlflash { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,140,40,0); background: transparent; }
                         25%, 65% { box-shadow: 0 0 0 2px rgba(255,140,40,0.95); background: rgba(255,140,40,0.28); } }
   .ctl-row.ctl-flash { animation: ctlflash 1.4s ease; border-radius: 6px; }
@@ -1044,16 +1052,22 @@
   const SCENE_FILTER_KEYS = ["bloom", "barrel", "scan", "scancount", "vignette", "grain"];   // their dual-slider param keys
   const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
   let sceneOn = new Set(["bloom"]);            // scene-global on/off; bloom on = the old unconditional glow
+  // `activeIds` is the SELECTED layer's live filter set (the "DOM is the store for the
+  // selected item" rule). The RENDER must follow what is on screen, not what is selected for
+  // editing — you can select a muted layer to tweak it while a different one is the only
+  // visible thing. `renderFilters` is that override: non-null only while the frame is drawing
+  // a layer that is not the selected one, and always cleared before the frame returns, so
+  // every UI caller (syncFilterUI, refreshControlVisibility) still sees activeIds.
+  let renderFilters = null;
   function filterOn(id) {
-    const on = isSceneFilter(id) ? sceneOn.has(id) : activeIds.has(id);
+    const on = isSceneFilter(id) ? sceneOn.has(id) : (renderFilters || activeIds).has(id);
     return on && !cpuBlocked.has(id);
   }
   // Camera rotation (radians) applied to each effect's own sampled space — see
-  // camProg/camGlsl for the GL path and the camM matrix for the CPU path. Global on
-  // purpose: it is NOT part of states[e] (no cam key in any effect's `defaults`),
-  // so it survives effect switches, and applyPreset eases it toward the preset's
-  // angles instead of snapping — the same "blend from what's on screen" idea as
-  // the palette morph.
+  // camProg/camGlsl for the GL path and the camM matrix for the CPU path. These are the
+  // LIVE globals for whichever layer is currently being drawn: the camera is per-layer
+  // state (states[e].camrx/camry/camrz), and installStackItem pushes each layer's angles
+  // in — plus camMat() — just before that layer renders.
   let camRX = 0, camRY = 0, camRZ = 0;
   // CPU mirror of the shader camera. Rotating (x, y, 0) by Rz·Ry·Rx and dropping z is a
   // plain 2×2 map, so the whole camera collapses to four numbers — worth hoisting,
@@ -1205,31 +1219,38 @@
   // light/dark contour stripes. The applied amount per index = bandLevel · a
   // travelling wave, so the stripes fade in with the toggle and shimmer along
   // the ramp while on — off, fully on, or anywhere between.
-  function composePalette(now) {
+  // `base`/`rev`/`bg` default to the selected layer's live globals (every caller but the
+  // render-layer bake below passes only `now`, so that path is byte-identical). They are
+  // overridable so a frame whose visible layer is NOT the selected one can colour through
+  // THAT layer's ramp instead — see the renderL bake in frame().
+  function composePalette(now, base, rev, bg) {
+    base = base || paletteBase;
+    if (rev === undefined) rev = paletteReverse;
+    if (bg === undefined) bg = paletteBg;
     const t = now * 0.001;
     const on = bandLevel > 0.001;
     for (let x = 0; x < 256; x++) {
-      let r = paletteBase[x * 3], g = paletteBase[x * 3 + 1], b = paletteBase[x * 3 + 2];
+      let r = base[x * 3], g = base[x * 3 + 1], b = base[x * 3 + 2];
       if (on) {
         const band = (x / 256 * BAND_COUNT) | 0;
         const ci = (((band + 0.5) / BAND_COUNT) * 256) | 0;          // flat band colour
         const dim = ((band / bandGroup) | 0) % 2 === 0 ? 1 : bandDim; // light vs dark run
         const wave = 0.6 + 0.4 * Math.sin(t * 0.9 - x * 0.05);    // breathe along ramp
         const amt = bandLevel * wave;
-        r += (paletteBase[ci * 3] * dim - r) * amt;               // blend toward the
-        g += (paletteBase[ci * 3 + 1] * dim - g) * amt;           // flat, dimmed band
-        b += (paletteBase[ci * 3 + 2] * dim - b) * amt;
+        r += (base[ci * 3] * dim - r) * amt;                      // blend toward the
+        g += (base[ci * 3 + 1] * dim - g) * amt;                  // flat, dimmed band
+        b += (base[ci * 3 + 2] * dim - b) * amt;
       }
       palette[x] = (255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r);
     }
     // Reverse colour order: flip indices 1..255 (255↔1, 254↔2, …; 128 fixed), leaving 0 as
     // the forced black below — so the dark background stays black while the ramp runs the
     // other way. Applied after banding, so the stripes simply run the other direction too.
-    if (paletteReverse) for (let x = 1; x <= 127; x++) { const t = palette[x]; palette[x] = palette[256 - x]; palette[256 - x] = t; }
+    if (rev) for (let x = 1; x <= 127; x++) { const t = palette[x]; palette[x] = palette[256 - x]; palette[256 - x] = t; }
     // Background (heat 0): black (default), white, or the palette's own colour-0 (leave as
     // composed). Everything else keeps the old forced-black behaviour byte-for-byte.
-    if (paletteBg === "white") palette[0] = 0xFFFFFFFF;
-    else if (paletteBg !== "palette") palette[0] = 0xFF000000; // opaque black
+    if (bg === "white") palette[0] = 0xFFFFFFFF;
+    else if (bg !== "palette") palette[0] = 0xFF000000; // opaque black
     paletteDirty = true;      // composePalette is the only writer ⇒ flag GL re-upload
   }
   setPalette(0);
@@ -2721,6 +2742,13 @@
     const fx = extras[L.fx] || presetExtra(L.fx);
     return bgOk(fx.paletteBg);
   }
+  // This layer's per-layer filter SET — the same selected-vs-stored split as layerPalIndex.
+  // Falls back to the descriptor default (never the runtime extras[L.fx] — see
+  // layerFeedbackChain), so a fresh layer gets fire+bloom / bloom rather than the last-used set.
+  function layerFilterSet(L) {
+    if (L === stack[stackSel]) return activeIds;
+    return filtersOk(L.filters) || new Set(presetFilters(L.fx));
+  }
   // Advance ONE layer's palette clock and return its current base ramp. Reuses the
   // global cycle/hold timing (morphMs/holdMs) but keeps its own from/to/target, so
   // layers drift out of phase with each other and with the selected-layer morph.
@@ -4080,17 +4108,44 @@
     if (audio.on) clearBeats();
     if (dbg.on) dbgDraw();
 
-    // Banding strength (0..1) is set by its ranged slider each frame. When not
-    // morphing (which already rebakes), refresh the palette while it's live so
-    // the stripes appear/shimmer/vanish as the value wanders.
-    if (!morphing && (bandLevel > 0.001 || bandLive)) {
-      composePalette(now);
-      bandLive = bandLevel > 0.001;
-    }
-
     postTime += dt;                         // clock for the self-animating post/screen passes
     if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
     transStep(dt);                          // ...and so does the preset transition
+
+    // WHICH LAYER THE RENDER FOLLOWS. `activeIds`, the palette globals and `zoom` are the
+    // SELECTED layer's live store (the "DOM is the store for the selected item" rule), but
+    // selecting a layer is an EDITING action and must never change the picture. With 3 of 4
+    // layers muted, selecting one of the muted ones used to render the visible layer through
+    // the selected layer's filter set — a Tetrafyer losing `fire` shows no flame at all, which
+    // reads as "the layer reverted to defaults" — and through its palette and its zoom.
+    // So resolve all three from the DRAWING layer: the bottom-most LIVE item, which is
+    // selection-independent by construction. When they are the same item (every single-layer
+    // scene, and any scene where you are editing the visible layer) nothing changes at all.
+    const live = stack.filter(L => !L.mute);
+    const ptItems = live.filter(L => !EFFECTS[L.fx].draw);
+    const shItems = live.filter(L => EFFECTS[L.fx].draw);
+    const renderL = live[0] || stack[stackSel];
+    // Only the paths that colour through the ONE global palette need the override: the
+    // multi-layer GL path already resolves palette AND filters per layer (renderStackColor).
+    const onePal = !useGL || live.length <= 1;
+    const renderOther = onePal && renderL !== stack[stackSel];
+    renderFilters = renderOther ? layerFilterSet(renderL) : null;
+    const retain = hasFeedback();     // ...so this reads the DRAWING layer's feedback filters
+
+    // Palette: normally the selected layer's morphing ramp (composePalette's own defaults, so
+    // this stays byte-identical whenever the drawing layer IS the selected one) — and banding
+    // strength is set by its ranged slider each frame, so when not morphing (which already
+    // rebakes) refresh the ramp while it is live, letting the stripes appear/shimmer/vanish as
+    // the value wanders. Otherwise colour through the DRAWING layer's palette, advanced on its
+    // own clock by stepLayerPal — the same per-layer machinery renderStackColor uses.
+    if (renderOther) {
+      const slot = stack.indexOf(renderL);
+      composePalette(now, stepLayerPal(slot, layerPalIndex(renderL), now), layerPalRev(renderL), layerPalBg(renderL));
+      bandLive = bandLevel > 0.001;
+    } else if (!morphing && (bandLevel > 0.001 || bandLive)) {
+      composePalette(now);
+      bandLive = bandLevel > 0.001;
+    }
     if (useGL) uploadPalette();       // push the (possibly morphed) palette
 
     // The sim accumulator is drained EVERY frame, not only in the fire branch —
@@ -4102,10 +4157,6 @@
     const step = 1 / cfg.burn;
     let ticks = 0;
     while (acc >= step && ticks < 4) { acc -= step; ticks++; }
-    const live = stack.filter(L => !L.mute);
-    const ptItems = live.filter(L => !EFFECTS[L.fx].draw);
-    const shItems = live.filter(L => EFFECTS[L.fx].draw);
-    const retain = hasFeedback();
     // The Canvas2D fallback renders ONE item: every CPU mirror writes every cell with a
     // plain assignment, so a second mirror would simply erase the first, and each extra
     // mirror is a full per-pixel JS loop — an N× multiplier on the dominant cost of the
@@ -4173,10 +4224,19 @@
         glMergeLayer(L.blend, L.gain);
       }
     }
-    // Epilogue install: everything after the loop — glRender, render(), cardDraw —
-    // reads these globals outside any item's turn, so leave them holding the SELECTED
-    // item's values rather than whatever the last item happened to set. Without this
-    // the Cardioid debug panel silently tracks the wrong effect.
+    // Epilogue install, part 1 — THE RENDER. glRender/render() read these globals (notably
+    // `zoom`, via stackZoom) outside any item's turn, so install the DRAWING layer rather
+    // than whatever the last item in the loop happened to set. Using the selected item here
+    // is what let picking a muted layer re-zoom and re-filter the visible scene; renderL is
+    // the same object whenever you are editing the visible layer, so nothing changes then.
+    installStackItem(renderL);
+    installPhase(renderL);
+    if (useGL) glRender();
+    else render();
+    renderFilters = null;              // back to activeIds for every UI caller of filterOn
+    // Epilogue install, part 2 — THE EDITOR OVERLAYS. cardDraw must track the layer you are
+    // EDITING, which is the original reason this epilogue exists: without it the Orbit editor
+    // silently follows whichever item drew last.
     installStackItem(stack[stackSel]);
     installPhase(stack[stackSel]);
     // juliaPower is set ONLY by Multibrot's draw, so a multi-layer scene leaves the LAST
@@ -4186,8 +4246,6 @@
     // on the editor being open so it never perturbs the render path otherwise. AnimeJulia /
     // Burning Ship are d=2.
     if (card && card.on) juliaPower = EFFECTS[stack[stackSel].fx].id === "multibrot" ? mbPower : 2;
-    if (useGL) glRender();
-    else render();
     creditDraw();                      // above the finished image — effects and filters both
     if (card && card.on) cardDraw();   // Cardioid debug view follows the live seed
 
@@ -4817,6 +4875,33 @@
     }
     refreshBreakout();                // show/hide the pop-out boxes to match
     refreshBlocked(shown);            // grey any control another setting has neutralised
+    refreshChanged(shown);            // mark any slider moved off its shipped default
+  }
+  // Mark a slider's menu row (and its pop-out box) when its live value differs from the
+  // current effect's SHIPPED default — a modified-from-default dot, so you can see at a
+  // glance what you've customised. Reads the DOM thumbs (stable; the drift lives elsewhere),
+  // so it must run on every edit too. Dual → compare [lo,hi]; plain → the single value.
+  function refreshChanged(shown) {
+    shown = shown || shownKeys();
+    const def = presetState(effect);
+    for (const c of CONTROLS) {
+      const row = rows[c.key];
+      if (!row) continue;             // only poppable sliders carry a launcher row
+      let changed = false;
+      if (shown.has(c.key)) {
+        const d = def[c.key];
+        if (Array.isArray(d)) {
+          const lo = el(c.key + "-lo"), hi = el(c.key + "-hi");
+          if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
+        } else if (d != null) {
+          const e = el(c.key);
+          if (e) changed = Math.abs(+e.value - d) > 1e-9;
+        }
+      }
+      row.classList.toggle("ctl-changed", changed);
+      const box = el("ctl-" + c.key);
+      if (box) box.classList.toggle("ctl-changed", changed);
+    }
   }
   // A control that does nothing while another slider sits at its neutral value (a dual
   // whose HIGH thumb is 0 — i.e. turned fully off, so the drift can never leave 0). Keyed
@@ -7258,6 +7343,7 @@
     if (e.target.closest("#diag")) return;   // dev tools persist themselves; never fold them into a preset
     if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
     refreshBlocked();                        // a thumb move can neutralise (or free) a dependent control
+    refreshChanged();                        // a thumb move can move a slider off (or back to) its default
     if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }
@@ -7304,6 +7390,7 @@
     loadPlen(effect);                 // ...and their lengths
     loadExtra(effect);                // ...and palette/morph/show-box/TTL
     rngSyncAll();                     // the in-box min/max fields follow the restored bounds
+    refreshControlVisibility();       // clear the modified-from-default dots (and blocked state) now everything is back to shipped
     persist();
   });
 
