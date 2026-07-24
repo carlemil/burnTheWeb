@@ -8143,16 +8143,55 @@
   // repaint every frame at 120 iterations is far too slow for a debug overlay.
   const CARD_POW_Q = 0.05;                    // = the Power slider's own step
   const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
-  function cardLocus(w, h, d) {
+  // Auto-frame the c-plane view per power: a cheap low-res scan finds the inside (black)
+  // region's bounding box, then we centre the view on it and size it to fit — so the locus
+  // blob is centred for every power/form instead of one fixed Mandelbrot-tuned window (the
+  // set's centre drifts from ≈−0.5 at power 2 toward 0 at higher powers, and it grows). The
+  // locus is symmetric about the real axis, so only the x-centre and span need adjusting.
+  // Cached per quantised power + canvas aspect (both change rarely).
+  const CARD_SCAN = { x0: -2.4, x1: 2.4, y0: -2.0, y1: 2.0 };   // generous, aspect-independent scan region
+  let cardWin = { q: NaN, aspect: NaN, x0: CARD_X0, x1: CARD_X1 };
+  function cardWindow(d, aspect) {
+    if (cardWin.q === d && cardWin.aspect === aspect) return cardWin;
+    const W = 80, sx = CARD_SCAN.x1 - CARD_SCAN.x0, sy = CARD_SCAN.y1 - CARD_SCAN.y0;
+    const H = Math.max(1, Math.round(W * sy / sx));
+    const sq = d === 2;
+    let minX = Infinity, maxX = -Infinity, maxAY = 0, any = false;
+    for (let py = 0; py < H; py++) {
+      const cy = CARD_SCAN.y0 + (py / H) * sy;
+      for (let px = 0; px < W; px++) {
+        const cx = CARD_SCAN.x0 + (px / W) * sx;
+        let zx = 0, zy = 0, i = 0, mag2 = 0;
+        for (; i < 60 && mag2 <= 4; i++) {
+          if (sq) { const t = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = t; }
+          else { const r = Math.pow(Math.sqrt(mag2), d), a = Math.atan2(zy, zx) * d; zx = r * Math.cos(a) + cx; zy = r * Math.sin(a) + cy; }
+          mag2 = zx * zx + zy * zy;
+        }
+        if (mag2 <= 4) { if (cx < minX) minX = cx; if (cx > maxX) maxX = cx; const ay = Math.abs(cy); if (ay > maxAY) maxAY = ay; any = true; }
+      }
+    }
+    let x0, x1;
+    if (!any) { x0 = CARD_X0; x1 = CARD_X1; }
+    else {
+      const xc = (minX + maxX) / 2;
+      // half-width must contain the locus in x AND (spanY = spanX/aspect) in y; the 1.45 floor
+      // keeps the seed path visible for small loci, then a small margin so it isn't edge-to-edge.
+      const half = Math.max((maxX - minX) / 2, maxAY * aspect, 1.45) * 1.15;
+      x0 = xc - half; x1 = xc + half;
+    }
+    cardWin = { q: d, aspect, x0, x1 };
+    return cardWin;
+  }
+  function cardLocus(w, h, d, win) {
     const cv = document.createElement("canvas");
     cv.width = w; cv.height = h;
     const img = new ImageData(w, h), px32 = img.data;
-    const spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w), y0 = -spanY / 2;
+    const spanX = win.x1 - win.x0, spanY = spanX * (h / w), y0 = -spanY / 2;
     const sq = d === 2;                       // integer-2 fast path: no pow/atan2 per step
     for (let py = 0; py < h; py++) {
       const cy = y0 + (py / h) * spanY;
       for (let px = 0; px < w; px++) {
-        const cx = CARD_X0 + (px / w) * spanX;
+        const cx = win.x0 + (px / w) * spanX;
         // Iterate the critical point z=0 — bounded ⇔ c is in the locus.
         let zx = 0, zy = 0, i = 0, mag2 = 0;
         for (; i < 120 && mag2 <= 4; i++) {
@@ -8174,13 +8213,14 @@
   }
   function cardDraw() {
     if (!card || !card.on || !card.ctx) return;
-    const w = card.cv.width, h = card.cv.height, ctx = card.ctx;
+    const w = card.cv.width, h = card.cv.height, ctx = card.ctx, aspect = w / h;
     const pq = cardPowQ();
-    if (!card.bg || card.bgPow !== pq) { card.bg = cardLocus(w >> 1, h >> 1, pq); card.bgPow = pq; }
+    const win = cardWindow(pq, aspect);       // centre + size the view on the locus for this power
+    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) { card.bg = cardLocus(w >> 1, h >> 1, pq, win); card.bgPow = pq; card.bgAspect = aspect; }
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(card.bg, 0, 0, w, h);       // half-res locus, scaled up
-    const spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w);
-    const X = cx => (cx - CARD_X0) / spanX * w;               // complex → canvas
+    const spanX = win.x1 - win.x0, spanY = spanX * (h / w);
+    const X = cx => (cx - win.x0) / spanX * w;               // complex → canvas
     const Y = cy => (cy + spanY / 2) / spanY * h;
     // the bare base path (the outer loop, before the riding circle) — cardioid, circle or the
     // freehand spline, whichever this effect's seedPathMode selects (via juliaSeedAt). Only ONE
