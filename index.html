@@ -545,6 +545,22 @@
     cursor: pointer; text-shadow: none;
   }
   #panel #help-btn:hover { background: rgba(255, 122, 26, 0.35); }
+  /* A small inline ? next to a label (e.g. Presets), reusing the panel help modal. */
+  #panel .lbl-help {
+    width: 15px; height: 15px; padding: 0; margin-left: 5px; vertical-align: 1px;
+    border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.45);
+    background: rgba(255, 122, 26, 0.12); color: #ffb15a; font: bold 9px/1 ui-monospace, monospace;
+    cursor: pointer; opacity: .75;
+  }
+  #panel .lbl-help:hover { background: rgba(255, 122, 26, 0.32); opacity: 1; }
+  /* Data-structure tree inside the help modal. */
+  #help .help-tree {
+    margin: 4px 0 12px; padding: 11px 13px; overflow-x: auto;
+    background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 8px;
+    font: 11px/1.65 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #e8ddd0; white-space: pre;
+  }
+  #help .help-tree b { color: #ffcf87; font-weight: 600; }
+  #help .help-tree i { color: #9a8a70; font-style: normal; }
   #help {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
@@ -738,7 +754,7 @@
   <details class="box" open>
   <summary class="box-t">Scene</summary>
   <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
-  <label>Presets</label>
+  <label>Presets <button type="button" id="preset-help-btn" class="lbl-help" title="What a preset saves — its data structure" aria-label="What a preset saves — its data structure">?</button></label>
   <select id="preset"></select>
   <div class="presetrow">
     <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
@@ -8725,6 +8741,40 @@
     helpEl.classList.remove("hidden");
   }
   el("help-btn").addEventListener("click", openHelp);
+  // The Presets ? — what a preset actually stores. A preset is a COMPLETE scene snapshot
+  // (snapshotScene / stackItemOut) nesting three scopes: scene-wide, the per-layer stack,
+  // and a selected-effect copy that also serves single-layer scenes. Reuses the help modal.
+  function openPresetHelp() {
+    const tree =
+      "<b>preset</b>                    <i>a complete scene — snapshotScene()</i>\n" +
+      "├─ name\n" +
+      "├─ effect                  <i>the SELECTED layer's effect (a stable name)</i>\n" +
+      "├─ state·beat·pulse·plen   <i>selected effect's copy (single-layer fallback)</i>\n" +
+      "├─ extra                   <i>…its palette / seed / filters</i>\n" +
+      "├─ <b>cam</b>       { zoom, camrx, camry, camrz }\n" +
+      "├─ <b>sceneFx</b>   { on, vals }   <i>Scene filters: Bloom + screen FX</i>\n" +
+      "├─ <b>beatTune</b>  { fluxK, floor, refract, bands }\n" +
+      "├─ <b>ranges</b>    { slider min/max/step }   <i>scene-wide bounds</i>\n" +
+      "└─ <b>layers[ ]</b>                 <i>the stack, draw order (omitted if 1 layer)</i>\n" +
+      "   └─ layer  { effect, state, beat, pulse, plen,\n" +
+      "               palette, paletteRev, paletteBg,\n" +
+      "               seedPath, seedRide, seedPts,\n" +
+      "               ranges, filters, blend, gain, mute }";
+    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
+    html += "<h2>What a preset saves</h2>";
+    html += "<p>A preset is a <b>complete snapshot of one scene</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
+    html += '<pre class="help-tree">' + tree + "</pre>";
+    html += "<dl>";
+    html += "<dt>Scene-wide — one per preset</dt><dd>The camera, the Scene filters (Bloom + the screen FX), the beat-detector tuning, and the scene-wide slider bounds.</dd>";
+    html += "<dt>Per-layer — the stack</dt><dd>Each layer keeps its own effect, slider values, beat wiring, palette, cardioid orbit, its <em>own</em> slider bounds, filters, and how it blends into the stack (blend / gain / mute).</dd>";
+    html += "<dt>Selected-effect copy</dt><dd>The top-level effect and its values describe the selected layer — the whole story for a one-layer scene, and a fallback for a stack (which a one-layer preset omits entirely, so it stays byte-identical to how presets looked before stacking).</dd>";
+    html += "</dl>";
+    html += '<p class="help-intro">Effects are stored as stable names, not positions, so reordering or removing one never corrupts a saved scene. Deliberately <b>not</b> saved: the render resolution, audio on/off, and the running animation phase — a preset is the same <em>configuration</em>, not the same <em>frame</em>. Backup writes one such file per preset; Share packs the current scene into a link.</p>';
+    html += "</div>";
+    helpEl.innerHTML = html;
+    helpEl.classList.remove("hidden");
+  }
+  el("preset-help-btn").addEventListener("click", openPresetHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
 
   // ---- analytics (Google Analytics 4) ----
