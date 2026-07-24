@@ -4970,7 +4970,7 @@
     // them from the effect's stored/default extras on first use. They can't be seeded
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
     return { fx, state: null, beat: null, pulse: null, plen: null,
-      palette: null, paletteRev: null, paletteBg: null, filters: null,
+      palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
       seedPath: null, seedRide: null, seedPts: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
@@ -6153,6 +6153,7 @@
     // (restoreLayerUi). Transient, like `popped` itself: not serialized, shared or backed up.
     // (The Orbit editor is scene-wide sticky, not per layer — see setEffect / cardWanted.)
     L.popped = [...popped];
+    L.ranges = collectLayerRanges();  // this layer's custom slider bounds (applied by setEffect on select)
   }
   function thawItem(L) {
     if (L.state) states[L.fx] = mergeState(L.fx, L.state);
@@ -6543,15 +6544,36 @@
     if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
     RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
   });
-  function collectRanges() {              // { id: {min,max,step} } for bounds that differ from shipped
+  // A slider's BOUNDS are per-LAYER exactly when the slider itself is (effect params, incl.
+  // zoom) and scene-wide otherwise (camera rotation, palette cycle, banding, TTL, scene
+  // filters) — the same split as isSceneCtl / the value store, so a custom bound stays with
+  // the exact layer + effect + slider it tunes instead of being shared across every layer.
+  function rangeIsLayer(id) {
+    const c = CONTROLS.find(x => x.key === id.replace(/-(lo|hi)$/, ""));
+    return !!c && !isSceneCtl(c);
+  }
+  function rangesDiffering(want) {         // { id: {min,max,step} } for bounds ≠ shipped, filtered by want(id)
     const out = {};
     for (const id in RNG_ORIG) {
+      if (!want(id)) continue;
       const inp = el(id), o = RNG_ORIG[id];
       if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
         out[id] = { min: inp.min, max: inp.max, step: inp.step };
     }
     return out;
   }
+  function collectRanges() { return rangesDiffering(id => !rangeIsLayer(id)); }   // scene-wide bounds only (per-layer ones ride on the stack item)
+  function collectLayerRanges() { return rangesDiffering(rangeIsLayer); }         // this layer's custom bounds
+  function layerRangesOf(r) {              // the per-layer-slider entries of a scene-wide ranges map (old-scene migration)
+    const out = {};
+    if (r && typeof r === "object") for (const id in r) if (rangeIsLayer(id)) out[id] = r[id];
+    return out;
+  }
+  // The top-level `ranges` for a blob/preset: scene-wide bounds always, PLUS the sole layer's
+  // per-layer bounds when the stack holds one item (stackOut emits no `layers` then, so they
+  // would otherwise be lost — the same "single layer stores its per-layer bits at the top" rule
+  // as palette/filters). Multi-layer stacks carry each layer's bounds in layers[].ranges.
+  function sceneRanges() { return stack.length <= 1 ? { ...collectRanges(), ...collectLayerRanges() } : collectRanges(); }
   // Each pop-out box's range editor registers a sync fn here, so bounds loaded from
   // a blob (restore / share link) show up in the fields. Declared beside applyRanges
   // because applyRanges calls it, and applyBlob can run before the boxes are built.
@@ -6611,13 +6633,14 @@
   // shipped bounds first, so this is a REPLACE, not a merge: `r` is always the complete
   // set of non-default bounds (collectRanges only stores what differs), and switching to
   // a preset that widened nothing must narrow the previous preset's widening back.
-  function applyRanges(r) {
+  function applyRangesFor(r, want) {      // reset the wanted sliders to shipped, then apply r's bounds for them
     for (const id in RNG_ORIG) {
+      if (!want(id)) continue;
       const inp = el(id), o = RNG_ORIG[id];
       if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
-    if (!r || typeof r !== "object") { rngSyncAll(); return; }
-    for (const id in r) {
+    if (r && typeof r === "object") for (const id in r) {
+      if (!want(id)) continue;
       const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
@@ -6629,6 +6652,8 @@
     }
     rngSyncAll();                         // the in-box min/max/step fields follow
   }
+  function applyRanges(r) { applyRangesFor(r, id => !rangeIsLayer(id)); }   // scene-wide bounds (a REPLACE — see the old note)
+  function applyLayerRanges(r) { applyRangesFor(r, rangeIsLayer); }         // one layer's per-layer-slider bounds
   // After bounds change mid-session, re-clamp stray values and re-run each slider's
   // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
   // Every scene range slider, whether docked in the menu or popped into #breakout.
@@ -6709,7 +6734,7 @@
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted)
       cam: readCam(),                                // the global camera (not per effect)
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
-      ranges: collectRanges(),                       // custom slider min/max/step (only what differs)
+      ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
@@ -6904,6 +6929,7 @@
     // auto-hides on a non-cardioid layer, re-appearing when you return to a cardioid one.
     el("cardbtn").style.display = fx.cardioid ? "" : "none";
     cardOpen(!!fx.cardioid && cardWanted);
+    applyLayerRanges(stack[stackSel].ranges);   // this layer's custom slider bounds — BEFORE loadState, so its values validate against them
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
@@ -7444,7 +7470,7 @@
       cam: roundMap(readCam()),
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with a share link
       beatTune: collectBeatTune(),
-      ranges: collectRanges(),
+      ranges: sceneRanges(),
     };
     // A stacked scene sends its whole stack; a single-effect one sends nothing extra and
     // the payload is byte-identical to what it has always been. The per-effect maps above
@@ -7545,7 +7571,7 @@
       cam: readCam(),
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
       beatTune: collectBeatTune(),
-      ranges: collectRanges(),
+      ranges: sceneRanges(),
       extra: JSON.parse(JSON.stringify(extras[effect])),
       // Null (and dropped by JSON) whenever the stack holds one item, so a non-stacked
       // preset is exactly the shape it has always been.
@@ -7632,7 +7658,7 @@
   function stackItemOut(L) {
     return { effect: effectId(L.fx), state: L.state, beat: L.beat, pulse: L.pulse,
       plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
-      seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts,
+      seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
       filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
   function stackOut() {
@@ -7672,6 +7698,10 @@
       L.seedPts = r.seedPts != null ? seedPtsOk(r.seedPts) : (tex.seedPts != null ? seedPtsOk(tex.seedPts) : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
+      // Per-layer slider bounds. Absent (a scene saved before this) ⇒ migrate the scene's
+      // global ranges' per-layer entries onto every layer, so an old stacked scene keeps its
+      // widened sliders (all layers share them until you retune one per-layer).
+      L.ranges = (r.ranges && typeof r.ranges === "object") ? r.ranges : layerRangesOf(p.ranges);
       L.blend = blendOk(r.blend);
       L.gain = gainOk(r.gain);
       L.mute = !!r.mute;
@@ -7691,6 +7721,7 @@
       L.seedPts = tex.seedPts != null ? seedPtsOk(tex.seedPts) : null;
       const fset = filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
+      L.ranges = layerRangesOf(p.ranges);        // the single layer takes the scene's per-layer bounds
       out.push(L);
     }
     return out;
