@@ -4071,7 +4071,6 @@
     acc += dt;
 
     if (morphing || morphOnce) morphStep(now);   // auto-morph, or a one-shot preset-switch morph
-    if (camTween) camTweenStep(now);            // fly the camera to a new preset's angles
 
     cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     // Beats are detected off-thread of the render loop (audioTick, every HOP_MS);
@@ -4092,7 +4091,6 @@
     postTime += dt;                         // clock for the self-animating post/screen passes
     if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
     transStep(dt);                          // ...and so does the preset transition
-    camMat();                         // fold this frame's camera angles into the 2x2 map
     if (useGL) uploadPalette();       // push the (possibly morphed) palette
 
     // The sim accumulator is drained EVERY frame, not only in the fire branch —
@@ -5158,13 +5156,11 @@
   const SHARED_FILTER_KEYS = new Set(["burn", "bloom", "barrel", "scan", "scancount", "vignette", "grain"]);
   const isSceneCtl = c => c.host === "filter"
     ? SHARED_FILTER_KEYS.has(c.key)                       // filter params: per-layer unless shared
-    // Camera ROTATION (camrx/camry/camrz) is scene-wide — it maps the one finished composite.
-    // But `zoom` is PER-LAYER: the shader effects bake it into their own optical zoom (uZoom),
-    // so a stack of them needs each layer's own value. Left scene-wide, the global zoom followed
-    // whichever layer was selected and every baked-zoom layer zoomed with it — the "scene zooms
-    // when I pick a different layer" bug. Display zoom (non-baking effects) still reads the global
-    // via stackZoom(), forced to 1 whenever any live layer bakes its own — so nothing regresses.
-    : (c.host !== "fx" || (c.group === "camera" && c.key !== "zoom"));
+    // Every effect-slider (host "fx") is PER-LAYER — including the whole camera group (zoom AND
+    // camera X/Y/Z rotation). Each stacked effect samples its own space, so it holds its own
+    // camera; installStackItem pushes the selected/each layer's angles into camRX/RY/RZ before it
+    // draws. Scene-wide sliders (palette cycle, banding, TTL, the scene filters) are host ≠ "fx".
+    : (c.host !== "fx");
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
   CONTROLS.filter(c => c.type === "dual").forEach(c => bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c)));
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
@@ -5268,6 +5264,9 @@
       const st = L === stack[stackSel] ? animPhase[id] : L.anim[id];
       if (st) a.apply(st.out);
     }
+    camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
+                    // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
+                    // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
     if (EFFECTS[L.fx].cardioid) installSeedPath(L);
   }
   // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
@@ -6030,44 +6029,37 @@
     // Filter params first, so an effect that names one (e.g. its own Flame rise)
     // still wins. This is why adding a filter needs no edit to the 19 descriptors.
     for (const id in FILTER_DEFAULTS) st[id] = FILTER_DEFAULTS[id].slice();
+    // Camera X/Y/Z rotation is per-layer state now (was the scene-wide `cam`), so seed it into
+    // every effect exactly like a filter default — an effect that named it would still win below.
+    st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
-  // The camera lives outside states[e] (it is global — see camRX/camRY/camRZ), so
-  // it needs its own read/write of the thumbs. A preset records one, and applying
-  // a preset EASES the camera from wherever it is now to the preset's angles over
-  // CAM_TWEEN ms rather than snapping — so cutting between two presets with
-  // different cameras flies between them.
+  // Camera zoom + X/Y/Z rotation are PER-LAYER state now (see isSceneCtl / presetState) — each
+  // stacked effect carries its own angles in its state map, installed into camRX/RY/RZ by
+  // installStackItem before it draws. A preset still records ONE `cam` (readCam, the selected
+  // layer's thumbs) as a redundant mirror: it is the migration source for scenes saved before
+  // the camera went per-layer, and the field the preset probe pins. There is no camera tween any
+  // more — the camera snaps per layer like every other effect param.
   const CAM_KEYS = ["zoom", "camrx", "camry", "camrz"];
-  const CAM_TWEEN = 900;
-  let camTween = null;
   function readCam() {
     const c = {};
     for (const k of CAM_KEYS) c[k] = [+el(k + "-lo").value, +el(k + "-hi").value];
     return c;
   }
-  function writeCam(c) {
-    if (!c) return;
-    for (const k of CAM_KEYS) {
-      const v = c[k]; if (!Array.isArray(v)) continue;
-      el(k + "-lo").value = v[0]; el(k + "-hi").value = v[1];
-      el(k + "-lo").dispatchEvent(new Event("input"));
-      el(k + "-hi").dispatchEvent(new Event("input"));
-    }
-  }
-  function camOk(c) {          // a blob's camera, validated against the live bounds
-    if (!c || typeof c !== "object") return null;
-    const out = {};
-    for (const k of CAM_KEYS) {
-      const v = c[k], lo = el(k + "-lo"); if (!Array.isArray(v) || !lo) continue;
-      const mn = +lo.min, mx = +lo.max;
-      const a = +v[0], b = +v[1];
-      if (isFinite(a) && isFinite(b) && a >= mn && a <= mx && b >= mn && b <= mx) out[k] = [a, b];
-    }
-    return Object.keys(out).length ? out : null;
+  function migrateCam(p) {
+    // A scene saved before the camera was per-layer stored one scene-wide `cam`. Fold its
+    // camrx/camry/camrz onto every effect's / layer's state that doesn't already carry them, so
+    // an old scene loads with all layers sharing that camera and looks exactly as it did. A
+    // new scene's states already include the keys (presetState seeds them), so inject() skips.
+    if (!p || !p.cam || typeof p.cam !== "object") return;
+    const inject = st => { if (st) for (const k of ["camrx", "camry", "camrz"]) if (st[k] === undefined && Array.isArray(p.cam[k])) st[k] = p.cam[k].slice(); };
+    if (p.states) for (const k in p.states) inject(p.states[k]);
+    inject(p.state);
+    if (Array.isArray(p.layers)) for (const L of p.layers) if (L) inject(L.state);
   }
   // Scene filters (Bloom + the screen-stage FX) are scene-global — read/write their on/off
-  // and dual-slider values as one blob, exactly like the camera (readCam/writeCam/camOk).
+  // and dual-slider values as one blob (readSceneFx/writeSceneFx/sceneFxOk).
   function readSceneFx() {
     const vals = {};
     for (const k of SCENE_FILTER_KEYS) { const lo = el(k + "-lo"); if (lo) vals[k] = [+lo.value, +el(k + "-hi").value]; }
@@ -6096,26 +6088,6 @@
     }
     syncFilterUI();                  // the scene-filter checkboxes follow sceneOn
     bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;
-  }
-  function beginCamTween(to) {
-    const t = camOk(to); if (!t) return;
-    camTween = { from: readCam(), to: t, t0: 0 };
-  }
-  function camTweenStep(now) {
-    if (!camTween) return;
-    if (!camTween.t0) camTween.t0 = now;
-    const f = Math.min(1, (now - camTween.t0) / CAM_TWEEN);
-    const e = f * f * (3 - 2 * f);                    // smoothstep, like the slider drift
-    const mid = {};
-    for (const k of CAM_KEYS) {
-      const a = camTween.from[k], b = camTween.to[k];
-      if (!a || !b) continue;
-      mid[k] = [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e];
-    }
-    suppressPersist = true;                            // a tween frame is not an edit
-    writeCam(mid);
-    suppressPersist = false;
-    if (f >= 1) camTween = null;
   }
   function initStates() { EFFECTS.forEach((_, k) => states[k] = presetState(k)); }
   initStates();
@@ -6615,14 +6587,13 @@
       const o = RNG_ORIG[inp.id]; if (!o) continue;
       inp.min = o.min; inp.max = o.max; inp.step = o.step;
     }
-    // presetState merges the filter defaults, so a filter's params reset too — but it
-    // only knows keys the effect declares in `defaults`, and plenty of on-screen sliders
-    // are not among them. The camera is the case that bit: camrx/camry/camrz are in most
-    // effects' `params`, so they are right there with a ↺ next to them, yet deliberately
-    // absent from every `defaults` because they live in `cam`. presetState returned
-    // undefined, the branch below fell through, and the button silently reset the bounds
-    // and the beat chips while leaving the value exactly where it was. Fall back to the
-    // shipped default from the CONTROLS schema, which every slider has by construction.
+    // presetState merges the filter + camera defaults, so their params reset too — but it
+    // only knows keys the effect declares in `defaults` (plus those merged-in sets), and some
+    // on-screen sliders are none of those. Fall back to the shipped default from the CONTROLS
+    // schema, which every slider has by construction. (The camera was the case that bit here:
+    // camrx/camry/camrz sit in most effects' `params` but not their `defaults`; presetState now
+    // seeds them to [0,0] as per-layer state, so st[key] resolves — the fallback still covers
+    // any other params-but-not-defaults slider.)
     const st = presetState(effect);
     const v = st[key] !== undefined ? st[key] : ctlDefault(key);
     if (Array.isArray(v)) {
@@ -6748,7 +6719,7 @@
     return {
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted)
-      cam: readCam(),                                // the global camera (not per effect)
+      cam: readCam(),                                // redundant mirror of the selected layer's per-layer camera (migration source; camera rides in states/layers)
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
@@ -6772,6 +6743,7 @@
   function applyBlob(saved, sharing) {
     if (!saved) return;
     saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
+    migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
     if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
@@ -6803,7 +6775,8 @@
         }
       }
     }
-    if (saved.cam) writeCam(camOk(saved.cam));   // global camera (absent in pre-feature blobs → 0°)
+    // Camera is per-layer state now: it rides in saved.states / saved.layers (applied above /
+    // by installStack). A pre-per-layer scene's scene-wide `cam` was folded in by migrateCam.
     if (saved.sceneFx) writeSceneFx(sceneFxOk(saved.sceneFx));   // scene-global Scene filters (on/off + values)
     else {   // pre-feature blob: Scene filters lived per-effect — lift the selected effect's onto the global set
       const e = Number.isInteger(saved.effect) ? saved.effect : 0;
@@ -7578,12 +7551,13 @@
       beat: JSON.parse(JSON.stringify(beatStates[effect])),
       pulse: JSON.parse(JSON.stringify(pulseStates[effect])),
       plen: JSON.parse(JSON.stringify(plenStates[effect])),
-      // These three are globals, remembered per preset so a scene is a COMPLETE copy of
-      // what is on screen — the point of the exercise, since a preset is now something
-      // you hand to someone else. cam: camrx/y/z exist nowhere else. beatTune: different
-      // thresholds mean different beats mean a different animation. ranges: a value
-      // outside the recipient's slider bounds is silently clamped by the DOM, so a
-      // preset authored with a widened bound would quietly animate differently.
+      // beatTune + ranges are globals, remembered per preset so a scene is a COMPLETE copy of
+      // what is on screen — the point of the exercise, since a preset is now something you hand
+      // to someone else. beatTune: different thresholds mean different beats mean a different
+      // animation. ranges: a value outside the recipient's slider bounds is silently clamped by
+      // the DOM, so a preset authored with a widened bound would quietly animate differently.
+      // cam: a redundant mirror of the SELECTED layer's per-layer camera (the camera itself
+      // rides in state/layers now) — kept as the migration source for pre-per-layer scenes.
       cam: readCam(),
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
       beatTune: collectBeatTune(),
@@ -7766,12 +7740,12 @@
     // el.value, which the DOM silently clamps to the slider's current min/max — so a
     // stale bound would quietly rewrite the value we are about to install.
     applyRanges(p.ranges);
+    migrateCam(p);                                // pre-per-layer preset: fold its one `cam` into p.state / p.layers before they merge
     installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = mergeBeat(p.effect, p.beat);      // p.beat may predate a control → default it
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
-    beginCamTween(p.cam);                                   // fly, don't snap (no p.cam ⇒ stay put)
     if (p.sceneFx) writeSceneFx(sceneFxOk(p.sceneFx));       // scene-global Scene filters (absent ⇒ keep current)
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     // The stack, after applyRanges for the same reason the four maps are: every item's
