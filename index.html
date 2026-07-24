@@ -2742,6 +2742,17 @@
     const fx = extras[L.fx] || presetExtra(L.fx);
     return bgOk(fx.paletteBg);
   }
+  // Whether this layer draws its wireframe box (Tetrafyer). Same selected-vs-stored split as
+  // layerPalIndex. It used to be a per-EFFECT extra installed into a global by loadExtra, so
+  // it followed the SELECTED layer's effect: Tetrafyer ships showBox:false and every other
+  // effect ships true, which is exactly why the box appeared while editing another layer and
+  // vanished the moment you selected the Tetrafyer one.
+  function layerShowBox(L) {
+    if (L === stack[stackSel]) return showBoxChk.checked;
+    if (L.showBox != null) return !!L.showBox;
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    return fx.showBox !== false;
+  }
   // This layer's per-layer filter SET — the same selected-vs-stored split as layerPalIndex.
   // Falls back to the descriptor default (never the runtime extras[L.fx] — see
   // layerFeedbackChain), so a fresh layer gets fire+bloom / bloom rather than the last-used set.
@@ -4098,8 +4109,6 @@
     if (dt > 0.25) dt = 0.25;         // clamp after tab switches
     acc += dt;
 
-    if (morphing || morphOnce) morphStep(now);   // auto-morph, or a one-shot preset-switch morph
-
     cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     // Beats are detected off-thread of the render loop (audioTick, every HOP_MS);
     // here we only consume the latch and refresh the audio UI at frame rate.
@@ -4131,6 +4140,13 @@
     const renderOther = onePal && renderL !== stack[stackSel];
     renderFilters = renderOther ? layerFilterSet(renderL) : null;
     const retain = hasFeedback();     // ...so this reads the DRAWING layer's feedback filters
+    // Install the drawing layer BEFORE the morph/palette work below: banding (band/bandsize/
+    // banddim) and the palette cycle (palcycle/palhold) are per-layer keys now, and morphStep /
+    // composePalette read them out of the globals. This is also why morphStep moved down here
+    // from above cyclePresets — it must see this frame's values for the layer being drawn, not
+    // last frame's for whichever layer happens to be selected.
+    installStackItem(renderL);
+    if (morphing || morphOnce) morphStep(now);   // auto-morph, or a one-shot preset-switch morph
 
     // Palette: normally the selected layer's morphing ramp (composePalette's own defaults, so
     // this stays byte-identical whenever the drawing layer IS the selected one) — and banding
@@ -5070,7 +5086,7 @@
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
     return { fx, state: null, beat: null, pulse: null, plen: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
-      seedPath: null, seedRide: null, seedPts: null,
+      seedPath: null, seedRide: null, seedPts: null, showBox: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   let stack = [newStackItem(0)], stackSel = 0;
@@ -5239,13 +5255,18 @@
   // image, not a layer: the sim tick-rate `burn` (a shared clock), the glow `bloom`, and
   // the four "screen" filters (Scanlines / Vignette / Film grain / Barrel).
   const SHARED_FILTER_KEYS = new Set(["burn", "bloom", "barrel", "scan", "scancount", "vignette", "grain"]);
+  // Hosts whose sliders are PER-LAYER. "fx" is every effect slider, including the whole camera
+  // group (zoom AND camera X/Y/Z) — each stacked effect samples its own space, so it holds its
+  // own camera, pushed into camRX/RY/RZ by installStackItem before that layer draws.
+  // "band" (banding) and "pal" (palette cycle/hold) are here because their values ALREADY live
+  // per-effect in states[e], so loadState rewrote these supposedly scene-wide globals on every
+  // layer selection — selecting a layer visibly re-banded the scene and changed its cycle timing.
+  // They are per-layer in the render too: bakeLayerBytes bands each layer's own ramp and
+  // stepLayerPal runs each layer's own clock, so nothing had to change downstream.
+  const LAYER_HOSTS = new Set(["fx", "band", "pal"]);
   const isSceneCtl = c => c.host === "filter"
     ? SHARED_FILTER_KEYS.has(c.key)                       // filter params: per-layer unless shared
-    // Every effect-slider (host "fx") is PER-LAYER — including the whole camera group (zoom AND
-    // camera X/Y/Z rotation). Each stacked effect samples its own space, so it holds its own
-    // camera; installStackItem pushes the selected/each layer's angles into camRX/RY/RZ before it
-    // draws. Scene-wide sliders (palette cycle, banding, TTL, the scene filters) are host ≠ "fx".
-    : (c.host !== "fx");
+    : !LAYER_HOSTS.has(c.host);                           // TTL / transition / the scene filters stay scene-wide
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
   CONTROLS.filter(c => c.type === "dual").forEach(c => bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c)));
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
@@ -5352,6 +5373,7 @@
     camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
+    showBox = layerShowBox(L);   // ...and the box belongs to the LAYER, not to whatever is selected
     if (EFFECTS[L.fx].cardioid) installSeedPath(L);
   }
   // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
@@ -6540,7 +6562,11 @@
   function loadExtra(e) {
     const x = extras[e];
     suppressPersist = true;
-    showBoxChk.checked = x.showBox; showBox = x.showBox;
+    // NOT showBox: it is per-LAYER now (stageLayerExtras / applyLayerExtras install it from the
+    // layer), for the same reason the seed path is. Setting it here made the box follow the
+    // SELECTED layer's EFFECT — and since Tetrafyer ships showBox:false while every other effect
+    // ships true, the box appeared whenever you edited another layer and vanished the instant you
+    // selected the Tetrafyer one. extras[e].showBox survives as the per-effect fallback.
     randSeed = x.randSeed !== false;  // default on for presets/blobs saved before this existed
     randSeedChk.checked = randSeed;
     // The seed PATH is per-LAYER now (stageLayerExtras / applyLayerExtras install it from the
@@ -6559,6 +6585,7 @@
     L.paletteRev = paletteReverse;
     L.paletteBg = paletteBg;
     captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
+    L.showBox = showBoxChk.checked;   // the wireframe box is per-layer, not per-effect
     L.filters = FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id);
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
@@ -6572,6 +6599,10 @@
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
+    // The box, before setEffect's persist-freeze can capture the effect default over it —
+    // the same load-order trap the seed path documents below.
+    showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;
+    showBoxChk.checked = showBox;
     installSeedPath(L);              // seed globals = this layer's orbit path, before the persist-freeze
   }
   // Push a layer's palette + filters onto the live globals. Called after setEffect for
@@ -6596,6 +6627,8 @@
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
     if (el("palrev")) el("palrev").checked = paletteReverse;
     if (el("palbg")) el("palbg").value = paletteBg;
+    showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;   // per-layer, not per-effect
+    showBoxChk.checked = showBox;
     installSeedPath(L);              // seed globals = this layer's orbit path
     seedHistory = []; seedDragIdx = -1; seedHover = -1;   // fresh editing session per layer
     syncOrbitUI();                   // reflect this layer's mode / ride / points in the editor
@@ -7736,7 +7769,7 @@
     return { effect: effectId(L.fx), state: L.state, beat: L.beat, pulse: L.pulse,
       plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
-      filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      showBox: L.showBox, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -7773,6 +7806,7 @@
       L.seedPath = r.seedPath != null ? seedModeOk(r.seedPath) : (tex.seedPath != null ? seedModeOk(tex.seedPath) : null);
       L.seedRide = r.seedRide != null ? r.seedRide !== false : (tex.seedRide != null ? tex.seedRide !== false : null);
       L.seedPts = r.seedPts != null ? seedPtsOk(r.seedPts) : (tex.seedPts != null ? seedPtsOk(tex.seedPts) : null);
+      L.showBox = r.showBox != null ? !!r.showBox : (tex.showBox != null ? !!tex.showBox : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       // Per-layer slider bounds. Absent (a scene saved before this) ⇒ migrate the scene's
@@ -7796,6 +7830,7 @@
       L.seedPath = tex.seedPath != null ? seedModeOk(tex.seedPath) : null;
       L.seedRide = tex.seedRide != null ? tex.seedRide !== false : null;
       L.seedPts = tex.seedPts != null ? seedPtsOk(tex.seedPts) : null;
+      L.showBox = tex.showBox != null ? !!tex.showBox : null;
       const fset = filtersOk(tex.filters);
       L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
       L.ranges = layerRangesOf(p.ranges);        // the single layer takes the scene's per-layer bounds
