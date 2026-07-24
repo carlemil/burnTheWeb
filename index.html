@@ -4155,6 +4155,13 @@
     // the Cardioid debug panel silently tracks the wrong effect.
     installStackItem(stack[stackSel]);
     installPhase(stack[stackSel]);
+    // juliaPower is set ONLY by Multibrot's draw, so a multi-layer scene leaves the LAST
+    // Multibrot layer's power in this global — but the Orbit editor / cardLocus track the
+    // SELECTED layer. Re-derive it for that layer, same reason the two installs above run
+    // (installStackItem has just set mbPower to the selected layer's animated Power); gated
+    // on the editor being open so it never perturbs the render path otherwise. AnimeJulia /
+    // Burning Ship are d=2.
+    if (card && card.on) juliaPower = EFFECTS[stack[stackSel].fx].id === "multibrot" ? mbPower : 2;
     if (useGL) glRender();
     else render();
     creditDraw();                      // above the finished image — effects and filters both
@@ -6132,11 +6139,10 @@
     for (const id in animPhase) L.anim[id] = Object.assign({}, animPhase[id]);
     capturePhase(L);
     captureLayerExtras(L);            // this layer's palette + filters, from the live globals
-    // Remember this layer's open editing surface — which slider pop-out boxes and whether
-    // the Orbit editor were open — so re-selecting it restores them (restoreLayerUi).
-    // Transient, like `popped` itself: not serialized, shared or backed up.
+    // Remember this layer's open slider pop-out boxes, so re-selecting it restores them
+    // (restoreLayerUi). Transient, like `popped` itself: not serialized, shared or backed up.
+    // (The Orbit editor is scene-wide sticky, not per layer — see setEffect / cardWanted.)
     L.popped = [...popped];
-    L.cardOn = !!(card && card.on);   // `card` is a hoisted var (undefined during early startup)
   }
   function thawItem(L) {
     if (L.state) states[L.fx] = mergeState(L.fx, L.state);
@@ -6153,12 +6159,12 @@
     if (j === stackSel || !stack[j]) return;
     freezeItem(stack[stackSel]);
     stackSel = j;
-    const pops = stack[j].popped, card = stack[j].cardOn;   // read BEFORE setEffect's persist re-freezes and wipes them
+    const pops = stack[j].popped;    // read BEFORE setEffect's persist re-freezes and wipes it
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
     setEffect(stack[j].fx, false, false);   // reloads the maps for editing; enter=false ⇒ no reseed, the layer keeps running
     applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
-    restoreLayerUi(stack[j], pops, card);   // ...and re-open the pop-out boxes / Orbit editor it had open
+    restoreLayerUi(stack[j], pops);  // ...and re-open the pop-out boxes it had open
     syncStackUI();
   }
   function addStackItem(fx) {
@@ -6183,7 +6189,7 @@
     stageLayerExtras(L);
     setEffect(L.fx, false);
     applyLayerExtras(L);
-    restoreLayerUi(L, null, false);  // a fresh layer has none open ⇒ starts on a clean editing surface
+    restoreLayerUi(L, null);         // a fresh layer has no pop-out boxes ⇒ clean editing surface
     syncStackUI();
   }
   function removeStackItem(j) {
@@ -6191,12 +6197,12 @@
     stack.splice(j, 1);
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
-    const pops = stack[stackSel].popped, card = stack[stackSel].cardOn;   // before setEffect's persist wipes them
+    const pops = stack[stackSel].popped;   // before setEffect's persist wipes it
     thawItem(stack[stackSel]);
     stageLayerExtras(stack[stackSel]);
     setEffect(stack[stackSel].fx, false, false);   // re-selecting a surviving layer ⇒ no reseed
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
-    restoreLayerUi(stack[stackSel], pops, card);   // ...and its remembered pop-out boxes / Orbit editor
+    restoreLayerUi(stack[stackSel], pops);   // ...and its remembered pop-out boxes
     syncStackUI();
   }
   // ---- the layer list ----
@@ -6871,9 +6877,13 @@
     dockAll();                        // new scene ⇒ empty pop-out column (see Break-out boxes)
     // show only the controls this effect declares (rendered from the CONTROLS schema)
     refreshControlVisibility();       // effect params + the ticked filters' params
-    // The Cardioid debug view only means anything for a Mandelbrot-seeded effect.
+    // The Orbit editor only means anything for a Mandelbrot-seeded (cardioid) effect. It is a
+    // single, scene-wide sticky panel: `cardWanted` is the user's intent (button opens it, X /
+    // Esc close it), and every setEffect shows it iff the selected effect is cardioid AND wanted.
+    // So it stays open as you jump between cardioid layers (showing each layer's orbit) and
+    // auto-hides on a non-cardioid layer, re-appearing when you return to a cardioid one.
     el("cardbtn").style.display = fx.cardioid ? "" : "none";
-    if (!fx.cardioid) cardOpen(false);
+    cardOpen(!!fx.cardioid && cardWanted);
     loadState(i);                     // restore this effect's remembered sliders
     loadBeat(i);                      // ...its beat-toggle selection
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
@@ -7089,14 +7099,15 @@
   // AFTER setEffect, which dockAll()s the column and — for a non-cardioid effect — closes the
   // Orbit editor, so this rebuilds that layer's surface on a clean slate. Keys the layer no
   // longer uses stay in `popped` but are hidden by refreshBreakout, like the global set.
-  // `pops`/`card` are passed EXPLICITLY, captured before setEffect ran: setEffect ends in
+  // `pops` is passed EXPLICITLY, captured before setEffect ran: setEffect ends in
   // persist() → stackOut() → freezeItem(selected), which re-captures L.popped from the
   // now-empty live `popped` (dockAll just cleared it) and would wipe the stored value before
   // we read it — the same freeze-during-persist trap the layer-extras code documents.
-  function restoreLayerUi(L, pops, card) {
+  // (The Orbit editor is NOT restored here — it is a single, scene-wide sticky panel that
+  // setEffect shows/hides per `cardWanted` + whether the selected effect is cardioid, so it
+  // stays open as you jump between cardioid layers to compare their orbits.)
+  function restoreLayerUi(L, pops) {
     if (!L) return;
-    const fx = EFFECTS[L.fx];
-    cardOpen(!!card && !!(fx && fx.cardioid));        // Orbit editor: only meaningful for cardioid effects
     if (pops) for (const key of pops) if (el("ctl-" + key)) popCtl(key);
   }
 
@@ -8116,6 +8127,7 @@
   // evaluated, and calls cardOpen() — a const would still be in its temporal dead
   // zone and throw (same reason the old range editor's state was a `var`).
   var card = { on: false, cv: null, ctx: null, bg: null, bgPow: 0 };
+  var cardWanted = false;                      // the user's intent to have the Orbit editor open (see setEffect); var for the same TDZ reason as `card`
   var seedDrawing = null;                     // the in-progress freehand stroke (base-plane pts)
   var seedEdit = false;                        // freehand sub-mode: false = draw, true = drag points
   var seedDragIdx = -1;                        // control point being dragged (edit mode), -1 = none
@@ -8272,8 +8284,8 @@
     try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
   });
 
-  el("cardbtn").addEventListener("click", () => cardOpen(true));
-  el("card-close").addEventListener("click", () => cardOpen(false));
+  el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
+  el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });
 
   // ---- Orbit editor interaction ----
   // Canvas pixel → c-plane coordinate (accounts for the canvas being CSS-scaled to fit).
@@ -8481,7 +8493,7 @@
     if (e.key === "m" || e.key === "M") setPanel(!panel.classList.contains("hidden"));   // the one menu (dev tools live inside it now)
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
