@@ -646,7 +646,7 @@ only. `stackSel`, not `slot`: `slot` is already a local in both ping-pong loops.
 **`effect` survives as the SELECTED item's effect**, assigned only in `setEffect`. That
 is what keeps this feature small — every editor-side use (`shownKeys`,
 `refreshControlVisibility`, `refreshBreakout`, `resetControl`, `ctlOwner`, the cardioid
-button, `OG_PAGES`) keeps its exact meaning and needed no edit. Only the render path
+button) keeps its exact meaning and needed no edit. Only the render path
 reads `stack`. If `EFFECTS[effect]` ever reappears in a render path it will render the
 selected item's descriptor for *every* item — invisible whenever two items share an
 effect.
@@ -952,9 +952,7 @@ because any later slider drag *did* autosave and retroactively captured the chip
   full-precision scene 23252 → 646). base64url matters — `+` and `/` cost three
   characters each once percent-encoded. `?s=` (plain base64) is still emitted when
   `CompressionStream` is missing and **decoded forever**, so every link ever made keeps
-  working; `?z=` is checked first and the two are mutually exclusive. The `s/<n>/`
-  landing pages forward `location.search` **wholesale**, so `?z=` travels through them
-  unchanged. Values are rounded on encode to each control's declared `CONTROLS.step`
+  working; `?z=` is checked first and the two are mutually exclusive. Values are rounded on encode to each control's declared `CONTROLS.step`
   (`step="any"` sliders otherwise carry full-precision doubles, which more than doubles
   the payload) and then **clamped to the live bounds** — `applyBlob`'s `ok()` is a hard
   reject, so an out-of-range value would silently fall back to the seeded default.
@@ -998,17 +996,10 @@ because any later slider drag *did* autosave and retroactively captured the chip
   coincide today (every effect ships `beat: {}`, so no chip is armed out of the
   box), but the moment a descriptor arms one again, diffing against all-false
   would silently drop the user turning it *off*.
-- **Share URL routing.** `OG_PAGES` maps an effect **id** → its static unfurl
-  landing page `s/<n>/` (a numbered dir whose redirect forwards `?s=` to the app,
-  so social unfurls show that effect's `og/` image). Only `Sierpiński`/`tetrafyer`/
-  `animejulia`/`plasma` have one; `shareUrl()` links the app root for every other
-  effect, because `s/<n>/` would 404 and a 404 forwards nothing. (Each landing page is
-  `location.replace("../../" + location.search + location.hash)` — the *whole* query
-  string, so it carries `?z=` as happily as `?s=`.) **Add a
-  landing page + `og/` image ⇒ add its id to `OG_PAGES`**; it's keyed by id, not
-  index, so reordering the registry can't silently repoint the dirs. The landing
-  pages redirect **relatively** (`../../`) so a local checkout or fork stays put
-  instead of jumping to the live site.
+- **Share URL** links straight to the app root; the scene rides in the `?z=` (or legacy
+  `?s=`) param. (There were once per-effect `s/<n>/` unfurl landing pages with `og/`
+  preview images for four effects, routed via an `OG_PAGES` map — both the folders and
+  that routing were removed, so every share now points at the root.)
 - **Short link** (`#shorten`) POSTs the share URL to `tinyurl.com/api-create.php`
   and copies the result. Opt-in and separate from Share on purpose: it needs the
   network and hands the scene to a third party. TinyURL because it 301s

@@ -11,13 +11,8 @@
 <meta property="og:title" content="burnTheWeb — demoscene fractal fire">
 <meta property="og:description" content="Rising fractal fire, animated fractals, and classic demoscene effects — plasma, tunnel, kaleidoscope, copper bars and more — all reacting to your music. Tune it live and share the exact scene.">
 <meta property="og:url" content="https://carlemil.github.io/burnTheWeb/">
-<meta property="og:image" content="https://carlemil.github.io/burnTheWeb/og/animejulia.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="burnTheWeb — demoscene fractal fire">
 <meta name="twitter:description" content="Rising fractal fire, animated fractals, and classic demoscene effects — all reacting to your music.">
-<meta name="twitter:image" content="https://carlemil.github.io/burnTheWeb/og/animejulia.png">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -7028,7 +7023,7 @@
     effect = i;
     // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
     // editor-side use of it (shownKeys, refreshBreakout, resetControl, ctlOwner, the
-    // cardioid button, OG_PAGES) keeps its exact meaning; only the render path reads
+    // cardioid button) keeps its exact meaning; only the render path reads
     // the stack. Assigned in this one place, so the two cannot drift apart.
     stack[stackSel].fx = i;
     effectSel.value = i;              // the chooser follows, so selecting a layer shows its effect
@@ -7437,13 +7432,6 @@
     persist();
   });
 
-  // Which effects have a static unfurl landing page under s/<n>/. Keyed by the
-  // stable id, NOT the registry index — the dirs were written when the numbering
-  // happened to match, and reordering the registry must not repoint them. An
-  // effect that isn't here has no page: sharing it must link the app directly,
-  // because s/<n>/ would 404 and the 404 never forwards ?s= (that was the bug).
-  const OG_PAGES = { sirpinfyer: 0, tetrafyer: 1, animejulia: 2, plasma: 3 };
-
   // Beat chips dominate the share blob: every control × L/M/H for every effect,
   // almost all false — ~90% of the JSON, which pushed share URLs past 49k chars.
   // That's long enough that chat clients truncate the link (a truncated ?s= just
@@ -7597,16 +7585,12 @@
     const st = stackOut();
     if (st) blob.layers = st;
     const json = JSON.stringify(serializeBlob(blob));   // effect stored as a stable id
-    // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/. Route
-    // through the effect's landing page when it has one (so social unfurls show
-    // that effect's preview image); otherwise straight to the app. Those pages
-    // forward location.search wholesale, so ?z= travels through them unchanged.
+    // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/ — the link goes
+    // straight to it and the scene rides in the ?z= (or legacy ?s=) param.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
-    const og = OG_PAGES[EFFECTS[effect].id];
-    const base = dir + (og === undefined ? "" : "s/" + og + "/");
     const z = await zipToB64(json);
-    return z ? base + "?z=" + z
-             : base + "?s=" + btoa(unescape(encodeURIComponent(json)));   // no CompressionStream
+    return z ? dir + "?z=" + z
+             : dir + "?s=" + btoa(unescape(encodeURIComponent(json)));   // no CompressionStream
   }
 
   // Copy `text`, flashing the button's label. Clipboard API needs a secure
