@@ -1,0 +1,1104 @@
+    // ---- post-FX passes. All RGB, all read the palette-mapped image, so they
+    // behave as named (an Edge in palette-INDEX space would find edges where there
+    // is no visible one, and vice versa). None of them touch the retained heat. ----
+    const FS_PIXELATE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uBlock;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float b = max(1.0, uBlock);
+      vec2 px = floor(vUv * uSize / b) * b + b * 0.5;   // snap to block centres
+      o = vec4(texture(uSrc, px / uSize).rgb, 1.0);
+    }`;
+    const FS_POSTERIZE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uLevels;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float n = max(2.0, floor(uLevels));
+      vec3 c = texture(uSrc, vUv).rgb;
+      o = vec4(floor(c * n + 0.5) / n, 1.0);
+    }`;
+    // uMode: 1 = mirror X, 2 = mirror Y, 3 = both (kaleidoscope-lite)
+    const FS_MIRROR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uMode;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 uv = vUv;
+      int m = int(uMode + 0.5);
+      if (m == 1 || m == 3) uv.x = 0.5 - abs(uv.x - 0.5);
+      if (m == 2 || m == 3) uv.y = 0.5 - abs(uv.y - 0.5);
+      o = vec4(texture(uSrc, uv).rgb, 1.0);
+    }`;
+    // Separable-ish single-pass box/gauss: cheap, and the radius scales the step
+    // rather than the loop count (the bound is compile-time), so cap it in the UI.
+    const FS_SOFTEN = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uRadius; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 t = uRadius / uSize;
+      vec3 sum = vec3(0.0); float wsum = 0.0;
+      for (int y = -2; y <= 2; y++) {
+        for (int x = -2; x <= 2; x++) {
+          float w = exp(-float(x*x + y*y) / 4.0);
+          sum += texture(uSrc, vUv + vec2(float(x), float(y)) * t).rgb * w;
+          wsum += w;
+        }
+      }
+      vec3 blur = sum / wsum, base = texture(uSrc, vUv).rgb;
+      // uAmount > 0 sharpens (unsharp mask), < 0 blurs toward the average
+      o = vec4(clamp(mix(blur, base + (base - blur) * uAmount, step(0.0, uAmount)), 0.0, 1.0), 1.0);
+    }`;
+    const FS_EDGE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    float lum(vec2 uv){ vec3 c = texture(uSrc, uv).rgb; return dot(c, vec3(0.299, 0.587, 0.114)); }
+    void main(){
+      vec2 t = 1.0 / uSize;
+      float gx = lum(vUv + vec2(-t.x, -t.y)) + 2.0*lum(vUv + vec2(-t.x, 0.0)) + lum(vUv + vec2(-t.x, t.y))
+               - lum(vUv + vec2( t.x, -t.y)) - 2.0*lum(vUv + vec2( t.x, 0.0)) - lum(vUv + vec2( t.x, t.y));
+      float gy = lum(vUv + vec2(-t.x, -t.y)) + 2.0*lum(vUv + vec2(0.0, -t.y)) + lum(vUv + vec2( t.x, -t.y))
+               - lum(vUv + vec2(-t.x,  t.y)) - 2.0*lum(vUv + vec2(0.0,  t.y)) - lum(vUv + vec2( t.x,  t.y));
+      float e = clamp(sqrt(gx*gx + gy*gy) * uAmount, 0.0, 1.0);
+      o = vec4(mix(texture(uSrc, vUv).rgb, vec3(e), clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // Rotate uv about the centre by an amount that falls off with radius — the middle
+    // of the image spins and the rim stays put, so straight structure curls into it.
+    const FS_TWIST = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float a = uAmount * (1.0 - clamp(length(c) / 0.7, 0.0, 1.0));
+      float s = sin(a), co = cos(a);
+      c = mat2(co, -s, s, co) * c;
+      c.x /= asp;
+      o = vec4(texture(uSrc, clamp(c + 0.5, 0.0, 1.0)).rgb, 1.0);
+    }`;
+    // N-segment kaleidoscope fold. Mirror is the X/Y special case of this; here the
+    // wedge count is free, so it applies the Kaleidoscope effect's trick to any effect.
+    const FS_WEDGE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uSeg; uniform float uRot;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float seg = 6.28318531 / max(2.0, floor(uSeg + 0.5));
+      float a = atan(c.y, c.x) + uRot;
+      a = mod(a, seg);
+      a = abs(a - seg * 0.5);                     // fold the wedge onto itself
+      vec2 p = vec2(cos(a), sin(a)) * length(c);
+      p.x /= asp;
+      o = vec4(texture(uSrc, clamp(p + 0.5, 0.0, 1.0)).rgb, 1.0);
+    }`;
+    // Horizontal slice displacement. Rows are bucketed into slices, each slice hashed
+    // to an offset, and the hash re-rolls in steps of uTime so it stutters rather than
+    // sliding. Only the slices past the gate move, so the image tears instead of shearing.
+    const FS_GLITCH = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uRows; uniform float uTime;
+    in vec2 vUv; out vec4 o;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){
+      float slice = floor(vUv.y * uSize.y / max(1.0, uRows));
+      float t = floor(uTime * 12.0);
+      float h = hash(vec2(slice, t));
+      float gate = step(0.62, hash(vec2(slice + 31.7, t)));
+      float off = (h - 0.5) * 2.0 * uAmount * gate;
+      o = vec4(texture(uSrc, vec2(clamp(vUv.x + off, 0.0, 1.0), vUv.y)).rgb, 1.0);
+    }`;
+    // Rotated dot screen: each cell's dot radius grows with the local luminance, the
+    // way a printed halftone does. Posterize flattens the ramp into bands; this one
+    // keeps the ramp and spends texture on it instead.
+    const FS_HALFTONE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uDot; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      float s = sin(0.4), co = cos(0.4);
+      vec2 p = mat2(co, -s, s, co) * (vUv * uSize) / max(1.5, uDot);
+      float d = length(fract(p) - 0.5) * 2.0;
+      float cover = smoothstep(d + 0.35, d - 0.35, sqrt(l) * 1.25);
+      o = vec4(mix(c, c * cover, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // Solarize: invert everything above a luminance level, blended in by uAmount.
+    const FS_THRESH = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uLevel; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      vec3 s = (l > uLevel) ? (1.0 - c) : c;
+      o = vec4(mix(c, s, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // Radial RGB split — the channels are sampled at spreading offsets, so the image
+    // fringes cyan/red toward the corners the way a cheap lens does.
+    const FS_CHROMA = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 d = (vUv - 0.5) * uAmount * 0.02;
+      float r = texture(uSrc, clamp(vUv + d, 0.0, 1.0)).r;
+      float g = texture(uSrc, vUv).g;
+      float b = texture(uSrc, clamp(vUv - d, 0.0, 1.0)).b;
+      o = vec4(r, g, b, 1.0);
+    }`;
+    // Feedback: fade the retained heat toward black each tick (phosphor trails).
+    const FS_FADE = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){ o = vec4(texture(uHeat, vUv).r * uKeep, 0.0, 0.0, 1.0); }`;
+    // Feedback: resample the retained heat through an affine warp, then decay it.
+    // ONE program serving three filters — Echo (uShift), Zoom feedback (uScale) and
+    // Swirl (uSpin) are the same operation with the other two terms at identity, so
+    // they share a pass rather than triplicating it. Sampling is bilinear via a
+    // sampler object (see glSampLin): the heat textures are NEAREST because the fire
+    // propagation wants exact texels, and a sub-pixel warp read through NEAREST
+    // quantises into chunky rings instead of drifting smoothly.
+    // Off-buffer reads return 0 rather than clamping, or the edge row smears inward.
+    const FS_HWARP = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform vec2 uSize;
+    uniform vec2 uShift; uniform float uScale; uniform float uSpin; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5;
+      c.x *= asp;                                  // work in a square space so a spin is round
+      c /= max(0.001, uScale);
+      float s = sin(uSpin), co = cos(uSpin);
+      c = mat2(co, -s, s, co) * c;
+      c.x /= asp;
+      vec2 uv = c + 0.5 + uShift;
+      float h = 0.0;
+      if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) h = texture(uHeat, uv).r;
+      o = vec4(h * uKeep, 0.0, 0.0, 1.0);
+    }`;
+    // Feedback: 9-tap blur of the retained heat — it bleeds sideways instead of only
+    // rising, which turns Fire's flames into smoke.
+    const FS_DIFFUSE = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform vec2 uSize; uniform float uRadius; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 t = uRadius / uSize;
+      float sum = 0.0, wsum = 0.0;
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          float w = (x == 0 && y == 0) ? 4.0 : ((x == 0 || y == 0) ? 2.0 : 1.0);
+          sum += texture(uHeat, vUv + vec2(float(x), float(y)) * t).r * w;
+          wsum += w;
+        }
+      }
+      o = vec4(sum / wsum * uKeep, 0.0, 0.0, 1.0);
+    }`;
+    const FS_PAL = `#version 300 es
+    precision highp float;
+    uniform sampler2D uHeat; uniform sampler2D uPal;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float h = texture(uHeat, vUv).r;
+      float idx = (floor(h*255.0 + 0.5) + 0.5) / 256.0;
+      o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, 1.0);
+    }`;
+    // zoom about centre (fire modes); Julia passes zoom=1
+    // Preset transitions. One pass, one mode uniform, run only while a transition is
+    // live — between the zoom pass and the glow, so the blend picks up the bloom too
+    // rather than having a frozen glow crossfade against a live one.
+    // uT is 0→1 across the transition; uK = 1-|2t-1| is the "how far from the ends"
+    // hump every mid-point effect (dip, flash, pixelate, blur) rides.
+    const FS_TRANS = `#version 300 es
+    precision highp float;
+    uniform sampler2D uNew, uPrev; uniform float uT; uniform int uMode; uniform vec2 uSize;
+    in vec2 vUv; out vec4 o;
+    vec3 boxBlur(sampler2D t, vec2 uv, float r) {
+      if (r < 0.6) return texture(t, uv).rgb;
+      vec2 px = r / uSize;
+      vec3 c = vec3(0.0);
+      for (int y = -2; y <= 2; y++)
+        for (int x = -2; x <= 2; x++)
+          c += texture(t, uv + vec2(float(x), float(y)) * px).rgb;
+      return c / 25.0;
+    }
+    void main(){
+      float t = clamp(uT, 0.0, 1.0);
+      float k = 1.0 - abs(2.0 * t - 1.0);        // 0 at the ends, 1 at the midpoint
+      float half_ = step(0.5, t);                 // 0 = still showing the old scene
+      vec3 a = texture(uPrev, vUv).rgb, b = texture(uNew, vUv).rgb, c;
+      if (uMode == 0) {                           // crossfade
+        c = mix(a, b, t);
+      } else if (uMode == 1) {                    // dip to black through the middle
+        c = mix(a, b, half_) * (1.0 - k);
+      } else if (uMode == 2) {                    // flash
+        c = mix(a, b, half_) + vec3(k * k);
+      } else if (uMode == 3) {                    // pixelate through
+        float blk = 1.0 + 46.0 * k * k;
+        vec2 g = uSize / blk;
+        vec2 uv = (floor(vUv * g) + 0.5) / g;
+        c = mix(texture(uPrev, uv).rgb, texture(uNew, uv).rgb, half_);
+      } else if (uMode == 4) {                    // blur through
+        float r = 7.0 * k * k;
+        c = mix(boxBlur(uPrev, vUv, r), boxBlur(uNew, vUv, r), half_);
+      } else if (uMode == 5) {                    // wipe, soft edge
+        float e = smoothstep(vUv.x - 0.14, vUv.x + 0.14, t * 1.28 - 0.14);
+        c = mix(a, b, e);
+      } else {                                    // iris
+        float d = length((vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0)) / 0.75;
+        c = mix(a, b, smoothstep(d - 0.2, d + 0.2, t * 1.4 - 0.2));
+      }
+      o = vec4(c, 1.0);
+    }`;
+    const FS_ZOOM = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 uv = (vUv - 0.5) / uZoom + 0.5;
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { o = vec4(0.0,0.0,0.0,1.0); return; }
+      o = vec4(texture(uSrc, uv).rgb, 1.0);
+    }`;
+    // separable Gaussian (sigma≈4px ⇒ 2*sigma^2=32), matches CSS blur(4px)
+    const FS_BLUR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uDir;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 acc = vec3(0.0); float wsum = 0.0;
+      for (int i = -12; i <= 12; i++) {
+        float w = exp(-float(i*i)/32.0);
+        acc += texture(uSrc, vUv + uDir*float(i)).rgb * w;
+        wsum += w;
+      }
+      o = vec4(acc/wsum, 1.0);
+    }`;
+    // composite: base + 0.35*glow (additive), flip v so fire row 0 is on top
+    const FS_COMP = `#version 300 es
+    precision highp float;
+    uniform sampler2D uScene; uniform sampler2D uGlow; uniform float uBloom;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+      vec3 base = texture(uScene, uv).rgb;
+      vec3 glow = texture(uGlow, uv).rgb;
+      o = vec4(base + glow*uBloom, 1.0);
+    }`;
+    // ---- screen stage: runs on the composited image, at DISPLAY resolution -------
+    // These four are the "it is a screen you are looking at" layer, and they only read
+    // right on top of the bloom — a vignette under an additive glow gets lit back up,
+    // and scanlines under it bloom into mush. The post chain runs before the composite
+    // by design, so they cannot be post filters; hence the third stage.
+    const FS_BARREL = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 c = vUv - 0.5;
+      vec2 uv = c * (1.0 + uAmount * dot(c, c) * 4.0) + 0.5;
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
+      o = vec4(texture(uSrc, uv).rgb, 1.0);
+    }`;
+    const FS_SCAN = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount; uniform float uCount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float s = 0.5 + 0.5 * cos(vUv.y * max(1.0, uCount) * 6.28318531);
+      o = vec4(texture(uSrc, vUv).rgb * (1.0 - uAmount * s), 1.0);
+    }`;
+    const FS_VIGNETTE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      float d = length((vUv - 0.5) * vec2(asp, 1.0));
+      float v = 1.0 - uAmount * smoothstep(0.35, 0.9, d);
+      o = vec4(texture(uSrc, vUv).rgb * v, 1.0);
+    }`;
+    const FS_GRAIN = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uTime;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float n = fract(sin(dot(vUv * uSize + uTime * 137.0, vec2(12.9898, 78.233))) * 43758.5453);
+      o = vec4(clamp(texture(uSrc, vUv).rgb + (n - 0.5) * uAmount, 0.0, 1.0), 1.0);
+    }`;
+
+    glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
+    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
+    glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
+    glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend"]);
+    glProg.julia = camProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
+    glProg.plasma = camProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
+    glProg.tunnel = camProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
+    glProg.metaball = camProg(VS_QUAD, FS_METABALL, ["uSize", "uTime", "uCount", "uRadius", "uGain", "uZoom"]);
+    glProg.burning = camProg(VS_QUAD, FS_BURNING, ["uSize", "uC", "uSpan"]);
+    glProg.kaleido = camProg(VS_QUAD, FS_KALEIDO, ["uSize", "uTime", "uSeg", "uRot", "uZoom"]);
+    glProg.rotozoom = camProg(VS_QUAD, FS_ROTOZOOM, ["uSize", "uAngle", "uScale", "uTile", "uZoom"]);
+    glProg.munch = camProg(VS_QUAD, FS_MUNCH, ["uSize", "uTime", "uScale", "uMask", "uZoom"]);
+    glProg.moire = camProg(VS_QUAD, FS_MOIRE, ["uSize", "uTime", "uFreq", "uMix", "uZoom"]);
+    glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
+    glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
+    glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.polygon = camProg(VS_QUAD, FS_POLYGON, ["uSize", "uSpin", "uSides", "uRad", "uThick", "uZoom"]);
+    glProg.shapegrid = camProg(VS_QUAD, FS_SHAPEGRID, ["uSize", "uTime", "uCells", "uDot", "uSquare", "uPulse", "uZoom"]);
+    glProg.concentric = camProg(VS_QUAD, FS_CONCENTRIC, ["uSize", "uTime", "uSides", "uCount", "uThick", "uSpin", "uZoom"]);
+    glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
+    glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
+    glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
+    glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
+    glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
+    glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
+    glProg.twist = makeProg(VS_QUAD, FS_TWIST, ["uSrc", "uSize", "uAmount"]);
+    glProg.wedge = makeProg(VS_QUAD, FS_WEDGE, ["uSrc", "uSize", "uSeg", "uRot"]);
+    glProg.glitch = makeProg(VS_QUAD, FS_GLITCH, ["uSrc", "uSize", "uAmount", "uRows", "uTime"]);
+    glProg.halftone = makeProg(VS_QUAD, FS_HALFTONE, ["uSrc", "uSize", "uDot", "uAmount"]);
+    glProg.thresh = makeProg(VS_QUAD, FS_THRESH, ["uSrc", "uLevel", "uAmount"]);
+    glProg.chroma = makeProg(VS_QUAD, FS_CHROMA, ["uSrc", "uAmount"]);
+    glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
+    glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
+    glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);
+    glProg.grain = makeProg(VS_QUAD, FS_GRAIN, ["uSrc", "uSize", "uAmount", "uTime"]);
+    glProg.hwarp = makeProg(VS_QUAD, FS_HWARP, ["uHeat", "uSize", "uShift", "uScale", "uSpin", "uKeep"]);
+    glProg.diffuse = makeProg(VS_QUAD, FS_DIFFUSE, ["uHeat", "uSize", "uRadius", "uKeep"]);
+    glProg.fade = makeProg(VS_QUAD, FS_FADE, ["uHeat", "uKeep"]);
+    // Bilinear view of the heat textures for the warp feedback filters, without
+    // changing the textures themselves (the fire propagation reads exact texels and
+    // must stay NEAREST). Bound on unit 0 for the warp pass only, then unbound —
+    // a sampler sticks to the unit, not the program.
+    glSampLin = gl.createSampler();
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
+    glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
+    glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
+    glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
+    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow", "uBloom"]);
+
+    glTex.heat = [
+      createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE),
+      createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.heat = [createFbo(glTex.heat[0]), createFbo(glTex.heat[1])];
+    glTex.native = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.native = createFbo(glTex.native);
+    glTex.scene = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.scene = createFbo(glTex.scene);
+    glTex.post = [
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    // Screen-stage ping-pong. Unlike every other buffer here these are DISPLAY sized,
+    // not fire-grid sized: scanlines and grain are about the screen you are looking at,
+    // and rendering them at fw×fh then upscaling would blur them into nothing.
+    // Scratch heat for one stack item. Each item renders here in isolation and is then
+    // composited into the shared buffer by glMergeLayer, so items can't overwrite one
+    // another the way two glShaderDraw calls into the shared buffer used to.
+    glTex.layer = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    glFbo.layer = createFbo(glTex.layer);
+    // Per-layer state for multi-layer stacks (see the frame loop / glLayerBeginHeat).
+    // Each slot gets its own persistent heat pair (so it retains its own fire/feedback),
+    // its own 256×1 palette LUT, so every stacked effect keeps its own colours. The
+    // colour accumulator ping-pongs (glTex.color[0/1]); layers blend into it in OKLab.
+    glTex.heatL = []; glFbo.heatL = []; glTex.palL = [];
+    for (let i = 0; i < STACK_MAX; i++) {
+      const a = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+      const b = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+      glTex.heatL.push([a, b]);
+      glFbo.heatL.push([createFbo(a), createFbo(b)]);
+      const p = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, p);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      glTex.palL.push(p);
+    }
+    glTex.color = [
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.color = [createFbo(glTex.color[0]), createFbo(glTex.color[1])];
+    // One layer's palette-mapped colour, before its own post-filter chain runs on it.
+    glTex.layerCol = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.layerCol = createFbo(glTex.layerCol);
+    glTex.screen = [
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.screen = [createFbo(glTex.screen[0]), createFbo(glTex.screen[1])];
+    // The outgoing frame, frozen at the moment of the switch (see transBegin).
+    glTex.prev = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.prev = createFbo(glTex.prev);
+    glFbo.post = [createFbo(glTex.post[0]), createFbo(glTex.post[1])];
+    glTex.blur1 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.blur1 = createFbo(glTex.blur1);
+    glTex.blur2 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.blur2 = createFbo(glTex.blur2);
+
+    glTex.pal = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, glTex.pal);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+    quadVao = gl.createVertexArray();
+    ptVao = gl.createVertexArray();
+    ptVbo = gl.createBuffer();
+    gl.bindVertexArray(ptVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, ptVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, glPts.byteLength, gl.DYNAMIC_DRAW);
+    ptVboCap = glPts.byteLength;
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    glReady = true;
+  }
+
+  function glResize() {
+    resizeTex(glTex.heat[0], fw, fh);
+    resizeTex(glTex.heat[1], fw, fh);
+    resizeTex(glTex.native, fw, fh);
+    resizeTex(glTex.scene, fw, fh);
+    resizeTex(glTex.blur1, fw, fh);
+    resizeTex(glTex.blur2, fw, fh);
+    resizeTex(glTex.post[0], fw, fh);
+    resizeTex(glTex.post[1], fw, fh);
+    resizeTex(glTex.prev, fw, fh);
+    resizeTex(glTex.layer, fw, fh);
+    for (let i = 0; i < STACK_MAX; i++) {
+      resizeTex(glTex.heatL[i][0], fw, fh);
+      resizeTex(glTex.heatL[i][1], fw, fh);
+    }
+    resizeTex(glTex.color[0], fw, fh);
+    resizeTex(glTex.color[1], fw, fh);
+    resizeTex(glTex.layerCol, fw, fh);
+    // Display-sized, not fire-sized — see the declaration. Guarded because glResize
+    // can run before the canvas has been laid out.
+    const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
+    resizeTex(glTex.screen[0], sw, sh);
+    resizeTex(glTex.screen[1], sw, sh);
+  }
+  function glClearHeat() {
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 1);
+    for (let i = 0; i < 2; i++) { bindFbo(glFbo.heat[i], fw, fh); gl.clear(gl.COLOR_BUFFER_BIT); }
+    curHeat = 0; pendingDst = 0;
+  }
+  function uploadPalette() {
+    if (!paletteDirty) return;   // skip the repack+upload when the palette is unchanged
+    for (let i = 0; i < 256; i++) {
+      const p = palette[i], j = i * 4;
+      palBytes[j] = p & 255; palBytes[j + 1] = (p >> 8) & 255;
+      palBytes[j + 2] = (p >> 16) & 255; palBytes[j + 3] = 255;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, glTex.pal);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palBytes);
+    paletteDirty = false;
+  }
+
+  // Open a heat tick: run the whole feedback chain (Fire's propagation, Fade's decay,
+  // …) from the live heat into the other buffer, ping-ponging one pass per filter, and
+  // leave the final FBO bound so the effect's fresh output can be MAX-blended into it.
+  // Pairs with glEndHeat, which is the ONLY place curHeat flips for the point path —
+  // keeping the flip in one place is what makes that path safe to reason about.
+  //
+  // `pendingDst` is set to wherever the LAST pass landed, not a fixed 1 - curHeat, so
+  // any number of passes works without a parity fixup: with two filters the result ends
+  // up back in the buffer it started in. Getting this backwards only misbehaves when two
+  // feedback filters are ticked at once, so it is easy to ship broken.
+  function glBeginHeat() {
+    const chain = activeFilters().filter(f => f.stage === "feedback" && f.glFeedback);
+    let src = curHeat, dst = 1 - curHeat;
+    gl.disable(gl.BLEND);
+    // No feedback filter ⇒ nothing carries over, so start from black. Clearing is
+    // essential: skipping it would leave 2-frames-stale heat in this buffer.
+    if (!chain.length) {
+      bindFbo(glFbo.heat[dst], fw, fh);
+      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      pendingDst = dst;
+      return;
+    }
+    for (const f of chain) {
+      bindFbo(glFbo.heat[dst], fw, fh);   // bind before sampling: src is never the target
+      f.glFeedback(glTex.heat[src]);
+      src = dst; dst = 1 - dst;
+    }
+    pendingDst = src;             // FBO stays bound; the effect draws into it next
+  }
+  // The shared warp pass behind Echo / Zoom feedback / Swirl. `dist` is in heat
+  // pixels, the angles in degrees. LINEAR is bound for the duration via a sampler
+  // object and released after — it rides the texture *unit*, so leaving it on would
+  // silently soften the next thing sampled there (the fire propagation, notably).
+  function glWarpFeedback(src, dist, angDeg, scale, spinDeg, keep) {
+    const P = glProg.hwarp, a = angDeg * Math.PI / 180;
+    gl.useProgram(P.p);
+    bindTexUnit(0, src);
+    gl.bindSampler(0, glSampLin);
+    gl.uniform1i(P.u.uHeat, 0);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    gl.uniform2f(P.u.uShift, -Math.cos(a) * dist / fw, -Math.sin(a) * dist / fh);
+    gl.uniform1f(P.u.uScale, scale);
+    gl.uniform1f(P.u.uSpin, spinDeg * Math.PI / 180);
+    gl.uniform1f(P.u.uKeep, keep);
+    drawQuad();
+    gl.bindSampler(0, null);
+  }
+  // Canvas2D mirrors of the four warp/diffuse feedback filters. They exist so the
+  // fallback keeps its retention: a feedback filter marked cpuOk:false would leave
+  // the buffer with nothing to carry heat over, which is a far bigger visual change
+  // than a greyed-out post filter. Row order differs from GL's texture space, so a
+  // given angle drags the opposite way vertically on this path — self-consistent
+  // either way, since it is a direction knob feeding back into itself.
+  let warpBuf = null;
+  function warpScratch() {
+    if (!warpBuf || warpBuf.length !== fire.length) warpBuf = new Uint8Array(fire.length);
+    warpBuf.set(fire);
+    return warpBuf;
+  }
+  function heatWarpCPU(dist, angDeg, scale, spinDeg, keep) {
+    const s = warpScratch(), a = angDeg * Math.PI / 180, sp = spinDeg * Math.PI / 180;
+    const asp = fw / fh, sn = Math.sin(sp), cs = Math.cos(sp), sc = Math.max(0.001, scale);
+    const shx = -Math.cos(a) * dist / fw, shy = -Math.sin(a) * dist / fh;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        let cx = ((x + 0.5) / fw - 0.5) * asp, cy = (y + 0.5) / fh - 0.5;
+        cx /= sc; cy /= sc;
+        const rx = cs * cx - sn * cy, ry = sn * cx + cs * cy;
+        const u = rx / asp + 0.5 + shx, v = ry + 0.5 + shy;
+        let h = 0;
+        if (u >= 0 && u <= 1 && v >= 0 && v <= 1) h = bilinearHeat(s, u * fw - 0.5, v * fh - 0.5);
+        fire[y * fw + x] = h * keep;
+      }
+    }
+  }
+  function bilinearHeat(buf, fx, fy) {
+    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx - x0, ty = fy - y0;
+    const xa = Math.min(fw - 1, Math.max(0, x0)), xb = Math.min(fw - 1, Math.max(0, x0 + 1));
+    const ya = Math.min(fh - 1, Math.max(0, y0)), yb = Math.min(fh - 1, Math.max(0, y0 + 1));
+    const t = buf[ya * fw + xa] + (buf[ya * fw + xb] - buf[ya * fw + xa]) * tx;
+    const b = buf[yb * fw + xa] + (buf[yb * fw + xb] - buf[yb * fw + xa]) * tx;
+    return t + (b - t) * ty;
+  }
+  function heatDiffuseCPU(rad, keep) {
+    const s = warpScratch(), r = Math.max(1, Math.round(rad));
+    for (let y = 0; y < fh; y++) {
+      const yu = Math.max(0, y - r), yd = Math.min(fh - 1, y + r);
+      for (let x = 0; x < fw; x++) {
+        const xl = Math.max(0, x - r), xr = Math.min(fw - 1, x + r);
+        const sum = s[y * fw + x] * 4
+          + (s[y * fw + xl] + s[y * fw + xr] + s[yu * fw + x] + s[yd * fw + x]) * 2
+          + s[yu * fw + xl] + s[yu * fw + xr] + s[yd * fw + xl] + s[yd * fw + xr];
+        fire[y * fw + x] = sum / 16 * keep;
+      }
+    }
+  }
+  // Draw the collected stamps into the currently bound FBO with MAX blending.
+  // Split out of glDrawPoints so the credits can stamp over a shader effect's heat
+  // without touching the curHeat flip that the point path owns.
+  function glBlitPoints(blend, gain) {
+    if (glPtCount > 0) {
+      gl.useProgram(glProg.pts.p);
+      gl.uniform2f(glProg.pts.u.uSize, fw, fh);
+      gl.uniform1f(glProg.pts.u.uGain, gain === undefined ? 1 : gain);
+      gl.bindVertexArray(ptVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, ptVbo);
+      const need = glPtCount * 3 * 4;
+      if (need > ptVboCap) { gl.bufferData(gl.ARRAY_BUFFER, glPts.byteLength, gl.DYNAMIC_DRAW); ptVboCap = glPts.byteLength; }
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, glPts, 0, glPtCount * 3);
+      gl.enable(gl.BLEND);
+      if (blend === "add") { gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE); }
+      else gl.blendEquation(gl.MAX);      // heat = max(existing, stamp)
+      gl.drawArrays(gl.POINTS, 0, glPtCount);
+      gl.disable(gl.BLEND);
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.blendFunc(gl.ONE, gl.ZERO);
+    }
+  }
+  function glDrawPoints() {
+    glBlitPoints();
+    curHeat = pendingDst;
+  }
+  // Close a heat tick. Split out from glDrawPoints so the flip has a name that
+  // isn't about points — a shader effect will inject its output here too.
+  function glEndHeat() { glDrawPoints(); }
+  // Generic per-effect fragment-shader pass: replace the current heat by running
+  // glProg[name] over a fullscreen quad. Every effect shader takes uSize; `setU` sets
+  // the rest. A shader effect = an FS_* source + `glProg.<id>` registered in initGL +
+  // a descriptor `draw` hook that calls this (see glJulia/glPlasma below for the shape).
+  // It always OVERWRITES the per-item scratch buffer with blending off, and never
+  // touches the shared heat buffer — retention and compositing are the frame's job
+  // (see glMergeLayer), not the effect's. This is the simpler of the two paths it used
+  // to have, so the 12 effect shaders are unchanged; it also means two shader effects
+  // in one frame no longer destroy each other, which is what they did when neither
+  // had a feedback filter to force MAX blending on.
+  function glShaderDraw(name, setU) {
+    bindFbo(glFbo.layer, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg[name];
+    gl.useProgram(P.p);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    if (P.u.uCam) { gl.uniform3f(P.u.uCam, camRX, camRY, camRZ); gl.uniform2f(P.u.uCamSize, fw, fh); }
+    setU(P.u);
+    drawQuad();
+  }
+  // Composite the scratch buffer into the shared heat, with this item's blend and gain.
+  // Restores all THREE pieces of blend state on the way out — glPostChain/postPass
+  // assume BLEND is off and never set it, and "add" is the only thing in the file that
+  // touches blendFunc, so nothing else would put it back.
+  function glMergeLayer(blend, gain) {
+    bindFbo(glFbo.heat[curHeat], fw, fh);
+    const P = glProg.merge;
+    gl.useProgram(P.p);
+    bindTexUnit(0, glTex.layer); gl.uniform1i(P.u.uSrc, 0);
+    gl.uniform1f(P.u.uGain, gain);
+    gl.enable(gl.BLEND);
+    if (blend === "add") { gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE); }
+    else gl.blendEquation(gl.MAX);
+    drawQuad();
+    gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ZERO);
+  }
+  // Clear the CURRENT heat buffer without flipping. Not glBeginHeat's no-chain branch,
+  // which clears the *other* buffer and sets pendingDst — using that here would flip
+  // the ping-pong an extra time per frame and desync the parity heatprobe pins.
+  function glClearHeatCurrent() {
+    bindFbo(glFbo.heat[curHeat], fw, fh);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+  // ---- per-layer colour compositing (multi-layer stacks) ---------------------
+  // A single-layer scene renders exactly as it always has (shared heat → one palette
+  // in glRender). With TWO OR MORE live layers, each layer is coloured with its OWN
+  // palette and the results are blended in OKLab (glOkMerge), so every stacked effect
+  // keeps its own colours instead of the whole stack sharing the selected layer's.
+  // The pieces:
+  //   • a persistent heat pair + feedback PER layer (glTex.heatL[slot]) — each effect
+  //     retains its own fire/trails, using that layer's own filter set (L.filters);
+  //   • an independent palette-morph clock per layer (layerPal[slot]), so layers cycle
+  //     on their own schedules drawn from the shared Palette cycle / hold sliders;
+  //   • an RGBA8 ping-pong accumulator (glTex.color) that layers blend into in order.
+  // glColorTex holds the finished accumulator for glRender; null ⇒ the classic path.
+  let glColorTex = null;
+  const layerCur = [0, 0, 0, 0];         // which of heatL[slot][0/1] is live, per slot
+  const layerPal = [];                   // per-slot palette-morph state (see stepLayerPal)
+  const palScratch = new Uint8Array(256 * 4);
+  // Bake a smooth base ramp (+ the live banding filter) into RGBA bytes for a LUT upload.
+  // Mirrors composePalette, but writes an arbitrary target instead of the global palette.
+  function bakeLayerBytes(base, now, out, rev, bg) {
+    const t = now * 0.001, on = bandLevel > 0.001;
+    for (let x = 0; x < 256; x++) {
+      let r = base[x * 3], g = base[x * 3 + 1], b = base[x * 3 + 2];
+      if (on) {
+        const band = (x / 256 * BAND_COUNT) | 0;
+        const ci = (((band + 0.5) / BAND_COUNT) * 256) | 0;
+        const dim = ((band / bandGroup) | 0) % 2 === 0 ? 1 : bandDim;
+        const amt = bandLevel * (0.6 + 0.4 * Math.sin(t * 0.9 - x * 0.05));
+        r += (base[ci * 3] * dim - r) * amt;
+        g += (base[ci * 3 + 1] * dim - g) * amt;
+        b += (base[ci * 3 + 2] * dim - b) * amt;
+      }
+      const j = x * 4;
+      out[j] = clamp(r); out[j + 1] = clamp(g); out[j + 2] = clamp(b); out[j + 3] = 255;
+    }
+    // Reverse colour order (per-layer): flip 1..255, keep 0 as the background — same as composePalette.
+    if (rev) for (let x = 1; x <= 127; x++) {
+      const a = x * 4, b = (256 - x) * 4;
+      for (let k = 0; k < 4; k++) { const tmp = out[a + k]; out[a + k] = out[b + k]; out[b + k] = tmp; }
+    }
+    // Background (heat 0): black (default), white, or the layer palette's own colour-0 (leave as baked).
+    if (bg === "white") { out[0] = out[1] = out[2] = 255; }
+    else if (bg !== "palette") { out[0] = out[1] = out[2] = 0; }
+    out[3] = 255;
+  }
+  // Which palette this layer colours with. The SELECTED layer's store is the DOM (its
+  // L.palette is null while selected, exactly like state/beat), so read the live dropdown
+  // — otherwise editing the palette wouldn't update the layer until you deselected it.
+  // Others use their captured L.palette, falling back to the effect's default.
+  function layerPalIndex(L) {
+    let raw;
+    if (L === stack[stackSel]) raw = +paletteSel.value;
+    else { const fx = extras[L.fx] || presetExtra(L.fx); raw = +(L.palette != null ? L.palette : fx.palette); }
+    return Math.max(0, Math.min(PALETTES.length - 1, raw | 0));
+  }
+  // Whether this layer reverses its palette. Selected layer's store is the live checkbox
+  // (paletteReverse), exactly like layerPalIndex reads the live dropdown; others use L.paletteRev.
+  function layerPalRev(L) {
+    if (L === stack[stackSel]) return paletteReverse;
+    if (L.paletteRev != null) return !!L.paletteRev;
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    return !!fx.paletteRev;
+  }
+  function layerPalBg(L) {
+    if (L === stack[stackSel]) return paletteBg;
+    if (L.paletteBg != null) return bgOk(L.paletteBg);
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    return bgOk(fx.paletteBg);
+  }
+  // Whether this layer draws its wireframe box (Tetrafyer). Same selected-vs-stored split as
+  // layerPalIndex. It used to be a per-EFFECT extra installed into a global by loadExtra, so
+  // it followed the SELECTED layer's effect: Tetrafyer ships showBox:false and every other
+  // effect ships true, which is exactly why the box appeared while editing another layer and
+  // vanished the moment you selected the Tetrafyer one.
+  function layerShowBox(L) {
+    if (L === stack[stackSel]) return showBoxChk.checked;
+    if (L.showBox != null) return !!L.showBox;
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    return fx.showBox !== false;
+  }
+  // This layer's per-layer filter SET — the same selected-vs-stored split as layerPalIndex.
+  // Falls back to the descriptor default (never the runtime extras[L.fx] — see
+  // layerFeedbackChain), so a fresh layer gets fire+bloom / bloom rather than the last-used set.
+  function layerFilterSet(L) {
+    if (L === stack[stackSel]) return activeIds;
+    return filtersOk(L.filters) || new Set(presetFilters(L.fx));
+  }
+  // Advance ONE layer's palette clock and return its current base ramp. Reuses the
+  // global cycle/hold timing (morphMs/holdMs) but keeps its own from/to/target, so
+  // layers drift out of phase with each other and with the selected-layer morph.
+  function stepLayerPal(slot, palIdx, now) {
+    let st = layerPal[slot];
+    if (!st) st = layerPal[slot] = { pal: -1, cur: new Float32Array(768), from: null, to: null, tIdx: 0, start: 0, dur: 1, hold: 0 };
+    if (st.pal !== palIdx) {                       // first use, or the user changed this layer's palette
+      const target = paletteRGB(palIdx);
+      if (st.pal < 0) st.cur.set(target);          // first use snaps; a later change morphs from current
+      st.from = Float32Array.from(st.cur);
+      st.to = target; st.tIdx = palIdx; st.pal = palIdx;
+      st.start = now; st.dur = morphMs(); st.hold = 0;
+    }
+    if (!palCycleOn()) { st.cur.set(st.to); return st.cur; }   // pinned: rest on the chosen palette
+    if (st.hold) {
+      if (now < st.hold) return st.cur;
+      st.hold = 0; st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
+      st.start = now; st.dur = morphMs();
+    }
+    let f = (now - st.start) / st.dur;
+    if (f >= 1) {
+      const h = holdMs();
+      if (h > 0) { st.cur.set(st.to); st.hold = now + h; return st.cur; }
+      st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
+      st.start = now; st.dur = morphMs(); f = 0;
+    }
+    const from = st.from, to = st.to, cur = st.cur;
+    for (let i = 0; i < 768; i++) cur[i] = from[i] + (to[i] - from[i]) * f;
+    return cur;
+  }
+  // This layer's feedback filters, as pass objects — its OWN set (L.filters), not the
+  // scene-wide one. Reuses the exact glFeedback hooks glBeginHeat runs (they only need
+  // a source texture and a bound FBO), so per-layer fire/trails come for free.
+  function layerFeedbackChain(L) {
+    // Fallback is the DESCRIPTOR default (presetFilters), NOT runtime extras[L.fx]. extras is
+    // the per-effect *last-used* filter set that saveExtra overwrites on every edit, so falling
+    // back to it made every not-yet-captured same-effect layer mirror the last one edited — the
+    // "all layers share one filter set" bug (identical in shape to the seedPts one, see
+    // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
+    const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
+    return FILTERS.filter(f => f.stage === "feedback" && f.glFeedback && ids.has(f.id));
+  }
+  // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
+  // wrote (the buffer left bound), so the caller can stamp/inject into it. Deliberately
+  // NOT glBeginHeat itself — that one stays byte-identical for the shared path heatprobe
+  // pins; this duplicates ~10 lines to keep the two paths independent.
+  function glLayerBeginHeat(slot, src, chain) {
+    let s = src, d = 1 - src;
+    gl.disable(gl.BLEND);
+    if (!chain.length) {                           // nothing retains ⇒ start from black
+      bindFbo(glFbo.heatL[slot][d], fw, fh);
+      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      return d;
+    }
+    for (const f of chain) {
+      bindFbo(glFbo.heatL[slot][d], fw, fh);
+      f.glFeedback(glTex.heatL[slot][s]);
+      s = d; d = 1 - d;
+    }
+    return s;
+  }
+  // Render one layer's heat into its own slot buffer and return the texture holding it.
+  // Point layers own the tick loop (propagate + stamp per tick, into their pair); shader
+  // layers draw once, and if they carry feedback filters MAX their output onto the
+  // retained pair, else colour the scratch directly. Gain is applied later, in glOkMerge.
+  function renderLayerHeat(L, slot, fx, dt, now, ticks) {
+    const chain = layerFeedbackChain(L);
+    // Install THIS layer's params + phase up front, so everything below reads them: the feedback
+    // propagation (its decay), the feedback filters (their keeps — Fade/Echo/Diffuse/Swirl), the
+    // heat→colour map AND its post-filter chain. Doing it here rather than inside the point tick
+    // loop means it also runs on frames with ticks==0 (common at high framerate) — otherwise a
+    // point layer's trails/colour/post inherited the previously-drawn (or selected) layer's params
+    // and read as belonging to another layer. Shader layers already installed first; this unifies.
+    installStackItem(L); installPhase(L);
+    if (!fx.draw) {                                // POINT layer
+      let cur = layerCur[slot];
+      for (let t = 0; t < ticks; t++) {
+        cur = glLayerBeginHeat(slot, cur, chain);  // propagate into the other buffer, leave it bound
+        glPtCount = 0;
+        stampTick(L, now); capturePhase(L);
+        glBlitPoints(L.blend, 1);                  // stamp into the bound buffer (gain deferred)
+      }
+      layerCur[slot] = cur;
+      return glTex.heatL[slot][cur];
+    }
+    fx.draw(dt); capturePhase(L);                  // → glTex.layer (params installed above)
+    if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
+    let cur = layerCur[slot];
+    for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
+    bindFbo(glFbo.heatL[slot][cur], fw, fh);       // MAX the fresh shader output onto it
+    const P = glProg.merge;
+    gl.useProgram(P.p);
+    bindTexUnit(0, glTex.layer); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
+    gl.enable(gl.BLEND); gl.blendEquation(gl.MAX);
+    drawQuad();
+    gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ZERO);
+    layerCur[slot] = cur;
+    return glTex.heatL[slot][cur];
+  }
+  // Map a layer's heat through its palette LUT → RGB (glTex.layerCol), the input to that
+  // layer's own post-filter chain. Reuses FS_PAL, the same heat→colour pass glRender uses.
+  function glColorizeLayer(heatTex, palTex) {
+    bindFbo(glFbo.layerCol, fw, fh);
+    gl.disable(gl.BLEND);
+    gl.useProgram(glProg.pal.p);
+    bindTexUnit(0, heatTex); gl.uniform1i(glProg.pal.u.uHeat, 0);
+    bindTexUnit(1, palTex);  gl.uniform1i(glProg.pal.u.uPal, 1);
+    drawQuad();
+    return glTex.layerCol;
+  }
+  // Run ONE layer's post filters (Wedge, Twist, Edge, …) on its colour image, using THIS
+  // layer's own params (installStackItem has put them in the globals the gl hooks read).
+  // Its own filter SET, not the scene-wide one; ping-pongs the shared post buffers, which
+  // are free during renderStackColor. Bloom has no gl hook (it is the scene glow) so it is
+  // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
+  function glLayerPostChain(L, src) {
+    const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
+    const chain = FILTERS.filter(f => f.stage === "post" && f.gl && set.has(f.id));
+    if (!chain.length) return src;
+    let s = src, slot = 0;
+    for (const f of chain) {
+      bindFbo(glFbo.post[slot], fw, fh);
+      f.gl(s);
+      s = glTex.post[slot];
+      slot = 1 - slot;
+    }
+    return s;
+  }
+  // Layer blend modes for the OKLab colour merge (used when 2+ layers are live). `u` is the
+  // FS_OKMERGE branch; the array order is the cycle order of a row's blend button. max + add
+  // are unchanged (u 1/0); diff/colour/lum are the new ones and only act in the multi-layer
+  // colour path — a lone layer has nothing to blend against, and the heat-space fallbacks
+  // (glBlitPoints/glMergeLayer) treat them as MAX. MUST be top-level (not inside initGL,
+  // where FS_OKMERGE lives): syncStackUI, glOkMerge and blendOk all read it from IIFE scope.
+  const BLEND_MODES = [
+    { id: "max",   label: "MAX", u: 1, tip: "Max — the brighter layer wins each pixel. Clean separation; the safe default." },
+    { id: "add",   label: "ADD", u: 0, tip: "Add — screens the layers' brightness and averages their hue by brightness. Overlaps glow brighter." },
+    { id: "diff",  label: "DIF", u: 2, tip: "Difference — |below − this| in OKLab. Psychedelic where the layers disagree, dark where they match." },
+    { id: "color", label: "COL", u: 3, tip: "Colour — keeps the brightness of the layers below, repainted in this layer's hue." },
+    { id: "lum",   label: "LUM", u: 4, tip: "Luminosity — this layer's brightness wearing the hue of the layers below." },
+    { id: "rgb",   label: "RGB", u: 5, tip: "RGB — screens the red, green and blue channels independently, so overlapping layers keep their full colour instead of merging to one hue." },
+    { id: "okl",   label: "OKL", u: 6, tip: "Vivid — blends the two hues around the colour wheel (chroma-weighted) and keeps the higher saturation, so overlaps stay fully saturated instead of greying out. Red + green → vivid orange-yellow." },
+    { id: "dom",   label: "DOM", u: 7, tip: "Dominant — at each pixel the more colourful layer keeps its exact hue (no mixing), lightness screened. Maximum saturation, crisp boundaries between the two palettes." },
+    { id: "mul",   label: "MUL", u: 8, tip: "Multiply — colours multiply per channel, so overlaps darken into rich, saturated ink. The natural opposite of Add; great for carving shadow on a bright scene." },
+    { id: "ovl",   label: "OVL", u: 9, tip: "Overlay — multiplies where the layer below is dark and screens where it is light, hard-boosting contrast. Darks crush, lights pop." },
+    { id: "ddg",   label: "DDG", u: 10, tip: "Colour dodge — wherever this layer is bright, the layers below bloom toward pure white/colour. Neon blowout, intense highlights." },
+    { id: "brn",   label: "BRN", u: 11, tip: "Colour burn — the dark twin of dodge: deep, crushed, saturated shadows wherever this layer is dark. Moody and heavy." },
+    { id: "xor",   label: "XOR", u: 12, tip: "Bitwise XOR of the 8-bit channels — hard interference bands that shift as the layers move. The munching-squares / demoscene glitch look." },
+    { id: "rfl",   label: "RFL", u: 13, tip: "Reflect / glow — this layer's own highlights flare like neon tubes while dark areas stay dark. Like dodge, concentrated on this layer's brights." },
+    { id: "neg",   label: "NEG", u: 14, tip: "Negation — bright where the two layers agree, inverted where they collide. A trippy pseudo-solarize that never fully darkens." },
+    { id: "int",   label: "INT", u: 15, tip: "Interleave — even scanlines show this layer, odd lines the one below. A CRT/dither way to combine two scenes with zero colour mixing." },
+    { id: "hsv",   label: "HSV", u: 16, tip: "Hyper-vivid — takes the greater lightness AND chroma of the two, hue from the punchier layer. Louder than OKL; overlaps read maximally bright and saturated." },
+    { id: "avg",   label: "AVG", u: 17, tip: "Average — a plain 50/50 perceptual mean of both layers in OKLab. Soft and painterly, the calm opposite of the screen/add family." },
+    { id: "cmp",   label: "CMP", u: 18, tip: "Complement push — overlaps rotate to the opposite hue of the dominant layer: reds bleed cyan, greens bleed magenta. Alien colour you can't get by mixing." },
+    { id: "cmax",  label: "CMX", u: 19, tip: "Channel max (Lighten) — takes the brighter of the two layers in EACH of red, green and blue independently. Unlike MAX (which keeps whichever whole layer is brighter), this mixes channels, so a red layer over a green one yields yellow where they overlap." },
+  ];
+  const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
+  // Blend one layer's finished RGB colour into the accumulator, in OKLab.
+  function glOkMerge(layerTex, blend, gain, accSrc, dstFbo) {
+    bindFbo(dstFbo, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg.okmerge;
+    gl.useProgram(P.p);
+    bindTexUnit(0, layerTex); gl.uniform1i(P.u.uLayer, 0);
+    bindTexUnit(1, accSrc);   gl.uniform1i(P.u.uAcc, 1);
+    gl.uniform1f(P.u.uGain, gain === undefined ? 1 : gain);
+    gl.uniform1i(P.u.uBlend, (BLEND_BY_ID[blend] || BLEND_MODES[0]).u);
+    drawQuad();
+  }
+  // The whole multi-layer colour path: render each live layer's heat, colour it with its
+  // own palette, run its OWN filter chain (feedback already applied inside renderLayerHeat;
+  // post here), then blend the layers together in OKLab, leaving the result in glColorTex.
+  function renderStackColor(live, dt, now, ticks) {
+    let acc = 0;
+    bindFbo(glFbo.color[0], fw, fh);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
+    for (const L of live) {
+      const slot = stack.indexOf(L), fx = EFFECTS[L.fx];
+      const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
+      const base = stepLayerPal(slot, layerPalIndex(L), now);
+      bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
+      gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
+      const colTex = glLayerPostChain(L, glColorizeLayer(heatTex, glTex.palL[slot]));
+      glOkMerge(colTex, L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc]);
+      acc = 1 - acc;
+    }
+    glColorTex = glTex.color[acc];
+  }
+  function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }
+  function glPlasma(s) { glShaderDraw("plasma", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); }
+
+  // display: heat→palette, optional zoom, blurred additive glow, to the screen
+  // Run the ticked post filters over the palette-mapped image and return whatever
+  // texture holds the result. An empty chain returns glTex.native untouched — it
+  // must NOT run a pass-through copy, since an extra RGBA8 sample through a
+  // nominally identity pass can shift values by a LSB and show as a brightness change.
+  function glPostChain(src0) {
+    const start = src0 || glTex.native;
+    const chain = activeFilters().filter(f => f.stage === "post" && f.gl);
+    if (!chain.length) return start;
+    let src = start, slot = 0;
+    for (const f of chain) {
+      bindFbo(glFbo.post[slot], fw, fh);
+      f.gl(src);
+      src = glTex.post[slot];
+      slot = 1 - slot;
+    }
+    return src;
+  }
+  // One post pass: bind the program, feed it the source texture, draw.
+  function postPass(name, src, setU) {
+    const P = glProg[name];
+    gl.useProgram(P.p);
+    bindTexUnit(0, src); gl.uniform1i(P.u.uSrc, 0);
+    if (P.u.uSize) gl.uniform2f(P.u.uSize, fw, fh);
+    if (setU) setU(P.u);
+    drawQuad();
+  }
+  function glRender() {
+    // A) heat → palette colour (native fire resolution). A multi-layer stack has
+    // already coloured and OKLab-blended its layers into glColorTex (each with its own
+    // palette), so skip the single shared-palette map and start the chain from it.
+    let colorSrc;
+    if (glColorTex) {
+      colorSrc = glColorTex;
+    } else {
+      bindFbo(glFbo.native, fw, fh);
+      gl.disable(gl.BLEND);
+      gl.useProgram(glProg.pal.p);
+      bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
+      bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
+      drawQuad();
+      colorSrc = glTex.native;
+    }
+    // A2) the post-FX chain, in registry order, ping-ponging between post[0]/[1]. A
+    // multi-layer stack has already run each layer's post filters on that layer (see
+    // renderStackColor), so skip the composite-level pass — only the whole-scene screen
+    // filters (step F) and the glow still apply to the blended image.
+    const postSrc = glColorTex ? colorSrc : glPostChain(colorSrc);
+    // B) zoom about centre (Julia & Plasma bake their own optical zoom ⇒ display zoom = 1)
+    const z = stackZoom();
+    // While a transition runs, zoom lands in a scratch buffer and the transition pass
+    // below produces glTex.scene instead — so the blend happens BEFORE the glow, and
+    // the bloom follows the blend rather than a frozen glow fighting a live one.
+    const tActive = transActive();
+    bindFbo(tActive ? glFbo.post[0] : glFbo.scene, fw, fh);
+    gl.useProgram(glProg.zoom.p);
+    bindTexUnit(0, postSrc); gl.uniform1i(glProg.zoom.u.uSrc, 0);
+    gl.uniform1f(glProg.zoom.u.uZoom, z);
+    drawQuad();
+    if (tActive) {                    // B2) blend the frozen outgoing frame with this one
+      bindFbo(glFbo.scene, fw, fh);
+      gl.useProgram(glProg.trans.p);
+      bindTexUnit(0, glTex.post[0]); gl.uniform1i(glProg.trans.u.uNew, 0);
+      bindTexUnit(1, glTex.prev); gl.uniform1i(glProg.trans.u.uPrev, 1);
+      gl.uniform1f(glProg.trans.u.uT, trans.t);
+      gl.uniform1i(glProg.trans.u.uMode, trans.mode);
+      gl.uniform2f(glProg.trans.u.uSize, fw, fh);
+      drawQuad();
+    }
+    // C) horizontal blur
+    bindFbo(glFbo.blur1, fw, fh);
+    gl.useProgram(glProg.blur.p);
+    bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 1 / fw, 0);
+    drawQuad();
+    // D) vertical blur
+    bindFbo(glFbo.blur2, fw, fh);
+    bindTexUnit(0, glTex.blur1); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 0, 1 / fh);
+    drawQuad();
+    // E) composite — to the screen, or into the screen-stage chain if one is ticked
+    const scr = activeFilters().filter(f => f.stage === "screen" && f.gl);
+    const sw = canvas.width, sh = canvas.height;
+    if (scr.length) bindFbo(glFbo.screen[0], sw, sh); else bindDefault(sw, sh);
+    gl.useProgram(glProg.comp.p);
+    bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
+    bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
+    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    drawQuad();
+    // F) the screen chain, ping-ponging at display resolution; the LAST pass is the
+    // one that reaches the default framebuffer, so an empty chain (above) still
+    // composites straight to it and costs nothing.
+    if (scr.length) {
+      let src = glTex.screen[0], slot = 1;
+      scr.forEach((f, i) => {
+        const last = i === scr.length - 1;
+        if (last) bindDefault(sw, sh); else bindFbo(glFbo.screen[slot], sw, sh);
+        f.gl(src, sw, sh);
+        if (!last) { src = glTex.screen[slot]; slot = 1 - slot; }
+      });
+    }
+  }
+  // One screen pass. Same shape as postPass, but uSize is the DISPLAY size rather
+  // than the fire grid — a scanline count means nothing against fw/fh.
+  function screenPass(name, src, w, h, setU) {
+    const P = glProg[name];
+    gl.useProgram(P.p);
+    bindTexUnit(0, src); gl.uniform1i(P.u.uSrc, 0);
+    if (P.u.uSize) gl.uniform2f(P.u.uSize, w, h);
+    if (setU) setU(P.u);
+    drawQuad();
+  }
+
+  // ---- WebGL context loss: pause GL work, rebuild on restore ----
+  if (useGL) {
+    canvas.addEventListener("webglcontextlost", e => { e.preventDefault(); glReady = false; }, false);
+    canvas.addEventListener("webglcontextrestored", () => {
+      try { initGL(); glResize(); glClearHeat(); paletteDirty = true; }   // re-upload palette to the fresh texture
+      catch (err) { glReady = false; }
+    }, false);
+  }
+
+  // Append one chaos-game stamp for the GPU (fire-pixel space, value 0..255).
+  function pushPt(x, y, v) {
+    const i = glPtCount * 3;
+    if (i + 3 > glPts.length) { const n = new Float32Array(glPts.length * 2); n.set(glPts); glPts = n; }
+    glPts[i] = x; glPts[i + 1] = y; glPts[i + 2] = v; glPtCount++;
+  }
+  // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
+  // (It briefly took a `raw` flag to let the credits skip the camera; they render on
+  // their own layer now, so every caller wants the camera and the flag is gone.)
+  function plot(x, y, v) {
+    if (camOn()) {                      // camera: rotate the stamped point about the grid centre
+      const dx = x - fw * 0.5, dy = y - fh * 0.5;
+      x = camM[0] * dx + camM[1] * dy + fw * 0.5;
+      y = camM[2] * dx + camM[3] * dy + fh * 0.5;
+    }
+    const xi = x | 0, yi = y | 0;
+    if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
+    if (useGL) { pushPt(xi, yi, v); }
+    else { const idx = yi * fw + xi; if (v > fire[idx]) fire[idx] = v; }
+  }
+

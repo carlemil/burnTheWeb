@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>burnTheWeb — demoscene fractal fire</title>
+<meta name="description" content="A GPU demoscene visual: fifteen effects — rising fractal fire, animated Julia / Burning Ship / Multibrot / Newton fractals, and classic plasma, tunnel, metaballs, kaleidoscope, copper bars and more — all reacting to your music.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='92'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="burnTheWeb">
+<meta property="og:title" content="burnTheWeb — demoscene fractal fire">
+<meta property="og:description" content="Rising fractal fire, animated fractals, and classic demoscene effects — plasma, tunnel, kaleidoscope, copper bars and more — all reacting to your music. Tune it live and share the exact scene.">
+<meta property="og:url" content="https://carlemil.github.io/burnTheWeb/">
+<meta name="twitter:title" content="burnTheWeb — demoscene fractal fire">
+<meta name="twitter:description" content="Rising fractal fire, animated fractals, and classic demoscene effects — all reacting to your music.">
+<style>{{CSS}}</style>
+</head>
+<body>
+<canvas id="fire"></canvas>
+<canvas id="creditcv"></canvas>
+
+<div id="panel" class="hidden">
+  <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
+  <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
+
+  <!-- Box — System: app-wide, never part of a scene — audio input, render
+       resolution and the dev tools. -->
+  <details class="box">
+  <summary class="box-t">System</summary>
+  <!-- Sound &amp; quality: music reactivity and the global render resolution -->
+  <label>React to music <span class="val" id="vAudio">off</span></label>
+  <div class="audiorow">
+    <button id="audCapture" class="audbtn" type="button" title="Capture system / tab audio (e.g. Spotify)">Capture</button>
+    <button id="audMic" class="audbtn" type="button" title="Capture microphone">Mic</button>
+    <button id="audStop" class="audbtn" type="button" title="Stop">Stop</button>
+    <div class="meter" title="low · mid · high"><i></i><i></i><i></i></div>
+  </div>
+  <p id="audMsg" class="hint"></p>
+
+  <label>Resolution</label>
+  <select id="res" title="Render resolution — lower it if the frame rate is low">
+    <option value="1">Full</option>
+    <option value="1.5">High</option>
+    <option value="2">Medium</option>
+    <option value="3">Low</option>
+    <option value="4">Potato</option>
+  </select>
+
+  <!-- Diagnostics: the dev tools, folded into the one menu (were D/B/R/C/G keys). -->
+  <details id="diag">
+    <summary>Diagnostics</summary>
+    <label class="check"><input type="checkbox" id="diagFrames"> Frame + FPS counter</label>
+    <label class="check"><input type="checkbox" id="diagTrace"> Beat-detection trace</label>
+  </details>
+  </details>
+
+  <!-- Box — Backup/share. Boxed like the rest so the panel is one consistent
+       stack of foldable sections. -->
+  <details class="box">
+  <summary class="box-t">Backup, restore &amp; share</summary>
+  <div class="presetrow grid2">
+    <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
+    <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
+    <button id="share" class="audbtn" type="button" title="Copy a link that opens the scene you're looking at">Share</button>
+    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current scene — needs the internet, and sends the scene to TinyURL">Short link</button>
+  </div>
+  <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
+  <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
+  </details>
+
+  <!-- Box — Scene: saved scenes and how long each is held. The Effect chooser used to
+       live here too; it moved down to Effects, next to the sliders it drives. -->
+  <details class="box" open>
+  <summary class="box-t">Scene</summary>
+  <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
+  <label>Presets <button type="button" id="preset-help-btn" class="lbl-help" title="What a preset saves — its data structure" aria-label="What a preset saves — its data structure">?</button></label>
+  <select id="preset"></select>
+  <div class="presetrow">
+    <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
+    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
+    <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
+  </div>
+  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
+  <div id="grp-ttl">
+    <label>Preset TTL <span class="val" id="vTtl"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="ttl-lo" min="0" max="180" step="any" value="10">
+      <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
+  </div>
+  <!-- How long a preset change takes to blend. Both thumbs at 0 = cut straight over. -->
+  <div id="grp-tdur">
+    <label>Transition <span class="val" id="vTdur"></span></label>
+    <div class="dual"><div class="track"></div><div class="fill"></div>
+      <input type="range" id="tdur-lo" min="0" max="3" step="any" value="0.45">
+      <input type="range" id="tdur-hi" min="0" max="3" step="any" value="0.9"></div>
+  </div>
+
+  </details>
+
+  <!-- Box — Scene filters: whole-scene FX applied once to the finished, blended picture
+       (Bloom + the screen-stage filters). SCENE-GLOBAL — one on/off + value shared across
+       every layer (sceneOn / sceneFx), routed here by buildFilterUI (the "Whole scene" group). -->
+  <details class="box" open>
+  <summary class="box-t">Scene filters</summary>
+  <div id="screenfilterlist"><!-- whole-scene filter checkboxes, routed here from buildFilterUI --></div>
+  <div id="screenfilterctl"><!-- (unused host; params are adopted into each filter's body) --></div>
+  </details>
+
+  <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting;
+       it is per-preset scene data now, so it belongs beside the other scene controls
+       and autosaves like them (the delegated onEdit skips #diag on purpose). -->
+  <details class="box" id="beatDetails">
+  <summary class="box-t">Beat tuning</summary>
+  <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
+  <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
+  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Tune it beside the beat trace (Diagnostics).</p>
+  </details>
+
+  <!-- Box — Layers: the effect stack (up to 4 effects composited into one scene, in
+       list order). Rows are generated by buildStackUI(); clicking one selects it, and
+       the Effect chooser + every slider in the box below then edit THAT layer. -->
+  <details class="box" open>
+  <summary class="box-t">Layers</summary>
+  <div id="stacklist"><!-- rows generated from the live stack --></div>
+  <button id="addlayer" type="button" title="Add another effect on top of this one (up to 4)">+ Add layer</button>
+  </details>
+
+  <!-- Box — Effects & Filters: pick the selected layer's visual, its sliders, its
+       per-layer filters, and its palette. Everything here edits the SELECTED layer;
+       whole-scene FX live in the Scene filters box above. -->
+  <details class="box" open>
+  <summary class="box-t">Effects &amp; Filters</summary>
+  <label>Effect</label>
+  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
+  <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
+  <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
+  <button id="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
+  <button id="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
+  <!-- Per-layer filters (feedback + post, minus the whole-scene ones hoisted above). -->
+  <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
+  <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
+  <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
+  <label>Palette</label>
+  <select id="palette">
+    <option value="0">Fire</option>
+    <option value="1">Ice</option>
+    <option value="2">Toxic</option>
+    <option value="3">Copper</option>
+    <option value="4">Purple</option>
+    <option value="5">Rainbow</option>
+    <option value="6">Grayscale</option>
+    <option value="7">Electric</option>
+    <option value="8">Amber</option>
+    <option value="9">Matrix</option>
+    <option value="10">Sunset</option>
+    <option value="11">C64</option>
+    <option value="12">CGA</option>
+    <option value="13">Blood</option>
+    <option value="14">Chrome</option>
+    <option value="15">One love</option>
+    <option value="16">Rasta Red</option>
+    <option value="17">Rasta Green</option>
+    <option value="18">Rasta Yellow</option>
+  </select>
+  <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
+  <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
+  <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
+    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="black">Black</option><option value="white">White</option><option value="palette">Palette</option></select>
+  </label>
+  <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
+  <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  </details>
+
+  <!-- Box — Credits. Generated from CREDITS in the script — the same array the
+       startup burn-in rasterises, so the two can no longer drift apart. -->
+  <details class="box">
+  <summary class="box-t">Credits</summary>
+  <div id="creditlist"></div>
+  <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
+  </details>
+
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
+</div>
+<button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
+<button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
+<div id="frames">0</div>
+<div id="paused" class="hidden">⏸ paused · click to resume</div>
+<div id="help" class="hidden"></div>
+
+<!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
+<div id="carddlg" class="hidden">
+  <div class="card-box">
+    <h2>Orbit editor</h2>
+    <button type="button" class="card-close" id="card-close" aria-label="Close">×</button>
+    <div class="card-tools">
+      <span class="card-seg" role="group" aria-label="Seed path shape">
+        <button type="button" class="cardmode" data-mode="cardioid">Cardioid</button>
+        <button type="button" class="cardmode" data-mode="circle">Circle</button>
+        <button type="button" class="cardmode" data-mode="freehand">Freehand</button>
+      </span>
+      <button type="button" class="cardmode" id="cardPause" title="Pause the seed motion" aria-label="Pause the seed motion">⏸</button>
+      <label class="card-ride" title="The small circle riding on the base curve that keeps the seed's neighbourhood varying"><input type="checkbox" id="cardRide"> Riding circle</label>
+      <button type="button" class="cardmode" id="cardEdit" title="Edit mode — drag the control points to reshape the loop">Edit</button>
+      <button type="button" class="cardmode" id="cardUndo" title="Undo the last change">Undo</button>
+      <button type="button" class="cardmode" id="cardClear" title="Clear the freehand loop">Clear</button>
+    </div>
+    <canvas id="cardcv" width="630" height="495"></canvas>
+    <p class="card-hint" id="cardHint">Drag on the canvas to draw a loop — it snaps to a smooth closed spline the seed then follows.</p>
+    <div class="card-key">
+      <span><i style="background:#ff7a1a"></i>base path</span>
+      <span><i style="background:#5ad1ff"></i>seed bounds (±inner r)</span>
+      <span><i style="background:#7ddc8a"></i>riding circle</span>
+      <span><i style="background:#fff"></i>seed c</span>
+    </div>
+    <p id="cardNums"></p>
+  </div>
+</div>
+
+<div id="restoredlg" class="hidden">
+  <div class="rst-box">
+    <h2>Restore from backup</h2>
+    <p class="rst-sub" id="rst-sub"></p>
+    <div class="rst-grp">What to restore</div>
+    <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Presets <small id="rst-presets-n"></small></span></label>
+    <div class="rst-mode" id="rst-mode">
+      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-merge" checked><span>Merge — add new &amp; overwrite same-named, keep the rest</span></label>
+      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-replace"><span>Replace — delete my presets, use only the backup's</span></label>
+    </div>
+    <label class="rst-opt" id="rst-opt-settings"><input type="checkbox" id="rst-settings" checked><span>Effect settings <small>each effect's sliders, beats &amp; palette; active effect, resolution, auto-cycle</small></span></label>
+    <label class="rst-opt" id="rst-opt-ranges"><input type="checkbox" id="rst-ranges" checked><span>Custom slider ranges</span></label>
+    <label class="rst-opt" id="rst-opt-beat"><input type="checkbox" id="rst-beat" checked><span>Beat-detection tuning</span></label>
+    <div class="rst-actions">
+      <button type="button" id="rst-go">Restore</button>
+      <button type="button" id="rst-cancel">Cancel</button>
+    </div>
+    <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
+  </div>
+</div>
+
+<div id="syncpop" class="hidden">
+  <div class="sync-box">
+    <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
+    <h2>🔊 Sync with your music</h2>
+    <p>burnTheWeb can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
+    <dl>
+      <dt>Capture</dt>
+      <dd>Shares the sound of your screen or a browser tab — e.g. Spotify or YouTube. In the picker that opens, pick a screen/tab and tick “Share audio”.</dd>
+      <dt>Mic</dt>
+      <dd>Listens through your microphone instead — good for music playing in the room.</dd>
+    </dl>
+    <p class="sync-note">The audio is analysed only in your browser to find low/mid/high beats — nothing is recorded, stored or uploaded. Once it's on, arm any slider's L/M/H chips to make it jump on the beat.</p>
+    <div class="sync-actions">
+      <button id="sync-capture" type="button">Capture audio</button>
+      <button id="sync-mic" type="button">Use microphone</button>
+      <button id="sync-later" type="button" class="ghost">Maybe later</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pop-out column: sliders "broken out" of the menu dock here (see the break-out
+     module in the script). Sits to the right of #panel; empty/hidden by default. -->
+<div id="breakout" class="empty"></div>
+
+<script>
+(() => {
+  "use strict";{{JS}}})();
+</script>
+</body>
+</html>

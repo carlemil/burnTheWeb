@@ -15,27 +15,55 @@ families, all sharing one palette + glow + banding + beat-reactive pipeline:
   Moiré, Munching Squares, Copper Bars.
 
 Each is one `EFFECTS` descriptor (metadata + `params`/`defaults`/`beat`/`extras` + a
-`draw(dt)` shader hook or a `stamp(box)` point hook). There is **no build system,
-package manager, test framework, or dependency** — the entire app is inline HTML/CSS/JS
-in `index.html`. `README.md` documents it for end users; keep it in sync when behaviour
+`draw(dt)` shader hook or a `stamp(box)` point hook). There is **no package manager,
+test framework, or runtime dependency**. The shipped `index.html` is a single
+self-contained file (one `<style>`, one IIFE `<script>`), but it is **generated** — the
+source lives split across `src/*.js` + `src/styles.css`, which a dependency-free Node
+script (`tools/build.js`) concatenates **verbatim** back into `index.html`. See
+**Build** below. `README.md` documents it for end users; keep it in sync when behaviour
 changes.
+
+## Build
+
+- **Source of truth is `src/`, not `index.html`.** `src/styles.css` is the CSS;
+  `src/*.js` are ordered JS slices (order in `src/manifest.txt`); `src/index.template.html`
+  is the HTML shell with `{{CSS}}` / `{{JS}}` markers. **Never hand-edit `index.html`** —
+  it is regenerated and your edit will be lost (and rejected by the drift guard).
+- **`node tools/build.js`** rebuilds `index.html` from `src/`. It joins the JS slices with
+  the empty string and substitutes via split/join (not `String.replace`, whose `$` handling
+  would corrupt the JS), so the output is a **byte-for-byte** reproduction of the source. The
+  runtime artifact is therefore identical to a hand-written monolith — the split has no
+  behavioural effect, which is the whole point.
+- **`node tools/build.js --check`** exits non-zero if `index.html` is stale. `.githooks/`
+  has a `pre-commit` running it; enable once per clone with
+  `git config core.hooksPath .githooks`.
+- The split was bootstrapped once by `tools/split-once.js` (kept in history). To re-slice at
+  different boundaries, edit its `SLICES` markers and re-run, or just move code between
+  `src/*.js` files and rebuild — the manifest order is the load order.
+- `.gitattributes` pins LF so the build is byte-reproducible despite a global
+  `core.autocrlf=true`.
 
 ## Workflow
 
 - **Always commit and push after a completed, verified change.** `git push origin
   main` (via `HEAD:main`) auto-deploys the live site (~1 min; hard-refresh to
   bypass cache). Do not ask "want me to deploy?" first.
-- **All code lives in `index.html`.** Edit it directly.
+- **Code lives in `src/*.js` + `src/styles.css`** (see **Build**). Edit those, run
+  `node tools/build.js`, and commit **both** `src/` and the regenerated `index.html`.
+  Never edit `index.html` by hand.
 - Commit trailers must end with:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` and the
   `Claude-Session:` line.
-- **Preview**: open `index.html` directly, or `python -m http.server` → `http://localhost:8000`.
+- **Preview**: build first, then open `index.html` directly, or `python -m http.server`
+  → `http://localhost:8000`. The deployed `index.html` is self-contained (Pages serves it
+  as-is); only the authoring is split.
 - Pages was configured once (`gh api -X POST repos/carlemil/burnTheWeb/pages`); do not re-run it.
 
-## Architecture (all in `index.html`)
+## Architecture (one IIFE, authored across `src/*.js`)
 
-The whole app is one IIFE. Systems layer on top of each other and update at
-different rates.
+The whole app is one IIFE (built from the `src/*.js` slices in `manifest.txt` order —
+see **Build**; line references below are into the generated `index.html`). Systems
+layer on top of each other and update at different rates.
 
 ### Dual render pipeline — WebGL2 primary, Canvas2D fallback
 `useGL` is set by `initGL()` at startup; every draw path branches on it.

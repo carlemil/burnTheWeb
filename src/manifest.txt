@@ -1,0 +1,25 @@
+# ordered list of JS slices concatenated (verbatim) into the IIFE body by tools/build.js
+00-globals.js
+10-palette.js
+20-gl-shaders.js
+30-gl-pipeline.js
+40-fire-physics.js
+45-animation.js
+50-effects-shaders.js
+55-effects-points.js
+60-audio.js
+65-controls.js
+70-stack.js
+74-effects-registry.js
+76-credits.js
+78-filters.js
+80-transitions.js
+82-stack-lifecycle.js
+84-ranges-tuning.js
+86-breakout.js
+88-share.js
+90-presets.js
+92-backup-restore.js
+94-orbit-editor.js
+96-beat-tuning-ui.js
+98-help-misc.js

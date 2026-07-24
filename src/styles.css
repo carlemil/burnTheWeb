@@ -1,0 +1,684 @@
+
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #fire {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    image-rendering: auto;
+  }
+  /* Startup credits. Their own layer above the render so no effect, and no post
+     filter (Pixelate, Mirror, Edge…), can chew them up — but below the menu at
+     z-index 10, and click-through, so nothing about the UI changes while they run. */
+  #creditcv {
+    position: fixed; inset: 0; z-index: 4;
+    pointer-events: none; display: none;
+  }
+  #panel {
+    position: fixed;
+    top: 58px;
+    left: 14px;
+    padding: 14px 16px;
+    width: 250px;
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: rgba(10, 6, 4, 0.55);
+    border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #ffdcb0;
+    font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    user-select: none;
+    transition: opacity .3s, transform .3s, visibility .3s;
+  }
+  #panel h1 {
+    margin: 0 0 2px;
+    font-size: 14px;
+    letter-spacing: .04em;
+    color: #ffb15a;
+    text-shadow: 0 0 12px rgba(255, 120, 20, .8);
+  }
+  #panel .sub { margin: 0 0 12px; opacity: .6; font-size: 11px; }
+  #panel label { display: block; margin: 10px 0 3px; opacity: .85; }
+  /* Control appearance is scoped to both the menu and the pop-out column so a
+     control keeps its styling after it moves into a break-out box (#breakout). */
+  #panel .val, #breakout .val { float: right; color: #ffcf87; opacity: 1; }
+  #panel input[type=range], #breakout input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
+  /* dual-thumb range: two overlaid sliders set a [lo,hi] band */
+  #panel .dual, #breakout .dual { position: relative; height: 22px; }
+  #panel .dual .track, #panel .dual .fill,
+  #breakout .dual .track, #breakout .dual .fill {
+    position: absolute; top: 9px; height: 4px; border-radius: 2px; pointer-events: none;
+  }
+  #panel .dual .track, #breakout .dual .track { left: 0; right: 0; background: rgba(255, 140, 40, 0.22); }
+  #panel .dual .fill, #breakout .dual .fill { background: #ff7a1a; }
+  #panel .dual input[type=range], #breakout .dual input[type=range] {
+    position: absolute; top: 0; left: 0; width: 100%; height: 22px; margin: 0;
+    -webkit-appearance: none; appearance: none; background: transparent; pointer-events: none;
+  }
+  #panel .dual input[type=range]::-webkit-slider-runnable-track,
+  #breakout .dual input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
+  #panel .dual input[type=range]::-webkit-slider-thumb,
+  #breakout .dual input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; pointer-events: auto; margin-top: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
+  }
+  #panel .dual input[type=range]::-moz-range-track,
+  #breakout .dual input[type=range]::-moz-range-track { background: transparent; height: 22px; }
+  #panel .dual input[type=range]::-moz-range-thumb,
+  #breakout .dual input[type=range]::-moz-range-thumb {
+    pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+    background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
+  }
+  #panel select {
+    width: 100%;
+    margin: 0;
+    padding: 5px 7px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 140, 40, 0.5);
+    border-radius: 6px;
+    color: #ffcf87;
+    font: 12px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    cursor: pointer;
+  }
+  #panel select option { background: #1a0f08; color: #ffcf87; }
+  /* Palette preview picker: a gradient swatch per palette, replacing the plain
+     dropdown (the <select> stays as the value store, hidden once JS builds these). */
+  #palswatches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
+  .palsw {
+    position: relative; height: 24px; padding: 0; border-radius: 5px;
+    border: 1px solid rgba(255, 140, 40, 0.35); cursor: pointer; overflow: hidden;
+  }
+  .palsw-n {
+    position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+    font: 11px/1 ui-monospace, Menlo, Consolas, monospace; color: #fff;
+    text-shadow: 0 1px 1px #000, 0 0 3px #000; pointer-events: none; letter-spacing: .2px;
+  }
+  .palsw.active { border-color: #ffcf87; box-shadow: 0 0 0 1px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.55); }
+  .palsw:focus-visible { outline: 2px solid #ffb15a; outline-offset: 1px; }
+  #panel .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 0;
+    cursor: pointer;
+    opacity: .9;
+  }
+  #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
+  #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
+  #toggle, #fs {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 10;
+    width: 34px; height: 34px;
+    padding: 0; appearance: none; -webkit-appearance: none;
+    display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(10, 6, 4, 0.55);
+    border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 8px;
+    color: #ffb15a;
+    font: 16px/1 monospace;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: background .15s;
+  }
+  #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
+  #toggle:hover, #fs:hover { background: rgba(255, 122, 26, 0.3); }
+  /* keyboard focus rings (a11y) */
+  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible,
+  #panel select:focus-visible, #panel input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs { transition: none !important; } }
+  #frames {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 10;
+    padding: 6px 10px;
+    background: rgba(10, 6, 4, 0.55);
+    border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 8px;
+    color: #ffcf87;
+    font: 13px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  #frames.hidden { display: none; }
+  /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
+     clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
+  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
+  body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop { display: none !important; }
+  #paused {
+    position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 10px; color: #ffdcb0; font: 13px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .05em; user-select: none; pointer-events: none;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  #paused.hidden { display: none; }
+  .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
+  #reset, #cardbtn, #addlayer {
+    margin-top: 8px;
+    width: 100%;
+    padding: 7px 0;
+    background: rgba(255, 122, 26, 0.15);
+    border: 1px solid rgba(255, 140, 40, 0.5);
+    border-radius: 8px;
+    color: #ffcf87;
+    font: 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  #reset:hover, #cardbtn:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
+  #cardbtn, #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
+  #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
+  #panel .presetrow .audbtn { flex: 1; text-align: center; }
+  /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
+  #panel .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
+  #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
+  /* The menu is grouped boxes — the app-wide stuff (audio, resolution,
+     diagnostics), backup/share, what the scene IS (presets/effect/palette) and
+     how it's tuned (this effect's sliders) — so the long list reads as sections,
+     not one run-on. Each is a <details>, so a section can be folded away; the
+     open/closed state is deliberately transient (like Diagnostics). */
+  #panel .box {
+    margin: 12px 0 0; padding: 2px 12px 12px;
+    background: rgba(255, 140, 40, 0.045);
+    border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 9px;
+  }
+  #panel .box > .box-t {
+    margin: 0 -12px 8px; padding: 7px 12px 6px;
+    border-bottom: 1px solid rgba(255, 140, 40, 0.16);
+    color: #ffb15a; opacity: .95; letter-spacing: .05em; font-size: 11px; text-transform: uppercase;
+    cursor: pointer; list-style: none; user-select: none;
+  }
+  #panel .box > .box-t::-webkit-details-marker { display: none; }
+  #panel .box > .box-t::before { content: "\25B8 "; opacity: .7; }        /* ▸ */
+  #panel .box[open] > .box-t::before { content: "\25BE "; }               /* ▾ */
+  /* folded: the title's rule would otherwise hang under nothing */
+  #panel .box:not([open]) > .box-t { margin-bottom: -6px; border-bottom: none; }
+  #panel .box > .box-t + * { margin-top: 0; }
+  #panel .box > #diag { margin-top: 4px; }
+  #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
+  /* ---- Diagnostics: dev tools folded into the panel (frame counter, beat trace,
+         beat tuning). Formerly floating overlays. Slider ranges are no longer here:
+         each slider edits its own bounds inside its pop-out box. ---- */
+  #diag { margin-top: 12px; font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
+  #diag > summary, #diag details > summary {
+    cursor: pointer; list-style: none; color: #ffcf87; opacity: .85;
+    margin: 10px 0 3px; user-select: none;
+  }
+  #diag > summary { opacity: 1; font-size: 12px; letter-spacing: .03em; }
+  #diag summary::-webkit-details-marker { display: none; }
+  #diag summary::before { content: "\25B8 "; color: #7d838a; }   /* ▸ */
+  #diag details[open] > summary::before { content: "\25BE "; }   /* ▾ */
+  #diag details { margin: 4px 0 0; }
+  #diag b { display: block; color: #ffcf87; margin-bottom: 6px; }
+  #diag .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
+  #diag .rng-btns button {
+    flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
+    font: 11px ui-monospace, monospace; cursor: pointer;
+  }
+  /* Beat tuning moved out of #diag into its own .box (it is per-preset scene data,
+     not a dev tool), so its styling is scoped to that box now. The .rng-btns rule
+     above is still #diag-scoped, so the Reset button needs its own copy here. */
+  #beatDetails { font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
+  #beatDetails .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
+  #beatDetails .rng-btns button {
+    flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
+    font: 11px ui-monospace, monospace; cursor: pointer;
+  }
+  #beatMsg { margin: 6px 0 0; color: #7d838a; font-size: 10px; line-height: 1.4; }
+  #beatDetails .beat-sec { color: #7d838a; margin: 8px 0 3px; }
+  #beatDetails .beat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  #beatDetails .beat-name { width: 32px; flex: none; }
+  #beatDetails .beat-row input[type=range] { flex: 1; min-width: 0; }
+  #beatDetails .beat-val { width: 42px; flex: none; text-align: right; color: #ffcf87; }
+  #beatDetails .beat-dash { color: #7d838a; }
+  #beatDetails .beat-f {
+    /* 60px, not 52: the high band's 12000 Hz is five digits and was being clipped. */
+    width: 60px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
+    border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
+  }
+  /* ---- music beat reactivity ---- */
+  #panel .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  #panel .audbtn {
+    padding: 4px 8px; background: rgba(255, 122, 26, 0.15);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 6px;
+    color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #panel .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
+  #panel .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  #panel .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
+  #panel .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
+  #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
+  .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
+  /* Unarmed chips are deliberately colourless and dim: the band colours below
+     apply only to `.on`, so "armed" is unmistakable. A vivid outline reads as
+     enabled even when nothing is armed, which is exactly what it used to do. */
+  .bandchips button {
+    width: 18px; height: 15px; padding: 0; font: bold 9px/13px ui-monospace, monospace;
+    background: transparent; border: 1px solid rgba(255, 220, 180, 0.18);
+    border-radius: 4px; color: rgba(255, 220, 180, 0.38); cursor: pointer;
+    transition: box-shadow .08s, background .1s, color .1s, border-color .1s;
+  }
+  .bandchips button:hover { color: rgba(255, 220, 180, 0.75); border-color: rgba(255, 220, 180, 0.4); }
+  .bandchips button.on {
+    background: #ffb84d; color: #140a03; border-color: #ffe0a0;
+    box-shadow: 0 0 5px rgba(255, 176, 77, 0.75);
+  }
+  /* per-band colours: L (low) blue · M (mid) green · H (high) red — armed only */
+  .bandchips button:nth-child(1).on { background: #5a9cff; border-color: #b0d0ff; color: #05101f; box-shadow: 0 0 6px rgba(90, 156, 255, 0.85); }
+  .bandchips button:nth-child(2).on { background: #45cf62; border-color: #aef0bc; color: #041505; box-shadow: 0 0 6px rgba(69, 207, 98, 0.85); }
+  .bandchips button:nth-child(3).on { background: #ff5f4d; border-color: #ffb4aa; color: #1f0603; box-shadow: 0 0 6px rgba(255, 95, 77, 0.85); }
+  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; }
+  /* Per-slider beat-pulse shape: the curve the value follows after a beat. */
+  .bandchips select {
+    height: 15px; padding: 0 1px; margin-left: 2px; font: 9px/13px ui-monospace, monospace;
+    background: #17100a; color: #ffb15a; border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 4px; cursor: pointer;
+  }
+  /* ---- break-out boxes: a slider popped into its own box, in a column that
+       fills top→down at the right of the menu. Boxes are moved #ctl nodes. ---- */
+  #breakout {
+    position: fixed; top: 58px; left: 298px; z-index: 5;
+    width: 244px; max-height: calc(100vh - 72px); overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column; gap: 10px;
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; user-select: none;
+  }
+  #breakout.empty { display: none; }
+  #panel.hidden ~ #breakout { display: none; }      /* hide the column when the menu is hidden */
+  #breakout .ctl {
+    position: relative; margin: 0; padding: 12px 14px 12px 30px;
+    background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
+    border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  /* Which effect / filter the box belongs to. Controls are singletons reused across
+     effects, so "Speed" or "Size" alone doesn't say which one you popped — and with
+     several boxes stacked, two identically-named sliders are indistinguishable. */
+  #breakout .ctl-owner {
+    display: flex; align-items: center; gap: 6px;
+    margin: 0 0 4px; color: #ffb15a; opacity: .62;
+    font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+  }
+  #breakout .ctl-owner .own-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The per-box help ?, mirroring the panel's own #help-btn but smaller. Pushed to the
+     right of the owner line so every box carries one in the same place. */
+  #breakout .ctl-help {
+    flex: none; margin-left: auto; width: 15px; height: 15px; padding: 0;
+    border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.5); background: transparent;
+    color: #ffb15a; font: 10px/1 ui-monospace, monospace; cursor: help; opacity: .85;
+  }
+  #breakout .ctl-help:hover { background: rgba(255, 122, 26, 0.35); opacity: 1; }
+  /* A box has room the menu slot never had, so unstack it: the name + value get
+     their own line, the beat chips + pulse picker drop to a line of their own
+     (instead of being squeezed against the value), and the slider gets air. */
+  #breakout label {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+    margin: 0 0 6px; opacity: .85;
+  }
+  #breakout .val { float: none; order: 1; margin-left: auto; }
+  #breakout .bandchips { float: none; order: 2; flex-basis: 100%; gap: 4px; margin: 2px 0 0; }
+  #breakout .bandchips button { width: 22px; height: 18px; font-size: 10px; line-height: 16px; }
+  #breakout .bandchips select { height: 18px; margin-left: auto; padding: 0 2px; font-size: 10px; }
+  #breakout .dual { margin: 2px 0 4px; }
+  #breakout .ctl > input[type=range] { margin: 4px 0; }
+  /* Per-slider beat-pulse length: how long this slider's beat kick takes to fall
+     back. Only meaningful in a box (it's a per-slider knob), so it's hidden in the
+     menu and laid out as name · slider · readout here. */
+  #panel .plen { display: none; }
+  #breakout .plen {
+    display: flex; align-items: center; gap: 7px;
+    margin: 8px 0 0; font-size: 10px; opacity: .8;
+  }
+  #breakout .plen-name { flex: none; letter-spacing: .04em; }
+  #breakout .plen input[type=range] { flex: 1; min-width: 0; height: 12px; }
+  #breakout .plen-val { flex: none; min-width: 40px; text-align: right; color: #ffcf87; }
+  /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
+     (This replaced the one shared "Slider ranges" list in Diagnostics.) */
+  #breakout .rng-edit {
+    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; align-items: end;
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.18);
+  }
+  #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
+  #breakout .rng-cell input {
+    display: block; width: 100%; margin-top: 3px; padding: 3px 4px;
+    background: rgba(0, 0, 0, 0.4); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
+    font: 10px ui-monospace, monospace;
+  }
+  #breakout .rng-rst {
+    width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
+    border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
+    font: 11px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #breakout .rng-rst:hover { background: rgba(255, 140, 40, 0.22); }
+  /* +/- pop button. In a pop-out box it sits in the box's left gutter (absolute);
+     on a menu row it's a static chip pinned to the right of the slider's name. */
+  .poppable { position: relative; }
+  .ctl-pop {
+    flex: none; width: 14px; height: 15px; padding: 0;
+    font: bold 12px/12px ui-monospace, monospace; background: transparent;
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 4px; color: #ffb15a;
+    cursor: pointer; transition: background .1s, box-shadow .08s;
+  }
+  #breakout .ctl > .ctl-pop { position: absolute; left: 8px; top: 9px; }
+  .ctl-pop:hover { background: rgba(255, 140, 40, 0.22); box-shadow: 0 0 5px rgba(255, 176, 77, 0.6); }
+  /* menu row for a poppable slider: just its name and the +/- button, right-aligned.
+     The slider, value, beat chips and pulse picker all live in the pop-out box. */
+  .ctl-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin: 10px 0 3px; opacity: .85;
+  }
+  /* flex:1 so the name takes the slack and the dots sit right up against the +/-
+     button, rather than space-between spreading three children across the row. */
+  .ctl-row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A control that currently does nothing because another setting neutralises it: greyed,
+     its +/- button dead, and a click flashes the blocker (set in refreshBlocked). */
+  .ctl-row.ctl-blocked, #breakout .ctl.ctl-blocked { opacity: .32; }
+  .ctl-row.ctl-blocked { cursor: help; }
+  .ctl-row.ctl-blocked .ctl-pop { pointer-events: none; opacity: .5; }
+  /* Modified-from-default: an amber dot before the name on the menu row, and a left accent
+     on the pop-out box, so you can see at a glance which sliders you've moved off default. */
+  .ctl-row.ctl-changed .ctl-row-name::before {
+    content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px;
+    border-radius: 50%; background: #ffb15a; vertical-align: middle;
+    box-shadow: 0 0 4px rgba(255, 140, 40, 0.75);
+  }
+  #breakout .ctl.ctl-changed { box-shadow: inset 3px 0 0 -1px #ffb15a; }
+  @keyframes ctlflash { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,140,40,0); background: transparent; }
+                        25%, 65% { box-shadow: 0 0 0 2px rgba(255,140,40,0.95); background: rgba(255,140,40,0.28); } }
+  .ctl-row.ctl-flash { animation: ctlflash 1.4s ease; border-radius: 6px; }
+  /* Beat-trigger dots: which of L/M/H is armed for this slider, at a glance, without
+     popping every box open. A dot only exists while its band is armed; it sits dim and
+     lights up on that band's beat, the same cue the chip in the box gives. */
+  .ctl-dots { flex: none; display: flex; align-items: center; gap: 3px; }
+  .ctl-dot {
+    display: none; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; opacity: .34; transition: opacity .08s;
+  }
+  .ctl-dot.armed { display: block; }
+  .ctl-dot.d-low { color: #5a9cff; }      /* L — matches .bandchips button:nth-child(1).on */
+  .ctl-dot.d-mid { color: #45cf62; }      /* M */
+  .ctl-dot.d-high { color: #ff5f4d; }     /* H */
+  /* Audio off ⇒ nothing can trigger, so dim them like the chips (#panel.audio-off). */
+  #panel.audio-off .ctl-dot { opacity: .18; }
+  /* Credits: set like a demo's title screen rather than two flat sentences —
+     the scene role in glowing caps over the real name, handle picked out, each
+     entry hung off a thin gradient bar. */
+  #panel .credit { position: relative; margin: 10px 0 0; padding-left: 11px; }
+  #panel .credit::before {
+    content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 2px;
+    border-radius: 1px;
+    background: linear-gradient(180deg, #ffb15a, rgba(255, 140, 40, 0));
+  }
+  #panel .credit-role {
+    color: #ffb15a; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    text-shadow: 0 0 10px rgba(255, 120, 20, .75);
+  }
+  #panel .credit-name { opacity: .8; font-size: 11px; line-height: 1.5; }
+  /* keep "aka <handle>" together so a long name wraps as name / alias, never
+     stranding the "aka" at the end of a line */
+  #panel .credit-alias { white-space: nowrap; }
+  #panel .credit-aka { opacity: .45; }
+  #panel .credit-handle { color: #ffcf87; font-weight: bold; }
+  #panel .credit + label.check { margin-top: 12px; }
+  /* Filters: the stackable post-FX checkboxes */
+  /* ---- layer stack rows ---- */
+  #panel #stacklist { display: flex; flex-direction: column; gap: 4px; margin: 3px 0 7px; }
+  #panel .lyr {
+    /* Three rows: the effect name gets a line of its own, the mute/gain/remove controls sit
+       under it, and the blend mode has its own row below that. The name is the one thing you
+       actually read when scanning a stack, so it never shares a line. */
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px;
+    align-items: center;
+    padding: 6px 7px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
+    background: rgba(255, 140, 40, 0.05); cursor: pointer;
+  }
+  /* The selected layer is the one the Effect chooser and every slider below edit, so it
+     has to be unmistakable — everything else in the box refers to it. */
+  #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
+  #panel .lyr.muted .lyr-name { opacity: .4; text-decoration: line-through; }
+  #panel .lyr-name { font-size: 11px; color: #ffcf87; padding: 1px 0 0; letter-spacing: .2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Drag handle: spans both rows like the old arrow column did. touch-action:none so a
+     touch-drag reorders instead of scrolling the panel; the row it lives on live-moves
+     among its siblings while held (see syncStackUI's pointerdown). */
+  #panel .lyr-grab {
+    grid-row: 1 / 4; align-self: stretch; width: 15px;
+    display: flex; align-items: center; justify-content: center;
+    color: #ffb15a; opacity: .5; font: 13px/1 monospace;
+    cursor: grab; user-select: none; touch-action: none; border-radius: 4px;
+  }
+  #panel .lyr-grab:hover { opacity: 1; background: rgba(255, 140, 40, 0.18); }
+  #panel .lyr-grab.off { opacity: .18; cursor: default; background: none; }
+  #panel .lyr.dragging { position: relative; z-index: 3; opacity: .92; border-color: #ff8c28; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.55); }
+  #panel .lyr.dragging .lyr-grab { cursor: grabbing; opacity: 1; }
+  /* The insertion line shown while dragging — a bright rule between two rows. */
+  #panel .lyr-drop { height: 0; border-top: 2px solid #ff8c28; border-radius: 2px; box-shadow: 0 0 6px rgba(255, 140, 40, 0.9); }
+  /* Spread the row controls: mute · blend sit left, the gain slider grows to fill the
+     freed space, remove is pushed to the right edge. Gives every component breathing room
+     and a longer, more usable gain slider than the old fixed 38px. */
+  #panel .lyr-ctl { display: flex; align-items: center; gap: 7px; padding-top: 1px; }
+  #panel .lyr-ctl .sp { flex: 1; }
+  #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
+  #panel .lyr b {
+    font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
+    background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
+  }
+  #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
+  #panel .lyr b.off { opacity: .3; cursor: default; }
+  #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
+  #panel .lyr input[type=range] { width: 38px; margin: 0; }
+  /* Blend row: label · dropdown (grows) · ▲/▼ steppers. */
+  #panel .lyr-blend { display: flex; align-items: center; gap: 6px; }
+  #panel .lyr-blend-lbl { font-size: 10px; color: #ffb15a; opacity: .7; letter-spacing: .3px; }
+  #panel .lyr-blend select { flex: 1 1 auto; min-width: 0; }
+  #panel .lyr-arrow { font-size: 8px; line-height: 1; padding: 3px 4px; }
+  #panel #addlayer { margin: 0 0 6px; }
+  #panel #addlayer.off { opacity: .4; pointer-events: none; }
+  /* One column. Two columns fitted the checkboxes but not their names, and once each
+     filter grew a foldable body there was nowhere sensible for it to open into. */
+  #panel #filterlist { margin: 2px 0 4px; }
+  /* One filter: a <details> whose summary carries the chevron, the tick and the name,
+     and whose body holds that filter's own params — so they fold away with it instead
+     of stacking up in one long list below. */
+  #panel .filter-sec > summary {
+    display: flex; align-items: center; gap: 6px;
+    margin: 3px 0 0; padding: 1px 0; cursor: pointer; list-style: none;
+  }
+  #panel .filter-sec > summary::-webkit-details-marker { display: none; }
+  #panel .filter-sec > summary::before { content: "▸"; opacity: .75; font-size: 11px; width: 9px; color: #ffb15a; }
+  #panel .filter-sec[open] > summary::before { content: "▾"; }
+  #panel .filter-sec > summary input { margin: 0; }
+  #panel .filter-sec > summary .filter-name { flex: 1 1 auto; min-width: 0; }
+  /* Nothing ticked ⇒ nothing to configure: grey the row and drop the chevron, so an
+     empty body can't be opened onto. */
+  #panel .filter-sec.idle > summary { opacity: .62; }
+  #panel .filter-sec.idle > summary::before { visibility: hidden; }
+  #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
+  #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
+  #panel .filter-chk { margin: 4px 0 0; }
+  #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
+  /* subheading over a run of related sliders (Camera, Banding) */
+  #panel .ctl-grp {
+    margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
+    color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  /* the "what this group of filters does" caption under a filter-group heading */
+  #panel .filter-grp-d {
+    text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;
+    color: #ffcf87; opacity: .75;
+  }
+  /* #fxctl's first group used to sit directly under the box title, where a separator
+     line looked like a stray rule; it now follows the Effect chooser, so it keeps the
+     normal border and reads as the divider between "what" and "how". */
+  /* ---- help popup ---- */
+  #panel #help-btn {
+    position: absolute; top: 14px; right: 14px;
+    width: 20px; height: 20px; padding: 0;
+    border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.5);
+    background: rgba(255, 122, 26, 0.15); color: #ffb15a; font: bold 12px/1 ui-monospace, monospace;
+    cursor: pointer; text-shadow: none;
+  }
+  #panel #help-btn:hover { background: rgba(255, 122, 26, 0.35); }
+  /* A small inline ? next to a label (e.g. Presets), reusing the panel help modal. */
+  #panel .lbl-help {
+    width: 15px; height: 15px; padding: 0; margin-left: 5px; vertical-align: 1px;
+    border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.45);
+    background: rgba(255, 122, 26, 0.12); color: #ffb15a; font: bold 9px/1 ui-monospace, monospace;
+    cursor: pointer; opacity: .75;
+  }
+  #panel .lbl-help:hover { background: rgba(255, 122, 26, 0.32); opacity: 1; }
+  /* Data-structure tree inside the help modal. */
+  #help .help-tree {
+    margin: 4px 0 12px; padding: 11px 13px; overflow-x: auto;
+    background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 8px;
+    font: 11px/1.65 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #e8ddd0; white-space: pre;
+  }
+  #help .help-tree b { color: #ffcf87; font-weight: 600; }
+  #help .help-tree i { color: #9a8a70; font-style: normal; }
+  #help {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #help.hidden { display: none; }
+  #help .help-box {
+    position: relative; max-width: 470px; max-height: 82vh; overflow-y: auto; margin: 16px;
+    padding: 18px 20px; background: rgba(14, 8, 5, 0.97);
+    border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #help h2 { margin: 0 24px 8px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #help p { margin: 0 0 10px; opacity: .9; }
+  #help .help-intro { opacity: .68; font-size: 11.5px; }
+  #help .help-owner { margin: -4px 0 10px; color: #ffb15a; opacity: .6; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
+  #help dl { margin: 4px 0 0; }
+  #help dt { color: #ffcf87; margin-top: 11px; }
+  #help dd { margin: 2px 0 0; opacity: .82; }
+  #help .help-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #help .help-close:hover { background: rgba(255, 122, 26, 0.25); }
+
+  /* "Sync with your music" nudge popup */
+  #syncpop {
+    position: fixed; inset: 0; z-index: 25; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #syncpop.hidden { display: none; }
+  #syncpop .sync-box {
+    position: relative; max-width: 440px; max-height: 82vh; overflow-y: auto; margin: 16px;
+    padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #syncpop h2 { margin: 0 26px 10px 0; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #syncpop p { margin: 0 0 10px; opacity: .9; }
+  #syncpop .sync-note { opacity: .62; font-size: 11.5px; }
+  #syncpop dl { margin: 4px 0 12px; }
+  #syncpop dt { color: #ffcf87; margin-top: 10px; font-weight: 600; }
+  #syncpop dd { margin: 2px 0 0; opacity: .82; }
+  #syncpop .sync-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #syncpop .sync-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #syncpop .sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  #syncpop .sync-actions button {
+    flex: 1 1 auto; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
+    font: 12px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #syncpop .sync-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #syncpop .sync-actions #sync-capture { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  #syncpop .sync-actions .ghost { flex: 0 0 auto; background: transparent; opacity: .75; }
+
+  /* Cardioid debug view: the Mandelbrot set with the seed's orbit drawn on top.
+     Deliberately NOT a modal — it's a floating panel at the same depth as the
+     rest of the menu (below #panel, like #breakout), with no backdrop, so you can
+     drag the orbit sliders and watch the seed path redraw at the same time. */
+  #carddlg {
+    position: fixed; right: 16px; bottom: 16px; z-index: 5;
+    max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
+    padding: 16px 18px 14px;
+    background: rgba(14, 8, 5, 0.92); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: #ffdcb0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #carddlg.hidden { display: none; }
+  #carddlg .card-box { position: static; }
+  #carddlg h2 { margin: 0 30px 10px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #carddlg canvas { display: block; max-width: 100%; border: 1px solid rgba(255, 140, 40, 0.25); border-radius: 6px; }
+  #carddlg .card-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #carddlg .card-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #carddlg .card-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; }
+  #carddlg .card-seg { display: inline-flex; border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 6px; overflow: hidden; }
+  #carddlg .card-seg .cardmode { border: 0; border-right: 1px solid rgba(255, 140, 40, 0.25); border-radius: 0; }
+  #carddlg .card-seg .cardmode:last-child { border-right: 0; }
+  #carddlg .cardmode {
+    padding: 4px 9px; background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer;
+    font: 11px/1 monospace; border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 6px;
+  }
+  #carddlg .cardmode:hover { background: rgba(255, 122, 26, 0.22); }
+  #carddlg .cardmode.on { background: #ff7a1a; color: #1a0f08; }
+  #carddlg .cardmode.off { opacity: .35; pointer-events: none; }
+  #carddlg .card-ride { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px; }
+  #carddlg .card-ride input { accent-color: #ff7a1a; cursor: pointer; }
+  #carddlg canvas.draw { cursor: crosshair; touch-action: none; }
+  #carddlg canvas.editpts { cursor: move; touch-action: none; }
+  #carddlg .card-hint { margin: 8px 0 0; font-size: 11px; opacity: .6; }
+  #carddlg .card-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 0; font-size: 11px; opacity: .85; }
+  #carddlg .card-key i { display: inline-block; width: 10px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+  #carddlg #cardNums { margin: 8px 0 0; font-size: 11px; opacity: .7; }
+
+  /* Restore-from-backup dialog */
+  #restoredlg {
+    position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #restoredlg.hidden { display: none; }
+  #restoredlg .rst-box {
+    position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
+    padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #restoredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #restoredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
+  #restoredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; }
+  #restoredlg label.rst-opt { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; cursor: pointer; }
+  #restoredlg label.rst-opt.disabled { opacity: .35; cursor: default; }
+  #restoredlg .rst-opt input { margin-top: 2px; flex: none; }
+  #restoredlg .rst-opt small { display: block; opacity: .6; font-size: 10.5px; }
+  #restoredlg .rst-mode { margin: 2px 0 4px 26px; }
+  #restoredlg .rst-mode.disabled { opacity: .35; }
+  #restoredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
+  #restoredlg .rst-actions button {
+    flex: 1; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
+    font: 12px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #restoredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }

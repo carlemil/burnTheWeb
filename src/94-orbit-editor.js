@@ -1,0 +1,336 @@
+  // ---- Orbit editor ----------------------------------------------------------
+  // AnimeJulia, Burning Ship and Multibrot all take their seed c from a point tracing
+  // a base curve over the Mandelbrot set (see juliaSeedAt), with a riding circle on top.
+  // This popup both *shows* that orbit over the c-plane locus — the base curve, the path
+  // the seed really traces (base + riding circle at the current ratio), the riding circle
+  // and the live seed — and lets you *choose* the base curve: cardioid, circle, or a
+  // freehand loop drawn on the canvas (which snaps to a closed spline the seed follows).
+  // Descriptor-gated on `cardioid: true`.
+  //
+  // The chosen shape is scene data (per-effect extras — saved, shared, in presets). The
+  // view samples juliaSeedAt() rather than juliaSeed(), so opening it never advances (or
+  // perturbs) the animation.
+  const CARD_X0 = -2.35, CARD_X1 = 0.95;      // the slice of the c-plane we draw
+  // `var`, not `const`: setEffect() runs during startup, before this line is
+  // evaluated, and calls cardOpen() — a const would still be in its temporal dead
+  // zone and throw (same reason the old range editor's state was a `var`).
+  var card = { on: false, cv: null, ctx: null, bg: null, bgPow: 0 };
+  var cardWanted = false;                      // the user's intent to have the Orbit editor open (see setEffect); var for the same TDZ reason as `card`
+  var seedDrawing = null;                     // the in-progress freehand stroke (base-plane pts)
+  var seedEdit = false;                        // freehand sub-mode: false = draw, true = drag points
+  var seedDragIdx = -1;                        // control point being dragged (edit mode), -1 = none
+  var seedHover = -1;                          // control point under the cursor (edit mode)
+  var seedHistory = [];                        // undo stack of seedPts snapshots (transient, per session)
+  // The backdrop is the connectedness locus the seed is *actually* riding — the
+  // Mandelbrot set at power 2, the degree-d Multibrot otherwise. Drawing the
+  // Mandelbrot under a Multibrot orbit made the view lie: the seed looked safely
+  // outside the set while really sitting deep inside the locus that governs it.
+  //
+  // Power drifts continuously, so this is quantised to CARD_POW_Q and rendered at
+  // half resolution into an offscreen canvas (drawImage scales it back up). A full-res
+  // repaint every frame at 120 iterations is far too slow for a debug overlay.
+  const CARD_POW_Q = 0.05;                    // = the Power slider's own step
+  const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
+  // Auto-frame the c-plane view per power: a cheap low-res scan finds the inside (black)
+  // region's bounding box, then we centre the view on it and size it to fit — so the locus
+  // blob is centred for every power/form instead of one fixed Mandelbrot-tuned window (the
+  // set's centre drifts from ≈−0.5 at power 2 toward 0 at higher powers, and it grows). The
+  // locus is symmetric about the real axis, so only the x-centre and span need adjusting.
+  // Cached per quantised power + canvas aspect (both change rarely).
+  const CARD_SCAN = { x0: -2.4, x1: 2.4, y0: -2.0, y1: 2.0 };   // generous, aspect-independent scan region
+  let cardWin = { q: NaN, aspect: NaN, x0: CARD_X0, x1: CARD_X1 };
+  function cardWindow(d, aspect) {
+    if (cardWin.q === d && cardWin.aspect === aspect) return cardWin;
+    const W = 80, sx = CARD_SCAN.x1 - CARD_SCAN.x0, sy = CARD_SCAN.y1 - CARD_SCAN.y0;
+    const H = Math.max(1, Math.round(W * sy / sx));
+    const sq = d === 2;
+    let minX = Infinity, maxX = -Infinity, maxAY = 0, any = false;
+    for (let py = 0; py < H; py++) {
+      const cy = CARD_SCAN.y0 + (py / H) * sy;
+      for (let px = 0; px < W; px++) {
+        const cx = CARD_SCAN.x0 + (px / W) * sx;
+        let zx = 0, zy = 0, i = 0, mag2 = 0;
+        for (; i < 60 && mag2 <= 4; i++) {
+          if (sq) { const t = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = t; }
+          else { const r = Math.pow(Math.sqrt(mag2), d), a = Math.atan2(zy, zx) * d; zx = r * Math.cos(a) + cx; zy = r * Math.sin(a) + cy; }
+          mag2 = zx * zx + zy * zy;
+        }
+        if (mag2 <= 4) { if (cx < minX) minX = cx; if (cx > maxX) maxX = cx; const ay = Math.abs(cy); if (ay > maxAY) maxAY = ay; any = true; }
+      }
+    }
+    let x0, x1;
+    if (!any) { x0 = CARD_X0; x1 = CARD_X1; }
+    else {
+      const xc = (minX + maxX) / 2;
+      // half-width must contain the locus in x AND (spanY = spanX/aspect) in y; the 1.45 floor
+      // keeps the seed path visible for small loci, then a small margin so it isn't edge-to-edge.
+      const half = Math.max((maxX - minX) / 2, maxAY * aspect, 1.45) * 1.15;
+      x0 = xc - half; x1 = xc + half;
+    }
+    cardWin = { q: d, aspect, x0, x1 };
+    return cardWin;
+  }
+  function cardLocus(w, h, d, win) {
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const img = new ImageData(w, h), px32 = img.data;
+    const spanX = win.x1 - win.x0, spanY = spanX * (h / w), y0 = -spanY / 2;
+    const sq = d === 2;                       // integer-2 fast path: no pow/atan2 per step
+    for (let py = 0; py < h; py++) {
+      const cy = y0 + (py / h) * spanY;
+      for (let px = 0; px < w; px++) {
+        const cx = win.x0 + (px / w) * spanX;
+        // Iterate the critical point z=0 — bounded ⇔ c is in the locus.
+        let zx = 0, zy = 0, i = 0, mag2 = 0;
+        for (; i < 120 && mag2 <= 4; i++) {
+          if (sq) { const t = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = t; }
+          else {
+            const r = Math.pow(Math.sqrt(mag2), d), a = Math.atan2(zy, zx) * d;
+            zx = r * Math.cos(a) + cx; zy = r * Math.sin(a) + cy;
+          }
+          mag2 = zx * zx + zy * zy;
+        }
+        const o = (py * w + px) * 4;
+        // inside = near-black, outside = a cool grey ramp, so the amber overlay pops
+        const v = mag2 <= 4 ? 10 : 24 + Math.round(Math.sqrt(i / 120) * 120);
+        px32[o] = v * 0.78; px32[o + 1] = v * 0.85; px32[o + 2] = v; px32[o + 3] = 255;
+      }
+    }
+    cv.getContext("2d").putImageData(img, 0, 0);
+    return cv;
+  }
+  function cardDraw() {
+    if (!card || !card.on || !card.ctx) return;
+    const w = card.cv.width, h = card.cv.height, ctx = card.ctx, aspect = w / h;
+    const pq = cardPowQ();
+    const win = cardWindow(pq, aspect);       // centre + size the view on the locus for this power
+    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) { card.bg = cardLocus(w >> 1, h >> 1, pq, win); card.bgPow = pq; card.bgAspect = aspect; }
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(card.bg, 0, 0, w, h);       // half-res locus, scaled up
+    const spanX = win.x1 - win.x0, spanY = spanX * (h / w);
+    const X = cx => (cx - win.x0) / spanX * w;               // complex → canvas
+    const Y = cy => (cy + spanY / 2) / spanY * h;
+    // the bare base path (the outer loop, before the riding circle) — cardioid, circle or the
+    // freehand spline, whichever this effect's seedPathMode selects (via juliaSeedAt). Only ONE
+    // shape is ever drawn, the selected one; freehand with nothing drawn shows no curve at all.
+    const fhEmpty = seedPathMode === "freehand" && !seedSpline;
+    if (!fhEmpty) {
+      ctx.lineWidth = 1.25; ctx.strokeStyle = "#ff7a1a"; ctx.beginPath();
+      for (let i = 0; i <= 360; i++) {
+        const p = juliaSeedAt(juliaOuter + (i / 360) * Math.PI * 2, 0);
+        i ? ctx.lineTo(X(p.bx), Y(p.by)) : ctx.moveTo(X(p.bx), Y(p.by));
+      }
+      ctx.stroke();
+    }
+    // freehand control points (the snap targets) — bigger and ringed in edit mode, with the
+    // hovered/dragged one lit white, so you can see and grab them.
+    if (seedPathMode === "freehand" && seedPts.length) {
+      for (let i = 0; i < seedPts.length; i++) {
+        const px = X(seedPts[i][0] + juliaOffX), py = Y(seedPts[i][1]);
+        const hot = i === seedDragIdx || (seedDragIdx < 0 && i === seedHover);
+        ctx.beginPath(); ctx.arc(px, py, seedEdit ? (hot ? 6 : 4.5) : 2, 0, Math.PI * 2);
+        ctx.fillStyle = hot ? "#fff" : "rgba(255,207,135,0.9)"; ctx.fill();
+        if (seedEdit) { ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,140,40,0.85)"; ctx.stroke(); }
+      }
+    }
+    // the in-progress stroke while drawing
+    if (seedDrawing && seedDrawing.length) {
+      ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.beginPath();
+      seedDrawing.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1])));
+      ctx.stroke();
+    }
+    const now = juliaSeedAt(juliaOuter, juliaInner);
+    if (seedRideOn && juliaInnerR > 1e-6 && !fhEmpty) {
+      // The riding circle keeps the seed within `inner r` of the base path at all times, so
+      // the seed's reachable region is a tube of that radius around it. Draw the tube's inner
+      // and outer bounds — the base path offset by ±inner-r along its local normal — rather
+      // than the epicycle spiral, which animates and is hard to read while you draw/tune.
+      const steps = 360, dth = Math.PI * 2 / steps, d = juliaInnerR;
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(90,209,255,0.75)";
+      for (const side of [1, -1]) {
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+          const th = juliaOuter + i * dth;
+          const a = juliaSeedAt(th + dth * 0.5, 0), b = juliaSeedAt(th - dth * 0.5, 0), p = juliaSeedAt(th, 0);
+          let tx = a.bx - b.bx, ty = a.by - b.by; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+          const ox = p.bx + side * d * ty, oy = p.by - side * d * tx;   // normal = (ty, −tx)
+          i ? ctx.lineTo(X(ox), Y(oy)) : ctx.moveTo(X(ox), Y(oy));
+        }
+        ctx.stroke();
+      }
+      // the riding circle where it is right now
+      const rpx = juliaInnerR / spanX * w;
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(125,220,138,0.9)";
+      ctx.beginPath(); ctx.arc(X(now.bx), Y(now.by), Math.max(1, rpx), 0, Math.PI * 2); ctx.stroke();
+    }
+    // the live seed c — a big white dot with a dark halo so it stays legible over any base
+    ctx.beginPath(); ctx.arc(X(now.cx), Y(now.cy), 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.stroke();
+    const mode = seedPathMode[0].toUpperCase() + seedPathMode.slice(1);
+    el("cardNums").textContent =
+      mode + (seedRideOn ? "" : " · bare") +
+      " · c = " + now.cx.toFixed(4) + (now.cy < 0 ? " − " : " + ") + Math.abs(now.cy).toFixed(4) + "i" +
+      " · outer ×" + juliaOuterR.toFixed(2) +
+      (seedRideOn ? " · inner r " + juliaInnerR.toFixed(3) + " · ratio " + juliaRatio.toFixed(2) : "") +
+      " · " + juliaBigRpm.toFixed(2) + " rpm" +
+      (juliaPower === 2 ? "" : " · power " + juliaPower.toFixed(2));
+  }
+  // Reflect the live seed-path state onto the editor controls. Called by loadExtra (so a
+  // scene/layer switch updates the buttons) and on open; safe before the DOM exists.
+  function syncOrbitUI() {
+    const ride = el("cardRide"); if (!ride) return;
+    ride.checked = seedRideOn;
+    document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === seedPathMode));
+    const fh = seedPathMode === "freehand";
+    const clr = el("cardClear"); if (clr) clr.classList.toggle("off", !fh);
+    const ed = el("cardEdit"); if (ed) { ed.classList.toggle("off", !fh); ed.classList.toggle("on", fh && seedEdit); }
+    const un = el("cardUndo"); if (un) un.classList.toggle("off", !fh || !seedHistory.length);
+    const cv = el("cardcv"); if (cv) { cv.classList.toggle("draw", fh && !seedEdit); cv.classList.toggle("editpts", fh && seedEdit); }
+    const hint = el("cardHint");
+    if (hint) {
+      hint.style.display = fh ? "" : "none";
+      hint.textContent = seedEdit
+        ? "Edit: drag the control points to reshape the loop. Undo steps back one change at a time."
+        : "Draw: drag on the canvas to sketch a loop — it snaps to a smooth closed spline the seed then follows.";
+    }
+  }
+  // Pause / resume the seed orbit. The button toggles between the pause and play glyphs;
+  // closing the editor resumes (so the motion never stays frozen once the editor is gone).
+  function setOrbitPaused(p) {
+    orbitPaused = p;
+    const b = el("cardPause"); if (!b) return;
+    const t = p ? "Resume the seed motion" : "Pause the seed motion";
+    b.textContent = p ? "▶" : "⏸";
+    b.title = t; b.setAttribute("aria-label", t);
+    b.classList.toggle("on", p);
+  }
+  function cardOpen(on) {
+    if (!card) return;      // startup: setEffect runs before `var card` is initialized
+    card.on = on;
+    el("carddlg").classList.toggle("hidden", !on);
+    if (!on) { setOrbitPaused(false); return; }   // closing resumes the motion
+    if (!card.ctx) { card.cv = el("cardcv"); card.ctx = card.cv.getContext("2d"); }
+    syncOrbitUI();
+    cardDraw();                    // paint immediately; frame() keeps it live after
+  }
+  // Credits toggle. Deliberately in its own localStorage key, not the scene blob:
+  // it is a per-browser preference, not part of a shared/backed-up scene.
+  const creditsChk = el("creditsOn");
+  creditsChk.checked = creditsEnabled();
+  creditsChk.addEventListener("change", () => {
+    try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
+  });
+
+  el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
+  el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });
+  el("cardPause").addEventListener("click", () => setOrbitPaused(!orbitPaused));
+
+  // ---- Orbit editor interaction ----
+  // Canvas pixel → c-plane coordinate (accounts for the canvas being CSS-scaled to fit).
+  function cardEventToC(e) {
+    const cv = card.cv || el("cardcv"), r = cv.getBoundingClientRect();
+    const w = cv.width, h = cv.height, spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w);
+    const px = (e.clientX - r.left) * (w / r.width), py = (e.clientY - r.top) * (h / r.height);
+    return [CARD_X0 + (px / w) * spanX, (py / h) * spanY - spanY / 2];
+  }
+  // Commit a seed-path edit: mirror the live globals into the selected effect's extras and
+  // fold it into the scene, exactly like a slider — the seed-path is per-effect scene data.
+  function commitSeedPath() { captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
+  // Resample a raw stroke to N evenly (arc-length) spaced control points, so the spline snaps
+  // to a clean loop regardless of how fast the pointer moved. buildSeedSpline then closes it.
+  function resampleClosed(stroke) {
+    const seg = [];
+    let total = 0;
+    for (let i = 1; i < stroke.length; i++) { const d = Math.hypot(stroke[i][0] - stroke[i - 1][0], stroke[i][1] - stroke[i - 1][1]); seg.push(d); total += d; }
+    if (total < 1e-6) return [];
+    const N = Math.max(6, Math.min(48, Math.round(total / ((CARD_X1 - CARD_X0) * 0.03))));
+    const step = total / N, out = [];
+    for (let k = 0; k < N; k++) {
+      const target = k * step;
+      let cum = 0, idx = 1;
+      for (; idx < stroke.length; idx++) { if (cum + seg[idx - 1] >= target) break; cum += seg[idx - 1]; }
+      if (idx >= stroke.length) idx = stroke.length - 1;
+      const t = (target - cum) / (seg[idx - 1] || 1), a = stroke[idx - 1], b = stroke[idx];
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+    return out;
+  }
+  // Snapshot the current control points onto the undo stack, BEFORE a mutation. Undo pops
+  // one snapshot at a time. Transient per session; cleared on scene/layer switch (loadExtra).
+  function pushSeedHistory() {
+    seedHistory.push(seedPts.map(p => p.slice()));
+    if (seedHistory.length > 50) seedHistory.shift();
+    syncOrbitUI();
+  }
+  document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b =>
+    b.addEventListener("click", () => { seedPathMode = seedModeOk(b.dataset.mode); seedHover = -1; syncOrbitUI(); commitSeedPath(); }));
+  el("cardRide").addEventListener("change", () => { seedRideOn = el("cardRide").checked; commitSeedPath(); });
+  el("cardEdit").addEventListener("click", () => { seedEdit = !seedEdit; seedHover = -1; syncOrbitUI(); });
+  el("cardUndo").addEventListener("click", () => {
+    if (!seedHistory.length) return;
+    seedPts = seedHistory.pop();
+    seedSpline = buildSeedSpline(seedPts);
+    commitSeedPath(); syncOrbitUI();
+  });
+  el("cardClear").addEventListener("click", () => {
+    if (!seedPts.length && !seedSpline) return;
+    pushSeedHistory(); seedPts = []; seedSpline = null; seedDrawing = null; commitSeedPath();
+  });
+  // Freehand canvas interaction. DRAW mode: drag to sketch a loop (points thinned by a min
+  // spacing, resampled + fitted to a closed spline on release). EDIT mode: drag an existing
+  // control point to reshape the loop live. Points are stored in BASE coords (offX subtracted)
+  // so they land exactly where you put them regardless of the X-offset slider.
+  {
+    const cv = el("cardcv");
+    const HIT = () => (CARD_X1 - CARD_X0) * 0.028;      // grab radius in c-units (~12px)
+    const nearestPt = c => {
+      let bi = -1, bd = HIT();
+      for (let i = 0; i < seedPts.length; i++) {
+        const d = Math.hypot(c[0] - (seedPts[i][0] + juliaOffX), c[1] - seedPts[i][1]);
+        if (d < bd) { bd = d; bi = i; }
+      }
+      return bi;
+    };
+    cv.addEventListener("pointerdown", e => {
+      if (seedPathMode !== "freehand") return;
+      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      if (seedEdit) {
+        const idx = nearestPt(cardEventToC(e));
+        if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }
+      } else {
+        seedDrawing = [cardEventToC(e)];
+      }
+    });
+    cv.addEventListener("pointermove", e => {
+      const c = cardEventToC(e);
+      if (seedDragIdx >= 0) {
+        // New array (not in-place) so the per-layer spline cache invalidates; capture into
+        // the layer each move so the render loop's installSeedPath can't clobber the drag.
+        seedPts = seedPts.map((p, i) => i === seedDragIdx ? [c[0] - juliaOffX, c[1]] : p);
+        seedSpline = buildSeedSpline(seedPts);           // live reshape
+        captureSeed(stack[stackSel]);
+      } else if (seedDrawing) {
+        const last = seedDrawing[seedDrawing.length - 1];
+        if (Math.hypot(c[0] - last[0], c[1] - last[1]) > (CARD_X1 - CARD_X0) * 0.006) seedDrawing.push(c);
+      } else if (seedEdit) {
+        seedHover = nearestPt(c);                        // hover highlight
+      }
+    });
+    const finish = () => {
+      if (seedDragIdx >= 0) { seedDragIdx = -1; commitSeedPath(); return; }   // history pushed on grab
+      if (!seedDrawing) return;
+      const stroke = seedDrawing; seedDrawing = null;
+      if (stroke.length >= 4) {
+        pushSeedHistory();
+        seedPts = resampleClosed(stroke).map(p => [p[0] - juliaOffX, p[1]]);
+        seedSpline = buildSeedSpline(seedPts);
+        commitSeedPath();
+      }
+    };
+    cv.addEventListener("pointerup", finish);
+    cv.addEventListener("pointercancel", () => { seedDrawing = null; seedDragIdx = -1; });
+  }
+  // No backdrop click-to-close: it's a floating panel, not a modal — clicking it
+  // (or anything behind it) must keep working while the view stays up.
+

@@ -1,0 +1,224 @@
+  // ---- TRANSITIONS: how one preset gives way to the next ---------------------
+  // Scenes that retain heat (Fire / Fade ticked) already dissolve on their own —
+  // setEffect leaves the old heat in place and it decays under the new scene. Scenes
+  // with no feedback filter rewrite the buffer on their first frame by design, so they
+  // used to cut hard. These cover that gap.
+  //
+  // Every one is a mode of the single FS_TRANS pass, run between the zoom and the glow
+  // on a frozen copy of the outgoing frame (glTex.prev). Freezing is the tradeoff:
+  // rendering both scenes at once would need two live copies of state that is singleton
+  // here. For a sub-second transition it reads the way a video switcher's dissolve does.
+  //
+  // `fits(a, b)` returns a *weight* for a switch from scene a to scene b — 0 means
+  // "never pick me for this pair". Both sides are {dense, retains, palette} summaries,
+  // so the choice costs nothing: no pixel readback, just the descriptors.
+  const TRANS_DUR = { fast: 0.45, mid: 0.6, slow: 0.75 };
+  const TRANSITIONS = [
+    // Nothing at all. Only sensible when the buffers already blend for us.
+    { id: "cut", name: "Cut", mode: -1, dur: 0,
+      fits: (a, b) => (a.retains || b.retains) ? 3 : 0.2 },
+    // Retention borrowed for the length of the transition: the incoming scene
+    // MAX-blends over decaying old heat, exactly like the scenes that already work.
+    { id: "burnoff", name: "Burn off", mode: -1, dur: TRANS_DUR.slow, burn: true,
+      fits: (a, b) => b.retains ? 0 : 2.5 },
+    { id: "crossfade", name: "Crossfade", mode: 0, dur: TRANS_DUR.slow,
+      // Two full-screen fields blend beautifully; a sparse point cloud crossfaded
+      // against a dense field just looks like a double exposure.
+      fits: (a, b) => (a.dense && b.dense) ? 3 : (a.dense !== b.dense ? 0.3 : 1) },
+    { id: "dip", name: "Dip to black", mode: 1, dur: TRANS_DUR.mid,
+      // Always defensible; earns its keep most when the palettes jump.
+      fits: (a, b) => 1 + 2 * palDist(a.palette, b.palette) },
+    { id: "flash", name: "Flash", mode: 2, dur: TRANS_DUR.fast,
+      fits: (a, b) => 0.8 + 1.6 * palDist(a.palette, b.palette) },
+    // The structure-destroying pair: they wreck the image exactly when it changes,
+    // which is what rescues switches a crossfade would ghost through.
+    { id: "pixelate", name: "Pixelate through", mode: 3, dur: TRANS_DUR.slow,
+      fits: (a, b) => a.dense !== b.dense ? 3 : 1.2 },
+    { id: "blur", name: "Blur through", mode: 4, dur: TRANS_DUR.slow,
+      fits: (a, b) => a.dense !== b.dense ? 2 : 1.2 },
+    { id: "wipe", name: "Wipe", mode: 5, dur: TRANS_DUR.mid,
+      fits: (a, b) => a.dense !== b.dense ? 2 : 1 },
+    { id: "iris", name: "Iris", mode: 6, dur: TRANS_DUR.mid,
+      fits: (a, b) => a.dense !== b.dense ? 1.6 : 0.9 },
+  ];
+  // 0 = same palette, 1 = maximally different. Cheap: the ramps are already in memory.
+  function palDist(i, j) {
+    if (i === j) return 0;
+    const A = PALETTES[i], B = PALETTES[j];
+    if (!A || !B) return 0.5;
+    let d = 0;
+    for (let k = 32; k < 256; k += 32) {
+      const a = A.fn(k), b = B.fn(k);
+      d += (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])) / 765;
+    }
+    return Math.min(1, d / 7);
+  }
+  // A scene summary for fits(): dense = fills the frame (shader effects) vs a sparse
+  // point cloud; retains = has a feedback filter, so its buffer survives frame to frame.
+  // `fxList` (optional) describes a whole stack: the scene is dense if ANY live item
+  // fills the frame, since that is what a crossfade would be blending against. Omitted
+  // ⇒ the single effect `e`, which is what a pre-stack preset carries.
+  function sceneInfo(e, filters, palette, fxList) {
+    const fx = EFFECTS[e];
+    const f = filtersOk(filters) || new Set(presetFilters(e));
+    return {
+      dense: fxList && fxList.length ? fxList.some(i => !!(EFFECTS[i] && EFFECTS[i].draw)) : !!fx.draw,
+      retains: FILTERS.some(x => x.stage === "feedback" && f.has(x.id)),
+      palette: +palette || 0,
+    };
+  }
+  // Weighted pick among the transitions that fit this pair at all.
+  function pickTransition(a, b) {
+    const w = TRANSITIONS.map(t => Math.max(0, t.fits(a, b)));
+    const total = w.reduce((x, y) => x + y, 0);
+    if (total <= 0) return TRANSITIONS[0];
+    let r = Math.random() * total;
+    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return TRANSITIONS[i]; }
+    return TRANSITIONS[0];
+  }
+  // Live transition state. `t` counts 0→1 in RENDERED time, like the credits, so a
+  // backgrounded tab doesn't burn through it unseen.
+  const trans = { on: false, t: 0, dur: 0, mode: -1, burn: false, id: "cut" };
+  function transActive() { return trans.on && trans.mode >= 0; }
+  // Borrowed retention: hasFeedback() consults this, so a burn-off transition makes
+  // even a no-filter scene decay its predecessor instead of wiping it.
+  function transBurning() { return trans.on && trans.burn; }
+  function transLen() {                      // [min,max] seconds from the slider; 0 = off
+    const a = Math.min(+el("tdur-lo").value, +el("tdur-hi").value);
+    const b = Math.max(+el("tdur-lo").value, +el("tdur-hi").value);
+    return { a: a, b: b };
+  }
+  // Freeze the outgoing frame and start a transition into scene `to`.
+  function transBegin(to) {
+    const len = transLen();
+    if (len.b <= 0) return;                  // slider pinned at 0 ⇒ transitions off
+    // The outgoing side is the live stack, not just the selected item.
+    const from = sceneInfo(effect, extras[effect] && extras[effect].filters, +paletteSel.value,
+      stack.filter(L => !L.mute).map(L => L.fx));
+    const pick = pickTransition(from, to);
+    const scale = (len.a + Math.random() * (len.b - len.a)) / TRANS_DUR.slow;
+    trans.on = true; trans.t = 0; trans.id = pick.id;
+    trans.mode = pick.mode; trans.burn = !!pick.burn;
+    trans.dur = Math.max(0.05, pick.dur * scale);
+    if (pick.mode < 0) return;               // cut / burn-off need no frozen copy
+    if (useGL && glReady) {                  // snapshot glTex.scene → glTex.prev
+      gl.bindFramebuffer(gl.FRAMEBUFFER, glFbo.scene);
+      gl.bindTexture(gl.TEXTURE_2D, glTex.prev);
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, fw, fh);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } else if (off && off.width) {
+      if (!transOff) transOff = document.createElement("canvas");
+      if (transOff.width !== off.width || transOff.height !== off.height) {
+        transOff.width = off.width; transOff.height = off.height;
+      }
+      transOff.getContext("2d").drawImage(off, 0, 0);
+    }
+  }
+  let transOff = null, transTmp = null;      // CPU path's frozen copy + downsample scratch
+  function transStep(dt) {
+    if (!trans.on) return;
+    trans.t += dt / trans.dur;
+    if (trans.t >= 1) { trans.on = false; trans.t = 0; trans.mode = -1; trans.burn = false; }
+  }
+  function presetState(e) {           // a fresh copy of effect e's default slider values
+    const st = {}, d = EFFECTS[e].defaults;
+    // Filter params first, so an effect that names one (e.g. its own Flame rise)
+    // still wins. This is why adding a filter needs no edit to the 19 descriptors.
+    for (const id in FILTER_DEFAULTS) st[id] = FILTER_DEFAULTS[id].slice();
+    // Camera X/Y/Z rotation is per-layer state now (was the scene-wide `cam`), so seed it into
+    // every effect exactly like a filter default — an effect that named it would still win below.
+    st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
+    for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
+    return st;
+  }
+  // Camera zoom + X/Y/Z rotation are PER-LAYER state (see isSceneCtl / presetState) — each
+  // stacked effect carries its own angles in its state map, installed into camRX/RY/RZ by
+  // installStackItem before it draws. There is no camera tween — the camera snaps per layer
+  // like every other effect param. On the wire the four keys are grouped into a per-layer `cam`
+  // node (splitLayerCam/joinLayerCam below); there is no camera object at the preset root.
+  const CAM_KEYS = ["zoom", "camrx", "camry", "camrz"];
+  // A layer's camera (zoom + X/Y/Z rotation) is per-layer STATE — the four keys live in the
+  // layer's `state` map with every other slider. On the WIRE they are grouped into a `cam`
+  // sub-object per layer instead (layers[i].cam), so the serialized shape reads cleanly and the
+  // camera isn't a redundant object at the preset root. splitLayerCam pulls them out of a state
+  // map for serialization; joinLayerCam folds a stored `cam` back in before mergeState on load.
+  // A scene saved before this grouping carried the keys inline in state and no `cam` node — that
+  // still loads: joinLayerCam leaves the inline keys untouched when `cam` is absent.
+  function splitLayerCam(st) {
+    const state = {}, cam = {};
+    for (const k in st) (CAM_KEYS.includes(k) ? cam : state)[k] = st[k];
+    return { state, cam };
+  }
+  function joinLayerCam(state, cam) {
+    const out = Object.assign({}, state);
+    if (cam && typeof cam === "object") for (const k of CAM_KEYS) if (Array.isArray(cam[k])) out[k] = cam[k];
+    return out;
+  }
+  function migrateCam(p) {
+    // A scene saved before the camera was per-layer stored one scene-wide `cam`. Fold its
+    // camrx/camry/camrz onto every effect's / layer's state that doesn't already carry them, so
+    // an old scene loads with all layers sharing that camera and looks exactly as it did. A
+    // new scene's states already include the keys (presetState seeds them), so inject() skips.
+    if (!p || !p.cam || typeof p.cam !== "object") return;
+    const inject = st => { if (st) for (const k of ["camrx", "camry", "camrz"]) if (st[k] === undefined && Array.isArray(p.cam[k])) st[k] = p.cam[k].slice(); };
+    if (p.states) for (const k in p.states) inject(p.states[k]);
+    inject(p.state);
+    if (Array.isArray(p.layers)) for (const L of p.layers) if (L) inject(L.state);
+  }
+  // Scene filters (Bloom + the screen-stage FX) are scene-global — read/write their on/off
+  // and dual-slider values as one blob (readSceneFx/writeSceneFx/sceneFxOk).
+  function readSceneFx() {
+    const vals = {};
+    for (const k of SCENE_FILTER_KEYS) { const lo = el(k + "-lo"); if (lo) vals[k] = [+lo.value, +el(k + "-hi").value]; }
+    return { on: [...sceneOn], vals };
+  }
+  function sceneFxOk(sf) {           // validate a stored sceneFx against the live filter ids + bounds
+    if (!sf || typeof sf !== "object") return null;
+    const on = Array.isArray(sf.on) ? sf.on.filter(id => SCENE_FILTER_IDS.has(id)) : null;
+    const vals = {};
+    const raw = sf.vals && typeof sf.vals === "object" ? sf.vals : {};
+    for (const k of SCENE_FILTER_KEYS) {
+      const v = raw[k], lo = el(k + "-lo"); if (!Array.isArray(v) || !lo) continue;
+      const mn = +lo.min, mx = +lo.max, a = +v[0], b = +v[1];
+      if (isFinite(a) && isFinite(b) && a >= mn && a <= mx && b >= mn && b <= mx) vals[k] = [a, b];
+    }
+    return (on || Object.keys(vals).length) ? { on, vals } : null;
+  }
+  function writeSceneFx(sf) {
+    if (!sf) return;
+    if (Array.isArray(sf.on)) sceneOn = new Set(sf.on.filter(id => SCENE_FILTER_IDS.has(id)));
+    for (const k of SCENE_FILTER_KEYS) {
+      const v = sf.vals && sf.vals[k]; if (!Array.isArray(v)) continue;
+      el(k + "-lo").value = v[0]; el(k + "-hi").value = v[1];
+      el(k + "-lo").dispatchEvent(new Event("input"));
+      el(k + "-hi").dispatchEvent(new Event("input"));
+    }
+    syncFilterUI();                  // the scene-filter checkboxes follow sceneOn
+    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;
+  }
+  function initStates() { EFFECTS.forEach((_, k) => states[k] = presetState(k)); }
+  initStates();
+  function saveState(e) {
+    const st = states[e];
+    for (const id in st) {
+      if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global (sceneFx), not per-effect
+      st[id] = Array.isArray(st[id])
+        ? [+el(id + "-lo").value, +el(id + "-hi").value]
+        : +el(id).value;
+    }
+  }
+  function loadState(e) {
+    suppressPersist = true;           // the per-slider input events below would
+    const st = states[e];             // otherwise persist a half-loaded state
+    for (const id in st) {
+      if (SCENE_FILTER_KEYS.includes(id)) continue;   // don't reload scene-filter values on a switch — they're scene-global
+      const v = st[id];
+      if (Array.isArray(v)) {
+        el(id + "-lo").value = v[0]; el(id + "-hi").value = v[1];
+        el(id + "-lo").dispatchEvent(new Event("input"));
+        el(id + "-hi").dispatchEvent(new Event("input"));
+      } else { el(id).value = v; el(id).dispatchEvent(new Event("input")); }
+    }
+    suppressPersist = false;
+  }
+

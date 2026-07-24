@@ -1,0 +1,4 @@
+# Deterministic builds: the split source (src/) and the generated index.html must
+# share line endings so tools/build.js reproduces index.html byte-for-byte on any
+# clone. This overrides a global core.autocrlf=true for this repo.
+* text=auto eol=lf
