@@ -5,8 +5,10 @@
 // carry is a scene that silently renders differently on their machine. That failure is
 // invisible locally — the recipient just gets *their* camera, *their* beat tuning — and
 // it already happened once: applyRestore's mapping rebuilt every imported preset without
-// `cam`, and camrx/camry/camrz live nowhere else, so every imported preset quietly
-// inherited whatever camera the recipient was sitting at.
+// `cam`, and at the time camrx/camry/camrz lived nowhere else, so every imported preset
+// quietly inherited whatever camera the recipient was sitting at. (The camera is per-layer
+// state now — inline in the top-level `state` and in each layer's own `cam` node — so root
+// `cam` is only the legacy migration carrier, still imported for pre-per-layer backups.)
 //
 // Two kinds of check:
 //   1. STRUCTURAL — every key applyPreset restores must be a key snapshotScene captures,
@@ -57,8 +59,12 @@ const readKeys = new Set([...applySrc.matchAll(/\bp\.(\w+)/g)].map(m => m[1]));
 const importKeys = new Set([...importSrc.matchAll(/(\w+):/g)].map(m => m[1]));
 
 ok(snapKeys.size >= 9, "snapshotScene returns a populated object", [...snapKeys].join(","));
-for (const k of ["effect", "state", "beat", "pulse", "plen", "cam", "beatTune", "ranges", "extra"])
+for (const k of ["effect", "state", "beat", "pulse", "plen", "beatTune", "ranges", "extra"])
   ok(snapKeys.has(k), "snapshotScene captures `" + k + "`");
+// The camera moved OUT of the preset root: it is per-layer state now, so snapshotScene must
+// NOT emit a root `cam` (that field was a redundant mirror, and its presence at root is the
+// thing the user asked to remove). Locked in so it can't quietly come back.
+ok(!snapKeys.has("cam"), "snapshotScene no longer emits a root `cam` (camera is per-layer)");
 
 {
   const missing = [...readKeys].filter(k => !snapKeys.has(k));
@@ -74,8 +80,10 @@ for (const k of ["effect", "state", "beat", "pulse", "plen", "cam", "beatTune", 
      missing.length ? "dropped on import: " + missing.join(", ") : [...importKeys].join(","));
   ok(importKeys.has("name"), "...and names the imported preset");
 }
-// The regression that motivated the probe, pinned by name so it reads as intent.
-ok(importKeys.has("cam"), "import keeps `cam` (camrx/camry/camrz exist nowhere else)");
+// The regression that motivated the probe, pinned by name so it reads as intent. `cam` is
+// now the legacy migration carrier (a pre-per-layer backup's root camera) — still imported so
+// those old files load, even though new presets carry the camera in state / per-layer `cam`.
+ok(importKeys.has("cam"), "import still carries `cam` (migration source for pre-per-layer backups)");
 ok(importKeys.has("beatTune"), "import keeps `beatTune`");
 
 // --- 2. behavioural: mergeBeatTune replace semantics --------------------------

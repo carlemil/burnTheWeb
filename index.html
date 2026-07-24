@@ -6142,17 +6142,28 @@
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
-  // Camera zoom + X/Y/Z rotation are PER-LAYER state now (see isSceneCtl / presetState) — each
+  // Camera zoom + X/Y/Z rotation are PER-LAYER state (see isSceneCtl / presetState) — each
   // stacked effect carries its own angles in its state map, installed into camRX/RY/RZ by
-  // installStackItem before it draws. A preset still records ONE `cam` (readCam, the selected
-  // layer's thumbs) as a redundant mirror: it is the migration source for scenes saved before
-  // the camera went per-layer, and the field the preset probe pins. There is no camera tween any
-  // more — the camera snaps per layer like every other effect param.
+  // installStackItem before it draws. There is no camera tween — the camera snaps per layer
+  // like every other effect param. On the wire the four keys are grouped into a per-layer `cam`
+  // node (splitLayerCam/joinLayerCam below); there is no camera object at the preset root.
   const CAM_KEYS = ["zoom", "camrx", "camry", "camrz"];
-  function readCam() {
-    const c = {};
-    for (const k of CAM_KEYS) c[k] = [+el(k + "-lo").value, +el(k + "-hi").value];
-    return c;
+  // A layer's camera (zoom + X/Y/Z rotation) is per-layer STATE — the four keys live in the
+  // layer's `state` map with every other slider. On the WIRE they are grouped into a `cam`
+  // sub-object per layer instead (layers[i].cam), so the serialized shape reads cleanly and the
+  // camera isn't a redundant object at the preset root. splitLayerCam pulls them out of a state
+  // map for serialization; joinLayerCam folds a stored `cam` back in before mergeState on load.
+  // A scene saved before this grouping carried the keys inline in state and no `cam` node — that
+  // still loads: joinLayerCam leaves the inline keys untouched when `cam` is absent.
+  function splitLayerCam(st) {
+    const state = {}, cam = {};
+    for (const k in st) (CAM_KEYS.includes(k) ? cam : state)[k] = st[k];
+    return { state, cam };
+  }
+  function joinLayerCam(state, cam) {
+    const out = Object.assign({}, state);
+    if (cam && typeof cam === "object") for (const k of CAM_KEYS) if (Array.isArray(cam[k])) out[k] = cam[k];
+    return out;
   }
   function migrateCam(p) {
     // A scene saved before the camera was per-layer stored one scene-wide `cam`. Fold its
@@ -6836,8 +6847,7 @@
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
     return {
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
-      layers: stackOut(),                            // the live stack (null ⇒ one item, omitted)
-      cam: readCam(),                                // redundant mirror of the selected layer's per-layer camera (migration source; camera rides in states/layers)
+      layers: stackOut(),                            // the live stack (null ⇒ one item, omitted); each item carries its own `cam`
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
@@ -7576,7 +7586,6 @@
       plens: prunePlens(only(plenStates)),
       extras: only(extras),
       effect,
-      cam: roundMap(readCam()),
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with a share link
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
@@ -7676,9 +7685,8 @@
       // to someone else. beatTune: different thresholds mean different beats mean a different
       // animation. ranges: a value outside the recipient's slider bounds is silently clamped by
       // the DOM, so a preset authored with a widened bound would quietly animate differently.
-      // cam: a redundant mirror of the SELECTED layer's per-layer camera (the camera itself
-      // rides in state/layers now) — kept as the migration source for pre-per-layer scenes.
-      cam: readCam(),
+      // The camera is NOT a preset-root field: it is per-layer state, riding inline in this
+      // top-level `state` (the single/selected effect) and in each layer's own `cam` node.
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
@@ -7689,7 +7697,7 @@
     };
   }
   function defaultPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), cam: readCam(), beatTune: mergeBeatTune(null), ranges: {} }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
   }
   // The scene a first-time visitor sees: a three-layer stack (two Multibrot fractals
   // behind a bouncing tetrahedron), authored in the app and exported as a preset. Stored
@@ -7766,7 +7774,8 @@
   // like every other effect reference). The selected item's values live in the DOM, so
   // freeze first — a caller that forgets loses the user's most recent edit.
   function stackItemOut(L) {
-    return { effect: effectId(L.fx), state: L.state, beat: L.beat, pulse: L.pulse,
+    const { state, cam } = splitLayerCam(L.state || {});   // camera → its own per-layer `cam` node
+    return { effect: effectId(L.fx), state, cam, beat: L.beat, pulse: L.pulse,
       plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
       showBox: L.showBox, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
@@ -7790,7 +7799,10 @@
       const L = newStackItem(e);
       // Each item merges against ITS OWN effect. Merging one item's state against a
       // different effect's defaults silently drops every key that effect declares.
-      L.state = mergeState(e, r.state);
+      // The camera rides in a sibling `cam` node now — fold it back into state first (a
+      // pre-grouping scene has the keys inline in r.state and no r.cam, which joinLayerCam
+      // passes through unchanged).
+      L.state = mergeState(e, joinLayerCam(r.state, r.cam));
       L.beat = mergeBeat(e, r.beat);
       L.pulse = mergePulse(e, r.pulse);
       L.plen = mergePlen(e, r.plen);
@@ -8121,10 +8133,12 @@
       parsed.presets = arr;
       delete parsed.curPreset;        // meaningless once presets arrive as separate files
       if (!arr.length && !parsed.states) throw new Error("no presets or settings found");
-      // `cam` and `beatTune` must be carried through verbatim: camrx/camry/camrz and the
-      // detector thresholds live NOWHERE else (the camera angles are deliberately absent
-      // from every effect's `defaults`), so dropping them here silently hands the imported
-      // preset whatever camera and tuning the recipient happened to be sitting at.
+      // beatTune must be carried through verbatim: the detector thresholds live nowhere else,
+      // so dropping them hands the imported preset whatever tuning the recipient sat at. `cam`
+      // is carried too, but ONLY as the legacy migration source: a backup written before the
+      // camera went per-layer stored one root `cam`, and migrateCam folds it into the states /
+      // layers on load. New backups omit it — the camera rides inline in `state` and in each
+      // layer's `cam` node (both carried below), so a new import needs nothing from this field.
       const valid = arr
         .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
         .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
@@ -8847,12 +8861,12 @@
       "├─ effect                  <i>the SELECTED layer's effect (a stable name)</i>\n" +
       "├─ state·beat·pulse·plen   <i>selected effect's copy (single-layer fallback)</i>\n" +
       "├─ extra                   <i>…its palette / seed / filters</i>\n" +
-      "├─ <b>cam</b>       { zoom, camrx, camry, camrz }\n" +
       "├─ <b>sceneFx</b>   { on, vals }   <i>Scene filters: Bloom + screen FX</i>\n" +
       "├─ <b>beatTune</b>  { fluxK, floor, refract, bands }\n" +
       "├─ <b>ranges</b>    { slider min/max/step }   <i>scene-wide bounds</i>\n" +
       "└─ <b>layers[ ]</b>                 <i>the stack, draw order (omitted if 1 layer)</i>\n" +
       "   └─ layer  { effect, state, beat, pulse, plen,\n" +
+      "               <b>cam</b> { zoom, camrx, camry, camrz },\n" +
       "               palette, paletteRev, paletteBg,\n" +
       "               seedPath, seedRide, seedPts,\n" +
       "               ranges, filters, blend, gain, mute }";
@@ -8861,9 +8875,9 @@
     html += "<p>A preset is a <b>complete snapshot of one scene</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
     html += '<pre class="help-tree">' + tree + "</pre>";
     html += "<dl>";
-    html += "<dt>Scene-wide — one per preset</dt><dd>The camera, the Scene filters (Bloom + the screen FX), the beat-detector tuning, and the scene-wide slider bounds.</dd>";
-    html += "<dt>Per-layer — the stack</dt><dd>Each layer keeps its own effect, slider values, beat wiring, palette, cardioid orbit, its <em>own</em> slider bounds, filters, and how it blends into the stack (blend / gain / mute).</dd>";
-    html += "<dt>Selected-effect copy</dt><dd>The top-level effect and its values describe the selected layer — the whole story for a one-layer scene, and a fallback for a stack (which a one-layer preset omits entirely, so it stays byte-identical to how presets looked before stacking).</dd>";
+    html += "<dt>Scene-wide — one per preset</dt><dd>The Scene filters (Bloom + the screen FX), the beat-detector tuning, and the scene-wide slider bounds.</dd>";
+    html += "<dt>Per-layer — the stack</dt><dd>Each layer keeps its own effect, slider values, beat wiring, <b>camera</b> (zoom + X/Y/Z, in its own <code>cam</code>), palette, cardioid orbit, its <em>own</em> slider bounds, filters, and how it blends into the stack (blend / gain / mute).</dd>";
+    html += "<dt>Selected-effect copy</dt><dd>The top-level effect and its values describe the selected layer — the whole story for a one-layer scene (its camera rides inside that <code>state</code>), and a fallback for a stack (which a one-layer preset omits entirely, so it stays byte-identical to how presets looked before stacking).</dd>";
     html += "</dl>";
     html += '<p class="help-intro">Effects are stored as stable names, not positions, so reordering or removing one never corrupts a saved scene. Deliberately <b>not</b> saved: the render resolution, audio on/off, and the running animation phase — a preset is the same <em>configuration</em>, not the same <em>frame</em>. Backup writes one such file per preset; Share packs the current scene into a link.</p>';
     html += "</div>";
