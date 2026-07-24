@@ -451,9 +451,9 @@
   /* ---- layer stack rows ---- */
   #panel #stacklist { display: flex; flex-direction: column; gap: 4px; margin: 3px 0 7px; }
   #panel .lyr {
-    /* Two rows: the effect name gets a line of its own, the controls sit under it. One
-       line fitted, but only by squeezing the name to three characters and an ellipsis —
-       and the name is the one thing you actually read when scanning a stack. */
+    /* Three rows: the effect name gets a line of its own, the mute/gain/remove controls sit
+       under it, and the blend mode has its own row below that. The name is the one thing you
+       actually read when scanning a stack, so it never shares a line. */
     display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px;
     align-items: center;
     padding: 6px 7px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
@@ -468,7 +468,7 @@
      touch-drag reorders instead of scrolling the panel; the row it lives on live-moves
      among its siblings while held (see syncStackUI's pointerdown). */
   #panel .lyr-grab {
-    grid-row: 1 / 3; align-self: stretch; width: 15px;
+    grid-row: 1 / 4; align-self: stretch; width: 15px;
     display: flex; align-items: center; justify-content: center;
     color: #ffb15a; opacity: .5; font: 13px/1 monospace;
     cursor: grab; user-select: none; touch-action: none; border-radius: 4px;
@@ -493,6 +493,11 @@
   #panel .lyr b.off { opacity: .3; cursor: default; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
   #panel .lyr input[type=range] { width: 38px; margin: 0; }
+  /* Blend row: label · dropdown (grows) · ▲/▼ steppers. */
+  #panel .lyr-blend { display: flex; align-items: center; gap: 6px; }
+  #panel .lyr-blend-lbl { font-size: 10px; color: #ffb15a; opacity: .7; letter-spacing: .3px; }
+  #panel .lyr-blend select { flex: 1 1 auto; min-width: 0; }
+  #panel .lyr-arrow { font-size: 8px; line-height: 1; padding: 3px 4px; }
   #panel #addlayer { margin: 0 0 6px; }
   #panel #addlayer.off { opacity: .4; pointer-events: none; }
   /* One column. Two columns fitted the checkboxes but not their names, and once each
@@ -6305,20 +6310,6 @@
       });
       ctl.appendChild(mute);
 
-      // A cycling label rather than a <select>: the panel is narrow, and a dropdown cost
-      // enough width that the effect name was squeezed to one letter. Every mode's label is
-      // three chars so the row width doesn't jump. Click advances through BLEND_MODES.
-      const bl = document.createElement("b");
-      const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
-      bl.textContent = bm.label;
-      bl.title = bm.tip + " (click to cycle blend modes)";
-      bl.addEventListener("click", e => {
-        e.stopPropagation();
-        L.blend = BLEND_MODES[(BLEND_MODES.indexOf(bm) + 1) % BLEND_MODES.length].id;
-        syncStackUI(); persist(); autosavePreset();
-      });
-      ctl.appendChild(bl);
-
       const gn = document.createElement("input");
       gn.type = "range"; gn.min = 0; gn.max = 1; gn.step = 0.01; gn.value = L.gain;
       gn.title = "Layer strength";
@@ -6332,6 +6323,30 @@
       if (stack.length <= 1) rm.classList.add("off");
       rm.addEventListener("click", e => { e.stopPropagation(); removeStackItem(j); persist(); autosavePreset(); });
       ctl.appendChild(rm);
+
+      // Blend mode on its own row: a <select> (with the mode's tip as its title) flanked by
+      // ▲/▼ steppers that cycle through BLEND_MODES, so you can either pick directly or nudge.
+      const blendRow = document.createElement("div");
+      blendRow.className = "lyr-blend";
+      const blbl = document.createElement("span");
+      blbl.className = "lyr-blend-lbl"; blbl.textContent = "Blend";
+      blendRow.appendChild(blbl);
+      const bcur = () => BLEND_BY_ID[L.blend] || BLEND_MODES[0];
+      const sel = document.createElement("select");
+      BLEND_MODES.forEach(m => { const o = document.createElement("option"); o.value = m.id; o.textContent = m.label; o.title = m.tip; sel.appendChild(o); });
+      sel.value = bcur().id; sel.title = bcur().tip;
+      sel.addEventListener("click", e => e.stopPropagation());
+      sel.addEventListener("change", e => { e.stopPropagation(); L.blend = blendOk(sel.value); syncStackUI(); persist(); autosavePreset(); });
+      blendRow.appendChild(sel);
+      const cycleBlend = dir => { const i = BLEND_MODES.indexOf(bcur()); L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id; syncStackUI(); persist(); autosavePreset(); };
+      const up = document.createElement("b");
+      up.className = "lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
+      up.addEventListener("click", e => { e.stopPropagation(); cycleBlend(-1); });
+      const dn = document.createElement("b");
+      dn.className = "lyr-arrow"; dn.textContent = "▼"; dn.title = "Next blend mode";
+      dn.addEventListener("click", e => { e.stopPropagation(); cycleBlend(1); });
+      blendRow.appendChild(up); blendRow.appendChild(dn);
+      row.appendChild(blendRow);
 
       host.appendChild(row);
     });
