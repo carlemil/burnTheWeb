@@ -387,7 +387,7 @@
   // Layers: the −/+ buttons drive a hidden number input (so it rides the normal
   // per-effect state/persist/preset machinery); each layer adds a smaller,
   // fewer-point, differently-seeded copy of the fractal.
-  const LAYER_MAX = 6;
+  const LAYER_MAX = CONFIG.layerMax;
   function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); el("vLayers").textContent = layerCount; }
   el("layers").addEventListener("input", () => applyLayers(+el("layers").value));
   function stepLayers(d) {

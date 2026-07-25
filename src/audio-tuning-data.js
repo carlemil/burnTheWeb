@@ -225,6 +225,14 @@
     });
   }
   function atobSafe(s) { try { return decodeURIComponent(escape(atob(s))); } catch (e) { return ""; } }
+  // First-visit scene defaults from CONFIG (auto-cycle, Preset TTL, Transition). A saved scene
+  // overrides these in restore() below — this only sets what a brand-new visitor sees. Dispatching
+  // input mirrors restore()'s own ttl handling so the dual-slider fills follow; persist isn't armed
+  // yet, so it's inert. (These are the DOM defaults that used to be hard-coded in the template.)
+  el("cycle").checked = cycleOn;
+  el("ttl-lo").value = CONFIG.scene.ttl[0]; el("ttl-hi").value = CONFIG.scene.ttl[1];
+  el("tdur-lo").value = CONFIG.scene.transition[0]; el("tdur-hi").value = CONFIG.scene.transition[1];
+  ["ttl-lo", "ttl-hi", "tdur-lo", "tdur-hi"].forEach(id => el(id).dispatchEvent(new Event("input")));
   restore();
   applyShared();
   resize();          // re-apply the restored render resolution (cfg.scale)

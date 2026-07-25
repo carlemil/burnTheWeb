@@ -31,7 +31,7 @@
   // spinAngle and simT accumulate. At nodSpd 1 the phase tracks 0.12·simT exactly,
   // so the shipped default reproduces the old motion. Still scaled by cfg.speed,
   // so Drift speed drives it as it always did.
-  const NOD_RATE = 0.12;
+  const NOD_RATE = CONFIG.tuning.nodRate;
   let nodAmp = 0.30, nodSpd = 1, nodPhase = 0;
   const TETRA_BASE_S = 0.42;           // tetra vertex scale at Size 1×
   const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];

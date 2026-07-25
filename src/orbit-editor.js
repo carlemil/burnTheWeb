@@ -29,7 +29,7 @@
   // Power drifts continuously, so this is quantised to CARD_POW_Q and rendered at
   // half resolution into an offscreen canvas (drawImage scales it back up). A full-res
   // repaint every frame at 120 iterations is far too slow for a debug overlay.
-  const CARD_POW_Q = 0.05;                    // = the Power slider's own step
+  const CARD_POW_Q = CONFIG.tuning.cardPowQ;   // = the Power slider's own step
   const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
   // Auto-frame the c-plane view per power: a cheap low-res scan finds the inside (black)
   // region's bounding box, then we centre the view on it and size it to fit — so the locus

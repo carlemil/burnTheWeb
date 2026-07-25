@@ -82,7 +82,7 @@
   // three dark, repeating) so any ramp reads as crisp contour stripes. Its
   // strength (bandLevel, 0..1) is driven by the ranged Banding slider — so it
   // can sit anywhere, or wander erratically between two bounds.
-  const BAND_COUNT = 18;          // number of posterized flat colours across the ramp
+  const BAND_COUNT = CONFIG.bandCount;   // number of posterized flat colours across the ramp
   let bandLevel = 0;              // 0..1 filter amount (set by the Banding slider)
   let bandGroup = 3;              // colours per light (and per dark) run — Band size slider
   let bandDim = 0.35;             // dark-run brightness — Dark strength slider (1 = none)
@@ -145,7 +145,7 @@
   setPalette(0);
 
   // ---- auto-morph: continuously blend to a random palette over 8s ----
-  const MORPH_MS = 8000;          // fallback only — the live duration comes from the Palette cycle slider
+  const MORPH_MS = CONFIG.paletteMorphMs;   // fallback only — the live duration comes from the Palette cycle slider
   // Palette cycle: the [min,max] seconds one morph takes, from the "palcycle"
   // dual slider. Both thumbs at 0 pins the palette (what the old "Auto-morph"
   // checkbox unticked used to do). palCycleLive is the slider's animated value;

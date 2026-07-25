@@ -17,6 +17,7 @@ const cut = (from, to) => {
   return src.slice(a, b);
 };
 const code =
+  cut("const CONFIG =", "// ==== end CONFIG ====") +   // JULIA_MARGIN/JULIA_EASE_A source from CONFIG now
   "let randSeed = false, zoom = 1, fw = 100, fh = 100;\n" +
   cut("const RPM", "function julia(") +
   "\nreturn { juliaSeed, juliaSeedAt, reseedJulia," +

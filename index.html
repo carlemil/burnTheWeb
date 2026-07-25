@@ -764,19 +764,21 @@
     <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
-  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
+  <!-- Auto-cycle / Preset TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
+       not from value=/checked here — so they live in one place. -->
+  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle presets</label>
   <div id="grp-ttl">
     <label>Preset TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="ttl-lo" min="0" max="180" step="any" value="10">
-      <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
+      <input type="range" id="ttl-lo" min="0" max="180" step="any">
+      <input type="range" id="ttl-hi" min="0" max="180" step="any"></div>
   </div>
   <!-- How long a preset change takes to blend. Both thumbs at 0 = cut straight over. -->
   <div id="grp-tdur">
     <label>Transition <span class="val" id="vTdur"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="tdur-lo" min="0" max="3" step="any" value="0.45">
-      <input type="range" id="tdur-hi" min="0" max="3" step="any" value="0.9"></div>
+      <input type="range" id="tdur-lo" min="0" max="3" step="any">
+      <input type="range" id="tdur-hi" min="0" max="3" step="any"></div>
   </div>
 
   </details>
@@ -825,27 +827,8 @@
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
   <label>Palette</label>
-  <select id="palette">
-    <option value="0">Fire</option>
-    <option value="1">Ice</option>
-    <option value="2">Toxic</option>
-    <option value="3">Copper</option>
-    <option value="4">Purple</option>
-    <option value="5">Rainbow</option>
-    <option value="6">Grayscale</option>
-    <option value="7">Electric</option>
-    <option value="8">Amber</option>
-    <option value="9">Matrix</option>
-    <option value="10">Sunset</option>
-    <option value="11">C64</option>
-    <option value="12">CGA</option>
-    <option value="13">Blood</option>
-    <option value="14">Chrome</option>
-    <option value="15">One love</option>
-    <option value="16">Rasta Red</option>
-    <option value="17">Rasta Green</option>
-    <option value="18">Rasta Yellow</option>
-  </select>
+  <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
+  <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -947,7 +930,59 @@
 
 <script>
 (() => {
-  "use strict";
+  "use strict";  // ============================================================================
+  // CONFIG — every DEFAULT that is not part of a preset, in one place.
+  //
+  // A preset (snapshotScene) carries a whole scene you hand to someone else. These
+  // are the app/build-level defaults OUTSIDE that: stack limits, the initial fire
+  // state, credits, palette timing, the beat detector's shipped tuning, the "sync
+  // your music" nudge, analytics, and the effect/physics tuning constants.
+  //
+  // Each value below is sourced by exactly one `const NAME = CONFIG.path` at its
+  // original site (so hoisting/order is unchanged) — change it HERE, nowhere else.
+  // Loaded first (manifest position 1), so every later slice can read it. Some
+  // `tuning.*` values are load-bearing maths (see CLAUDE.md) — change with care.
+  // ============================================================================
+  const CONFIG = {
+    // --- effect stack / fractal layering ---
+    stackMax: 4,          // max effects composited into one scene        (STACK_MAX)
+    layerMax: 6,          // max progressively-smaller fractal copies      (LAYER_MAX)
+
+    // --- initial live fire state (cfg). scale is the DEFAULT resolution: 1 Full … 4 Potato ---
+    fire: { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 },
+
+    // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
+    scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
+
+    // --- startup credits overlay ---
+    credits: { hold: 5, fade: 3, on: true },   // seconds at full / fade seconds / shown on first visit
+
+    // --- palette ---
+    paletteMorphMs: 8000, // fallback auto-morph duration; live value comes from the slider (MORPH_MS)
+    bandCount: 18,        // posterized flat colours across a banded ramp   (BAND_COUNT)
+
+    // --- beat-driven slider pulse ---
+    pulse: { drop: 0.2, min: 0.02, max: 3 },   // default fall time (s); per-slider length slider bounds (s)
+
+    // --- audio beat detector: the SHIPPED tuning (a preset's beatTune overrides per-scene) ---
+    beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
+      refract: [110, 100, 70], bands: [[30, 150], [150, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
+
+    // --- "Sync with your music" nudge + analytics ---
+    sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
+    analyticsId: "G-7CMDJP72N7",                  // GA4 Measurement id; "" makes analytics completely inert
+
+    // --- effect / physics tuning (implementation constants; several are load-bearing) ---
+    tuning: {
+      hopMs: 10,          // beat-analysis tick, ms — 100Hz, framerate-independent   (HOP_MS)
+      nodRate: 0.12,      // Tetrafyer's slow idle nod rate                          (NOD_RATE)
+      cardPowQ: 0.05,     // Multibrot locus quantisation = the Power slider's step  (CARD_POW_Q)
+      juliaMargin: 0.06,  // push the seed's big loop this far outside the cardioid  (JULIA_MARGIN)
+      juliaEaseA: 0.5,    // cardioid lap-speed easing amplitude; EASE_K is derived  (JULIA_EASE_A)
+    },
+  };
+  // ==== end CONFIG ==== (probes slice `const CONFIG =` … this line; keep it)
+
 
   const canvas = document.getElementById("fire");
 
@@ -955,7 +990,7 @@
   // because initGL() — called during startup, long before the stack block — allocates
   // STACK_MAX per-layer heat/palette buffers; a `const` down by newStackItem would be
   // in the temporal dead zone at that call. Same hoisting reason as `card`/`beatUi`.
-  const STACK_MAX = 4;
+  const STACK_MAX = CONFIG.stackMax;
 
   // Prefer a WebGL2 renderer (the whole fire/Julia/palette/glow pipeline runs on
   // the GPU); fall back to the original Canvas2D path when WebGL2 is missing. A
@@ -987,7 +1022,7 @@
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
 
-  const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 };
+  const cfg = { ...CONFIG.fire };   // live, mutable copy of the shipped fire defaults (scale = default resolution)
 
   // Active effect: 0 = Sirpinfyer (2D Sierpiński triangle fire), 1 = Tetrafyer
   // (3D Sierpiński tetrahedron fire), 2 = AnimeJulia (animated Julia set). All
@@ -996,7 +1031,7 @@
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
   let randSeed = true;       // AnimeJulia: re-roll the orbit start on reload / effect entry (toggle)
-  let cycleOn = true;        // auto-cycle saved presets on the TTL timer (toggle)
+  let cycleOn = CONFIG.scene.autoCycle;   // auto-cycle saved presets on the TTL timer (toggle); default from config
   let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
@@ -1188,7 +1223,7 @@
   // three dark, repeating) so any ramp reads as crisp contour stripes. Its
   // strength (bandLevel, 0..1) is driven by the ranged Banding slider — so it
   // can sit anywhere, or wander erratically between two bounds.
-  const BAND_COUNT = 18;          // number of posterized flat colours across the ramp
+  const BAND_COUNT = CONFIG.bandCount;   // number of posterized flat colours across the ramp
   let bandLevel = 0;              // 0..1 filter amount (set by the Banding slider)
   let bandGroup = 3;              // colours per light (and per dark) run — Band size slider
   let bandDim = 0.35;             // dark-run brightness — Dark strength slider (1 = none)
@@ -1251,7 +1286,7 @@
   setPalette(0);
 
   // ---- auto-morph: continuously blend to a random palette over 8s ----
-  const MORPH_MS = 8000;          // fallback only — the live duration comes from the Palette cycle slider
+  const MORPH_MS = CONFIG.paletteMorphMs;   // fallback only — the live duration comes from the Palette cycle slider
   // Palette cycle: the [min,max] seconds one morph takes, from the "palcycle"
   // dual slider. Both thumbs at 0 pins the palette (what the old "Auto-morph"
   // checkbox unticked used to do). palCycleLive is the slider's animated value;
@@ -3124,7 +3159,7 @@
   // spinAngle and simT accumulate. At nodSpd 1 the phase tracks 0.12·simT exactly,
   // so the shipped default reproduces the old motion. Still scaled by cfg.speed,
   // so Drift speed drives it as it always did.
-  const NOD_RATE = 0.12;
+  const NOD_RATE = CONFIG.tuning.nodRate;
   let nodAmp = 0.30, nodSpd = 1, nodPhase = 0;
   const TETRA_BASE_S = 0.42;           // tetra vertex scale at Size 1×
   const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
@@ -3415,7 +3450,7 @@
   // fractal reshapes continuously. Escape time is written as heat into `fire`
   // and rendered through the same palette/glow pipeline as the fire.
   const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
-  const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
+  const JULIA_MARGIN = CONFIG.tuning.juliaMargin;   // push the big loop this far outside the cardioid
   const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
   const JULIA_SMALL_R = 0.03;          // reference small-circle radius (for the ratio-default calc)
   let juliaInnerR = JULIA_SMALL_R;     // small riding-circle radius (live-tunable via slider)
@@ -3441,8 +3476,8 @@
   // cardioid's cusp, θ=0) runs (1+A)/(1−A) times the slowest (the back, θ=π).
   // A = 0.5 ⇒ exactly 3:1. EASE_K keeps the lap *time* identical to a constant
   // sweep, so the Cardioid RPM slider still means revolutions per minute.
-  const JULIA_EASE_A = 0.5;
-  const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);
+  const JULIA_EASE_A = CONFIG.tuning.juliaEaseA;
+  const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);   // derived from JULIA_EASE_A (see CLAUDE.md)
   // Which exponent's locus the seed orbits. 2 for AnimeJulia and Burning Ship;
   // Multibrot's draw sets it from the live Power slider every frame, and setEffect
   // puts it back to 2 on the way out. Declared HERE, above juliaEase, because that
@@ -4300,7 +4335,7 @@
   // and two beats inside one frame would collapse into one). Beats found between
   // frames are latched into `beatNow` and cleared by frame() once updateAnims()
   // has consumed them, so none are ever dropped.
-  const HOP_MS = 10;          // ms between analysis ticks (100Hz, framerate-independent — see CLAUDE.md)
+  const HOP_MS = CONFIG.tuning.hopMs;   // ms between analysis ticks (100Hz, framerate-independent — see CLAUDE.md)
   const FLUX_HIST = 100;      // flux values kept per band (~1s) for the adaptive threshold
   const PEAK_DECAY = 0.996;   // per tick; recent-peak half-life ≈ 1.7s (tracks volume changes)
   const SILENCE = 2e-4;       // mean band magnitude below this ⇒ silence, never a beat
@@ -4311,8 +4346,7 @@
   // computeBins read them). Defaults equal the old FLUX_K / FLUX_FLOOR / BEAT_REFRACT
   // consts and band edges, so out-of-the-box detection is unchanged. Persisted to
   // localStorage + Backup (never Share/scenes) — see collectBeatTune/applyBeatTune.
-  const BEAT_DEFAULTS = { fluxK: [2.0, 2.0, 2.0], floor: 0.10,       // fluxK per band; floor global
-    refract: [110, 100, 70], bands: [[30, 150], [150, 2500], [2500, 12000]] };   // ms per band; Hz edges per band
+  const BEAT_DEFAULTS = CONFIG.beatDefaults;   // shipped detector tuning (fluxK/floor/refract/bands) — see config.js
   const beatCfg = { fluxK: BEAT_DEFAULTS.fluxK.slice(), floor: BEAT_DEFAULTS.floor,
     refract: BEAT_DEFAULTS.refract.slice(), bands: BEAT_DEFAULTS.bands.map(b => b.slice()) };
   const audio = {
@@ -5003,7 +5037,7 @@
   // Layers: the −/+ buttons drive a hidden number input (so it rides the normal
   // per-effect state/persist/preset machinery); each layer adds a smaller,
   // fewer-point, differently-seeded copy of the fractal.
-  const LAYER_MAX = 6;
+  const LAYER_MAX = CONFIG.layerMax;
   function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); el("vLayers").textContent = layerCount; }
   el("layers").addEventListener("input", () => applyLayers(+el("layers").value));
   function stepLayers(d) {
@@ -5123,8 +5157,8 @@
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
   const dotEls = {};           // id -> {low,mid,high} : the menu row's beat dots (ditto)
-  const PULSE_DROP = 0.2;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
-  const PLEN_MIN = 0.02, PLEN_MAX = 3;   // bounds of the per-slider pulse-length slider (s)
+  const PULSE_DROP = CONFIG.pulse.drop;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
+  const PLEN_MIN = CONFIG.pulse.min, PLEN_MAX = CONFIG.pulse.max;   // bounds of the per-slider pulse-length slider (s)
 
   // Beat-pulse SHAPE (per slider, per effect). On a beat an armed slider snaps to
   // its high thumb and `a.pulse` decays linearly 1→0 over PULSE_DROP; the chosen
@@ -5445,6 +5479,17 @@
   function buildPalSwatches() {
     const host = el("palswatches");
     if (!host) return;
+    // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
+    // (the single source — names live there) rather than hand-written in the HTML, so adding a
+    // palette needs only a PALETTES entry. The option value is still the index, read for validation.
+    const cur = paletteSel.value;
+    paletteSel.innerHTML = "";
+    PALETTES.forEach((p, i) => {
+      const o = document.createElement("option");
+      o.value = String(i); o.textContent = p.name;
+      paletteSel.appendChild(o);
+    });
+    if (cur) paletteSel.value = cur;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
       const b = document.createElement("button");
@@ -5726,8 +5771,8 @@
   // Counted down in RENDERED time (dt from the frame loop), not wall clock: if the
   // tab is backgrounded rAF stops, and a wall-clock timer would burn the credits
   // away unseen. It also makes the duration testable on a driven clock.
-  const CREDIT_HOLD = 5;              // seconds at full brightness
-  const CREDIT_FADE = 3;              // ...then this long ramping down to nothing
+  const CREDIT_HOLD = CONFIG.credits.hold;   // seconds at full brightness
+  const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
   const CREDIT_KEY = "burnTheWeb.credits.v1";
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
@@ -5825,7 +5870,9 @@
     return creditLeft >= CREDIT_FADE ? 1 : Math.max(0, creditLeft / CREDIT_FADE);
   }
   function creditsEnabled() {
-    try { return localStorage.getItem(CREDIT_KEY) !== "off"; } catch (e) { return true; }
+    // Per-browser preference in its own key; the DEFAULT (no key stored yet) is CONFIG.credits.on.
+    try { const v = localStorage.getItem(CREDIT_KEY); return v === null ? CONFIG.credits.on : v !== "off"; }
+    catch (e) { return CONFIG.credits.on; }
   }
   function startCredits() {
     if (!creditsEnabled()) return;
@@ -7010,6 +7057,14 @@
     });
   }
   function atobSafe(s) { try { return decodeURIComponent(escape(atob(s))); } catch (e) { return ""; } }
+  // First-visit scene defaults from CONFIG (auto-cycle, Preset TTL, Transition). A saved scene
+  // overrides these in restore() below — this only sets what a brand-new visitor sees. Dispatching
+  // input mirrors restore()'s own ttl handling so the dual-slider fills follow; persist isn't armed
+  // yet, so it's inert. (These are the DOM defaults that used to be hard-coded in the template.)
+  el("cycle").checked = cycleOn;
+  el("ttl-lo").value = CONFIG.scene.ttl[0]; el("ttl-hi").value = CONFIG.scene.ttl[1];
+  el("tdur-lo").value = CONFIG.scene.transition[0]; el("tdur-hi").value = CONFIG.scene.transition[1];
+  ["ttl-lo", "ttl-hi", "tdur-lo", "tdur-hi"].forEach(id => el(id).dispatchEvent(new Event("input")));
   restore();
   applyShared();
   resize();          // re-apply the restored render resolution (cfg.scale)
@@ -8302,7 +8357,7 @@
   // Power drifts continuously, so this is quantised to CARD_POW_Q and rendered at
   // half resolution into an offscreen canvas (drawImage scales it back up). A full-res
   // repaint every frame at 120 iterations is far too slow for a debug overlay.
-  const CARD_POW_Q = 0.05;                    // = the Power slider's own step
+  const CARD_POW_Q = CONFIG.tuning.cardPowQ;   // = the Power slider's own step
   const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
   // Auto-frame the c-plane view per power: a cheap low-res scan finds the inside (black)
   // region's bounding box, then we centre the view on it and size it to fit — so the locus
@@ -8875,7 +8930,7 @@
   // Inert until GA_MEASUREMENT_ID is set to a real "G-XXXXXXXXXX" web-stream id:
   // no gtag script is loaded and track() is a no-op, so nothing is sent. Once set,
   // page views are counted automatically and track() fires custom events.
-  const GA_MEASUREMENT_ID = "G-7CMDJP72N7";
+  const GA_MEASUREMENT_ID = CONFIG.analyticsId;
   function track(name, params) {
     try { if (window.gtag) window.gtag("event", name, params || {}); } catch (e) {}
   }
@@ -8896,7 +8951,7 @@
   // growing gaps of *active* (tab-visible) time — 30s, then 5min, then 1h — and
   // never more than three times, ever. State persists across reloads.
   const SYNC_KEY = "burnTheWeb.sync.v1";
-  const SYNC_DELAYS = [30000, 300000, 3600000];
+  const SYNC_DELAYS = CONFIG.sync.delays;
   let syncState = { shows: 0, sinceLast: 0, used: false };
   try {
     const s = JSON.parse(localStorage.getItem(SYNC_KEY) || "null");

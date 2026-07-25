@@ -3,6 +3,7 @@
 # documented in CLAUDE.md) — do NOT reorder. Files are NAMED by subsystem instead, so a
 # directory listing groups related code (audio-*, effects-*, orbit-*, persist-*, render-*,
 # stack-*, ui-*) even where execution order keeps the pieces apart.
+config.js
 boot-globals.js
 palette.js
 render-gl-shaders.js

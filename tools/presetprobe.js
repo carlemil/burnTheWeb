@@ -88,6 +88,7 @@ ok(importKeys.has("beatTune"), "import keeps `beatTune`");
 
 // --- 2. behavioural: mergeBeatTune replace semantics --------------------------
 const code =
+  cut("const CONFIG =", "// ==== end CONFIG ====") +   // BEAT_DEFAULTS sources from CONFIG now
   "  const " + cut("const BEAT_DEFAULTS", "const beatCfg").slice("const ".length) + ";\n" +
   cut("  function mergeBeatTune(", "  // Write a validated tuning") +
   "\nreturn { mergeBeatTune, BEAT_DEFAULTS };";

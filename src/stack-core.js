@@ -61,8 +61,8 @@
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
   const dotEls = {};           // id -> {low,mid,high} : the menu row's beat dots (ditto)
-  const PULSE_DROP = 0.2;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
-  const PLEN_MIN = 0.02, PLEN_MAX = 3;   // bounds of the per-slider pulse-length slider (s)
+  const PULSE_DROP = CONFIG.pulse.drop;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
+  const PLEN_MIN = CONFIG.pulse.min, PLEN_MAX = CONFIG.pulse.max;   // bounds of the per-slider pulse-length slider (s)
 
   // Beat-pulse SHAPE (per slider, per effect). On a beat an armed slider snaps to
   // its high thumb and `a.pulse` decays linearly 1→0 over PULSE_DROP; the chosen

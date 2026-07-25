@@ -13,7 +13,7 @@
   // fractal reshapes continuously. Escape time is written as heat into `fire`
   // and rendered through the same palette/glow pipeline as the fire.
   const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
-  const JULIA_MARGIN = 0.06;           // push the big loop this far outside the cardioid
+  const JULIA_MARGIN = CONFIG.tuning.juliaMargin;   // push the big loop this far outside the cardioid
   const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
   const JULIA_SMALL_R = 0.03;          // reference small-circle radius (for the ratio-default calc)
   let juliaInnerR = JULIA_SMALL_R;     // small riding-circle radius (live-tunable via slider)
@@ -39,8 +39,8 @@
   // cardioid's cusp, θ=0) runs (1+A)/(1−A) times the slowest (the back, θ=π).
   // A = 0.5 ⇒ exactly 3:1. EASE_K keeps the lap *time* identical to a constant
   // sweep, so the Cardioid RPM slider still means revolutions per minute.
-  const JULIA_EASE_A = 0.5;
-  const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);
+  const JULIA_EASE_A = CONFIG.tuning.juliaEaseA;
+  const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);   // derived from JULIA_EASE_A (see CLAUDE.md)
   // Which exponent's locus the seed orbits. 2 for AnimeJulia and Burning Ship;
   // Multibrot's draw sets it from the live Power slider every frame, and setEffect
   // puts it back to 2 on the way out. Declared HERE, above juliaEase, because that

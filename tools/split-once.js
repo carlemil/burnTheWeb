@@ -52,7 +52,8 @@ if (rebuilt !== html) throw new Error("self-check failed: template does not roun
 // the build stays byte-identical; scattered subsystems that cannot be made
 // adjacent in execution are instead made adjacent in the listing by name.
 const SLICES = [
-  { file: "boot-globals.js",            marker: null },  // canvas + GL globals + initGL
+  { file: "config.js",                  marker: null },  // CONFIG: every non-preset default (added after the original split; regenerates cleanly)
+  { file: "boot-globals.js",            marker: '  const canvas = document.getElementById("fire");' },  // canvas + GL globals + initGL
   { file: "palette.js",                 marker: "// ---- palettes (classic demoscene style) ----" },
   { file: "render-gl-shaders.js",       marker: "//  WebGL2 renderer" },
   { file: "render-gl-pipeline.js",      marker: "// ---- post-FX passes. All RGB" },

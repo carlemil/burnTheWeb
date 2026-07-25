@@ -165,7 +165,7 @@
   // Inert until GA_MEASUREMENT_ID is set to a real "G-XXXXXXXXXX" web-stream id:
   // no gtag script is loaded and track() is a no-op, so nothing is sent. Once set,
   // page views are counted automatically and track() fires custom events.
-  const GA_MEASUREMENT_ID = "G-7CMDJP72N7";
+  const GA_MEASUREMENT_ID = CONFIG.analyticsId;
   function track(name, params) {
     try { if (window.gtag) window.gtag("event", name, params || {}); } catch (e) {}
   }
@@ -186,7 +186,7 @@
   // growing gaps of *active* (tab-visible) time — 30s, then 5min, then 1h — and
   // never more than three times, ever. State persists across reloads.
   const SYNC_KEY = "burnTheWeb.sync.v1";
-  const SYNC_DELAYS = [30000, 300000, 3600000];
+  const SYNC_DELAYS = CONFIG.sync.delays;
   let syncState = { shows: 0, sinceLast: 0, used: false };
   try {
     const s = JSON.parse(localStorage.getItem(SYNC_KEY) || "null");

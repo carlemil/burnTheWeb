@@ -27,7 +27,7 @@
   // and two beats inside one frame would collapse into one). Beats found between
   // frames are latched into `beatNow` and cleared by frame() once updateAnims()
   // has consumed them, so none are ever dropped.
-  const HOP_MS = 10;          // ms between analysis ticks (100Hz, framerate-independent — see CLAUDE.md)
+  const HOP_MS = CONFIG.tuning.hopMs;   // ms between analysis ticks (100Hz, framerate-independent — see CLAUDE.md)
   const FLUX_HIST = 100;      // flux values kept per band (~1s) for the adaptive threshold
   const PEAK_DECAY = 0.996;   // per tick; recent-peak half-life ≈ 1.7s (tracks volume changes)
   const SILENCE = 2e-4;       // mean band magnitude below this ⇒ silence, never a beat
@@ -38,8 +38,7 @@
   // computeBins read them). Defaults equal the old FLUX_K / FLUX_FLOOR / BEAT_REFRACT
   // consts and band edges, so out-of-the-box detection is unchanged. Persisted to
   // localStorage + Backup (never Share/scenes) — see collectBeatTune/applyBeatTune.
-  const BEAT_DEFAULTS = { fluxK: [2.0, 2.0, 2.0], floor: 0.10,       // fluxK per band; floor global
-    refract: [110, 100, 70], bands: [[30, 150], [150, 2500], [2500, 12000]] };   // ms per band; Hz edges per band
+  const BEAT_DEFAULTS = CONFIG.beatDefaults;   // shipped detector tuning (fluxK/floor/refract/bands) — see config.js
   const beatCfg = { fluxK: BEAT_DEFAULTS.fluxK.slice(), floor: BEAT_DEFAULTS.floor,
     refract: BEAT_DEFAULTS.refract.slice(), bands: BEAT_DEFAULTS.bands.map(b => b.slice()) };
   const audio = {

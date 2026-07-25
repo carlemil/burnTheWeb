@@ -42,8 +42,8 @@
   // Counted down in RENDERED time (dt from the frame loop), not wall clock: if the
   // tab is backgrounded rAF stops, and a wall-clock timer would burn the credits
   // away unseen. It also makes the duration testable on a driven clock.
-  const CREDIT_HOLD = 5;              // seconds at full brightness
-  const CREDIT_FADE = 3;              // ...then this long ramping down to nothing
+  const CREDIT_HOLD = CONFIG.credits.hold;   // seconds at full brightness
+  const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
   const CREDIT_KEY = "burnTheWeb.credits.v1";
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
@@ -141,7 +141,9 @@
     return creditLeft >= CREDIT_FADE ? 1 : Math.max(0, creditLeft / CREDIT_FADE);
   }
   function creditsEnabled() {
-    try { return localStorage.getItem(CREDIT_KEY) !== "off"; } catch (e) { return true; }
+    // Per-browser preference in its own key; the DEFAULT (no key stored yet) is CONFIG.credits.on.
+    try { const v = localStorage.getItem(CREDIT_KEY); return v === null ? CONFIG.credits.on : v !== "off"; }
+    catch (e) { return CONFIG.credits.on; }
   }
   function startCredits() {
     if (!creditsEnabled()) return;

@@ -31,7 +31,15 @@ changes.
   by subsystem, not by order**, so a directory listing groups related code even where execution
   order keeps the pieces apart: `audio-*` (detector / tuning-data / tuning-ui), `render-*` (GL
   shaders / pipeline), `effects-*`, `orbit-*` (seed / editor), `persist-*` (share / presets /
-  backup-restore), `stack-*`, `controls-*`, `ui-*`. `src/index.template.html` is the HTML shell
+  backup-restore), `stack-*`, `controls-*`, `ui-*`. **`src/config.js` loads first and holds
+  `CONFIG` — every DEFAULT that is not part of a preset** (stack/layer limits, initial `cfg` fire
+  state incl. default resolution, credits timing + on, scene auto-cycle/TTL/transition, palette
+  morph/band, pulse defaults, beat-detector `beatDefaults`, sync-nudge delays, analytics id, and a
+  `tuning` block of effect/physics constants). Each scattered `const NAME = CONFIG.path` keeps its
+  original name/site (so hoisting is unchanged) — change a default THERE, in one place. The palette
+  catalog is `PALETTES` (single source); the `<select id="palette">` options and swatches are both
+  generated from it (`buildPalSwatches`), so adding a palette is one `PALETTES` entry.
+  `src/index.template.html` is the HTML shell
   with `{{CSS}}` / `{{JS}}` markers. **Never hand-edit `index.html`** — it is regenerated and
   your edit will be lost (and rejected by the drift guard). To move code between files, cut/paste
   between `src/*.js` and rebuild; keep each moved block in the same manifest position (the build

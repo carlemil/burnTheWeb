@@ -1,12 +1,10 @@
-
-
   const canvas = document.getElementById("fire");
 
   // Max effects in one stack. Declared up here (far above the stack code that owns it)
   // because initGL() — called during startup, long before the stack block — allocates
   // STACK_MAX per-layer heat/palette buffers; a `const` down by newStackItem would be
   // in the temporal dead zone at that call. Same hoisting reason as `card`/`beatUi`.
-  const STACK_MAX = 4;
+  const STACK_MAX = CONFIG.stackMax;
 
   // Prefer a WebGL2 renderer (the whole fire/Julia/palette/glow pipeline runs on
   // the GPU); fall back to the original Canvas2D path when WebGL2 is missing. A
@@ -38,7 +36,7 @@
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
 
-  const cfg = { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 };
+  const cfg = { ...CONFIG.fire };   // live, mutable copy of the shipped fire defaults (scale = default resolution)
 
   // Active effect: 0 = Sirpinfyer (2D Sierpiński triangle fire), 1 = Tetrafyer
   // (3D Sierpiński tetrahedron fire), 2 = AnimeJulia (animated Julia set). All
@@ -47,7 +45,7 @@
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
   let randSeed = true;       // AnimeJulia: re-roll the orbit start on reload / effect entry (toggle)
-  let cycleOn = true;        // auto-cycle saved presets on the TTL timer (toggle)
+  let cycleOn = CONFIG.scene.autoCycle;   // auto-cycle saved presets on the TTL timer (toggle); default from config
   let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
   // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically

@@ -80,19 +80,21 @@
     <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
   </div>
-  <label class="check"><input type="checkbox" id="cycle" checked> Auto-cycle presets</label>
+  <!-- Auto-cycle / Preset TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
+       not from value=/checked here — so they live in one place. -->
+  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle presets</label>
   <div id="grp-ttl">
     <label>Preset TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="ttl-lo" min="0" max="180" step="any" value="10">
-      <input type="range" id="ttl-hi" min="0" max="180" step="any" value="30"></div>
+      <input type="range" id="ttl-lo" min="0" max="180" step="any">
+      <input type="range" id="ttl-hi" min="0" max="180" step="any"></div>
   </div>
   <!-- How long a preset change takes to blend. Both thumbs at 0 = cut straight over. -->
   <div id="grp-tdur">
     <label>Transition <span class="val" id="vTdur"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
-      <input type="range" id="tdur-lo" min="0" max="3" step="any" value="0.45">
-      <input type="range" id="tdur-hi" min="0" max="3" step="any" value="0.9"></div>
+      <input type="range" id="tdur-lo" min="0" max="3" step="any">
+      <input type="range" id="tdur-hi" min="0" max="3" step="any"></div>
   </div>
 
   </details>
@@ -141,27 +143,8 @@
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
   <label>Palette</label>
-  <select id="palette">
-    <option value="0">Fire</option>
-    <option value="1">Ice</option>
-    <option value="2">Toxic</option>
-    <option value="3">Copper</option>
-    <option value="4">Purple</option>
-    <option value="5">Rainbow</option>
-    <option value="6">Grayscale</option>
-    <option value="7">Electric</option>
-    <option value="8">Amber</option>
-    <option value="9">Matrix</option>
-    <option value="10">Sunset</option>
-    <option value="11">C64</option>
-    <option value="12">CGA</option>
-    <option value="13">Blood</option>
-    <option value="14">Chrome</option>
-    <option value="15">One love</option>
-    <option value="16">Rasta Red</option>
-    <option value="17">Rasta Green</option>
-    <option value="18">Rasta Yellow</option>
-  </select>
+  <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
+  <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background

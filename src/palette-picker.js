@@ -23,6 +23,17 @@
   function buildPalSwatches() {
     const host = el("palswatches");
     if (!host) return;
+    // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
+    // (the single source — names live there) rather than hand-written in the HTML, so adding a
+    // palette needs only a PALETTES entry. The option value is still the index, read for validation.
+    const cur = paletteSel.value;
+    paletteSel.innerHTML = "";
+    PALETTES.forEach((p, i) => {
+      const o = document.createElement("option");
+      o.value = String(i); o.textContent = p.name;
+      paletteSel.appendChild(o);
+    });
+    if (cur) paletteSel.value = cur;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
       const b = document.createElement("button");

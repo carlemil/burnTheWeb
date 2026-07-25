@@ -15,6 +15,7 @@ const cut = (from, to) => {
   return src.slice(a, b);
 };
 const code =
+  cut("const CONFIG =", "// ==== end CONFIG ====") +   // HOP_MS / BEAT_DEFAULTS source from CONFIG now
   cut("const HOP_MS", "const meterBars") +
   cut("const medBuf", "function audioMsg") +
   cut("function audioTick", "function clearBeats") +
