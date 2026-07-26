@@ -1,0 +1,17 @@
+#!/bin/sh
+# Regenerate the deployed dev-index.html from src/ and commit it before pushing,
+# so the live /dev-index.html always matches src/.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+#
+# A pre-push hook cannot add a commit to the push already in flight, so when
+# dev-index.html changed we commit it and ABORT this push (exit 1). Re-running the
+# push then finds dev-index.html already current, exits 0, and sends both commits.
+node tools/build.js || { echo "pre-push: build failed — not pushing." >&2; exit 1; }
+if [ -n "$(git status --porcelain -- dev-index.html)" ]; then
+  git add -- dev-index.html
+  git commit --no-verify -q -m "Build dev-index.html from src/" -- dev-index.html
+  echo "pre-push: rebuilt & committed dev-index.html — re-run your push to publish it." >&2
+  exit 1
+fi
+exit 0

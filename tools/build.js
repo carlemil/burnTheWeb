@@ -1,9 +1,11 @@
-// Build the self-contained index.html from src/ (no dependencies — plain Node fs).
+// Build the self-contained dev-index.html from src/ (no dependencies — plain Node fs).
 //
 // Usage:
-//   node tools/build.js          rebuild index.html from src/
-//   node tools/build.js --check  exit 1 if index.html differs from a fresh build
-//                                (drift guard — used by .githooks/pre-commit)
+//   node tools/build.js          rebuild dev-index.html from src/
+//   node tools/build.js --check  exit 1 if dev-index.html differs from a fresh build
+//
+// dev-index.html is the deployed artifact: the .githooks/pre-push hook rebuilds and
+// commits it before every push, so the live /dev-index.html always matches src/.
 //
 // It reads src/index.template.html (the HTML shell with {{CSS}} and {{JS}}
 // markers), src/styles.css, and the JS slices listed in src/manifest.txt, then
@@ -31,15 +33,16 @@ if (template.split("{{CSS}}").length !== 2 || template.split("{{JS}}").length !=
 
 const out = template.split("{{CSS}}").join(css).split("{{JS}}").join(jsBody);
 
-const target = path.join(root, "index.html");
+const OUT = "dev-index.html";
+const target = path.join(root, OUT);
 const check = process.argv.includes("--check");
 
 if (check) {
   const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
-  if (current === out) { console.log("index.html is up to date with src/"); process.exit(0); }
-  console.error("index.html is STALE — run `node tools/build.js` and commit the result.");
+  if (current === out) { console.log(OUT + " is up to date with src/"); process.exit(0); }
+  console.error(OUT + " is STALE — run `node tools/build.js` and commit the result.");
   process.exit(1);
 }
 
 fs.writeFileSync(target, out);
-console.log(`built index.html (${out.length}b) from ${manifest.length} JS slices + styles.css`);
+console.log(`built ${OUT} (${out.length}b) from ${manifest.length} JS slices + styles.css`);

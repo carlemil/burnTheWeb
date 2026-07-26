@@ -1,7 +1,0 @@
-#!/bin/sh
-# Refuse to commit a stale index.html — it is GENERATED from src/ by tools/build.js.
-# Enable once per clone:  git config core.hooksPath .githooks
-node tools/build.js --check || {
-  echo "pre-commit: index.html is out of date with src/. Run: node tools/build.js" >&2
-  exit 1
-}

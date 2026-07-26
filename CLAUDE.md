@@ -16,12 +16,15 @@ families, all sharing one palette + glow + banding + beat-reactive pipeline:
 
 Each is one `EFFECTS` descriptor (metadata + `params`/`defaults`/`beat`/`extras` + a
 `draw(dt)` shader hook or a `stamp(box)` point hook). There is **no package manager,
-test framework, or runtime dependency**. The shipped `index.html` is a single
-self-contained file (one `<style>`, one IIFE `<script>`), but it is **generated** — the
-source lives split across `src/*.js` + `src/styles.css`, which a dependency-free Node
-script (`tools/build.js`) concatenates **verbatim** back into `index.html`. See
-**Build** below. `README.md` documents it for end users; keep it in sync when behaviour
-changes.
+test framework, or runtime dependency**. The deployed page is a single self-contained
+file (one `<style>`, one IIFE `<script>`), but it is **generated** — the source lives
+split across `src/*.js` + `src/styles.css`, which a dependency-free Node script
+(`tools/build.js`) concatenates **verbatim** into **`dev-index.html`** (the build's
+output file; served live at `…/burnTheWeb/dev-index.html`). The `.githooks/pre-push`
+hook rebuilds and commits `dev-index.html` on every push, so the live dev page always
+matches `src/`. See **Build** below. (`index.html` is no longer produced by the build —
+it is decoupled from `src/`; the dev channel is `dev-index.html`.) `README.md` documents
+it for end users; keep it in sync when behaviour changes.
 
 ## Build
 
@@ -40,18 +43,20 @@ changes.
   catalog is `PALETTES` (single source); the `<select id="palette">` options and swatches are both
   generated from it (`buildPalSwatches`), so adding a palette is one `PALETTES` entry.
   `src/index.template.html` is the HTML shell
-  with `{{CSS}}` / `{{JS}}` markers. **Never hand-edit `index.html`** — it is regenerated and
-  your edit will be lost (and rejected by the drift guard). To move code between files, cut/paste
-  between `src/*.js` and rebuild; keep each moved block in the same manifest position (the build
-  will not be byte-identical if you reorder across the concatenation seams).
-- **`node tools/build.js`** rebuilds `index.html` from `src/`. It joins the JS slices with
+  with `{{CSS}}` / `{{JS}}` markers. **Never hand-edit `dev-index.html`** — it is regenerated
+  and your edit will be lost. To move code between files, cut/paste between `src/*.js` and
+  rebuild; keep each moved block in the same manifest position (the build will not be
+  byte-identical if you reorder across the concatenation seams).
+- **`node tools/build.js`** rebuilds `dev-index.html` from `src/`. It joins the JS slices with
   the empty string and substitutes via split/join (not `String.replace`, whose `$` handling
-  would corrupt the JS), so the output is a **byte-for-byte** reproduction of the source. The
-  runtime artifact is therefore identical to a hand-written monolith — the split has no
-  behavioural effect, which is the whole point.
-- **`node tools/build.js --check`** exits non-zero if `index.html` is stale. `.githooks/`
-  has a `pre-commit` running it; enable once per clone with
-  `git config core.hooksPath .githooks`.
+  would corrupt the JS), so the output is a **byte-for-byte** reproduction of the source.
+- **`node tools/build.js --check`** exits non-zero if `dev-index.html` is stale.
+- **Deploy is the `.githooks/pre-push` hook** — enable once per clone with
+  `git config core.hooksPath .githooks`. It runs the build; if `dev-index.html` changed it
+  commits it and **aborts the push** (a pre-push hook can't add to the push already in flight),
+  so you just **run `git push` again** — the second push finds `dev-index.html` current and
+  sends both commits. Probes/tests should therefore run against **`dev-index.html`** (the
+  current artifact), e.g. `node tools/filterprobe.js dev-index.html`.
 - The split was bootstrapped once by `tools/split-once.js` (kept in history). To re-slice at
   different boundaries, edit its `SLICES` markers and re-run, or just move code between
   `src/*.js` files and rebuild — the manifest order is the load order.
@@ -60,18 +65,19 @@ changes.
 
 ## Workflow
 
-- **Always commit and push after a completed, verified change.** `git push origin
-  main` (via `HEAD:main`) auto-deploys the live site (~1 min; hard-refresh to
+- **Always commit and push after a completed, verified change.** Pushing to `main` (via
+  `HEAD:main`) triggers the pre-push hook (build + commit `dev-index.html`, abort), so
+  **push, then push again** to publish; Pages redeploys ~1 min later (hard-refresh to
   bypass cache). Do not ask "want me to deploy?" first.
-- **Code lives in `src/*.js` + `src/styles.css`** (see **Build**). Edit those, run
-  `node tools/build.js`, and commit **both** `src/` and the regenerated `index.html`.
-  Never edit `index.html` by hand.
+- **Code lives in `src/*.js` + `src/styles.css`** (see **Build**). Edit those and commit
+  `src/`; the pre-push hook rebuilds and commits `dev-index.html` for you. Never edit
+  `dev-index.html` by hand.
 - Commit trailers must end with:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` and the
   `Claude-Session:` line.
-- **Preview**: build first, then open `index.html` directly, or `python -m http.server`
-  → `http://localhost:8000`. The deployed `index.html` is self-contained (Pages serves it
-  as-is); only the authoring is split.
+- **Preview**: build, then open `dev-index.html` directly, or `python -m http.server`
+  → `http://localhost:8000/dev-index.html`. The built file is self-contained (Pages serves
+  it as-is); only the authoring is split.
 - Pages was configured once (`gh api -X POST repos/carlemil/burnTheWeb/pages`); do not re-run it.
 
 ## Architecture (one IIFE, authored across `src/*.js`)
