@@ -30,7 +30,7 @@
     bandCount: 18,        // posterized flat colours across a banded ramp   (BAND_COUNT)
 
     // --- beat-driven slider pulse ---
-    pulse: { drop: 0.2, min: 0.02, max: 3 },   // default fall time (s); per-slider length slider bounds (s)
+    pulse: { drop: 0.2, min: 0.02, max: 1 },   // default fall time (s); per-slider length slider bounds (s) = 20–1000 ms
 
     // --- audio beat detector: the SHIPPED tuning (a preset's beatTune overrides per-scene) ---
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor

@@ -33,6 +33,11 @@
   // so Drift speed drives it as it always did.
   const NOD_RATE = CONFIG.tuning.nodRate;
   let nodAmp = 0.30, nodSpd = 1, nodPhase = 0;
+  // With "Show box" off there are no walls, so instead of bouncing the whole body WANDERS
+  // around the centre on a slow Lissajous (up/down, sideways and in/out). `swaySize` is the
+  // reach — 0 keeps it at the centre (spinning in place), higher sends it further. Each body
+  // has its own phase so a stack of them spreads out instead of moving as one.
+  let swaySize = 0.5;
   const TETRA_BASE_S = 0.42;           // tetra vertex scale at Size 1×
   const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
   const TETRA_BOX = [1.0, 1.05, 1.0];    // shared container half-extents; x retuned to aspect
@@ -48,7 +53,7 @@
     const rv = TETRA_UNIT.map(u => v3.scale(u, s));
     const E0 = 0.5 * v3.dot(V, V) + 0.5 * (2 * s * s) * v3.dot(W, W);
     return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs,
-             orbitR: 0.5 - 0.1 * Math.min(k, 3),   // "Show box" off ⇒ orbit the centre at this radius (nested per layer)
+             swayT: 0, swayPhase: k * 2.399,   // box-off wander clock + per-body phase (golden-angle spread)
              seed: (SEED + k * 0x9E3779B1) >>> 0 };
   }
   let tetras = [];
@@ -84,14 +89,19 @@
       T.rv = T.rv.map(r => rotAxis(r, u, ct, st));    // one rotation for all ⇒ rigid
     }
 
-    if (!showBox) {                              // ORBIT the centre — no walls
-      const R = T.orbitR || 0.5, speed = Math.hypot(T.V[0], T.V[1], T.V[2]);
-      const dth = (speed / Math.max(R, 0.2)) * dt;    // circle in the screen (x,y) plane
-      const cs = Math.cos(dth), sn = Math.sin(dth);
-      const x = T.P[0] * cs - T.P[1] * sn, y = T.P[0] * sn + T.P[1] * cs;
-      const rho = Math.hypot(x, y) || 1e-6, kr = 0.05;   // ease onto the R-radius ring, depth → 0
-      const nr = rho + (R - rho) * kr;
-      T.P = [x * (nr / rho), y * (nr / rho), T.P[2] * (1 - kr)];
+    if (!showBox) {                              // WANDER around the centre — no walls
+      // A slow 3D Lissajous: independent x/y/z sines at irrational-ratio rates never repeat,
+      // so the whole body drifts up/down, sideways and in/out around the midpoint rather than
+      // just spinning. `swaySize` sets the reach (0 = pinned at the centre); the tempo follows
+      // the body's speed so Drift speed still drives it. Ease toward the target so toggling the
+      // box (and changing Sway) slides instead of jumping.
+      const speed = Math.hypot(T.V[0], T.V[1], T.V[2]);
+      T.swayT += speed * dt;
+      const th = T.swayT, ph = T.swayPhase, A = swaySize, kr = 0.06;
+      const tx = A * Math.sin(th + ph);
+      const ty = A * Math.sin(th * 1.37 + ph + 1.1);
+      const tz = A * 0.45 * Math.sin(th * 0.71 + ph + 2.3);
+      T.P = [T.P[0] + (tx - T.P[0]) * kr, T.P[1] + (ty - T.P[1]) * kr, T.P[2] + (tz - T.P[2]) * kr];
       T.impacts.length = 0;                            // no wall hits ⇒ no rubbery ripples
       tetraRenorm(T);
       return;

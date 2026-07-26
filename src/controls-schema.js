@@ -21,6 +21,7 @@
     { key: "rot", host: "fx", group: "shape", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
     { key: "nod", host: "fx", group: "shape", type: "dual", label: "Box nod", valId: "vNod", min: 0, max: 90, step: 0.1, lo: 17.2, hi: 17.2, fmt: v => sig3(v) + "°", apply: v => nodAmp = v * Math.PI / 180, durScale: 10 },
     { key: "nodspd", host: "fx", group: "shape", type: "dual", label: "Nod speed", valId: "vNodSpd", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => nodSpd = v, durScale: 10 },
+    { key: "sway", host: "fx", group: "shape", type: "dual", label: "Sway", valId: "vSway", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => swaySize = v, durScale: 10 },
     { key: "rpm", host: "fx", group: "cardioid", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => sig3(v), apply: v => juliaBigRpm = v, durScale: 10 },
     { key: "ratio", host: "fx", group: "cardioid", type: "dual", label: "Inner : outer ratio", valId: "vRatio", min: 1, max: 60, step: 0.5, lo: 21.5, hi: 21.5, fmt: v => sig3(v) + "×", apply: v => juliaRatio = v },
     { key: "inrad", host: "fx", group: "cardioid", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => juliaInnerR = v, durScale: 10 },

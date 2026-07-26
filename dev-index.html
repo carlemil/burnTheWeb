@@ -974,7 +974,7 @@
     bandCount: 18,        // posterized flat colours across a banded ramp   (BAND_COUNT)
 
     // --- beat-driven slider pulse ---
-    pulse: { drop: 0.2, min: 0.02, max: 3 },   // default fall time (s); per-slider length slider bounds (s)
+    pulse: { drop: 0.2, min: 0.02, max: 1 },   // default fall time (s); per-slider length slider bounds (s) = 20–1000 ms
 
     // --- audio beat detector: the SHIPPED tuning (a preset's beatTune overrides per-scene) ---
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
@@ -3200,6 +3200,11 @@
   // so Drift speed drives it as it always did.
   const NOD_RATE = CONFIG.tuning.nodRate;
   let nodAmp = 0.30, nodSpd = 1, nodPhase = 0;
+  // With "Show box" off there are no walls, so instead of bouncing the whole body WANDERS
+  // around the centre on a slow Lissajous (up/down, sideways and in/out). `swaySize` is the
+  // reach — 0 keeps it at the centre (spinning in place), higher sends it further. Each body
+  // has its own phase so a stack of them spreads out instead of moving as one.
+  let swaySize = 0.5;
   const TETRA_BASE_S = 0.42;           // tetra vertex scale at Size 1×
   const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
   const TETRA_BOX = [1.0, 1.05, 1.0];    // shared container half-extents; x retuned to aspect
@@ -3215,7 +3220,7 @@
     const rv = TETRA_UNIT.map(u => v3.scale(u, s));
     const E0 = 0.5 * v3.dot(V, V) + 0.5 * (2 * s * s) * v3.dot(W, W);
     return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs,
-             orbitR: 0.5 - 0.1 * Math.min(k, 3),   // "Show box" off ⇒ orbit the centre at this radius (nested per layer)
+             swayT: 0, swayPhase: k * 2.399,   // box-off wander clock + per-body phase (golden-angle spread)
              seed: (SEED + k * 0x9E3779B1) >>> 0 };
   }
   let tetras = [];
@@ -3251,14 +3256,19 @@
       T.rv = T.rv.map(r => rotAxis(r, u, ct, st));    // one rotation for all ⇒ rigid
     }
 
-    if (!showBox) {                              // ORBIT the centre — no walls
-      const R = T.orbitR || 0.5, speed = Math.hypot(T.V[0], T.V[1], T.V[2]);
-      const dth = (speed / Math.max(R, 0.2)) * dt;    // circle in the screen (x,y) plane
-      const cs = Math.cos(dth), sn = Math.sin(dth);
-      const x = T.P[0] * cs - T.P[1] * sn, y = T.P[0] * sn + T.P[1] * cs;
-      const rho = Math.hypot(x, y) || 1e-6, kr = 0.05;   // ease onto the R-radius ring, depth → 0
-      const nr = rho + (R - rho) * kr;
-      T.P = [x * (nr / rho), y * (nr / rho), T.P[2] * (1 - kr)];
+    if (!showBox) {                              // WANDER around the centre — no walls
+      // A slow 3D Lissajous: independent x/y/z sines at irrational-ratio rates never repeat,
+      // so the whole body drifts up/down, sideways and in/out around the midpoint rather than
+      // just spinning. `swaySize` sets the reach (0 = pinned at the centre); the tempo follows
+      // the body's speed so Drift speed still drives it. Ease toward the target so toggling the
+      // box (and changing Sway) slides instead of jumping.
+      const speed = Math.hypot(T.V[0], T.V[1], T.V[2]);
+      T.swayT += speed * dt;
+      const th = T.swayT, ph = T.swayPhase, A = swaySize, kr = 0.06;
+      const tx = A * Math.sin(th + ph);
+      const ty = A * Math.sin(th * 1.37 + ph + 1.1);
+      const tz = A * 0.45 * Math.sin(th * 0.71 + ph + 2.3);
+      T.P = [T.P[0] + (tx - T.P[0]) * kr, T.P[1] + (ty - T.P[1]) * kr, T.P[2] + (tz - T.P[2]) * kr];
       T.impacts.length = 0;                            // no wall hits ⇒ no rubbery ripples
       tetraRenorm(T);
       return;
@@ -4733,6 +4743,7 @@
     { key: "rot", host: "fx", group: "shape", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
     { key: "nod", host: "fx", group: "shape", type: "dual", label: "Box nod", valId: "vNod", min: 0, max: 90, step: 0.1, lo: 17.2, hi: 17.2, fmt: v => sig3(v) + "°", apply: v => nodAmp = v * Math.PI / 180, durScale: 10 },
     { key: "nodspd", host: "fx", group: "shape", type: "dual", label: "Nod speed", valId: "vNodSpd", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => nodSpd = v, durScale: 10 },
+    { key: "sway", host: "fx", group: "shape", type: "dual", label: "Sway", valId: "vSway", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => swaySize = v, durScale: 10 },
     { key: "rpm", host: "fx", group: "cardioid", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => sig3(v), apply: v => juliaBigRpm = v, durScale: 10 },
     { key: "ratio", host: "fx", group: "cardioid", type: "dual", label: "Inner : outer ratio", valId: "vRatio", min: 1, max: 60, step: 0.5, lo: 21.5, hi: 21.5, fmt: v => sig3(v) + "×", apply: v => juliaRatio = v },
     { key: "inrad", host: "fx", group: "cardioid", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => juliaInnerR = v, durScale: 10 },
@@ -5612,8 +5623,8 @@
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrahedron", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron, a rigid body under real physics whose four tumbling corners seed the same fire. With Show box on it bounces inside an invisible box, bursting a sphere of sparks on each wall hit; with the box off there are no walls, so it orbits the centre of the screen instead. Objects stacks more tetrahedra, each smaller and moving on its own. Two rotations turn the view: Rotation yaws it (0 by default — spread the thumbs to drift) and Box nod pitches it up and down in a slow sine (Nod speed sets how fast).",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
-      defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [1500, 1500] },
+      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "sway", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
+      defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], sway: [0.5, 0.5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [1500, 1500] },
       beat: {}, extras: { palette: "1", morph: false, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
@@ -8870,6 +8881,7 @@
       { n: "Rotation", w: "tetra", t: "Tetrahedron only — the yaw rate in degrees per second for the scene's rotation about the box. It defaults to 0 (held still); spread the two thumbs to let it drift, or set one thumb to a constant spin." },
       { n: "Box nod", w: "tetra", t: "Tetrahedron only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
       { n: "Nod speed", w: "tetra", t: "Tetrahedron only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },
+      { n: "Sway", w: "tetra", t: "Tetrahedron only, and only with Show box OFF — how far the whole object wanders up/down, sideways and in/out around the centre on a slow looping path (0 pins it to the centre so it just spins in place). Each stacked Object wanders on its own phase. The tempo follows Drift speed; arm its L/M/H chips to lunge on the beat." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin this layer in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. Per-layer, like Zoom — each stacked effect keeps its own camera, applied to that layer before the layers are blended (in a one-layer scene it's simply the camera over what's running). The startup credits deliberately ignore it and stay level." },
       { n: "Filters", w: "all", t: "A stack of post-effects, all OFF by default — tick the ones you want. Most are PER-LAYER (in the Effects &amp; Filters box): each stacked effect is filtered on its own, in the order listed. The whole-scene ones — Bloom and the screen FX (Barrel, Scanlines, Vignette, Film grain) — live in the separate Scene filters box and apply once to the finished, blended picture. Fire and Fade pixel feed back into the layer, building up over successive frames; the rest are single passes. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
