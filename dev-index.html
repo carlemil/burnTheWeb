@@ -565,15 +565,27 @@
   #help .help-tree b { color: #ffcf87; font-weight: 600; }
   #help .help-tree i { color: #9a8a70; font-style: normal; }
   #help {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    /* Sit the box in the space to the RIGHT of the menu (14–264px) and the pop-out column
+       (298–542px), so it never covers them; the backdrop is light so the menu stays readable. */
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: flex-end;
+    background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
   #help.hidden { display: none; }
   #help .help-box {
-    position: relative; max-width: 470px; max-height: 82vh; overflow-y: auto; margin: 16px;
-    padding: 18px 20px; background: rgba(14, 8, 5, 0.97);
+    position: relative; width: min(1400px, calc(100vw - 580px)); max-height: 88vh; overflow-y: auto;
+    margin: 16px 28px; padding: 20px 26px; background: rgba(14, 8, 5, 0.98);
     border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  /* The per-control list flows into as many ~22em columns as the wide box fits, so the extra
+     width shortens the lines instead of stretching them. Keep each dt with its dd. */
+  #help dl.help-cols { columns: 22em; column-gap: 32px; margin-top: 6px; }
+  #help dl.help-cols dt { break-after: avoid; }
+  #help dl.help-cols dd { break-inside: avoid; margin-bottom: 10px; }
+  @media (max-width: 1160px) {   /* too narrow to clear the menu/column — centre a wide box instead */
+    #help { justify-content: center; }
+    #help .help-box { width: 92vw; margin: 16px; }
+    #help dl.help-cols { columns: 20em; }
   }
   #help h2 { margin: 0 24px 8px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #help p { margin: 0 0 10px; opacity: .9; }
@@ -5571,7 +5583,7 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [22, 22], rise: [52, 52], zoom: [1, 1], size: [1, 1], rot: [0, 0], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrahedron", subtitle: "Sierpiński tetrahedron · classic fire",
-      help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks. The box drifts because two things turn it: Rotation yaws it (it drifts −5…5°/s out of the box — set both thumbs to 0 to stop it) and Box nod pitches it up and down in a slow sine. Box nod 0 holds it level; Nod speed scales how fast it swings.",
+      help: "A 3D Sierpiński tetrahedron, a rigid body under real physics whose four tumbling corners seed the same fire. With Show box on it bounces inside an invisible box, bursting a sphere of sparks on each wall hit; with the box off there are no walls, so it orbits the centre of the screen instead. Objects stacks more tetrahedra, each smaller and moving on its own. Two rotations turn the view: Rotation yaws it (0 by default — spread the thumbs to drift) and Box nod pitches it up and down in a slow sine (Nod speed sets how fast).",
       params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
       beat: {}, extras: { palette: "1", morph: false, showBox: false, randSeed: true } },
@@ -8797,7 +8809,7 @@
 
   // ---- help popup: effect-aware explanation of every control ----
   const HELP = {
-    intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats, and the dropdown beside them picks the <b>pulse shape</b> — how the value animates back down after each hit. Every setting is saved in your browser, separately per effect — bar a shared few: auto-cycle and its hold time, the resolution, the camera and whether the menu is open.",
+    intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats, and the dropdown beside them picks the <b>pulse shape</b> — how the value animates back down after each hit. Everything is saved in your browser, per stacked layer — bar a shared few that belong to the whole scene: auto-cycle and its timing, the whole-scene (Scene) filters, the render resolution, and whether the menu is open.",
     // Per-effect names/blurbs come from the EFFECTS registry (see renderHelp).
     // Each slider blurb's `w:` tag is matched against the effect's `helpTags`
     // (see the EFFECTS registry). "all" shows on every effect; "band" on every
@@ -8808,7 +8820,9 @@
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Transition", w: "all", t: "How long a preset change takes to blend, as a range in seconds — each switch draws a length from it. A suitable transition is chosen automatically for the two scenes involved: a crossfade between two full-screen effects, something that breaks the picture up (pixelate, blur, wipe) when a sparse point cloud meets a dense field, a dip or flash when the palettes jump, and often nothing at all when the scenes already dissolve on their own through Fire or Fade pixel. Collapse both thumbs to 0 to cut straight over instead." },
       { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching keeps the preset you have selected and folds the change into it, like any other edit — so you carry on working on your scene. The preset keeps its name, so rename it if it no longer suits. Part of a preset, so auto-cycle can switch it for you." },
-      { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
+      { n: "Palette", w: "all", t: "The colour ramp this layer's heat is mapped through — click a swatch to pick it. Per-layer, so stacked effects can each carry their own colours (blended together in perceptual OKLab space when they overlap)." },
+      { n: "Reverse colours", w: "all", t: "Runs this layer's palette the other way round — the dark (background) end stays black, so only the lit ramp is flipped. Per-layer." },
+      { n: "Background", w: "all", t: "What this layer's unlit pixels (heat 0) show: Black (default), White, or the palette's own colour 0. In a multi-layer scene it's per-layer, so a background layer can wash the scene while the ones above keep a black backdrop." },
       { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
       { n: "Palette hold", w: "all", t: "How long to rest on each palette before starting the next cross-fade, as a range in seconds — a fresh dwell is drawn each time. At 0 (the default) the colours cross-fade continuously with no pause; raise it to sit on each palette for a while between changes. Only matters while Palette cycle is running." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them, and each menu row shows a small dot per armed band in the same colour — dim at rest, lit on the beat — so you can see what a preset has wired to the music without opening a single box." },
@@ -8825,12 +8839,12 @@
       { n: "Objects", w: "fire", t: "− / + add extra copies of the fractal (up to 6) — the tetrahedra / triangles moving on screen. Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own. (Distinct from the effect stack, also called Layers.)" },
       { n: "Drift speed", w: "fire", t: "Sierpiński: how fast the triangle's three corners wander. Tetrahedron: the physics tempo — how fast it bounces (or orbits, with the box hidden)." },
       { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sierpiński's triangle or the Tetrahedron's solid (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
-      { n: "Rotation", w: "tetra", t: "Tetrahedron only — the yaw rate in degrees per second for the scene orbit around the box. It ships drifting between −5 and 5, so the box is never quite still; pinch both thumbs to 0 to stop it." },
+      { n: "Rotation", w: "tetra", t: "Tetrahedron only — the yaw rate in degrees per second for the scene's rotation about the box. It defaults to 0 (held still); spread the two thumbs to let it drift, or set one thumb to a constant spin." },
       { n: "Box nod", w: "tetra", t: "Tetrahedron only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
       { n: "Nod speed", w: "tetra", t: "Tetrahedron only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
-      { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin the whole scene in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. These are global — they stay put as you switch effects and are not part of any one effect's settings — so they act as a camera over whatever is running. The startup credits deliberately ignore them and stay level." },
-      { n: "Filters", w: "all", t: "A stack of post-effects any visual can use, ticked in the Filters section; they apply in the order listed. Fire and Fade pixel feed back into the picture, building up over successive frames; the rest are passes over the finished image. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
+      { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin this layer in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. Per-layer, like Zoom — each stacked effect keeps its own camera, applied to that layer before the layers are blended (in a one-layer scene it's simply the camera over what's running). The startup credits deliberately ignore it and stay level." },
+      { n: "Filters", w: "all", t: "A stack of post-effects, all OFF by default — tick the ones you want. Most are PER-LAYER (in the Effects &amp; Filters box): each stacked effect is filtered on its own, in the order listed. The whole-scene ones — Bloom and the screen FX (Barrel, Scanlines, Vignette, Film grain) — live in the separate Scene filters box and apply once to the finished, blended picture. Fire and Fade pixel feed back into the layer, building up over successive frames; the rest are single passes. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
       { n: "Fire", w: "all", t: "The classic rising-fire feedback: heat drifts upward and cools each frame, so whatever the effect draws sprouts flames. Flame rise sets how tall they climb before fading (linear in height); Burn rate how many simulation steps run per second — faster is livelier and flickerier." },
       { n: "Fade pixel", w: "all", t: "Keeps a fraction of the previous frame instead of clearing it, leaving motion trails. Keep near 1 smears almost forever; lower values fade quickly. Stacks with Fire." },
       { n: "Pixelate", w: "all", t: "Chunks the image into blocks. Block sets the size — a direct route to a lo-fi console look." },
@@ -8838,7 +8852,7 @@
       { n: "Edge", w: "all", t: "Edge detection over the finished image — Amount fades between the original and the outlines it finds." },
       { n: "Posterize", w: "all", t: "Crushes the colours to a fixed number of Levels, turning smooth gradients into flat bands." },
       { n: "Mirror", w: "all", t: "Reflects the image about its centre. Axis picks horizontal, vertical or both (kaleidoscope-style quadrants)." },
-      { n: "Bloom", w: "all", t: "The additive glow around the brightest areas. Strength 0 turns it off entirely — this is the glow that used to be permanent." },
+      { n: "Bloom", w: "all", t: "The additive glow around the brightest areas — a whole-scene filter (one glow over the finished, blended image), so it lives in the Scene filters box. Off by default; tick it and raise Strength to add the glow." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
@@ -8888,7 +8902,7 @@
     const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
     html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.help + "</p>";
-    html += '<p class="help-intro">' + HELP.intro + "</p><dl>";
+    html += '<p class="help-intro">' + HELP.intro + '</p><dl class="help-cols">';
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
     helpEl.innerHTML = html;

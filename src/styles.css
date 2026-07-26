@@ -550,15 +550,27 @@
   #help .help-tree b { color: #ffcf87; font-weight: 600; }
   #help .help-tree i { color: #9a8a70; font-style: normal; }
   #help {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    /* Sit the box in the space to the RIGHT of the menu (14–264px) and the pop-out column
+       (298–542px), so it never covers them; the backdrop is light so the menu stays readable. */
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: flex-end;
+    background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
   #help.hidden { display: none; }
   #help .help-box {
-    position: relative; max-width: 470px; max-height: 82vh; overflow-y: auto; margin: 16px;
-    padding: 18px 20px; background: rgba(14, 8, 5, 0.97);
+    position: relative; width: min(1400px, calc(100vw - 580px)); max-height: 88vh; overflow-y: auto;
+    margin: 16px 28px; padding: 20px 26px; background: rgba(14, 8, 5, 0.98);
     border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  /* The per-control list flows into as many ~22em columns as the wide box fits, so the extra
+     width shortens the lines instead of stretching them. Keep each dt with its dd. */
+  #help dl.help-cols { columns: 22em; column-gap: 32px; margin-top: 6px; }
+  #help dl.help-cols dt { break-after: avoid; }
+  #help dl.help-cols dd { break-inside: avoid; margin-bottom: 10px; }
+  @media (max-width: 1160px) {   /* too narrow to clear the menu/column — centre a wide box instead */
+    #help { justify-content: center; }
+    #help .help-box { width: 92vw; margin: 16px; }
+    #help dl.help-cols { columns: 20em; }
   }
   #help h2 { margin: 0 24px 8px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #help p { margin: 0 0 10px; opacity: .9; }
