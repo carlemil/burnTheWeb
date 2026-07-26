@@ -719,6 +719,16 @@
       const a = x * 4, b = (256 - x) * 4;
       for (let k = 0; k < 4; k++) { const tmp = out[a + k]; out[a + k] = out[b + k]; out[b + k] = tmp; }
     }
+    // Smooth the lowest colours into the background (see PAL_FADE_N), same as composePalette.
+    if (bg !== "palette") {
+      const bv = bg === "white" ? 255 : 0;
+      for (let x = 1; x < PAL_FADE_N; x++) {
+        const w = palFadeW(x), j = x * 4;
+        out[j] = clamp(bv + (out[j] - bv) * w);
+        out[j + 1] = clamp(bv + (out[j + 1] - bv) * w);
+        out[j + 2] = clamp(bv + (out[j + 2] - bv) * w);
+      }
+    }
     // Background (heat 0): black (default), white, or the layer palette's own colour-0 (leave as baked).
     if (bg === "white") { out[0] = out[1] = out[2] = 255; }
     else if (bg !== "palette") { out[0] = out[1] = out[2] = 0; }

@@ -1161,6 +1161,13 @@
   const bgOk = v => BG_MODES[v] ? v : "black";
   const paletteBase = new Float32Array(256 * 3);   // the smooth, unbanded RGB ramp
   const clamp = v => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
+  // Ease the lowest few colours (1..PAL_FADE_N−1) into the background so lit areas
+  // fade OUT of it over several steps instead of showing a hard edge where the fractal
+  // meets the black. Index 0 is the forced background; the ramp reaches its real colour
+  // by PAL_FADE_N. Matters most for a REVERSED ramp, whose colour 1 would otherwise be the
+  // brightest one straight against black. smoothstep so the ramp itself has no kink.
+  const PAL_FADE_N = 8;
+  const palFadeW = x => { const s = x / PAL_FADE_N; return s * s * (3 - 2 * s); };
 
   // The original HSL fire ramp: black -> red -> orange -> yellow -> white.
   function hue2rgb(p, q, t) {
@@ -1289,6 +1296,16 @@
     // the forced black below — so the dark background stays black while the ramp runs the
     // other way. Applied after banding, so the stripes simply run the other direction too.
     if (rev) for (let x = 1; x <= 127; x++) { const t = palette[x]; palette[x] = palette[256 - x]; palette[256 - x] = t; }
+    // Smooth the lowest colours into the background (see PAL_FADE_N). Skipped for the
+    // "palette" background, which deliberately keeps the ramp's own colour-0.
+    if (bg !== "palette") {
+      const bv = bg === "white" ? 255 : 0;
+      for (let x = 1; x < PAL_FADE_N; x++) {
+        const w = palFadeW(x), p = palette[x];
+        const r = bv + ((p & 0xff) - bv) * w, g = bv + (((p >> 8) & 0xff) - bv) * w, b = bv + (((p >> 16) & 0xff) - bv) * w;
+        palette[x] = (255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r);
+      }
+    }
     // Background (heat 0): black (default), white, or the palette's own colour-0 (leave as
     // composed). Everything else keeps the old forced-black behaviour byte-for-byte.
     if (bg === "white") palette[0] = 0xFFFFFFFF;
@@ -2754,6 +2771,16 @@
     if (rev) for (let x = 1; x <= 127; x++) {
       const a = x * 4, b = (256 - x) * 4;
       for (let k = 0; k < 4; k++) { const tmp = out[a + k]; out[a + k] = out[b + k]; out[b + k] = tmp; }
+    }
+    // Smooth the lowest colours into the background (see PAL_FADE_N), same as composePalette.
+    if (bg !== "palette") {
+      const bv = bg === "white" ? 255 : 0;
+      for (let x = 1; x < PAL_FADE_N; x++) {
+        const w = palFadeW(x), j = x * 4;
+        out[j] = clamp(bv + (out[j] - bv) * w);
+        out[j + 1] = clamp(bv + (out[j + 1] - bv) * w);
+        out[j + 2] = clamp(bv + (out[j + 2] - bv) * w);
+      }
     }
     // Background (heat 0): black (default), white, or the layer palette's own colour-0 (leave as baked).
     if (bg === "white") { out[0] = out[1] = out[2] = 255; }
