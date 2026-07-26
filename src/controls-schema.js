@@ -13,7 +13,7 @@
   const CONTROLS = [
     { key: "showbox", host: "fx", group: "shape", type: "check", label: "Show box" },
     { key: "boxsize", host: "fx", group: "shape", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
-    { key: "points", host: "fx", group: "shape", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
+    { key: "points", host: "fx", group: "shape", type: "dual", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(v), apply: v => cfg.points = Math.round(v), durScale: 10 },
     { key: "layers", host: "fx", group: "shape", type: "layers", label: "Objects", valId: "vLayers" },
     { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
 
@@ -382,7 +382,8 @@
     input.addEventListener("input", update);
     update();
   }
-  bind("points", "vPoints", v => sig3(v), v => cfg.points = +v);
+  // (Points is a dual/ranged slider now — wired by the bindRange loop below, so it gets
+  // L/M/H beat chips like the other ranged controls; `bind` is left for any future plain one.)
 
   // Layers: the −/+ buttons drive a hidden number input (so it rides the normal
   // per-effect state/persist/preset machinery); each layer adds a smaller,
