@@ -125,7 +125,7 @@
       const st = (saved.states && saved.states[e]) || {};
       const vals = {};
       for (const k of SCENE_FILTER_KEYS) if (Array.isArray(st[k])) vals[k] = st[k];
-      writeSceneFx({ on: on.length ? on : ["bloom"], vals });   // default to bloom on (the old unconditional glow)
+      writeSceneFx({ on, vals });   // lift the selected effect's scene-filters; none ⇒ no scene filters (all off)
     }
     if (saved.plens) {                  // ...and their lengths (absent in pre-feature blobs → PULSE_DROP)
       for (const k in plenStates) {
@@ -197,7 +197,7 @@
   function installShared(d) {
     if (!d) return false;
     initStates(); initBeatStates(); initPulseStates(); initPlenStates(); initExtras();
-    sceneOn = new Set(["bloom"]);     // same reason: a shared scene omitting sceneFx must not inherit the recipient's Scene filters
+    sceneOn = new Set();     // same reason: a shared scene omitting sceneFx must not inherit the recipient's Scene filters
     // Same reason as the five above: a shared scene with no `layers` must land as ONE
     // item, not inherit whatever stack the recipient happened to have built.
     installStack([newStackItem(0)]);

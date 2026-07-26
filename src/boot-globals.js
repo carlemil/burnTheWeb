@@ -95,7 +95,7 @@
   const SCENE_FILTER_IDS = new Set(["bloom", "barrel", "scanlines", "vignette", "grain"]);
   const SCENE_FILTER_KEYS = ["bloom", "barrel", "scan", "scancount", "vignette", "grain"];   // their dual-slider param keys
   const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
-  let sceneOn = new Set(["bloom"]);            // scene-global on/off; bloom on = the old unconditional glow
+  let sceneOn = new Set();                     // scene-global filter on/off — none on by default (all filters off)
   // `activeIds` is the SELECTED layer's live filter set (the "DOM is the store for the
   // selected item" rule). The RENDER must follow what is on screen, not what is selected for
   // editing — you can select a muted layer to tweak it while a different one is the only

@@ -78,7 +78,7 @@
     { key: "sgspeed", host: "fx", group: "shapegrid", type: "dual", label: "Pulse speed", valId: "vSgSpeed", min: 0, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => sgSpeed = v, durScale: 10 },
     // Concentric rings
     { key: "cosides", host: "fx", group: "concentric", type: "dual", label: "Sides", valId: "vCoSides", min: 3, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coSides = Math.round(v), durScale: 10 },
-    { key: "cocount", host: "fx", group: "concentric", type: "dual", label: "Ring count", valId: "vCoCount", min: 1, max: 20, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coCount = v, durScale: 10 },
+    { key: "cocount", host: "fx", group: "concentric", type: "dual", label: "Ring count", valId: "vCoCount", min: 1, max: 20, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coCount = v, durScale: 10 },
     { key: "cothick", host: "fx", group: "concentric", type: "dual", label: "Thickness", valId: "vCoThick", min: 0.02, max: 0.98, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => coThick = v, durScale: 10 },
     { key: "cospeed", host: "fx", group: "concentric", type: "dual", label: "March speed", valId: "vCoSpeed", min: -3, max: 3, step: 0.05, lo: 0.6, hi: 0.6, fmt: v => sig3(v) + "×", apply: v => coSpeed = v, durScale: 10 },
     { key: "cospin", host: "fx", group: "concentric", type: "dual", label: "Spin", valId: "vCoSpin", min: -2, max: 2, step: 0.05, lo: 0.1, hi: 0.1, fmt: v => sig3(v) + "×", apply: v => coSpinSpeed = v, durScale: 10 },
@@ -139,7 +139,7 @@
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
-    { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 10, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
+    { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 1, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
     { key: "vignette", host: "filter", group: "f_vignette", type: "dual", label: "Amount", valId: "vVignette", min: 0, max: 1, step: 0.01, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => vigAmt = v, durScale: 10 },
     { key: "grain", host: "filter", group: "f_grain", type: "dual", label: "Amount", valId: "vGrain", min: 0, max: 0.5, step: 0.005, lo: 0.08, hi: 0.08, fmt: v => sig3(v), apply: v => grainAmt = v, durScale: 10 },
     { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },

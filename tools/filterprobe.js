@@ -114,20 +114,19 @@ ok(F.filtersOk([]).size === 0, "an empty list is honoured (all filters off)");
      "unknown/duplicate/non-string ids dropped", [...s].join(","));
 }
 
-// --- 4. defaults preserve today's look ---------------------------------------
-ok(JSON.stringify(F.presetFilters(0)) === '["fire","bloom"]', "point effect defaults to fire+bloom");
-ok(JSON.stringify(F.presetFilters(1)) === '["fire","bloom"]',
-   "an effect with `stamp` but no `draw` counts as a point effect");
-ok(JSON.stringify(F.presetFilters(2)) === '["bloom"]', "shader effect defaults to bloom only");
-ok(F.FILTERS.every(f => f.id === "bloom" || F.presetFilters(2).indexOf(f.id) < 0),
-   "no other filter is on by default for a shader effect");
+// --- 4. every effect ships with NO filters on ---------------------------------
+ok(JSON.stringify(F.presetFilters(0)) === "[]", "point effect defaults to no filters");
+ok(JSON.stringify(F.presetFilters(1)) === "[]", "an effect with `stamp` but no `draw` also defaults to none");
+ok(JSON.stringify(F.presetFilters(2)) === "[]", "shader effect defaults to no filters");
+ok(F.FILTERS.every(f => F.presetFilters(2).indexOf(f.id) < 0),
+   "no filter at all is on by default");
 
-// --- 5. mergeExtra rescues pre-filter presets --------------------------------
+// --- 5. mergeExtra + the descriptor default ----------------------------------
 {
   const old = { palette: "3", morph: true, showBox: true, randSeed: false };   // no `filters` key
   const m = F.mergeExtra(0, old);
-  ok(JSON.stringify(m.filters) === '["fire","bloom"]',
-     "a preset saved before filters gets the descriptor default, not an empty chain");
+  ok(JSON.stringify(m.filters) === "[]",
+     "a preset with no `filters` key gets the descriptor default (now empty)");
   ok(m.palette === "3" && m.randSeed === false, "...while its other extras survive");
   const m2 = F.mergeExtra(2, { filters: ["bloom", "fire"] });
   ok(JSON.stringify(m2.filters) === '["fire","bloom"]', "a stored list is re-sorted into registry order");
@@ -139,8 +138,8 @@ ok(F.FILTERS.every(f => f.id === "bloom" || F.presetFilters(2).indexOf(f.id) < 0
   const m3 = F.mergeExtra(2, { filters: ["ghost"] });
   ok(JSON.stringify(m3.filters) === "[]",
      "a list naming only retired filters ends up empty (their choice is gone, not reset)");
-  ok(JSON.stringify(F.mergeExtra(2, {}).filters) === '["bloom"]',
-     "...but a missing key still falls back to the descriptor default");
+  ok(JSON.stringify(F.mergeExtra(2, {}).filters) === "[]",
+     "...but a missing key still falls back to the descriptor default (now empty)");
 }
 
 // --- 6. presetState seeds every filter's params on every effect ---------------

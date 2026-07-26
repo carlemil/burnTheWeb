@@ -398,13 +398,22 @@ Fire checkbox rather than living in any effect's `params`. `presetState` merges
 descriptors — an effect that names the same key still wins.
 
 The **list** is per-effect in `extras[e].filters` (stable string ids, always written in
-registry order so reordering `FILTERS` can't remap a saved scene). Defaults preserve
-today: point effects — including Attractor, which uses `stamp`, not `draw` — get
-`["fire","bloom"]`, shader effects `["bloom"]`, because the glow used to be
-unconditional. **`mergeExtra` is mandatory**: `applyPreset` copies extras verbatim, so a
-preset saved before filters has no `filters` key and would otherwise load with no fire and
-no glow. Ordering trap: `setEffect` runs its visibility pass before `loadExtra` knows the
-new filter list, so `loadExtra` re-runs `refreshControlVisibility()`.
+registry order so reordering `FILTERS` can't remap a saved scene). **Every effect now
+defaults to NO filters** (`presetFilters` → `[]`): a fresh effect / layer renders as its
+raw output and you tick the filters you want. Point effects (Sierpiński / Tetrafyer /
+Attractor) therefore show raw stamped points until you enable **Fire**; nothing glows
+until you enable **Bloom**. Bloom + the screen FX are SCENE-global (`sceneOn`), which also
+defaults **empty** — so the shipped `DEFAULT_SCENE` carries an explicit
+`sceneFx:{on:["bloom"]}` to keep its curated glow while everything else starts off.
+**`mergeExtra` is still mandatory**: a preset with no `filters` key falls back to the
+(now empty) descriptor default. Ordering trap: `setEffect` runs its visibility pass before
+`loadExtra` knows the new filter list, so `loadExtra` re-runs `refreshControlVisibility()`.
+
+**Effect `defaults` are NEUTRAL**: palette cycle off (`palcycle [0,0]`, `morph:false`),
+banding off (`band [0,0]`), no rotation (`rot [0,0]`), and every dual slider collapsed to
+a single static value (`[lo,lo]`) so a fresh effect is calm and predictable. This only
+affects fresh effects / the per-effect default presets; explicit scenes (`DEFAULT_SCENE`,
+saved presets) carry their own values and are unchanged.
 
 Three ordering constraints bit during implementation and are load-bearing: the registry
 block must sit **above `presetState`** (which reads `FILTER_DEFAULTS`), `buildFilterUI()`

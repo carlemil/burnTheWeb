@@ -158,10 +158,12 @@
     for (const id of v) if (typeof id === "string" && FILTER_BY_ID[id]) seen.add(id);
     return seen;
   }
-  // A descriptor's default filter list. Point effects (no `draw` hook — including
-  // Attractor, which uses `stamp`) ship Fire on, so today's look is unchanged; every
-  // effect ships Bloom on, because the glow used to be unconditional.
+  // A descriptor's default filter list. Every effect now ships with NO filters on — a new
+  // effect / layer starts as its raw output, and you tick the filters you want. (A descriptor
+  // may still pin its own `filters` list; none do.) NOTE: point effects (Sierpiński / Tetrafyer
+  // / Attractor) render as raw stamped points without `fire` — tick Fire to get the rising-fire
+  // look. Bloom is off too, so nothing glows until you enable it.
   function presetFilters(e) {
-    const d = EFFECTS[e].filters || (EFFECTS[e].draw ? ["bloom"] : ["fire", "bloom"]);
+    const d = EFFECTS[e].filters || [];
     return d.slice();
   }
