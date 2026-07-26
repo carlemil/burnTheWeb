@@ -111,7 +111,9 @@
       TETRA_BOX[1] = 1.05;                        // fixed container half-extents (y,z);
       TETRA_BOX[2] = 1.0;                         // x follows from the frame aspect below.
       TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // Box size is a whole-scene zoom (below),
-      ensureTetras(layerCount);                  // not a world resize, so physics room is fixed.
+      L.tetras = L.tetras || [];                 // per-LAYER bodies (salted by stack position), so two
+      ensureTetras(L.tetras, layerCount, stack.indexOf(L));   // Tetrahedron layers diverge instead of following
+      const tetras = L.tetras;                   // this layer's bodies for the loop below
 
       const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
       // Camera distance (pin-hole focal) set relative to the box's corner radius,

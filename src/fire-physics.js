@@ -45,21 +45,27 @@
   // Instance k is half the size (and later half the points) of k-1, with its own
   // seed and start state; sin(k·…) offsets are 0 at k=0, so instance 0 reproduces
   // the original solo tetra exactly.
-  function makeTetra(k) {
-    const bs = Math.pow(0.5, k), s = TETRA_BASE_S * bs;
-    const V = [0.95 + 0.35 * Math.sin(k * 1.7), 0.62 + 0.35 * Math.sin(k * 2.9), 0.78 + 0.35 * Math.sin(k * 3.7)];
-    const W = [1.1 + 0.5 * Math.sin(k * 2.3), 0.7 + 0.5 * Math.sin(k * 1.3), 1.4 + 0.5 * Math.sin(k * 3.1)];
-    const P = [0.3 * Math.sin(k * 2.1), 0.3 * Math.sin(k * 1.9), 0.3 * Math.sin(k * 2.7)];
+  // `salt` is the LAYER (stack index): it offsets the start so two Tetrahedron layers begin from
+  // different orientations/velocities instead of in lockstep. salt 0 zeroes every offset, so the
+  // first layer (and every single-layer scene) reproduces the original solo body exactly.
+  function makeTetra(k, salt) {
+    salt = salt || 0;
+    const bs = Math.pow(0.5, k), s = TETRA_BASE_S * bs, sp = salt * 3.4;
+    const V = [0.95 + 0.35 * Math.sin(k * 1.7 + sp), 0.62 + 0.35 * Math.sin(k * 2.9 + sp * 1.3), 0.78 + 0.35 * Math.sin(k * 3.7 + sp * 0.7)];
+    const W = [1.1 + 0.5 * Math.sin(k * 2.3 + sp * 1.1), 0.7 + 0.5 * Math.sin(k * 1.3 + sp * 1.7), 1.4 + 0.5 * Math.sin(k * 3.1 + sp * 0.5)];
+    const P = [0.3 * Math.sin(k * 2.1 + sp), 0.3 * Math.sin(k * 1.9 + sp * 1.4), 0.3 * Math.sin(k * 2.7 + sp * 0.8)];
     const rv = TETRA_UNIT.map(u => v3.scale(u, s));
     const E0 = 0.5 * v3.dot(V, V) + 0.5 * (2 * s * s) * v3.dot(W, W);
     return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs,
-             swayT: 0, swayPhase: k * 2.399,   // box-off wander clock + per-body phase (golden-angle spread)
-             seed: (SEED + k * 0x9E3779B1) >>> 0 };
+             swayT: salt * 1.7, swayPhase: k * 2.399 + salt * 1.3,   // box-off wander clock + per-body/per-layer phase
+             seed: (SEED + k * 0x9E3779B1 + salt * 0x85EBCA6B) >>> 0 };
   }
-  let tetras = [];
-  function ensureTetras(count) {         // grow/shrink the body list to `count`
-    while (tetras.length < count) tetras.push(makeTetra(tetras.length));
-    if (tetras.length > count) tetras.length = count;
+  // Grow/shrink ONE layer's body list to `count`. The list is passed in (each Tetrahedron
+  // layer keeps its own on L.tetras), so stacking two layers no longer shares — and syncs — one
+  // set of tetrahedra. `salt` is that layer, threaded into the new bodies' start state.
+  function ensureTetras(arr, count, salt) {
+    while (arr.length < count) arr.push(makeTetra(arr.length, salt));
+    if (arr.length > count) arr.length = count;
   }
   // Keep the body lively forever: gently renormalise energy back to E0 if the
   // near-elastic losses (or a rare correction) drift it out of a sane band. Shared
