@@ -22,8 +22,9 @@ independent "scene" that remembers its own settings (see Controls). You can also
 up to four of them at once** — see Layers below:
 
 - **Sierpiński** — the classic 2D Sierpiński-**triangle** fire described below.
-- **Tetrafyer** — the same fire seeded by a 3D Sierpiński **tetrahedron** that
-  is a rigid body **bouncing inside a rubbery box** in front of a fixed camera.
+- **Tetrahedron** — the same fire seeded by a 3D Sierpiński **tetrahedron** that
+  is a rigid body **bouncing inside a rubbery box** in front of a fixed camera
+  (or, with the box hidden, **orbiting the centre of the screen**).
   Each of the four corners collides with the walls under impulse-based physics
   (isotropic inertia, near-elastic restitution), so a corner-hit realistically
   kicks the solid into a tumble; each hit bursts a fading sphere of points out
@@ -68,7 +69,7 @@ up to four of them at once** — see Layers below:
 - **Sierpiński seed** — the fractal is generated with the
   [chaos game](https://en.wikipedia.org/wiki/Sierpi%C5%84ski_triangle): repeatedly
   jump halfway toward a randomly chosen corner. **Sierpiński** uses a 2D triangle
-  (three corners); **Tetrafyer** uses a 3D tetrahedron (four vertices), running the
+  (three corners); **Tetrahedron** uses a 3D tetrahedron (four vertices), running the
   walk in 3D and perspective-projecting each point. Each point is stamped into the
   fire buffer as maximum heat, so flames rise out of the fractal.
 - **Moving geometry** — the triangle's corners drift on their own `sin`/`cos`
@@ -106,7 +107,7 @@ value, so a ranged slider also works as an ordinary one.
 
 **Each effect is a fully independent scene** — its sliders, beat chips, pulse shapes
 and lengths, palette, palette cycle and show-box are all remembered *separately per
-effect*, so tweaking Tetrafyer never touches AnimeJulia. A handful of things are
+effect*, so tweaking Tetrahedron never touches AnimeJulia. A handful of things are
 deliberately **shared** instead: auto-cycle and its hold time, the render resolution,
 the camera angles, and the panel's open/closed state. Everything is **saved to your browser** and
 restored on your next visit (persisted values that fall outside a slider's
@@ -177,7 +178,7 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | Control | What it does |
 | --- | --- |
 | **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, selects it, and switches auto-cycle off so it stays on screen; **Delete** removes the selected one. Pick "— unsaved scene —" to tweak without touching a saved preset. Switching to a different **effect** keeps you on the preset you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the preset keeps its **name**, so one called "Sierpiński" that you switch to Tunnel stays called Sierpiński until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a preset leaves the previous effect on screen to burn away under the new one rather than cutting to black (visible whenever the incoming scene has the Fire or Fade pixel filter on), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the preset's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** saves **one `.json` per preset**, each named after the preset, plus a `_settings.json` holding everything that isn't a preset (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution). One file per preset is the point: to send someone a scene, send them that one file. In Chrome and Edge you pick a folder **once, ever** — it is remembered from then on, and each backup lands in its own dated folder, `BurnTheWeb/<date-time>/`. Shift-click **Backup** to choose a different folder. Other browsers download the files individually with the date in the name. **Restore** takes as many files as you select — a whole backup folder, or the single preset a friend sent you. A dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning — only the ones your selection actually contains) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. Older single-file backups still restore. |
-| **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sierpiński, Tetrafyer, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
+| **Effect** | Switch between all fifteen effects listed above, in dropdown order (Sierpiński, Tetrahedron, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor). Each shows its own sliders. |
 | **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
 | **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of nineteen colour ramps — each is shown as a gradient swatch, so you preview the colours instead of reading a name. Click one to select it; the active ramp is highlighted. |
@@ -187,16 +188,16 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
-| **Points** | Number of points stamped per frame (100–8000). *(Sierpiński / Tetrafyer / Attractor.)* |
-| **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sierpiński / Tetrafyer.)* |
-| **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sierpiński / Tetrafyer.)* |
+| **Points** | Number of points stamped per frame (100–8000). *(Sierpiński / Tetrahedron / Attractor.)* |
+| **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sierpiński / Tetrahedron.)* |
+| **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sierpiński / Tetrahedron.)* |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). Belongs to the **Fire filter**, so it is available to any effect that has Fire ticked. |
-| **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sierpiński / Tetrafyer.)* |
-| **Rotation** *(ranged)* | Tetrafyer only — **yaw** rate in degrees/second for the scene orbit around the box. Ships drifting −5…5°/s; set both thumbs to 0 to hold still. |
-| **Box nod** *(ranged)* | Tetrafyer only — how far the view **pitches** up and down in its slow sine, in degrees (default ≈17°). 0 holds the box dead level. This is the drift that used to be hardcoded with no control. |
-| **Nod speed** *(ranged)* | Tetrafyer only — multiplier on how fast that nod swings. 0 freezes it mid-swing; the swing is also scaled by Drift speed, as it always was. |
-| **Show box** | Show or hide the wireframe of the box the tetrahedron bounces in, along with the spark-sphere burst each wall hit throws off. *(Tetrafyer.)* |
-| **Box size** *(ranged)* | How large the box the tetrahedra bounce inside is — bigger gives them more room. *(Tetrafyer.)* |
+| **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sierpiński / Tetrahedron.)* |
+| **Rotation** *(ranged)* | Tetrahedron only — **yaw** rate in degrees/second for the scene orbit around the box. Ships drifting −5…5°/s; set both thumbs to 0 to hold still. |
+| **Box nod** *(ranged)* | Tetrahedron only — how far the view **pitches** up and down in its slow sine, in degrees (default ≈17°). 0 holds the box dead level. This is the drift that used to be hardcoded with no control. |
+| **Nod speed** *(ranged)* | Tetrahedron only — multiplier on how fast that nod swings. 0 freezes it mid-swing; the swing is also scaled by Drift speed, as it always was. |
+| **Show box** | On: draw the wireframe box the tetrahedron bounces in (with a spark-sphere burst on each wall hit). Off: no box — with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead. *(Tetrahedron.)* |
+| **Box size** *(ranged)* | How large the box the tetrahedra bounce inside is — bigger gives them more room. *(Tetrahedron.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Camera X / Y / Z** *(ranged, degrees)* | Tilt and spin the whole scene in 3D — X and Y rock it away from you, Z rolls it in the plane of the screen. Shared across effects rather than per-effect, so it acts as a camera over whatever is running. |
 | **Power** | Multibrot only — the exponent in `z^power + c`, a whole number. Each step adds a bulb of symmetry, and adds a cusp to the seed's cardioid, so the orbit gains a fast/slow stretch with it. |

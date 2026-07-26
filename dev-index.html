@@ -3175,27 +3175,57 @@
     const P = [0.3 * Math.sin(k * 2.1), 0.3 * Math.sin(k * 1.9), 0.3 * Math.sin(k * 2.7)];
     const rv = TETRA_UNIT.map(u => v3.scale(u, s));
     const E0 = 0.5 * v3.dot(V, V) + 0.5 * (2 * s * s) * v3.dot(W, W);
-    return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs, seed: (SEED + k * 0x9E3779B1) >>> 0 };
+    return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs,
+             orbitR: 0.5 - 0.1 * Math.min(k, 3),   // "Show box" off ⇒ orbit the centre at this radius (nested per layer)
+             seed: (SEED + k * 0x9E3779B1) >>> 0 };
   }
   let tetras = [];
   function ensureTetras(count) {         // grow/shrink the body list to `count`
     while (tetras.length < count) tetras.push(makeTetra(tetras.length));
     if (tetras.length > count) tetras.length = count;
   }
-  // Advance one rigid body one fixed timestep and resolve vertex/wall hits.
+  // Keep the body lively forever: gently renormalise energy back to E0 if the
+  // near-elastic losses (or a rare correction) drift it out of a sane band. Shared
+  // by both modes — it keeps |V| (which sets the orbit speed) and the spin alive.
+  function tetraRenorm(T) {
+    const KE = 0.5 * v3.dot(T.V, T.V) + 0.5 * (2 * T.s * T.s) * v3.dot(T.W, T.W);
+    if (T.E0 > 0 && KE > 1e-6 && (KE < 0.5 * T.E0 || KE > 2 * T.E0)) {
+      const f = Math.sqrt(T.E0 / KE);
+      T.V = v3.scale(T.V, f); T.W = v3.scale(T.W, f);
+    }
+  }
+  // Advance one rigid body one fixed timestep. The orientation always tumbles; the
+  // translation depends on **Show box**: shown ⇒ bounce off the six invisible walls
+  // (the original rigid-body path); hidden ⇒ there are no walls to ricochet in, so it
+  // ORBITS the centre of the box (= centre of the screen) at T.orbitR, tumbling as it
+  // circles, at the same tangential speed it would have bounced with (so Drift speed
+  // still sets the tempo). The radius eases in, so toggling the box slides between the
+  // two motions instead of jumping.
   function tetraStep(T, dt, t) {
     const box = TETRA_BOX, e = T.e;
     const Iinv = 1 / (2 * T.s * T.s);           // isotropic inverse inertia (m = 1)
 
-    T.P = v3.add(T.P, v3.scale(T.V, dt));        // integrate translation
-
-    const wl = Math.hypot(T.W[0], T.W[1], T.W[2]);   // integrate orientation
+    const wl = Math.hypot(T.W[0], T.W[1], T.W[2]);   // integrate orientation (both modes)
     if (wl > 1e-9) {
       const u = v3.scale(T.W, 1 / wl), ang = wl * dt;
       const ct = Math.cos(ang), st = Math.sin(ang);
       T.rv = T.rv.map(r => rotAxis(r, u, ct, st));    // one rotation for all ⇒ rigid
     }
 
+    if (!showBox) {                              // ORBIT the centre — no walls
+      const R = T.orbitR || 0.5, speed = Math.hypot(T.V[0], T.V[1], T.V[2]);
+      const dth = (speed / Math.max(R, 0.2)) * dt;    // circle in the screen (x,y) plane
+      const cs = Math.cos(dth), sn = Math.sin(dth);
+      const x = T.P[0] * cs - T.P[1] * sn, y = T.P[0] * sn + T.P[1] * cs;
+      const rho = Math.hypot(x, y) || 1e-6, kr = 0.05;   // ease onto the R-radius ring, depth → 0
+      const nr = rho + (R - rho) * kr;
+      T.P = [x * (nr / rho), y * (nr / rho), T.P[2] * (1 - kr)];
+      T.impacts.length = 0;                            // no wall hits ⇒ no rubbery ripples
+      tetraRenorm(T);
+      return;
+    }
+
+    T.P = v3.add(T.P, v3.scale(T.V, dt));        // BOUNCE: integrate translation
     for (let k = 0; k < 4; k++) {                // resolve each vertex against 6 walls
       const r = T.rv[k];
       for (let ax = 0; ax < 3; ax++) {
@@ -3220,14 +3250,7 @@
         }
       }
     }
-
-    // Keep the box lively forever: gently renormalise energy back to E0 if the
-    // near-elastic losses (or a rare correction) drift it out of a sane band.
-    const KE = 0.5 * v3.dot(T.V, T.V) + 0.5 * (2 * T.s * T.s) * v3.dot(T.W, T.W);
-    if (T.E0 > 0 && KE > 1e-6 && (KE < 0.5 * T.E0 || KE > 2 * T.E0)) {
-      const f = Math.sqrt(T.E0 / KE);
-      T.V = v3.scale(T.V, f); T.W = v3.scale(T.W, f);
-    }
+    tetraRenorm(T);
   }
 
   // ---- animation ----
@@ -5540,7 +5563,7 @@
       params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire"], fractal2d: true,
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [22, 22], rise: [52, 52], zoom: [1, 1], size: [1, 1], rot: [0, 0], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
-    { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
+    { id: "tetrafyer", name: "Tetrahedron", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks. The box drifts because two things turn it: Rotation yaws it (it drifts −5…5°/s out of the box — set both thumbs to 0 to stop it) and Box nod pitches it up and down in a slow sine. Box nod 0 holds it level; Nod speed scales how fast it swings.",
       params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
@@ -8786,18 +8809,18 @@
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
       { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or preset." },
       { n: "Slider range (min / max / step)", w: "all", t: "The row at the foot of a slider's pop-out box retunes that slider's own bounds live, so you can push a control past its shipped limits (or make it finer). ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
-      { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
-      { n: "Box size", w: "tetra", t: "Tetrafyer only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
+      { n: "Show box", w: "tetra", t: "Tetrahedron only — ON draws the wireframe box the tetrahedron bounces inside (with a burst of sparks on each wall hit). OFF hides the box and, with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead." },
+      { n: "Box size", w: "tetra", t: "Tetrahedron only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
       { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
       { n: "Band size", w: "band", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "band", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
       { n: "Layers", w: "fire", t: "− / + stack extra copies of the fractal (up to 6). Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own." },
-      { n: "Drift speed", w: "fire", t: "Sierpiński: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
-      { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sierpiński's triangle or Tetrafyer's tetrahedron (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
-      { n: "Rotation", w: "tetra", t: "Tetrafyer only — the yaw rate in degrees per second for the scene orbit around the box. It ships drifting between −5 and 5, so the box is never quite still; pinch both thumbs to 0 to stop it." },
-      { n: "Box nod", w: "tetra", t: "Tetrafyer only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
-      { n: "Nod speed", w: "tetra", t: "Tetrafyer only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },
+      { n: "Drift speed", w: "fire", t: "Sierpiński: how fast the triangle's three corners wander. Tetrahedron: the physics tempo — how fast it bounces (or orbits, with the box hidden)." },
+      { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sierpiński's triangle or the Tetrahedron's solid (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
+      { n: "Rotation", w: "tetra", t: "Tetrahedron only — the yaw rate in degrees per second for the scene orbit around the box. It ships drifting between −5 and 5, so the box is never quite still; pinch both thumbs to 0 to stop it." },
+      { n: "Box nod", w: "tetra", t: "Tetrahedron only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
+      { n: "Nod speed", w: "tetra", t: "Tetrahedron only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin the whole scene in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. These are global — they stay put as you switch effects and are not part of any one effect's settings — so they act as a camera over whatever is running. The startup credits deliberately ignore them and stay level." },
       { n: "Filters", w: "all", t: "A stack of post-effects any visual can use, ticked in the Filters section; they apply in the order listed. Fire and Fade pixel feed back into the picture, building up over successive frames; the rest are passes over the finished image. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },

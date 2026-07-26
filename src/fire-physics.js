@@ -47,27 +47,57 @@
     const P = [0.3 * Math.sin(k * 2.1), 0.3 * Math.sin(k * 1.9), 0.3 * Math.sin(k * 2.7)];
     const rv = TETRA_UNIT.map(u => v3.scale(u, s));
     const E0 = 0.5 * v3.dot(V, V) + 0.5 * (2 * s * s) * v3.dot(W, W);
-    return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs, seed: (SEED + k * 0x9E3779B1) >>> 0 };
+    return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs,
+             orbitR: 0.5 - 0.1 * Math.min(k, 3),   // "Show box" off ⇒ orbit the centre at this radius (nested per layer)
+             seed: (SEED + k * 0x9E3779B1) >>> 0 };
   }
   let tetras = [];
   function ensureTetras(count) {         // grow/shrink the body list to `count`
     while (tetras.length < count) tetras.push(makeTetra(tetras.length));
     if (tetras.length > count) tetras.length = count;
   }
-  // Advance one rigid body one fixed timestep and resolve vertex/wall hits.
+  // Keep the body lively forever: gently renormalise energy back to E0 if the
+  // near-elastic losses (or a rare correction) drift it out of a sane band. Shared
+  // by both modes — it keeps |V| (which sets the orbit speed) and the spin alive.
+  function tetraRenorm(T) {
+    const KE = 0.5 * v3.dot(T.V, T.V) + 0.5 * (2 * T.s * T.s) * v3.dot(T.W, T.W);
+    if (T.E0 > 0 && KE > 1e-6 && (KE < 0.5 * T.E0 || KE > 2 * T.E0)) {
+      const f = Math.sqrt(T.E0 / KE);
+      T.V = v3.scale(T.V, f); T.W = v3.scale(T.W, f);
+    }
+  }
+  // Advance one rigid body one fixed timestep. The orientation always tumbles; the
+  // translation depends on **Show box**: shown ⇒ bounce off the six invisible walls
+  // (the original rigid-body path); hidden ⇒ there are no walls to ricochet in, so it
+  // ORBITS the centre of the box (= centre of the screen) at T.orbitR, tumbling as it
+  // circles, at the same tangential speed it would have bounced with (so Drift speed
+  // still sets the tempo). The radius eases in, so toggling the box slides between the
+  // two motions instead of jumping.
   function tetraStep(T, dt, t) {
     const box = TETRA_BOX, e = T.e;
     const Iinv = 1 / (2 * T.s * T.s);           // isotropic inverse inertia (m = 1)
 
-    T.P = v3.add(T.P, v3.scale(T.V, dt));        // integrate translation
-
-    const wl = Math.hypot(T.W[0], T.W[1], T.W[2]);   // integrate orientation
+    const wl = Math.hypot(T.W[0], T.W[1], T.W[2]);   // integrate orientation (both modes)
     if (wl > 1e-9) {
       const u = v3.scale(T.W, 1 / wl), ang = wl * dt;
       const ct = Math.cos(ang), st = Math.sin(ang);
       T.rv = T.rv.map(r => rotAxis(r, u, ct, st));    // one rotation for all ⇒ rigid
     }
 
+    if (!showBox) {                              // ORBIT the centre — no walls
+      const R = T.orbitR || 0.5, speed = Math.hypot(T.V[0], T.V[1], T.V[2]);
+      const dth = (speed / Math.max(R, 0.2)) * dt;    // circle in the screen (x,y) plane
+      const cs = Math.cos(dth), sn = Math.sin(dth);
+      const x = T.P[0] * cs - T.P[1] * sn, y = T.P[0] * sn + T.P[1] * cs;
+      const rho = Math.hypot(x, y) || 1e-6, kr = 0.05;   // ease onto the R-radius ring, depth → 0
+      const nr = rho + (R - rho) * kr;
+      T.P = [x * (nr / rho), y * (nr / rho), T.P[2] * (1 - kr)];
+      T.impacts.length = 0;                            // no wall hits ⇒ no rubbery ripples
+      tetraRenorm(T);
+      return;
+    }
+
+    T.P = v3.add(T.P, v3.scale(T.V, dt));        // BOUNCE: integrate translation
     for (let k = 0; k < 4; k++) {                // resolve each vertex against 6 walls
       const r = T.rv[k];
       for (let ax = 0; ax < 3; ax++) {
@@ -92,13 +122,6 @@
         }
       }
     }
-
-    // Keep the box lively forever: gently renormalise energy back to E0 if the
-    // near-elastic losses (or a rare correction) drift it out of a sane band.
-    const KE = 0.5 * v3.dot(T.V, T.V) + 0.5 * (2 * T.s * T.s) * v3.dot(T.W, T.W);
-    if (T.E0 > 0 && KE > 1e-6 && (KE < 0.5 * T.E0 || KE > 2 * T.E0)) {
-      const f = Math.sqrt(T.E0 / KE);
-      T.V = v3.scale(T.V, f); T.W = v3.scale(T.W, f);
-    }
+    tetraRenorm(T);
   }
 
