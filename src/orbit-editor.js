@@ -228,12 +228,21 @@
 
   // ---- Orbit editor interaction ----
   // Canvas pixel → c-plane coordinate (accounts for the canvas being CSS-scaled to fit).
+  // MUST invert the SAME window cardDraw renders through — the locus-centred `cardWin`
+  // (set by cardWindow every frame the editor is open), NOT the fixed CARD_X0/CARD_X1.
+  // Using the fixed bounds offsets (and rescales) the stroke by exactly the amount
+  // cardWindow shifts to centre the locus, so the drawn line lands away from the mouse.
   function cardEventToC(e) {
     const cv = card.cv || el("cardcv"), r = cv.getBoundingClientRect();
-    const w = cv.width, h = cv.height, spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w);
+    const w = cv.width, h = cv.height;
+    const win = cardWin || { x0: CARD_X0, x1: CARD_X1 };
+    const spanX = win.x1 - win.x0, spanY = spanX * (h / w);
     const px = (e.clientX - r.left) * (w / r.width), py = (e.clientY - r.top) * (h / r.height);
-    return [CARD_X0 + (px / w) * spanX, (py / h) * spanY - spanY / 2];
+    return [win.x0 + (px / w) * spanX, (py / h) * spanY - spanY / 2];
   }
+  // c-units per the current view width — so grab radius / point spacing stay a constant
+  // on-screen size as cardWindow zooms per power (fixed CARD span would drift with it).
+  const cardSpanX = () => cardWin ? cardWin.x1 - cardWin.x0 : CARD_X1 - CARD_X0;
   // Commit a seed-path edit: mirror the live globals into the selected effect's extras and
   // fold it into the scene, exactly like a slider — the seed-path is per-effect scene data.
   function commitSeedPath() { captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
@@ -244,7 +253,7 @@
     let total = 0;
     for (let i = 1; i < stroke.length; i++) { const d = Math.hypot(stroke[i][0] - stroke[i - 1][0], stroke[i][1] - stroke[i - 1][1]); seg.push(d); total += d; }
     if (total < 1e-6) return [];
-    const N = Math.max(6, Math.min(48, Math.round(total / ((CARD_X1 - CARD_X0) * 0.03))));
+    const N = Math.max(6, Math.min(48, Math.round(total / (cardSpanX() * 0.03))));
     const step = total / N, out = [];
     for (let k = 0; k < N; k++) {
       const target = k * step;
@@ -283,7 +292,7 @@
   // so they land exactly where you put them regardless of the X-offset slider.
   {
     const cv = el("cardcv");
-    const HIT = () => (CARD_X1 - CARD_X0) * 0.028;      // grab radius in c-units (~12px)
+    const HIT = () => cardSpanX() * 0.028;      // grab radius in c-units (~12px)
     const nearestPt = c => {
       let bi = -1, bd = HIT();
       for (let i = 0; i < seedPts.length; i++) {
@@ -312,7 +321,7 @@
         captureSeed(stack[stackSel]);
       } else if (seedDrawing) {
         const last = seedDrawing[seedDrawing.length - 1];
-        if (Math.hypot(c[0] - last[0], c[1] - last[1]) > (CARD_X1 - CARD_X0) * 0.006) seedDrawing.push(c);
+        if (Math.hypot(c[0] - last[0], c[1] - last[1]) > cardSpanX() * 0.006) seedDrawing.push(c);
       } else if (seedEdit) {
         seedHover = nearestPt(c);                        // hover highlight
       }
