@@ -303,6 +303,13 @@
       const st = L === stack[stackSel] ? animPhase[id] : L.anim[id];
       if (st) a.apply(st.out);
     }
+    // "layers" (the per-effect object / fractal-copy count) is a −/+ stepper, not a ranged
+    // slider, so it is NOT in `anims` above and was never installed per item — layerCount kept
+    // the SELECTED layer's value. With two point layers that meant the visible layer's object
+    // count jumped to whatever layer you selected. Install it per item: the selected item's
+    // store is the DOM (#layers), a frozen item's is L.state.layers.
+    const lv = (L === stack[stackSel]) ? +el("layers").value : (L.state ? L.state.layers : layerCount);
+    layerCount = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
     camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)

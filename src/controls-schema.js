@@ -14,7 +14,7 @@
     { key: "showbox", host: "fx", group: "shape", type: "check", label: "Show box" },
     { key: "boxsize", host: "fx", group: "shape", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
     { key: "points", host: "fx", group: "shape", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
-    { key: "layers", host: "fx", group: "shape", type: "layers", label: "Layers", valId: "vLayers" },
+    { key: "layers", host: "fx", group: "shape", type: "layers", label: "Objects", valId: "vLayers" },
     { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
 
     { key: "size", host: "fx", group: "shape", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => fractalSize = v, durScale: 10 },
@@ -151,9 +151,9 @@
     if (c.type === "check")
       return open + '<label class="check"><input type="checkbox" id="' + c.key + '" checked> ' + c.label + "</label></div>";
     if (c.type === "layers")
-      return open + '<label>Layers <span class="val" id="vLayers"></span></label>' +
-        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer layers">−</button>' +
-        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More layers">+</button></div>' +
+      return open + '<label>' + c.label + ' <span class="val" id="vLayers"></span></label>' +
+        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
+        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
         '<input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
     const lbl = "<label>" + c.label + ' <span class="val" id="' + c.valId + '"></span></label>';
     if (c.type === "plain")

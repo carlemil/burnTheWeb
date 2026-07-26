@@ -4687,7 +4687,7 @@
     { key: "showbox", host: "fx", group: "shape", type: "check", label: "Show box" },
     { key: "boxsize", host: "fx", group: "shape", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
     { key: "points", host: "fx", group: "shape", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
-    { key: "layers", host: "fx", group: "shape", type: "layers", label: "Layers", valId: "vLayers" },
+    { key: "layers", host: "fx", group: "shape", type: "layers", label: "Objects", valId: "vLayers" },
     { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
 
     { key: "size", host: "fx", group: "shape", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => fractalSize = v, durScale: 10 },
@@ -4824,9 +4824,9 @@
     if (c.type === "check")
       return open + '<label class="check"><input type="checkbox" id="' + c.key + '" checked> ' + c.label + "</label></div>";
     if (c.type === "layers")
-      return open + '<label>Layers <span class="val" id="vLayers"></span></label>' +
-        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer layers">−</button>' +
-        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More layers">+</button></div>' +
+      return open + '<label>' + c.label + ' <span class="val" id="vLayers"></span></label>' +
+        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
+        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
         '<input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
     const lbl = "<label>" + c.label + ' <span class="val" id="' + c.valId + '"></span></label>';
     if (c.type === "plain")
@@ -5422,6 +5422,13 @@
       const st = L === stack[stackSel] ? animPhase[id] : L.anim[id];
       if (st) a.apply(st.out);
     }
+    // "layers" (the per-effect object / fractal-copy count) is a −/+ stepper, not a ranged
+    // slider, so it is NOT in `anims` above and was never installed per item — layerCount kept
+    // the SELECTED layer's value. With two point layers that meant the visible layer's object
+    // count jumped to whatever layer you selected. Install it per item: the selected item's
+    // store is the DOM (#layers), a frozen item's is L.state.layers.
+    const lv = (L === stack[stackSel]) ? +el("layers").value : (L.state ? L.state.layers : layerCount);
+    layerCount = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
     camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
@@ -8815,7 +8822,7 @@
       { n: "Band size", w: "band", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "band", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
       { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
-      { n: "Layers", w: "fire", t: "− / + stack extra copies of the fractal (up to 6). Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own." },
+      { n: "Objects", w: "fire", t: "− / + add extra copies of the fractal (up to 6) — the tetrahedra / triangles moving on screen. Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own. (Distinct from the effect stack, also called Layers.)" },
       { n: "Drift speed", w: "fire", t: "Sierpiński: how fast the triangle's three corners wander. Tetrahedron: the physics tempo — how fast it bounces (or orbits, with the box hidden)." },
       { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sierpiński's triangle or the Tetrahedron's solid (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
       { n: "Rotation", w: "tetra", t: "Tetrahedron only — the yaw rate in degrees per second for the scene orbit around the box. It ships drifting between −5 and 5, so the box is never quite still; pinch both thumbs to 0 to stop it." },

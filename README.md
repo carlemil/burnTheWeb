@@ -189,7 +189,7 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
 | **Points** | Number of points stamped per frame (100–8000). *(Sierpiński / Tetrahedron / Attractor.)* |
-| **Layers** | −/+ stack up to 6 copies of the fractal; each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. *(Sierpiński / Tetrahedron.)* |
+| **Objects** | −/+ add up to 6 copies of the fractal (the moving tetrahedra / triangles); each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles independently. Distinct from the effect stack (also called Layers). *(Sierpiński / Tetrahedron.)* |
 | **Drift speed** *(ranged)* | How fast the triangle's corners move / the tetrahedron's physics tempo. *(Sierpiński / Tetrahedron.)* |
 | **Flame rise** *(ranged)* | How tall the flames climb before fading (linear in height). Belongs to the **Fire filter**, so it is available to any effect that has Fire ticked. |
 | **Size** *(ranged)* | Scales the fractal about its centre — the triangle, or the tetrahedron with matching physics. Distinct from Zoom. *(Sierpiński / Tetrahedron.)* |
