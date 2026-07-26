@@ -701,35 +701,45 @@
   #carddlg #cardNums { margin: 8px 0 0; font-size: 11px; opacity: .7; }
 
   /* Restore-from-backup dialog */
-  #restoredlg {
+  #restoredlg, #sharepredlg {
     position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
-  #restoredlg.hidden { display: none; }
-  #restoredlg .rst-box {
+  #restoredlg.hidden, #sharepredlg.hidden { display: none; }
+  #restoredlg .rst-box, #sharepredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
     border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #restoredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
-  #restoredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
-  #restoredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; }
+  #restoredlg h2, #sharepredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #restoredlg .rst-sub, #sharepredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
+  #restoredlg .rst-grp, #sharepredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; display: flex; align-items: center; gap: 10px; }
   #restoredlg label.rst-opt { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; cursor: pointer; }
   #restoredlg label.rst-opt.disabled { opacity: .35; cursor: default; }
   #restoredlg .rst-opt input { margin-top: 2px; flex: none; }
   #restoredlg .rst-opt small { display: block; opacity: .6; font-size: 10.5px; }
   #restoredlg .rst-mode { margin: 2px 0 4px 26px; }
   #restoredlg .rst-mode.disabled { opacity: .35; }
-  #restoredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
-  #restoredlg .rst-actions button {
+  #restoredlg .rst-actions, #sharepredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
+  #restoredlg .rst-actions button, #sharepredlg .rst-actions button {
     flex: 1; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
     font: 12px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #restoredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
-  #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  #restoredlg .rst-actions button:hover, #sharepredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #restoredlg .rst-actions #rst-go, #sharepredlg .rst-actions #sharepre-copy { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  /* preset picker: a small "select all/none" toggle + a scrollable checklist of preset names */
+  #sharepredlg .sharepre-toggle {
+    padding: 2px 8px; background: rgba(255, 110, 30, 0.14); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 6px; color: #ffce9a; font: 10.5px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #sharepredlg .sharepre-toggle:hover { background: rgba(255, 122, 26, 0.28); }
+  #sharepredlg .sharepre-list { max-height: 46vh; overflow-y: auto; margin: 2px 0 4px; padding-right: 2px; }
+  #sharepredlg label.sharepre-opt { display: flex; align-items: center; gap: 8px; margin: 5px 0; cursor: pointer; }
+  #sharepredlg .sharepre-opt input { flex: none; accent-color: #ff7a1a; }
+  #sharepredlg .sharepre-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -780,6 +790,9 @@
     <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
     <button id="share" class="audbtn" type="button" title="Copy a link that opens the scene you're looking at">Share</button>
     <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current scene — needs the internet, and sends the scene to TinyURL">Short link</button>
+  </div>
+  <div class="presetrow">
+    <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
   </div>
   <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
   <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
@@ -944,6 +957,21 @@
       <button type="button" id="rst-cancel">Cancel</button>
     </div>
     <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
+  </div>
+</div>
+
+<div id="sharepredlg" class="hidden">
+  <div class="rst-box">
+    <h2>Share presets</h2>
+    <p class="rst-sub">Pick the presets to bundle into a link. The recipient chooses merge or replace when they open it.</p>
+    <div class="rst-grp">Presets <button type="button" id="sharepre-all" class="sharepre-toggle">Select none</button></div>
+    <div class="sharepre-list" id="sharepre-list"></div>
+    <p class="rst-sub" id="sharepre-hint"></p>
+    <div class="rst-actions">
+      <button type="button" id="sharepre-copy">Copy link</button>
+      <button type="button" id="sharepre-short" title="Shorten via tinyurl.com — needs the internet, and sends the presets to TinyURL">Copy short link</button>
+      <button type="button" id="sharepre-close">Close</button>
+    </div>
   </div>
 </div>
 
@@ -7180,14 +7208,29 @@
     curPreset = -1;                  // a shared scene isn't one of your saved presets
     return true;
   }
-  // ?z= (deflated) or ?s= (legacy, uncompressed) — the settings, never the presets.
-  // ?z= wins if both are somehow present; they are mutually exclusive by construction.
+  // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
+  // ?zp=/?sp= are the PRESET-BUNDLE links (a curated preset library), checked first and
+  // mutually exclusive with the scene params (`z=` can't match inside `?zp=`, nor `s=` in
+  // `?sp=`). All four are mutually exclusive by construction — a share URL carries one.
   function applyShared() {
+    const parse = json => { try { return JSON.parse(json); } catch (e) { return null; } };
+    // Preset-bundle links → openSharedLibrary → the Restore dialog (merge/replace). That
+    // function lives in a LATER slice (persist-backup-restore) and applyShared() runs during
+    // THIS slice's load, before that one — so its state is still in the temporal dead zone.
+    // The async unzip .then already lands after every slice has run; the sync ?sp= path MUST
+    // be deferred the same way (a microtask) or openSharedLibrary throws. Same trap as card/beatUi.
+    const zp = location.search.match(/[?&]zp=([^&#]+)/);
+    const sp = zp ? null : location.search.match(/[?&]sp=([^&#]+)/);
+    if (zp || sp) {
+      stripShareParam();
+      if (sp) { Promise.resolve().then(() => openSharedLibrary(parse(atobSafe(sp[1])))); return; }
+      unzipFromB64(zp[1]).then(json => openSharedLibrary(parse(json)));
+      return;
+    }
     const z = location.search.match(/[?&]z=([^&#]+)/);
     const m = z ? null : location.search.match(/[?&]s=([^&#]+)/);
     if (!z && !m) return;
     stripShareParam();
-    const parse = json => { try { return JSON.parse(json); } catch (e) { return null; } };
     if (m) { installShared(parse(atobSafe(m[1]))); return; }
     // The compressed path is async, so it lands after the startup below has already
     // run setEffect() on the recipient's own scene — re-activate once it arrives.
@@ -7794,6 +7837,22 @@
              : dir + "?s=" + btoa(unescape(encodeURIComponent(json)));   // no CompressionStream
   }
 
+  // Build a PRESET-BUNDLE link: a curated set of presets (NOT the live scene), so you can
+  // hand someone "a list of cool presets" in one URL. Same codec as shareUrl — serializeBlob
+  // (effect indices → ids, exactly as Backup writes each preset) then deflate — but under
+  // ?zp= (uncompressed fallback ?sp=), a param DISTINCT from the scene link's ?z=/?s= so the
+  // two decode paths never collide. `chosen` is a list of in-memory preset objects; their
+  // `layers` already carry effect ids (stackItemOut), and serializeBlob converts each
+  // preset's top-level `effect`. Recipient side: applyShared routes ?zp=/?sp= into the
+  // Restore dialog, so opening a bundle merges/replaces the library rather than a scene.
+  async function libraryUrl(chosen) {
+    const json = JSON.stringify(serializeBlob({ presets: chosen }));
+    const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
+    const z = await zipToB64(json);
+    return z ? dir + "?zp=" + z
+             : dir + "?sp=" + btoa(unescape(encodeURIComponent(json)));
+  }
+
   // Copy `text`, flashing the button's label. Clipboard API needs a secure
   // context, so keep the execCommand fallback for file:// and plain http.
   // `text` may be a string or a Promise of one. Clipboard writes are gesture-bound,
@@ -7827,19 +7886,15 @@
 
   el("share").addEventListener("click", () => copyText(shareUrl(), el("share"), "Link copied!", "Share"));
 
-  // Short link: hand the (long) share URL to TinyURL and copy what comes back.
-  // Deliberately a separate, opt-in button — unlike Share it needs the network
-  // and hands the scene blob to a third party. TinyURL is the pick because it
-  // 301s to the target byte-for-byte (no interstitial, no injected params), sends
-  // CORS headers, needs no API key, and doesn't block github.io the way is.gd
-  // does. POST (not GET) so a big scene can't hit a query-length ceiling; the
-  // form-urlencoded body keeps it a simple request, so there's no preflight.
-  el("shorten").addEventListener("click", async () => {
-    const btn = el("shorten");
-    btn.disabled = true; btn.textContent = "Shortening…";
-    const url = await shareUrl();
-    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
-    fetch("https://tinyurl.com/api-create.php", {
+  // POST a (long) URL to TinyURL and resolve the short URL it returns. Shared by the scene
+  // Short-link button and the preset-bundle dialog, so both shorten the same way. TinyURL is
+  // the pick because it 301s to the target byte-for-byte (no interstitial, no injected
+  // params), sends CORS headers, needs no API key, and doesn't block github.io the way is.gd
+  // does. POST (not GET) so a big scene/bundle can't hit a query-length ceiling; the
+  // form-urlencoded body keeps it a simple request, so there's no preflight. The API reports
+  // failure with a 200 + an error string, so the response SHAPE is validated, not the status.
+  function shortenUrl(url) {
+    return fetch("https://tinyurl.com/api-create.php", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: "url=" + encodeURIComponent(url),
@@ -7847,13 +7902,23 @@
       .then(r => (r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status))))
       .then(t => {
         const short = t.trim();
-        // The API reports failure with a 200 + an error string, so check the shape.
         if (!/^https?:\/\/tinyurl\.com\/\S+$/.test(short)) throw new Error(short);
-        btn.disabled = false;
-        copyText(short, btn, "Short link copied!", "Short link");
-        track("share_shorten");
-      })
-      .catch(() => fail("Shorten failed"));
+        return short;
+      });
+  }
+  // Short link: hand the current scene's share URL to TinyURL and copy what comes back.
+  // Deliberately a separate, opt-in button — unlike Share it needs the network and hands
+  // the scene blob to a third party.
+  el("shorten").addEventListener("click", async () => {
+    const btn = el("shorten");
+    btn.disabled = true; btn.textContent = "Shortening…";
+    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
+    try {
+      const short = await shortenUrl(await shareUrl());
+      btn.disabled = false;
+      copyText(short, btn, "Short link copied!", "Short link");
+      track("share_shorten");
+    } catch (e) { fail("Shorten failed"); }
   });
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
@@ -8294,6 +8359,21 @@
     if (raw.kind === "settings" && raw.settings) return raw.settings;
     return raw;                                                             // snapshot / legacy
   }
+  // Validate + normalize a DESERIALIZED preset array (numeric effect indices) into the shape
+  // the Restore dialog / applyRestore expect. Shared by file import and preset-bundle links.
+  // beatTune must be carried through verbatim: the detector thresholds live nowhere else, so
+  // dropping them hands the imported preset whatever tuning the recipient sat at. `cam` is
+  // carried too, but ONLY as the legacy migration source: a backup written before the camera
+  // went per-layer stored one root `cam`, and migrateCam folds it into the states / layers on
+  // load. New backups omit it — the camera rides inline in `state` and each layer's `cam`.
+  function validatePresetList(arr) {
+    return (Array.isArray(arr) ? arr : [])
+      .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
+      .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
+                   state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
+                   cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
+                   layers: Array.isArray(p.layers) ? p.layers : undefined }));
+  }
   el("importpresets").addEventListener("click", () => el("presetsfile").click());
   el("presetsfile").addEventListener("change", async ev => {
     const files = [...(ev.target.files || [])];
@@ -8318,18 +8398,7 @@
       parsed.presets = arr;
       delete parsed.curPreset;        // meaningless once presets arrive as separate files
       if (!arr.length && !parsed.states) throw new Error("no presets or settings found");
-      // beatTune must be carried through verbatim: the detector thresholds live nowhere else,
-      // so dropping them hands the imported preset whatever tuning the recipient sat at. `cam`
-      // is carried too, but ONLY as the legacy migration source: a backup written before the
-      // camera went per-layer stored one root `cam`, and migrateCam folds it into the states /
-      // layers on load. New backups omit it — the camera rides inline in `state` and in each
-      // layer's `cam` node (both carried below), so a new import needs nothing from this field.
-      const valid = arr
-        .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-        .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
-                     state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
-                     cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
-                     layers: Array.isArray(p.layers) ? p.layers : undefined }));
+      const valid = validatePresetList(arr);
       if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
       const label = files.length === 1 ? files[0].name : files.length + " files";
       openRestore(parsed, valid, label);   // let the user pick what to restore + how
@@ -8410,6 +8479,76 @@
   el("restoredlg").addEventListener("click", e => { if (e.target === el("restoredlg")) closeRestore(); });   // backdrop
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
+
+  // ---- Share a curated bundle of presets as one link -------------------------
+  // The dialog only CURATES which presets go in — it copies a link (libraryUrl →
+  // serializeBlob({presets}) → deflate, in persist-share.js), never touching the local
+  // library. The recipient's ?zp=/?sp= decode lands in openSharedLibrary below, which routes
+  // into the SAME Restore dialog a file import uses, so they pick merge vs replace.
+  let sharePreBoxes = [];
+  const chosenPresets = () => sharePreBoxes.filter(cb => cb.checked).map(cb => presets[+cb.dataset.i]);
+  function syncSharePreHint() {
+    const n = chosenPresets().length, anyOn = sharePreBoxes.some(cb => cb.checked);
+    el("sharepre-hint").textContent = n
+      ? n + " preset" + (n === 1 ? "" : "s") + " selected — a bundle link can get long, so use Copy short link if it won't paste."
+      : "No presets selected.";
+    el("sharepre-all").textContent = anyOn ? "Select none" : "Select all";
+    el("sharepre-copy").disabled = el("sharepre-short").disabled = !n;
+  }
+  function openSharePresets() {
+    autosavePreset();                 // fold live edits into the selected preset before bundling
+    const list = el("sharepre-list"); list.textContent = "";
+    sharePreBoxes = presets.map((p, i) => {
+      const lab = document.createElement("label"); lab.className = "sharepre-opt";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true; cb.dataset.i = String(i);
+      cb.addEventListener("change", syncSharePreHint);
+      const span = document.createElement("span"); span.textContent = p.name; span.title = p.name;
+      lab.appendChild(cb); lab.appendChild(span); list.appendChild(lab);
+      return cb;
+    });
+    syncSharePreHint();
+    el("sharepredlg").classList.remove("hidden");
+  }
+  const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
+  el("sharepresets").addEventListener("click", openSharePresets);
+  el("sharepre-close").addEventListener("click", closeSharePresets);
+  el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop
+  el("sharepre-all").addEventListener("click", () => {
+    const anyOn = sharePreBoxes.some(cb => cb.checked);
+    sharePreBoxes.forEach(cb => { cb.checked = !anyOn; });   // all/some on → none; none on → all
+    syncSharePreHint();
+  });
+  el("sharepre-copy").addEventListener("click", () => {
+    const chosen = chosenPresets(); if (!chosen.length) return;
+    copyText(libraryUrl(chosen), el("sharepre-copy"), "Link copied!", "Copy link");   // copyText takes the Promise
+    track("share_presets", { n: chosen.length });
+  });
+  el("sharepre-short").addEventListener("click", async () => {
+    const chosen = chosenPresets(); if (!chosen.length) return;
+    const btn = el("sharepre-short");
+    btn.disabled = true; btn.textContent = "Shortening…";
+    try {
+      const short = await shortenUrl(await libraryUrl(chosen));
+      btn.disabled = false;
+      copyText(short, btn, "Short link copied!", "Copy short link");
+      track("share_presets_short", { n: chosen.length });
+    } catch (e) {
+      btn.textContent = "Shorten failed";
+      setTimeout(() => { btn.textContent = "Copy short link"; syncSharePreHint(); }, 1800);
+    }
+  });
+  // Recipient side of a preset-bundle link (?zp=/?sp=), called (deferred) from applyShared:
+  // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
+  // beatTune), so openRestore lights up just the Presets option with merge/replace.
+  function openSharedLibrary(raw) {
+    const norm = normalizeBackup(raw);
+    if (!norm) return;
+    const parts = deserializeBlob(norm);
+    const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
+    const valid = validatePresetList(arr);
+    if (!valid.length) { alert("This link has no usable presets."); return; }
+    openRestore({ presets: arr }, valid, "shared link");
+  }
 
   // Initial paint: setEffect loads the restored effect's per-effect extras (show-box,
   // random-seed), then applyLayerExtras puts the selected layer's palette + filters live.

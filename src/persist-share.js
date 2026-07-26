@@ -115,6 +115,22 @@
              : dir + "?s=" + btoa(unescape(encodeURIComponent(json)));   // no CompressionStream
   }
 
+  // Build a PRESET-BUNDLE link: a curated set of presets (NOT the live scene), so you can
+  // hand someone "a list of cool presets" in one URL. Same codec as shareUrl — serializeBlob
+  // (effect indices → ids, exactly as Backup writes each preset) then deflate — but under
+  // ?zp= (uncompressed fallback ?sp=), a param DISTINCT from the scene link's ?z=/?s= so the
+  // two decode paths never collide. `chosen` is a list of in-memory preset objects; their
+  // `layers` already carry effect ids (stackItemOut), and serializeBlob converts each
+  // preset's top-level `effect`. Recipient side: applyShared routes ?zp=/?sp= into the
+  // Restore dialog, so opening a bundle merges/replaces the library rather than a scene.
+  async function libraryUrl(chosen) {
+    const json = JSON.stringify(serializeBlob({ presets: chosen }));
+    const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
+    const z = await zipToB64(json);
+    return z ? dir + "?zp=" + z
+             : dir + "?sp=" + btoa(unescape(encodeURIComponent(json)));
+  }
+
   // Copy `text`, flashing the button's label. Clipboard API needs a secure
   // context, so keep the execCommand fallback for file:// and plain http.
   // `text` may be a string or a Promise of one. Clipboard writes are gesture-bound,
@@ -148,19 +164,15 @@
 
   el("share").addEventListener("click", () => copyText(shareUrl(), el("share"), "Link copied!", "Share"));
 
-  // Short link: hand the (long) share URL to TinyURL and copy what comes back.
-  // Deliberately a separate, opt-in button — unlike Share it needs the network
-  // and hands the scene blob to a third party. TinyURL is the pick because it
-  // 301s to the target byte-for-byte (no interstitial, no injected params), sends
-  // CORS headers, needs no API key, and doesn't block github.io the way is.gd
-  // does. POST (not GET) so a big scene can't hit a query-length ceiling; the
-  // form-urlencoded body keeps it a simple request, so there's no preflight.
-  el("shorten").addEventListener("click", async () => {
-    const btn = el("shorten");
-    btn.disabled = true; btn.textContent = "Shortening…";
-    const url = await shareUrl();
-    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
-    fetch("https://tinyurl.com/api-create.php", {
+  // POST a (long) URL to TinyURL and resolve the short URL it returns. Shared by the scene
+  // Short-link button and the preset-bundle dialog, so both shorten the same way. TinyURL is
+  // the pick because it 301s to the target byte-for-byte (no interstitial, no injected
+  // params), sends CORS headers, needs no API key, and doesn't block github.io the way is.gd
+  // does. POST (not GET) so a big scene/bundle can't hit a query-length ceiling; the
+  // form-urlencoded body keeps it a simple request, so there's no preflight. The API reports
+  // failure with a 200 + an error string, so the response SHAPE is validated, not the status.
+  function shortenUrl(url) {
+    return fetch("https://tinyurl.com/api-create.php", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: "url=" + encodeURIComponent(url),
@@ -168,12 +180,22 @@
       .then(r => (r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status))))
       .then(t => {
         const short = t.trim();
-        // The API reports failure with a 200 + an error string, so check the shape.
         if (!/^https?:\/\/tinyurl\.com\/\S+$/.test(short)) throw new Error(short);
-        btn.disabled = false;
-        copyText(short, btn, "Short link copied!", "Short link");
-        track("share_shorten");
-      })
-      .catch(() => fail("Shorten failed"));
+        return short;
+      });
+  }
+  // Short link: hand the current scene's share URL to TinyURL and copy what comes back.
+  // Deliberately a separate, opt-in button — unlike Share it needs the network and hands
+  // the scene blob to a third party.
+  el("shorten").addEventListener("click", async () => {
+    const btn = el("shorten");
+    btn.disabled = true; btn.textContent = "Shortening…";
+    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
+    try {
+      const short = await shortenUrl(await shareUrl());
+      btn.disabled = false;
+      copyText(short, btn, "Short link copied!", "Short link");
+      track("share_shorten");
+    } catch (e) { fail("Shorten failed"); }
   });
 

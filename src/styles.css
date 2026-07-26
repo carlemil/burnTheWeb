@@ -686,32 +686,42 @@
   #carddlg #cardNums { margin: 8px 0 0; font-size: 11px; opacity: .7; }
 
   /* Restore-from-backup dialog */
-  #restoredlg {
+  #restoredlg, #sharepredlg {
     position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
-  #restoredlg.hidden { display: none; }
-  #restoredlg .rst-box {
+  #restoredlg.hidden, #sharepredlg.hidden { display: none; }
+  #restoredlg .rst-box, #sharepredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
     border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #restoredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
-  #restoredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
-  #restoredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; }
+  #restoredlg h2, #sharepredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #restoredlg .rst-sub, #sharepredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
+  #restoredlg .rst-grp, #sharepredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; display: flex; align-items: center; gap: 10px; }
   #restoredlg label.rst-opt { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; cursor: pointer; }
   #restoredlg label.rst-opt.disabled { opacity: .35; cursor: default; }
   #restoredlg .rst-opt input { margin-top: 2px; flex: none; }
   #restoredlg .rst-opt small { display: block; opacity: .6; font-size: 10.5px; }
   #restoredlg .rst-mode { margin: 2px 0 4px 26px; }
   #restoredlg .rst-mode.disabled { opacity: .35; }
-  #restoredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
-  #restoredlg .rst-actions button {
+  #restoredlg .rst-actions, #sharepredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
+  #restoredlg .rst-actions button, #sharepredlg .rst-actions button {
     flex: 1; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
     font: 12px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #restoredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
-  #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  #restoredlg .rst-actions button:hover, #sharepredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #restoredlg .rst-actions #rst-go, #sharepredlg .rst-actions #sharepre-copy { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  /* preset picker: a small "select all/none" toggle + a scrollable checklist of preset names */
+  #sharepredlg .sharepre-toggle {
+    padding: 2px 8px; background: rgba(255, 110, 30, 0.14); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 6px; color: #ffce9a; font: 10.5px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #sharepredlg .sharepre-toggle:hover { background: rgba(255, 122, 26, 0.28); }
+  #sharepredlg .sharepre-list { max-height: 46vh; overflow-y: auto; margin: 2px 0 4px; padding-right: 2px; }
+  #sharepredlg label.sharepre-opt { display: flex; align-items: center; gap: 8px; margin: 5px 0; cursor: pointer; }
+  #sharepredlg .sharepre-opt input { flex: none; accent-color: #ff7a1a; }
+  #sharepredlg .sharepre-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

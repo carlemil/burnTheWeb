@@ -162,6 +162,21 @@
     if (raw.kind === "settings" && raw.settings) return raw.settings;
     return raw;                                                             // snapshot / legacy
   }
+  // Validate + normalize a DESERIALIZED preset array (numeric effect indices) into the shape
+  // the Restore dialog / applyRestore expect. Shared by file import and preset-bundle links.
+  // beatTune must be carried through verbatim: the detector thresholds live nowhere else, so
+  // dropping them hands the imported preset whatever tuning the recipient sat at. `cam` is
+  // carried too, but ONLY as the legacy migration source: a backup written before the camera
+  // went per-layer stored one root `cam`, and migrateCam folds it into the states / layers on
+  // load. New backups omit it — the camera rides inline in `state` and each layer's `cam`.
+  function validatePresetList(arr) {
+    return (Array.isArray(arr) ? arr : [])
+      .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
+      .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
+                   state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
+                   cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
+                   layers: Array.isArray(p.layers) ? p.layers : undefined }));
+  }
   el("importpresets").addEventListener("click", () => el("presetsfile").click());
   el("presetsfile").addEventListener("change", async ev => {
     const files = [...(ev.target.files || [])];
@@ -186,18 +201,7 @@
       parsed.presets = arr;
       delete parsed.curPreset;        // meaningless once presets arrive as separate files
       if (!arr.length && !parsed.states) throw new Error("no presets or settings found");
-      // beatTune must be carried through verbatim: the detector thresholds live nowhere else,
-      // so dropping them hands the imported preset whatever tuning the recipient sat at. `cam`
-      // is carried too, but ONLY as the legacy migration source: a backup written before the
-      // camera went per-layer stored one root `cam`, and migrateCam folds it into the states /
-      // layers on load. New backups omit it — the camera rides inline in `state` and in each
-      // layer's `cam` node (both carried below), so a new import needs nothing from this field.
-      const valid = arr
-        .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-        .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
-                     state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
-                     cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
-                     layers: Array.isArray(p.layers) ? p.layers : undefined }));
+      const valid = validatePresetList(arr);
       if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
       const label = files.length === 1 ? files[0].name : files.length + " files";
       openRestore(parsed, valid, label);   // let the user pick what to restore + how
@@ -278,6 +282,76 @@
   el("restoredlg").addEventListener("click", e => { if (e.target === el("restoredlg")) closeRestore(); });   // backdrop
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
+
+  // ---- Share a curated bundle of presets as one link -------------------------
+  // The dialog only CURATES which presets go in — it copies a link (libraryUrl →
+  // serializeBlob({presets}) → deflate, in persist-share.js), never touching the local
+  // library. The recipient's ?zp=/?sp= decode lands in openSharedLibrary below, which routes
+  // into the SAME Restore dialog a file import uses, so they pick merge vs replace.
+  let sharePreBoxes = [];
+  const chosenPresets = () => sharePreBoxes.filter(cb => cb.checked).map(cb => presets[+cb.dataset.i]);
+  function syncSharePreHint() {
+    const n = chosenPresets().length, anyOn = sharePreBoxes.some(cb => cb.checked);
+    el("sharepre-hint").textContent = n
+      ? n + " preset" + (n === 1 ? "" : "s") + " selected — a bundle link can get long, so use Copy short link if it won't paste."
+      : "No presets selected.";
+    el("sharepre-all").textContent = anyOn ? "Select none" : "Select all";
+    el("sharepre-copy").disabled = el("sharepre-short").disabled = !n;
+  }
+  function openSharePresets() {
+    autosavePreset();                 // fold live edits into the selected preset before bundling
+    const list = el("sharepre-list"); list.textContent = "";
+    sharePreBoxes = presets.map((p, i) => {
+      const lab = document.createElement("label"); lab.className = "sharepre-opt";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true; cb.dataset.i = String(i);
+      cb.addEventListener("change", syncSharePreHint);
+      const span = document.createElement("span"); span.textContent = p.name; span.title = p.name;
+      lab.appendChild(cb); lab.appendChild(span); list.appendChild(lab);
+      return cb;
+    });
+    syncSharePreHint();
+    el("sharepredlg").classList.remove("hidden");
+  }
+  const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
+  el("sharepresets").addEventListener("click", openSharePresets);
+  el("sharepre-close").addEventListener("click", closeSharePresets);
+  el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop
+  el("sharepre-all").addEventListener("click", () => {
+    const anyOn = sharePreBoxes.some(cb => cb.checked);
+    sharePreBoxes.forEach(cb => { cb.checked = !anyOn; });   // all/some on → none; none on → all
+    syncSharePreHint();
+  });
+  el("sharepre-copy").addEventListener("click", () => {
+    const chosen = chosenPresets(); if (!chosen.length) return;
+    copyText(libraryUrl(chosen), el("sharepre-copy"), "Link copied!", "Copy link");   // copyText takes the Promise
+    track("share_presets", { n: chosen.length });
+  });
+  el("sharepre-short").addEventListener("click", async () => {
+    const chosen = chosenPresets(); if (!chosen.length) return;
+    const btn = el("sharepre-short");
+    btn.disabled = true; btn.textContent = "Shortening…";
+    try {
+      const short = await shortenUrl(await libraryUrl(chosen));
+      btn.disabled = false;
+      copyText(short, btn, "Short link copied!", "Copy short link");
+      track("share_presets_short", { n: chosen.length });
+    } catch (e) {
+      btn.textContent = "Shorten failed";
+      setTimeout(() => { btn.textContent = "Copy short link"; syncSharePreHint(); }, 1800);
+    }
+  });
+  // Recipient side of a preset-bundle link (?zp=/?sp=), called (deferred) from applyShared:
+  // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
+  // beatTune), so openRestore lights up just the Presets option with merge/replace.
+  function openSharedLibrary(raw) {
+    const norm = normalizeBackup(raw);
+    if (!norm) return;
+    const parts = deserializeBlob(norm);
+    const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
+    const valid = validatePresetList(arr);
+    if (!valid.length) { alert("This link has no usable presets."); return; }
+    openRestore({ presets: arr }, valid, "shared link");
+  }
 
   // Initial paint: setEffect loads the restored effect's per-effect extras (show-box,
   // random-seed), then applyLayerExtras puts the selected layer's palette + filters live.

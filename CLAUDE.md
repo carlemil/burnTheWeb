@@ -1065,6 +1065,30 @@ because any later slider drag *did* autosave and retroactively captured the chip
   keeps a big scene off the query string; its URL ceiling is ~30k chars, so the
   `pruneBeats` diff above is what keeps shares shortenable. The API signals
   failure with **200 + an error string**, so the response shape is validated.
+  The POST is factored into **`shortenUrl(url)`** (in `persist-share.js`), shared by the
+  scene Short-link button and the preset-bundle dialog.
+- **Preset-bundle links** (`Share presets…`, `#sharepresets`) bundle a **curated set of
+  presets** — a whole *library*, not the current scene — into one URL, so you can hand
+  someone "a list of cool presets." The dialog (`#sharepredlg`) is pure curation: a
+  checklist of `presets`, an all/none toggle, and **Copy link** / **Copy short link**; it
+  copies a URL and **never touches the local library**. `libraryUrl(chosen)` mirrors
+  `shareUrl` exactly — `serializeBlob({presets})` (the same call `backupFiles` makes per
+  preset) → deflate — but under **`?zp=`** (uncompressed fallback **`?sp=`**), params
+  **distinct** from the scene link's `?z=`/`?s=` so the two decode paths never collide
+  (`z=` can't match inside `?zp=`, nor `s=` in `?sp=`). No per-preset pruning: deflate
+  already crushes the repeated slider-key strings, and full presets keep the decode
+  identical to Backup — but a bundle is still several KB, which is why Short link sits
+  beside Copy link. **Recipient side:** `applyShared()` checks `?zp=`/`?sp=` **first** and
+  routes the decoded blob to **`openSharedLibrary`**, which runs it through
+  `normalizeBackup` → `deserializeBlob` → **`validatePresetList`** (the per-preset
+  validate/normalize block extracted from the file-import handler and now shared by both)
+  → the **existing Restore dialog** (`openRestore`, merge-vs-replace), so a bundle never
+  silently overwrites the recipient's presets. **Ordering trap:** `openSharedLibrary` lives
+  in `persist-backup-restore.js` but `applyShared()` is *called* during the earlier
+  `audio-tuning-data.js` slice's load — so its `pendingRestore`/`openRestore` state is in
+  the TDZ then. The async `?zp=` `.then` naturally lands after all slices run; the sync
+  `?sp=` path is deferred the same way (`Promise.resolve().then(…)`) or it would throw —
+  the same trap `card`/`beatUi` document.
 - **Backup** writes **one file per preset**, named after the preset, plus one
   `_settings.json` for everything that is not a preset. It used to be a single blob —
   a fine backup and a terrible way to hand someone one scene, since they had to import
@@ -1429,7 +1453,9 @@ preset's, that results are deep copies, and that junk (wrong types, inverted ban
 above Nyquist, a sparse `bands` array) is rejected without throwing. It slices by markers:
 `const BEAT_DEFAULTS` … `const beatCfg`, `function mergeBeatTune(` … `function
 installBeatTune(`, `function snapshotScene()` … `function defaultPresets(`, `function
-applyPreset(` … `function createPreset(`, and `const valid = arr` … `if (!valid.length)`.
+applyPreset(` … `function createPreset(`, and `function validatePresetList(` …
+`el("importpresets")` (the per-preset validate/normalize block, now shared by file import
+and preset-bundle links).
 
 **The GL heat-tick feedback chain** has `tools/heatprobe.js` (`node tools/heatprobe.js
 index.html`, 50 assertions): it slices the real `glBeginHeat` and runs it against a

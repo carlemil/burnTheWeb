@@ -64,6 +64,9 @@
     <button id="share" class="audbtn" type="button" title="Copy a link that opens the scene you're looking at">Share</button>
     <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current scene — needs the internet, and sends the scene to TinyURL">Short link</button>
   </div>
+  <div class="presetrow">
+    <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
+  </div>
   <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
   <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
   </details>
@@ -227,6 +230,21 @@
       <button type="button" id="rst-cancel">Cancel</button>
     </div>
     <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
+  </div>
+</div>
+
+<div id="sharepredlg" class="hidden">
+  <div class="rst-box">
+    <h2>Share presets</h2>
+    <p class="rst-sub">Pick the presets to bundle into a link. The recipient chooses merge or replace when they open it.</p>
+    <div class="rst-grp">Presets <button type="button" id="sharepre-all" class="sharepre-toggle">Select none</button></div>
+    <div class="sharepre-list" id="sharepre-list"></div>
+    <p class="rst-sub" id="sharepre-hint"></p>
+    <div class="rst-actions">
+      <button type="button" id="sharepre-copy">Copy link</button>
+      <button type="button" id="sharepre-short" title="Shorten via tinyurl.com — needs the internet, and sends the presets to TinyURL">Copy short link</button>
+      <button type="button" id="sharepre-close">Close</button>
+    </div>
   </div>
 </div>
 

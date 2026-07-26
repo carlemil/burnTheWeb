@@ -43,9 +43,9 @@ const ok = (cond, name, detail) => {
 // --- 1. structural: snapshotScene vs applyPreset vs the import mapping --------
 const snapSrc = cut("  function snapshotScene()", "  function defaultPresets(");
 const applySrc = cut("  function applyPreset(", "  function createPreset(");
-// Markers without leading indentation on purpose: this block sits inside the file-input
-// handler, and its nesting depth has already changed once (single file → many).
-const importSrc = cut("const valid = arr", "if (!valid.length");
+// The import mapping now lives in validatePresetList (shared by file import and preset-bundle
+// links), so slice that function's body — its object literal is the per-preset rebuild.
+const importSrc = cut("function validatePresetList(", "el(\"importpresets\")");
 
 // Keys of the object literal snapshotScene returns (one per line, `key:` or `key,`).
 const snapKeys = new Set();
