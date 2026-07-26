@@ -206,20 +206,26 @@
     return true;
   }
   // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
-  // ?zp=/?sp= are the PRESET-BUNDLE links (a curated preset library), checked first and
-  // mutually exclusive with the scene params (`z=` can't match inside `?zp=`, nor `s=` in
-  // `?sp=`). All four are mutually exclusive by construction — a share URL carries one.
+  // #zp=/#sp= are the PRESET-BUNDLE links (a curated preset library), checked first and
+  // mutually exclusive with the scene params. All are mutually exclusive by construction —
+  // a share URL carries one.
   function applyShared() {
     const parse = json => { try { return JSON.parse(json); } catch (e) { return null; } };
     // Preset-bundle links → openSharedLibrary → the Restore dialog (merge/replace). That
     // function lives in a LATER slice (persist-backup-restore) and applyShared() runs during
     // THIS slice's load, before that one — so its state is still in the temporal dead zone.
-    // The async unzip .then already lands after every slice has run; the sync ?sp= path MUST
+    // The async unzip .then already lands after every slice has run; the sync #sp= path MUST
     // be deferred the same way (a microtask) or openSharedLibrary throws. Same trap as card/beatUi.
-    const zp = location.search.match(/[?&]zp=([^&#]+)/);
-    const sp = zp ? null : location.search.match(/[?&]sp=([^&#]+)/);
+    //
+    // The bundle rides in the FRAGMENT (location.hash), never the query: several KB of ?query
+    // makes GitHub Pages / Fastly reject the link with 414 URI Too Long before any JS runs,
+    // whereas the fragment is never sent to the server. Read the hash first, then the query
+    // so the earlier ?zp=/?sp= links still decode.
+    const bundle = re => (location.hash.match(re) || location.search.match(re));
+    const zp = bundle(/[?&#]zp=([^?&#]+)/);
+    const sp = zp ? null : bundle(/[?&#]sp=([^?&#]+)/);
     if (zp || sp) {
-      stripShareParam();
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}   // clear query AND fragment
       if (sp) { Promise.resolve().then(() => openSharedLibrary(parse(atobSafe(sp[1])))); return; }
       unzipFromB64(zp[1]).then(json => openSharedLibrary(parse(json)));
       return;

@@ -1071,23 +1071,27 @@ because any later slider drag *did* autosave and retroactively captured the chip
   presets** — a whole *library*, not the current scene — into one URL, so you can hand
   someone "a list of cool presets." The dialog (`#sharepredlg`) is pure curation: a
   checklist of `presets`, an all/none toggle, and **Copy link** / **Copy short link**; it
-  copies a URL and **never touches the local library**. `libraryUrl(chosen)` mirrors
-  `shareUrl` exactly — `serializeBlob({presets})` (the same call `backupFiles` makes per
-  preset) → deflate — but under **`?zp=`** (uncompressed fallback **`?sp=`**), params
-  **distinct** from the scene link's `?z=`/`?s=` so the two decode paths never collide
-  (`z=` can't match inside `?zp=`, nor `s=` in `?sp=`). No per-preset pruning: deflate
-  already crushes the repeated slider-key strings, and full presets keep the decode
-  identical to Backup — but a bundle is still several KB, which is why Short link sits
-  beside Copy link. **Recipient side:** `applyShared()` checks `?zp=`/`?sp=` **first** and
-  routes the decoded blob to **`openSharedLibrary`**, which runs it through
+  copies a URL and **never touches the local library**. `libraryUrl(chosen)` uses the same
+  codec as `shareUrl` — `serializeBlob({presets})` (the same call `backupFiles` makes per
+  preset) → deflate. **The payload rides in the URL FRAGMENT — `#zp=` (uncompressed fallback
+  `#sp=`), not a `?query` — and that is load-bearing:** a bundle is several KB, and a
+  multi-KB query makes GitHub Pages / Fastly reject the link with **414 URI Too Long**
+  before any JS runs, whereas the fragment is never sent to the server, so a bundle of any
+  size loads. The `#zp=`/`#sp=` params are also **distinct** from the scene link's
+  `?z=`/`?s=` so the two decode paths never collide. No per-preset pruning: deflate already
+  crushes the repeated slider-key strings, and full presets keep the decode identical to
+  Backup — but a bundle is still several KB, which is why Short link sits beside Copy link.
+  **Recipient side:** `applyShared()` checks the fragment `#zp=`/`#sp=` (and the earlier
+  `?zp=`/`?sp=` query form) **first** and routes the decoded blob to **`openSharedLibrary`**,
+  which runs it through
   `normalizeBackup` → `deserializeBlob` → **`validatePresetList`** (the per-preset
   validate/normalize block extracted from the file-import handler and now shared by both)
   → the **existing Restore dialog** (`openRestore`, merge-vs-replace), so a bundle never
   silently overwrites the recipient's presets. **Ordering trap:** `openSharedLibrary` lives
   in `persist-backup-restore.js` but `applyShared()` is *called* during the earlier
   `audio-tuning-data.js` slice's load — so its `pendingRestore`/`openRestore` state is in
-  the TDZ then. The async `?zp=` `.then` naturally lands after all slices run; the sync
-  `?sp=` path is deferred the same way (`Promise.resolve().then(…)`) or it would throw —
+  the TDZ then. The async `#zp=` unzip `.then` naturally lands after all slices run; the sync
+  `#sp=` path is deferred the same way (`Promise.resolve().then(…)`) or it would throw —
   the same trap `card`/`beatUi` document.
 - **Backup** writes **one file per preset**, named after the preset, plus one
   `_settings.json` for everything that is not a preset. It used to be a single blob —

@@ -117,18 +117,22 @@
 
   // Build a PRESET-BUNDLE link: a curated set of presets (NOT the live scene), so you can
   // hand someone "a list of cool presets" in one URL. Same codec as shareUrl — serializeBlob
-  // (effect indices → ids, exactly as Backup writes each preset) then deflate — but under
-  // ?zp= (uncompressed fallback ?sp=), a param DISTINCT from the scene link's ?z=/?s= so the
-  // two decode paths never collide. `chosen` is a list of in-memory preset objects; their
-  // `layers` already carry effect ids (stackItemOut), and serializeBlob converts each
-  // preset's top-level `effect`. Recipient side: applyShared routes ?zp=/?sp= into the
-  // Restore dialog, so opening a bundle merges/replaces the library rather than a scene.
+  // (effect indices → ids, exactly as Backup writes each preset) then deflate.
+  //
+  // The payload rides in the URL **FRAGMENT** (#zp= deflated / #sp= uncompressed), NOT the
+  // query, and this is load-bearing: a bundle of presets is several KB, and a multi-KB
+  // ?query makes GitHub Pages / Fastly reject the link with **414 URI Too Long** before any
+  // JS runs. The fragment is never sent to the server, so a bundle of any size loads. It is
+  // also DISTINCT from the scene link's ?z=/?s= so the two decode paths never collide.
+  // `chosen` is a list of in-memory preset objects; their `layers` already carry effect ids
+  // (stackItemOut), and serializeBlob converts each preset's top-level `effect`. Recipient
+  // side: applyShared routes #zp=/#sp= into the Restore dialog (merge/replace).
   async function libraryUrl(chosen) {
     const json = JSON.stringify(serializeBlob({ presets: chosen }));
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);
-    return z ? dir + "?zp=" + z
-             : dir + "?sp=" + btoa(unescape(encodeURIComponent(json)));
+    return z ? dir + "#zp=" + z
+             : dir + "#sp=" + btoa(unescape(encodeURIComponent(json)));
   }
 
   // Copy `text`, flashing the button's label. Clipboard API needs a secure

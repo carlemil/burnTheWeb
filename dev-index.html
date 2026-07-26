@@ -7209,20 +7209,26 @@
     return true;
   }
   // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
-  // ?zp=/?sp= are the PRESET-BUNDLE links (a curated preset library), checked first and
-  // mutually exclusive with the scene params (`z=` can't match inside `?zp=`, nor `s=` in
-  // `?sp=`). All four are mutually exclusive by construction — a share URL carries one.
+  // #zp=/#sp= are the PRESET-BUNDLE links (a curated preset library), checked first and
+  // mutually exclusive with the scene params. All are mutually exclusive by construction —
+  // a share URL carries one.
   function applyShared() {
     const parse = json => { try { return JSON.parse(json); } catch (e) { return null; } };
     // Preset-bundle links → openSharedLibrary → the Restore dialog (merge/replace). That
     // function lives in a LATER slice (persist-backup-restore) and applyShared() runs during
     // THIS slice's load, before that one — so its state is still in the temporal dead zone.
-    // The async unzip .then already lands after every slice has run; the sync ?sp= path MUST
+    // The async unzip .then already lands after every slice has run; the sync #sp= path MUST
     // be deferred the same way (a microtask) or openSharedLibrary throws. Same trap as card/beatUi.
-    const zp = location.search.match(/[?&]zp=([^&#]+)/);
-    const sp = zp ? null : location.search.match(/[?&]sp=([^&#]+)/);
+    //
+    // The bundle rides in the FRAGMENT (location.hash), never the query: several KB of ?query
+    // makes GitHub Pages / Fastly reject the link with 414 URI Too Long before any JS runs,
+    // whereas the fragment is never sent to the server. Read the hash first, then the query
+    // so the earlier ?zp=/?sp= links still decode.
+    const bundle = re => (location.hash.match(re) || location.search.match(re));
+    const zp = bundle(/[?&#]zp=([^?&#]+)/);
+    const sp = zp ? null : bundle(/[?&#]sp=([^?&#]+)/);
     if (zp || sp) {
-      stripShareParam();
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}   // clear query AND fragment
       if (sp) { Promise.resolve().then(() => openSharedLibrary(parse(atobSafe(sp[1])))); return; }
       unzipFromB64(zp[1]).then(json => openSharedLibrary(parse(json)));
       return;
@@ -7839,18 +7845,22 @@
 
   // Build a PRESET-BUNDLE link: a curated set of presets (NOT the live scene), so you can
   // hand someone "a list of cool presets" in one URL. Same codec as shareUrl — serializeBlob
-  // (effect indices → ids, exactly as Backup writes each preset) then deflate — but under
-  // ?zp= (uncompressed fallback ?sp=), a param DISTINCT from the scene link's ?z=/?s= so the
-  // two decode paths never collide. `chosen` is a list of in-memory preset objects; their
-  // `layers` already carry effect ids (stackItemOut), and serializeBlob converts each
-  // preset's top-level `effect`. Recipient side: applyShared routes ?zp=/?sp= into the
-  // Restore dialog, so opening a bundle merges/replaces the library rather than a scene.
+  // (effect indices → ids, exactly as Backup writes each preset) then deflate.
+  //
+  // The payload rides in the URL **FRAGMENT** (#zp= deflated / #sp= uncompressed), NOT the
+  // query, and this is load-bearing: a bundle of presets is several KB, and a multi-KB
+  // ?query makes GitHub Pages / Fastly reject the link with **414 URI Too Long** before any
+  // JS runs. The fragment is never sent to the server, so a bundle of any size loads. It is
+  // also DISTINCT from the scene link's ?z=/?s= so the two decode paths never collide.
+  // `chosen` is a list of in-memory preset objects; their `layers` already carry effect ids
+  // (stackItemOut), and serializeBlob converts each preset's top-level `effect`. Recipient
+  // side: applyShared routes #zp=/#sp= into the Restore dialog (merge/replace).
   async function libraryUrl(chosen) {
     const json = JSON.stringify(serializeBlob({ presets: chosen }));
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);
-    return z ? dir + "?zp=" + z
-             : dir + "?sp=" + btoa(unescape(encodeURIComponent(json)));
+    return z ? dir + "#zp=" + z
+             : dir + "#sp=" + btoa(unescape(encodeURIComponent(json)));
   }
 
   // Copy `text`, flashing the button's label. Clipboard API needs a secure
@@ -8483,7 +8493,7 @@
   // ---- Share a curated bundle of presets as one link -------------------------
   // The dialog only CURATES which presets go in — it copies a link (libraryUrl →
   // serializeBlob({presets}) → deflate, in persist-share.js), never touching the local
-  // library. The recipient's ?zp=/?sp= decode lands in openSharedLibrary below, which routes
+  // library. The recipient's #zp=/#sp= decode lands in openSharedLibrary below, which routes
   // into the SAME Restore dialog a file import uses, so they pick merge vs replace.
   let sharePreBoxes = [];
   const chosenPresets = () => sharePreBoxes.filter(cb => cb.checked).map(cb => presets[+cb.dataset.i]);
@@ -8537,7 +8547,7 @@
       setTimeout(() => { btn.textContent = "Copy short link"; syncSharePreHint(); }, 1800);
     }
   });
-  // Recipient side of a preset-bundle link (?zp=/?sp=), called (deferred) from applyShared:
+  // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
   // beatTune), so openRestore lights up just the Presets option with merge/replace.
   function openSharedLibrary(raw) {

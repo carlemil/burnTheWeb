@@ -286,7 +286,7 @@
   // ---- Share a curated bundle of presets as one link -------------------------
   // The dialog only CURATES which presets go in — it copies a link (libraryUrl →
   // serializeBlob({presets}) → deflate, in persist-share.js), never touching the local
-  // library. The recipient's ?zp=/?sp= decode lands in openSharedLibrary below, which routes
+  // library. The recipient's #zp=/#sp= decode lands in openSharedLibrary below, which routes
   // into the SAME Restore dialog a file import uses, so they pick merge vs replace.
   let sharePreBoxes = [];
   const chosenPresets = () => sharePreBoxes.filter(cb => cb.checked).map(cb => presets[+cb.dataset.i]);
@@ -340,7 +340,7 @@
       setTimeout(() => { btn.textContent = "Copy short link"; syncSharePreHint(); }, 1800);
     }
   });
-  // Recipient side of a preset-bundle link (?zp=/?sp=), called (deferred) from applyShared:
+  // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
   // beatTune), so openRestore lights up just the Presets option with merge/replace.
   function openSharedLibrary(raw) {
