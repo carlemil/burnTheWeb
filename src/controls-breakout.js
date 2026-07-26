@@ -344,6 +344,9 @@
   // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
   // change the effect, other effects, or the shared controls (auto-cycle, panel).
   el("reset").addEventListener("click", () => {
+    // Confirm first — this throws away every change to the effect (values, ranges, beat
+    // wiring, palette) and is not undoable.
+    if (!confirm("Reset " + EFFECTS[effect].name + " to its shipped defaults?\nYour changes to this effect (sliders, ranges, beats, palette) will be lost.")) return;
     states[effect] = presetState(effect);
     beatStates[effect] = presetBeat(effect);
     pulseStates[effect] = presetPulse(effect);

@@ -142,7 +142,7 @@
   <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
-  <label>Palette</label>
+  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">▦</button></label>
   <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
   <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
@@ -169,6 +169,16 @@
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
+
+<!-- Palette inspector: the selected palette's full 0–255 ramp as a 16×16 grid of colour cells -->
+<div id="paldlg" class="hidden">
+  <div class="pal-box">
+    <button type="button" class="pal-close" id="pal-close" aria-label="Close">×</button>
+    <h2 id="pal-title">Palette</h2>
+    <div id="pal-grid"></div>
+    <p class="pal-hint">The whole ramp — index 0 (top-left) → 255 (bottom-right), the heat value each colour maps. Hover a cell for its index and hex.</p>
+  </div>
+</div>
 
 <!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
 <div id="carddlg" class="hidden">

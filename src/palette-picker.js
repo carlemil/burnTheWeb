@@ -55,6 +55,27 @@
     syncPalSwatches();
   }
   buildPalSwatches();
+  // Palette inspector (▦ button beside the Palette label): the selected palette's full 0–255
+  // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
+  // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
+  // muddy the identity. Hover a cell for its index + hex.
+  function openPalDetail() {
+    const p = PALETTES[+paletteSel.value] || PALETTES[0];
+    el("pal-title").textContent = "Palette · " + p.name;
+    const grid = el("pal-grid"); grid.textContent = "";
+    const h2 = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+    for (let x = 0; x < 256; x++) {
+      const c = p.fn(x), cell = document.createElement("div");
+      cell.style.background = "rgb(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + ")";
+      cell.title = "index " + x + " · #" + h2(c[0]) + h2(c[1]) + h2(c[2]);
+      grid.appendChild(cell);
+    }
+    el("paldlg").classList.remove("hidden");
+  }
+  const closePalDetail = () => el("paldlg").classList.add("hidden");
+  el("pal-detail-btn").addEventListener("click", openPalDetail);
+  el("pal-close").addEventListener("click", closePalDetail);
+  el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
   const randSeedChk = el("randseed");

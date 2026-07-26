@@ -556,6 +556,27 @@
     background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
   #help.hidden { display: none; }
+  /* Palette inspector popup: the full 0–255 ramp as a 16×16 grid of colour cells. */
+  #paldlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #paldlg.hidden { display: none; }
+  #paldlg .pal-box {
+    position: relative; background: rgba(14, 8, 5, 0.98); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  #paldlg .pal-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #paldlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
+  #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
+  #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
   #help .help-box {
     position: relative; width: min(1400px, calc(100vw - 580px)); max-height: 88vh; overflow-y: auto;
     margin: 16px 28px; padding: 20px 26px; background: rgba(14, 8, 5, 0.98);

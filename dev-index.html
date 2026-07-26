@@ -571,6 +571,27 @@
     background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
   #help.hidden { display: none; }
+  /* Palette inspector popup: the full 0–255 ramp as a 16×16 grid of colour cells. */
+  #paldlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #paldlg.hidden { display: none; }
+  #paldlg .pal-box {
+    position: relative; background: rgba(14, 8, 5, 0.98); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  #paldlg .pal-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #paldlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
+  #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
+  #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
   #help .help-box {
     position: relative; width: min(1400px, calc(100vw - 580px)); max-height: 88vh; overflow-y: auto;
     margin: 16px 28px; padding: 20px 26px; background: rgba(14, 8, 5, 0.98);
@@ -838,7 +859,7 @@
   <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
-  <label>Palette</label>
+  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">▦</button></label>
   <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
   <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
@@ -865,6 +886,16 @@
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
+
+<!-- Palette inspector: the selected palette's full 0–255 ramp as a 16×16 grid of colour cells -->
+<div id="paldlg" class="hidden">
+  <div class="pal-box">
+    <button type="button" class="pal-close" id="pal-close" aria-label="Close">×</button>
+    <h2 id="pal-title">Palette</h2>
+    <div id="pal-grid"></div>
+    <p class="pal-hint">The whole ramp — index 0 (top-left) → 255 (bottom-right), the heat value each colour maps. Hover a cell for its index and hex.</p>
+  </div>
+</div>
 
 <!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
 <div id="carddlg" class="hidden">
@@ -5592,6 +5623,27 @@
     syncPalSwatches();
   }
   buildPalSwatches();
+  // Palette inspector (▦ button beside the Palette label): the selected palette's full 0–255
+  // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
+  // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
+  // muddy the identity. Hover a cell for its index + hex.
+  function openPalDetail() {
+    const p = PALETTES[+paletteSel.value] || PALETTES[0];
+    el("pal-title").textContent = "Palette · " + p.name;
+    const grid = el("pal-grid"); grid.textContent = "";
+    const h2 = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+    for (let x = 0; x < 256; x++) {
+      const c = p.fn(x), cell = document.createElement("div");
+      cell.style.background = "rgb(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + ")";
+      cell.title = "index " + x + " · #" + h2(c[0]) + h2(c[1]) + h2(c[2]);
+      grid.appendChild(cell);
+    }
+    el("paldlg").classList.remove("hidden");
+  }
+  const closePalDetail = () => el("paldlg").classList.add("hidden");
+  el("pal-detail-btn").addEventListener("click", openPalDetail);
+  el("pal-close").addEventListener("click", closePalDetail);
+  el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
   const randSeedChk = el("randseed");
@@ -7545,6 +7597,9 @@
   // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
   // change the effect, other effects, or the shared controls (auto-cycle, panel).
   el("reset").addEventListener("click", () => {
+    // Confirm first — this throws away every change to the effect (values, ranges, beat
+    // wiring, palette) and is not undoable.
+    if (!confirm("Reset " + EFFECTS[effect].name + " to its shipped defaults?\nYour changes to this effect (sliders, ranges, beats, palette) will be lost.")) return;
     states[effect] = presetState(effect);
     beatStates[effect] = presetBeat(effect);
     pulseStates[effect] = presetPulse(effect);
