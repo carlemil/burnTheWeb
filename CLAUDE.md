@@ -20,11 +20,11 @@ test framework, or runtime dependency**. The deployed page is a single self-cont
 file (one `<style>`, one IIFE `<script>`), but it is **generated** — the source lives
 split across `src/*.js` + `src/styles.css`, which a dependency-free Node script
 (`tools/build.js`) concatenates **verbatim** into **`dev-index.html`** (the build's
-output file; served live at `…/burnTheWeb/dev-index.html`). The `.githooks/pre-push`
-hook rebuilds and commits `dev-index.html` on every push, so the live dev page always
-matches `src/`. See **Build** below. (`index.html` is no longer produced by the build —
-it is decoupled from `src/`; the dev channel is `dev-index.html`.) `README.md` documents
-it for end users; keep it in sync when behaviour changes.
+output file; served live at `…/burnTheWeb/dev-index.html` as a preview). **Deploying to
+production is the `/deploy` skill**: it builds, copies `dev-index.html` over `index.html`
+(the page Pages serves at the site root), commits and pushes. There are **no git hooks**.
+See **Build** below. `README.md` documents it for end users; keep it in sync when
+behaviour changes.
 
 ## Build
 
@@ -51,12 +51,11 @@ it for end users; keep it in sync when behaviour changes.
   the empty string and substitutes via split/join (not `String.replace`, whose `$` handling
   would corrupt the JS), so the output is a **byte-for-byte** reproduction of the source.
 - **`node tools/build.js --check`** exits non-zero if `dev-index.html` is stale.
-- **Deploy is the `.githooks/pre-push` hook** — enable once per clone with
-  `git config core.hooksPath .githooks`. It runs the build; if `dev-index.html` changed it
-  commits it and **aborts the push** (a pre-push hook can't add to the push already in flight),
-  so you just **run `git push` again** — the second push finds `dev-index.html` current and
-  sends both commits. Probes/tests should therefore run against **`dev-index.html`** (the
-  current artifact), e.g. `node tools/filterprobe.js dev-index.html`.
+- **Deploy with the `/deploy` skill** (`.claude/skills/deploy/`): it builds, copies
+  `dev-index.html` → `index.html`, commits both and pushes (one normal push, no hooks). So
+  `index.html` = production main page, `dev-index.html` = current build / preview; a deploy
+  promotes dev → prod. Probes/tests run against **`dev-index.html`** (the current artifact),
+  e.g. `node tools/filterprobe.js dev-index.html`.
 - The split was bootstrapped once by `tools/split-once.js` (kept in history). To re-slice at
   different boundaries, edit its `SLICES` markers and re-run, or just move code between
   `src/*.js` files and rebuild — the manifest order is the load order.
@@ -65,13 +64,13 @@ it for end users; keep it in sync when behaviour changes.
 
 ## Workflow
 
-- **Always commit and push after a completed, verified change.** Pushing to `main` (via
-  `HEAD:main`) triggers the pre-push hook (build + commit `dev-index.html`, abort), so
-  **push, then push again** to publish; Pages redeploys ~1 min later (hard-refresh to
-  bypass cache). Do not ask "want me to deploy?" first.
-- **Code lives in `src/*.js` + `src/styles.css`** (see **Build**). Edit those and commit
-  `src/`; the pre-push hook rebuilds and commits `dev-index.html` for you. Never edit
-  `dev-index.html` by hand.
+- **Always commit and push after a completed, verified change.** Edit `src/`, run
+  `node tools/build.js`, and commit **`src/` + `dev-index.html`** together, then
+  `git push origin HEAD:main` — that updates the live `/dev-index.html` preview (~1 min;
+  hard-refresh to bypass cache). To publish to the production page, run **`/deploy`** (see
+  Build). Do not ask "want me to deploy?" before pushing the preview.
+- **Code lives in `src/*.js` + `src/styles.css`** (see **Build**). Never hand-edit
+  `dev-index.html` or `index.html` — both are generated.
 - Commit trailers must end with:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` and the
   `Claude-Session:` line.
