@@ -128,7 +128,13 @@
   // (stackItemOut), and serializeBlob converts each preset's top-level `effect`. Recipient
   // side: applyShared routes #zp=/#sp= into the Restore dialog (merge/replace).
   async function libraryUrl(chosen) {
-    const json = JSON.stringify(serializeBlob({ presets: chosen }));
+    // Alongside the presets, carry the auto-cycle toggle and which preset is selected, so the
+    // receiver opens on the same scene and the same show plays. curPreset is the index WITHIN
+    // `chosen` (curation reindexes), omitted when the selected preset isn't in the bundle.
+    const blob = { presets: chosen, cycle: cycleChk.checked };
+    const selIdx = curPreset >= 0 ? chosen.indexOf(presets[curPreset]) : -1;
+    if (selIdx >= 0) blob.curPreset = selIdx;
+    const json = JSON.stringify(serializeBlob(blob));
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);
     return z ? dir + "#zp=" + z

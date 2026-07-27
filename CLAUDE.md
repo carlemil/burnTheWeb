@@ -1081,8 +1081,11 @@ because any later slider drag *did* autosave and retroactively captured the chip
   someone "a list of cool presets." The dialog (`#sharepredlg`) is pure curation: a
   checklist of `presets`, an all/none toggle, and **Copy link** / **Copy short link**; it
   copies a URL and **never touches the local library**. `libraryUrl(chosen)` uses the same
-  codec as `shareUrl` — `serializeBlob({presets})` (the same call `backupFiles` makes per
-  preset) → deflate. **The payload rides in the URL FRAGMENT — `#zp=` (uncompressed fallback
+  codec as `shareUrl` — `serializeBlob({presets, cycle, curPreset})` (the `presets` part is the
+  same call `backupFiles` makes per preset) → deflate. It also carries the **auto-cycle toggle**
+  and **which preset is selected** (`curPreset` as an index *within `chosen`*, so curation
+  reindexes it, omitted when the selected preset isn't in the bundle) — so the receiver opens on
+  the same scene and the same show plays. **The payload rides in the URL FRAGMENT — `#zp=` (uncompressed fallback
   `#sp=`), not a `?query` — and that is load-bearing:** a bundle is several KB, and a
   multi-KB query makes GitHub Pages / Fastly reject the link with **414 URI Too Long**
   before any JS runs, whereas the fragment is never sent to the server, so a bundle of any
@@ -1096,7 +1099,14 @@ because any later slider drag *did* autosave and retroactively captured the chip
   `normalizeBackup` → `deserializeBlob` → **`validatePresetList`** (the per-preset
   validate/normalize block extracted from the file-import handler and now shared by both)
   → the **existing Restore dialog** (`openRestore`, merge-vs-replace), so a bundle never
-  silently overwrites the recipient's presets. **Ordering trap:** `openSharedLibrary` lives
+  silently overwrites the recipient's presets. `openSharedLibrary` passes the bundle's `cycle`
+  and `curPreset` plus a `__link` marker to `openRestore`. On apply: a **file** restore forces
+  auto-cycle **off** (don't cycle off what you just restored), but a **link** honours the
+  sender's toggle (`__link` gates it) — "share the show". And the receiver **lands on the
+  sender's selected preset's scene**, not just its dropdown row: `applyRestore` stashes the
+  resolved index in `sessionStorage["btw.applyPreset"]` and the startup reads it once (cleared
+  on use, so ordinary reloads keep the persisted scene). Backups carry no `curPreset`, so this
+  fires only for shared links. **Ordering trap:** `openSharedLibrary` lives
   in `persist-backup-restore.js` but `applyShared()` is *called* during the earlier
   `audio-tuning-data.js` slice's load — so its `pendingRestore`/`openRestore` state is in
   the TDZ then. The async `#zp=` unzip `.then` naturally lands after all slices run; the sync
@@ -1514,9 +1524,10 @@ slicing source (needs `msedge`; `EDGE=<path>` overrides). It builds a rich four-
 scene in browser A (distinctive per-layer blend, gain, mute, palette / reverse /
 background, a custom per-layer slider range on `rpm`, a per-layer effect param, a
 per-layer filter param, per-layer camera, a pulse shape + length; plus scene-globals:
-all five Scene filters on with values, Preset TTL, Transition, and a scene-wide custom
-range), **shares it as a `#zp=` bundle**, opens that link in a fresh browser B, restores
-+ selects the preset, and **deep-compares every value read from A against B** — so any
+all five Scene filters on with values, Preset TTL, Transition, a scene-wide custom range,
+the auto-cycle toggle, and the selected preset), **shares it as a `#zp=` bundle**, opens
+that link in a fresh browser B, lets it **auto-land on the sender's selected preset**, and
+**deep-compares every value read from A against B** — so any
 field dropped or changed in flight fails by name. It also spot-checks that A itself
 applied the intended values, so a bug can't slip through by both sides being wrong
 together. It runs with `requestAnimationFrame` no-op'd and no GL (the picker / restore /

@@ -73,7 +73,7 @@ async function readAll(){
     ttl:[v('ttl-lo'),v('ttl-hi')], tdur:[v('tdur-lo'),v('tdur-hi')],
     flt:{bloom:chk('flt-bloom'),vignette:chk('flt-vignette'),scanlines:chk('flt-scanlines'),grain:chk('flt-grain'),barrel:chk('flt-barrel')},
     vignette:[v('vignette-lo'),v('vignette-hi')], scan:[v('scan-lo'),v('scan-hi')], grain:[v('grain-lo'),v('grain-hi')], barrel:[v('barrel-lo'),v('barrel-hi')],
-    palcycleMax:mx('palcycle-lo'),
+    palcycleMax:mx('palcycle-lo'), cycle:chk('cycle'), preset:v('preset'),
   }};
 }`;
 
@@ -105,6 +105,8 @@ const driverA = `
       await until(function(){return q('preset')&&q('preset').options.length>1;});
       q('preset').value='0'; q('preset').dispatchEvent(new Event('change',{bubbles:true}));
       await wait(300);
+      q('cycle').checked=true; q('cycle').dispatchEvent(new Event('change',{bubbles:true}));  // sender's auto-cycle ON
+      await wait(50);
       out.state=await readAll();
       window.__cap='';
       q('sharepresets').click();
@@ -134,8 +136,9 @@ const driverB = `
         sessionStorage.setItem('phase','2');
         q('rst-go').click();
       }else{
-        await until(function(){return q('preset')&&q('preset').options.length>1;});
-        q('preset').value='0'; q('preset').dispatchEvent(new Event('change',{bubbles:true}));
+        // Do NOT select a preset here — the receiver should AUTO-LAND on the sender's
+        // selected preset. Wait for it to take, then read the live scene.
+        await until(function(){return q('preset')&&q('preset').value==='0';});
         await wait(300);
         document.body.setAttribute('data-test',JSON.stringify({ok:true,state:await readAll()}));
       }
@@ -164,10 +167,16 @@ expect("L0 palette", A.state.layers[0].palette, "5");
 expect("L0 palette reversed", A.state.layers[0].palrev, true);
 expect("L0 palette bg", A.state.layers[0].palbg, "white");
 expect("L1 muted", A.state.layers[1].mute, "○");
+expect("layer strengths (gain)", A.state.layers.map(l => l.gain), ["0.9", "0.6", "0.5", "0.4"]);
 expect("scene filters all on", A.state.scene.flt, { bloom: true, vignette: true, scanlines: true, grain: true, barrel: true });
 expect("preset TTL", A.state.scene.ttl, ["45", "90"]);
 expect("preset transition", A.state.scene.tdur, ["1.5", "2.5"]);
 expect("scene-wide custom range (palcycle max)", A.state.scene.palcycleMax, "20");
+expect("auto-cycle on (source)", A.state.scene.cycle, true);
+expect("selected preset (source)", A.state.scene.preset, "0");
+console.log("\n== receiver picks up the shared show-level settings ==");
+expect("receiver auto-cycle on", B.state.scene.cycle, true);
+expect("receiver landed on the sender's preset", B.state.scene.preset, "0");
 
 console.log("\n== RECEIVER(B) matches SOURCE(A) field-by-field ==");
 eq("layer count", A.state.layers.length, B.state.layers.length);
@@ -175,7 +184,7 @@ const fields = ["effect", "blend", "gain", "mute", "palette", "palrev", "palbg",
   "rpmMin", "rpmMax", "rpmLo", "rpmHi", "ratio", "fade", "camrx", "plenRpm", "pulseRpm"];
 for (let k = 0; k < A.state.layers.length; k++)
   for (const f of fields) eq("L" + k + "." + f, A.state.layers[k][f], (B.state.layers[k] || {})[f]);
-for (const f of ["ttl", "tdur", "flt", "vignette", "scan", "grain", "barrel", "palcycleMax"])
+for (const f of ["ttl", "tdur", "flt", "vignette", "scan", "grain", "barrel", "palcycleMax", "cycle", "preset"])
   eq("scene." + f, A.state.scene[f], B.state.scene[f]);
 
 console.log(fails ? `\n${fails} FAILED` : `\nall share-parity checks passed`);

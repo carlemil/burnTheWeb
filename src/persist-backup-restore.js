@@ -252,6 +252,12 @@
       const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
         ? p.parsed.presets[p.parsed.curPreset].name : null;
       out.curPreset = sel ? lib.findIndex(x => x.name === sel) : -1;
+      // A shared bundle records which preset the sender had open; land the receiver on it
+      // (its scene, not just the dropdown) after the reload — a one-shot marker the startup
+      // reads. Cleared on use, so ordinary reloads keep the persisted scene. Backups don't
+      // carry curPreset, so this only fires for shared links.
+      if (out.curPreset >= 0) sessionStorage.setItem("btw.applyPreset", String(out.curPreset));
+      else sessionStorage.removeItem("btw.applyPreset");
     }
     if (p.hasSettings && el("rst-settings").checked) {
       const s = p.parsed;
@@ -268,12 +274,12 @@
     }
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
     if (p.hasBeat && el("rst-beat").checked) out.beatTune = p.parsed.beatTune;
-    // Land on the restored scene and stay there. This has to be written into the blob
-    // rather than calling stopCycling(), because applyRestore reloads the page — a live
-    // toggle would be thrown away. Set last so it also overrides the file's own `cycle`
-    // read a few lines up: whatever the backup was saved with, you want to *see* what
-    // you just restored, not have the cycler move off it seconds later.
-    out.cycle = false;
+    // Auto-cycle. A FILE restore forces it off, so the cycler doesn't move off what you just
+    // restored (written into the blob rather than via stopCycling(), because applyRestore
+    // reloads and a live toggle would be lost). A shared LINK, however, carries the sender's
+    // auto-cycle toggle on purpose — "share the show" — so honour it: the receiver lands on
+    // the selected preset (above) and then cycles the same way the sender's did.
+    out.cycle = (!Array.isArray(p.parsed) && p.parsed.__link && typeof p.parsed.cycle === "boolean") ? p.parsed.cycle : false;
     // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
     localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
     location.reload();
@@ -351,7 +357,9 @@
     const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
     const valid = validatePresetList(arr);
     if (!valid.length) { alert("This link has no usable presets."); return; }
-    openRestore({ presets: arr }, valid, "shared link");
+    // Carry the sender's auto-cycle toggle + selected-preset index through to applyRestore;
+    // __link marks this as a shared bundle (backups force cycle off, links honour it).
+    openRestore({ presets: arr, curPreset: parts.curPreset, cycle: parts.cycle, __link: true }, valid, "shared link");
   }
 
   // Initial paint: setEffect loads the restored effect's per-effect extras (show-box,
@@ -392,6 +400,13 @@
   // Save the opening scene once, so a reload keeps it instead of re-applying (and
   // re-morphing the palette) on every visit until the first edit.
   if (freshVisit) persist();
+  // A one-shot from applyRestore of a shared bundle: land on the preset the sender had open
+  // (its scene, not just the dropdown selection). Cleared on use, so ordinary reloads keep
+  // the persisted scene rather than re-applying + re-morphing every time.
+  try {
+    const pend = sessionStorage.getItem("btw.applyPreset");
+    if (pend != null) { sessionStorage.removeItem("btw.applyPreset"); const i = +pend; if (presets[i]) applyPreset(i); }
+  } catch (e) {}
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);
