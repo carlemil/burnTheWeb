@@ -7950,11 +7950,28 @@
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
+      // Preset TTL and Transition are otherwise GLOBAL (fullSnapshot keeps them too, for the
+      // "— unsaved scene —" case), but a preset also remembers its own so a shared/backed-up
+      // scene plays with the hold time and transition it was authored with — applyPreset installs
+      // them. Older presets omit these; applyPreset then leaves the current global values alone.
+      ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
+      tdur: [+el("tdur-lo").value, +el("tdur-hi").value],
       extra: JSON.parse(JSON.stringify(extras[effect])),
       // Null (and dropped by JSON) whenever the stack holds one item, so a non-stacked
       // preset is exactly the shape it has always been.
       layers: stackOut(),
     };
+  }
+  // Install a [lo,hi] pair onto a global dual slider from a preset, validated against the LIVE
+  // bounds (a bad or absent value leaves the slider alone), dispatching input so the fill,
+  // readout and any listeners follow. Used for the per-preset TTL + Transition.
+  function applyPresetDual(loId, hiId, v) {
+    if (!Array.isArray(v)) return;
+    const lo = el(loId), hi = el(hiId); if (!lo || !hi) return;
+    const a = +v[0], b = +v[1], mn = +lo.min, mx = +lo.max;
+    if (!(isFinite(a) && isFinite(b) && a >= mn && a <= mx && b >= mn && b <= mx)) return;
+    lo.value = a; hi.value = b;
+    lo.dispatchEvent(new Event("input")); hi.dispatchEvent(new Event("input"));
   }
   function defaultPresets() {
     return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
@@ -8134,6 +8151,10 @@
     // el.value, which the DOM silently clamps to the slider's current min/max — so a
     // stale bound would quietly rewrite the value we are about to install.
     applyRanges(p.ranges);
+    // Preset TTL + Transition — after applyRanges so both thumbs validate against the (possibly
+    // custom) bounds this preset carries. A pre-feature preset omits them; leave the globals be.
+    applyPresetDual("ttl-lo", "ttl-hi", p.ttl);
+    applyPresetDual("tdur-lo", "tdur-hi", p.tdur);
     migrateCam(p);                                // pre-per-layer preset: fold its one `cam` into p.state / p.layers before they merge
     installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);
@@ -8382,6 +8403,7 @@
       .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
+                   ttl: p.ttl, tdur: p.tdur,
                    layers: Array.isArray(p.layers) ? p.layers : undefined }));
   }
   el("importpresets").addEventListener("click", () => el("presetsfile").click());

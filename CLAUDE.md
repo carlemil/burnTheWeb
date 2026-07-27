@@ -894,16 +894,25 @@ of `?debug=1`, never persisted.
 
 ### Presets & persistence
 A **preset** is a named full-scene snapshot, built by `snapshotScene()`:
-`{name, effect, state, beat, pulse, plen, cam, beatTune, ranges, extra}`.
-The last three of those are **globals deliberately remembered per preset**, because a
+`{name, effect, state, beat, pulse, plen, cam, sceneFx, beatTune, ranges, ttl, tdur, extra, layers}`.
+Several of those are **globals deliberately remembered per preset**, because a
 preset has to be a *complete* copy of what is on screen — it is something you hand to
 someone else, and anything it fails to carry renders as the recipient's value instead,
 invisibly. `cam` because `camrx/camry/camrz` exist nowhere else (no effect's `defaults`
-names them); `beatTune` because different thresholds mean different beats mean a
-different animation; `ranges` because `mergeState` does **no** bounds check and
+names them); `sceneFx` because the scene-global Scene filters (Bloom + the screen stage)
+live nowhere in an effect's state; `beatTune` because different thresholds mean different
+beats mean a different animation; `ranges` because `mergeState` does **no** bounds check and
 `loadState`'s `el.value = …` is then silently clamped by the DOM, so a value authored
-against a widened bound quietly animates differently. `applyPreset` applies `ranges`
-**first**, mirroring `applyBlob`'s ordering, for exactly that reason.
+against a widened bound quietly animates differently. **`ttl` (Preset TTL) and `tdur`
+(Transition) are also per-preset**, even though they are otherwise global (auto-cycle
+timing, still kept in `fullSnapshot` for the "— unsaved scene —" case): a preset remembers
+the hold time and transition it was authored with, so a shared or backed-up scene *plays*
+the same, and `applyPreset` installs them (via `applyPresetDual`, validated against the
+live bounds). Consequence: selecting or auto-cycling to a preset now sets the global TTL /
+Transition to that preset's — each scene carries its own pacing. Older presets omit
+`ttl`/`tdur`; `applyPreset` then leaves the current globals alone. `applyPreset` applies
+`ranges` **first**, mirroring `applyBlob`'s ordering, and `ttl`/`tdur` right after so their
+thumbs validate against any custom bounds the preset carries.
 `tools/presetprobe.js` asserts by construction that every field `applyPreset` restores
 is one `snapshotScene` captures *and* one the import mapping carries — the check exists
 because `applyRestore`'s mapping silently dropped `cam` for a long time.
@@ -1498,3 +1507,20 @@ quiet verse, silence and a sustained tone (no false positives), and a double-tim
 fill (refractory holds). It slices by source markers, so keep them: `const HOP_MS`
 … `const meterBars`, `const medBuf` … `function audioMsg`, `function audioTick` …
 `function clearBeats`.
+
+**Share-preset parity** has `tools/shareparity.js` (`node tools/shareparity.js
+dev-index.html`) — an *end-to-end* test, so it drives **headless Edge** rather than
+slicing source (needs `msedge`; `EDGE=<path>` overrides). It builds a rich four-layer
+scene in browser A (distinctive per-layer blend, gain, mute, palette / reverse /
+background, a custom per-layer slider range on `rpm`, a per-layer effect param, a
+per-layer filter param, per-layer camera, a pulse shape + length; plus scene-globals:
+all five Scene filters on with values, Preset TTL, Transition, and a scene-wide custom
+range), **shares it as a `#zp=` bundle**, opens that link in a fresh browser B, restores
++ selects the preset, and **deep-compares every value read from A against B** — so any
+field dropped or changed in flight fails by name. It also spot-checks that A itself
+applied the intended values, so a bug can't slip through by both sides being wrong
+together. It runs with `requestAnimationFrame` no-op'd and no GL (the picker / restore /
+apply paths need no frames), reading state via `--dump-dom`. This is the guard that a new
+per-layer or scene field actually travels with a shared bundle; `presetprobe` still pins
+the cheaper structural invariant (every `snapshotScene` field is one `applyPreset` restores
+and one the import mapping carries), which is what caught the missing `ttl`/`tdur` wiring.
