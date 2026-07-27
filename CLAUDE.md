@@ -514,6 +514,10 @@ backdrop and not a modal**) rendering the connectedness locus in the c-plane wit
 base curve, the path it actually traces at the current ratio/radii, the riding circle and the
 live seed point drawn over it. Non-modal on purpose: you tune the orbit sliders *while watching
 it*, so it must never intercept a click — don't reintroduce a backdrop or click-outside-closes.
+Its box is translucent (`rgba(10,6,4,0.55)` + `blur(6px)`, the same as `#panel`), and — like
+the **Palette inspector** (`#paldlg`, whose full-screen dark modal backdrop was likewise dropped
+for a translucent floating box) — it **hides on `m`** (and `Esc`) along with the menu, so the
+key gives a clean view; the `m`/`Esc` handlers call `cardOpen(false)` + `closePalDetail()`.
 It samples **`juliaSeedAt(outer, inner)`** — the pure part split out of `juliaSeed(dt)`, which
 also applies the **`cardx`** slider's `juliaOffX` real-axis shift — so opening it never advances
 the animation and it always shows the true orbit. `frame()` redraws it while open. The backdrop

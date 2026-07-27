@@ -15,9 +15,11 @@
 
   window.addEventListener("keydown", e => {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
-    if (e.key === "m" || e.key === "M") setPanel(!panel.classList.contains("hidden"));   // the one menu (dev tools live inside it now)
+    // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
+    // editor and the Palette inspector — along with it, so M gives a clean view.
+    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); cardWanted = false; cardOpen(false); }
   });
 
