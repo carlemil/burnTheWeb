@@ -791,8 +791,6 @@
   <div class="presetrow grid2">
     <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
-    <button id="share" class="audbtn" type="button" title="Copy a link that opens the scene you're looking at">Share</button>
-    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current scene — needs the internet, and sends the scene to TinyURL">Short link</button>
   </div>
   <div class="presetrow">
     <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
@@ -7903,15 +7901,13 @@
     else fallback();
   }
 
-  el("share").addEventListener("click", () => copyText(shareUrl(), el("share"), "Link copied!", "Share"));
-
-  // POST a (long) URL to TinyURL and resolve the short URL it returns. Shared by the scene
-  // Short-link button and the preset-bundle dialog, so both shorten the same way. TinyURL is
-  // the pick because it 301s to the target byte-for-byte (no interstitial, no injected
-  // params), sends CORS headers, needs no API key, and doesn't block github.io the way is.gd
-  // does. POST (not GET) so a big scene/bundle can't hit a query-length ceiling; the
-  // form-urlencoded body keeps it a simple request, so there's no preflight. The API reports
-  // failure with a 200 + an error string, so the response SHAPE is validated, not the status.
+  // POST a (long) URL to TinyURL and resolve the short URL it returns — the preset-bundle
+  // dialog's "Copy short link" uses it. TinyURL is the pick because it 301s to the target
+  // byte-for-byte (no interstitial, no injected params), sends CORS headers, needs no API
+  // key, and doesn't block github.io the way is.gd does. POST (not GET) so a big bundle can't
+  // hit a query-length ceiling; the form-urlencoded body keeps it a simple request, so there's
+  // no preflight. The API reports failure with a 200 + an error string, so the response SHAPE
+  // is validated, not the status.
   function shortenUrl(url) {
     return fetch("https://tinyurl.com/api-create.php", {
       method: "POST",
@@ -7925,20 +7921,6 @@
         return short;
       });
   }
-  // Short link: hand the current scene's share URL to TinyURL and copy what comes back.
-  // Deliberately a separate, opt-in button — unlike Share it needs the network and hands
-  // the scene blob to a third party.
-  el("shorten").addEventListener("click", async () => {
-    const btn = el("shorten");
-    btn.disabled = true; btn.textContent = "Shortening…";
-    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
-    try {
-      const short = await shortenUrl(await shareUrl());
-      btn.disabled = false;
-      copyText(short, btn, "Short link copied!", "Short link");
-      track("share_shorten");
-    } catch (e) { fail("Shorten failed"); }
-  });
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
   function snapshotScene() {

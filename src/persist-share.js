@@ -172,15 +172,13 @@
     else fallback();
   }
 
-  el("share").addEventListener("click", () => copyText(shareUrl(), el("share"), "Link copied!", "Share"));
-
-  // POST a (long) URL to TinyURL and resolve the short URL it returns. Shared by the scene
-  // Short-link button and the preset-bundle dialog, so both shorten the same way. TinyURL is
-  // the pick because it 301s to the target byte-for-byte (no interstitial, no injected
-  // params), sends CORS headers, needs no API key, and doesn't block github.io the way is.gd
-  // does. POST (not GET) so a big scene/bundle can't hit a query-length ceiling; the
-  // form-urlencoded body keeps it a simple request, so there's no preflight. The API reports
-  // failure with a 200 + an error string, so the response SHAPE is validated, not the status.
+  // POST a (long) URL to TinyURL and resolve the short URL it returns — the preset-bundle
+  // dialog's "Copy short link" uses it. TinyURL is the pick because it 301s to the target
+  // byte-for-byte (no interstitial, no injected params), sends CORS headers, needs no API
+  // key, and doesn't block github.io the way is.gd does. POST (not GET) so a big bundle can't
+  // hit a query-length ceiling; the form-urlencoded body keeps it a simple request, so there's
+  // no preflight. The API reports failure with a 200 + an error string, so the response SHAPE
+  // is validated, not the status.
   function shortenUrl(url) {
     return fetch("https://tinyurl.com/api-create.php", {
       method: "POST",
@@ -194,18 +192,4 @@
         return short;
       });
   }
-  // Short link: hand the current scene's share URL to TinyURL and copy what comes back.
-  // Deliberately a separate, opt-in button — unlike Share it needs the network and hands
-  // the scene blob to a third party.
-  el("shorten").addEventListener("click", async () => {
-    const btn = el("shorten");
-    btn.disabled = true; btn.textContent = "Shortening…";
-    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
-    try {
-      const short = await shortenUrl(await shareUrl());
-      btn.disabled = false;
-      copyText(short, btn, "Short link copied!", "Short link");
-      track("share_shorten");
-    } catch (e) { fail("Shorten failed"); }
-  });
 

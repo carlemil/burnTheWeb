@@ -1030,6 +1030,12 @@ because any later slider drag *did* autosave and retroactively captured the chip
   the promise re-activates with `resize()` + `setEffect(...)` itself. `shareUrl()` is
   therefore async too, and Share copies via `ClipboardItem`'s promise form so the user
   gesture survives (a plain `writeText` after an `await` is rejected by Safari).
+- **The scene Share / Short-link BUTTONS were removed** — sharing is now preset-bundle only
+  (`#sharepresets`, see below). But `shareUrl()` and the whole **`?z=`/`?s=` codec + the
+  `applyShared` decode remain**, so every scene link ever generated still opens; only the two
+  buttons that *produced* new ones are gone (`shareUrl` is now dead-but-valid, kept for that
+  decode path and for `shareprobe`). `shortenUrl()` stayed too — the bundle dialog's "Copy
+  short link" uses it. The rest of this bullet describes that still-live codec.
 - **Share** encodes **only the current scene** — `{states, beats, pulses, plens, extras,
   effect, cam, beatTune, ranges}` where every per-effect map holds exactly **one** entry,
   the effect on screen (NOT presets). It used to send all fifteen effects' settings;
