@@ -8,7 +8,7 @@ boot-globals.js
 palette.js
 render-gl-shaders.js
 render-gl-pipeline.js
-fire-physics.js
+tetrahedron-physics.js
 anim-updateanims.js
 effects-julia.js
 orbit-seed.js

@@ -3225,7 +3225,7 @@
     else { const idx = yi * fw + xi; if (v > fire[idx]) fire[idx] = v; }
   }
 
-  // ---- Tetrafyer rigid-body physics ---------------------------------------
+  // ---- Tetrahedron rigid-body physics -------------------------------------
   // A Sierpiński tetrahedron bounces inside a rubbery box floating in front of
   // the camera. The four vertices are perfectly symmetric, so the inertia
   // tensor is isotropic (I = 2·m·s² about every axis). That collapses the
@@ -3245,11 +3245,11 @@
             v[1] * ct + cr[1] * st + u[1] * d,
             v[2] * ct + cr[2] * st + u[2] * d];
   }
-  // Fire-fractal size & rotation (Sirpinfyer/Tetrafyer). `fractalSize` scales the
+  // Point-fractal size & rotation (Sierpiński / Tetrahedron). `fractalSize` scales the
   // geometry; `rotSpeed` (rad/s) spins it — accumulated into `spinAngle` per tick
-  // so the rate is independent of drift speed and the burn tick rate.
+  // so the rate is independent of drift speed and the sim tick rate.
   let fractalSize = 1, rotSpeed = 0, spinAngle = 0, layerCount = 1, boxSize = 1;
-  // Tetrafyer's second rotation: the view pitches up and down in a slow sine — the
+  // The Tetrahedron's second rotation: the view pitches up and down in a slow sine — the
   // "nod" that made the box look like it was drifting on its own. It used to be
   // hardcoded as 0.30·sin(simT · 0.12) with no control at all. `nodAmp` is the
   // swing in radians and `nodSpd` a multiplier on the shipped rate; the phase is

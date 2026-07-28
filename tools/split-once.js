@@ -57,7 +57,7 @@ const SLICES = [
   { file: "palette.js",                 marker: "// ---- palettes (classic demoscene style) ----" },
   { file: "render-gl-shaders.js",       marker: "//  WebGL2 renderer" },
   { file: "render-gl-pipeline.js",      marker: "// ---- post-FX passes. All RGB" },
-  { file: "fire-physics.js",            marker: "// ---- Tetrafyer rigid-body physics" },
+  { file: "tetrahedron-physics.js",     marker: "// ---- Tetrahedron rigid-body physics" },
   { file: "anim-updateanims.js",        marker: "// ---- animation ----" },
   { file: "effects-julia.js",           marker: "// ---- AnimeJulia: animated Julia set" },
   { file: "orbit-seed.js",              marker: "// ---- seed PATH shape" },
