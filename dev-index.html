@@ -1307,6 +1307,13 @@
   let bandGroup = 3;              // colours per light (and per dark) run — Band size slider
   let bandDim = 0.35;             // dark-run brightness — Dark strength slider (1 = none)
   let bandLive = false;           // is the currently-baked palette banded?
+  // Heat boost (per-layer, the "Heat boost" slider). A gamma remap of the heat VALUE before it
+  // indexes the palette: idx' = idx^(1/(1+heatBoost)), so 0 = identity (the palette as-is) and
+  // higher values push the dim mid-heat up into the bright end of the ramp, using more of its
+  // strong colours. Endpoints are fixed (0→0 background, 1→1 top). Applied in the shader
+  // (FS_PAL's uCurve) and, on the Canvas2D path, through heatLut below.
+  let heatBoost = 0;
+  const heatLut = new Uint8Array(256);   // CPU remap LUT, rebuilt each frame when heatBoost > 0
 
   // setPalette / morphStep fill this smooth base ramp; composePalette() then
   // bakes it (with the live banding filter) into the ABGR `palette` each frame.
@@ -2318,11 +2325,13 @@
     }`;
     const FS_PAL = `#version 300 es
     precision highp float;
-    uniform sampler2D uHeat; uniform sampler2D uPal;
+    uniform sampler2D uHeat; uniform sampler2D uPal; uniform float uCurve;
     in vec2 vUv; out vec4 o;
     void main(){
       float h = texture(uHeat, vUv).r;
-      float idx = (floor(h*255.0 + 0.5) + 0.5) / 256.0;
+      // Heat boost: gamma-remap the heat toward the bright end (uCurve 0 = identity, byte-for-byte).
+      float hb = uCurve > 0.0 ? pow(h, 1.0/(1.0 + uCurve)) : h;
+      float idx = (floor(hb*255.0 + 0.5) + 0.5) / 256.0;
       o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, 1.0);
     }`;
     // zoom about centre (fire modes); Julia passes zoom=1
@@ -2495,7 +2504,7 @@
     gl.samplerParameteri(glSampLin, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
+    glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal", "uCurve"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -2996,6 +3005,7 @@
     gl.useProgram(glProg.pal.p);
     bindTexUnit(0, heatTex); gl.uniform1i(glProg.pal.u.uHeat, 0);
     bindTexUnit(1, palTex);  gl.uniform1i(glProg.pal.u.uPal, 1);
+    gl.uniform1f(glProg.pal.u.uCurve, heatBoost);   // this layer's Heat boost (installStackItem set it)
     drawQuad();
     return glTex.layerCol;
   }
@@ -3122,6 +3132,7 @@
       gl.useProgram(glProg.pal.p);
       bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
       bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
+      gl.uniform1f(glProg.pal.u.uCurve, heatBoost);   // single-layer path: the selected layer's Heat boost
       drawQuad();
       colorSrc = glTex.native;
     }
@@ -4195,7 +4206,13 @@
   }
 
   function render() {
-    for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
+    if (heatBoost > 0) {                       // Heat boost: remap the heat index toward the bright end
+      const g = 1 / (1 + heatBoost);
+      for (let x = 0; x < 256; x++) heatLut[x] = (Math.pow(x / 255, g) * 255 + 0.5) | 0;
+      for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[heatLut[fire[i]]];
+    } else {
+      for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];   // 0 = identity (byte-for-byte)
+    }
     offCtx.putImageData(img, 0, 0);
 
     // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes
@@ -4897,6 +4914,9 @@
     // derived from the slider rather than stored separately.
     { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 120, step: 1, lo: 8, hi: 8, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
     { key: "palhold", host: "pal", group: "palette", type: "dual", label: "Palette hold", valId: "vPalHold", min: 0, max: 120, step: 1, lo: 0, hi: 0, fmt: v => v <= 0 ? "none" : sig3(v) + "s", apply: v => palHoldLive = v, durScale: 10, beat: false },
+    // Heat boost: remap the heat toward the palette's bright end (see heatBoost). 0 = the palette
+    // as-is; per-layer (host "pal"), so each layer boosts its own palette. Animatable + beat-armable.
+    { key: "heatboost", host: "pal", group: "palette", type: "dual", label: "Heat boost", valId: "vHeatBoost", min: 0, max: 4, step: 0.05, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : "+" + sig3(v), apply: v => heatBoost = v, durScale: 10 },
     // ---- filter parameters. Contiguous, one group per filter, host "filter" so
     // they render in the Filters box; shown only while their filter is ticked. ----
     { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
@@ -5046,6 +5066,7 @@
   function shownKeys() {
     const shown = new Set(EFFECTS[effect].params);
     for (const f of activeFilters()) for (const k of f.params) shown.add(k);
+    shown.add("heatboost");           // a palette-box control that applies to every effect (like palcycle/palhold)
     return shown;
   }
   function refreshControlVisibility() {
@@ -6353,6 +6374,7 @@
     // Camera X/Y/Z rotation is per-layer state now (was the scene-wide `cam`), so seed it into
     // every effect exactly like a filter default — an effect that named it would still win below.
     st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
+    st.heatboost = [0, 0];   // per-layer palette control, seeded like the camera so no effect descriptor needs it
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }

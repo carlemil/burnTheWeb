@@ -94,6 +94,13 @@
   let bandGroup = 3;              // colours per light (and per dark) run — Band size slider
   let bandDim = 0.35;             // dark-run brightness — Dark strength slider (1 = none)
   let bandLive = false;           // is the currently-baked palette banded?
+  // Heat boost (per-layer, the "Heat boost" slider). A gamma remap of the heat VALUE before it
+  // indexes the palette: idx' = idx^(1/(1+heatBoost)), so 0 = identity (the palette as-is) and
+  // higher values push the dim mid-heat up into the bright end of the ramp, using more of its
+  // strong colours. Endpoints are fixed (0→0 background, 1→1 top). Applied in the shader
+  // (FS_PAL's uCurve) and, on the Canvas2D path, through heatLut below.
+  let heatBoost = 0;
+  const heatLut = new Uint8Array(256);   // CPU remap LUT, rebuilt each frame when heatBoost > 0
 
   // setPalette / morphStep fill this smooth base ramp; composePalette() then
   // bakes it (with the live banding filter) into the ABGR `palette` each frame.

@@ -1,5 +1,11 @@
   function render() {
-    for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];
+    if (heatBoost > 0) {                       // Heat boost: remap the heat index toward the bright end
+      const g = 1 / (1 + heatBoost);
+      for (let x = 0; x < 256; x++) heatLut[x] = (Math.pow(x / 255, g) * 255 + 0.5) | 0;
+      for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[heatLut[fire[i]]];
+    } else {
+      for (let i = 0, len = fire.length; i < len; i++) buf32[i] = palette[fire[i]];   // 0 = identity (byte-for-byte)
+    }
     offCtx.putImageData(img, 0, 0);
 
     // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes

@@ -107,6 +107,9 @@
     // derived from the slider rather than stored separately.
     { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 120, step: 1, lo: 8, hi: 8, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
     { key: "palhold", host: "pal", group: "palette", type: "dual", label: "Palette hold", valId: "vPalHold", min: 0, max: 120, step: 1, lo: 0, hi: 0, fmt: v => v <= 0 ? "none" : sig3(v) + "s", apply: v => palHoldLive = v, durScale: 10, beat: false },
+    // Heat boost: remap the heat toward the palette's bright end (see heatBoost). 0 = the palette
+    // as-is; per-layer (host "pal"), so each layer boosts its own palette. Animatable + beat-armable.
+    { key: "heatboost", host: "pal", group: "palette", type: "dual", label: "Heat boost", valId: "vHeatBoost", min: 0, max: 4, step: 0.05, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : "+" + sig3(v), apply: v => heatBoost = v, durScale: 10 },
     // ---- filter parameters. Contiguous, one group per filter, host "filter" so
     // they render in the Filters box; shown only while their filter is ticked. ----
     { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
@@ -256,6 +259,7 @@
   function shownKeys() {
     const shown = new Set(EFFECTS[effect].params);
     for (const f of activeFilters()) for (const k of f.params) shown.add(k);
+    shown.add("heatboost");           // a palette-box control that applies to every effect (like palcycle/palhold)
     return shown;
   }
   function refreshControlVisibility() {

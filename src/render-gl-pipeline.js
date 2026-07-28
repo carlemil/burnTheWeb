@@ -205,11 +205,13 @@
     }`;
     const FS_PAL = `#version 300 es
     precision highp float;
-    uniform sampler2D uHeat; uniform sampler2D uPal;
+    uniform sampler2D uHeat; uniform sampler2D uPal; uniform float uCurve;
     in vec2 vUv; out vec4 o;
     void main(){
       float h = texture(uHeat, vUv).r;
-      float idx = (floor(h*255.0 + 0.5) + 0.5) / 256.0;
+      // Heat boost: gamma-remap the heat toward the bright end (uCurve 0 = identity, byte-for-byte).
+      float hb = uCurve > 0.0 ? pow(h, 1.0/(1.0 + uCurve)) : h;
+      float idx = (floor(hb*255.0 + 0.5) + 0.5) / 256.0;
       o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, 1.0);
     }`;
     // zoom about centre (fire modes); Julia passes zoom=1
@@ -382,7 +384,7 @@
     gl.samplerParameteri(glSampLin, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.samplerParameteri(glSampLin, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal"]);
+    glProg.pal = makeProg(VS_QUAD, FS_PAL, ["uHeat", "uPal", "uCurve"]);
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
@@ -883,6 +885,7 @@
     gl.useProgram(glProg.pal.p);
     bindTexUnit(0, heatTex); gl.uniform1i(glProg.pal.u.uHeat, 0);
     bindTexUnit(1, palTex);  gl.uniform1i(glProg.pal.u.uPal, 1);
+    gl.uniform1f(glProg.pal.u.uCurve, heatBoost);   // this layer's Heat boost (installStackItem set it)
     drawQuad();
     return glTex.layerCol;
   }
@@ -1009,6 +1012,7 @@
       gl.useProgram(glProg.pal.p);
       bindTexUnit(0, glTex.heat[curHeat]); gl.uniform1i(glProg.pal.u.uHeat, 0);
       bindTexUnit(1, glTex.pal); gl.uniform1i(glProg.pal.u.uPal, 1);
+      gl.uniform1f(glProg.pal.u.uCurve, heatBoost);   // single-layer path: the selected layer's Heat boost
       drawQuad();
       colorSrc = glTex.native;
     }

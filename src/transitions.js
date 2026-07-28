@@ -128,6 +128,7 @@
     // Camera X/Y/Z rotation is per-layer state now (was the scene-wide `cam`), so seed it into
     // every effect exactly like a filter default — an effect that named it would still win below.
     st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
+    st.heatboost = [0, 0];   // per-layer palette control, seeded like the camera so no effect descriptor needs it
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
