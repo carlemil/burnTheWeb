@@ -171,7 +171,8 @@
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
-  body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop { display: none !important; }
+  body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
+  body.ui-hidden #carddlg, body.ui-hidden #paldlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -565,15 +566,50 @@
   #help .help-tree b { color: #ffcf87; font-weight: 600; }
   #help .help-tree i { color: #9a8a70; font-style: normal; }
   #help {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    /* Sit the box in the space to the RIGHT of the menu (14–264px) and the pop-out column
+       (298–542px), so it never covers them; the backdrop is light so the menu stays readable. */
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: flex-end;
+    background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
   #help.hidden { display: none; }
+  /* Palette inspector popup: the full 0–255 ramp as a 16×16 grid of colour cells. */
+  #paldlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent;   /* float over the scene like the other popups, not a dark modal */
+  }
+  #paldlg.hidden { display: none; }
+  #paldlg .pal-box {
+    position: relative; background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  #paldlg .pal-close {
+    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+  }
+  #paldlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
+  #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
+  #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
   #help .help-box {
-    position: relative; max-width: 470px; max-height: 82vh; overflow-y: auto; margin: 16px;
-    padding: 18px 20px; background: rgba(14, 8, 5, 0.97);
+    position: relative; width: min(1400px, calc(100vw - 580px)); max-height: 88vh; overflow-y: auto;
+    margin: 16px 28px; padding: 20px 26px; background: rgba(14, 8, 5, 0.98);
     border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  /* The per-control list flows into as many ~22em columns as the wide box fits, so the extra
+     width shortens the lines instead of stretching them. Keep each dt with its dd. */
+  #help dl.help-cols { columns: 22em; column-gap: 32px; margin-top: 6px; }
+  #help dl.help-cols dt { break-after: avoid; }
+  #help dl.help-cols dd { break-inside: avoid; margin-bottom: 10px; }
+  @media (max-width: 1160px) {   /* too narrow to clear the menu/column — centre a wide box instead */
+    #help { justify-content: center; }
+    #help .help-box { width: 92vw; margin: 16px; }
+    #help dl.help-cols { columns: 20em; }
   }
   #help h2 { margin: 0 24px 8px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #help p { margin: 0 0 10px; opacity: .9; }
@@ -632,7 +668,7 @@
     position: fixed; right: 16px; bottom: 16px; z-index: 5;
     max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
     padding: 16px 18px 14px;
-    background: rgba(14, 8, 5, 0.92); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -668,35 +704,45 @@
   #carddlg #cardNums { margin: 8px 0 0; font-size: 11px; opacity: .7; }
 
   /* Restore-from-backup dialog */
-  #restoredlg {
+  #restoredlg, #sharepredlg {
     position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
-  #restoredlg.hidden { display: none; }
-  #restoredlg .rst-box {
+  #restoredlg.hidden, #sharepredlg.hidden { display: none; }
+  #restoredlg .rst-box, #sharepredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
     border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #restoredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
-  #restoredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
-  #restoredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; }
+  #restoredlg h2, #sharepredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #restoredlg .rst-sub, #sharepredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
+  #restoredlg .rst-grp, #sharepredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; display: flex; align-items: center; gap: 10px; }
   #restoredlg label.rst-opt { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; cursor: pointer; }
   #restoredlg label.rst-opt.disabled { opacity: .35; cursor: default; }
   #restoredlg .rst-opt input { margin-top: 2px; flex: none; }
   #restoredlg .rst-opt small { display: block; opacity: .6; font-size: 10.5px; }
   #restoredlg .rst-mode { margin: 2px 0 4px 26px; }
   #restoredlg .rst-mode.disabled { opacity: .35; }
-  #restoredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
-  #restoredlg .rst-actions button {
+  #restoredlg .rst-actions, #sharepredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
+  #restoredlg .rst-actions button, #sharepredlg .rst-actions button {
     flex: 1; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
     font: 12px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #restoredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
-  #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  #restoredlg .rst-actions button:hover, #sharepredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #restoredlg .rst-actions #rst-go, #sharepredlg .rst-actions #sharepre-copy { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  /* preset picker: a small "select all/none" toggle + a scrollable checklist of preset names */
+  #sharepredlg .sharepre-toggle {
+    padding: 2px 8px; background: rgba(255, 110, 30, 0.14); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 6px; color: #ffce9a; font: 10.5px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #sharepredlg .sharepre-toggle:hover { background: rgba(255, 122, 26, 0.28); }
+  #sharepredlg .sharepre-list { max-height: 46vh; overflow-y: auto; margin: 2px 0 4px; padding-right: 2px; }
+  #sharepredlg label.sharepre-opt { display: flex; align-items: center; gap: 8px; margin: 5px 0; cursor: pointer; }
+  #sharepredlg .sharepre-opt input { flex: none; accent-color: #ff7a1a; }
+  #sharepredlg .sharepre-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -745,8 +791,9 @@
   <div class="presetrow grid2">
     <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
-    <button id="share" class="audbtn" type="button" title="Copy a link that opens the scene you're looking at">Share</button>
-    <button id="shorten" class="audbtn" type="button" title="Copy a short tinyurl.com link to the current scene — needs the internet, and sends the scene to TinyURL">Short link</button>
+  </div>
+  <div class="presetrow">
+    <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
   </div>
   <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
   <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
@@ -826,7 +873,7 @@
   <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
-  <label>Palette</label>
+  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">▦</button></label>
   <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
   <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
@@ -853,6 +900,16 @@
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
+
+<!-- Palette inspector: the selected palette's full 0–255 ramp as a 16×16 grid of colour cells -->
+<div id="paldlg" class="hidden">
+  <div class="pal-box">
+    <button type="button" class="pal-close" id="pal-close" aria-label="Close">×</button>
+    <h2 id="pal-title">Palette</h2>
+    <div id="pal-grid"></div>
+    <p class="pal-hint">The whole ramp — index 0 (top-left) → 255 (bottom-right), the heat value each colour maps. Hover a cell for its index and hex.</p>
+  </div>
+</div>
 
 <!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
 <div id="carddlg" class="hidden">
@@ -901,6 +958,21 @@
       <button type="button" id="rst-cancel">Cancel</button>
     </div>
     <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
+  </div>
+</div>
+
+<div id="sharepredlg" class="hidden">
+  <div class="rst-box">
+    <h2>Share presets</h2>
+    <p class="rst-sub">Pick the presets to bundle into a link. The recipient chooses merge or replace when they open it.</p>
+    <div class="rst-grp">Presets <button type="button" id="sharepre-all" class="sharepre-toggle">Select none</button></div>
+    <div class="sharepre-list" id="sharepre-list"></div>
+    <p class="rst-sub" id="sharepre-hint"></p>
+    <div class="rst-actions">
+      <button type="button" id="sharepre-copy">Copy link</button>
+      <button type="button" id="sharepre-short" title="Shorten via tinyurl.com — needs the internet, and sends the presets to TinyURL">Copy short link</button>
+      <button type="button" id="sharepre-close">Close</button>
+    </div>
   </div>
 </div>
 
@@ -962,7 +1034,7 @@
     bandCount: 18,        // posterized flat colours across a banded ramp   (BAND_COUNT)
 
     // --- beat-driven slider pulse ---
-    pulse: { drop: 0.2, min: 0.02, max: 3 },   // default fall time (s); per-slider length slider bounds (s)
+    pulse: { drop: 0.2, min: 0.02, max: 1 },   // default fall time (s); per-slider length slider bounds (s) = 20–1000 ms
 
     // --- audio beat detector: the SHIPPED tuning (a preset's beatTune overrides per-scene) ---
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
@@ -1081,7 +1153,7 @@
   const SCENE_FILTER_IDS = new Set(["bloom", "barrel", "scanlines", "vignette", "grain"]);
   const SCENE_FILTER_KEYS = ["bloom", "barrel", "scan", "scancount", "vignette", "grain"];   // their dual-slider param keys
   const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
-  let sceneOn = new Set(["bloom"]);            // scene-global on/off; bloom on = the old unconditional glow
+  let sceneOn = new Set();                     // scene-global filter on/off — none on by default (all filters off)
   // `activeIds` is the SELECTED layer's live filter set (the "DOM is the store for the
   // selected item" rule). The RENDER must follow what is on screen, not what is selected for
   // editing — you can select a muted layer to tweak it while a different one is the only
@@ -1149,6 +1221,13 @@
   const bgOk = v => BG_MODES[v] ? v : "black";
   const paletteBase = new Float32Array(256 * 3);   // the smooth, unbanded RGB ramp
   const clamp = v => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
+  // Ease the lowest few colours (1..PAL_FADE_N−1) into the background so lit areas
+  // fade OUT of it over several steps instead of showing a hard edge where the fractal
+  // meets the black. Index 0 is the forced background; the ramp reaches its real colour
+  // by PAL_FADE_N. Matters most for a REVERSED ramp, whose colour 1 would otherwise be the
+  // brightest one straight against black. smoothstep so the ramp itself has no kink.
+  const PAL_FADE_N = 8;
+  const palFadeW = x => { const s = x / PAL_FADE_N; return s * s * (3 - 2 * s); };
 
   // The original HSL fire ramp: black -> red -> orange -> yellow -> white.
   function hue2rgb(p, q, t) {
@@ -1277,6 +1356,16 @@
     // the forced black below — so the dark background stays black while the ramp runs the
     // other way. Applied after banding, so the stripes simply run the other direction too.
     if (rev) for (let x = 1; x <= 127; x++) { const t = palette[x]; palette[x] = palette[256 - x]; palette[256 - x] = t; }
+    // Smooth the lowest colours into the background (see PAL_FADE_N). Skipped for the
+    // "palette" background, which deliberately keeps the ramp's own colour-0.
+    if (bg !== "palette") {
+      const bv = bg === "white" ? 255 : 0;
+      for (let x = 1; x < PAL_FADE_N; x++) {
+        const w = palFadeW(x), p = palette[x];
+        const r = bv + ((p & 0xff) - bv) * w, g = bv + (((p >> 8) & 0xff) - bv) * w, b = bv + (((p >> 16) & 0xff) - bv) * w;
+        palette[x] = (255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r);
+      }
+    }
     // Background (heat 0): black (default), white, or the palette's own colour-0 (leave as
     // composed). Everything else keeps the old forced-black behaviour byte-for-byte.
     if (bg === "white") palette[0] = 0xFFFFFFFF;
@@ -2743,6 +2832,16 @@
       const a = x * 4, b = (256 - x) * 4;
       for (let k = 0; k < 4; k++) { const tmp = out[a + k]; out[a + k] = out[b + k]; out[b + k] = tmp; }
     }
+    // Smooth the lowest colours into the background (see PAL_FADE_N), same as composePalette.
+    if (bg !== "palette") {
+      const bv = bg === "white" ? 255 : 0;
+      for (let x = 1; x < PAL_FADE_N; x++) {
+        const w = palFadeW(x), j = x * 4;
+        out[j] = clamp(bv + (out[j] - bv) * w);
+        out[j + 1] = clamp(bv + (out[j + 1] - bv) * w);
+        out[j + 2] = clamp(bv + (out[j + 2] - bv) * w);
+      }
+    }
     // Background (heat 0): black (default), white, or the layer palette's own colour-0 (leave as baked).
     if (bg === "white") { out[0] = out[1] = out[2] = 255; }
     else if (bg !== "palette") { out[0] = out[1] = out[2] = 0; }
@@ -3161,6 +3260,11 @@
   // so Drift speed drives it as it always did.
   const NOD_RATE = CONFIG.tuning.nodRate;
   let nodAmp = 0.30, nodSpd = 1, nodPhase = 0;
+  // With "Show box" off there are no walls, so instead of bouncing the whole body WANDERS
+  // around the centre on a slow Lissajous (up/down, sideways and in/out). `swaySize` is the
+  // reach — 0 keeps it at the centre (spinning in place), higher sends it further. Each body
+  // has its own phase so a stack of them spreads out instead of moving as one.
+  let swaySize = 0.5;
   const TETRA_BASE_S = 0.42;           // tetra vertex scale at Size 1×
   const TETRA_UNIT = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
   const TETRA_BOX = [1.0, 1.05, 1.0];    // shared container half-extents; x retuned to aspect
@@ -3168,34 +3272,75 @@
   // Instance k is half the size (and later half the points) of k-1, with its own
   // seed and start state; sin(k·…) offsets are 0 at k=0, so instance 0 reproduces
   // the original solo tetra exactly.
-  function makeTetra(k) {
-    const bs = Math.pow(0.5, k), s = TETRA_BASE_S * bs;
-    const V = [0.95 + 0.35 * Math.sin(k * 1.7), 0.62 + 0.35 * Math.sin(k * 2.9), 0.78 + 0.35 * Math.sin(k * 3.7)];
-    const W = [1.1 + 0.5 * Math.sin(k * 2.3), 0.7 + 0.5 * Math.sin(k * 1.3), 1.4 + 0.5 * Math.sin(k * 3.1)];
-    const P = [0.3 * Math.sin(k * 2.1), 0.3 * Math.sin(k * 1.9), 0.3 * Math.sin(k * 2.7)];
+  // `salt` is the LAYER (stack index): it offsets the start so two Tetrahedron layers begin from
+  // different orientations/velocities instead of in lockstep. salt 0 zeroes every offset, so the
+  // first layer (and every single-layer scene) reproduces the original solo body exactly.
+  function makeTetra(k, salt) {
+    salt = salt || 0;
+    const bs = Math.pow(0.5, k), s = TETRA_BASE_S * bs, sp = salt * 3.4;
+    const V = [0.95 + 0.35 * Math.sin(k * 1.7 + sp), 0.62 + 0.35 * Math.sin(k * 2.9 + sp * 1.3), 0.78 + 0.35 * Math.sin(k * 3.7 + sp * 0.7)];
+    const W = [1.1 + 0.5 * Math.sin(k * 2.3 + sp * 1.1), 0.7 + 0.5 * Math.sin(k * 1.3 + sp * 1.7), 1.4 + 0.5 * Math.sin(k * 3.1 + sp * 0.5)];
+    const P = [0.3 * Math.sin(k * 2.1 + sp), 0.3 * Math.sin(k * 1.9 + sp * 1.4), 0.3 * Math.sin(k * 2.7 + sp * 0.8)];
     const rv = TETRA_UNIT.map(u => v3.scale(u, s));
     const E0 = 0.5 * v3.dot(V, V) + 0.5 * (2 * s * s) * v3.dot(W, W);
-    return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs, seed: (SEED + k * 0x9E3779B1) >>> 0 };
+    return { s, e: 0.985, P, V, W, rv, E0, impacts: [], baseScale: bs,
+             swayT: salt * 1.7, swayPhase: k * 2.399 + salt * 1.3,   // box-off wander clock + per-body/per-layer phase
+             seed: (SEED + k * 0x9E3779B1 + salt * 0x85EBCA6B) >>> 0 };
   }
-  let tetras = [];
-  function ensureTetras(count) {         // grow/shrink the body list to `count`
-    while (tetras.length < count) tetras.push(makeTetra(tetras.length));
-    if (tetras.length > count) tetras.length = count;
+  // Grow/shrink ONE layer's body list to `count`. The list is passed in (each Tetrahedron
+  // layer keeps its own on L.tetras), so stacking two layers no longer shares — and syncs — one
+  // set of tetrahedra. `salt` is that layer, threaded into the new bodies' start state.
+  function ensureTetras(arr, count, salt) {
+    while (arr.length < count) arr.push(makeTetra(arr.length, salt));
+    if (arr.length > count) arr.length = count;
   }
-  // Advance one rigid body one fixed timestep and resolve vertex/wall hits.
+  // Keep the body lively forever: gently renormalise energy back to E0 if the
+  // near-elastic losses (or a rare correction) drift it out of a sane band. Shared
+  // by both modes — it keeps |V| (which sets the orbit speed) and the spin alive.
+  function tetraRenorm(T) {
+    const KE = 0.5 * v3.dot(T.V, T.V) + 0.5 * (2 * T.s * T.s) * v3.dot(T.W, T.W);
+    if (T.E0 > 0 && KE > 1e-6 && (KE < 0.5 * T.E0 || KE > 2 * T.E0)) {
+      const f = Math.sqrt(T.E0 / KE);
+      T.V = v3.scale(T.V, f); T.W = v3.scale(T.W, f);
+    }
+  }
+  // Advance one rigid body one fixed timestep. The orientation always tumbles; the
+  // translation depends on **Show box**: shown ⇒ bounce off the six invisible walls
+  // (the original rigid-body path); hidden ⇒ there are no walls to ricochet in, so it
+  // ORBITS the centre of the box (= centre of the screen) at T.orbitR, tumbling as it
+  // circles, at the same tangential speed it would have bounced with (so Drift speed
+  // still sets the tempo). The radius eases in, so toggling the box slides between the
+  // two motions instead of jumping.
   function tetraStep(T, dt, t) {
     const box = TETRA_BOX, e = T.e;
     const Iinv = 1 / (2 * T.s * T.s);           // isotropic inverse inertia (m = 1)
 
-    T.P = v3.add(T.P, v3.scale(T.V, dt));        // integrate translation
-
-    const wl = Math.hypot(T.W[0], T.W[1], T.W[2]);   // integrate orientation
+    const wl = Math.hypot(T.W[0], T.W[1], T.W[2]);   // integrate orientation (both modes)
     if (wl > 1e-9) {
       const u = v3.scale(T.W, 1 / wl), ang = wl * dt;
       const ct = Math.cos(ang), st = Math.sin(ang);
       T.rv = T.rv.map(r => rotAxis(r, u, ct, st));    // one rotation for all ⇒ rigid
     }
 
+    if (!showBox) {                              // WANDER around the centre — no walls
+      // A slow 3D Lissajous: independent x/y/z sines at irrational-ratio rates never repeat,
+      // so the whole body drifts up/down, sideways and in/out around the midpoint rather than
+      // just spinning. `swaySize` sets the reach (0 = pinned at the centre); the tempo follows
+      // the body's speed so Drift speed still drives it. Ease toward the target so toggling the
+      // box (and changing Sway) slides instead of jumping.
+      const speed = Math.hypot(T.V[0], T.V[1], T.V[2]);
+      T.swayT += speed * dt;
+      const th = T.swayT, ph = T.swayPhase, A = swaySize, kr = 0.06;
+      const tx = A * Math.sin(th + ph);
+      const ty = A * Math.sin(th * 1.37 + ph + 1.1);
+      const tz = A * 0.45 * Math.sin(th * 0.71 + ph + 2.3);
+      T.P = [T.P[0] + (tx - T.P[0]) * kr, T.P[1] + (ty - T.P[1]) * kr, T.P[2] + (tz - T.P[2]) * kr];
+      T.impacts.length = 0;                            // no wall hits ⇒ no rubbery ripples
+      tetraRenorm(T);
+      return;
+    }
+
+    T.P = v3.add(T.P, v3.scale(T.V, dt));        // BOUNCE: integrate translation
     for (let k = 0; k < 4; k++) {                // resolve each vertex against 6 walls
       const r = T.rv[k];
       for (let ax = 0; ax < 3; ax++) {
@@ -3220,14 +3365,7 @@
         }
       }
     }
-
-    // Keep the box lively forever: gently renormalise energy back to E0 if the
-    // near-elastic losses (or a rare correction) drift it out of a sane band.
-    const KE = 0.5 * v3.dot(T.V, T.V) + 0.5 * (2 * T.s * T.s) * v3.dot(T.W, T.W);
-    if (T.E0 > 0 && KE > 1e-6 && (KE < 0.5 * T.E0 || KE > 2 * T.E0)) {
-      const f = Math.sqrt(T.E0 / KE);
-      T.V = v3.scale(T.V, f); T.W = v3.scale(T.W, f);
-    }
+    tetraRenorm(T);
   }
 
   // ---- animation ----
@@ -3343,7 +3481,9 @@
       TETRA_BOX[1] = 1.05;                        // fixed container half-extents (y,z);
       TETRA_BOX[2] = 1.0;                         // x follows from the frame aspect below.
       TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // Box size is a whole-scene zoom (below),
-      ensureTetras(layerCount);                  // not a world resize, so physics room is fixed.
+      L.tetras = L.tetras || [];                 // per-LAYER bodies (salted by stack position), so two
+      ensureTetras(L.tetras, layerCount, stack.indexOf(L));   // Tetrahedron layers diverge instead of following
+      const tetras = L.tetras;                   // this layer's bodies for the loop below
 
       const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
       // Camera distance (pin-hole focal) set relative to the box's corner radius,
@@ -4663,14 +4803,15 @@
   const CONTROLS = [
     { key: "showbox", host: "fx", group: "shape", type: "check", label: "Show box" },
     { key: "boxsize", host: "fx", group: "shape", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
-    { key: "points", host: "fx", group: "shape", type: "plain", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, value: 2500 },
-    { key: "layers", host: "fx", group: "shape", type: "layers", label: "Layers", valId: "vLayers" },
+    { key: "points", host: "fx", group: "shape", type: "dual", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(v), apply: v => cfg.points = Math.round(v), durScale: 10 },
+    { key: "layers", host: "fx", group: "shape", type: "layers", label: "Objects", valId: "vLayers" },
     { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
 
     { key: "size", host: "fx", group: "shape", type: "dual", label: "Size", valId: "vSize", min: 0.3, max: 5, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => fractalSize = v, durScale: 10 },
     { key: "rot", host: "fx", group: "shape", type: "dual", label: "Rotation", valId: "vRot", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°/s", apply: v => rotSpeed = v * Math.PI / 180, durScale: 10 },
     { key: "nod", host: "fx", group: "shape", type: "dual", label: "Box nod", valId: "vNod", min: 0, max: 90, step: 0.1, lo: 17.2, hi: 17.2, fmt: v => sig3(v) + "°", apply: v => nodAmp = v * Math.PI / 180, durScale: 10 },
     { key: "nodspd", host: "fx", group: "shape", type: "dual", label: "Nod speed", valId: "vNodSpd", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => nodSpd = v, durScale: 10 },
+    { key: "sway", host: "fx", group: "shape", type: "dual", label: "Sway", valId: "vSway", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => swaySize = v, durScale: 10 },
     { key: "rpm", host: "fx", group: "cardioid", type: "dual", label: "Cardioid RPM", valId: "vRpm", min: 0, max: 4, step: 0.01, lo: 0.03, hi: 0.15, fmt: v => sig3(v), apply: v => juliaBigRpm = v, durScale: 10 },
     { key: "ratio", host: "fx", group: "cardioid", type: "dual", label: "Inner : outer ratio", valId: "vRatio", min: 1, max: 60, step: 0.5, lo: 21.5, hi: 21.5, fmt: v => sig3(v) + "×", apply: v => juliaRatio = v },
     { key: "inrad", host: "fx", group: "cardioid", type: "dual", label: "Inner radius", valId: "vInRad", min: 0, max: 0.5, step: 0.01, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => juliaInnerR = v, durScale: 10 },
@@ -4728,7 +4869,7 @@
     { key: "sgspeed", host: "fx", group: "shapegrid", type: "dual", label: "Pulse speed", valId: "vSgSpeed", min: 0, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => sgSpeed = v, durScale: 10 },
     // Concentric rings
     { key: "cosides", host: "fx", group: "concentric", type: "dual", label: "Sides", valId: "vCoSides", min: 3, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coSides = Math.round(v), durScale: 10 },
-    { key: "cocount", host: "fx", group: "concentric", type: "dual", label: "Ring count", valId: "vCoCount", min: 1, max: 20, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coCount = v, durScale: 10 },
+    { key: "cocount", host: "fx", group: "concentric", type: "dual", label: "Ring count", valId: "vCoCount", min: 1, max: 20, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coCount = v, durScale: 10 },
     { key: "cothick", host: "fx", group: "concentric", type: "dual", label: "Thickness", valId: "vCoThick", min: 0.02, max: 0.98, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => coThick = v, durScale: 10 },
     { key: "cospeed", host: "fx", group: "concentric", type: "dual", label: "March speed", valId: "vCoSpeed", min: -3, max: 3, step: 0.05, lo: 0.6, hi: 0.6, fmt: v => sig3(v) + "×", apply: v => coSpeed = v, durScale: 10 },
     { key: "cospin", host: "fx", group: "concentric", type: "dual", label: "Spin", valId: "vCoSpin", min: -2, max: 2, step: 0.05, lo: 0.1, hi: 0.1, fmt: v => sig3(v) + "×", apply: v => coSpinSpeed = v, durScale: 10 },
@@ -4789,7 +4930,7 @@
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
-    { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 10, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
+    { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 1, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
     { key: "vignette", host: "filter", group: "f_vignette", type: "dual", label: "Amount", valId: "vVignette", min: 0, max: 1, step: 0.01, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => vigAmt = v, durScale: 10 },
     { key: "grain", host: "filter", group: "f_grain", type: "dual", label: "Amount", valId: "vGrain", min: 0, max: 0.5, step: 0.005, lo: 0.08, hi: 0.08, fmt: v => sig3(v), apply: v => grainAmt = v, durScale: 10 },
     { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
@@ -4801,9 +4942,9 @@
     if (c.type === "check")
       return open + '<label class="check"><input type="checkbox" id="' + c.key + '" checked> ' + c.label + "</label></div>";
     if (c.type === "layers")
-      return open + '<label>Layers <span class="val" id="vLayers"></span></label>' +
-        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer layers">−</button>' +
-        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More layers">+</button></div>' +
+      return open + '<label>' + c.label + ' <span class="val" id="vLayers"></span></label>' +
+        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
+        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
         '<input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
     const lbl = "<label>" + c.label + ' <span class="val" id="' + c.valId + '"></span></label>';
     if (c.type === "plain")
@@ -5032,7 +5173,8 @@
     input.addEventListener("input", update);
     update();
   }
-  bind("points", "vPoints", v => sig3(v), v => cfg.points = +v);
+  // (Points is a dual/ranged slider now — wired by the bindRange loop below, so it gets
+  // L/M/H beat chips like the other ranged controls; `bind` is left for any future plain one.)
 
   // Layers: the −/+ buttons drive a hidden number input (so it rides the normal
   // per-effect state/persist/preset machinery); each layer adds a smaller,
@@ -5399,6 +5541,13 @@
       const st = L === stack[stackSel] ? animPhase[id] : L.anim[id];
       if (st) a.apply(st.out);
     }
+    // "layers" (the per-effect object / fractal-copy count) is a −/+ stepper, not a ranged
+    // slider, so it is NOT in `anims` above and was never installed per item — layerCount kept
+    // the SELECTED layer's value. With two point layers that meant the visible layer's object
+    // count jumped to whatever layer you selected. Install it per item: the selected item's
+    // store is the DOM (#layers), a frozen item's is L.state.layers.
+    const lv = (L === stack[stackSel]) ? +el("layers").value : (L.state ? L.state.layers : layerCount);
+    layerCount = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
     camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
@@ -5511,6 +5660,27 @@
     syncPalSwatches();
   }
   buildPalSwatches();
+  // Palette inspector (▦ button beside the Palette label): the selected palette's full 0–255
+  // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
+  // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
+  // muddy the identity. Hover a cell for its index + hex.
+  function openPalDetail() {
+    const p = PALETTES[+paletteSel.value] || PALETTES[0];
+    el("pal-title").textContent = "Palette · " + p.name;
+    const grid = el("pal-grid"); grid.textContent = "";
+    const h2 = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+    for (let x = 0; x < 256; x++) {
+      const c = p.fn(x), cell = document.createElement("div");
+      cell.style.background = "rgb(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + ")";
+      cell.title = "index " + x + " · #" + h2(c[0]) + h2(c[1]) + h2(c[2]);
+      grid.appendChild(cell);
+    }
+    el("paldlg").classList.remove("hidden");
+  }
+  const closePalDetail = () => el("paldlg").classList.add("hidden");
+  el("pal-detail-btn").addEventListener("click", openPalDetail);
+  el("pal-close").addEventListener("click", closePalDetail);
+  el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
   const showBoxChk = el("showbox");
   showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
   const randSeedChk = el("randseed");
@@ -5538,119 +5708,119 @@
     { id: "sirpinfyer", name: "Sierpiński", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
       params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire"], fractal2d: true,
-      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [22, 74], rise: [52, 131], zoom: [0.9, 1.65], size: [1, 1.25], rot: [-2, -2], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 3850 },
-      beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
-    { id: "tetrafyer", name: "Tetrafyer", subtitle: "Sierpiński tetrahedron · classic fire",
-      help: "A 3D Sierpiński tetrahedron that is a rigid body bouncing inside a box under real physics; its four tumbling corners seed the same fire, and each wall hit bursts a sphere of sparks. The box drifts because two things turn it: Rotation yaws it (it drifts −5…5°/s out of the box — set both thumbs to 0 to stop it) and Box nod pitches it up and down in a slow sine. Box nod 0 holds it level; Nod speed scales how fast it swings.",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
-      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [65, 65], speed: [23, 87], rise: [105, 155], zoom: [1, 1], size: [1.75, 2], rot: [-5, 5], nod: [17.2, 17.2], nodspd: [1, 1], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.15], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: 1500 },
-      beat: {}, extras: { palette: "1", morph: true, showBox: false, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [22, 22], rise: [52, 52], zoom: [1, 1], size: [1, 1], rot: [0, 0], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [3850, 3850] },
+      beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
+    { id: "tetrafyer", name: "Tetrahedron", subtitle: "Sierpiński tetrahedron · classic fire",
+      help: "A 3D Sierpiński tetrahedron, a rigid body under real physics whose four tumbling corners seed the same fire. With Show box on it bounces inside an invisible box, bursting a sphere of sparks on each wall hit; with the box off there are no walls, so it orbits the centre of the screen instead. Objects stacks more tetrahedra, each smaller and moving on its own. Two rotations turn the view: Rotation yaws it (0 by default — spread the thumbs to drift) and Box nod pitches it up and down in a slow sine (Nod speed sets how fast).",
+      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "sway", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
+      defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], sway: [0.5, 0.5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [1500, 1500] },
+      beat: {}, extras: { palette: "1", morph: false, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { const s = juliaSeed(dt); if (useGL) glJulia(s); else julia(s); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], speed: [92, 92], rise: [130, 130], zoom: [1, 1.65], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.81], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.1], phase: [0, 0.052], cardx: [0, 0], points: 1500 },
-      beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 1], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.28], ratio: [8.5, 8.5], inrad: [0.03, 0.03], outrad: [1, 1], phase: [0, 0], cardx: [0, 0], points: [1500, 1500] },
+      beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", subtitle: "Plasma · sinusoidal interference",
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
       params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
       bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 63], bandsize: [1, 3], banddim: [44, 100], zoom: [1, 1], pspeed: [0.5, 1.2], pscale: [0.9, 1.3], pwarp: [0.4, 1.5] },
-      beat: {}, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [1, 1], pspeed: [0.5, 0.5], pscale: [0.9, 0.9], pwarp: [0.4, 0.4] },
+      beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "tunnel", name: "Tunnel", subtitle: "Tunnel · demoscene flythrough",
       help: "A classic demoscene tunnel: the screen is polar-mapped so concentric rings rush toward the vanishing point. Fly speed drives you forward; Twist rotates the pipe.",
       params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
       draw: dt => { const s = tunnelSeed(dt); if (useGL) glShaderDraw("tunnel", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uRings, s.rings); gl.uniform1f(u.uZoom, s.zoom); }); else tunnel(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], tunspeed: [0.6, 1.6], tuntwist: [0.1, 0.5], tunrings: [8, 14], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], tunspeed: [0.6, 0.6], tuntwist: [0.1, 0.1], tunrings: [8, 8], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "metaballs", name: "Metaballs", subtitle: "Metaballs · gooey blobs",
       help: "Blobby fields that merge and split like lava-lamp goo — a sum of inverse-square fields from moving centres, soft-saturated. Turn up Banding for hard iso-contour shells.",
       params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
       draw: dt => { const s = metaSeed(dt); if (useGL) glShaderDraw("metaball", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRadius, s.radius); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); else metaballs(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], mbcount: [5, 5], mbradius: [0.16, 0.2], mbspeed: [0.6, 1.2], mbgain: [0.8, 1.5], zoom: [1, 1], band: [40, 70], bandsize: [1, 3], banddim: [15, 40] },
-      beat: {}, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], mbcount: [5, 5], mbradius: [0.16, 0.16], mbspeed: [0.6, 0.6], mbgain: [0.8, 0.8], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "burningship", name: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(s); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], band: [0, 60], bandsize: [1, 4], banddim: [0, 60], zoom: [0.5, 0.62], rpm: [0.2, 0.7], ratio: [8.5, 20.5], inrad: [0.15, 0.4], outrad: [1.4, 1.9], phase: [0, 0.052], cardx: [0, 0] },
-      beat: {}, extras: { palette: "0", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [0.5, 0.5], rpm: [0.2, 0.2], ratio: [8.5, 8.5], inrad: [0.15, 0.15], outrad: [1.4, 1.4], phase: [0, 0], cardx: [0, 0] },
+      beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "kaleidoscope", name: "Kaleidoscope", subtitle: "Kaleidoscope · mirrored symmetry",
       help: "A moving field folded into mirror-symmetric wedges, like looking down a kaleidoscope. Segments sets the symmetry, Spin rotates the whole thing, Flow animates the pattern. Add banding for sharp mandala rings.",
       params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
       draw: dt => { const s = kaleidoSeed(dt); if (useGL) glShaderDraw("kaleido", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSeg, s.seg); gl.uniform1f(u.uRot, s.rot); gl.uniform1f(u.uZoom, s.zoom); }); else kaleidoscope(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], ksegments: [6, 6], krotspeed: [0.1, 0.3], knoisespeed: [0.6, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], ksegments: [6, 6], krotspeed: [0.1, 0.1], knoisespeed: [0.6, 0.6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "rotozoom", name: "Rotozoomer", subtitle: "Rotozoomer · rotate + zoom",
       help: "The classic Amiga rotozoomer: a tiled grid texture spun and pulse-zoomed in real time. Rotation sets the spin, Zoom pulse the breathing scale, Tile density how fine the grid is.",
       params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
       draw: dt => { const s = rotozoomSeed(dt); if (useGL) glShaderDraw("rotozoom", u => { gl.uniform1f(u.uAngle, s.angle); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uTile, s.tile); gl.uniform1f(u.uZoom, s.zoom); }); else rotozoom(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], rzrot: [0.2, 0.6], rzzoom: [0.3, 0.7], rztile: [3, 6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], rzrot: [0.2, 0.2], rzzoom: [0.3, 0.3], rztile: [3, 3], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "munch", name: "Munching Squares", subtitle: "Munching squares · XOR pattern",
       help: "The hypnotic PDP-1 classic: each pixel is ((x XOR y) + time) masked to a value, mapped through the palette. Munch speed animates it, Square size sets the pixel chunkiness, Detail the wrap.",
       params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "xor"], bakesOwnZoom: true,
       draw: dt => { const s = munchSeed(dt); if (useGL) glShaderDraw("munch", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uMask, s.mask); gl.uniform1f(u.uZoom, s.zoom); }); else munch(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], xorspeed: [12, 28], xorscale: [0.35, 0.5], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], xorspeed: [12, 12], xorscale: [0.35, 0.35], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "moire", name: "Moiré", subtitle: "Moiré · interference shimmer",
       help: "Two sets of concentric rings drift over each other and interfere into shimmering moiré bands. Ring frequency sets how tight the rings are, Drift speed how fast the centres move, Blend fades between multiply and add.",
       params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
       draw: dt => { const s = moireSeed(dt); if (useGL) glShaderDraw("moire", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uZoom, s.zoom); }); else moire(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], mofreq: [8, 16], modrift: [0.6, 1.2], momix: [0, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], mofreq: [8, 8], modrift: [0.6, 0.6], momix: [0.3, 0.3], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "newton", name: "Newton", subtitle: "Newton fractal · root basins",
       help: "The Newton fractal: each pixel is coloured by which root of z³−1 Newton's method converges to, plus how many steps it took, giving three interlocking basins with fractal borders. Root spin rotates it; Relaxation warps the convergence.",
       params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
       draw: dt => { const s = newtonSeed(dt); if (useGL) glShaderDraw("newton", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uRelax, s.relax); gl.uniform1f(u.uZoom, s.zoom); }); else newton(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], nwspin: [0.05, 0.25], nwrelax: [0.9, 1.1], zoom: [0.8, 1.2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "5", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], nwspin: [0.05, 0.05], nwrelax: [0.9, 0.9], zoom: [0.8, 0.8], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", subtitle: "Multibrot · power sweep",
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Power is a whole number and steps 2, 3, 4… — each step adds a bulb of symmetry. The seed rides the matching degree-power cardioid, which has power−1 cusps, and the orbit sprints through every one of them and eases off in between.",
       params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // juliaPower BEFORE juliaSeed: the orbit must ride this frame's power, not the last one's.
       draw: dt => { juliaPower = mbPower; const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], mbexp: [2, 4], band: [0, 100], bandsize: [1, 5], banddim: [0, 100], zoom: [1, 1.4], rpm: [0.15, 0.5], ratio: [8.5, 20.5], inrad: [0.03, 0.1], outrad: [1, 1.2], phase: [0, 0.052], cardx: [0, 0] },
-      beat: {}, extras: { palette: "4", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], mbexp: [2, 2], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [1, 1], rpm: [0.15, 0.15], ratio: [8.5, 8.5], inrad: [0.03, 0.03], outrad: [1, 1], phase: [0, 0], cardx: [0, 0] },
+      beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
       params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
       draw: dt => { const s = copperSeed(dt); if (useGL) glShaderDraw("copper", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); else copperbars(dt); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], cbcount: [5, 5], cbspeed: [0.6, 1.4], cbwidth: [0.08, 0.16], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "3", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], cbcount: [5, 5], cbspeed: [0.6, 0.6], cbwidth: [0.08, 0.08], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", subtitle: "Strange attractor · de Jong",
       help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow. The map is exact, so Point jitter scatters each point a little to soften the threads — set it to 0 for the bare, hard-edged curves.",
       params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "attractor"],
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
-      defaults: { palcycle: [8, 8], palhold: [0, 0], ata: [1.3, 1.5], atb: [-2.4, -2.2], atc: [2.3, 2.5], atd: [-2.2, -2.0], atjit: [0.5, 0.5], points: 6000, rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
-      beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
     { id: "polygon", name: "Polygon", subtitle: "Polygon · rotating N-gon",
       help: "A single rotating regular polygon drawn as a signed-distance field. Sides morphs triangle → square → … → circle; Size scales it, Spin rotates it (negative reverses), and Thickness hollows it out — 1 is solid, low values leave a thin outline. Arm Size or Spin to a beat to make it throb.",
       params: ["pgsides", "pgrad", "pgthick", "pgspin", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = polygonSeed(dt); if (useGL) glShaderDraw("polygon", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uSides, s.sides); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uZoom, s.zoom); }); else polygon(s); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], pgsides: [5, 5], pgrad: [0.35, 0.35], pgthick: [1, 1], pgspin: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "8", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], pgsides: [5, 5], pgrad: [0.35, 0.35], pgthick: [1, 1], pgspin: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
     { id: "shapegrid", name: "Shape grid", subtitle: "Shape grid · pulsing lattice",
       help: "A tiled lattice of one shape. Density sets how many cells fill the screen, Size the shape within each cell, Squareness morphs circle → square, and Pulse (with Pulse speed) makes every cell breathe out of phase with its neighbours. Reads like a pulsing dot-grid or checkerboard.",
       params: ["sgcells", "sgdot", "sgsquare", "sgpulse", "sgspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = shapegridSeed(dt); if (useGL) glShaderDraw("shapegrid", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCells, s.cells); gl.uniform1f(u.uDot, s.dot); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uPulse, s.pulse); gl.uniform1f(u.uZoom, s.zoom); }); else shapegrid(s); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], sgcells: [9, 9], sgdot: [0.3, 0.3], sgsquare: [0, 0], sgpulse: [0.35, 0.35], sgspeed: [1.2, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "7", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], sgcells: [9, 9], sgdot: [0.3, 0.3], sgsquare: [0, 0], sgpulse: [0.35, 0.35], sgspeed: [1.2, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "concentric", name: "Concentric rings", subtitle: "Concentric · shape tunnel",
       help: "Nested polygon (or circle) contours radiating out from the centre and marching outward over time — a hypnotic target / shape-tunnel. Sides sets the shape, Ring count how tightly packed the rings are, March speed how fast they travel (negative pulls inward), Thickness the ring width, and Spin rotates the whole thing.",
       params: ["cosides", "cocount", "cothick", "cospeed", "cospin", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = concentricSeed(dt); if (useGL) glShaderDraw("concentric", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSides, s.sides); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uZoom, s.zoom); }); else concentric(s); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], cosides: [6, 6], cocount: [6, 6], cothick: [0.4, 0.4], cospeed: [0.6, 0.6], cospin: [0.1, 0.1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "1", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], cosides: [6, 6], cocount: [6, 6], cothick: [0.4, 0.4], cospeed: [0.6, 0.6], cospin: [0.1, 0.1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "bounce", name: "Bouncing shapes", subtitle: "Bouncing shapes · DVD-logo drift",
       help: "A handful of shapes drifting and bouncing off the edges, DVD-logo style. Count sets how many, Size how big, Squareness morphs circle → square, and Speed how fast they travel. Tick a Fade pixel or Fire feedback filter to give them glowing trails.",
       params: ["bncount", "bnrad", "bnsquare", "bnspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = bounceSeed(dt); if (useGL) glShaderDraw("bounce", u => { gl.uniform2fv(u.uPos, s.pos); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uZoom, s.zoom); }); else bounce(s); },
-      defaults: { palcycle: [8, 8], palhold: [0, 0], bncount: [4, 4], bnrad: [0.09, 0.09], bnsquare: [0.6, 0.6], bnspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "2", morph: true, showBox: true, randSeed: true } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bncount: [4, 4], bnrad: [0.09, 0.09], bnsquare: [0.6, 0.6], bnspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -6044,11 +6214,13 @@
     for (const id of v) if (typeof id === "string" && FILTER_BY_ID[id]) seen.add(id);
     return seen;
   }
-  // A descriptor's default filter list. Point effects (no `draw` hook — including
-  // Attractor, which uses `stamp`) ship Fire on, so today's look is unchanged; every
-  // effect ships Bloom on, because the glow used to be unconditional.
+  // A descriptor's default filter list. Every effect now ships with NO filters on — a new
+  // effect / layer starts as its raw output, and you tick the filters you want. (A descriptor
+  // may still pin its own `filters` list; none do.) NOTE: point effects (Sierpiński / Tetrafyer
+  // / Attractor) render as raw stamped points without `fire` — tick Fire to get the rising-fire
+  // look. Bloom is off too, so nothing glows until you enable it.
   function presetFilters(e) {
-    const d = EFFECTS[e].filters || (EFFECTS[e].draw ? ["bloom"] : ["fire", "bloom"]);
+    const d = EFFECTS[e].filters || [];
     return d.slice();
   }
   // ---- TRANSITIONS: how one preset gives way to the next ---------------------
@@ -6957,7 +7129,7 @@
       const st = (saved.states && saved.states[e]) || {};
       const vals = {};
       for (const k of SCENE_FILTER_KEYS) if (Array.isArray(st[k])) vals[k] = st[k];
-      writeSceneFx({ on: on.length ? on : ["bloom"], vals });   // default to bloom on (the old unconditional glow)
+      writeSceneFx({ on, vals });   // lift the selected effect's scene-filters; none ⇒ no scene filters (all off)
     }
     if (saved.plens) {                  // ...and their lengths (absent in pre-feature blobs → PULSE_DROP)
       for (const k in plenStates) {
@@ -7029,7 +7201,7 @@
   function installShared(d) {
     if (!d) return false;
     initStates(); initBeatStates(); initPulseStates(); initPlenStates(); initExtras();
-    sceneOn = new Set(["bloom"]);     // same reason: a shared scene omitting sceneFx must not inherit the recipient's Scene filters
+    sceneOn = new Set();     // same reason: a shared scene omitting sceneFx must not inherit the recipient's Scene filters
     // Same reason as the five above: a shared scene with no `layers` must land as ONE
     // item, not inherit whatever stack the recipient happened to have built.
     installStack([newStackItem(0)]);
@@ -7037,14 +7209,35 @@
     curPreset = -1;                  // a shared scene isn't one of your saved presets
     return true;
   }
-  // ?z= (deflated) or ?s= (legacy, uncompressed) — the settings, never the presets.
-  // ?z= wins if both are somehow present; they are mutually exclusive by construction.
+  // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
+  // #zp=/#sp= are the PRESET-BUNDLE links (a curated preset library), checked first and
+  // mutually exclusive with the scene params. All are mutually exclusive by construction —
+  // a share URL carries one.
   function applyShared() {
+    const parse = json => { try { return JSON.parse(json); } catch (e) { return null; } };
+    // Preset-bundle links → openSharedLibrary → the Restore dialog (merge/replace). That
+    // function lives in a LATER slice (persist-backup-restore) and applyShared() runs during
+    // THIS slice's load, before that one — so its state is still in the temporal dead zone.
+    // The async unzip .then already lands after every slice has run; the sync #sp= path MUST
+    // be deferred the same way (a microtask) or openSharedLibrary throws. Same trap as card/beatUi.
+    //
+    // The bundle rides in the FRAGMENT (location.hash), never the query: several KB of ?query
+    // makes GitHub Pages / Fastly reject the link with 414 URI Too Long before any JS runs,
+    // whereas the fragment is never sent to the server. Read the hash first, then the query
+    // so the earlier ?zp=/?sp= links still decode.
+    const bundle = re => (location.hash.match(re) || location.search.match(re));
+    const zp = bundle(/[?&#]zp=([^?&#]+)/);
+    const sp = zp ? null : bundle(/[?&#]sp=([^?&#]+)/);
+    if (zp || sp) {
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}   // clear query AND fragment
+      if (sp) { Promise.resolve().then(() => openSharedLibrary(parse(atobSafe(sp[1])))); return; }
+      unzipFromB64(zp[1]).then(json => openSharedLibrary(parse(json)));
+      return;
+    }
     const z = location.search.match(/[?&]z=([^&#]+)/);
     const m = z ? null : location.search.match(/[?&]s=([^&#]+)/);
     if (!z && !m) return;
     stripShareParam();
-    const parse = json => { try { return JSON.parse(json); } catch (e) { return null; } };
     if (m) { installShared(parse(atobSafe(m[1]))); return; }
     // The compressed path is async, so it lands after the startup below has already
     // run setEffect() on the recipient's own scene — re-activate once it arrives.
@@ -7462,6 +7655,9 @@
   // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
   // change the effect, other effects, or the shared controls (auto-cycle, panel).
   el("reset").addEventListener("click", () => {
+    // Confirm first — this throws away every change to the effect (values, ranges, beat
+    // wiring, palette) and is not undoable.
+    if (!confirm("Reset " + EFFECTS[effect].name + " to its shipped defaults?\nYour changes to this effect (sliders, ranges, beats, palette) will be lost.")) return;
     states[effect] = presetState(effect);
     beatStates[effect] = presetBeat(effect);
     pulseStates[effect] = presetPulse(effect);
@@ -7648,6 +7844,32 @@
              : dir + "?s=" + btoa(unescape(encodeURIComponent(json)));   // no CompressionStream
   }
 
+  // Build a PRESET-BUNDLE link: a curated set of presets (NOT the live scene), so you can
+  // hand someone "a list of cool presets" in one URL. Same codec as shareUrl — serializeBlob
+  // (effect indices → ids, exactly as Backup writes each preset) then deflate.
+  //
+  // The payload rides in the URL **FRAGMENT** (#zp= deflated / #sp= uncompressed), NOT the
+  // query, and this is load-bearing: a bundle of presets is several KB, and a multi-KB
+  // ?query makes GitHub Pages / Fastly reject the link with **414 URI Too Long** before any
+  // JS runs. The fragment is never sent to the server, so a bundle of any size loads. It is
+  // also DISTINCT from the scene link's ?z=/?s= so the two decode paths never collide.
+  // `chosen` is a list of in-memory preset objects; their `layers` already carry effect ids
+  // (stackItemOut), and serializeBlob converts each preset's top-level `effect`. Recipient
+  // side: applyShared routes #zp=/#sp= into the Restore dialog (merge/replace).
+  async function libraryUrl(chosen) {
+    // Alongside the presets, carry the auto-cycle toggle and which preset is selected, so the
+    // receiver opens on the same scene and the same show plays. curPreset is the index WITHIN
+    // `chosen` (curation reindexes), omitted when the selected preset isn't in the bundle.
+    const blob = { presets: chosen, cycle: cycleChk.checked };
+    const selIdx = curPreset >= 0 ? chosen.indexOf(presets[curPreset]) : -1;
+    if (selIdx >= 0) blob.curPreset = selIdx;
+    const json = JSON.stringify(serializeBlob(blob));
+    const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
+    const z = await zipToB64(json);
+    return z ? dir + "#zp=" + z
+             : dir + "#sp=" + btoa(unescape(encodeURIComponent(json)));
+  }
+
   // Copy `text`, flashing the button's label. Clipboard API needs a secure
   // context, so keep the execCommand fallback for file:// and plain http.
   // `text` may be a string or a Promise of one. Clipboard writes are gesture-bound,
@@ -7679,21 +7901,15 @@
     else fallback();
   }
 
-  el("share").addEventListener("click", () => copyText(shareUrl(), el("share"), "Link copied!", "Share"));
-
-  // Short link: hand the (long) share URL to TinyURL and copy what comes back.
-  // Deliberately a separate, opt-in button — unlike Share it needs the network
-  // and hands the scene blob to a third party. TinyURL is the pick because it
-  // 301s to the target byte-for-byte (no interstitial, no injected params), sends
-  // CORS headers, needs no API key, and doesn't block github.io the way is.gd
-  // does. POST (not GET) so a big scene can't hit a query-length ceiling; the
-  // form-urlencoded body keeps it a simple request, so there's no preflight.
-  el("shorten").addEventListener("click", async () => {
-    const btn = el("shorten");
-    btn.disabled = true; btn.textContent = "Shortening…";
-    const url = await shareUrl();
-    const fail = msg => { btn.textContent = msg; btn.disabled = false; setTimeout(() => btn.textContent = "Short link", 1800); };
-    fetch("https://tinyurl.com/api-create.php", {
+  // POST a (long) URL to TinyURL and resolve the short URL it returns — the preset-bundle
+  // dialog's "Copy short link" uses it. TinyURL is the pick because it 301s to the target
+  // byte-for-byte (no interstitial, no injected params), sends CORS headers, needs no API
+  // key, and doesn't block github.io the way is.gd does. POST (not GET) so a big bundle can't
+  // hit a query-length ceiling; the form-urlencoded body keeps it a simple request, so there's
+  // no preflight. The API reports failure with a 200 + an error string, so the response SHAPE
+  // is validated, not the status.
+  function shortenUrl(url) {
+    return fetch("https://tinyurl.com/api-create.php", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: "url=" + encodeURIComponent(url),
@@ -7701,14 +7917,10 @@
       .then(r => (r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status))))
       .then(t => {
         const short = t.trim();
-        // The API reports failure with a 200 + an error string, so check the shape.
         if (!/^https?:\/\/tinyurl\.com\/\S+$/.test(short)) throw new Error(short);
-        btn.disabled = false;
-        copyText(short, btn, "Short link copied!", "Short link");
-        track("share_shorten");
-      })
-      .catch(() => fail("Shorten failed"));
-  });
+        return short;
+      });
+  }
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
   function snapshotScene() {
@@ -7729,11 +7941,28 @@
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
+      // Preset TTL and Transition are otherwise GLOBAL (fullSnapshot keeps them too, for the
+      // "— unsaved scene —" case), but a preset also remembers its own so a shared/backed-up
+      // scene plays with the hold time and transition it was authored with — applyPreset installs
+      // them. Older presets omit these; applyPreset then leaves the current global values alone.
+      ttl: [+el("ttl-lo").value, +el("ttl-hi").value],
+      tdur: [+el("tdur-lo").value, +el("tdur-hi").value],
       extra: JSON.parse(JSON.stringify(extras[effect])),
       // Null (and dropped by JSON) whenever the stack holds one item, so a non-stacked
       // preset is exactly the shape it has always been.
       layers: stackOut(),
     };
+  }
+  // Install a [lo,hi] pair onto a global dual slider from a preset, validated against the LIVE
+  // bounds (a bad or absent value leaves the slider alone), dispatching input so the fill,
+  // readout and any listeners follow. Used for the per-preset TTL + Transition.
+  function applyPresetDual(loId, hiId, v) {
+    if (!Array.isArray(v)) return;
+    const lo = el(loId), hi = el(hiId); if (!lo || !hi) return;
+    const a = +v[0], b = +v[1], mn = +lo.min, mx = +lo.max;
+    if (!(isFinite(a) && isFinite(b) && a >= mn && a <= mx && b >= mn && b <= mx)) return;
+    lo.value = a; hi.value = b;
+    lo.dispatchEvent(new Event("input")); hi.dispatchEvent(new Event("input"));
   }
   function defaultPresets() {
     return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
@@ -7745,7 +7974,7 @@
   // beat/pulse/plen are pruned (their defaults are universal); state maps are kept whole
   // so nothing can silently drift. Cam and beat-tuning are omitted because they are the
   // shipped defaults here.
-  const DEFAULT_SCENE = {"name":"JuliaBgTet","effect":"tetrafyer","state":{"rise":[105,155],"burn":[120,120],"fade":[0.970788043478261,0.989619565217391],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1.02,1.02],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[7.6304347826087,7.70652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.00815217391304348,1.5],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,0],"band":[0,0],"bandsize":[1,1],"banddim":[65,65],"speed":[23,60],"zoom":[1,1],"size":[1.5,1.5],"rot":[-5,5],"nod":[17.2,17.2],"nodspd":[1,1],"boxsize":[5,5],"layers":3,"rpm":[0.03,0.15],"ratio":[21.5,21.5],"inrad":[0.03,0.03],"outrad":[1.05,1.05],"phase":[0,0],"points":1923.07692307692},"beat":{"speed":{"low":true,"mid":false,"high":false},"size":{"low":false,"mid":true,"high":false},"rise":{"low":false,"mid":false,"high":true},"bloom":{"low":false,"mid":false,"high":true}},"plen":{"bloom":0.13},"extra":{"palette":"16","morph":false,"showBox":true,"randSeed":true,"filters":["fade","wedge","bloom"]},"ranges":{"outrad-lo":{"min":"1","max":"2","step":"any"},"outrad-hi":{"min":"1","max":"2","step":"any"},"cardx-lo":{"min":"-50","max":"50","step":"1"},"cardx-hi":{"min":"-50","max":"50","step":"1"},"mbexp-lo":{"min":"2","max":"9","step":"any"},"mbexp-hi":{"min":"2","max":"9","step":"any"},"cbcount-lo":{"min":"1","max":"12","step":"1"},"cbcount-hi":{"min":"1","max":"12","step":"1"},"swirl-lo":{"min":"-5","max":"5","step":"any"},"swirl-hi":{"min":"-5","max":"5","step":"any"},"palcycle-lo":{"min":"0","max":"12","step":"any"},"palcycle-hi":{"min":"0","max":"12","step":"any"}},"layers":[{"effect":"multibrot","state":{"rise":[3,14.7771739130435],"burn":[120,120],"fade":[0.989619565217391,0.992309782608696],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[0.998260869565217,0.999565217391304],"zfbkeep":[0.94,0.94],"swirl":[-0.978260869565217,0.978260869565217],"swirlkeep":[0.938505434782609,0.973478260869565],"twist":[1.2,1.2],"wedgeseg":[6.41304347826087,6.41304347826087],"wedgerot":[0,0],"glitch":[0.00543478260869565,0.0190217391304348],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.717391304347826,0.717391304347826],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[1.09239130434783,1.09239130434783],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,5.21739130434783],"mbexp":[5.0054347826087,5.0054347826087],"band":[0,0],"bandsize":[1,1],"banddim":[0,0],"zoom":[1,1.24184782608696],"rpm":[0.347826086956522,0.565217391304348],"ratio":[50.3804347826087,56.4728260869565],"inrad":[0.03,0.06],"outrad":[1.05978260869565,1.09782608695652],"phase":[0.00706521739130435,0.0152173913043478],"cardx":[0,0]},"beat":{"phase":{"low":true,"mid":false,"high":false},"swirl":{"low":false,"mid":false,"high":true},"edge":{"low":false,"mid":false,"high":true}},"pulse":{"swirl":"bounce","edge":"ease"},"plen":{"inrad":0.34,"palcycle":3,"swirlkeep":0.46,"edge":1.43},"palette":"17","filters":["fade","zoomfb","wedge","bloom"],"blend":"max","gain":1,"mute":false},{"effect":"multibrot","state":{"rise":[130,130],"burn":[120,120],"fade":[0.94,0.94],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1,1],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[7.70652173913043,7.70652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.35,0.35],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,5.8695652173913],"mbexp":[2,4],"band":[0,100],"bandsize":[1,5],"banddim":[0,100],"zoom":[1.12771739130435,1.41304347826087],"rpm":[0.15,0.5],"ratio":[8.5,20.5],"inrad":[0.03,0.1],"outrad":[1.125,1.19565217391304],"phase":[0,0.052],"cardx":[0,0]},"palette":"18","filters":["fade","wedge","bloom"],"blend":"max","gain":0.7,"mute":false},{"effect":"tetrafyer","state":{"rise":[105,155],"burn":[120,120],"fade":[0.970788043478261,0.989619565217391],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1.02,1.02],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[7.6304347826087,7.70652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.00815217391304348,1.5],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,0],"band":[0,0],"bandsize":[1,1],"banddim":[65,65],"speed":[23,60],"zoom":[1,1],"size":[1.5,1.5],"rot":[-5,5],"nod":[17.2,17.2],"nodspd":[1,1],"boxsize":[5,5],"layers":3,"rpm":[0.03,0.15],"ratio":[21.5,21.5],"inrad":[0.03,0.03],"outrad":[1.05,1.05],"phase":[0,0],"points":1923.07692307692},"beat":{"speed":{"low":true,"mid":false,"high":false},"size":{"low":false,"mid":true,"high":false},"rise":{"low":false,"mid":false,"high":true},"bloom":{"low":false,"mid":false,"high":true}},"plen":{"bloom":0.13},"palette":"16","filters":["fade","wedge","bloom"],"blend":"max","gain":0.75,"mute":false},{"effect":"copperbars","state":{"rise":[130,130],"burn":[120,120],"fade":[0.94,0.94],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1.02,1.02],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[10.0652173913043,10.0652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.35,0.35],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,0],"cbcount":[1,3],"cbspeed":[0.244565217391304,0.423913043478261],"cbwidth":[0.02,0.09],"zoom":[1,1],"band":[0,0],"bandsize":[1,1],"banddim":[0,0]},"beat":{"cbwidth":{"low":true,"mid":false,"high":false}},"plen":{"cbwidth":0.25},"palette":"15","filters":["wedge","bloom"],"blend":"max","gain":0.48,"mute":false}]};
+  const DEFAULT_SCENE = {"name":"JuliaBgTet","effect":"tetrafyer","state":{"rise":[105,155],"burn":[120,120],"fade":[0.970788043478261,0.989619565217391],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1.02,1.02],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[7.6304347826087,7.70652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.00815217391304348,1.5],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,0],"band":[0,0],"bandsize":[1,1],"banddim":[65,65],"speed":[23,60],"zoom":[1,1],"size":[1.5,1.5],"rot":[-5,5],"nod":[17.2,17.2],"nodspd":[1,1],"boxsize":[5,5],"layers":3,"rpm":[0.03,0.15],"ratio":[21.5,21.5],"inrad":[0.03,0.03],"outrad":[1.05,1.05],"phase":[0,0],"points":[1923.07692307692,1923.07692307692]},"beat":{"speed":{"low":true,"mid":false,"high":false},"size":{"low":false,"mid":true,"high":false},"rise":{"low":false,"mid":false,"high":true},"bloom":{"low":false,"mid":false,"high":true}},"plen":{"bloom":0.13},"extra":{"palette":"16","morph":false,"showBox":true,"randSeed":true,"filters":["fade","wedge","bloom"]},"ranges":{"outrad-lo":{"min":"1","max":"2","step":"any"},"outrad-hi":{"min":"1","max":"2","step":"any"},"cardx-lo":{"min":"-50","max":"50","step":"1"},"cardx-hi":{"min":"-50","max":"50","step":"1"},"mbexp-lo":{"min":"2","max":"9","step":"any"},"mbexp-hi":{"min":"2","max":"9","step":"any"},"cbcount-lo":{"min":"1","max":"12","step":"1"},"cbcount-hi":{"min":"1","max":"12","step":"1"},"swirl-lo":{"min":"-5","max":"5","step":"any"},"swirl-hi":{"min":"-5","max":"5","step":"any"},"palcycle-lo":{"min":"0","max":"12","step":"any"},"palcycle-hi":{"min":"0","max":"12","step":"any"}},"sceneFx":{"on":["bloom"],"vals":{"bloom":[0.00815217391304348,1.5]}},"layers":[{"effect":"multibrot","state":{"rise":[3,14.7771739130435],"burn":[120,120],"fade":[0.989619565217391,0.992309782608696],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[0.998260869565217,0.999565217391304],"zfbkeep":[0.94,0.94],"swirl":[-0.978260869565217,0.978260869565217],"swirlkeep":[0.938505434782609,0.973478260869565],"twist":[1.2,1.2],"wedgeseg":[6.41304347826087,6.41304347826087],"wedgerot":[0,0],"glitch":[0.00543478260869565,0.0190217391304348],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.717391304347826,0.717391304347826],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[1.09239130434783,1.09239130434783],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,5.21739130434783],"mbexp":[5.0054347826087,5.0054347826087],"band":[0,0],"bandsize":[1,1],"banddim":[0,0],"zoom":[1,1.24184782608696],"rpm":[0.347826086956522,0.565217391304348],"ratio":[50.3804347826087,56.4728260869565],"inrad":[0.03,0.06],"outrad":[1.05978260869565,1.09782608695652],"phase":[0.00706521739130435,0.0152173913043478],"cardx":[0,0]},"beat":{"phase":{"low":true,"mid":false,"high":false},"swirl":{"low":false,"mid":false,"high":true},"edge":{"low":false,"mid":false,"high":true}},"pulse":{"swirl":"bounce","edge":"ease"},"plen":{"inrad":0.34,"palcycle":3,"swirlkeep":0.46,"edge":1.43},"palette":"17","filters":["fade","zoomfb","wedge","bloom"],"blend":"max","gain":1,"mute":false},{"effect":"multibrot","state":{"rise":[130,130],"burn":[120,120],"fade":[0.94,0.94],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1,1],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[7.70652173913043,7.70652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.35,0.35],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,5.8695652173913],"mbexp":[2,4],"band":[0,100],"bandsize":[1,5],"banddim":[0,100],"zoom":[1.12771739130435,1.41304347826087],"rpm":[0.15,0.5],"ratio":[8.5,20.5],"inrad":[0.03,0.1],"outrad":[1.125,1.19565217391304],"phase":[0,0.052],"cardx":[0,0]},"palette":"18","filters":["fade","wedge","bloom"],"blend":"max","gain":0.7,"mute":false},{"effect":"tetrafyer","state":{"rise":[105,155],"burn":[120,120],"fade":[0.970788043478261,0.989619565217391],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1.02,1.02],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[7.6304347826087,7.70652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.00815217391304348,1.5],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,0],"band":[0,0],"bandsize":[1,1],"banddim":[65,65],"speed":[23,60],"zoom":[1,1],"size":[1.5,1.5],"rot":[-5,5],"nod":[17.2,17.2],"nodspd":[1,1],"boxsize":[5,5],"layers":3,"rpm":[0.03,0.15],"ratio":[21.5,21.5],"inrad":[0.03,0.03],"outrad":[1.05,1.05],"phase":[0,0],"points":[1923.07692307692,1923.07692307692]},"beat":{"speed":{"low":true,"mid":false,"high":false},"size":{"low":false,"mid":true,"high":false},"rise":{"low":false,"mid":false,"high":true},"bloom":{"low":false,"mid":false,"high":true}},"plen":{"bloom":0.13},"palette":"16","filters":["fade","wedge","bloom"],"blend":"max","gain":0.75,"mute":false},{"effect":"copperbars","state":{"rise":[130,130],"burn":[120,120],"fade":[0.94,0.94],"diffuse":[1,1],"diffkeep":[0.97,0.97],"echo":[2,2],"echoang":[90,90],"echokeep":[0.94,0.94],"zfb":[1.02,1.02],"zfbkeep":[0.94,0.94],"swirl":[2,2],"swirlkeep":[0.94,0.94],"twist":[1.2,1.2],"wedgeseg":[10.0652173913043,10.0652173913043],"wedgerot":[0,0],"glitch":[0.05,0.05],"glitchrows":[8,8],"pixel":[6,6],"soften":[-0.6,-0.6],"softrad":[1.5,1.5],"edge":[0.7,0.7],"poster":[5,5],"halfdot":[4,4],"halfamt":[0.8,0.8],"threshlvl":[0.5,0.5],"threshamt":[0.8,0.8],"chroma":[1,1],"mirror":[1,1],"bloom":[0.35,0.35],"barrel":[0.15,0.15],"scan":[0.35,0.35],"scancount":[240,240],"vignette":[0.4,0.4],"grain":[0.08,0.08],"palcycle":[0,0],"palhold":[0,0],"cbcount":[1,3],"cbspeed":[0.244565217391304,0.423913043478261],"cbwidth":[0.02,0.09],"zoom":[1,1],"band":[0,0],"bandsize":[1,1],"banddim":[0,0]},"beat":{"cbwidth":{"low":true,"mid":false,"high":false}},"plen":{"cbwidth":0.25},"palette":"15","filters":["wedge","bloom"],"blend":"max","gain":0.48,"mute":false}]};
   // Convert it to the in-memory preset shape (numeric top-level effect; layer effect ids
   // are converted later by mergeLayers). Returns null if it names an effect we no longer
   // ship, in which case the first visit just falls back to the per-effect defaults.
@@ -7913,6 +8142,10 @@
     // el.value, which the DOM silently clamps to the slider's current min/max — so a
     // stale bound would quietly rewrite the value we are about to install.
     applyRanges(p.ranges);
+    // Preset TTL + Transition — after applyRanges so both thumbs validate against the (possibly
+    // custom) bounds this preset carries. A pre-feature preset omits them; leave the globals be.
+    applyPresetDual("ttl-lo", "ttl-hi", p.ttl);
+    applyPresetDual("tdur-lo", "tdur-hi", p.tdur);
     migrateCam(p);                                // pre-per-layer preset: fold its one `cam` into p.state / p.layers before they merge
     installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);
@@ -8148,6 +8381,22 @@
     if (raw.kind === "settings" && raw.settings) return raw.settings;
     return raw;                                                             // snapshot / legacy
   }
+  // Validate + normalize a DESERIALIZED preset array (numeric effect indices) into the shape
+  // the Restore dialog / applyRestore expect. Shared by file import and preset-bundle links.
+  // beatTune must be carried through verbatim: the detector thresholds live nowhere else, so
+  // dropping them hands the imported preset whatever tuning the recipient sat at. `cam` is
+  // carried too, but ONLY as the legacy migration source: a backup written before the camera
+  // went per-layer stored one root `cam`, and migrateCam folds it into the states / layers on
+  // load. New backups omit it — the camera rides inline in `state` and each layer's `cam`.
+  function validatePresetList(arr) {
+    return (Array.isArray(arr) ? arr : [])
+      .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
+      .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
+                   state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
+                   cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
+                   ttl: p.ttl, tdur: p.tdur,
+                   layers: Array.isArray(p.layers) ? p.layers : undefined }));
+  }
   el("importpresets").addEventListener("click", () => el("presetsfile").click());
   el("presetsfile").addEventListener("change", async ev => {
     const files = [...(ev.target.files || [])];
@@ -8172,18 +8421,7 @@
       parsed.presets = arr;
       delete parsed.curPreset;        // meaningless once presets arrive as separate files
       if (!arr.length && !parsed.states) throw new Error("no presets or settings found");
-      // beatTune must be carried through verbatim: the detector thresholds live nowhere else,
-      // so dropping them hands the imported preset whatever tuning the recipient sat at. `cam`
-      // is carried too, but ONLY as the legacy migration source: a backup written before the
-      // camera went per-layer stored one root `cam`, and migrateCam folds it into the states /
-      // layers on load. New backups omit it — the camera rides inline in `state` and in each
-      // layer's `cam` node (both carried below), so a new import needs nothing from this field.
-      const valid = arr
-        .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-        .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
-                     state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
-                     cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
-                     layers: Array.isArray(p.layers) ? p.layers : undefined }));
+      const valid = validatePresetList(arr);
       if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
       const label = files.length === 1 ? files[0].name : files.length + " files";
       openRestore(parsed, valid, label);   // let the user pick what to restore + how
@@ -8233,6 +8471,12 @@
       const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
         ? p.parsed.presets[p.parsed.curPreset].name : null;
       out.curPreset = sel ? lib.findIndex(x => x.name === sel) : -1;
+      // A shared bundle records which preset the sender had open; land the receiver on it
+      // (its scene, not just the dropdown) after the reload — a one-shot marker the startup
+      // reads. Cleared on use, so ordinary reloads keep the persisted scene. Backups don't
+      // carry curPreset, so this only fires for shared links.
+      if (out.curPreset >= 0) sessionStorage.setItem("btw.applyPreset", String(out.curPreset));
+      else sessionStorage.removeItem("btw.applyPreset");
     }
     if (p.hasSettings && el("rst-settings").checked) {
       const s = p.parsed;
@@ -8249,12 +8493,12 @@
     }
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
     if (p.hasBeat && el("rst-beat").checked) out.beatTune = p.parsed.beatTune;
-    // Land on the restored scene and stay there. This has to be written into the blob
-    // rather than calling stopCycling(), because applyRestore reloads the page — a live
-    // toggle would be thrown away. Set last so it also overrides the file's own `cycle`
-    // read a few lines up: whatever the backup was saved with, you want to *see* what
-    // you just restored, not have the cycler move off it seconds later.
-    out.cycle = false;
+    // Auto-cycle. A FILE restore forces it off, so the cycler doesn't move off what you just
+    // restored (written into the blob rather than via stopCycling(), because applyRestore
+    // reloads and a live toggle would be lost). A shared LINK, however, carries the sender's
+    // auto-cycle toggle on purpose — "share the show" — so honour it: the receiver lands on
+    // the selected preset (above) and then cycles the same way the sender's did.
+    out.cycle = (!Array.isArray(p.parsed) && p.parsed.__link && typeof p.parsed.cycle === "boolean") ? p.parsed.cycle : false;
     // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
     localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
     location.reload();
@@ -8264,6 +8508,78 @@
   el("restoredlg").addEventListener("click", e => { if (e.target === el("restoredlg")) closeRestore(); });   // backdrop
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
+
+  // ---- Share a curated bundle of presets as one link -------------------------
+  // The dialog only CURATES which presets go in — it copies a link (libraryUrl →
+  // serializeBlob({presets}) → deflate, in persist-share.js), never touching the local
+  // library. The recipient's #zp=/#sp= decode lands in openSharedLibrary below, which routes
+  // into the SAME Restore dialog a file import uses, so they pick merge vs replace.
+  let sharePreBoxes = [];
+  const chosenPresets = () => sharePreBoxes.filter(cb => cb.checked).map(cb => presets[+cb.dataset.i]);
+  function syncSharePreHint() {
+    const n = chosenPresets().length, anyOn = sharePreBoxes.some(cb => cb.checked);
+    el("sharepre-hint").textContent = n
+      ? n + " preset" + (n === 1 ? "" : "s") + " selected — a bundle link can get long, so use Copy short link if it won't paste."
+      : "No presets selected.";
+    el("sharepre-all").textContent = anyOn ? "Select none" : "Select all";
+    el("sharepre-copy").disabled = el("sharepre-short").disabled = !n;
+  }
+  function openSharePresets() {
+    autosavePreset();                 // fold live edits into the selected preset before bundling
+    const list = el("sharepre-list"); list.textContent = "";
+    sharePreBoxes = presets.map((p, i) => {
+      const lab = document.createElement("label"); lab.className = "sharepre-opt";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true; cb.dataset.i = String(i);
+      cb.addEventListener("change", syncSharePreHint);
+      const span = document.createElement("span"); span.textContent = p.name; span.title = p.name;
+      lab.appendChild(cb); lab.appendChild(span); list.appendChild(lab);
+      return cb;
+    });
+    syncSharePreHint();
+    el("sharepredlg").classList.remove("hidden");
+  }
+  const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
+  el("sharepresets").addEventListener("click", openSharePresets);
+  el("sharepre-close").addEventListener("click", closeSharePresets);
+  el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop
+  el("sharepre-all").addEventListener("click", () => {
+    const anyOn = sharePreBoxes.some(cb => cb.checked);
+    sharePreBoxes.forEach(cb => { cb.checked = !anyOn; });   // all/some on → none; none on → all
+    syncSharePreHint();
+  });
+  el("sharepre-copy").addEventListener("click", () => {
+    const chosen = chosenPresets(); if (!chosen.length) return;
+    copyText(libraryUrl(chosen), el("sharepre-copy"), "Link copied!", "Copy link");   // copyText takes the Promise
+    track("share_presets", { n: chosen.length });
+  });
+  el("sharepre-short").addEventListener("click", async () => {
+    const chosen = chosenPresets(); if (!chosen.length) return;
+    const btn = el("sharepre-short");
+    btn.disabled = true; btn.textContent = "Shortening…";
+    try {
+      const short = await shortenUrl(await libraryUrl(chosen));
+      btn.disabled = false;
+      copyText(short, btn, "Short link copied!", "Copy short link");
+      track("share_presets_short", { n: chosen.length });
+    } catch (e) {
+      btn.textContent = "Shorten failed";
+      setTimeout(() => { btn.textContent = "Copy short link"; syncSharePreHint(); }, 1800);
+    }
+  });
+  // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
+  // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
+  // beatTune), so openRestore lights up just the Presets option with merge/replace.
+  function openSharedLibrary(raw) {
+    const norm = normalizeBackup(raw);
+    if (!norm) return;
+    const parts = deserializeBlob(norm);
+    const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
+    const valid = validatePresetList(arr);
+    if (!valid.length) { alert("This link has no usable presets."); return; }
+    // Carry the sender's auto-cycle toggle + selected-preset index through to applyRestore;
+    // __link marks this as a shared bundle (backups force cycle off, links honour it).
+    openRestore({ presets: arr, curPreset: parts.curPreset, cycle: parts.cycle, __link: true }, valid, "shared link");
+  }
 
   // Initial paint: setEffect loads the restored effect's per-effect extras (show-box,
   // random-seed), then applyLayerExtras puts the selected layer's palette + filters live.
@@ -8303,6 +8619,13 @@
   // Save the opening scene once, so a reload keeps it instead of re-applying (and
   // re-morphing the palette) on every visit until the first edit.
   if (freshVisit) persist();
+  // A one-shot from applyRestore of a shared bundle: land on the preset the sender had open
+  // (its scene, not just the dropdown selection). Cleared on use, so ordinary reloads keep
+  // the persisted scene rather than re-applying + re-morphing every time.
+  try {
+    const pend = sessionStorage.getItem("btw.applyPreset");
+    if (pend != null) { sessionStorage.removeItem("btw.applyPreset"); const i = +pend; if (presets[i]) applyPreset(i); }
+  } catch (e) {}
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);
@@ -8556,12 +8879,21 @@
 
   // ---- Orbit editor interaction ----
   // Canvas pixel → c-plane coordinate (accounts for the canvas being CSS-scaled to fit).
+  // MUST invert the SAME window cardDraw renders through — the locus-centred `cardWin`
+  // (set by cardWindow every frame the editor is open), NOT the fixed CARD_X0/CARD_X1.
+  // Using the fixed bounds offsets (and rescales) the stroke by exactly the amount
+  // cardWindow shifts to centre the locus, so the drawn line lands away from the mouse.
   function cardEventToC(e) {
     const cv = card.cv || el("cardcv"), r = cv.getBoundingClientRect();
-    const w = cv.width, h = cv.height, spanX = CARD_X1 - CARD_X0, spanY = spanX * (h / w);
+    const w = cv.width, h = cv.height;
+    const win = cardWin || { x0: CARD_X0, x1: CARD_X1 };
+    const spanX = win.x1 - win.x0, spanY = spanX * (h / w);
     const px = (e.clientX - r.left) * (w / r.width), py = (e.clientY - r.top) * (h / r.height);
-    return [CARD_X0 + (px / w) * spanX, (py / h) * spanY - spanY / 2];
+    return [win.x0 + (px / w) * spanX, (py / h) * spanY - spanY / 2];
   }
+  // c-units per the current view width — so grab radius / point spacing stay a constant
+  // on-screen size as cardWindow zooms per power (fixed CARD span would drift with it).
+  const cardSpanX = () => cardWin ? cardWin.x1 - cardWin.x0 : CARD_X1 - CARD_X0;
   // Commit a seed-path edit: mirror the live globals into the selected effect's extras and
   // fold it into the scene, exactly like a slider — the seed-path is per-effect scene data.
   function commitSeedPath() { captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
@@ -8572,7 +8904,7 @@
     let total = 0;
     for (let i = 1; i < stroke.length; i++) { const d = Math.hypot(stroke[i][0] - stroke[i - 1][0], stroke[i][1] - stroke[i - 1][1]); seg.push(d); total += d; }
     if (total < 1e-6) return [];
-    const N = Math.max(6, Math.min(48, Math.round(total / ((CARD_X1 - CARD_X0) * 0.03))));
+    const N = Math.max(6, Math.min(48, Math.round(total / (cardSpanX() * 0.03))));
     const step = total / N, out = [];
     for (let k = 0; k < N; k++) {
       const target = k * step;
@@ -8611,7 +8943,7 @@
   // so they land exactly where you put them regardless of the X-offset slider.
   {
     const cv = el("cardcv");
-    const HIT = () => (CARD_X1 - CARD_X0) * 0.028;      // grab radius in c-units (~12px)
+    const HIT = () => cardSpanX() * 0.028;      // grab radius in c-units (~12px)
     const nearestPt = c => {
       let bi = -1, bd = HIT();
       for (let i = 0; i < seedPts.length; i++) {
@@ -8640,7 +8972,7 @@
         captureSeed(stack[stackSel]);
       } else if (seedDrawing) {
         const last = seedDrawing[seedDrawing.length - 1];
-        if (Math.hypot(c[0] - last[0], c[1] - last[1]) > (CARD_X1 - CARD_X0) * 0.006) seedDrawing.push(c);
+        if (Math.hypot(c[0] - last[0], c[1] - last[1]) > cardSpanX() * 0.006) seedDrawing.push(c);
       } else if (seedEdit) {
         seedHover = nearestPt(c);                        // hover highlight
       }
@@ -8757,15 +9089,17 @@
 
   window.addEventListener("keydown", e => {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
-    if (e.key === "m" || e.key === "M") setPanel(!panel.classList.contains("hidden"));   // the one menu (dev tools live inside it now)
+    // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
+    // editor and the Palette inspector — along with it, so M gives a clean view.
+    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
   const HELP = {
-    intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats, and the dropdown beside them picks the <b>pulse shape</b> — how the value animates back down after each hit. Every setting is saved in your browser, separately per effect — bar a shared few: auto-cycle and its hold time, the resolution, the camera and whether the menu is open.",
+    intro: "Most sliders are <b>ranged</b>: the two thumbs set a low and a high bound and the live value drifts erratically between them — pinch the thumbs together to hold a constant. With <b>React to music</b> on, each slider's L/M/H chips make it react to low/mid/high beats, and the dropdown beside them picks the <b>pulse shape</b> — how the value animates back down after each hit. Everything is saved in your browser, per stacked layer — bar a shared few that belong to the whole scene: auto-cycle and its timing, the whole-scene (Scene) filters, the render resolution, and whether the menu is open.",
     // Per-effect names/blurbs come from the EFFECTS registry (see renderHelp).
     // Each slider blurb's `w:` tag is matched against the effect's `helpTags`
     // (see the EFFECTS registry). "all" shows on every effect; "band" on every
@@ -8776,7 +9110,9 @@
       { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
       { n: "Transition", w: "all", t: "How long a preset change takes to blend, as a range in seconds — each switch draws a length from it. A suitable transition is chosen automatically for the two scenes involved: a crossfade between two full-screen effects, something that breaks the picture up (pixelate, blur, wipe) when a sparse point cloud meets a dense field, a dip or flash when the palettes jump, and often nothing at all when the scenes already dissolve on their own through Fire or Fade pixel. Collapse both thumbs to 0 to cut straight over instead." },
       { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching keeps the preset you have selected and folds the change into it, like any other edit — so you carry on working on your scene. The preset keeps its name, so rename it if it no longer suits. Part of a preset, so auto-cycle can switch it for you." },
-      { n: "Palette", w: "all", t: "The colour ramp heat is mapped through." },
+      { n: "Palette", w: "all", t: "The colour ramp this layer's heat is mapped through — click a swatch to pick it. Per-layer, so stacked effects can each carry their own colours (blended together in perceptual OKLab space when they overlap)." },
+      { n: "Reverse colours", w: "all", t: "Runs this layer's palette the other way round — the dark (background) end stays black, so only the lit ramp is flipped. Per-layer." },
+      { n: "Background", w: "all", t: "What this layer's unlit pixels (heat 0) show: Black (default), White, or the palette's own colour 0. In a multi-layer scene it's per-layer, so a background layer can wash the scene while the ones above keep a black backdrop." },
       { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
       { n: "Palette hold", w: "all", t: "How long to rest on each palette before starting the next cross-fade, as a range in seconds — a fresh dwell is drawn each time. At 0 (the default) the colours cross-fade continuously with no pause; raise it to sit on each palette for a while between changes. Only matters while Palette cycle is running." },
       { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them, and each menu row shows a small dot per armed band in the same colour — dim at rest, lit on the beat — so you can see what a preset has wired to the music without opening a single box." },
@@ -8784,21 +9120,22 @@
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
       { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or preset." },
       { n: "Slider range (min / max / step)", w: "all", t: "The row at the foot of a slider's pop-out box retunes that slider's own bounds live, so you can push a control past its shipped limits (or make it finer). ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
-      { n: "Show box", w: "tetra", t: "Tetrafyer only — show or hide the wireframe of the box the tetrahedron bounces inside, along with the bursting sphere of sparks each wall hit throws off." },
-      { n: "Box size", w: "tetra", t: "Tetrafyer only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
+      { n: "Show box", w: "tetra", t: "Tetrahedron only — ON draws the wireframe box the tetrahedron bounces inside (with a burst of sparks on each wall hit). OFF hides the box and, with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead." },
+      { n: "Box size", w: "tetra", t: "Tetrahedron only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
       { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
       { n: "Band size", w: "band", t: "How many palette colours make up each light (and each dark) stripe." },
       { n: "Darkness", w: "band", t: "How far the dark stripes are darkened (0% = none, 100% = black)." },
-      { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire." },
-      { n: "Layers", w: "fire", t: "− / + stack extra copies of the fractal (up to 6). Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own." },
-      { n: "Drift speed", w: "fire", t: "Sierpiński: how fast the triangle's three corners wander. Tetrafyer: the physics tempo (how fast the tetrahedron bounces)." },
-      { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sierpiński's triangle or Tetrafyer's tetrahedron (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
-      { n: "Rotation", w: "tetra", t: "Tetrafyer only — the yaw rate in degrees per second for the scene orbit around the box. It ships drifting between −5 and 5, so the box is never quite still; pinch both thumbs to 0 to stop it." },
-      { n: "Box nod", w: "tetra", t: "Tetrafyer only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
-      { n: "Nod speed", w: "tetra", t: "Tetrafyer only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },
+      { n: "Points", w: "fire", t: "Chaos-game points stamped per frame — the density and brightness of the fractal seed feeding the fire. Ranged, so spread the thumbs to let the density wander, or arm its L/M/H chips to burst more points on the beat." },
+      { n: "Objects", w: "fire", t: "− / + add extra copies of the fractal (up to 6) — the tetrahedra / triangles moving on screen. Each added copy is half the size and half the points of the last, with a new seed, so it drifts/tumbles on its own. (Distinct from the effect stack, also called Layers.)" },
+      { n: "Drift speed", w: "fire", t: "Sierpiński: how fast the triangle's three corners wander. Tetrahedron: the physics tempo — how fast it bounces (or orbits, with the box hidden)." },
+      { n: "Size", w: "fire", t: "Scales the fractal itself about its centre — Sierpiński's triangle or the Tetrahedron's solid (which grows/shrinks with matching physics). Separate from Zoom, which scales the whole view." },
+      { n: "Rotation", w: "tetra", t: "Tetrahedron only — the yaw rate in degrees per second for the scene's rotation about the box. It defaults to 0 (held still); spread the two thumbs to let it drift, or set one thumb to a constant spin." },
+      { n: "Box nod", w: "tetra", t: "Tetrahedron only — how far the view pitches up and down in its slow sine, in degrees. This is the second, slower drift that used to be built in with no control at all; 0 holds the box dead level." },
+      { n: "Nod speed", w: "tetra", t: "Tetrahedron only — how fast that nod swings, as a multiplier; 0 freezes it mid-swing. Drift speed scales it too, so a faster scene nods faster." },
+      { n: "Sway", w: "tetra", t: "Tetrahedron only, and only with Show box OFF — how far the whole object wanders up/down, sideways and in/out around the centre on a slow looping path (0 pins it to the centre so it just spins in place). Each stacked Object wanders on its own phase. The tempo follows Drift speed; arm its L/M/H chips to lunge on the beat." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
-      { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin the whole scene in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. These are global — they stay put as you switch effects and are not part of any one effect's settings — so they act as a camera over whatever is running. The startup credits deliberately ignore them and stay level." },
-      { n: "Filters", w: "all", t: "A stack of post-effects any visual can use, ticked in the Filters section; they apply in the order listed. Fire and Fade pixel feed back into the picture, building up over successive frames; the rest are passes over the finished image. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
+      { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin this layer in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. Per-layer, like Zoom — each stacked effect keeps its own camera, applied to that layer before the layers are blended (in a one-layer scene it's simply the camera over what's running). The startup credits deliberately ignore it and stay level." },
+      { n: "Filters", w: "all", t: "A stack of post-effects, all OFF by default — tick the ones you want. Most are PER-LAYER (in the Effects &amp; Filters box): each stacked effect is filtered on its own, in the order listed. The whole-scene ones — Bloom and the screen FX (Barrel, Scanlines, Vignette, Film grain) — live in the separate Scene filters box and apply once to the finished, blended picture. Fire and Fade pixel feed back into the layer, building up over successive frames; the rest are single passes. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
       { n: "Fire", w: "all", t: "The classic rising-fire feedback: heat drifts upward and cools each frame, so whatever the effect draws sprouts flames. Flame rise sets how tall they climb before fading (linear in height); Burn rate how many simulation steps run per second — faster is livelier and flickerier." },
       { n: "Fade pixel", w: "all", t: "Keeps a fraction of the previous frame instead of clearing it, leaving motion trails. Keep near 1 smears almost forever; lower values fade quickly. Stacks with Fire." },
       { n: "Pixelate", w: "all", t: "Chunks the image into blocks. Block sets the size — a direct route to a lo-fi console look." },
@@ -8806,7 +9143,7 @@
       { n: "Edge", w: "all", t: "Edge detection over the finished image — Amount fades between the original and the outlines it finds." },
       { n: "Posterize", w: "all", t: "Crushes the colours to a fixed number of Levels, turning smooth gradients into flat bands." },
       { n: "Mirror", w: "all", t: "Reflects the image about its centre. Axis picks horizontal, vertical or both (kaleidoscope-style quadrants)." },
-      { n: "Bloom", w: "all", t: "The additive glow around the brightest areas. Strength 0 turns it off entirely — this is the glow that used to be permanent." },
+      { n: "Bloom", w: "all", t: "The additive glow around the brightest areas — a whole-scene filter (one glow over the finished, blended image), so it lives in the Scene filters box. Off by default; tick it and raise Strength to add the glow." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
@@ -8856,7 +9193,7 @@
     const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
     html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.help + "</p>";
-    html += '<p class="help-intro">' + HELP.intro + "</p><dl>";
+    html += '<p class="help-intro">' + HELP.intro + '</p><dl class="help-cols">';
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
     helpEl.innerHTML = html;
