@@ -165,9 +165,10 @@
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
 
   // ---- analytics (Google Analytics 4) ----
-  // Inert until GA_MEASUREMENT_ID is set to a real "G-XXXXXXXXXX" web-stream id:
-  // no gtag script is loaded and track() is a no-op, so nothing is sent. Once set,
-  // page views are counted automatically and track() fires custom events.
+  // Live: GA_MEASUREMENT_ID (CONFIG.analyticsId) holds a real "G-XXXXXXXXXX" web-stream
+  // id, so gtag.js loads, page views are counted automatically and track() fires custom
+  // events. Clearing it back to "" makes this completely inert again — no script is
+  // loaded and track() becomes a no-op, so nothing is sent.
   const GA_MEASUREMENT_ID = CONFIG.analyticsId;
   function track(name, params) {
     try { if (window.gtag) window.gtag("event", name, params || {}); } catch (e) {}
