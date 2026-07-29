@@ -13,6 +13,8 @@ families, all sharing one palette + glow + banding + beat-reactive pipeline:
   iteration fractals.
 - **Shader coordinate/pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer,
   Moiré, Munching Squares, Copper Bars.
+- **Shader shapes (SDF)** — Polygon, Shape grid, Concentric rings, Bouncing shapes (2D),
+  and **Bouncing solids** (3D: a raymarched room of tumbling primitives — see below).
 
 Each is one `EFFECTS` descriptor (metadata + `params`/`defaults`/`beat`/`extras` + a
 `draw(dt)` shader hook or a `stamp(box)` point hook). There is **no package manager,
@@ -195,6 +197,43 @@ correction*: drag Outer radius down toward AnimeJulia-like values and it degrade
 28% inside at 1.2, 39% at 1.05, 45% at 1.0 — noticeably worse than AnimeJulia at the same
 setting, because the curve genuinely is wrong for this family. If Burning Ship ever looks
 washed out, Outer radius is the first thing to check.
+
+**Bouncing solids is the one 3D shader effect, and it is split CPU/GPU down the middle.**
+`src/solids-3d.js` runs the rigid-body physics on the CPU once per frame for up to 8 bodies
+and hands the shader nothing but the resulting pose — centre+radius in `uPos` (a `vec4`),
+orientation in `uQuat`, which primitive in `uShape`. `FS_SOLIDS` raymarches that; the CPU
+mirror `solids()` marches the *same* scene with half the steps. So there is exactly one
+copy of the motion, which is what lets the two paths agree.
+
+Three things about it are load-bearing:
+- **Orientation is a quaternion, not the tetrahedron's rotated-vertex list.** These are
+  implicit surfaces with no vertices to carry a rotation, so the shader undoes it per
+  sample (`toBody`, rotating by the conjugate). 4 floats to upload, and it cannot shear the
+  way an accumulated 3×3 basis does — it only needs renormalising, one divide per frame.
+- **Collision is a bounding SPHERE, and every SDF is authored to fit inside radius `r`**
+  (box half-extent `0.55r`, torus `0.70r`+`0.30r`, …). That is what lets one radius drive
+  every contact test, so a doughnut bounces off the same wall a sphere would. `Size` IS
+  that radius, so widening it makes them turn sooner as well as look bigger.
+- **The step is clamped (`min(0.05, dt)`)**. A backgrounded tab returns one enormous `dt`,
+  and a body that travels further than the room in a single step tunnels through a wall and
+  never comes back — invisible on screen (the frame just looks emptier). `solidsprobe`
+  pins it, along with containment at every slider extreme.
+
+The bodies live on the **layer** (`L.solids`), exactly like the tetrahedron's `L.tetras`,
+because they are a list of objects rather than a scalar clock and so cannot ride
+`PHASE_VARS`. `installStackItem` calls **`installSolids(L)`** to point the globals at the
+drawing layer's set — without it two Bouncing solids layers share one set and render as one
+slightly brighter layer.
+
+**Its start state is a hash, not a row of sines, and that was a real bug.** The first
+version seeded x as `0.55·sin(k·3.1)`; 3.1 is π to within 1.3%, so `sin(k·3.1)` is near
+zero for every small k and all five bodies started stacked in a column at x≈0. They spread
+out after a few bounces, so it read as a slow start rather than a distribution bug — only a
+screenshot of the opening frames showed it. `sdHash(k, salt, i)` gives three independent
+values per vector instead, and positions scale to the room actually **available**
+(`SOLID_BOX[ax] − radius`, different per axis since x follows the frame aspect and z is
+shallowest) so nothing starts embedded in a wall at any Size. The probe asserts the spread
+per axis against that available span rather than an absolute number.
 
 - **Point-accumulation effects** (Sierpiński, Tetrafyer, Attractor) run the fire sim and
   stamp points into the heat grid via `plot()`. `simulate()` dispatches to the
@@ -574,10 +613,13 @@ row until you rotate, and then they aren't.
 sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is
 **transient**, like Diagnostics): *System* (audio, resolution, Diagnostics — collapsed by
 default), *Backup, restore & share* (the 2×2 `.presetrow.grid2`), *Scene* (the preset
-chooser, auto-cycle and TTL), *Effects* (`#effect`, `#fxctl`, Orbit editor, Reset) and
+chooser, auto-cycle and TTL), ***Effect & Filters*** (`#effect`, `#fxctl`, Orbit editor,
+Reset) and
 *Palette settings* (`#palette`, `#palctl`, `#bandctl`). `buildControls` routes a control by
 `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
-The **Effect chooser sits in *Effects*, above `#fxctl`** — with the sliders it drives
+The box title is **singular** — everything in it edits the ONE selected layer, and the
+plural read as "all of the effects".
+The **Effect chooser sits in *Effect & Filters*, above `#fxctl`** — with the sliders it drives
 rather than up in *Scene*, which is now purely about presets. That is also why
 `#fxctl > .ctl-grp:first-child` no longer suppresses its top border: the first group used
 to butt against the box title (where a rule read as a stray line) and now separates the
@@ -711,6 +753,16 @@ button) keeps its exact meaning and needed no edit. Only the render path
 reads `stack`. If `EFFECTS[effect]` ever reappears in a render path it will render the
 selected item's descriptor for *every* item — invisible whenever two items share an
 effect.
+
+**Every layer row carries its own effect `<select>`** (`select.lyr-name`, built in
+`syncStackUI`) — re-pointing a layer is the commonest thing you do to one, and it used to
+mean select the row, then scroll to the chooser in *Effect & Filters*. Both go through the
+same path. The load-bearing part: a change on a row that is **not** selected calls
+`selectStack(j)` **first**, because `setEffect` edits whatever `stackSel` names, and going
+through `selectStack` is what runs the `freezeItem`/`stageLayerExtras` sequence — writing
+`L.fx` directly here would strand that layer's palette + filters on the outgoing effect (the
+load-order trap below). `fx` is read off the `<select>` **before** either call, since both
+re-run `syncStackUI` and the element is detached by the time they return.
 
 **The DOM is the store for the selected item; every other item holds plain numbers.**
 `loadState` has always written the DOM and dispatched synthetic `input` rather than
@@ -1422,6 +1474,30 @@ the fire to build up. `tools/heatprobe.js` still earns its keep — it pins ping
 *parity*, which a screenshot cannot see — but "a headless browser has no usable WebGL" is
 no longer a reason to skip driving the real renderer.
 
+**Four traps when the thing you screenshot is ONE effect.** All four produced a confident,
+completely wrong reading while Bouncing solids was being verified, and none of them looks
+like a harness failure — the screenshot is always of *something* plausible:
+- **Turn auto-cycle off first** (`#cycle`). It is on by default, so the TTL swaps the preset
+  every few seconds: the assertions pass on the effect you set, and Edge's exit screenshot
+  is a different effect entirely. (First symptom: a rainbow checkerboard where a raymarched
+  scene should be.) Assert the effect is *still* the one under test at screenshot time.
+- **`gl.getError()` must be sampled inside a real frame**, not after the page composites.
+  Read afterwards it returns a spurious `0x502` from the probe's own `readPixels`, which
+  reads exactly like a shader failure. For the same reason the pixel evidence has to be the
+  screenshot, not `readPixels` — the drawing buffer is cleared on composite.
+- **`?stack=<id>` does not survive a fresh profile.** It seeds the stack at startup and the
+  first-visit branch (`presets.length === 0` → `applyPreset(0)`) then installs
+  `DEFAULT_SCENE` over it. Drive the layer-row UI instead, or seed `localStorage` first.
+- **Keep the run under 30s of active time**, or `SYNC_DELAYS[0]` opens the "Sync with your
+  music" nudge over the canvas and the screenshot is a screenful of that panel. Note also
+  that `?credits=0` does not clear the credits in a slow run: `creditLeft` counts **rendered**
+  time, so at 7 fps they are still fading after ten seconds of wall clock.
+
+**The app is one IIFE, so an injected `<script>` cannot call into it.** UI-level assertions
+(DOM, menus, persistence via `localStorage`) work fine from the page; anything that needs an
+internal function — `solidsSeed`, `installSolids` — has to be a Node probe that slices the
+source, which is what every `tools/*probe.js` does.
+
 **The pixel gate is BISTABLE — treat a single mismatch as inconclusive.** Measured over
 ~25 runs while building the effect stack: a Plasma scene with no filters returns the same
 hash roughly 9 times in 10, and a Plasma + Fire scene only about 3 times in 4. The
@@ -1516,6 +1592,23 @@ at `ratio ×` the outer one and yields `ratio` epicycles per lap, and `juliaOffX
 shifts only the real axis. It also greps the three descriptors to assert each
 advances the orbit **once** per frame. It slices by source markers, so keep them:
 `const RPM` … `function julia(`.
+
+**The Bouncing solids rigid bodies** have `tools/solidsprobe.js` (`node tools/solidsprobe.js
+dev-index.html`, 39 assertions): it slices the real physics block (`const SOLID_SHAPES` …
+`// ---- CPU mirror of FS_SOLIDS`) and drives it on a fake clock against stub globals — `v3`
+is copied verbatim from `tetrahedron-physics.js`, since stubbing it wrong would silently
+invalidate everything. It exists because **every failure mode here is invisible to a
+screenshot**: a body that tunnels through a wall is simply off-screen (the frame looks
+emptier), a quaternion that stops being unit length shears the primitive slowly enough to
+read as art, two layers sharing one body list render as one brighter layer, and a
+correlated start seed reads as "slow to get going". So it pins containment (6000 steps,
+plus a 9.5s frame, plus every slider at its extreme), quaternion normality, `Shape mix`
+never naming a primitive the shader lacks, `Count` clamped to the shader's array size,
+per-layer body ownership, determinism, and the per-axis start spread against the room
+actually available. **Two tolerance traps, both learned by going red on correct code:**
+assert double-exactness on the BODIES (`S.Q`) and only float32 tolerance on the staged
+uniform arrays, which are `Float32Array`; and strip comments before grepping for
+`Math.random`, because the file's own comment says there is none.
 
 **Beat detection** can't be tested that way — a headless browser has no audio. It
 has its own probe, `tools/beatprobe.js` (`node tools/beatprobe.js index.html`):

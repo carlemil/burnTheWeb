@@ -164,8 +164,34 @@
       });
       row.appendChild(grab);
 
-      const nm = document.createElement("div");
-      nm.className = "lyr-name"; nm.textContent = EFFECTS[L.fx].name;
+      // The effect chooser sits ON the row, not only in the Effect & Filters box below —
+      // re-pointing a layer is the single most common thing you do to one, and it used to
+      // mean select the row, scroll down, then use the other chooser. Both drive the same
+      // path: changing a row that is NOT selected selects it FIRST, because setEffect edits
+      // whatever `stackSel` names, and routing through selectStack is what keeps the
+      // freeze/stageLayerExtras ordering honest (writing L.fx directly here would strand the
+      // layer's palette + filters on the outgoing effect — the load-order trap in CLAUDE.md).
+      // `fx` is read off the <select> BEFORE either call: both re-run syncStackUI, which
+      // rebuilds these rows, so `nm` is a detached node by the time they return.
+      const nm = document.createElement("select");
+      nm.className = "lyr-name";
+      EFFECTS.forEach((f, i) => {
+        const o = document.createElement("option");
+        o.value = String(i); o.textContent = f.name; o.title = f.subtitle;
+        nm.appendChild(o);
+      });
+      nm.value = String(L.fx);
+      nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
+      nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row
+      nm.addEventListener("change", e => {
+        e.stopPropagation();
+        const fx = +nm.value;
+        if (j !== stackSel) selectStack(j);
+        setEffect(fx);          // ...which re-runs syncStackUI, so the row redraws itself
+        autosavePreset();
+        persist();
+        nextSwitch = 0;         // a manual pick restarts the auto-cycle clock, as in the box below
+      });
       row.appendChild(nm);
 
       const ctl = document.createElement("div");

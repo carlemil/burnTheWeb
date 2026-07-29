@@ -14,6 +14,7 @@ effects-julia.js
 orbit-seed.js
 effects-shader-mirrors.js
 effects-points.js
+solids-3d.js
 frame-loop.js
 audio-detector.js
 controls-schema.js

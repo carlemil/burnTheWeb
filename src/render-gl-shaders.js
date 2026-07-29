@@ -597,4 +597,58 @@
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Bouncing solids: the 3D one. A raymarched SDF scene of up to 8 primitives whose
+    // pose is computed on the CPU (solidsSeed) and handed over per frame — uPos.xyz the
+    // centre, uPos.w the radius, uQuat the orientation, uShape which primitive. Nothing
+    // about the motion lives in here, so the Canvas2D mirror marches the identical scene.
+    // Every primitive is authored to fit inside radius r, which is what lets the physics
+    // use ONE bounding-sphere radius for all six (see solidStep).
+    const FS_SOLIDS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uZoom; uniform float uCount; uniform float uRim;
+    uniform vec4 uPos[8]; uniform vec4 uQuat[8]; uniform float uShape[8];
+    out vec4 o;
+    // World → body space: rotate by the CONJUGATE of q. The implicit surfaces below have
+    // no vertices to carry an orientation, so each sample is un-rotated instead.
+    vec3 toBody(vec4 q, vec3 v){ vec3 u = -q.xyz; return v + 2.0*cross(u, cross(u, v) + q.w*v); }
+    float shapeDist(int s, vec3 p, float r){
+      if (s == 0) return length(p) - r;                                              // sphere
+      if (s == 1){ vec3 d = abs(p) - vec3(r*0.55);                                   // box
+                   return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0); }
+      if (s == 2){ vec2 q = vec2(length(p.xz) - r*0.70, p.y); return length(q) - r*0.30; }   // torus
+      if (s == 3){ vec3 q = p; q.y -= clamp(q.y, -r*0.60, r*0.60); return length(q) - r*0.40; }  // capsule
+      if (s == 4){ vec3 a = abs(p); return (a.x + a.y + a.z - r)*0.5773; }           // octahedron
+      vec2 d = vec2(length(p.xz) - r*0.60, abs(p.y) - r*0.60);                       // cylinder
+      return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+    }
+    float map(vec3 p){
+      float d = 1e9; int n = int(uCount);
+      for (int i = 0; i < 8; i++){
+        if (i >= n) break;
+        d = min(d, shapeDist(int(uShape[i]), toBody(uQuat[i], p - uPos[i].xyz), uPos[i].w));
+      }
+      return d;
+    }
+    void main(){
+      vec2 uv = gl_FragCoord.xy/uSize - 0.5; uv.x *= uSize.x/uSize.y; uv /= uZoom;
+      vec3 ro = vec3(0.0, 0.0, -3.2), rd = normalize(vec3(uv, 1.4));
+      const vec3 L = vec3(-0.4557, 0.7295, -0.5104);   // key light, pre-normalised
+      float t = 0.0, heat = 0.0;
+      for (int i = 0; i < 48; i++){
+        vec3 p = ro + rd*t;
+        float d = map(p);
+        if (d < 0.0025){
+          vec2 e = vec2(1.0, -1.0)*0.0015;             // tetrahedral central-difference normal
+          vec3 n = normalize(e.xyy*map(p + e.xyy) + e.yyx*map(p + e.yyx)
+                           + e.yxy*map(p + e.yxy) + e.xxx*map(p + e.xxx));
+          float dif = max(0.0, dot(n, L));
+          float rim = pow(max(0.0, 1.0 - dot(n, -rd)), 2.5);   // bright silhouette edges
+          heat = (0.18 + 0.72*dif + uRim*rim) * smoothstep(7.0, 1.5, t);   // ...fading with depth
+          break;
+        }
+        t += d;
+        if (t > 7.0) break;
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)

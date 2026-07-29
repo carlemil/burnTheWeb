@@ -452,7 +452,14 @@
      has to be unmistakable — everything else in the box refers to it. */
   #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
   #panel .lyr.muted .lyr-name { opacity: .4; text-decoration: line-through; }
-  #panel .lyr-name { font-size: 11px; color: #ffcf87; padding: 1px 0 0; letter-spacing: .2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The name IS the effect chooser now — a full-width <select>, not static text — so it
+     needs the whole row and a size that still reads as the row's headline. Written as
+     `.lyr select.lyr-name` so it outranks the generic small `.lyr select` rule below
+     (which the blend + row dropdowns want) regardless of source order. */
+  #panel .lyr select.lyr-name {
+    width: 100%; font-size: 11px; padding: 2px 3px; margin: 0;
+    color: #ffcf87; letter-spacing: .2px; text-overflow: ellipsis;
+  }
   /* Drag handle: spans both rows like the old arrow column did. touch-action:none so a
      touch-drag reorders instead of scrolling the panel; the row it lives on live-moves
      among its siblings while held (see syncStackUI's pointerdown). */

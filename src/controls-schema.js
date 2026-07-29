@@ -88,6 +88,14 @@
     { key: "bnrad", host: "fx", group: "bounce", type: "dual", label: "Size", valId: "vBnRad", min: 0.02, max: 0.25, step: 0.005, lo: 0.09, hi: 0.09, fmt: v => sig3(v), apply: v => bnRad = v, durScale: 10 },
     { key: "bnsquare", host: "fx", group: "bounce", type: "dual", label: "Squareness", valId: "vBnSquare", min: 0, max: 1, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => bnSquare = v, durScale: 10 },
     { key: "bnspeed", host: "fx", group: "bounce", type: "dual", label: "Speed", valId: "vBnSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bnSpeed = v, durScale: 10 },
+    // Bouncing solids (3D). Count/Size feed the physics as well as the shader — Size IS the
+    // bounding radius every wall test uses, so widening it makes them bounce sooner too.
+    { key: "sdcount", host: "fx", group: "solids", type: "dual", label: "Count", valId: "vSdCount", min: 1, max: 8, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => sdCount = Math.round(v), durScale: 10 },
+    { key: "sdsize", host: "fx", group: "solids", type: "dual", label: "Size", valId: "vSdSize", min: 0.08, max: 0.5, step: 0.005, lo: 0.26, hi: 0.26, fmt: v => sig3(v), apply: v => sdSize = v, durScale: 10 },
+    { key: "sdmix", host: "fx", group: "solids", type: "dual", label: "Shape mix", valId: "vSdMix", min: 1, max: 6, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => sdMix = Math.round(v), durScale: 10 },
+    { key: "sdspeed", host: "fx", group: "solids", type: "dual", label: "Speed", valId: "vSdSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sdSpeed = v, durScale: 10 },
+    { key: "sdspin", host: "fx", group: "solids", type: "dual", label: "Tumble", valId: "vSdSpin", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sdSpin = v, durScale: 10 },
+    { key: "sdrim", host: "fx", group: "solids", type: "dual", label: "Edge glow", valId: "vSdRim", min: 0, max: 1.5, step: 0.02, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => sdRim = v, durScale: 10 },
     { key: "ata", host: "fx", group: "attractor", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => sig3(v), apply: v => atA = v, durScale: 10 },
     { key: "atb", host: "fx", group: "attractor", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => sig3(v), apply: v => atB = v, durScale: 10 },
     { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
@@ -195,7 +203,7 @@
     FILTERS.forEach(f => {
       const g = filterGroup(f);
       // The "Whole scene · final image" group lives in the Scene filters box; the
-      // per-effect groups stay in the Effects & Filters box. The box title already says
+      // per-effect groups stay in the Effect & Filters box. The box title already says
       // "Scene filters", so the scene group needs no in-box caption of its own.
       const dest = g.key === "scene" ? screenHost : host;
       if (g.key !== openKey) {
@@ -356,6 +364,7 @@
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
     attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    solids: "Bouncing solids",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",

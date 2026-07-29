@@ -86,6 +86,12 @@
       { n: "Coeff b", w: "attractor", t: "Attractor only — the b coefficient of the de Jong map." },
       { n: "Coeff c", w: "attractor", t: "Attractor only — the c coefficient of the de Jong map." },
       { n: "Coeff d", w: "attractor", t: "Attractor only — the d coefficient of the de Jong map." },
+      { n: "Count", w: "solids", t: "Bouncing solids only — how many bodies share the room, up to 8. Each one is a different primitive (see Shape mix) with its own start position, heading and tumble, so they never move as a group." },
+      { n: "Size", w: "solids", t: "Bouncing solids only — how big the bodies are. This is also the radius the physics bounces on, so larger solids turn away from the walls sooner and crowd the room; push it far enough and they barely have anywhere to go." },
+      { n: "Shape mix", w: "solids", t: "Bouncing solids only — how many different primitives are in play, in order: sphere, box, doughnut, capsule, octahedron, cylinder. 1 gives a room of spheres, 6 gives one of each cycling through the bodies. Arm its L/M/H chips to swap the whole cast on the beat." },
+      { n: "Speed", w: "solids", t: "Bouncing solids only — how fast the bodies travel, and so how often they hit a wall. 0 freezes them mid-air, still lit and still spinning down." },
+      { n: "Tumble", w: "solids", t: "Bouncing solids only — how fast the bodies rotate. A wall impact converts sideways travel into roll, so an angled clip visibly kicks a body into a tumble; this scales all of that. 0 holds every solid at a fixed orientation." },
+      { n: "Edge glow", w: "solids", t: "Bouncing solids only — lights the silhouettes, brightest where a surface turns away from you. Low values give flat shaded solids; high values outline every body in fire and read almost like an X-ray." },
     ],
   };
   const helpEl = el("help");

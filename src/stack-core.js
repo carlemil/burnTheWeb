@@ -315,6 +315,11 @@
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
     showBox = layerShowBox(L);   // ...and the box belongs to the LAYER, not to whatever is selected
     if (EFFECTS[L.fx].cardioid) installSeedPath(L);
+    // Bouncing solids carries a list of rigid bodies, not a scalar clock, so it can't ride
+    // PHASE_VARS — it follows the tetrahedron's L.tetras arrangement instead: the bodies
+    // live on the layer and this points the globals at THIS layer's set before it draws.
+    // Without it two Bouncing solids layers would share one set and render as one.
+    if (EFFECTS[L.fx].solids) installSolids(L);
   }
   // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
   // effect keep separate orbits. The render loop installs each layer's config into the seed
