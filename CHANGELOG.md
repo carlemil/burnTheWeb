@@ -14,7 +14,7 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
-## [1.1.0] — 2026-07-29
+## [1.1.0] — 2026-07-30
 
 ### Added
 
@@ -45,6 +45,9 @@ the single source of truth; `/deploy` bumps it and adds the section below in the
 
 - The *Effects & Filters* box is now **Effect & Filters** — singular, because everything in
   it edits the one layer you have selected; the plural read as "all of the effects".
+- That box no longer carries its own **Effect** dropdown. Every layer row has one now, so the
+  copy at the top of the box was a second visible control for the same thing; the sliders it
+  used to sit above start the box instead.
 - The palette inspector button is an **eye** instead of the old ▦ grid glyph, which
   described the dialog's layout rather than what the button does and read as a stop icon.
 - Custom palettes ride in saved settings, backups and preset bundles. A scene that names a

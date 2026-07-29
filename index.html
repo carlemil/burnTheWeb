@@ -172,7 +172,7 @@
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
-  body.ui-hidden #carddlg, body.ui-hidden #paldlg { display: none !important; }
+  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -182,6 +182,11 @@
   }
   #paused.hidden { display: none; }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
+  /* Version / release-notes line at the foot of the panel. Quieter than the key hints
+     above it (it is reference, not instruction) and brightens on hover like a link should. */
+  #panel .verline { margin-top: 7px; opacity: .38; }
+  #panel .verline a { color: #ffcf87; text-decoration: none; border-bottom: 1px dotted rgba(255, 207, 135, 0.45); }
+  #panel .verline:hover { opacity: .8; }
   #reset, #cardbtn, #addlayer {
     margin-top: 8px;
     width: 100%;
@@ -467,7 +472,14 @@
      has to be unmistakable — everything else in the box refers to it. */
   #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
   #panel .lyr.muted .lyr-name { opacity: .4; text-decoration: line-through; }
-  #panel .lyr-name { font-size: 11px; color: #ffcf87; padding: 1px 0 0; letter-spacing: .2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The name IS the effect chooser now — a full-width <select>, not static text — so it
+     needs the whole row and a size that still reads as the row's headline. Written as
+     `.lyr select.lyr-name` so it outranks the generic small `.lyr select` rule below
+     (which the blend + row dropdowns want) regardless of source order. */
+  #panel .lyr select.lyr-name {
+    width: 100%; font-size: 11px; padding: 2px 3px; margin: 0;
+    color: #ffcf87; letter-spacing: .2px; text-overflow: ellipsis;
+  }
   /* Drag handle: spans both rows like the old arrow column did. touch-action:none so a
      touch-drag reorders instead of scrolling the panel; the row it lives on live-moves
      among its siblings while held (see syncStackUI's pointerdown). */
@@ -532,6 +544,11 @@
     margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
     color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   }
+  /* The Effect chooser that used to sit above #fxctl is hidden (every layer row has one), so
+     the first group again butts straight against the box title — where a top border reads as
+     a stray rule under the heading rather than as a separator between two groups. This rule
+     existed before the chooser moved into this box and comes back now that it is gone. */
+  #panel #fxctl > .ctl-grp:first-child { margin-top: 4px; padding-top: 0; border-top: none; }
   /* the "what this group of filters does" caption under a filter-group heading */
   #panel .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;
@@ -557,6 +574,11 @@
     cursor: pointer; opacity: .75;
   }
   #panel .lbl-help:hover { background: rgba(255, 122, 26, 0.32); opacity: 1; }
+  /* The eye variant (palette inspector). An emoji glyph needs more room than a "?" and
+     ignores `color`, so it gets its own size and a slightly dimmer resting opacity to sit
+     at the same visual weight as the amber ? buttons beside it. */
+  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; }
+  #panel .lbl-eye:hover { opacity: 1; }
   /* Data-structure tree inside the help modal. */
   #help .help-tree {
     margin: 4px 0 12px; padding: 11px 13px; overflow-x: auto;
@@ -586,15 +608,85 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  #paldlg .pal-close {
+  /* Shared by the inspector and the editor — both carry a .pal-close. Scoping this to
+     #paldlg alone left the editor's × unstyled (a default grey button above the title). */
+  #paldlg .pal-close, #paledlg .pal-close {
     position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
     color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
   }
-  #paldlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #paldlg .pal-close:hover, #paledlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
   #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
+  /* ---- palette editor ---- */
+  /* Same floating, translucent, non-modal treatment as the inspector and Orbit editor: you
+     tune a ramp while watching the scene, so it must never take the whole screen or block a
+     click on the canvas behind it. */
+  #paledlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;   /* only the box itself is interactive */
+  }
+  #paledlg.hidden { display: none; }
+  #paledlg .pale-box {
+    position: relative; pointer-events: auto;
+    width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
+    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 18px 20px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #paledlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* The gradient bar + its stop handles. Extra bottom padding is the handles' lane, so a
+     handle at either end is fully clickable instead of half outside the box. */
+  #pale-bar { position: relative; height: 46px; margin: 2px 0 6px; padding-bottom: 14px; cursor: copy; }
+  #pale-grad {
+    height: 32px; border-radius: 6px; border: 1px solid rgba(255, 140, 40, 0.4);
+    /* Checkerboard under the ramp so a near-black stop is still visibly a stop. */
+    background-color: #000;
+  }
+  #pale-stops { position: relative; height: 14px; }
+  /* One handle per stop: a pointed marker sitting under the bar, filled with its own colour
+     so the row reads as the ramp's control points rather than as a row of identical pins. */
+  .pale-h {
+    position: absolute; top: 0; width: 13px; height: 13px; margin-left: -7px; padding: 0;
+    border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.75);
+    box-shadow: 0 0 0 1px rgba(255, 207, 135, 0.5); cursor: grab;
+    touch-action: none;   /* a touch-drag moves the stop instead of scrolling the box */
+  }
+  .pale-h.sel { box-shadow: 0 0 0 2px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.7); z-index: 2; cursor: grabbing; }
+  #paledlg .pale-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 9px; }
+  #paledlg .pale-col {
+    display: flex; flex-direction: column; gap: 3px; margin: 0;
+    font-size: 10px; color: #ffb15a; opacity: .85; letter-spacing: .3px;
+  }
+  #paledlg .pale-col input { margin: 0; }
+  #paledlg input[type=color] { width: 46px; height: 26px; padding: 1px; cursor: pointer; }
+  #paledlg #pale-pos { width: 62px; }
+  #paledlg .pale-name { flex: 1 1 auto; min-width: 0; }
+  #paledlg .pale-name input { width: 100%; }
+  #paledlg .pale-row .audbtn { flex: 0 0 auto; }
+  #paledlg .pale-actions { margin-top: 13px; }
+  #paledlg .pale-actions .audbtn { flex: 1 1 auto; }
+  #paledlg #pale-save { border-color: rgba(255, 140, 40, 0.75); background: rgba(255, 122, 26, 0.28); }
+  #paledlg .pal-hint { margin: 10px 0 0; opacity: .6; font-size: 10.5px; }
+  #paledlg .audbtn.off { opacity: .35; pointer-events: none; }
+  /* The + on a swatch. The swatch is itself a <button>, and a button cannot nest one, so the
+     two are siblings in a wrapper and the + is positioned over the swatch's right edge. */
+  .palsw-wrap { position: relative; display: block; }
+  .palsw-wrap .palsw { width: 100%; }
+  .palsw-edit {
+    position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+    width: 17px; height: 17px; padding: 0; border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(0, 0, 0, 0.5);
+    color: #fff; font: bold 11px/1 ui-monospace, monospace; cursor: pointer;
+    opacity: 0; transition: opacity .12s;
+  }
+  /* Revealed on hover/focus of the swatch so the grid stays clean, but always visible on a
+     touch device, where there is no hover to reveal it with. */
+  .palsw-wrap:hover .palsw-edit, .palsw-edit:focus-visible, .palsw-wrap .palsw:focus-visible ~ .palsw-edit { opacity: 1; }
+  @media (hover: none) { .palsw-edit { opacity: .75; } }
+  .palsw-edit:hover { background: rgba(255, 122, 26, 0.85); }
   #help .help-box {
     position: relative; width: min(1400px, calc(100vw - 580px)); max-height: 88vh; overflow-y: auto;
     margin: 16px 28px; padding: 20px 26px; background: rgba(14, 8, 5, 0.98);
@@ -858,13 +950,18 @@
   <button id="addlayer" type="button" title="Add another effect on top of this one (up to 4)">+ Add layer</button>
   </details>
 
-  <!-- Box — Effects & Filters: pick the selected layer's visual, its sliders, its
-       per-layer filters, and its palette. Everything here edits the SELECTED layer;
-       whole-scene FX live in the Scene filters box above. -->
+  <!-- Box — Effect & Filters: pick the selected layer's visual, its sliders, its
+       per-layer filters, and its palette. Everything here edits the SELECTED layer
+       (hence the singular "Effect"); whole-scene FX live in the Scene filters box above. -->
   <details class="box" open>
-  <summary class="box-t">Effects &amp; Filters</summary>
-  <label>Effect</label>
-  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
+  <summary class="box-t">Effect &amp; Filters</summary>
+  <!-- The Effect chooser is HIDDEN here, not deleted: every layer row in the Layers box now
+       carries its own, so a second visible copy of the same control was redundant. The
+       element stays because it is the effect VALUE STORE — setEffect writes effectSel.value,
+       applyBlob validates against its <option> list, and its `change` event is the handler
+       every other path dispatches through (exactly the arrangement the palette <select> has).
+       Its <option>s are still generated from the EFFECTS registry. -->
+  <select id="effect" style="display:none"><!-- options generated from the EFFECTS registry --></select>
   <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button id="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
@@ -873,7 +970,9 @@
   <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
-  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">▦</button></label>
+  <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
+       swatches) rather than what the button does, and read as a stop/fill icon. -->
+  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
   <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
   <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
@@ -894,6 +993,12 @@
   </details>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
+  <!-- Version + release notes, the conventional place for an "about" line: the very foot of
+       the panel, below every box. The text is filled in from CONFIG.version at startup so the
+       version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
+       than baking the notes into the page, which would grow this file on every release. -->
+  <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
+     title="What changed in this and previous releases">burnTheWeb <span id="vernum">·</span> — release notes ↗</a></p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
@@ -908,6 +1013,43 @@
     <h2 id="pal-title">Palette</h2>
     <div id="pal-grid"></div>
     <p class="pal-hint">The whole ramp — index 0 (top-left) → 255 (bottom-right), the heat value each colour maps. Hover a cell for its index and hex.</p>
+  </div>
+</div>
+
+<!-- Palette editor: edit a ramp as colour stops on a gradient bar. Opened by the + on any
+     palette swatch. Floating and non-modal like the inspector and the Orbit editor, so you
+     can watch the scene change while you drag — every edit previews live. -->
+<div id="paledlg" class="hidden">
+  <div class="pale-box">
+    <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>
+    <h2 id="pale-title">Palette editor</h2>
+    <!-- The bar IS the editor: the gradient shows the ramp, the handles under it are the
+         stops. Click the bar to add a stop there, drag a handle to move it. -->
+    <div id="pale-bar" title="Click to add a stop · drag a handle to move it">
+      <div id="pale-grad"></div>
+      <div id="pale-stops"></div>
+    </div>
+    <div class="pale-row">
+      <label class="pale-col">Colour
+        <input type="color" id="pale-color" title="Colour of the selected stop">
+      </label>
+      <label class="pale-col">Position
+        <input type="number" id="pale-pos" min="0" max="100" step="1" title="Where this stop sits along the ramp (%)">
+      </label>
+      <button type="button" id="pale-add" class="audbtn" title="Add a stop after the selected one">+ Stop</button>
+      <button type="button" id="pale-del" class="audbtn" title="Remove the selected stop">− Stop</button>
+    </div>
+    <div class="pale-row">
+      <label class="pale-col pale-name">Name
+        <input type="text" id="pale-name" maxlength="40" placeholder="My palette">
+      </label>
+      <button type="button" id="pale-revert" class="audbtn" title="Discard changes and start again from the palette you opened">Revert</button>
+    </div>
+    <div class="pale-row pale-actions">
+      <button type="button" id="pale-save" class="audbtn" title="Keep this palette and close — edits are applied and saved as you make them">Save &amp; close</button>
+      <button type="button" id="pale-delpal" class="audbtn" title="Delete this custom palette">Delete palette</button>
+    </div>
+    <p class="pal-hint" id="pale-hint"></p>
   </div>
 </div>
 
@@ -1016,6 +1158,14 @@
   // `tuning.*` values are load-bearing maths (see CLAUDE.md) — change with care.
   // ============================================================================
   const CONFIG = {
+    // --- release identity ---
+    // THE single source of truth for the app version. The menu's footer link reads it, and
+    // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
+    // released build always names the version whose notes describe it. Semver: patch for
+    // fixes, minor for a new effect/filter/control, major for a breaking scene format.
+    version: "1.1.0",
+    changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
+
     // --- effect stack / fractal layering ---
     stackMax: 4,          // max effects composited into one scene        (STACK_MAX)
     layerMax: 6,          // max progressively-smaller fractal copies      (LAYER_MAX)
@@ -1245,8 +1395,11 @@
   }
 
   // Piecewise-linear gradient through colour stops [pos(0..1), [r,g,b]].
+  // The returned fn carries its own `stops`, so the palette editor can seed itself with a
+  // built-in's EXACT control points instead of re-sampling the curve back into stops (which
+  // would round-trip Fire into something subtly different from Fire the moment you opened it).
   function grad(stops) {
-    return x => {
+    const fn = x => {
       const t = x / 255;
       for (let i = 1; i < stops.length; i++) {
         if (t <= stops[i][0]) {
@@ -1261,6 +1414,8 @@
       }
       return stops[stops.length - 1][1];
     };
+    fn.stops = stops;
+    return fn;
   }
 
   // Rainbow plasma: three phase-shifted sines, faded to black at the low end.
@@ -1296,6 +1451,79 @@
     { name: "Rasta Green", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
     { name: "Rasta Yellow", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
   ];
+
+  // ---- custom palettes (the palette editor) ---------------------------------
+  // User-authored ramps live in the SAME `PALETTES` array, appended after the shipped ones,
+  // so every consumer — `paletteRGB`, `setBase`, `pickOther`, the swatches, the `<select>`
+  // options, per-layer `bakeLayerBytes` — keeps working untouched and a custom palette is a
+  // first-class choice everywhere a built-in is. `PAL_BUILTIN` is captured HERE, immediately
+  // after the literal, so it is the count of shipped palettes no matter what is appended later.
+  //
+  // Consequence to know: a palette is referenced by INDEX (that is the existing storage
+  // format, `L.palette`), so customs must be installed BEFORE anything reads one back — they
+  // ride in the saved blob and `applyBlob` installs them ahead of validating any palette
+  // value. A share link naming a custom index the recipient does not have fails validation
+  // and falls back to the seeded default rather than corrupting anything.
+  const PAL_BUILTIN = PALETTES.length;
+  const PAL_MAX_CUSTOM = 24, PAL_MAX_STOPS = 16, PAL_MIN_STOPS = 2;
+  const isCustomPal = i => i >= PAL_BUILTIN;
+  // One custom definition {name, stops} → a PALETTES entry. `stops` is kept on the entry as
+  // well as inside the fn so the editor and the serializer read the same array.
+  function customPalEntry(def) {
+    return { name: def.name, fn: grad(def.stops), custom: true, stops: def.stops };
+  }
+  // Replace the custom tail wholesale. Truncating to PAL_BUILTIN first is what makes this
+  // idempotent — it is called on every load and on every editor save.
+  function installCustomPalettes(list) {
+    PALETTES.length = PAL_BUILTIN;
+    (list || []).forEach(d => PALETTES.push(customPalEntry(d)));
+  }
+  const customPalettes = () => PALETTES.slice(PAL_BUILTIN).map(p => ({ name: p.name, stops: p.stops }));
+  // Validate a stop list from a blob: pairs of [pos 0..1, [r,g,b]], sorted, deduped, clamped,
+  // capped. Returns null if it cannot be made into a usable ramp — a caller that gets null
+  // drops that palette rather than installing something that would throw inside grad().
+  function palStopsOk(raw) {
+    if (!Array.isArray(raw)) return null;
+    const out = [];
+    for (const s of raw.slice(0, PAL_MAX_STOPS)) {
+      if (!Array.isArray(s) || s.length < 2 || !Array.isArray(s[1]) || s[1].length < 3) continue;
+      const p = +s[0], c = s[1].slice(0, 3).map(v => clamp(+v));
+      if (!Number.isFinite(p) || c.some(v => !Number.isFinite(v))) continue;
+      out.push([Math.max(0, Math.min(1, p)), c]);
+    }
+    if (out.length < PAL_MIN_STOPS) return null;
+    out.sort((a, b) => a[0] - b[0]);
+    // grad() divides by (b[0] - a[0]) with a `|| 1` guard, so duplicate positions are safe
+    // but useless; drop them so a saved ramp stays editable.
+    const dedup = out.filter((s, i) => i === 0 || s[0] > out[i - 1][0] + 1e-6);
+    return dedup.length >= PAL_MIN_STOPS ? dedup : null;
+  }
+  function customPalettesOk(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const d of raw.slice(0, PAL_MAX_CUSTOM)) {
+      if (!d || typeof d !== "object") continue;
+      const stops = palStopsOk(d.stops);
+      if (!stops) continue;
+      const name = typeof d.name === "string" && d.name.trim() ? d.name.trim().slice(0, 40) : "Custom";
+      out.push({ name, stops });
+    }
+    return out;
+  }
+  // The stops to seed the editor with for palette `i`: a gradient's own control points where
+  // it has them, else the curve sampled evenly. Fire, Rainbow and Grayscale are procedural
+  // (no stops), so editing one starts from a faithful sampled approximation of it.
+  const PAL_SAMPLE_N = 9;
+  function palStopsOf(i) {
+    const p = PALETTES[i] || PALETTES[0];
+    if (p.fn.stops) return p.fn.stops.map(s => [s[0], s[1].slice(0, 3).map(clamp)]);
+    const out = [];
+    for (let k = 0; k < PAL_SAMPLE_N; k++) {
+      const t = k / (PAL_SAMPLE_N - 1);
+      out.push([t, p.fn(Math.round(t * 255)).slice(0, 3).map(clamp)]);
+    }
+    return out;
+  }
 
   // ---- Banded stripes: a *filter* over whatever palette is active, not a
   // palette of its own. It dims alternating groups of heat bands (three light,
@@ -2117,6 +2345,60 @@
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Bouncing solids: the 3D one. A raymarched SDF scene of up to 8 primitives whose
+    // pose is computed on the CPU (solidsSeed) and handed over per frame — uPos.xyz the
+    // centre, uPos.w the radius, uQuat the orientation, uShape which primitive. Nothing
+    // about the motion lives in here, so the Canvas2D mirror marches the identical scene.
+    // Every primitive is authored to fit inside radius r, which is what lets the physics
+    // use ONE bounding-sphere radius for all six (see solidStep).
+    const FS_SOLIDS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uZoom; uniform float uCount; uniform float uRim;
+    uniform vec4 uPos[8]; uniform vec4 uQuat[8]; uniform float uShape[8];
+    out vec4 o;
+    // World → body space: rotate by the CONJUGATE of q. The implicit surfaces below have
+    // no vertices to carry an orientation, so each sample is un-rotated instead.
+    vec3 toBody(vec4 q, vec3 v){ vec3 u = -q.xyz; return v + 2.0*cross(u, cross(u, v) + q.w*v); }
+    float shapeDist(int s, vec3 p, float r){
+      if (s == 0) return length(p) - r;                                              // sphere
+      if (s == 1){ vec3 d = abs(p) - vec3(r*0.55);                                   // box
+                   return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0); }
+      if (s == 2){ vec2 q = vec2(length(p.xz) - r*0.70, p.y); return length(q) - r*0.30; }   // torus
+      if (s == 3){ vec3 q = p; q.y -= clamp(q.y, -r*0.60, r*0.60); return length(q) - r*0.40; }  // capsule
+      if (s == 4){ vec3 a = abs(p); return (a.x + a.y + a.z - r)*0.5773; }           // octahedron
+      vec2 d = vec2(length(p.xz) - r*0.60, abs(p.y) - r*0.60);                       // cylinder
+      return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+    }
+    float map(vec3 p){
+      float d = 1e9; int n = int(uCount);
+      for (int i = 0; i < 8; i++){
+        if (i >= n) break;
+        d = min(d, shapeDist(int(uShape[i]), toBody(uQuat[i], p - uPos[i].xyz), uPos[i].w));
+      }
+      return d;
+    }
+    void main(){
+      vec2 uv = gl_FragCoord.xy/uSize - 0.5; uv.x *= uSize.x/uSize.y; uv /= uZoom;
+      vec3 ro = vec3(0.0, 0.0, -3.2), rd = normalize(vec3(uv, 1.4));
+      const vec3 L = vec3(-0.4557, 0.7295, -0.5104);   // key light, pre-normalised
+      float t = 0.0, heat = 0.0;
+      for (int i = 0; i < 48; i++){
+        vec3 p = ro + rd*t;
+        float d = map(p);
+        if (d < 0.0025){
+          vec2 e = vec2(1.0, -1.0)*0.0015;             // tetrahedral central-difference normal
+          vec3 n = normalize(e.xyy*map(p + e.xyy) + e.yyx*map(p + e.yyx)
+                           + e.yxy*map(p + e.yxy) + e.xxx*map(p + e.xxx));
+          float dif = max(0.0, dot(n, L));
+          float rim = pow(max(0.0, 1.0 - dot(n, -rd)), 2.5);   // bright silhouette edges
+          heat = (0.18 + 0.72*dif + uRim*rim) * smoothstep(7.0, 1.5, t);   // ...fading with depth
+          break;
+        }
+        t += d;
+        if (t > 7.0) break;
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     // ---- post-FX passes. All RGB, all read the palette-mapped image, so they
     // behave as named (an Edge in palette-INDEX space would find edges where there
@@ -2477,6 +2759,7 @@
     glProg.shapegrid = camProg(VS_QUAD, FS_SHAPEGRID, ["uSize", "uTime", "uCells", "uDot", "uSquare", "uPulse", "uZoom"]);
     glProg.concentric = camProg(VS_QUAD, FS_CONCENTRIC, ["uSize", "uTime", "uSides", "uCount", "uThick", "uSpin", "uZoom"]);
     glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
+    glProg.solids = camProg(VS_QUAD, FS_SOLIDS, ["uSize", "uZoom", "uCount", "uRim", "uPos", "uQuat", "uShape"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
@@ -4205,6 +4488,232 @@
     }
   }
 
+  // ---- Bouncing solids: rigid bodies raymarched as SDFs ---------------------
+  // The 3D member of the shape family (Polygon / Shape grid / Concentric / Bouncing
+  // shapes are its 2D siblings). A handful of primitives — sphere, box, doughnut,
+  // capsule, octahedron, cylinder — tumble and ricochet inside an invisible room and
+  // are drawn by ONE raymarching fragment shader (FS_SOLIDS), shaded into heat by
+  // surface normal + depth so the palette and glow treat it like every other effect.
+  //
+  // Split of responsibilities, and it matters: the PHYSICS runs here on the CPU once
+  // per frame for a handful of bodies (cheap, and the only way the GL path and the
+  // Canvas2D mirror can agree on where anything is), and the shader is handed nothing
+  // but the resulting pose — centre+radius in uPos, orientation in uQuat, which
+  // primitive in uShape. So `solids()` (the CPU mirror) and the shader raymarch the
+  // *same* scene; only the marcher differs, and only in step count.
+  //
+  // Orientation is a QUATERNION, not the tetrahedron's rotated-vertex list: these are
+  // implicit surfaces with no vertices to carry the rotation, so the shader has to undo
+  // it per sample (rotate the sample point into body space by the conjugate). A
+  // quaternion is 4 floats per body to upload and cannot shear or drift out of shape
+  // the way an accumulated 3x3 basis does — it just needs renormalising, which is one
+  // divide per body per frame.
+  const SOLID_SHAPES = 6;               // sphere, box, torus, capsule, octahedron, cylinder
+  const SOLID_BOX = [1.0, 0.72, 0.55];  // container half-extents; x is retuned to the frame aspect
+  const SOLID_SPIN_KICK = 1.35;         // how hard a wall impact converts slide into roll
+  let sdCount = 5, sdSize = 0.26, sdSpeed = 1, sdSpin = 1, sdMix = 6, sdRim = 0.55;
+  // The live body list belongs to the LAYER (L.solids), exactly like the tetrahedron's
+  // L.tetras — two Bouncing solids layers must tumble independently, not in lockstep.
+  // installStackItem points this at the drawing layer's list before its draw hook runs.
+  let sdBodies = [];
+  // Uniform staging buffers, allocated once. SD_MAX must match the array sizes declared
+  // in FS_SOLIDS — the shader cannot size an array from a uniform.
+  const SD_MAX = 8;
+  const sdPos = new Float32Array(SD_MAX * 4);    // xyz = centre, w = radius
+  const sdQuat = new Float32Array(SD_MAX * 4);   // orientation (x,y,z,w), unit
+  const sdShape = new Float32Array(SD_MAX);      // which primitive
+  // Deterministic start state: body k of layer `salt` opens the same way every reload, with
+  // no Math.random on this path at all (the chaos PRNG stays untouched — see Determinism).
+  //
+  // A hash, not a row of hand-tuned sines. The first version WAS sines — and shipped a bug
+  // worth remembering: the x term was `0.55·sin(k·3.1)`, and 3.1 is π to within 1.3%, so
+  // sin(k·3.1) is near zero for every small k and all five bodies started stacked in a
+  // column at x≈0. They spread out once they had bounced a few times, so it looked like a
+  // slow start rather than a distribution bug, and only a screenshot of the opening frames
+  // showed it. Three independent hashed values per vector cannot develop that kind of
+  // correlation between bodies.
+  function sdHash(k, salt, i) {
+    let x = (k * 374761393 + salt * 668265263 + i * 2246822519 + 0x9E3779B1) | 0;
+    x = Math.imul(x ^ (x >>> 13), 1274126177);
+    return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+  }
+  function makeSolid(k, salt, rad) {
+    const r = i => sdHash(k, salt, i) * 2 - 1;              // hashed, in [-1, 1)
+    // Spread across whatever room is actually AVAILABLE — the wall limit is
+    // `SOLID_BOX[ax] − radius`, not the wall itself, and it differs per axis (x follows the
+    // frame aspect, z is the shallowest). Hardcoded ranges here put a body outside the z
+    // and y limits at the shipped size, so it opened the scene half-buried in a wall and
+    // rendered as a flat clipped face until the first push-out moved it. The 0.92 keeps a
+    // little clearance so nothing starts exactly touching.
+    const rr = rad === undefined ? sdSize : rad;
+    const room = ax => Math.max(0, SOLID_BOX[ax] - rr) * 0.92;
+    const P = [r(1) * room(0), r(2) * room(1), r(3) * room(2)];
+    const V = [r(4) * 0.62, r(5) * 0.55, r(6) * 0.42];
+    const W = [r(7) * 1.8, r(8) * 1.8, r(9) * 1.8];
+    return { P, V, W, Q: [0, 0, 0, 1], k,
+             E0: 0.5 * v3.dot(V, V) };   // translational energy only: the spin is renormalised with it
+  }
+  function ensureSolids(arr, count, salt) {
+    while (arr.length < count) arr.push(makeSolid(arr.length, salt, sdSize));
+    if (arr.length > count) arr.length = count;
+  }
+  // Point the globals at THIS layer's bodies (creating them on first draw). Called from
+  // installStackItem for `solids` effects, the same hook installSeedPath uses.
+  function installSolids(L) {
+    L.solids = L.solids || [];
+    ensureSolids(L.solids, Math.max(1, Math.min(SD_MAX, Math.round(sdCount))), stack.indexOf(L));
+    sdBodies = L.solids;
+  }
+  // Keep them lively forever. The walls are near-elastic but not perfectly so, and the
+  // spin kick adds energy, so both ends drift; nudge the speed back toward its start
+  // value whenever it leaves a sane band. Same idea (and the same reason) as tetraRenorm.
+  function solidRenorm(S) {
+    const KE = 0.5 * v3.dot(S.V, S.V);
+    if (S.E0 > 0 && KE > 1e-6 && (KE < 0.45 * S.E0 || KE > 2.2 * S.E0)) {
+      const f = Math.sqrt(S.E0 / KE);
+      S.V = v3.scale(S.V, f);
+    }
+    const wl = Math.hypot(S.W[0], S.W[1], S.W[2]);   // and cap the tumble, or a corner hit can spin it into a blur
+    if (wl > 4.5) S.W = v3.scale(S.W, 4.5 / wl);
+  }
+  // Advance one body. Bounding-SPHERE walls: every primitive is authored to fit inside
+  // radius r (see the SDFs in FS_SOLIDS), so one radius drives every contact test and a
+  // doughnut bounces off the same wall a sphere would. Resolving the true SDF contact
+  // would need a per-shape support function for a difference nobody can see at this size.
+  function solidStep(S, dt, r) {
+    S.P = v3.add(S.P, v3.scale(S.V, dt));
+    for (let ax = 0; ax < 3; ax++) {
+      const lim = SOLID_BOX[ax] - r;
+      if (lim <= 0) continue;                         // body bigger than the room ⇒ leave it be
+      for (let sgn = -1; sgn <= 1; sgn += 2) {
+        const beyond = sgn > 0 ? S.P[ax] - lim : -lim - S.P[ax];
+        if (beyond <= 0) continue;
+        const n = [0, 0, 0]; n[ax] = -sgn;            // inward wall normal
+        if (v3.dot(S.V, n) < 0) {
+          S.V[ax] = -S.V[ax] * 0.985;                 // reflect, near-elastic
+          // Slide becomes roll: ω += k·(n × v_tangential)/r is the contact a real solid
+          // would make, so clipping a wall at an angle visibly kicks it into a tumble
+          // instead of sliding along unchanged. This is the whole reason the bounce
+          // reads as physical rather than as a DVD logo.
+          const vt = [S.V[0], S.V[1], S.V[2]]; vt[ax] = 0;
+          const kick = v3.scale(v3.cross(n, vt), SOLID_SPIN_KICK / Math.max(0.05, r));
+          S.W = v3.add(S.W, kick);
+        }
+        S.P[ax] += n[ax] * beyond;                    // positional push-out, no penetration
+      }
+    }
+    // Integrate the orientation: dq/dt = ½·ω⊗q, then renormalise. Written out rather than
+    // via a quat-multiply helper because ω's scalar part is 0, which kills half the terms.
+    const wx = S.W[0] * sdSpin, wy = S.W[1] * sdSpin, wz = S.W[2] * sdSpin;
+    const q = S.Q, h = 0.5 * dt;
+    const dx = h * (wx * q[3] + wy * q[2] - wz * q[1]);
+    const dy = h * (-wx * q[2] + wy * q[3] + wz * q[0]);
+    const dz = h * (wx * q[1] - wy * q[0] + wz * q[3]);
+    const dw = h * (-wx * q[0] - wy * q[1] - wz * q[2]);
+    q[0] += dx; q[1] += dy; q[2] += dz; q[3] += dw;
+    const ql = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+    q[0] /= ql; q[1] /= ql; q[2] /= ql; q[3] /= ql;
+    solidRenorm(S);
+  }
+  // Step the sim and stage the uniforms. Called once per frame per layer from the
+  // descriptor's draw hook, GL and CPU alike, so both paths see the identical pose.
+  function solidsSeed(dt) {
+    SOLID_BOX[0] = SOLID_BOX[1] * (fw / fh);          // the room follows the frame aspect
+    const n = Math.max(1, Math.min(SD_MAX, Math.round(sdCount)));
+    ensureSolids(sdBodies, n, 0);
+    // Clamp the step: a backgrounded tab hands back one enormous dt, and a body that
+    // travels further than the room in a single step tunnels straight through a wall.
+    const step = Math.min(0.05, dt) * sdSpeed;
+    const mix = Math.max(1, Math.min(SOLID_SHAPES, Math.round(sdMix)));
+    for (let i = 0; i < n; i++) {
+      const S = sdBodies[i];
+      solidStep(S, step, sdSize);
+      sdPos[i * 4] = S.P[0]; sdPos[i * 4 + 1] = S.P[1]; sdPos[i * 4 + 2] = S.P[2]; sdPos[i * 4 + 3] = sdSize;
+      sdQuat[i * 4] = S.Q[0]; sdQuat[i * 4 + 1] = S.Q[1]; sdQuat[i * 4 + 2] = S.Q[2]; sdQuat[i * 4 + 3] = S.Q[3];
+      sdShape[i] = S.k % mix;                         // Shape mix = how many primitives are in play
+    }
+    return { pos: sdPos, quat: sdQuat, shape: sdShape, count: n, rim: sdRim, zoom };
+  }
+
+  // ---- CPU mirror of FS_SOLIDS ---------------------------------------------
+  // Same scene, same marcher, fewer steps: this only runs on the Canvas2D fallback (no
+  // WebGL2 at all), where every other shader effect is likewise a full per-pixel JS loop.
+  // A raymarch is the most expensive of them by some way, so the step count is halved and
+  // the hit epsilon loosened — softer edges, same solids in the same places.
+  const SD_CPU_STEPS = 32, SD_CPU_EPS = 0.006;
+  // Rotate v into body space: v' = conj(q) · v · q, via the standard
+  // v + 2u×(u×v + w·v) with u = −q.xyz. Writes the scratch triple (no allocation per sample).
+  let sdQX = 0, sdQY = 0, sdQZ = 0;
+  function sdBody(qx, qy, qz, qw, vx, vy, vz) {
+    const ux = -qx, uy = -qy, uz = -qz;
+    let tx = uy * vz - uz * vy + qw * vx;     // u×v + w·v
+    let ty = uz * vx - ux * vz + qw * vy;
+    let tz = ux * vy - uy * vx + qw * vz;
+    sdQX = vx + 2 * (uy * tz - uz * ty);
+    sdQY = vy + 2 * (uz * tx - ux * tz);
+    sdQZ = vz + 2 * (ux * ty - uy * tx);
+  }
+  function sdShapeDist(s, x, y, z, r) {
+    if (s === 0) return Math.hypot(x, y, z) - r;                                    // sphere
+    if (s === 1) {                                                                  // box
+      const e = r * 0.55, ax = Math.abs(x) - e, ay = Math.abs(y) - e, az = Math.abs(z) - e;
+      const ox = Math.max(ax, 0), oy = Math.max(ay, 0), oz = Math.max(az, 0);
+      return Math.hypot(ox, oy, oz) + Math.min(Math.max(ax, ay, az), 0);
+    }
+    if (s === 2) {                                                                  // torus (the doughnut)
+      const q = Math.hypot(x, z) - r * 0.70;
+      return Math.hypot(q, y) - r * 0.30;
+    }
+    if (s === 3) {                                                                  // capsule
+      const hy = y - Math.max(-r * 0.60, Math.min(r * 0.60, y));
+      return Math.hypot(x, hy, z) - r * 0.40;
+    }
+    if (s === 4) return (Math.abs(x) + Math.abs(y) + Math.abs(z) - r) * 0.5773;      // octahedron
+    const dx = Math.hypot(x, z) - r * 0.60, dy = Math.abs(y) - r * 0.60;             // cylinder
+    return Math.min(Math.max(dx, dy), 0) + Math.hypot(Math.max(dx, 0), Math.max(dy, 0));
+  }
+  function sdMap(s, x, y, z) {
+    let d = 1e9;
+    for (let i = 0; i < s.count; i++) {
+      sdBody(s.quat[i * 4], s.quat[i * 4 + 1], s.quat[i * 4 + 2], s.quat[i * 4 + 3],
+             x - s.pos[i * 4], y - s.pos[i * 4 + 1], z - s.pos[i * 4 + 2]);
+      const dd = sdShapeDist(s.shape[i] | 0, sdQX, sdQY, sdQZ, s.pos[i * 4 + 3]);
+      if (dd < d) d = dd;
+    }
+    return d;
+  }
+  function solids(s) {
+    const asp = fw / fh, ro = -3.2, foc = 1.4;
+    // Light direction, normalised once — the same vector FS_SOLIDS hardcodes.
+    const lx = -0.4557, ly = 0.7295, lz = -0.5104;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX / fw - 0.5) * asp / s.zoom, uy = (camPY / fh - 0.5) / s.zoom;
+      const rl = Math.hypot(ux, uy, foc), rx = ux / rl, ry = uy / rl, rz = foc / rl;
+      let t = 0, heat = 0;
+      for (let i = 0; i < SD_CPU_STEPS; i++) {
+        const px = rx * t, py = ry * t, pz = ro + rz * t;
+        const d = sdMap(s, px, py, pz);
+        if (d < SD_CPU_EPS) {
+          const e = 0.0015;                                   // central-difference normal
+          const nx = sdMap(s, px + e, py, pz) - sdMap(s, px - e, py, pz);
+          const ny = sdMap(s, px, py + e, pz) - sdMap(s, px, py - e, pz);
+          const nz = sdMap(s, px, py, pz + e) - sdMap(s, px, py, pz - e);
+          const nl = Math.hypot(nx, ny, nz) || 1;
+          const dif = Math.max(0, (nx * lx + ny * ly + nz * lz) / nl);
+          const fac = Math.max(0, 1 + (nx * rx + ny * ry + nz * rz) / nl);   // 1 − n·(−rd)
+          heat = (0.18 + 0.72 * dif + s.rim * fac * fac * Math.sqrt(fac))    // fac^2.5 = rim light
+               * Math.max(0, Math.min(1, (7 - t) / 5.5));                    // depth fade
+          break;
+        }
+        t += d;
+        if (t > 7) break;
+      }
+      fire[idx++] = Math.max(0, Math.min(1, heat)) * 255;
+    }
+  }
+
   function render() {
     if (heatBoost > 0) {                       // Heat boost: remap the heat index toward the bright end
       const g = 1 / (1 + heatBoost);
@@ -4895,6 +5404,14 @@
     { key: "bnrad", host: "fx", group: "bounce", type: "dual", label: "Size", valId: "vBnRad", min: 0.02, max: 0.25, step: 0.005, lo: 0.09, hi: 0.09, fmt: v => sig3(v), apply: v => bnRad = v, durScale: 10 },
     { key: "bnsquare", host: "fx", group: "bounce", type: "dual", label: "Squareness", valId: "vBnSquare", min: 0, max: 1, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => bnSquare = v, durScale: 10 },
     { key: "bnspeed", host: "fx", group: "bounce", type: "dual", label: "Speed", valId: "vBnSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bnSpeed = v, durScale: 10 },
+    // Bouncing solids (3D). Count/Size feed the physics as well as the shader — Size IS the
+    // bounding radius every wall test uses, so widening it makes them bounce sooner too.
+    { key: "sdcount", host: "fx", group: "solids", type: "dual", label: "Count", valId: "vSdCount", min: 1, max: 8, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => sdCount = Math.round(v), durScale: 10 },
+    { key: "sdsize", host: "fx", group: "solids", type: "dual", label: "Size", valId: "vSdSize", min: 0.08, max: 0.5, step: 0.005, lo: 0.26, hi: 0.26, fmt: v => sig3(v), apply: v => sdSize = v, durScale: 10 },
+    { key: "sdmix", host: "fx", group: "solids", type: "dual", label: "Shape mix", valId: "vSdMix", min: 1, max: 6, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => sdMix = Math.round(v), durScale: 10 },
+    { key: "sdspeed", host: "fx", group: "solids", type: "dual", label: "Speed", valId: "vSdSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sdSpeed = v, durScale: 10 },
+    { key: "sdspin", host: "fx", group: "solids", type: "dual", label: "Tumble", valId: "vSdSpin", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sdSpin = v, durScale: 10 },
+    { key: "sdrim", host: "fx", group: "solids", type: "dual", label: "Edge glow", valId: "vSdRim", min: 0, max: 1.5, step: 0.02, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => sdRim = v, durScale: 10 },
     { key: "ata", host: "fx", group: "attractor", type: "dual", label: "Coeff a", valId: "vAtA", min: -3, max: 3, step: 0.01, lo: 1.4, hi: 1.4, fmt: v => sig3(v), apply: v => atA = v, durScale: 10 },
     { key: "atb", host: "fx", group: "attractor", type: "dual", label: "Coeff b", valId: "vAtB", min: -3, max: 3, step: 0.01, lo: -2.3, hi: -2.3, fmt: v => sig3(v), apply: v => atB = v, durScale: 10 },
     { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
@@ -5002,7 +5519,7 @@
     FILTERS.forEach(f => {
       const g = filterGroup(f);
       // The "Whole scene · final image" group lives in the Scene filters box; the
-      // per-effect groups stay in the Effects & Filters box. The box title already says
+      // per-effect groups stay in the Effect & Filters box. The box title already says
       // "Scene filters", so the scene group needs no in-box caption of its own.
       const dest = g.key === "scene" ? screenHost : host;
       if (g.key !== openKey) {
@@ -5163,6 +5680,7 @@
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
     attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    solids: "Bouncing solids",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
@@ -5574,6 +6092,11 @@
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
     showBox = layerShowBox(L);   // ...and the box belongs to the LAYER, not to whatever is selected
     if (EFFECTS[L.fx].cardioid) installSeedPath(L);
+    // Bouncing solids carries a list of rigid bodies, not a scalar clock, so it can't ride
+    // PHASE_VARS — it follows the tetrahedron's L.tetras arrangement instead: the bodies
+    // live on the layer and this points the globals at THIS layer's set before it draws.
+    // Without it two Bouncing solids layers would share one set and render as one.
+    if (EFFECTS[L.fx].solids) installSolids(L);
   }
   // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
   // effect keep separate orbits. The render loop installs each layer's config into the seed
@@ -5662,10 +6185,14 @@
     if (cur) paletteSel.value = cur;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
+      // A wrapper, because the swatch is a <button> and HTML forbids nesting one inside it —
+      // the edit + is a SIBLING positioned over the swatch's right edge.
+      const w = document.createElement("div");
+      w.className = "palsw-wrap";
       const b = document.createElement("button");
       b.type = "button"; b.className = "palsw"; b.dataset.pal = String(i);
       b.style.background = palGradientCss(i);
-      b.title = p.name;
+      b.title = p.name + (p.custom ? " (custom)" : "");
       const n = document.createElement("span");
       n.className = "palsw-n"; n.textContent = p.name;
       b.appendChild(n);
@@ -5674,14 +6201,23 @@
         paletteSel.dispatchEvent(new Event("change", { bubbles: true }));   // morph/setPalette + persist
         syncPalSwatches();
       });
-      host.appendChild(b);
+      w.appendChild(b);
+      const e = document.createElement("button");
+      e.type = "button"; e.className = "palsw-edit"; e.textContent = p.custom ? "✎" : "+";
+      // A built-in opens as a COPY (the shipped ramps stay pristine, so "Reset this effect"
+      // and every existing scene keep meaning what they meant); a custom opens for editing.
+      e.title = p.custom ? "Edit this palette" : "Make an editable copy of " + p.name;
+      e.setAttribute("aria-label", e.title);
+      e.addEventListener("click", ev => { ev.stopPropagation(); openPalEditor(i); });
+      w.appendChild(e);
+      host.appendChild(w);
     });
     paletteSel.classList.add("pal-hidden");   // the swatches are the control now; keep the select for its value
     paletteSel.style.display = "none";
     syncPalSwatches();
   }
   buildPalSwatches();
-  // Palette inspector (▦ button beside the Palette label): the selected palette's full 0–255
+  // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
   // muddy the identity. Hover a cell for its index + hex.
@@ -5713,6 +6249,302 @@
   resSel.addEventListener("change", () => { cfg.scale = +resSel.value; resize(); persist(); });
   const cycleChk = el("cycle");
   const presetSel = el("preset");
+  // ---- palette editor -------------------------------------------------------
+  // Opened by the + (built-in) or ✎ (custom) on any palette swatch. The ramp is edited as
+  // colour STOPS on a gradient bar: click the bar to add one, drag a handle to move it, and
+  // the native <input type="color"> does the colour picking — a fast, familiar control
+  // instead of a hand-rolled wheel.
+  //
+  // The central design decision is **edit live, not as a draft**. A palette is referenced by
+  // index and re-derived from `PALETTES` every frame (per-layer bakes, the morph, the CPU
+  // mirror), so a "draft" ramp held to one side would have to be threaded through all of
+  // those paths. Instead the custom palette is created and SELECTED the moment the editor
+  // opens, and every edit rewrites it in place — so the whole pipeline previews it for free,
+  // with no special case anywhere.
+  //
+  // Opening the + on a built-in therefore makes a copy immediately, which would litter the
+  // list with strays every time you merely looked. So: a fresh copy that is closed **without
+  // a single edit** is removed again. Peeking costs nothing; editing keeps it.
+  let paleIdx = -1;          // index in PALETTES of the palette being edited (a custom, always)
+  let paleFresh = false;     // did THIS session create it? (⇒ discard on a no-op close)
+  let paleDirty = false;     // has anything been edited?
+  let paleOrig = null;       // the stops the editor opened with, for Revert
+  let paleSel = null;        // the selected stop, held by identity (positions re-sort on drag)
+  let paleFallback = 0;      // palette to fall back to if this one is deleted (the source)
+
+  const paleStops = () => (PALETTES[paleIdx] && PALETTES[paleIdx].stops) || [];
+  const paleClone = st => st.map(s => [s[0], s[1].slice(0, 3)]);
+  const h2 = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  const paleHex = c => "#" + h2(c[0]) + h2(c[1]) + h2(c[2]);
+  const paleFromHex = s => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+  function paleGradCss(stops) {
+    return "linear-gradient(to right, " + stops
+      .map(s => "rgb(" + clamp(s[1][0]) + "," + clamp(s[1][1]) + "," + clamp(s[1][2]) + ") " + (s[0] * 100).toFixed(2) + "%")
+      .join(",") + ")";
+  }
+
+  // Rebuild the live PALETTES entry from the current stops and push it through everything
+  // that shows a palette. `full` also rebuilds the swatch grid + <select> options, which is
+  // only needed when a palette is ADDED or REMOVED — a stop edit just repaints one swatch,
+  // so dragging a handle doesn't rebuild (and steal focus from) the control being dragged.
+  function paleApply(full) {
+    const st = paleStops();
+    PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
+    if (full) buildPalSwatches();
+    else {
+      const sw = el("palswatches") && el("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
+      if (sw) sw.style.background = paleGradCss(st);
+      const opt = paletteSel.querySelector('option[value="' + paleIdx + '"]');
+      if (opt) opt.textContent = PALETTES[paleIdx].name;
+    }
+    // Repaint the on-screen ramp if this palette is the one showing. Guarded on `morphing`:
+    // mid-cycle the frame loop owns paletteBase, and it re-reads PALETTES each step anyway.
+    if (+paletteSel.value === paleIdx && !morphing) setPalette(paleIdx);
+    paleRender();
+  }
+
+  // Draw the bar, the handles, and the fields for the selected stop.
+  function paleRender() {
+    if (paleIdx < 0 || !PALETTES[paleIdx]) return;
+    const st = paleStops();
+    el("pale-grad").style.background = paleGradCss(st);
+    const host = el("pale-stops");
+    host.textContent = "";
+    if (st.indexOf(paleSel) < 0) paleSel = st[0];
+    st.forEach(s => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pale-h" + (s === paleSel ? " sel" : "");
+      b.style.left = (s[0] * 100) + "%";
+      b.style.background = "rgb(" + clamp(s[1][0]) + "," + clamp(s[1][1]) + "," + clamp(s[1][2]) + ")";
+      b.title = Math.round(s[0] * 100) + "% · " + paleHex(s[1]);
+      b.setAttribute("aria-label", "Stop at " + Math.round(s[0] * 100) + " percent");
+      b.addEventListener("pointerdown", ev => paleDragStart(ev, b, s));
+      host.appendChild(b);
+    });
+    if (paleSel) {
+      el("pale-color").value = paleHex(paleSel[1]);
+      el("pale-pos").value = Math.round(paleSel[0] * 100);
+    }
+    // The two ends are what make the ramp span 0..1, so keep at least PAL_MIN_STOPS.
+    el("pale-del").classList.toggle("off", st.length <= PAL_MIN_STOPS);
+    el("pale-add").classList.toggle("off", st.length >= PAL_MAX_STOPS);
+    el("pale-title").textContent = "Palette editor · " + PALETTES[paleIdx].name;
+    el("pale-hint").textContent = st.length + " stops · the scene updates as you edit. "
+      + "Index 0 always shows the layer's Background, and the darkest few steps are eased "
+      + "into it, so the very low end looks softer on screen than it does here.";
+  }
+
+  // Dragging a handle. The stop list is re-sorted on every move (so a handle dragged past its
+  // neighbour really does change order), which is exactly why the selection is held by object
+  // identity rather than by index — an index would silently start pointing at another stop.
+  function paleDragStart(ev, btn, stop) {
+    ev.preventDefault(); ev.stopPropagation();
+    paleSel = stop;
+    const bar = el("pale-grad");
+    btn.setPointerCapture(ev.pointerId);
+    const move = e => {
+      const r = bar.getBoundingClientRect();
+      stop[0] = Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1)));
+      paleStops().sort((a, b) => a[0] - b[0]);
+      paleEdited(false);
+    };
+    const up = () => {
+      btn.releasePointerCapture(ev.pointerId);
+      btn.removeEventListener("pointermove", move);
+      btn.removeEventListener("pointerup", up);
+      btn.removeEventListener("pointercancel", up);
+      paleCommit();                 // persist ONCE on release, not on every pointermove
+    };
+    btn.addEventListener("pointermove", move);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    paleRender();
+  }
+
+  // An edit happened: mark dirty and repaint. `full` for add/remove (rebuilds the grid).
+  function paleEdited(full) {
+    paleDirty = true;
+    paleApply(full);
+  }
+  // Write the palette list to storage. Separate from paleEdited so a drag persists once on
+  // release rather than on every pointermove — the same reason the layer gain slider does.
+  function paleCommit() {
+    if (paleIdx < 0) return;
+    persist();
+    autosavePreset();
+  }
+
+  // Open the editor for palette `i`. A built-in is copied first; a custom is edited directly.
+  function openPalEditor(i) {
+    const src = PALETTES[i] || PALETTES[0];
+    if (src.custom) {
+      paleIdx = i; paleFresh = false;
+      paleFallback = 0;
+    } else {
+      if (PALETTES.length - PAL_BUILTIN >= PAL_MAX_CUSTOM) {
+        alert("You already have " + PAL_MAX_CUSTOM + " custom palettes — delete one first.");
+        return;
+      }
+      // Copy the built-in's exact control points where it has them (grad carries its stops);
+      // Fire / Rainbow / Grayscale are procedural and get a faithful sampled approximation.
+      PALETTES.push(customPalEntry({ name: paleCopyName(src.name), stops: palStopsOf(i) }));
+      paleIdx = PALETTES.length - 1;
+      paleFresh = true;
+      paleFallback = i;             // Delete / a no-op close returns to the palette it came from
+      buildPalSwatches();
+      paleSelectLive(paleIdx);      // ...and show it at once, so editing previews live
+    }
+    paleDirty = false;
+    paleOrig = paleClone(paleStops());
+    paleSel = paleStops()[0];
+    el("pale-name").value = PALETTES[paleIdx].name;
+    el("pale-delpal").classList.remove("off");
+    el("paledlg").classList.remove("hidden");
+    paleRender();
+  }
+  // "Fire" → "Fire copy", then "Fire copy 2", … so two copies of one built-in are tellable
+  // apart in the swatch list without making you rename them first.
+  function paleCopyName(base) {
+    const taken = new Set(PALETTES.map(p => p.name));
+    let n = base + " copy";
+    for (let k = 2; taken.has(n); k++) n = base + " copy " + k;
+    return n;
+  }
+  // Select a palette the way a swatch click does, so the morph/persist path is identical.
+  function paleSelectLive(i) {
+    paletteSel.value = String(i);
+    paletteSel.dispatchEvent(new Event("change", { bubbles: true }));
+    syncPalSwatches();
+  }
+
+  function closePalEditor() {
+    // A copy nobody edited is a stray: drop it and go back to the palette it came from.
+    if (paleFresh && !paleDirty && paleIdx >= PAL_BUILTIN) {
+      const back = paleFallback;
+      PALETTES.splice(paleIdx, 1);
+      buildPalSwatches();
+      paleSelectLive(back);
+    }
+    paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null; paleOrig = null;
+    el("paledlg").classList.add("hidden");
+  }
+
+  // Delete the custom being edited. Palette references are INDICES, so removing one from the
+  // middle of the custom tail shifts every later custom down — `palRemapDeleted` rewrites the
+  // stored references (live stack, per-effect extras, and every preset) to match. Without it,
+  // deleting the first of three customs silently re-points scenes at the wrong ramp.
+  function deletePalEditor() {
+    if (paleIdx < PAL_BUILTIN) return;
+    const gone = paleIdx, back = paleFallback;
+    if (!paleFresh && !confirm("Delete the custom palette “" + PALETTES[gone].name
+        + "”? Any layer using it falls back to " + PALETTES[back].name + ".")) return;
+    PALETTES.splice(gone, 1);
+    palRemapDeleted(gone, back);
+    paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
+    el("paledlg").classList.add("hidden");
+    buildPalSwatches();
+    paleSelectLive(Math.min(back, PALETTES.length - 1));
+    persist();
+    autosavePreset();
+  }
+  // Rewrite one stored palette reference after `gone` was removed. Values are strings in the
+  // DOM and may be numbers in a blob, so it returns the same flavour it was given.
+  function palRemapOne(v, gone, back) {
+    if (v === null || v === undefined) return v;
+    const n = +v;
+    if (!Number.isFinite(n)) return v;
+    const out = n === gone ? back : n > gone ? n - 1 : n;
+    return typeof v === "string" ? String(out) : out;
+  }
+  function palRemapDeleted(gone, back) {
+    stack.forEach(L => { L.palette = palRemapOne(L.palette, gone, back); });
+    for (const e in extras) if (extras[e]) extras[e].palette = palRemapOne(extras[e].palette, gone, back);
+    presets.forEach(p => {
+      if (p.extra) p.extra.palette = palRemapOne(p.extra.palette, gone, back);
+      (p.layers || []).forEach(L => { L.palette = palRemapOne(L.palette, gone, back); });
+    });
+    paletteSel.value = String(palRemapOne(+paletteSel.value, gone, back));
+  }
+
+  // ---- wiring ----
+  el("pale-close").addEventListener("click", closePalEditor);
+  // Save is really "keep and close": edits are already live and already persisted, so there
+  // is nothing to flush. It exists because a fresh copy closed with NO edits is discarded on
+  // purpose (see closePalEditor) — Save is how you say "keep it anyway", e.g. you wanted a
+  // duplicate of Fire under its own name to edit later. So it marks the palette kept first.
+  el("pale-save").addEventListener("click", () => {
+    if (paleIdx < 0) return;
+    paleDirty = true;          // ...so closePalEditor keeps a fresh, unedited copy
+    paleCommit();
+    closePalEditor();
+  });
+  el("pale-delpal").addEventListener("click", deletePalEditor);
+  el("pale-color").addEventListener("input", () => {
+    if (paleSel) { paleSel[1] = paleFromHex(el("pale-color").value); paleEdited(false); }
+  });
+  el("pale-color").addEventListener("change", paleCommit);
+  el("pale-pos").addEventListener("input", () => {
+    if (!paleSel) return;
+    const v = +el("pale-pos").value;
+    if (!Number.isFinite(v)) return;
+    paleSel[0] = Math.max(0, Math.min(1, v / 100));
+    paleStops().sort((a, b) => a[0] - b[0]);
+    paleEdited(false);
+  });
+  el("pale-pos").addEventListener("change", paleCommit);
+  el("pale-name").addEventListener("input", () => {
+    const n = el("pale-name").value.trim().slice(0, 40) || "Custom";
+    if (paleIdx >= 0) { PALETTES[paleIdx].name = n; paleEdited(false); }
+  });
+  el("pale-name").addEventListener("change", paleCommit);
+  // Add a stop midway to the next one, taking the ramp's colour there — so a new stop starts
+  // invisible and you move it where you want, rather than punching a colour into the ramp.
+  el("pale-add").addEventListener("click", () => {
+    const st = paleStops();
+    if (paleIdx < 0 || st.length >= PAL_MAX_STOPS) return;
+    const i = Math.max(0, st.indexOf(paleSel));
+    const next = st[i + 1] || st[i];
+    const pos = st[i + 1] ? (st[i][0] + next[0]) / 2 : Math.min(1, st[i][0] + 0.05);
+    const c = PALETTES[paleIdx].fn(Math.round(pos * 255)).slice(0, 3).map(clamp);
+    const ns = [pos, c];
+    st.push(ns); st.sort((a, b) => a[0] - b[0]);
+    paleSel = ns;
+    paleEdited(false);
+    paleCommit();
+  });
+  el("pale-del").addEventListener("click", () => {
+    const st = paleStops();
+    if (st.length <= PAL_MIN_STOPS) return;
+    const i = st.indexOf(paleSel);
+    if (i < 0) return;
+    st.splice(i, 1);
+    paleSel = st[Math.min(i, st.length - 1)];
+    paleEdited(false);
+    paleCommit();
+  });
+  el("pale-revert").addEventListener("click", () => {
+    if (paleIdx < 0 || !paleOrig) return;
+    PALETTES[paleIdx].stops = paleClone(paleOrig);
+    paleSel = PALETTES[paleIdx].stops[0];
+    paleEdited(false);
+    paleCommit();
+  });
+  // Clicking the bar adds a stop right there — the fastest way to shape a ramp, and the
+  // reason the bar's cursor is `copy`. Handles stopPropagation their own pointerdown, so a
+  // click that starts on a handle drags it instead of adding a stop underneath it.
+  el("pale-bar").addEventListener("click", ev => {
+    const st = paleStops();
+    if (paleIdx < 0 || st.length >= PAL_MAX_STOPS) return;
+    const r = el("pale-grad").getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (ev.clientX - r.left) / (r.width || 1)));
+    const c = PALETTES[paleIdx].fn(Math.round(pos * 255)).slice(0, 3).map(clamp);
+    const ns = [pos, c];
+    st.push(ns); st.sort((a, b) => a[0] - b[0]);
+    paleSel = ns;
+    paleEdited(false);
+    paleCommit();
+  });
   // ---- effect registry: the single source of truth for each effect. Adding an
   // effect = append a descriptor here. (Phase 0 holds metadata — name/subtitle/help
   // and the default-preset name; dispatch, controls and persistence move here next.)
@@ -5842,6 +6674,13 @@
       draw: dt => { const s = bounceSeed(dt); if (useGL) glShaderDraw("bounce", u => { gl.uniform2fv(u.uPos, s.pos); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uZoom, s.zoom); }); else bounce(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], bncount: [4, 4], bnrad: [0.09, 0.09], bnsquare: [0.6, 0.6], bnspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
+    { id: "solids", name: "Bouncing solids", subtitle: "Solids · raymarched 3D",
+      help: "Real 3D: a handful of solid primitives — sphere, box, doughnut, capsule, octahedron, cylinder — tumbling and ricocheting off the walls of an invisible room, raymarched as signed-distance fields and shaded into the palette by surface angle and depth. Count sets how many bodies, Size how big (which is also the radius they bounce on, so bigger ones turn sooner), Shape mix how many different primitives are in play (1 = all spheres, 6 = all six), Speed how fast they travel and Tumble how hard they spin — a wall hit converts slide into roll, so they kick into a tumble on an angled clip. Edge glow lights the silhouettes. Tick Fire or Fade pixel for trails.",
+      params: ["sdcount", "sdsize", "sdmix", "sdspeed", "sdspin", "sdrim", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "solids", "band"],
+      bakesOwnZoom: true, solids: true,
+      draw: dt => { const s = solidsSeed(dt); if (useGL) glShaderDraw("solids", u => { gl.uniform4fv(u.uPos, s.pos); gl.uniform4fv(u.uQuat, s.quat); gl.uniform1fv(u.uShape, s.shape); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRim, s.rim); gl.uniform1f(u.uZoom, s.zoom); }); else solids(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], sdcount: [5, 5], sdsize: [0.26, 0.26], sdmix: [6, 6], sdspeed: [1, 1], sdspin: [1, 1], sdrim: [0.55, 0.55], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -6635,8 +7474,34 @@
       });
       row.appendChild(grab);
 
-      const nm = document.createElement("div");
-      nm.className = "lyr-name"; nm.textContent = EFFECTS[L.fx].name;
+      // The effect chooser sits ON the row, not only in the Effect & Filters box below —
+      // re-pointing a layer is the single most common thing you do to one, and it used to
+      // mean select the row, scroll down, then use the other chooser. Both drive the same
+      // path: changing a row that is NOT selected selects it FIRST, because setEffect edits
+      // whatever `stackSel` names, and routing through selectStack is what keeps the
+      // freeze/stageLayerExtras ordering honest (writing L.fx directly here would strand the
+      // layer's palette + filters on the outgoing effect — the load-order trap in CLAUDE.md).
+      // `fx` is read off the <select> BEFORE either call: both re-run syncStackUI, which
+      // rebuilds these rows, so `nm` is a detached node by the time they return.
+      const nm = document.createElement("select");
+      nm.className = "lyr-name";
+      EFFECTS.forEach((f, i) => {
+        const o = document.createElement("option");
+        o.value = String(i); o.textContent = f.name; o.title = f.subtitle;
+        nm.appendChild(o);
+      });
+      nm.value = String(L.fx);
+      nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
+      nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row
+      nm.addEventListener("change", e => {
+        e.stopPropagation();
+        const fx = +nm.value;
+        if (j !== stackSel) selectStack(j);
+        setEffect(fx);          // ...which re-runs syncStackUI, so the row redraws itself
+        autosavePreset();
+        persist();
+        nextSwitch = 0;         // a manual pick restarts the auto-cycle clock, as in the box below
+      });
       row.appendChild(nm);
 
       const ctl = document.createElement("div");
@@ -7087,6 +7952,7 @@
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
+      palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -7110,6 +7976,16 @@
     migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
     if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
+    // Custom palettes BEFORE anything that reads a palette value. They are referenced by
+    // index (PAL_BUILTIN and up), so a scene naming custom #21 needs #21 to exist by the time
+    // its palette is validated — installing them later would silently reject every custom
+    // reference and fall back to a built-in. `customPalettesOk` drops malformed entries
+    // rather than letting a bad stop list reach grad(). A blob with no `palettes` key (every
+    // scene saved before the editor existed) leaves the list untouched.
+    if (saved.palettes !== undefined) {
+      installCustomPalettes(customPalettesOk(saved.palettes));
+      buildPalSwatches();                          // regenerate the swatch grid + <select> options
+    }
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
@@ -9113,10 +9989,10 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
-    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); setPanel(!panel.classList.contains("hidden")); }
+    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
@@ -9207,6 +10083,12 @@
       { n: "Coeff b", w: "attractor", t: "Attractor only — the b coefficient of the de Jong map." },
       { n: "Coeff c", w: "attractor", t: "Attractor only — the c coefficient of the de Jong map." },
       { n: "Coeff d", w: "attractor", t: "Attractor only — the d coefficient of the de Jong map." },
+      { n: "Count", w: "solids", t: "Bouncing solids only — how many bodies share the room, up to 8. Each one is a different primitive (see Shape mix) with its own start position, heading and tumble, so they never move as a group." },
+      { n: "Size", w: "solids", t: "Bouncing solids only — how big the bodies are. This is also the radius the physics bounces on, so larger solids turn away from the walls sooner and crowd the room; push it far enough and they barely have anywhere to go." },
+      { n: "Shape mix", w: "solids", t: "Bouncing solids only — how many different primitives are in play, in order: sphere, box, doughnut, capsule, octahedron, cylinder. 1 gives a room of spheres, 6 gives one of each cycling through the bodies. Arm its L/M/H chips to swap the whole cast on the beat." },
+      { n: "Speed", w: "solids", t: "Bouncing solids only — how fast the bodies travel, and so how often they hit a wall. 0 freezes them mid-air, still lit and still spinning down." },
+      { n: "Tumble", w: "solids", t: "Bouncing solids only — how fast the bodies rotate. A wall impact converts sideways travel into roll, so an angled clip visibly kicks a body into a tumble; this scales all of that. 0 holds every solid at a fixed orientation." },
+      { n: "Edge glow", w: "solids", t: "Bouncing solids only — lights the silhouettes, brightest where a surface turns away from you. Low values give flat shaded solids; high values outline every body in fire and read almost like an X-ray." },
     ],
   };
   const helpEl = el("help");
@@ -9284,6 +10166,21 @@
   }
   el("preset-help-btn").addEventListener("click", openPresetHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
+
+  // ---- version + release-notes link (panel footer) ----
+  // Filled in from CONFIG.version so the version string exists in exactly ONE place; the
+  // /deploy skill bumps it there and writes the matching CHANGELOG.md section. The href is
+  // set here too rather than hardcoded in the HTML, so both come from CONFIG.
+  // Guarded: a missing node must not throw during startup and take the whole panel with it.
+  {
+    const vn = el("vernum"), vl = el("verlink");
+    if (vn) vn.textContent = "v" + CONFIG.version;
+    if (vl) {
+      vl.href = CONFIG.changelogUrl;
+      vl.title = "burnTheWeb v" + CONFIG.version + " — what changed in this and previous releases";
+      vl.addEventListener("click", () => track("release_notes_open", { version: CONFIG.version }));
+    }
+  }
 
   // ---- analytics (Google Analytics 4) ----
   // Live: GA_MEASUREMENT_ID (CONFIG.analyticsId) holds a real "G-XXXXXXXXXX" web-stream
