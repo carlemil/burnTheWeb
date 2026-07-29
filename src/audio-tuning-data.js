@@ -61,6 +61,7 @@
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
+      palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -84,6 +85,16 @@
     migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
     if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
+    // Custom palettes BEFORE anything that reads a palette value. They are referenced by
+    // index (PAL_BUILTIN and up), so a scene naming custom #21 needs #21 to exist by the time
+    // its palette is validated — installing them later would silently reject every custom
+    // reference and fall back to a built-in. `customPalettesOk` drops malformed entries
+    // rather than letting a bad stop list reach grad(). A blob with no `palettes` key (every
+    // scene saved before the editor existed) leaves the list untouched.
+    if (saved.palettes !== undefined) {
+      installCustomPalettes(customPalettesOk(saved.palettes));
+      buildPalSwatches();                          // regenerate the swatch grid + <select> options
+    }
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {

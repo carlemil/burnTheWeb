@@ -30,6 +30,15 @@ the single source of truth; `/deploy` bumps it and adds the section below in the
   and then scrolling down to the chooser — each row in the *Layers* box carries its own
   dropdown. Picking on a row that is not selected selects it first, so a layer keeps its
   palette and filters exactly as it does when you switch it the long way round.
+- **A palette editor.** Hover any palette swatch and click **+** to make an editable copy of
+  it (or **✎** on one of your own to edit it in place — the nineteen built-in ramps are never
+  changed). The ramp is edited as colour stops on a gradient bar: click the bar to add a stop
+  there, drag a handle to move it, pick colours with the colour box. **Every edit previews
+  live on the scene**, so there is nothing to apply and nothing to guess at. Your palettes
+  join the swatch list and the palette-cycle rotation, and are saved with your settings and
+  backups. A copy you open and close without changing anything is discarded, so looking costs
+  nothing; **Save & close** keeps it if you wanted the duplicate. **Delete palette** removes
+  one of yours, and any layer using it falls back to the ramp it was copied from.
 - **Version and release-notes link** at the foot of the menu (this file).
 
 ### Changed
@@ -38,6 +47,9 @@ the single source of truth; `/deploy` bumps it and adds the section below in the
   it edits the one layer you have selected; the plural read as "all of the effects".
 - The palette inspector button is an **eye** instead of the old ▦ grid glyph, which
   described the dialog's layout rather than what the button does and read as a stop icon.
+- Custom palettes ride in saved settings, backups and preset bundles. A scene that names a
+  palette you do not have falls back to a built-in rather than failing to load — the same as
+  any other out-of-range value.
 
 ### Fixed
 

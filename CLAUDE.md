@@ -674,6 +674,43 @@ at the same two choke points: `composePalette` forces `palette[0]` and `bakeLaye
 `out[0]`. In a multi-layer scene it is genuinely per-layer — a layer's unlit pixels take its own
 background colour into the OKLab blend — so "white" is most useful on a bottom/background layer.
 
+**Palette editor** (`#paledlg`, `src/palette-editor.js`). Every swatch carries a small button:
+**`+` on a built-in makes an editable copy**, **`✎` on a custom edits it** — the shipped ramps
+stay pristine, so "Reset this effect" and every existing scene keep meaning what they meant.
+The ramp is edited as colour **stops** on a gradient bar (click the bar to add one, drag a
+handle to move it, native `<input type="color">` for the colour). It is a floating,
+translucent, non-modal panel like the inspector and the Orbit editor, and hides on `m`/`Esc`.
+
+**It edits LIVE, not as a draft, and that is the whole design.** A palette is referenced by
+*index* and re-derived from `PALETTES` every frame (per-layer bakes, the morph clock, the CPU
+mirror), so a draft ramp held to one side would have to be threaded through all of those.
+Instead the custom is created and *selected* the moment the editor opens and every edit
+rewrites it in place, so the entire pipeline previews it for free with no special case. The
+cost of that: opening `+` on a built-in creates a copy immediately, which would litter the
+list every time you merely looked — so **a fresh copy closed without a single edit is
+removed again**. `Save & close` exists precisely to override that (keep an unedited
+duplicate); it flushes nothing, because edits are already saved.
+
+**Customs live in the SAME `PALETTES` array**, appended after the built-ins, so `paletteRGB`,
+`setBase`, `pickOther`, `bakeLayerBytes`, the swatches and the `<select>` options all work
+untouched and a custom is a first-class choice everywhere. `PAL_BUILTIN` is captured
+immediately after the array literal, so it is the shipped count whatever is appended later.
+`grad()` now hangs its `stops` on the returned fn, which is what lets the editor seed itself
+with a built-in's **exact** control points; `palStopsOf` falls back to sampling for the three
+procedural ramps (Fire / Rainbow / Grayscale).
+
+Two consequences to keep in mind, both load-bearing:
+- **`applyBlob` must install customs BEFORE it validates any palette value** — a scene naming
+  custom #21 needs #21 to exist by then, or `paletteOK` rejects it and silently falls back to
+  a built-in. `customPalettesOk` drops malformed entries (and sorts stop lists, since `grad`
+  interpolates backwards through an unsorted one and renders as one flat colour) instead of
+  letting bad data reach `grad()`.
+- **Deleting a custom shifts every later custom's index down**, so `palRemapDeleted` rewrites
+  the stored references — the live stack, the per-effect `extras`, and every preset. Without
+  it, deleting the first of three customs silently re-points scenes at the wrong ramp. Share
+  links already generated are not rewritten; a link naming a custom the recipient lacks fails
+  validation and falls back, which is the same behaviour as any out-of-range palette.
+
 **Palette preview picker.** The `#palette <select>` is the palette **value store** but is
 **hidden** (`buildPalSwatches` sets `display:none`); the visible control is `#palswatches`,
 a gradient swatch per `PALETTES` entry built from `palGradientCss(i)`. A swatch click just

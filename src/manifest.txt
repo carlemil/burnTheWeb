@@ -20,6 +20,7 @@ audio-detector.js
 controls-schema.js
 stack-core.js
 palette-picker.js
+palette-editor.js
 effects-registry.js
 credits.js
 filters.js

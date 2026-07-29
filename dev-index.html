@@ -172,7 +172,7 @@
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
-  body.ui-hidden #carddlg, body.ui-hidden #paldlg { display: none !important; }
+  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -603,15 +603,85 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  #paldlg .pal-close {
+  /* Shared by the inspector and the editor — both carry a .pal-close. Scoping this to
+     #paldlg alone left the editor's × unstyled (a default grey button above the title). */
+  #paldlg .pal-close, #paledlg .pal-close {
     position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
     color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
   }
-  #paldlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  #paldlg .pal-close:hover, #paledlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
   #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
+  /* ---- palette editor ---- */
+  /* Same floating, translucent, non-modal treatment as the inspector and Orbit editor: you
+     tune a ramp while watching the scene, so it must never take the whole screen or block a
+     click on the canvas behind it. */
+  #paledlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;   /* only the box itself is interactive */
+  }
+  #paledlg.hidden { display: none; }
+  #paledlg .pale-box {
+    position: relative; pointer-events: auto;
+    width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
+    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 18px 20px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #paledlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* The gradient bar + its stop handles. Extra bottom padding is the handles' lane, so a
+     handle at either end is fully clickable instead of half outside the box. */
+  #pale-bar { position: relative; height: 46px; margin: 2px 0 6px; padding-bottom: 14px; cursor: copy; }
+  #pale-grad {
+    height: 32px; border-radius: 6px; border: 1px solid rgba(255, 140, 40, 0.4);
+    /* Checkerboard under the ramp so a near-black stop is still visibly a stop. */
+    background-color: #000;
+  }
+  #pale-stops { position: relative; height: 14px; }
+  /* One handle per stop: a pointed marker sitting under the bar, filled with its own colour
+     so the row reads as the ramp's control points rather than as a row of identical pins. */
+  .pale-h {
+    position: absolute; top: 0; width: 13px; height: 13px; margin-left: -7px; padding: 0;
+    border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.75);
+    box-shadow: 0 0 0 1px rgba(255, 207, 135, 0.5); cursor: grab;
+    touch-action: none;   /* a touch-drag moves the stop instead of scrolling the box */
+  }
+  .pale-h.sel { box-shadow: 0 0 0 2px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.7); z-index: 2; cursor: grabbing; }
+  #paledlg .pale-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 9px; }
+  #paledlg .pale-col {
+    display: flex; flex-direction: column; gap: 3px; margin: 0;
+    font-size: 10px; color: #ffb15a; opacity: .85; letter-spacing: .3px;
+  }
+  #paledlg .pale-col input { margin: 0; }
+  #paledlg input[type=color] { width: 46px; height: 26px; padding: 1px; cursor: pointer; }
+  #paledlg #pale-pos { width: 62px; }
+  #paledlg .pale-name { flex: 1 1 auto; min-width: 0; }
+  #paledlg .pale-name input { width: 100%; }
+  #paledlg .pale-row .audbtn { flex: 0 0 auto; }
+  #paledlg .pale-actions { margin-top: 13px; }
+  #paledlg .pale-actions .audbtn { flex: 1 1 auto; }
+  #paledlg #pale-save { border-color: rgba(255, 140, 40, 0.75); background: rgba(255, 122, 26, 0.28); }
+  #paledlg .pal-hint { margin: 10px 0 0; opacity: .6; font-size: 10.5px; }
+  #paledlg .audbtn.off { opacity: .35; pointer-events: none; }
+  /* The + on a swatch. The swatch is itself a <button>, and a button cannot nest one, so the
+     two are siblings in a wrapper and the + is positioned over the swatch's right edge. */
+  .palsw-wrap { position: relative; display: block; }
+  .palsw-wrap .palsw { width: 100%; }
+  .palsw-edit {
+    position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+    width: 17px; height: 17px; padding: 0; border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(0, 0, 0, 0.5);
+    color: #fff; font: bold 11px/1 ui-monospace, monospace; cursor: pointer;
+    opacity: 0; transition: opacity .12s;
+  }
+  /* Revealed on hover/focus of the swatch so the grid stays clean, but always visible on a
+     touch device, where there is no hover to reveal it with. */
+  .palsw-wrap:hover .palsw-edit, .palsw-edit:focus-visible, .palsw-wrap .palsw:focus-visible ~ .palsw-edit { opacity: 1; }
+  @media (hover: none) { .palsw-edit { opacity: .75; } }
+  .palsw-edit:hover { background: rgba(255, 122, 26, 0.85); }
   #help .help-box {
     position: relative; width: min(1400px, calc(100vw - 580px)); max-height: 88vh; overflow-y: auto;
     margin: 16px 28px; padding: 20px 26px; background: rgba(14, 8, 5, 0.98);
@@ -933,6 +1003,43 @@
     <h2 id="pal-title">Palette</h2>
     <div id="pal-grid"></div>
     <p class="pal-hint">The whole ramp — index 0 (top-left) → 255 (bottom-right), the heat value each colour maps. Hover a cell for its index and hex.</p>
+  </div>
+</div>
+
+<!-- Palette editor: edit a ramp as colour stops on a gradient bar. Opened by the + on any
+     palette swatch. Floating and non-modal like the inspector and the Orbit editor, so you
+     can watch the scene change while you drag — every edit previews live. -->
+<div id="paledlg" class="hidden">
+  <div class="pale-box">
+    <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>
+    <h2 id="pale-title">Palette editor</h2>
+    <!-- The bar IS the editor: the gradient shows the ramp, the handles under it are the
+         stops. Click the bar to add a stop there, drag a handle to move it. -->
+    <div id="pale-bar" title="Click to add a stop · drag a handle to move it">
+      <div id="pale-grad"></div>
+      <div id="pale-stops"></div>
+    </div>
+    <div class="pale-row">
+      <label class="pale-col">Colour
+        <input type="color" id="pale-color" title="Colour of the selected stop">
+      </label>
+      <label class="pale-col">Position
+        <input type="number" id="pale-pos" min="0" max="100" step="1" title="Where this stop sits along the ramp (%)">
+      </label>
+      <button type="button" id="pale-add" class="audbtn" title="Add a stop after the selected one">+ Stop</button>
+      <button type="button" id="pale-del" class="audbtn" title="Remove the selected stop">− Stop</button>
+    </div>
+    <div class="pale-row">
+      <label class="pale-col pale-name">Name
+        <input type="text" id="pale-name" maxlength="40" placeholder="My palette">
+      </label>
+      <button type="button" id="pale-revert" class="audbtn" title="Discard changes and start again from the palette you opened">Revert</button>
+    </div>
+    <div class="pale-row pale-actions">
+      <button type="button" id="pale-save" class="audbtn" title="Keep this palette and close — edits are applied and saved as you make them">Save &amp; close</button>
+      <button type="button" id="pale-delpal" class="audbtn" title="Delete this custom palette">Delete palette</button>
+    </div>
+    <p class="pal-hint" id="pale-hint"></p>
   </div>
 </div>
 
@@ -1278,8 +1385,11 @@
   }
 
   // Piecewise-linear gradient through colour stops [pos(0..1), [r,g,b]].
+  // The returned fn carries its own `stops`, so the palette editor can seed itself with a
+  // built-in's EXACT control points instead of re-sampling the curve back into stops (which
+  // would round-trip Fire into something subtly different from Fire the moment you opened it).
   function grad(stops) {
-    return x => {
+    const fn = x => {
       const t = x / 255;
       for (let i = 1; i < stops.length; i++) {
         if (t <= stops[i][0]) {
@@ -1294,6 +1404,8 @@
       }
       return stops[stops.length - 1][1];
     };
+    fn.stops = stops;
+    return fn;
   }
 
   // Rainbow plasma: three phase-shifted sines, faded to black at the low end.
@@ -1329,6 +1441,79 @@
     { name: "Rasta Green", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
     { name: "Rasta Yellow", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
   ];
+
+  // ---- custom palettes (the palette editor) ---------------------------------
+  // User-authored ramps live in the SAME `PALETTES` array, appended after the shipped ones,
+  // so every consumer — `paletteRGB`, `setBase`, `pickOther`, the swatches, the `<select>`
+  // options, per-layer `bakeLayerBytes` — keeps working untouched and a custom palette is a
+  // first-class choice everywhere a built-in is. `PAL_BUILTIN` is captured HERE, immediately
+  // after the literal, so it is the count of shipped palettes no matter what is appended later.
+  //
+  // Consequence to know: a palette is referenced by INDEX (that is the existing storage
+  // format, `L.palette`), so customs must be installed BEFORE anything reads one back — they
+  // ride in the saved blob and `applyBlob` installs them ahead of validating any palette
+  // value. A share link naming a custom index the recipient does not have fails validation
+  // and falls back to the seeded default rather than corrupting anything.
+  const PAL_BUILTIN = PALETTES.length;
+  const PAL_MAX_CUSTOM = 24, PAL_MAX_STOPS = 16, PAL_MIN_STOPS = 2;
+  const isCustomPal = i => i >= PAL_BUILTIN;
+  // One custom definition {name, stops} → a PALETTES entry. `stops` is kept on the entry as
+  // well as inside the fn so the editor and the serializer read the same array.
+  function customPalEntry(def) {
+    return { name: def.name, fn: grad(def.stops), custom: true, stops: def.stops };
+  }
+  // Replace the custom tail wholesale. Truncating to PAL_BUILTIN first is what makes this
+  // idempotent — it is called on every load and on every editor save.
+  function installCustomPalettes(list) {
+    PALETTES.length = PAL_BUILTIN;
+    (list || []).forEach(d => PALETTES.push(customPalEntry(d)));
+  }
+  const customPalettes = () => PALETTES.slice(PAL_BUILTIN).map(p => ({ name: p.name, stops: p.stops }));
+  // Validate a stop list from a blob: pairs of [pos 0..1, [r,g,b]], sorted, deduped, clamped,
+  // capped. Returns null if it cannot be made into a usable ramp — a caller that gets null
+  // drops that palette rather than installing something that would throw inside grad().
+  function palStopsOk(raw) {
+    if (!Array.isArray(raw)) return null;
+    const out = [];
+    for (const s of raw.slice(0, PAL_MAX_STOPS)) {
+      if (!Array.isArray(s) || s.length < 2 || !Array.isArray(s[1]) || s[1].length < 3) continue;
+      const p = +s[0], c = s[1].slice(0, 3).map(v => clamp(+v));
+      if (!Number.isFinite(p) || c.some(v => !Number.isFinite(v))) continue;
+      out.push([Math.max(0, Math.min(1, p)), c]);
+    }
+    if (out.length < PAL_MIN_STOPS) return null;
+    out.sort((a, b) => a[0] - b[0]);
+    // grad() divides by (b[0] - a[0]) with a `|| 1` guard, so duplicate positions are safe
+    // but useless; drop them so a saved ramp stays editable.
+    const dedup = out.filter((s, i) => i === 0 || s[0] > out[i - 1][0] + 1e-6);
+    return dedup.length >= PAL_MIN_STOPS ? dedup : null;
+  }
+  function customPalettesOk(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const d of raw.slice(0, PAL_MAX_CUSTOM)) {
+      if (!d || typeof d !== "object") continue;
+      const stops = palStopsOk(d.stops);
+      if (!stops) continue;
+      const name = typeof d.name === "string" && d.name.trim() ? d.name.trim().slice(0, 40) : "Custom";
+      out.push({ name, stops });
+    }
+    return out;
+  }
+  // The stops to seed the editor with for palette `i`: a gradient's own control points where
+  // it has them, else the curve sampled evenly. Fire, Rainbow and Grayscale are procedural
+  // (no stops), so editing one starts from a faithful sampled approximation of it.
+  const PAL_SAMPLE_N = 9;
+  function palStopsOf(i) {
+    const p = PALETTES[i] || PALETTES[0];
+    if (p.fn.stops) return p.fn.stops.map(s => [s[0], s[1].slice(0, 3).map(clamp)]);
+    const out = [];
+    for (let k = 0; k < PAL_SAMPLE_N; k++) {
+      const t = k / (PAL_SAMPLE_N - 1);
+      out.push([t, p.fn(Math.round(t * 255)).slice(0, 3).map(clamp)]);
+    }
+    return out;
+  }
 
   // ---- Banded stripes: a *filter* over whatever palette is active, not a
   // palette of its own. It dims alternating groups of heat bands (three light,
@@ -5990,10 +6175,14 @@
     if (cur) paletteSel.value = cur;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
+      // A wrapper, because the swatch is a <button> and HTML forbids nesting one inside it —
+      // the edit + is a SIBLING positioned over the swatch's right edge.
+      const w = document.createElement("div");
+      w.className = "palsw-wrap";
       const b = document.createElement("button");
       b.type = "button"; b.className = "palsw"; b.dataset.pal = String(i);
       b.style.background = palGradientCss(i);
-      b.title = p.name;
+      b.title = p.name + (p.custom ? " (custom)" : "");
       const n = document.createElement("span");
       n.className = "palsw-n"; n.textContent = p.name;
       b.appendChild(n);
@@ -6002,7 +6191,16 @@
         paletteSel.dispatchEvent(new Event("change", { bubbles: true }));   // morph/setPalette + persist
         syncPalSwatches();
       });
-      host.appendChild(b);
+      w.appendChild(b);
+      const e = document.createElement("button");
+      e.type = "button"; e.className = "palsw-edit"; e.textContent = p.custom ? "✎" : "+";
+      // A built-in opens as a COPY (the shipped ramps stay pristine, so "Reset this effect"
+      // and every existing scene keep meaning what they meant); a custom opens for editing.
+      e.title = p.custom ? "Edit this palette" : "Make an editable copy of " + p.name;
+      e.setAttribute("aria-label", e.title);
+      e.addEventListener("click", ev => { ev.stopPropagation(); openPalEditor(i); });
+      w.appendChild(e);
+      host.appendChild(w);
     });
     paletteSel.classList.add("pal-hidden");   // the swatches are the control now; keep the select for its value
     paletteSel.style.display = "none";
@@ -6041,6 +6239,302 @@
   resSel.addEventListener("change", () => { cfg.scale = +resSel.value; resize(); persist(); });
   const cycleChk = el("cycle");
   const presetSel = el("preset");
+  // ---- palette editor -------------------------------------------------------
+  // Opened by the + (built-in) or ✎ (custom) on any palette swatch. The ramp is edited as
+  // colour STOPS on a gradient bar: click the bar to add one, drag a handle to move it, and
+  // the native <input type="color"> does the colour picking — a fast, familiar control
+  // instead of a hand-rolled wheel.
+  //
+  // The central design decision is **edit live, not as a draft**. A palette is referenced by
+  // index and re-derived from `PALETTES` every frame (per-layer bakes, the morph, the CPU
+  // mirror), so a "draft" ramp held to one side would have to be threaded through all of
+  // those paths. Instead the custom palette is created and SELECTED the moment the editor
+  // opens, and every edit rewrites it in place — so the whole pipeline previews it for free,
+  // with no special case anywhere.
+  //
+  // Opening the + on a built-in therefore makes a copy immediately, which would litter the
+  // list with strays every time you merely looked. So: a fresh copy that is closed **without
+  // a single edit** is removed again. Peeking costs nothing; editing keeps it.
+  let paleIdx = -1;          // index in PALETTES of the palette being edited (a custom, always)
+  let paleFresh = false;     // did THIS session create it? (⇒ discard on a no-op close)
+  let paleDirty = false;     // has anything been edited?
+  let paleOrig = null;       // the stops the editor opened with, for Revert
+  let paleSel = null;        // the selected stop, held by identity (positions re-sort on drag)
+  let paleFallback = 0;      // palette to fall back to if this one is deleted (the source)
+
+  const paleStops = () => (PALETTES[paleIdx] && PALETTES[paleIdx].stops) || [];
+  const paleClone = st => st.map(s => [s[0], s[1].slice(0, 3)]);
+  const h2 = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  const paleHex = c => "#" + h2(c[0]) + h2(c[1]) + h2(c[2]);
+  const paleFromHex = s => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+  function paleGradCss(stops) {
+    return "linear-gradient(to right, " + stops
+      .map(s => "rgb(" + clamp(s[1][0]) + "," + clamp(s[1][1]) + "," + clamp(s[1][2]) + ") " + (s[0] * 100).toFixed(2) + "%")
+      .join(",") + ")";
+  }
+
+  // Rebuild the live PALETTES entry from the current stops and push it through everything
+  // that shows a palette. `full` also rebuilds the swatch grid + <select> options, which is
+  // only needed when a palette is ADDED or REMOVED — a stop edit just repaints one swatch,
+  // so dragging a handle doesn't rebuild (and steal focus from) the control being dragged.
+  function paleApply(full) {
+    const st = paleStops();
+    PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
+    if (full) buildPalSwatches();
+    else {
+      const sw = el("palswatches") && el("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
+      if (sw) sw.style.background = paleGradCss(st);
+      const opt = paletteSel.querySelector('option[value="' + paleIdx + '"]');
+      if (opt) opt.textContent = PALETTES[paleIdx].name;
+    }
+    // Repaint the on-screen ramp if this palette is the one showing. Guarded on `morphing`:
+    // mid-cycle the frame loop owns paletteBase, and it re-reads PALETTES each step anyway.
+    if (+paletteSel.value === paleIdx && !morphing) setPalette(paleIdx);
+    paleRender();
+  }
+
+  // Draw the bar, the handles, and the fields for the selected stop.
+  function paleRender() {
+    if (paleIdx < 0 || !PALETTES[paleIdx]) return;
+    const st = paleStops();
+    el("pale-grad").style.background = paleGradCss(st);
+    const host = el("pale-stops");
+    host.textContent = "";
+    if (st.indexOf(paleSel) < 0) paleSel = st[0];
+    st.forEach(s => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pale-h" + (s === paleSel ? " sel" : "");
+      b.style.left = (s[0] * 100) + "%";
+      b.style.background = "rgb(" + clamp(s[1][0]) + "," + clamp(s[1][1]) + "," + clamp(s[1][2]) + ")";
+      b.title = Math.round(s[0] * 100) + "% · " + paleHex(s[1]);
+      b.setAttribute("aria-label", "Stop at " + Math.round(s[0] * 100) + " percent");
+      b.addEventListener("pointerdown", ev => paleDragStart(ev, b, s));
+      host.appendChild(b);
+    });
+    if (paleSel) {
+      el("pale-color").value = paleHex(paleSel[1]);
+      el("pale-pos").value = Math.round(paleSel[0] * 100);
+    }
+    // The two ends are what make the ramp span 0..1, so keep at least PAL_MIN_STOPS.
+    el("pale-del").classList.toggle("off", st.length <= PAL_MIN_STOPS);
+    el("pale-add").classList.toggle("off", st.length >= PAL_MAX_STOPS);
+    el("pale-title").textContent = "Palette editor · " + PALETTES[paleIdx].name;
+    el("pale-hint").textContent = st.length + " stops · the scene updates as you edit. "
+      + "Index 0 always shows the layer's Background, and the darkest few steps are eased "
+      + "into it, so the very low end looks softer on screen than it does here.";
+  }
+
+  // Dragging a handle. The stop list is re-sorted on every move (so a handle dragged past its
+  // neighbour really does change order), which is exactly why the selection is held by object
+  // identity rather than by index — an index would silently start pointing at another stop.
+  function paleDragStart(ev, btn, stop) {
+    ev.preventDefault(); ev.stopPropagation();
+    paleSel = stop;
+    const bar = el("pale-grad");
+    btn.setPointerCapture(ev.pointerId);
+    const move = e => {
+      const r = bar.getBoundingClientRect();
+      stop[0] = Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1)));
+      paleStops().sort((a, b) => a[0] - b[0]);
+      paleEdited(false);
+    };
+    const up = () => {
+      btn.releasePointerCapture(ev.pointerId);
+      btn.removeEventListener("pointermove", move);
+      btn.removeEventListener("pointerup", up);
+      btn.removeEventListener("pointercancel", up);
+      paleCommit();                 // persist ONCE on release, not on every pointermove
+    };
+    btn.addEventListener("pointermove", move);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    paleRender();
+  }
+
+  // An edit happened: mark dirty and repaint. `full` for add/remove (rebuilds the grid).
+  function paleEdited(full) {
+    paleDirty = true;
+    paleApply(full);
+  }
+  // Write the palette list to storage. Separate from paleEdited so a drag persists once on
+  // release rather than on every pointermove — the same reason the layer gain slider does.
+  function paleCommit() {
+    if (paleIdx < 0) return;
+    persist();
+    autosavePreset();
+  }
+
+  // Open the editor for palette `i`. A built-in is copied first; a custom is edited directly.
+  function openPalEditor(i) {
+    const src = PALETTES[i] || PALETTES[0];
+    if (src.custom) {
+      paleIdx = i; paleFresh = false;
+      paleFallback = 0;
+    } else {
+      if (PALETTES.length - PAL_BUILTIN >= PAL_MAX_CUSTOM) {
+        alert("You already have " + PAL_MAX_CUSTOM + " custom palettes — delete one first.");
+        return;
+      }
+      // Copy the built-in's exact control points where it has them (grad carries its stops);
+      // Fire / Rainbow / Grayscale are procedural and get a faithful sampled approximation.
+      PALETTES.push(customPalEntry({ name: paleCopyName(src.name), stops: palStopsOf(i) }));
+      paleIdx = PALETTES.length - 1;
+      paleFresh = true;
+      paleFallback = i;             // Delete / a no-op close returns to the palette it came from
+      buildPalSwatches();
+      paleSelectLive(paleIdx);      // ...and show it at once, so editing previews live
+    }
+    paleDirty = false;
+    paleOrig = paleClone(paleStops());
+    paleSel = paleStops()[0];
+    el("pale-name").value = PALETTES[paleIdx].name;
+    el("pale-delpal").classList.remove("off");
+    el("paledlg").classList.remove("hidden");
+    paleRender();
+  }
+  // "Fire" → "Fire copy", then "Fire copy 2", … so two copies of one built-in are tellable
+  // apart in the swatch list without making you rename them first.
+  function paleCopyName(base) {
+    const taken = new Set(PALETTES.map(p => p.name));
+    let n = base + " copy";
+    for (let k = 2; taken.has(n); k++) n = base + " copy " + k;
+    return n;
+  }
+  // Select a palette the way a swatch click does, so the morph/persist path is identical.
+  function paleSelectLive(i) {
+    paletteSel.value = String(i);
+    paletteSel.dispatchEvent(new Event("change", { bubbles: true }));
+    syncPalSwatches();
+  }
+
+  function closePalEditor() {
+    // A copy nobody edited is a stray: drop it and go back to the palette it came from.
+    if (paleFresh && !paleDirty && paleIdx >= PAL_BUILTIN) {
+      const back = paleFallback;
+      PALETTES.splice(paleIdx, 1);
+      buildPalSwatches();
+      paleSelectLive(back);
+    }
+    paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null; paleOrig = null;
+    el("paledlg").classList.add("hidden");
+  }
+
+  // Delete the custom being edited. Palette references are INDICES, so removing one from the
+  // middle of the custom tail shifts every later custom down — `palRemapDeleted` rewrites the
+  // stored references (live stack, per-effect extras, and every preset) to match. Without it,
+  // deleting the first of three customs silently re-points scenes at the wrong ramp.
+  function deletePalEditor() {
+    if (paleIdx < PAL_BUILTIN) return;
+    const gone = paleIdx, back = paleFallback;
+    if (!paleFresh && !confirm("Delete the custom palette “" + PALETTES[gone].name
+        + "”? Any layer using it falls back to " + PALETTES[back].name + ".")) return;
+    PALETTES.splice(gone, 1);
+    palRemapDeleted(gone, back);
+    paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
+    el("paledlg").classList.add("hidden");
+    buildPalSwatches();
+    paleSelectLive(Math.min(back, PALETTES.length - 1));
+    persist();
+    autosavePreset();
+  }
+  // Rewrite one stored palette reference after `gone` was removed. Values are strings in the
+  // DOM and may be numbers in a blob, so it returns the same flavour it was given.
+  function palRemapOne(v, gone, back) {
+    if (v === null || v === undefined) return v;
+    const n = +v;
+    if (!Number.isFinite(n)) return v;
+    const out = n === gone ? back : n > gone ? n - 1 : n;
+    return typeof v === "string" ? String(out) : out;
+  }
+  function palRemapDeleted(gone, back) {
+    stack.forEach(L => { L.palette = palRemapOne(L.palette, gone, back); });
+    for (const e in extras) if (extras[e]) extras[e].palette = palRemapOne(extras[e].palette, gone, back);
+    presets.forEach(p => {
+      if (p.extra) p.extra.palette = palRemapOne(p.extra.palette, gone, back);
+      (p.layers || []).forEach(L => { L.palette = palRemapOne(L.palette, gone, back); });
+    });
+    paletteSel.value = String(palRemapOne(+paletteSel.value, gone, back));
+  }
+
+  // ---- wiring ----
+  el("pale-close").addEventListener("click", closePalEditor);
+  // Save is really "keep and close": edits are already live and already persisted, so there
+  // is nothing to flush. It exists because a fresh copy closed with NO edits is discarded on
+  // purpose (see closePalEditor) — Save is how you say "keep it anyway", e.g. you wanted a
+  // duplicate of Fire under its own name to edit later. So it marks the palette kept first.
+  el("pale-save").addEventListener("click", () => {
+    if (paleIdx < 0) return;
+    paleDirty = true;          // ...so closePalEditor keeps a fresh, unedited copy
+    paleCommit();
+    closePalEditor();
+  });
+  el("pale-delpal").addEventListener("click", deletePalEditor);
+  el("pale-color").addEventListener("input", () => {
+    if (paleSel) { paleSel[1] = paleFromHex(el("pale-color").value); paleEdited(false); }
+  });
+  el("pale-color").addEventListener("change", paleCommit);
+  el("pale-pos").addEventListener("input", () => {
+    if (!paleSel) return;
+    const v = +el("pale-pos").value;
+    if (!Number.isFinite(v)) return;
+    paleSel[0] = Math.max(0, Math.min(1, v / 100));
+    paleStops().sort((a, b) => a[0] - b[0]);
+    paleEdited(false);
+  });
+  el("pale-pos").addEventListener("change", paleCommit);
+  el("pale-name").addEventListener("input", () => {
+    const n = el("pale-name").value.trim().slice(0, 40) || "Custom";
+    if (paleIdx >= 0) { PALETTES[paleIdx].name = n; paleEdited(false); }
+  });
+  el("pale-name").addEventListener("change", paleCommit);
+  // Add a stop midway to the next one, taking the ramp's colour there — so a new stop starts
+  // invisible and you move it where you want, rather than punching a colour into the ramp.
+  el("pale-add").addEventListener("click", () => {
+    const st = paleStops();
+    if (paleIdx < 0 || st.length >= PAL_MAX_STOPS) return;
+    const i = Math.max(0, st.indexOf(paleSel));
+    const next = st[i + 1] || st[i];
+    const pos = st[i + 1] ? (st[i][0] + next[0]) / 2 : Math.min(1, st[i][0] + 0.05);
+    const c = PALETTES[paleIdx].fn(Math.round(pos * 255)).slice(0, 3).map(clamp);
+    const ns = [pos, c];
+    st.push(ns); st.sort((a, b) => a[0] - b[0]);
+    paleSel = ns;
+    paleEdited(false);
+    paleCommit();
+  });
+  el("pale-del").addEventListener("click", () => {
+    const st = paleStops();
+    if (st.length <= PAL_MIN_STOPS) return;
+    const i = st.indexOf(paleSel);
+    if (i < 0) return;
+    st.splice(i, 1);
+    paleSel = st[Math.min(i, st.length - 1)];
+    paleEdited(false);
+    paleCommit();
+  });
+  el("pale-revert").addEventListener("click", () => {
+    if (paleIdx < 0 || !paleOrig) return;
+    PALETTES[paleIdx].stops = paleClone(paleOrig);
+    paleSel = PALETTES[paleIdx].stops[0];
+    paleEdited(false);
+    paleCommit();
+  });
+  // Clicking the bar adds a stop right there — the fastest way to shape a ramp, and the
+  // reason the bar's cursor is `copy`. Handles stopPropagation their own pointerdown, so a
+  // click that starts on a handle drags it instead of adding a stop underneath it.
+  el("pale-bar").addEventListener("click", ev => {
+    const st = paleStops();
+    if (paleIdx < 0 || st.length >= PAL_MAX_STOPS) return;
+    const r = el("pale-grad").getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (ev.clientX - r.left) / (r.width || 1)));
+    const c = PALETTES[paleIdx].fn(Math.round(pos * 255)).slice(0, 3).map(clamp);
+    const ns = [pos, c];
+    st.push(ns); st.sort((a, b) => a[0] - b[0]);
+    paleSel = ns;
+    paleEdited(false);
+    paleCommit();
+  });
   // ---- effect registry: the single source of truth for each effect. Adding an
   // effect = append a descriptor here. (Phase 0 holds metadata — name/subtitle/help
   // and the default-preset name; dispatch, controls and persistence move here next.)
@@ -7448,6 +7942,7 @@
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
+      palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -7471,6 +7966,16 @@
     migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
     if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
+    // Custom palettes BEFORE anything that reads a palette value. They are referenced by
+    // index (PAL_BUILTIN and up), so a scene naming custom #21 needs #21 to exist by the time
+    // its palette is validated — installing them later would silently reject every custom
+    // reference and fall back to a built-in. `customPalettesOk` drops malformed entries
+    // rather than letting a bad stop list reach grad(). A blob with no `palettes` key (every
+    // scene saved before the editor existed) leaves the list untouched.
+    if (saved.palettes !== undefined) {
+      installCustomPalettes(customPalettesOk(saved.palettes));
+      buildPalSwatches();                          // regenerate the swatch grid + <select> options
+    }
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
@@ -9474,10 +9979,10 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
-    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); setPanel(!panel.classList.contains("hidden")); }
+    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----

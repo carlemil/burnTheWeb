@@ -36,10 +36,14 @@
     if (cur) paletteSel.value = cur;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
+      // A wrapper, because the swatch is a <button> and HTML forbids nesting one inside it —
+      // the edit + is a SIBLING positioned over the swatch's right edge.
+      const w = document.createElement("div");
+      w.className = "palsw-wrap";
       const b = document.createElement("button");
       b.type = "button"; b.className = "palsw"; b.dataset.pal = String(i);
       b.style.background = palGradientCss(i);
-      b.title = p.name;
+      b.title = p.name + (p.custom ? " (custom)" : "");
       const n = document.createElement("span");
       n.className = "palsw-n"; n.textContent = p.name;
       b.appendChild(n);
@@ -48,7 +52,16 @@
         paletteSel.dispatchEvent(new Event("change", { bubbles: true }));   // morph/setPalette + persist
         syncPalSwatches();
       });
-      host.appendChild(b);
+      w.appendChild(b);
+      const e = document.createElement("button");
+      e.type = "button"; e.className = "palsw-edit"; e.textContent = p.custom ? "✎" : "+";
+      // A built-in opens as a COPY (the shipped ramps stay pristine, so "Reset this effect"
+      // and every existing scene keep meaning what they meant); a custom opens for editing.
+      e.title = p.custom ? "Edit this palette" : "Make an editable copy of " + p.name;
+      e.setAttribute("aria-label", e.title);
+      e.addEventListener("click", ev => { ev.stopPropagation(); openPalEditor(i); });
+      w.appendChild(e);
+      host.appendChild(w);
     });
     paletteSel.classList.add("pal-hidden");   // the swatches are the control now; keep the select for its value
     paletteSel.style.display = "none";

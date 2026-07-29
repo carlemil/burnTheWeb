@@ -32,8 +32,11 @@
   }
 
   // Piecewise-linear gradient through colour stops [pos(0..1), [r,g,b]].
+  // The returned fn carries its own `stops`, so the palette editor can seed itself with a
+  // built-in's EXACT control points instead of re-sampling the curve back into stops (which
+  // would round-trip Fire into something subtly different from Fire the moment you opened it).
   function grad(stops) {
-    return x => {
+    const fn = x => {
       const t = x / 255;
       for (let i = 1; i < stops.length; i++) {
         if (t <= stops[i][0]) {
@@ -48,6 +51,8 @@
       }
       return stops[stops.length - 1][1];
     };
+    fn.stops = stops;
+    return fn;
   }
 
   // Rainbow plasma: three phase-shifted sines, faded to black at the low end.
@@ -83,6 +88,79 @@
     { name: "Rasta Green", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
     { name: "Rasta Yellow", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
   ];
+
+  // ---- custom palettes (the palette editor) ---------------------------------
+  // User-authored ramps live in the SAME `PALETTES` array, appended after the shipped ones,
+  // so every consumer — `paletteRGB`, `setBase`, `pickOther`, the swatches, the `<select>`
+  // options, per-layer `bakeLayerBytes` — keeps working untouched and a custom palette is a
+  // first-class choice everywhere a built-in is. `PAL_BUILTIN` is captured HERE, immediately
+  // after the literal, so it is the count of shipped palettes no matter what is appended later.
+  //
+  // Consequence to know: a palette is referenced by INDEX (that is the existing storage
+  // format, `L.palette`), so customs must be installed BEFORE anything reads one back — they
+  // ride in the saved blob and `applyBlob` installs them ahead of validating any palette
+  // value. A share link naming a custom index the recipient does not have fails validation
+  // and falls back to the seeded default rather than corrupting anything.
+  const PAL_BUILTIN = PALETTES.length;
+  const PAL_MAX_CUSTOM = 24, PAL_MAX_STOPS = 16, PAL_MIN_STOPS = 2;
+  const isCustomPal = i => i >= PAL_BUILTIN;
+  // One custom definition {name, stops} → a PALETTES entry. `stops` is kept on the entry as
+  // well as inside the fn so the editor and the serializer read the same array.
+  function customPalEntry(def) {
+    return { name: def.name, fn: grad(def.stops), custom: true, stops: def.stops };
+  }
+  // Replace the custom tail wholesale. Truncating to PAL_BUILTIN first is what makes this
+  // idempotent — it is called on every load and on every editor save.
+  function installCustomPalettes(list) {
+    PALETTES.length = PAL_BUILTIN;
+    (list || []).forEach(d => PALETTES.push(customPalEntry(d)));
+  }
+  const customPalettes = () => PALETTES.slice(PAL_BUILTIN).map(p => ({ name: p.name, stops: p.stops }));
+  // Validate a stop list from a blob: pairs of [pos 0..1, [r,g,b]], sorted, deduped, clamped,
+  // capped. Returns null if it cannot be made into a usable ramp — a caller that gets null
+  // drops that palette rather than installing something that would throw inside grad().
+  function palStopsOk(raw) {
+    if (!Array.isArray(raw)) return null;
+    const out = [];
+    for (const s of raw.slice(0, PAL_MAX_STOPS)) {
+      if (!Array.isArray(s) || s.length < 2 || !Array.isArray(s[1]) || s[1].length < 3) continue;
+      const p = +s[0], c = s[1].slice(0, 3).map(v => clamp(+v));
+      if (!Number.isFinite(p) || c.some(v => !Number.isFinite(v))) continue;
+      out.push([Math.max(0, Math.min(1, p)), c]);
+    }
+    if (out.length < PAL_MIN_STOPS) return null;
+    out.sort((a, b) => a[0] - b[0]);
+    // grad() divides by (b[0] - a[0]) with a `|| 1` guard, so duplicate positions are safe
+    // but useless; drop them so a saved ramp stays editable.
+    const dedup = out.filter((s, i) => i === 0 || s[0] > out[i - 1][0] + 1e-6);
+    return dedup.length >= PAL_MIN_STOPS ? dedup : null;
+  }
+  function customPalettesOk(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const d of raw.slice(0, PAL_MAX_CUSTOM)) {
+      if (!d || typeof d !== "object") continue;
+      const stops = palStopsOk(d.stops);
+      if (!stops) continue;
+      const name = typeof d.name === "string" && d.name.trim() ? d.name.trim().slice(0, 40) : "Custom";
+      out.push({ name, stops });
+    }
+    return out;
+  }
+  // The stops to seed the editor with for palette `i`: a gradient's own control points where
+  // it has them, else the curve sampled evenly. Fire, Rainbow and Grayscale are procedural
+  // (no stops), so editing one starts from a faithful sampled approximation of it.
+  const PAL_SAMPLE_N = 9;
+  function palStopsOf(i) {
+    const p = PALETTES[i] || PALETTES[0];
+    if (p.fn.stops) return p.fn.stops.map(s => [s[0], s[1].slice(0, 3).map(clamp)]);
+    const out = [];
+    for (let k = 0; k < PAL_SAMPLE_N; k++) {
+      const t = k / (PAL_SAMPLE_N - 1);
+      out.push([t, p.fn(Math.round(t * 255)).slice(0, 3).map(clamp)]);
+    }
+    return out;
+  }
 
   // ---- Banded stripes: a *filter* over whatever palette is active, not a
   // palette of its own. It dims alternating groups of heat bands (three light,

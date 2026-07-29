@@ -189,6 +189,43 @@
   </div>
 </div>
 
+<!-- Palette editor: edit a ramp as colour stops on a gradient bar. Opened by the + on any
+     palette swatch. Floating and non-modal like the inspector and the Orbit editor, so you
+     can watch the scene change while you drag — every edit previews live. -->
+<div id="paledlg" class="hidden">
+  <div class="pale-box">
+    <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>
+    <h2 id="pale-title">Palette editor</h2>
+    <!-- The bar IS the editor: the gradient shows the ramp, the handles under it are the
+         stops. Click the bar to add a stop there, drag a handle to move it. -->
+    <div id="pale-bar" title="Click to add a stop · drag a handle to move it">
+      <div id="pale-grad"></div>
+      <div id="pale-stops"></div>
+    </div>
+    <div class="pale-row">
+      <label class="pale-col">Colour
+        <input type="color" id="pale-color" title="Colour of the selected stop">
+      </label>
+      <label class="pale-col">Position
+        <input type="number" id="pale-pos" min="0" max="100" step="1" title="Where this stop sits along the ramp (%)">
+      </label>
+      <button type="button" id="pale-add" class="audbtn" title="Add a stop after the selected one">+ Stop</button>
+      <button type="button" id="pale-del" class="audbtn" title="Remove the selected stop">− Stop</button>
+    </div>
+    <div class="pale-row">
+      <label class="pale-col pale-name">Name
+        <input type="text" id="pale-name" maxlength="40" placeholder="My palette">
+      </label>
+      <button type="button" id="pale-revert" class="audbtn" title="Discard changes and start again from the palette you opened">Revert</button>
+    </div>
+    <div class="pale-row pale-actions">
+      <button type="button" id="pale-save" class="audbtn" title="Keep this palette and close — edits are applied and saved as you make them">Save &amp; close</button>
+      <button type="button" id="pale-delpal" class="audbtn" title="Delete this custom palette">Delete palette</button>
+    </div>
+    <p class="pal-hint" id="pale-hint"></p>
+  </div>
+</div>
+
 <!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
 <div id="carddlg" class="hidden">
   <div class="card-box">
