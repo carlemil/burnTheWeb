@@ -58,6 +58,16 @@ behaviour changes.
   `index.html` = production main page, `dev-index.html` = current build / preview; a deploy
   promotes dev → prod. Probes/tests run against **`dev-index.html`** (the current artifact),
   e.g. `node tools/filterprobe.js dev-index.html`.
+- **Every deploy is a numbered release.** `CONFIG.version` in `src/config.js` is the **one**
+  place a version string lives (the menu footer's release-notes link reads it — never add a
+  second copy), and `/deploy` bumps it, writes the matching `CHANGELOG.md` section, and tags
+  `v<version>`. Semver, where **major means a saved scene / share link / backup stops loading
+  exactly as it did** — the standing rule is that never happens, so in practice it is patch
+  for fixes and minor for a new effect/filter/control. The tag is what makes "commits since
+  the last release" computable, so it must be pushed. A version with **no tag** is one that
+  was prepared during development but not yet released: `/deploy` publishes *that* version
+  rather than bumping past it, or the number would be skipped. `CHANGELOG.md` is linked from
+  the live page, so it is user-facing documentation, not just a repo file.
 - The split was bootstrapped once by `tools/split-once.js` (kept in history). To re-slice at
   different boundaries, edit its `SLICES` markers and re-run, or just move code between
   `src/*.js` files and rebuild — the manifest order is the load order.

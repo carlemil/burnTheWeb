@@ -143,7 +143,9 @@
   <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
-  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">▦</button></label>
+  <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
+       swatches) rather than what the button does, and read as a stop/fill icon. -->
+  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
   <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
   <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
@@ -164,6 +166,12 @@
   </details>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
+  <!-- Version + release notes, the conventional place for an "about" line: the very foot of
+       the panel, below every box. The text is filled in from CONFIG.version at startup so the
+       version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
+       than baking the notes into the page, which would grow this file on every release. -->
+  <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
+     title="What changed in this and previous releases">burnTheWeb <span id="vernum">·</span> — release notes ↗</a></p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>

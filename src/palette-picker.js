@@ -55,7 +55,7 @@
     syncPalSwatches();
   }
   buildPalSwatches();
-  // Palette inspector (▦ button beside the Palette label): the selected palette's full 0–255
+  // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
   // muddy the identity. Hover a cell for its index + hex.

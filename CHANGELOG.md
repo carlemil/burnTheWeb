@@ -1,0 +1,78 @@
+# Changelog
+
+All notable changes to [burnTheWeb](https://carlemil.github.io/burnTheWeb/), newest first.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the version
+numbers follow [Semantic Versioning](https://semver.org/):
+
+- **patch** (1.1.**x**) — fixes and copy changes, nothing new to find in the menu.
+- **minor** (1.**x**.0) — a new effect, filter, control or panel feature.
+- **major** (**x**.0.0) — a change that stops an existing saved scene, share link or backup
+  from loading exactly as it did. There has not been one, and the intent is that there never
+  is: every link ever generated still decodes.
+
+The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
+the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
+
+## [1.1.0] — 2026-07-29
+
+### Added
+
+- **Bouncing solids** — a new, genuinely 3D effect, and the first raymarched one. Solid
+  spheres, boxes, doughnuts, capsules, octahedra and cylinders tumble and ricochet inside an
+  invisible room, drawn as signed-distance fields and shaded into the palette by surface
+  angle and depth. Six sliders: **Count**, **Size** (also the radius they bounce on, so
+  bigger bodies turn sooner), **Shape mix** (1 = all spheres … 6 = one of each), **Speed**,
+  **Tumble**, and **Edge glow** for the silhouettes. A wall impact converts sideways travel
+  into roll, so an angled clip visibly kicks a body into a tumble. Tick Fire or Fade pixel
+  for trails; it stacks and blends like any other layer, with its own palette and filters.
+- **An effect chooser on every layer row.** Re-pointing a layer no longer means selecting it
+  and then scrolling down to the chooser — each row in the *Layers* box carries its own
+  dropdown. Picking on a row that is not selected selects it first, so a layer keeps its
+  palette and filters exactly as it does when you switch it the long way round.
+- **Version and release-notes link** at the foot of the menu (this file).
+
+### Changed
+
+- The *Effects & Filters* box is now **Effect & Filters** — singular, because everything in
+  it edits the one layer you have selected; the plural read as "all of the effects".
+- The palette inspector button is an **eye** instead of the old ▦ grid glyph, which
+  described the dialog's layout rather than what the button does and read as a stop icon.
+
+### Fixed
+
+- The comment describing the analytics hook still said it was inert "until
+  `GA_MEASUREMENT_ID` is set"; it has held a real id for some time.
+
+### Internal
+
+- New `tools/solidsprobe.js` (39 assertions) covering the rigid-body physics: containment
+  over 6000 steps and at every slider extreme, the clamped frame step (an unclamped
+  backgrounded-tab `dt` tunnels a body through a wall), quaternion normality, per-layer body
+  ownership, and the start-position spread. Every one of those failures is invisible to a
+  screenshot, which is why they are assertions rather than a look at the picture.
+
+## [1.0.0] — 2026-07-28
+
+The first versioned release: everything the app was before release notes existed. Recent
+work included in it, newest first —
+
+- Per-layer **Heat boost** slider (palette brightness curve).
+- `fire-physics.js` renamed to `tetrahedron-physics.js` and de-fired throughout.
+- The scene **Share** and **Short link** buttons were removed; sharing is preset-bundle
+  only now. Every `?z=` / `?s=` scene link ever generated still opens.
+- **Share presets…** — bundle a curated set of presets into one link, carrying auto-cycle
+  and the selected preset so the recipient opens on the same scene and the same show plays.
+  The payload rides in the URL *fragment*, which is what keeps a multi-KB bundle from being
+  rejected as "URI Too Long" before any JS runs.
+- **Preset TTL** and **Transition** became per-preset, so a shared scene plays at the pace
+  it was authored with.
+- The **Orbit editor** and **Palette inspector** became translucent floating panels and hide
+  with `M` / `H` along with the rest of the chrome.
+- Fixed: stacked Tetrahedron layers shared one body list and moved in lockstep.
+- Fixed: freehand orbit strokes were offset from the pointer.
+- **Palette inspector** popup; a confirmation on *Reset this effect*.
+- Tetrahedron gained controllable **Sway**, and orbits the centre when *Show box* is off.
+- **Points** became a ranged slider, so it takes L/M/H beat triggers like the rest.
+- Neutral effect defaults, and every filter off by default — a fresh effect renders its raw
+  output and you tick what you want.

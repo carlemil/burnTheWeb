@@ -170,6 +170,21 @@
   el("preset-help-btn").addEventListener("click", openPresetHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
 
+  // ---- version + release-notes link (panel footer) ----
+  // Filled in from CONFIG.version so the version string exists in exactly ONE place; the
+  // /deploy skill bumps it there and writes the matching CHANGELOG.md section. The href is
+  // set here too rather than hardcoded in the HTML, so both come from CONFIG.
+  // Guarded: a missing node must not throw during startup and take the whole panel with it.
+  {
+    const vn = el("vernum"), vl = el("verlink");
+    if (vn) vn.textContent = "v" + CONFIG.version;
+    if (vl) {
+      vl.href = CONFIG.changelogUrl;
+      vl.title = "burnTheWeb v" + CONFIG.version + " — what changed in this and previous releases";
+      vl.addEventListener("click", () => track("release_notes_open", { version: CONFIG.version }));
+    }
+  }
+
   // ---- analytics (Google Analytics 4) ----
   // Live: GA_MEASUREMENT_ID (CONFIG.analyticsId) holds a real "G-XXXXXXXXXX" web-stream
   // id, so gtag.js loads, page views are counted automatically and track() fires custom

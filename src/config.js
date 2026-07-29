@@ -12,6 +12,14 @@
   // `tuning.*` values are load-bearing maths (see CLAUDE.md) — change with care.
   // ============================================================================
   const CONFIG = {
+    // --- release identity ---
+    // THE single source of truth for the app version. The menu's footer link reads it, and
+    // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
+    // released build always names the version whose notes describe it. Semver: patch for
+    // fixes, minor for a new effect/filter/control, major for a breaking scene format.
+    version: "1.1.0",
+    changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
+
     // --- effect stack / fractal layering ---
     stackMax: 4,          // max effects composited into one scene        (STACK_MAX)
     layerMax: 6,          // max progressively-smaller fractal copies      (LAYER_MAX)

@@ -182,6 +182,11 @@
   }
   #paused.hidden { display: none; }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
+  /* Version / release-notes line at the foot of the panel. Quieter than the key hints
+     above it (it is reference, not instruction) and brightens on hover like a link should. */
+  #panel .verline { margin-top: 7px; opacity: .38; }
+  #panel .verline a { color: #ffcf87; text-decoration: none; border-bottom: 1px dotted rgba(255, 207, 135, 0.45); }
+  #panel .verline:hover { opacity: .8; }
   #reset, #cardbtn, #addlayer {
     margin-top: 8px;
     width: 100%;
@@ -564,6 +569,11 @@
     cursor: pointer; opacity: .75;
   }
   #panel .lbl-help:hover { background: rgba(255, 122, 26, 0.32); opacity: 1; }
+  /* The eye variant (palette inspector). An emoji glyph needs more room than a "?" and
+     ignores `color`, so it gets its own size and a slightly dimmer resting opacity to sit
+     at the same visual weight as the amber ? buttons beside it. */
+  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; }
+  #panel .lbl-eye:hover { opacity: 1; }
   /* Data-structure tree inside the help modal. */
   #help .help-tree {
     margin: 4px 0 12px; padding: 11px 13px; overflow-x: auto;
@@ -880,7 +890,9 @@
   <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
-  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">▦</button></label>
+  <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
+       swatches) rather than what the button does, and read as a stop/fill icon. -->
+  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
   <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
   <select id="palette"></select>
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
@@ -901,6 +913,12 @@
   </details>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
+  <!-- Version + release notes, the conventional place for an "about" line: the very foot of
+       the panel, below every box. The text is filled in from CONFIG.version at startup so the
+       version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
+       than baking the notes into the page, which would grow this file on every release. -->
+  <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
+     title="What changed in this and previous releases">burnTheWeb <span id="vernum">·</span> — release notes ↗</a></p>
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
@@ -1023,6 +1041,14 @@
   // `tuning.*` values are load-bearing maths (see CLAUDE.md) — change with care.
   // ============================================================================
   const CONFIG = {
+    // --- release identity ---
+    // THE single source of truth for the app version. The menu's footer link reads it, and
+    // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
+    // released build always names the version whose notes describe it. Semver: patch for
+    // fixes, minor for a new effect/filter/control, major for a breaking scene format.
+    version: "1.1.0",
+    changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
+
     // --- effect stack / fractal layering ---
     stackMax: 4,          // max effects composited into one scene        (STACK_MAX)
     layerMax: 6,          // max progressively-smaller fractal copies      (LAYER_MAX)
@@ -5983,7 +6009,7 @@
     syncPalSwatches();
   }
   buildPalSwatches();
-  // Palette inspector (▦ button beside the Palette label): the selected palette's full 0–255
+  // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
   // muddy the identity. Hover a cell for its index + hex.
@@ -9625,6 +9651,21 @@
   }
   el("preset-help-btn").addEventListener("click", openPresetHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
+
+  // ---- version + release-notes link (panel footer) ----
+  // Filled in from CONFIG.version so the version string exists in exactly ONE place; the
+  // /deploy skill bumps it there and writes the matching CHANGELOG.md section. The href is
+  // set here too rather than hardcoded in the HTML, so both come from CONFIG.
+  // Guarded: a missing node must not throw during startup and take the whole panel with it.
+  {
+    const vn = el("vernum"), vl = el("verlink");
+    if (vn) vn.textContent = "v" + CONFIG.version;
+    if (vl) {
+      vl.href = CONFIG.changelogUrl;
+      vl.title = "burnTheWeb v" + CONFIG.version + " — what changed in this and previous releases";
+      vl.addEventListener("click", () => track("release_notes_open", { version: CONFIG.version }));
+    }
+  }
 
   // ---- analytics (Google Analytics 4) ----
   // Live: GA_MEASUREMENT_ID (CONFIG.analyticsId) holds a real "G-XXXXXXXXXX" web-stream
