@@ -133,8 +133,13 @@
        (hence the singular "Effect"); whole-scene FX live in the Scene filters box above. -->
   <details class="box" open>
   <summary class="box-t">Effect &amp; Filters</summary>
-  <label>Effect</label>
-  <select id="effect"><!-- options generated from the EFFECTS registry --></select>
+  <!-- The Effect chooser is HIDDEN here, not deleted: every layer row in the Layers box now
+       carries its own, so a second visible copy of the same control was redundant. The
+       element stays because it is the effect VALUE STORE — setEffect writes effectSel.value,
+       applyBlob validates against its <option> list, and its `change` event is the handler
+       every other path dispatches through (exactly the arrangement the palette <select> has).
+       Its <option>s are still generated from the EFFECTS registry. -->
+  <select id="effect" style="display:none"><!-- options generated from the EFFECTS registry --></select>
   <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button id="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>

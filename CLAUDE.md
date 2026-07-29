@@ -629,11 +629,15 @@ Reset) and
 `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
 The box title is **singular** — everything in it edits the ONE selected layer, and the
 plural read as "all of the effects".
-The **Effect chooser sits in *Effect & Filters*, above `#fxctl`** — with the sliders it drives
-rather than up in *Scene*, which is now purely about presets. That is also why
-`#fxctl > .ctl-grp:first-child` no longer suppresses its top border: the first group used
-to butt against the box title (where a rule read as a stray line) and now separates the
-chooser from the sliders. Note the Restore dialog's "Effect settings" checkbox is a
+**`#effect` is hidden in this box, not deleted.** Every layer row carries its own chooser
+(see the stack section), so a second visible copy of the same control was redundant — but the
+`<select>` remains the effect **value store**: `setEffect` writes `effectSel.value`,
+`applyBlob` validates against its `<option>` list, and its `change` event is what the layer
+rows and everything else dispatch through. Deleting it would mean rewriting all of those.
+Exactly the arrangement `#palette` has behind the swatches. Consequence:
+`#fxctl > .ctl-grp:first-child` suppresses its top border again, because the first group once
+more butts straight against the box title, where a rule reads as a stray line rather than a
+separator. Note the Restore dialog's "Effect settings" checkbox is a
 *different* thing — a blob category (states/beats/extras), not this section.
 
 **Palette cycle.** The old "Auto-morph palettes" checkbox is gone; a `palcycle` dual
