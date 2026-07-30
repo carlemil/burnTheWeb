@@ -1229,10 +1229,30 @@
     // apiKey "" makes the WHOLE feature inert: no Google script is loaded, no request is
     // made, and the Cloud row is hidden from the menu — the same kill switch analyticsId
     // above has. Fill both in from the Firebase console (Project settings → Web app) to
-    // turn it on. The web API key is PUBLIC by design: it names the project, it does not
-    // authorise anything. firestore.rules (repo root) is the actual authorization boundary.
+    // turn it on.
+    //
+    // ┌─ THE apiKey BELOW IS NOT A SECRET, AND SECRET SCANNERS WILL FLAG IT ANYWAY ─────┐
+    // A Firebase *web* API key is a project IDENTIFIER, not a credential: it selects which
+    // project a request is for, and grants nothing on its own. It has to reach the browser
+    // for the app to work, so it is in this file, in dev-index.html, and in index.html —
+    // there is nowhere to hide it and nothing is gained by trying. Rotating it changes the
+    // string and nothing else, since the replacement is equally public.
+    //
+    // What actually protects the data:
+    //   1. firestore.rules (repo root) — the authorization boundary. Verified live: an
+    //      unauthenticated read of a private profile, an unauthenticated write, and an
+    //      unfiltered listing are all denied.
+    //   2. Only Google sign-in is enabled, so the key cannot be used to mint accounts
+    //      (accounts:signUp returns ADMIN_ONLY_OPERATION). Do NOT enable Anonymous or
+    //      Email/Password sign-in without re-checking that — those turn this key into a
+    //      way for anyone to create users on the project.
+    //   3. The key is restricted in Google Cloud Console (Credentials → this key) by HTTP
+    //      referrer to the site's own origins, and to only the APIs used: Identity Toolkit,
+    //      Token Service, Cloud Firestore. That is what limits quota abuse from elsewhere.
+    // GitHub secret-scanning alert #1 is resolved as intentional on exactly this basis.
+    // └────────────────────────────────────────────────────────────────────────────────┘
     cloud: {
-      apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // Firebase Web API key ⇒ "" = feature off
+      apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // public identifier, see above ⇒ "" = feature off
       projectId: "burntheweb-3cd05",              // Firebase project id
       clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
       galleryTtlMs: 300000,                       // cache the gallery listing 5 min (reads are quota)
