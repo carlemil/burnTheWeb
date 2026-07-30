@@ -212,11 +212,22 @@
      against the label above and the Browse button below looking like a foreign object. */
   #panel #cloudrow #cloud-signin {
     display: flex; justify-content: center;
-    margin: 6px 0 2px; padding: 10px 8px;
+    margin: 6px 0 2px;
+    /* Horizontal padding stays SMALL on purpose: the panel is 250px wide (218px of content),
+       and Google clamps its button width to a 200px minimum — so the content box here has to
+       stay above 200px or the button cannot fit however it is asked. 6px a side leaves ~204. */
+    padding: 10px 6px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 9px;
     background: rgba(255, 140, 40, 0.05);
+    /* Belt and braces: gsiRender sizes the button to this box, but the box must be able to
+       contain it regardless — Google's markup is not ours to rely on. */
+    overflow: hidden;
   }
-  #panel #cloudrow #cloud-signin:empty { display: none; }   /* no border before it renders */
+  #panel #cloudrow #cloud-signin > * { max-width: 100%; }
+  /* NB there is deliberately no `:empty { display: none }` here, tempting as it is to hide
+     the bare box before the button arrives. It deadlocks: display:none gives the element no
+     box, so its clientWidth is 0, so gsiRender never fires and the box never stops being
+     empty. Signed in, cloudSyncUI hides this container outright, which covers the real case. */
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
   /* Profile name as a label once signed in. The dotted underline is the only affordance it
      needs — it reads as text, not as an empty field waiting to be filled. */
@@ -10267,6 +10278,32 @@
     if (!inS) cloudMsg("");
   }
 
+  // Render (or re-render) Google's button at the width its box actually has.
+  //
+  // Google draws this button itself and its internals cannot be styled — the theme/shape/size
+  // options are the whole supported surface — so the ONLY way to stop it overflowing the
+  // 250px panel is to tell it the width. And that width can only be measured while the panel
+  // is open: closed, clientWidth is 0, which is why this re-runs from a ResizeObserver rather
+  // than once at startup. Google clamps `width` to 200–400, so the container's padding is kept
+  // small enough that its content box stays above 200 inside a 250px panel.
+  let gsiWidth = 0;
+  function gsiRender() {
+    const host = el("cloud-signin");
+    if (!host || !window.google || !window.google.accounts || !window.google.accounts.id) return;
+    const avail = Math.round(host.clientWidth);
+    if (avail <= 0) return;                     // panel closed — wait for the observer
+    const w = Math.max(200, Math.min(400, avail));
+    if (w === gsiWidth) return;                 // already drawn at this width
+    gsiWidth = w;
+    host.textContent = "";                      // renderButton appends; clear the old one first
+    try {
+      window.google.accounts.id.renderButton(host, {
+        theme: "filled_black", shape: "pill", size: "large",
+        text: "signin_with", logo_alignment: "left", width: w,
+      });
+    } catch (e) { /* GIS unavailable — the message line already says so */ }
+  }
+
   // Google Identity Services renders the sign-in button and hands back a Google ID token,
   // which cloudSignIn trades for a Firebase session. Loaded lazily and ONLY when configured,
   // so an unconfigured build makes no third-party request at all.
@@ -10296,14 +10333,11 @@
         // to match the rounded amber buttons — and size it to the panel width so it does not
         // read as a foreign object dropped in. The surrounding padding/centreing is CSS on
         // #cloud-signin, which IS ours.
-        // No explicit `width`: it would have to be measured here, and the panel is usually
-        // CLOSED when this runs, so getBoundingClientRect() reports 0 and any fallback bakes
-        // in a guess that is wrong for the real panel. Let the button size itself and let the
-        // flex container centre it — which stays right whatever the panel width is.
-        window.google.accounts.id.renderButton(el("cloud-signin"), {
-          theme: "filled_black", shape: "pill", size: "large",
-          text: "signin_with", logo_alignment: "left",
-        });
+        gsiRender();
+        // The width can only be measured while the panel is OPEN — closed, clientWidth is 0
+        // and any guess bakes in the wrong number. So render (or re-render) whenever the box
+        // actually has a width: on open, and on any panel/window resize.
+        if (window.ResizeObserver) new ResizeObserver(gsiRender).observe(el("cloud-signin"));
       } catch (e) { cloudMsg("Sign-in unavailable: " + e.message, true); }
     };
     s.onerror = () => cloudMsg("Could not reach Google sign-in.", true);

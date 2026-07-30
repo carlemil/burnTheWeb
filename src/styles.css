@@ -197,11 +197,22 @@
      against the label above and the Browse button below looking like a foreign object. */
   #panel #cloudrow #cloud-signin {
     display: flex; justify-content: center;
-    margin: 6px 0 2px; padding: 10px 8px;
+    margin: 6px 0 2px;
+    /* Horizontal padding stays SMALL on purpose: the panel is 250px wide (218px of content),
+       and Google clamps its button width to a 200px minimum — so the content box here has to
+       stay above 200px or the button cannot fit however it is asked. 6px a side leaves ~204. */
+    padding: 10px 6px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 9px;
     background: rgba(255, 140, 40, 0.05);
+    /* Belt and braces: gsiRender sizes the button to this box, but the box must be able to
+       contain it regardless — Google's markup is not ours to rely on. */
+    overflow: hidden;
   }
-  #panel #cloudrow #cloud-signin:empty { display: none; }   /* no border before it renders */
+  #panel #cloudrow #cloud-signin > * { max-width: 100%; }
+  /* NB there is deliberately no `:empty { display: none }` here, tempting as it is to hide
+     the bare box before the button arrives. It deadlocks: display:none gives the element no
+     box, so its clientWidth is 0, so gsiRender never fires and the box never stops being
+     empty. Signed in, cloudSyncUI hides this container outright, which covers the real case. */
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
   /* Profile name as a label once signed in. The dotted underline is the only affordance it
      needs — it reads as text, not as an empty field waiting to be filled. */
