@@ -1446,7 +1446,24 @@ otherwise collapse into one. Beats found between frames are **latched** in
 `clearBeats()`. `audioTick(t)` takes an optional timestamp so tests can drive it on
 a fake clock.
 
-### Diagnostics tools (not user settings)
+### Dev tools (not user settings)
+**There is no Diagnostics section any more.** It held exactly two toggles and both found
+better homes: the **beat-detection trace** moved into the **Beat tuning** box, beside the
+thresholds it exists to help you set; and the **frame + FPS counter lost its toggle entirely**,
+because `H` (hide all chrome) already governs it via `body.ui-hidden` and a second control for
+the same thing was only a way for the two to disagree. `#frames.hidden` survives in the CSS as
+the mechanism `?hideui`/`H` drive.
+
+**The opt-out from persistence is now `data-nopersist`, not `#diag`.** It used to be enough for
+`onEdit` to skip anything inside `#diag`, because every dev tool lived there. The trace now
+sits *inside* `#beatDetails` — a box that deliberately does **not** escape `onEdit`, since beat
+tuning is per-preset scene data that must autosave — so the toggle carries `data-nopersist` and
+`onEdit` early-returns on `closest("[data-nopersist]")`. That is strictly more general: a future
+dev control can live anywhere and still opt out. `RNG_ORIG` and `refreshRangeUI` use the same
+marker alongside their `#beatDetails` skip. A probe asserts the pair that matters — toggling the
+trace writes **nothing** to storage, while a beat-tuning slider in the *same box* still persists.
+
+### Older notes on the Diagnostics section (now removed)
 The dev tools live in a `<details id="diag">` **Diagnostics** section at the bottom
 of the System box (there are no dev keys — the whole UI opens via ☰ or **m**). They're
 off by default, never enter presets, and their open/closed state is never saved. Because

@@ -278,31 +278,11 @@
   /* folded: the title's rule would otherwise hang under nothing */
   #panel .box:not([open]) > .box-t { margin-bottom: -6px; border-bottom: none; }
   #panel .box > .box-t + * { margin-top: 0; }
-  #panel .box > #diag { margin-top: 4px; }
   #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
-  /* ---- Diagnostics: dev tools folded into the panel (frame counter, beat trace,
-         beat tuning). Formerly floating overlays. Slider ranges are no longer here:
-         each slider edits its own bounds inside its pop-out box. ---- */
-  #diag { margin-top: 12px; font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
-  #diag > summary, #diag details > summary {
-    cursor: pointer; list-style: none; color: #ffcf87; opacity: .85;
-    margin: 10px 0 3px; user-select: none;
-  }
-  #diag > summary { opacity: 1; font-size: 12px; letter-spacing: .03em; }
-  #diag summary::-webkit-details-marker { display: none; }
-  #diag summary::before { content: "\25B8 "; color: #7d838a; }   /* ▸ */
-  #diag details[open] > summary::before { content: "\25BE "; }   /* ▾ */
-  #diag details { margin: 4px 0 0; }
-  #diag b { display: block; color: #ffcf87; margin-bottom: 6px; }
-  #diag .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
-  #diag .rng-btns button {
-    flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
-    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
-    font: 11px ui-monospace, monospace; cursor: pointer;
-  }
-  /* Beat tuning moved out of #diag into its own .box (it is per-preset scene data,
-     not a dev tool), so its styling is scoped to that box now. The .rng-btns rule
-     above is still #diag-scoped, so the Reset button needs its own copy here. */
+  /* The Diagnostics section and its whole #diag stylesheet are gone: it held two toggles and
+     both found better homes (the beat trace moved to Beat tuning; the FPS counter is governed
+     by H alone). Everything it used to style now lives in #beatDetails below, which carries
+     its own copy of the rules it needs. */
   #beatDetails { font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
   #beatDetails .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
   #beatDetails .rng-btns button {

@@ -315,7 +315,12 @@
   // listener over the whole panel covers them all. When a preset is selected the
   // edit is auto-saved into it; in "— unsaved scene —" it just updates the working scene.
   function onEdit(e) {
-    if (e.target.closest("#diag")) return;   // dev tools persist themselves; never fold them into a preset
+    // A dev tool must never be folded into a preset. This used to be a `#diag` check, but that
+    // section is gone and its one surviving toggle (the beat trace) now sits INSIDE the Beat
+    // tuning box — which deliberately does not escape this listener, because its sliders are
+    // per-preset scene data and must autosave. So the opt-out is per-element and explicit,
+    // which also means a future dev control can live anywhere and still opt out.
+    if (e.target.closest("[data-nopersist]")) return;
     if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
     refreshBlocked();                        // a thumb move can neutralise (or free) a dependent control
     refreshChanged();                        // a thumb move can move a slider off (or back to) its default

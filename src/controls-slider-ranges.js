@@ -5,7 +5,7 @@
   // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
   const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
   panel.querySelectorAll("input[type=range]").forEach(inp => {
-    if (inp.closest("#diag") || inp.closest("#beatDetails")) return;   // dev tools / beat tuning aren't scene ranges
+    if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;   // beat tuning / dev tools aren't scene ranges
     if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
     RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
   });
@@ -129,7 +129,7 @@
     sceneRangeInputs().forEach(inp => {
       // The beat-tuning sliders have no ids and fixed bounds — re-dispatching on them
       // would fire their handlers (and another persist) for no gain.
-      if (inp.closest("#diag") || inp.closest("#beatDetails")) return;
+      if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;
       const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
       if (c !== +inp.value) inp.value = String(c);
       inp.dispatchEvent(new Event("input", { bubbles: true }));

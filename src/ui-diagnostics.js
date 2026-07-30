@@ -1,6 +1,12 @@
-  // ---- Diagnostics checkboxes: frame + FPS counter and the beat-trace canvas ----
-  el("diagFrames").checked = !framesEl.classList.contains("hidden");
-  el("diagFrames").addEventListener("change", e => framesEl.classList.toggle("hidden", !e.target.checked));
+  // ---- Beat-trace toggle ----
+  // Lives in the Beat tuning box now, next to the thresholds it exists to help you set. It
+  // carries data-nopersist, because that box (unlike the old Diagnostics section) deliberately
+  // does NOT escape onEdit — its sliders are per-preset scene data and must autosave, so a dev
+  // tool sitting among them has to opt out by hand or it gets folded into the preset too.
+  //
+  // The frame + FPS counter has no toggle any more: H (hide all chrome) already governs it via
+  // body.ui-hidden, and a second control for the same thing was only ever a way for the two to
+  // disagree. `#frames.hidden` survives in the CSS as the mechanism ?hideui/H drive.
   el("diagTrace").checked = dbg.on;
   el("diagTrace").addEventListener("change", e => dbgToggle(e.target.checked));
 

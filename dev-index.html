@@ -293,31 +293,11 @@
   /* folded: the title's rule would otherwise hang under nothing */
   #panel .box:not([open]) > .box-t { margin-bottom: -6px; border-bottom: none; }
   #panel .box > .box-t + * { margin-top: 0; }
-  #panel .box > #diag { margin-top: 4px; }
   #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
-  /* ---- Diagnostics: dev tools folded into the panel (frame counter, beat trace,
-         beat tuning). Formerly floating overlays. Slider ranges are no longer here:
-         each slider edits its own bounds inside its pop-out box. ---- */
-  #diag { margin-top: 12px; font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
-  #diag > summary, #diag details > summary {
-    cursor: pointer; list-style: none; color: #ffcf87; opacity: .85;
-    margin: 10px 0 3px; user-select: none;
-  }
-  #diag > summary { opacity: 1; font-size: 12px; letter-spacing: .03em; }
-  #diag summary::-webkit-details-marker { display: none; }
-  #diag summary::before { content: "\25B8 "; color: #7d838a; }   /* ▸ */
-  #diag details[open] > summary::before { content: "\25BE "; }   /* ▾ */
-  #diag details { margin: 4px 0 0; }
-  #diag b { display: block; color: #ffcf87; margin-bottom: 6px; }
-  #diag .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
-  #diag .rng-btns button {
-    flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
-    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
-    font: 11px ui-monospace, monospace; cursor: pointer;
-  }
-  /* Beat tuning moved out of #diag into its own .box (it is per-preset scene data,
-     not a dev tool), so its styling is scoped to that box now. The .rng-btns rule
-     above is still #diag-scoped, so the Reset button needs its own copy here. */
+  /* The Diagnostics section and its whole #diag stylesheet are gone: it held two toggles and
+     both found better homes (the beat trace moved to Beat tuning; the FPS counter is governed
+     by H alone). Everything it used to style now lives in #beatDetails below, which carries
+     its own copy of the rules it needs. */
   #beatDetails { font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
   #beatDetails .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
   #beatDetails .rng-btns button {
@@ -934,12 +914,11 @@
     <option value="4">Potato</option>
   </select>
 
-  <!-- Diagnostics: the dev tools, folded into the one menu (were D/B/R/C/G keys). -->
-  <details id="diag">
-    <summary>Diagnostics</summary>
-    <label class="check"><input type="checkbox" id="diagFrames"> Frame + FPS counter</label>
-    <label class="check"><input type="checkbox" id="diagTrace"> Beat-detection trace</label>
-  </details>
+  <!-- The Diagnostics section is gone: it held exactly two toggles and both found better
+       homes. The beat-detection trace moved to the Beat tuning box, beside the thresholds it
+       exists to help you set; the frame + FPS counter no longer has a toggle at all, because
+       H (hide all chrome) already governs it and a second control for the same thing was
+       just another place for the two to disagree. -->
   </details>
 
   <!-- Box — Backup/share. Boxed like the rest so the panel is one consistent
@@ -1036,14 +1015,20 @@
   <div id="screenfilterctl"><!-- (unused host; params are adopted into each filter's body) --></div>
   </details>
 
-  <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting;
-       it is per-preset scene data now, so it belongs beside the other scene controls
-       and autosaves like them (the delegated onEdit skips #diag on purpose). -->
+  <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting; it is
+       per-preset scene data now, so it belongs beside the other scene controls and autosaves
+       like them. The beat-trace toggle below is the one thing in here that must NOT autosave,
+       which is what data-nopersist marks. -->
   <details class="box" id="beatDetails">
   <summary class="box-t">Beat tuning</summary>
   <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
+  <!-- The trace lives here, beside the thresholds it exists to help you set, rather than in a
+       separate Diagnostics section. data-nopersist is load-bearing: everything else in this
+       box is per-preset scene data that onEdit deliberately DOES autosave, so without an
+       explicit opt-out this dev-tool toggle would be folded into the selected preset too. -->
+  <label class="check" data-nopersist title="Show the scrolling flux + threshold graph per band — the tool for diagnosing a missed beat"><input type="checkbox" id="diagTrace" data-nopersist> Beat-detection trace</label>
   <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
-  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Tune it beside the beat trace (Diagnostics).</p>
+  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
   </details>
 
   <!-- Box — Layers: the effect stack (up to 4 effects composited into one scene, in
@@ -7958,7 +7943,7 @@
   // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
   const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
   panel.querySelectorAll("input[type=range]").forEach(inp => {
-    if (inp.closest("#diag") || inp.closest("#beatDetails")) return;   // dev tools / beat tuning aren't scene ranges
+    if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;   // beat tuning / dev tools aren't scene ranges
     if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
     RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
   });
@@ -8082,7 +8067,7 @@
     sceneRangeInputs().forEach(inp => {
       // The beat-tuning sliders have no ids and fixed bounds — re-dispatching on them
       // would fire their handlers (and another persist) for no gain.
-      if (inp.closest("#diag") || inp.closest("#beatDetails")) return;
+      if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;
       const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
       if (c !== +inp.value) inp.value = String(c);
       inp.dispatchEvent(new Event("input", { bubbles: true }));
@@ -8744,7 +8729,12 @@
   // listener over the whole panel covers them all. When a preset is selected the
   // edit is auto-saved into it; in "— unsaved scene —" it just updates the working scene.
   function onEdit(e) {
-    if (e.target.closest("#diag")) return;   // dev tools persist themselves; never fold them into a preset
+    // A dev tool must never be folded into a preset. This used to be a `#diag` check, but that
+    // section is gone and its one surviving toggle (the beat trace) now sits INSIDE the Beat
+    // tuning box — which deliberately does not escape this listener, because its sliders are
+    // per-preset scene data and must autosave. So the opt-out is per-element and explicit,
+    // which also means a future dev control can live anywhere and still opt out.
+    if (e.target.closest("[data-nopersist]")) return;
     if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
     refreshBlocked();                        // a thumb move can neutralise (or free) a dependent control
     refreshChanged();                        // a thumb move can move a slider off (or back to) its default
@@ -10716,16 +10706,17 @@
   // ---- beat-detection tuning (its own "Beat tuning" box, or ?beat=1) ----
   // Live sliders for the detector thresholds in beatCfg. Edits write straight into
   // beatCfg and re-derive the FFT bins when a band edge moves; the box sits outside
-  // #diag so the delegated onEdit persists them AND autosaves them into the selected
-  // preset, which is the whole point of the tuning being per-scene.
+  // any dev-tool opt-out, so the delegated onEdit persists them AND autosaves them into the
+  // selected preset, which is the whole point of the tuning being per-scene. (The beat-trace
+  // toggle shares this box but carries data-nopersist, precisely to stay out of that.)
   // `var`, not `let`: installBeatTune runs during startup (restore/share → applyBlob)
   // long before this line, and reads `beatUi && beatUi.wired` — same reason `card` is
   // a var. With `let` that read is a TDZ crash, not a falsy skip.
   var beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
-    // No persist() here: the box is outside #diag, so onEdit already persisted and
-    // folded the change into the selected preset. Calling it again would double-write.
+    // No persist() here: these sliders carry no dev-tool opt-out, so onEdit already persisted
+    // and folded the change into the selected preset. Calling it again would double-write.
   }
   function beatRow(label, val, min, max, step, fmt, set) {   // name + range slider + live readout
     const row = document.createElement("div"); row.className = "beat-row";
@@ -10786,14 +10777,20 @@
   function beatToggle(on) {       // programmatic open (e.g. ?beat=1); users just click the summary
     const d = el("beatDetails");
     const want = on === undefined ? !d.open : !!on;
-    d.open = want;                // its own box now — no #diag to open first
+    d.open = want;                // its own box — nothing to open around it
   }
   beatWire();
   if (/[?&]beat=1/.test(location.search)) { setPanel(false); beatToggle(true); }
 
-  // ---- Diagnostics checkboxes: frame + FPS counter and the beat-trace canvas ----
-  el("diagFrames").checked = !framesEl.classList.contains("hidden");
-  el("diagFrames").addEventListener("change", e => framesEl.classList.toggle("hidden", !e.target.checked));
+  // ---- Beat-trace toggle ----
+  // Lives in the Beat tuning box now, next to the thresholds it exists to help you set. It
+  // carries data-nopersist, because that box (unlike the old Diagnostics section) deliberately
+  // does NOT escape onEdit — its sliders are per-preset scene data and must autosave, so a dev
+  // tool sitting among them has to opt out by hand or it gets folded into the preset too.
+  //
+  // The frame + FPS counter has no toggle any more: H (hide all chrome) already governs it via
+  // body.ui-hidden, and a second control for the same thing was only ever a way for the two to
+  // disagree. `#frames.hidden` survives in the CSS as the mechanism ?hideui/H drive.
   el("diagTrace").checked = dbg.on;
   el("diagTrace").addEventListener("change", e => dbgToggle(e.target.checked));
 

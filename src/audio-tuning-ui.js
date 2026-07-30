@@ -1,16 +1,17 @@
   // ---- beat-detection tuning (its own "Beat tuning" box, or ?beat=1) ----
   // Live sliders for the detector thresholds in beatCfg. Edits write straight into
   // beatCfg and re-derive the FFT bins when a band edge moves; the box sits outside
-  // #diag so the delegated onEdit persists them AND autosaves them into the selected
-  // preset, which is the whole point of the tuning being per-scene.
+  // any dev-tool opt-out, so the delegated onEdit persists them AND autosaves them into the
+  // selected preset, which is the whole point of the tuning being per-scene. (The beat-trace
+  // toggle shares this box but carries data-nopersist, precisely to stay out of that.)
   // `var`, not `let`: installBeatTune runs during startup (restore/share → applyBlob)
   // long before this line, and reads `beatUi && beatUi.wired` — same reason `card` is
   // a var. With `let` that read is a TDZ crash, not a falsy skip.
   var beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
-    // No persist() here: the box is outside #diag, so onEdit already persisted and
-    // folded the change into the selected preset. Calling it again would double-write.
+    // No persist() here: these sliders carry no dev-tool opt-out, so onEdit already persisted
+    // and folded the change into the selected preset. Calling it again would double-write.
   }
   function beatRow(label, val, min, max, step, fmt, set) {   // name + range slider + live readout
     const row = document.createElement("div"); row.className = "beat-row";
@@ -71,7 +72,7 @@
   function beatToggle(on) {       // programmatic open (e.g. ?beat=1); users just click the summary
     const d = el("beatDetails");
     const want = on === undefined ? !d.open : !!on;
-    d.open = want;                // its own box now — no #diag to open first
+    d.open = want;                // its own box — nothing to open around it
   }
   beatWire();
   if (/[?&]beat=1/.test(location.search)) { setPanel(false); beatToggle(true); }
