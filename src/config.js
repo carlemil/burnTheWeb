@@ -48,6 +48,21 @@
     sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
     analyticsId: "G-7CMDJP72N7",                  // GA4 Measurement id; "" makes analytics completely inert
 
+    // --- cloud profiles (Firebase Auth + Firestore, over REST; no SDK) ---
+    // apiKey "" makes the WHOLE feature inert: no Google script is loaded, no request is
+    // made, and the Cloud row is hidden from the menu — the same kill switch analyticsId
+    // above has. Fill both in from the Firebase console (Project settings → Web app) to
+    // turn it on. The web API key is PUBLIC by design: it names the project, it does not
+    // authorise anything. firestore.rules (repo root) is the actual authorization boundary.
+    cloud: {
+      apiKey: "",                                 // Firebase Web API key  ⇒ "" = feature off
+      projectId: "",                              // Firebase project id
+      clientId: "",                               // Google OAuth client id, for the sign-in button
+      galleryTtlMs: 300000,                       // cache the gallery listing 5 min (reads are quota)
+      galleryLimit: 20,                           // profiles per gallery page
+      maxPayload: 300000,                         // must match the cap in firestore.rules
+    },
+
     // --- effect / physics tuning (implementation constants; several are load-bearing) ---
     tuning: {
       hopMs: 10,          // beat-analysis tick, ms — 100Hz, framerate-independent   (HOP_MS)

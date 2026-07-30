@@ -1,0 +1,68 @@
+rules_version = '2';
+
+// burnTheWeb — cloud profiles.
+//
+// THIS FILE IS THE ENTIRE AUTHORIZATION BOUNDARY. The app is a static page on GitHub Pages
+// talking straight to Firestore over REST, with no backend of its own — so there is nowhere
+// else to check anything. The Firebase web API key shipped in the page is public by design
+// (it identifies the project; it does not authorise), which means anyone can aim requests at
+// this database and these rules are the only thing between them and the data.
+//
+// Deploy: paste into Firebase console → Firestore → Rules → Publish, or `firebase deploy
+// --only firestore:rules`. Keep this file in step with what is published — it is checked in
+// so the boundary is reviewable in a diff rather than living only in a web console.
+//
+// Verified by hand in the console's Rules Playground (there is no npm in this repo, so the
+// emulator's test library is not available). The cases that must hold:
+//   1. unauthenticated GET of a profile with pub == true            → ALLOW
+//   2. unauthenticated GET of a profile with pub == false           → DENY
+//   3. authenticated GET of your OWN profile with pub == false      → ALLOW
+//   4. write to a document whose id is not your uid                 → DENY
+//   5. write with a payload over the size cap                       → DENY
+//   6. write with an extra/unknown field                            → DENY
+//   7. write with a name over 40 chars                              → DENY
+//   8. delete your own profile                                      → ALLOW
+//   9. delete someone else's profile                                → DENY
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // One document per signed-in user; the document id IS the Firebase uid, which is what
+    // makes ownership checkable without a lookup (request.auth.uid == uid).
+    match /profiles/{uid} {
+
+      // Readable by the owner always, and by anyone once the owner opts into the gallery.
+      // `pub` gates it, and it defaults to false — publishing is a deliberate act.
+      // NB for the gallery query: Firestore evaluates rules against the QUERY, not the
+      // result set, so the listing must filter `where pub == true` or it is rejected whole.
+      allow read: if resource.data.pub == true || request.auth.uid == uid;
+
+      allow delete: if request.auth.uid == uid;
+
+      // The size caps are the abuse control that a server's body limit would otherwise
+      // provide. Without them this is a free 1 MiB-per-document file host that anyone with
+      // a Google account can write to. 300k chars of base64 is ~220 KB of deflated JSON —
+      // orders of magnitude above a real preset library (a few KB), and still well under
+      // Firestore's 1 MiB document ceiling.
+      //
+      // hasOnly() is what keeps the document to the shape the app knows: without it a
+      // client could attach arbitrary extra fields and use the doc as general storage.
+      allow create, update: if request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'payload', 'count', 'pub', 'updated'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.payload is string
+        && request.resource.data.payload.size() < 300000
+        && request.resource.data.count is int
+        && request.resource.data.count >= 0
+        && request.resource.data.count <= 500
+        && request.resource.data.pub is bool;
+    }
+
+    // Everything else is closed. Explicit, so adding a collection later is a deliberate act
+    // rather than something that inherits an accidental allow.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -67,6 +67,29 @@
   </div>
   <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
   <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
+
+  <!-- Cloud profile. Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as
+       analytics), so an unconfigured build shows no trace of it. Lives in this box because
+       this is already the "move my scenes in and out" box. -->
+  <div id="cloudrow" class="hidden">
+    <hr class="sep">
+    <label>Cloud profile <span id="cloud-who" class="cloud-who"></span></label>
+    <!-- Google renders its own sign-in button into this node (Identity Services). -->
+    <div id="cloud-signin"></div>
+    <div id="cloud-authed" style="display:none">
+      <input type="text" id="cloud-name" maxlength="40" placeholder="Profile name" title="The name shown on your profile — this is yours to choose, not your Google name">
+      <div class="presetrow grid2">
+        <button id="cloud-save" class="audbtn" type="button" title="Upload your preset library to your profile, replacing what is there">Save to cloud</button>
+        <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your presets or replace them">Load from cloud</button>
+      </div>
+      <div class="presetrow grid2">
+        <button id="cloud-signout" class="audbtn" type="button" title="Sign out on this device. Your profile stays in the cloud.">Sign out</button>
+        <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>
+      </div>
+    </div>
+    <p id="cloud-msg" class="hint"></p>
+    <p class="hint">Stored against your account: the profile name you choose and your presets — nothing else. Not your email, name or picture.</p>
+  </div>
   </details>
 
   <!-- Box — Scene: saved scenes and how long each is held. The Effect chooser used to

@@ -187,6 +187,12 @@
   }
   #reset:hover, #cardbtn:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
   #cardbtn, #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
+  /* Cloud profile row. Hidden wholesale when CONFIG.cloud.apiKey is "" — an unconfigured
+     build shows no trace of the feature rather than a dead button. */
+  #panel #cloudrow.hidden { display: none; }
+  #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
+  #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
+  #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */

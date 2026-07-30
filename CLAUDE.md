@@ -1304,6 +1304,49 @@ because any later slider drag *did* autosave and retroactively captured the chip
   `sessionStorage`, which survives the navigation.) There is no per-effect text
   Export/Import — removed; **Share** is the only text-export path.
 
+### Cloud profiles (Firebase Auth + Firestore, over REST)
+Keep a preset library against a Google account so it follows you between machines.
+`src/cloud-profile.js` is the whole client; `firestore.rules` (repo root) is the whole
+security boundary.
+
+**No Firebase SDK.** Everything is `fetch()` against three documented REST endpoints
+(`identitytoolkit` to exchange a Google ID token, `securetoken` to refresh, `firestore` for
+the document), so the page stays a single self-contained file. The one remote script is
+Google Identity Services for the sign-in button — the same class of thing `initAnalytics()`
+already loads, not a new one.
+
+**`CONFIG.cloud.apiKey` is a kill switch**, exactly like `CONFIG.analyticsId`: empty ⇒ the
+row is hidden, no script is injected and **no request is made at all** (a probe asserts zero
+network during startup). That is what lets the feature ship and deploy before the Firebase
+project exists.
+
+**The payload is one deflated string, not Firestore structure — this is the decision that
+makes the feature small.** Firestore's REST API wraps every field in its type
+(`{"stringValue":…}`, and integers are *strings*: `{"integerValue":"7"}`), so mapping the
+nested preset blob into it would mean a second encoder duplicating `serializeBlob` and
+tracking every future preset field. Instead `cloudBlob()` builds exactly the blob
+`libraryUrl()` builds and runs it through the same `zipToB64` — so **a cloud profile and a
+`#zp=` bundle are the same bytes**, the document has only five scalar fields, and the typed-
+value codec (`fsOut`/`fsIn`) is a dozen lines. The consequence worth protecting: a downloaded
+profile is handed straight to **`openSharedLibrary(raw)`**, inheriting validation, the
+merge-vs-replace Restore dialog and landing on the stored selected preset for free. If those
+two formats ever diverge, cloud loading needs its own decoder — `cloudprobe` asserts the
+shared path structurally.
+
+**Rules are the only defence**, because the web API key in the page is public by design (it
+names the project; it authorises nothing) and there is no backend to check anything. So the
+rules carry the size caps a server's body limit would otherwise provide, and `hasOnly()`
+pins the document shape — without it the collection is a free 1 MiB-per-doc file host for
+anyone with a Google account. `firestore.rules` is checked in so the boundary is reviewable
+in a diff rather than living only in a web console; its header lists the nine cases to verify
+in the console Rules Playground (there is no npm here, so the emulator's test library is not
+available).
+
+Two smaller things: the id token lasts ~an hour and is refreshed **60s early** so a save
+can't fail on a token that expired in flight; and a 401 mid-flight refreshes and retries
+**exactly once**, never in a loop. Session tokens live under their own `localStorage` key,
+deliberately **not** in the scene blob — same reasoning as the credits preference.
+
 ### Audio & beat reactivity
 `audio` holds the WebAudio graph; `startAudio("capture"|"mic")` grabs
 `getDisplayMedia`/`getUserMedia` and must run inside a user gesture. **Pulse mode**:
