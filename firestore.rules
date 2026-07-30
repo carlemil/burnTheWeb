@@ -24,6 +24,7 @@ rules_version = '2';
 //   8. delete your own profile                                      → ALLOW
 //   9. delete someone else's profile                                → DENY
 //  10. unauthenticated GET of any /scenes document                  → ALLOW (that is the point)
+//  10b. unauthenticated LIST of the /scenes collection              → DENY (links stay unlisted)
 //  11. unauthenticated CREATE in /scenes                            → DENY
 //  12. authenticated create in /scenes with owner != your uid       → DENY
 //  13. UPDATE of an existing /scenes document                       → DENY (snapshots are immutable)
@@ -69,9 +70,14 @@ service cloud.firestore {
     // profile would only work while that profile is published, so sharing one scene would
     // force the sharer's whole library public. This keeps the two decisions independent.
     match /scenes/{id} {
-      // World-readable, and that is the entire point: a share link has to open for someone
-      // with no account. Only what the sharer deliberately shared lives here.
-      allow read: if true;
+      // `get`, NOT `read`. Fetching a scene BY ID has to work for someone with no account —
+      // that is what a share link is. But `read` also grants `list`, and that is a different
+      // thing entirely: it would let anyone enumerate every scene ever shared, turning links
+      // meant for one person into a public directory. Splitting them keeps share links
+      // unlisted, which is the property people actually expect of a link.
+      // (Caught by probing the live rules after the first deploy, not by reading them.)
+      allow get: if true;
+      allow list: if false;
 
       // Signed-in users only, and the document must name its creator — so `delete` below has
       // an owner to check, and abuse is attributable rather than anonymous.

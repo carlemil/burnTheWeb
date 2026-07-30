@@ -14,6 +14,55 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.3.0] — 2026-07-30
+
+### Added
+
+- **Share this scene** — a new button beside *Share presets…* that copies a link to whatever
+  is running right now. Signed in, the scene is stored in the cloud and the link is a dozen
+  characters instead of a few thousand; signed out it falls back to the self-contained link
+  that carries the scene itself, so sharing never needs an account and never stops working.
+  Opening one runs the scene straight away as an unsaved scene — none of your own presets are
+  touched. The link is a snapshot: editing the scene afterwards does not change what someone
+  else sees until you share it again.
+
+### Changed
+
+- **The layer drag handle now selects its layer too**, on release — so grabbing a layer to
+  reorder it also brings it up for editing. Dragging still reorders exactly as before, and the
+  dragged layer ends up selected wherever it lands.
+- **The beat-detection trace moved into the Beat tuning box**, next to the thresholds it
+  exists to help you set, instead of sitting in a separate Diagnostics section.
+- **The frame + FPS counter has no toggle any more** — **H** (hide all chrome) already
+  governs it, and two controls for one thing only ever disagree. With both of its toggles
+  rehoused, the Diagnostics section is gone.
+- The Google sign-in button is sized to fit the menu and given room to breathe. Its internals
+  are Google's own and cannot be restyled, so this is as close to the panel as it gets.
+- **The page is now titled "burnTheWeb — a fractal bonfire that dances to your music"** — the
+  tab, the search result and the link preview all say what it does to you rather than which
+  genre it belongs to. The description was also three effects out of date (it still claimed
+  fifteen; there are twenty, including the 3D solids).
+
+### Fixed
+
+- Opening a shared link left the preset chooser naming one of **your** presets, so an arriving
+  scene looked like it had loaded that preset. It now reads "— unsaved scene —", which is what
+  it always actually was. Affected every shared scene link, not just the new ones.
+
+### Internal
+
+- `firestore.rules` gains a `/scenes` collection for shared scenes: fetchable by id without an
+  account (a share link must open for anyone) but **not listable**, so links stay unlisted
+  rather than becoming a public directory of everything anyone has ever shared. Owner-stamped,
+  immutable, and deletable by its owner. Kept separate from `/profiles` on purpose — a link
+  into a profile would only open while that profile was published, so sharing one scene would
+  have forced the sharer's whole library public.
+- A `firebase.json` so the rules can be deployed from the repo (`firebase deploy --only
+  firestore:rules`) instead of pasted into a console — it adds no dependency and no build step.
+- Dev controls opt out of preset autosave with `data-nopersist` rather than by living in a
+  particular section, which is what let the beat trace move into a box that deliberately does
+  autosave everything else in it.
+
 ## [1.2.0] — 2026-07-30
 
 ### Added

@@ -3,16 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>burnTheWeb — demoscene fractal fire</title>
-<meta name="description" content="A GPU demoscene visual: fifteen effects — rising fractal fire, animated Julia / Burning Ship / Multibrot / Newton fractals, and classic plasma, tunnel, metaballs, kaleidoscope, copper bars and more — all reacting to your music.">
+<!-- Title/description are the tab, the search result and the link preview — so they say what
+     it IS and what it does to you, not just its category. The app name stays burnTheWeb (it is
+     the h1, the og:site_name and the URL); it is the tagline that carries the personality. -->
+<title>burnTheWeb — a fractal bonfire that dances to your music</title>
+<meta name="description" content="Set your browser on fire. Twenty demoscene effects — rising fractal flame, tumbling 3D solids, animated Julia / Burning Ship / Multibrot / Newton fractals, plasma, tunnels, metaballs, kaleidoscopes and copper bars — stacked in layers and pulsing in time with whatever you are listening to. Tune every slider live, then share the exact scene as a link.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='92'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="burnTheWeb">
-<meta property="og:title" content="burnTheWeb — demoscene fractal fire">
-<meta property="og:description" content="Rising fractal fire, animated fractals, and classic demoscene effects — plasma, tunnel, kaleidoscope, copper bars and more — all reacting to your music. Tune it live and share the exact scene.">
+<meta property="og:title" content="burnTheWeb — a fractal bonfire that dances to your music">
+<meta property="og:description" content="Twenty demoscene effects — fractal flame, tumbling 3D solids, live Julia and Burning Ship fractals, plasma, tunnels and copper bars — stacked in layers and pulsing to whatever you are playing. Tune it live and share the exact scene as a link.">
 <meta property="og:url" content="https://carlemil.github.io/burnTheWeb/">
-<meta name="twitter:title" content="burnTheWeb — demoscene fractal fire">
-<meta name="twitter:description" content="Rising fractal fire, animated fractals, and classic demoscene effects — all reacting to your music.">
+<meta name="twitter:title" content="burnTheWeb — a fractal bonfire that dances to your music">
+<meta name="twitter:description" content="Twenty demoscene effects — fractal flame, tumbling 3D solids, live fractals, plasma and tunnels — all pulsing in time with your music.">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -206,7 +209,28 @@
      build shows no trace of the feature rather than a dead button. */
   #panel #cloudrow.hidden { display: none; }
   #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
-  #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
+  /* The Google button is Google's own markup and cannot be restyled from here (branding
+     rules; the theme/shape/size options in renderButton are the supported surface). What IS
+     ours is the space around it — so give it room and centre it, rather than letting it butt
+     against the label above and the Browse button below looking like a foreign object. */
+  #panel #cloudrow #cloud-signin {
+    display: flex; justify-content: center;
+    margin: 6px 0 2px;
+    /* Horizontal padding stays SMALL on purpose: the panel is 250px wide (218px of content),
+       and Google clamps its button width to a 200px minimum — so the content box here has to
+       stay above 200px or the button cannot fit however it is asked. 6px a side leaves ~204. */
+    padding: 10px 6px;
+    border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 9px;
+    background: rgba(255, 140, 40, 0.05);
+    /* Belt and braces: gsiRender sizes the button to this box, but the box must be able to
+       contain it regardless — Google's markup is not ours to rely on. */
+    overflow: hidden;
+  }
+  #panel #cloudrow #cloud-signin > * { max-width: 100%; }
+  /* NB there is deliberately no `:empty { display: none }` here, tempting as it is to hide
+     the bare box before the button arrives. It deadlocks: display:none gives the element no
+     box, so its clientWidth is 0, so gsiRender never fires and the box never stops being
+     empty. Signed in, cloudSyncUI hides this container outright, which covers the real case. */
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
   /* Profile name as a label once signed in. The dotted underline is the only affordance it
      needs — it reads as text, not as an empty field waiting to be filled. */
@@ -272,31 +296,11 @@
   /* folded: the title's rule would otherwise hang under nothing */
   #panel .box:not([open]) > .box-t { margin-bottom: -6px; border-bottom: none; }
   #panel .box > .box-t + * { margin-top: 0; }
-  #panel .box > #diag { margin-top: 4px; }
   #panel .ctl-off { opacity: 0.4; pointer-events: none; }   /* grayed-out, non-interactive control group */
-  /* ---- Diagnostics: dev tools folded into the panel (frame counter, beat trace,
-         beat tuning). Formerly floating overlays. Slider ranges are no longer here:
-         each slider edits its own bounds inside its pop-out box. ---- */
-  #diag { margin-top: 12px; font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
-  #diag > summary, #diag details > summary {
-    cursor: pointer; list-style: none; color: #ffcf87; opacity: .85;
-    margin: 10px 0 3px; user-select: none;
-  }
-  #diag > summary { opacity: 1; font-size: 12px; letter-spacing: .03em; }
-  #diag summary::-webkit-details-marker { display: none; }
-  #diag summary::before { content: "\25B8 "; color: #7d838a; }   /* ▸ */
-  #diag details[open] > summary::before { content: "\25BE "; }   /* ▾ */
-  #diag details { margin: 4px 0 0; }
-  #diag b { display: block; color: #ffcf87; margin-bottom: 6px; }
-  #diag .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
-  #diag .rng-btns button {
-    flex: 1; padding: 4px; background: rgba(255, 122, 26, 0.15); color: #ffcf87;
-    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 5px;
-    font: 11px ui-monospace, monospace; cursor: pointer;
-  }
-  /* Beat tuning moved out of #diag into its own .box (it is per-preset scene data,
-     not a dev tool), so its styling is scoped to that box now. The .rng-btns rule
-     above is still #diag-scoped, so the Reset button needs its own copy here. */
+  /* The Diagnostics section and its whole #diag stylesheet are gone: it held two toggles and
+     both found better homes (the beat trace moved to Beat tuning; the FPS counter is governed
+     by H alone). Everything it used to style now lives in #beatDetails below, which carries
+     its own copy of the rules it needs. */
   #beatDetails { font: 11px/1.5 ui-monospace, Consolas, monospace; color: #cfd3d8; }
   #beatDetails .rng-btns { display: flex; gap: 6px; margin-top: 8px; }
   #beatDetails .rng-btns button {
@@ -913,12 +917,11 @@
     <option value="4">Potato</option>
   </select>
 
-  <!-- Diagnostics: the dev tools, folded into the one menu (were D/B/R/C/G keys). -->
-  <details id="diag">
-    <summary>Diagnostics</summary>
-    <label class="check"><input type="checkbox" id="diagFrames"> Frame + FPS counter</label>
-    <label class="check"><input type="checkbox" id="diagTrace"> Beat-detection trace</label>
-  </details>
+  <!-- The Diagnostics section is gone: it held exactly two toggles and both found better
+       homes. The beat-detection trace moved to the Beat tuning box, beside the thresholds it
+       exists to help you set; the frame + FPS counter no longer has a toggle at all, because
+       H (hide all chrome) already governs it and a second control for the same thing was
+       just another place for the two to disagree. -->
   </details>
 
   <!-- Box — Backup/share. Boxed like the rest so the panel is one consistent
@@ -929,7 +932,8 @@
     <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
   </div>
-  <div class="presetrow">
+  <div class="presetrow grid2">
+    <button id="sharescene" class="audbtn" type="button" title="Copy a link to the scene running right now. Signed in, it is stored in the cloud and the link is tiny; otherwise the whole scene rides in the link itself.">Share this scene</button>
     <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
   </div>
   <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
@@ -1014,14 +1018,20 @@
   <div id="screenfilterctl"><!-- (unused host; params are adopted into each filter's body) --></div>
   </details>
 
-  <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting;
-       it is per-preset scene data now, so it belongs beside the other scene controls
-       and autosaves like them (the delegated onEdit skips #diag on purpose). -->
+  <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting; it is
+       per-preset scene data now, so it belongs beside the other scene controls and autosaves
+       like them. The beat-trace toggle below is the one thing in here that must NOT autosave,
+       which is what data-nopersist marks. -->
   <details class="box" id="beatDetails">
   <summary class="box-t">Beat tuning</summary>
   <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
+  <!-- The trace lives here, beside the thresholds it exists to help you set, rather than in a
+       separate Diagnostics section. data-nopersist is load-bearing: everything else in this
+       box is per-preset scene data that onEdit deliberately DOES autosave, so without an
+       explicit opt-out this dev-tool toggle would be folded into the selected preset too. -->
+  <label class="check" data-nopersist title="Show the scrolling flux + threshold graph per band — the tool for diagnosing a missed beat"><input type="checkbox" id="diagTrace" data-nopersist> Beat-detection trace</label>
   <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
-  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Tune it beside the beat trace (Diagnostics).</p>
+  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
   </details>
 
   <!-- Box — Layers: the effect stack (up to 4 effects composited into one scene, in
@@ -1260,7 +1270,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.2.0",
+    version: "1.3.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -7569,11 +7579,11 @@
       // or a blend pick applies to a layer that is already selected rather than selecting
       // afterwards off a stale index.
       //
-      // The grab handle is the one exclusion, for a mechanical reason rather than a taste one:
-      // selectStack re-runs syncStackUI, which rebuilds every row — that would detach the
-      // handle holding the pointer capture mid-drag, and Chromium drops capture on reparent,
-      // killing the drag after the first pixel (the trap documented on the drag code below).
-      // So you still drag to reorder without selecting; a press anywhere else selects.
+      // The grab handle is excluded HERE only, for a mechanical reason rather than a taste
+      // one: selectStack re-runs syncStackUI, which rebuilds every row — that would detach
+      // the handle holding the pointer capture mid-drag, and Chromium drops capture on
+      // reparent, killing the drag after the first pixel (the trap documented on the drag
+      // code below). The handle still selects, just on pointerUP — see its onUp.
       row.addEventListener("pointerdown", e => {
         if (!e.target.closest(".lyr-grab")) selectStack(j);
       }, true);
@@ -7626,13 +7636,25 @@
           marker.remove();
           row.style.transform = "";
           row.classList.remove("dragging");
-          if (to === from) return;                       // dropped where it started
-          const sel = stack[stackSel];
-          // `to` indexes the array with the dragged item already removed, so splice-out
-          // then splice-in at `to` directly (no gap adjustment needed).
-          stack.splice(to, 0, stack.splice(from, 1)[0]);
-          stackSel = stack.indexOf(sel);
-          syncStackUI(); persist(); autosavePreset();
+          // Using the handle selects that layer too — but ON RELEASE, never on press. The
+          // rest of the row selects from a capture-phase pointerdown; doing that here would
+          // rebuild the rows mid-gesture, and since selectStack → syncStackUI reparents the
+          // handle that holds the pointer capture, Chromium drops the capture and the drag
+          // dies after the first pixel. Deferring to pointerup gets the selection without
+          // touching the DOM while the pointer is down.
+          //
+          // Held by IDENTITY, not by index: a reorder moves it, so `from` no longer names it.
+          const dragged = stack[from];
+          const moved = to !== from;
+          if (moved) {
+            // `to` indexes the array with the dragged item already removed, so splice-out
+            // then splice-in at `to` directly (no gap adjustment needed).
+            stack.splice(to, 0, stack.splice(from, 1)[0]);
+          }
+          const at = stack.indexOf(dragged);
+          if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
+          else syncStackUI();                                // a plain click on the selected row
+          if (moved) { persist(); autosavePreset(); }
         };
         grab.addEventListener("pointermove", onMove);
         grab.addEventListener("pointerup", onUp);
@@ -7924,7 +7946,7 @@
   // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
   const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
   panel.querySelectorAll("input[type=range]").forEach(inp => {
-    if (inp.closest("#diag") || inp.closest("#beatDetails")) return;   // dev tools / beat tuning aren't scene ranges
+    if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;   // beat tuning / dev tools aren't scene ranges
     if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
     RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
   });
@@ -8048,7 +8070,7 @@
     sceneRangeInputs().forEach(inp => {
       // The beat-tuning sliders have no ids and fixed bounds — re-dispatching on them
       // would fire their handlers (and another persist) for no gain.
-      if (inp.closest("#diag") || inp.closest("#beatDetails")) return;
+      if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;
       const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
       if (c !== +inp.value) inp.value = String(c);
       inp.dispatchEvent(new Event("input", { bubbles: true }));
@@ -8271,6 +8293,11 @@
     installStack([newStackItem(0)]);
     applyBlob(d, true);
     curPreset = -1;                  // a shared scene isn't one of your saved presets
+    // ...and the chooser has to say so. Without this it keeps displaying whichever preset
+    // startup had selected, so a shared link looks like it loaded YOUR preset of that name.
+    // Harmless to the data (autosavePreset early-returns while curPreset < 0) and purely
+    // misleading, which is exactly the kind of thing nobody reports and everybody misreads.
+    if (typeof presetSel !== "undefined" && presetSel) presetSel.value = "-1";
     return true;
   }
   // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
@@ -8296,6 +8323,21 @@
       try { history.replaceState(null, "", location.pathname); } catch (e) {}   // clear query AND fragment
       if (sp) { Promise.resolve().then(() => openSharedLibrary(parse(atobSafe(sp[1])))); return; }
       unzipFromB64(zp[1]).then(json => openSharedLibrary(parse(json)));
+      return;
+    }
+    // #c=<id> — a scene stored in Firestore (see cloudShareScene). Same payload as ?z=, just
+    // fetched instead of carried, so it lands through installShared exactly like one.
+    // DEFERRED for the same reason #sp= is: cloudFetchScene lives in a much later slice whose
+    // `CLOUD` const is still in the temporal dead zone while this slice is loading. The fetch
+    // is anonymous — a share link has to open for someone with no account.
+    const c = (location.hash.match(/[?&#]c=([A-Za-z0-9_-]+)/) || location.search.match(/[?&]c=([A-Za-z0-9_-]+)/));
+    if (c) {
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}
+      Promise.resolve().then(() => cloudFetchScene(c[1])).then(json => {
+        if (!json || !installShared(parse(json))) return;
+        resize();
+        setEffect(+effectSel.value, false);
+      });
       return;
     }
     const z = location.search.match(/[?&]z=([^&#]+)/);
@@ -8690,7 +8732,12 @@
   // listener over the whole panel covers them all. When a preset is selected the
   // edit is auto-saved into it; in "— unsaved scene —" it just updates the working scene.
   function onEdit(e) {
-    if (e.target.closest("#diag")) return;   // dev tools persist themselves; never fold them into a preset
+    // A dev tool must never be folded into a preset. This used to be a `#diag` check, but that
+    // section is gone and its one surviving toggle (the beat trace) now sits INSIDE the Beat
+    // tuning box — which deliberately does not escape this listener, because its sliders are
+    // per-preset scene data and must autosave. So the opt-out is per-element and explicit,
+    // which also means a future dev control can live anywhere and still opt out.
+    if (e.target.closest("[data-nopersist]")) return;
     if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
     refreshBlocked();                        // a thumb move can neutralise (or free) a dependent control
     refreshChanged();                        // a thumb move can move a slider off (or back to) its default
@@ -8879,7 +8926,10 @@
   // beatTune rides along now that it is scene data. `cycle` and `ttl` deliberately do
   // NOT: they are the recipient's own auto-cycle preferences, and sharing a scene is no
   // reason to reach in and change them. Same for resolution, which was never sent.
-  async function shareUrl() {
+  // The live scene as a serialized blob. Split out of shareUrl so the cloud scene-share
+  // (which stores this same payload in Firestore instead of in a URL) cannot drift from it —
+  // one definition of "what a shared scene is", two transports.
+  function sceneBlob() {
     saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
     const only = m => ({ [effect]: m[effect] });
     const blob = {
@@ -8899,7 +8949,10 @@
     // rather than failing — a graceful degrade, not an error.
     const st = stackOut();
     if (st) blob.layers = st;
-    const json = JSON.stringify(serializeBlob(blob));   // effect stored as a stable id
+    return serializeBlob(blob);       // effect stored as a stable id
+  }
+  async function shareUrl() {
+    const json = JSON.stringify(sceneBlob());
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/ — the link goes
     // straight to it and the scene rides in the ?z= (or legacy ?s=) param.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
@@ -9603,6 +9656,13 @@
     el("sharepredlg").classList.remove("hidden");
   }
   const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
+  // "Share this scene": one link to what is running. copyText takes the Promise directly so
+  // the clipboard write stays inside the user gesture (a plain writeText after an await is
+  // rejected by Safari) — the same reason libraryUrl is passed unresolved below.
+  el("sharescene").addEventListener("click", () => {
+    copyText(cloudShareScene(), el("sharescene"), "Link copied!", "Share this scene");
+    track("share_scene", {});
+  });
   el("sharepresets").addEventListener("click", openSharePresets);
   el("sharepre-close").addEventListener("click", closeSharePresets);
   el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop
@@ -10110,6 +10170,59 @@
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
+  // ---- share the running scene through Firestore -------------------------------------
+  // Signed in, "Share this scene" stores the scene as one immutable document in /scenes and
+  // hands back a ~30-character link. Signed out (or if the write fails for any reason) it
+  // falls back to the self-contained ?z= link, so sharing never stops working and never
+  // requires an account — the cloud route is an optimisation, not a gate.
+  //
+  // /scenes is deliberately NOT /profiles: a link pointing into a profile would only open
+  // while that profile was published to the gallery, so sharing one scene would drag the
+  // sharer's entire library public with it. These stay independent decisions.
+  //
+  // The payload is `sceneBlob()` — the exact blob the ?z= link carries, through the exact
+  // same codec — so both transports describe a shared scene identically and the recipient
+  // path is the one that already exists (installShared).
+  function cloudShareScene() {
+    const json = JSON.stringify(sceneBlob());
+    const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
+    if (!cloudOn() || !cloudSess) return shareUrl();          // signed out ⇒ the classic link
+    return zipToB64(json).then(payload => {
+      if (payload == null || payload.length >= 200000) return shareUrl();
+      const body = fsOut({
+        owner: cloudSess.uid,
+        payload,
+        name: (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]
+          ? String(presets[curPreset].name) : "Shared scene").slice(0, 60),
+        created: new Date(),
+      });
+      // POST to the COLLECTION mints an auto-id; PATCH would need us to invent one and risk
+      // colliding with (or overwriting) someone else's — and /scenes forbids update anyway.
+      return cloudFetch(galUrl + "/scenes", { method: "POST", body: JSON.stringify(body) })
+        .then(r => (r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))))
+        .then(doc => {
+          const id = String(doc.name || "").split("/").pop();
+          if (!id) throw new Error("no document id returned");
+          track("share_scene_cloud", {});
+          return dir + "#c=" + id;
+        })
+        .catch(() => shareUrl());       // quota, rules, offline — the link still works
+    });
+  }
+  // Recipient side of #c=<id>. Called (deferred) from applyShared: the fetch is anonymous,
+  // because a share link must open for someone with no account.
+  function cloudFetchScene(id) {
+    if (!CLOUD.apiKey || !CLOUD.projectId) return Promise.resolve(null);
+    return galFetchJson(galUrl + "/scenes/" + encodeURIComponent(id))
+      .then(r => (r.ok ? r.json() : null))
+      .then(doc => {
+        if (!doc) return null;
+        const d = fsIn(doc);
+        return d.payload ? unzipFromB64(d.payload) : null;
+      })
+      .catch(() => null);
+  }
+
   // ---- profile name: text, not a permanently open input ----
   // Signed in, the name is a label you click to edit. `#cloud-name` remains the VALUE STORE
   // (cloudSave and cloudFetchProfileMeta both read/write it, unchanged) — this only governs
@@ -10158,6 +10271,32 @@
     if (!inS) cloudMsg("");
   }
 
+  // Render (or re-render) Google's button at the width its box actually has.
+  //
+  // Google draws this button itself and its internals cannot be styled — the theme/shape/size
+  // options are the whole supported surface — so the ONLY way to stop it overflowing the
+  // 250px panel is to tell it the width. And that width can only be measured while the panel
+  // is open: closed, clientWidth is 0, which is why this re-runs from a ResizeObserver rather
+  // than once at startup. Google clamps `width` to 200–400, so the container's padding is kept
+  // small enough that its content box stays above 200 inside a 250px panel.
+  let gsiWidth = 0;
+  function gsiRender() {
+    const host = el("cloud-signin");
+    if (!host || !window.google || !window.google.accounts || !window.google.accounts.id) return;
+    const avail = Math.round(host.clientWidth);
+    if (avail <= 0) return;                     // panel closed — wait for the observer
+    const w = Math.max(200, Math.min(400, avail));
+    if (w === gsiWidth) return;                 // already drawn at this width
+    gsiWidth = w;
+    host.textContent = "";                      // renderButton appends; clear the old one first
+    try {
+      window.google.accounts.id.renderButton(host, {
+        theme: "filled_black", shape: "pill", size: "large",
+        text: "signin_with", logo_alignment: "left", width: w,
+      });
+    } catch (e) { /* GIS unavailable — the message line already says so */ }
+  }
+
   // Google Identity Services renders the sign-in button and hands back a Google ID token,
   // which cloudSignIn trades for a Firebase session. Loaded lazily and ONLY when configured,
   // so an unconfigured build makes no third-party request at all.
@@ -10181,7 +10320,17 @@
             cloudSignIn(res.credential).catch(e => cloudMsg("Sign-in failed: " + e.message, true));
           },
         });
-        window.google.accounts.id.renderButton(el("cloud-signin"), { theme: "filled_black", size: "medium", text: "signin_with" });
+        // Google renders this button itself, under its branding rules — its internals cannot
+        // be restyled (it is their markup, and the shape/colour options are the supported
+        // surface). So: pick the variant that sits closest to this panel — black fill, pill,
+        // to match the rounded amber buttons — and size it to the panel width so it does not
+        // read as a foreign object dropped in. The surrounding padding/centreing is CSS on
+        // #cloud-signin, which IS ours.
+        gsiRender();
+        // The width can only be measured while the panel is OPEN — closed, clientWidth is 0
+        // and any guess bakes in the wrong number. So render (or re-render) whenever the box
+        // actually has a width: on open, and on any panel/window resize.
+        if (window.ResizeObserver) new ResizeObserver(gsiRender).observe(el("cloud-signin"));
       } catch (e) { cloudMsg("Sign-in unavailable: " + e.message, true); }
     };
     s.onerror = () => cloudMsg("Could not reach Google sign-in.", true);
@@ -10560,16 +10709,17 @@
   // ---- beat-detection tuning (its own "Beat tuning" box, or ?beat=1) ----
   // Live sliders for the detector thresholds in beatCfg. Edits write straight into
   // beatCfg and re-derive the FFT bins when a band edge moves; the box sits outside
-  // #diag so the delegated onEdit persists them AND autosaves them into the selected
-  // preset, which is the whole point of the tuning being per-scene.
+  // any dev-tool opt-out, so the delegated onEdit persists them AND autosaves them into the
+  // selected preset, which is the whole point of the tuning being per-scene. (The beat-trace
+  // toggle shares this box but carries data-nopersist, precisely to stay out of that.)
   // `var`, not `let`: installBeatTune runs during startup (restore/share → applyBlob)
   // long before this line, and reads `beatUi && beatUi.wired` — same reason `card` is
   // a var. With `let` that read is a TDZ crash, not a falsy skip.
   var beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
-    // No persist() here: the box is outside #diag, so onEdit already persisted and
-    // folded the change into the selected preset. Calling it again would double-write.
+    // No persist() here: these sliders carry no dev-tool opt-out, so onEdit already persisted
+    // and folded the change into the selected preset. Calling it again would double-write.
   }
   function beatRow(label, val, min, max, step, fmt, set) {   // name + range slider + live readout
     const row = document.createElement("div"); row.className = "beat-row";
@@ -10630,14 +10780,20 @@
   function beatToggle(on) {       // programmatic open (e.g. ?beat=1); users just click the summary
     const d = el("beatDetails");
     const want = on === undefined ? !d.open : !!on;
-    d.open = want;                // its own box now — no #diag to open first
+    d.open = want;                // its own box — nothing to open around it
   }
   beatWire();
   if (/[?&]beat=1/.test(location.search)) { setPanel(false); beatToggle(true); }
 
-  // ---- Diagnostics checkboxes: frame + FPS counter and the beat-trace canvas ----
-  el("diagFrames").checked = !framesEl.classList.contains("hidden");
-  el("diagFrames").addEventListener("change", e => framesEl.classList.toggle("hidden", !e.target.checked));
+  // ---- Beat-trace toggle ----
+  // Lives in the Beat tuning box now, next to the thresholds it exists to help you set. It
+  // carries data-nopersist, because that box (unlike the old Diagnostics section) deliberately
+  // does NOT escape onEdit — its sliders are per-preset scene data and must autosave, so a dev
+  // tool sitting among them has to opt out by hand or it gets folded into the preset too.
+  //
+  // The frame + FPS counter has no toggle any more: H (hide all chrome) already governs it via
+  // body.ui-hidden, and a second control for the same thing was only ever a way for the two to
+  // disagree. `#frames.hidden` survives in the CSS as the mechanism ?hideui/H drive.
   el("diagTrace").checked = dbg.on;
   el("diagTrace").addEventListener("change", e => dbgToggle(e.target.checked));
 
