@@ -634,10 +634,17 @@ plural read as "all of the effects".
 `<select>` remains the effect **value store**: `setEffect` writes `effectSel.value`,
 `applyBlob` validates against its `<option>` list, and its `change` event is what the layer
 rows and everything else dispatch through. Deleting it would mean rewriting all of those.
-Exactly the arrangement `#palette` has behind the swatches. Consequence:
-`#fxctl > .ctl-grp:first-child` suppresses its top border again, because the first group once
-more butts straight against the box title, where a rule reads as a stray line rather than a
-separator. Note the Restore dialog's "Effect settings" checkbox is a
+Exactly the arrangement `#palette` has behind the swatches. Consequence: the topmost group
+heading in `#fxctl` butts straight against the box title again, where its top border reads as
+a stray line under the heading rather than as a separator — so it is suppressed via
+**`.grp-first`, set by `markFirstGroup()` from `refreshControlVisibility`, NOT `:first-child`**.
+That distinction is the whole point: every group exists in the DOM (they are built once from
+`CONTROLS`) and only some are *shown*, so the first *child* is always "Shape & motion" while
+the first *visible* one depends on the effect — "Cardioid seed" on AnimeJulia, "Plasma" on
+Plasma, and so on for 16 different values. A `:first-child` rule therefore fixed the point
+effects and left the divider showing on every other effect, which is exactly how it shipped
+once. Because it re-runs on every visibility pass it also survives ticking a filter, which can
+introduce a new group above the rest. Note the Restore dialog's "Effect settings" checkbox is a
 *different* thing — a blob category (states/beats/extras), not this section.
 
 **Palette cycle.** The old "Auto-morph palettes" checkbox is gone; a `palcycle` dual

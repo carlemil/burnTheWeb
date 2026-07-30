@@ -270,6 +270,23 @@
     shown.add("heatboost");           // a palette-box control that applies to every effect (like palcycle/palhold)
     return shown;
   }
+  // The topmost VISIBLE group heading in #fxctl sits directly under the box title, where its
+  // top border reads as a stray rule below the heading rather than as a separator between two
+  // groups. CSS `:first-child` cannot express this: every group exists in the DOM (they are
+  // all built once, from CONTROLS) and only some are shown, so the first *child* is whichever
+  // group comes first in the schema — "Shape & motion" — while the first *visible* one depends
+  // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
+  // re-marked on every visibility pass.
+  function markFirstGroup() {
+    const host = el("fxctl");
+    if (!host) return;
+    let seen = false;
+    host.querySelectorAll(".ctl-grp").forEach(h => {
+      const vis = h.style.display !== "none";
+      h.classList.toggle("grp-first", vis && !seen);
+      if (vis) seen = true;
+    });
+  }
   function refreshControlVisibility() {
     const shown = shownKeys();
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
@@ -281,6 +298,7 @@
       const hdr = el("grp-" + g);
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
+    markFirstGroup();                  // ...and the topmost visible one loses its divider
     refreshBreakout();                // show/hide the pop-out boxes to match
     refreshBlocked(shown);            // grey any control another setting has neutralised
     refreshChanged(shown);            // mark any slider moved off its shipped default

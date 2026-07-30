@@ -530,10 +530,12 @@
     color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   }
   /* The Effect chooser that used to sit above #fxctl is hidden (every layer row has one), so
-     the first group again butts straight against the box title — where a top border reads as
-     a stray rule under the heading rather than as a separator between two groups. This rule
-     existed before the chooser moved into this box and comes back now that it is gone. */
-  #panel #fxctl > .ctl-grp:first-child { margin-top: 4px; padding-top: 0; border-top: none; }
+     the topmost group again butts straight against the box title — where a top border reads as
+     a stray rule under the heading rather than as a separator between two groups.
+     `.grp-first` is set by markFirstGroup() per visibility pass, NOT :first-child: every group
+     is in the DOM and only some are shown, so the first *child* is whichever comes first in
+     the CONTROLS schema while the first *visible* one depends on the effect. */
+  #panel #fxctl > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
   /* the "what this group of filters does" caption under a filter-group heading */
   #panel .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;
