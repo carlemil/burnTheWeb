@@ -82,10 +82,19 @@
         <button id="cloud-save" class="audbtn" type="button" title="Upload your preset library to your profile, replacing what is there">Save to cloud</button>
         <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your presets or replace them">Load from cloud</button>
       </div>
+      <!-- Opt-in, and off by default: publishing is a deliberate act, not a side effect of
+           saving. Ticking it re-saves the whole profile (see cloudPublish for why a
+           pub-only write cannot satisfy the rules). -->
+      <label class="check" title="List your profile in the public gallery so anyone can load your presets. Your name and preset count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
       <div class="presetrow grid2">
         <button id="cloud-signout" class="audbtn" type="button" title="Sign out on this device. Your profile stays in the cloud.">Sign out</button>
         <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>
       </div>
+    </div>
+    <!-- Outside #cloud-authed on purpose: the gallery is readable by signed-out visitors
+         (the rules allow a `pub == true` query unauthenticated), so browsing needs no account. -->
+    <div class="presetrow">
+      <button id="cloud-browse" class="audbtn" type="button" title="Browse profiles other people have published, and load their presets">Browse profiles…</button>
     </div>
     <p id="cloud-msg" class="hint"></p>
     <p class="hint">Stored against your account: the profile name you choose and your presets — nothing else. Not your email, name or picture.</p>
@@ -214,6 +223,20 @@
     <h2 id="pal-title">Palette</h2>
     <div id="pal-grid"></div>
     <p class="pal-hint">The whole ramp — index 0 (top-left) → 255 (bottom-right), the heat value each colour maps. Hover a cell for its index and hex.</p>
+  </div>
+</div>
+
+<!-- Public profile gallery. Readable without signing in, so it is available to any visitor.
+     Loading one routes through the same Restore dialog a shared link uses. -->
+<div id="galdlg" class="hidden">
+  <div class="gal-box">
+    <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
+    <h2>Published profiles</h2>
+    <div id="gal-list"></div>
+    <p class="pal-hint" id="gal-hint"></p>
+    <div class="presetrow">
+      <button id="gal-refresh" class="audbtn" type="button" title="Fetch the list again, ignoring the cached copy">Refresh</button>
+    </div>
   </div>
 </div>
 

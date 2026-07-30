@@ -1347,6 +1347,27 @@ can't fail on a token that expired in flight; and a 401 mid-flight refreshes and
 **exactly once**, never in a loop. Session tokens live under their own `localStorage` key,
 deliberately **not** in the scene blob — same reasoning as the credits preference.
 
+**The gallery is browsable signed out**, which is why `galFetchJson` uses a plain keyed
+`fetch` rather than `cloudFetch` — a visitor with no account has no token to attach, and
+these documents are public by definition. The Browse button therefore sits *outside*
+`#cloud-authed`. Publishing is the opposite: opt-in, off by default, and **`cloudPublish`
+re-saves the whole profile rather than patching `pub` alone** — the rules require the
+resulting document to carry name/payload/count, so a pub-only write to a profile that
+doesn't exist yet fails validation.
+
+**The listing survives a missing composite index, by design.** `where pub == true` +
+`orderBy updated` needs one, and a fresh project has none — Firestore answers 400
+`FAILED_PRECONDITION` with a one-click creation URL. Rather than leaving the gallery dead
+until someone visits that URL, `galList` retries **unordered** (which needs no index) and
+logs the URL once via `console.info`. The two paths differ in what they *select* — indexed
+returns the genuinely newest `limit` documents, unordered an arbitrary `limit` — so the
+index still matters once there are more profiles than fit a page. But the **sort is applied
+in both cases**: ordering ≤20 items client-side is free, and it stops the rendered order
+depending on which path ran. The query also `select`s away `payload`; without that, listing
+20 profiles drags 20 compressed libraries down the wire to render a list of names (it does
+not reduce the read quota, which is per document regardless). The listing is cached for
+`CONFIG.cloud.galleryTtlMs`, and `galBust()` clears it whenever publishing changes.
+
 ### Audio & beat reactivity
 `audio` holds the WebAudio graph; `startAudio("capture"|"mic")` grabs
 `getDisplayMedia`/`getUserMedia` and must run inside a user gesture. **Pulse mode**:

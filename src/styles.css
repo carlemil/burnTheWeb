@@ -193,6 +193,32 @@
   #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
   #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
+  /* Public profile gallery — floating and translucent like the other popups. */
+  #galdlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;
+  }
+  #galdlg.hidden { display: none; }
+  #galdlg .gal-box {
+    position: relative; pointer-events: auto;
+    width: min(90vw, 460px); max-height: 86vh; overflow-y: auto;
+    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 18px 20px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #galdlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* name grows, meta sits right of it, Load pinned to the end */
+  #galdlg .gal-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center;
+    padding: 7px 8px; margin-bottom: 5px;
+    border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
+  }
+  #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #galdlg .gal-meta { color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap; }
+  #galdlg .gal-row .audbtn { padding: 4px 10px; }
+  #galdlg .pal-hint { margin: 10px 0 0; opacity: .6; font-size: 10.5px; }
+  body.ui-hidden #galdlg { display: none !important; }
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */

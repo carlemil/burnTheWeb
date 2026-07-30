@@ -230,7 +230,8 @@
         if (!doc) return;
         const d = fsIn(doc);
         if (d.name && el("cloud-name")) el("cloud-name").value = d.name;
-        if (cloudSess) cloudSess.pub = !!d.pub;
+        if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
+        if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
         if (d.count != null) cloudMsg("Profile has " + d.count + " preset" + (d.count === 1 ? "" : "s") + " stored.");
       }).catch(() => { /* no profile yet — nothing to show */ });
   }
@@ -243,6 +244,155 @@
       if (j && j.error && j.error.message) return j.error.message;
     } catch (e) { /* not JSON */ }
     return "HTTP " + status;
+  }
+
+  // ---- publish ----
+  // Toggling this re-saves the WHOLE profile rather than patching `pub` alone, and that is
+  // forced by the rules, not laziness: they require the resulting document to carry
+  // name/payload/count/pub, so a pub-only write to a profile that does not exist yet fails
+  // validation. Going through cloudSave() always produces a document the rules accept.
+  function cloudPublish(on) {
+    if (!cloudSess) return;
+    cloudSess.pub = !!on;
+    cloudSaveSess();
+    track("cloud_publish", { on: !!on });
+    cloudSave();
+    galBust();                          // this profile just entered or left the listing
+  }
+
+  // ---- gallery ----
+  // Public profiles, readable WITHOUT signing in: the rules allow a `pub == true` query from
+  // an unauthenticated caller (and deny an unfiltered one), so any visitor can browse.
+  const GAL_KEY = "burnTheWeb.gallery.v1";
+  const galUrl = "https://firestore.googleapis.com/v1/projects/" + (CLOUD.projectId || "")
+    + "/databases/(default)/documents";
+  // Plain fetch with the api key, NOT cloudFetch: these documents are public, and gallery
+  // browsing must work for a signed-out visitor who has no token to attach.
+  function galFetchJson(url, opts) {
+    return fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "key=" + encodeURIComponent(CLOUD.apiKey), opts);
+  }
+  // `select` projects away the payload. Without it every listed profile drags its whole
+  // compressed library down the wire — 20 profiles would be megabytes to render a list of
+  // names. (It does not reduce the read quota, which is per document either way.)
+  function galQuery(ordered) {
+    const q = {
+      structuredQuery: {
+        from: [{ collectionId: "profiles" }],
+        where: { fieldFilter: { field: { fieldPath: "pub" }, op: "EQUAL", value: { booleanValue: true } } },
+        select: { fields: [{ fieldPath: "name" }, { fieldPath: "count" }, { fieldPath: "updated" }] },
+        limit: CLOUD.galleryLimit || 20,
+      },
+    };
+    if (ordered) q.structuredQuery.orderBy = [{ field: { fieldPath: "updated" }, direction: "DESCENDING" }];
+    return galFetchJson(galUrl + ":runQuery", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(q),
+    });
+  }
+  // Ordered first, unordered as a fallback. `where pub == true` + `orderBy updated` needs a
+  // COMPOSITE INDEX, which a fresh project does not have — Firestore answers 400
+  // FAILED_PRECONDITION with a one-click creation URL. Rather than making the gallery dead
+  // until someone visits that URL, fall back to the unordered query (no index required) and
+  // sort client-side; the index simply makes it correct beyond the page limit later.
+  let galIndexWarned = false;
+  function galList() {
+    return galQuery(true).then(r => {
+      if (r.ok) return r.json().then(j => ({ rows: j, ordered: true }));
+      return r.text().then(t => {
+        if (/FAILED_PRECONDITION|requires an index/i.test(t)) {
+          if (!galIndexWarned) {
+            galIndexWarned = true;
+            const m = /https:\/\/console\.firebase\.google\.com\S*/.exec(t);
+            console.info("[burnTheWeb] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
+          }
+          return galQuery(false).then(r2 => (r2.ok ? r2.json().then(j => ({ rows: j, ordered: false }))
+            : r2.text().then(t2 => Promise.reject(new Error(cloudErr(t2, r2.status))))));
+        }
+        return Promise.reject(new Error(cloudErr(t, r.status)));
+      });
+    }).then(res => {
+      const items = (res.rows || []).filter(x => x.document).map(x => {
+        const d = fsIn(x.document);
+        return { uid: String(x.document.name).split("/").pop(), name: d.name || "Untitled",
+                 count: d.count || 0, updated: d.updated || "" };
+      });
+      // Sort ALWAYS, not only on the fallback. The two paths differ in what they SELECT —
+      // an indexed query returns the genuinely newest `limit` documents, the unordered one
+      // returns an arbitrary `limit` — but neither is a reason for the rendered order to
+      // depend on which path ran. Sorting ≤20 items is free, and it means the list reads the
+      // same before and after the composite index exists.
+      items.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+      return items;
+    });
+  }
+  // Cache the listing: 20 document reads per open against a 50k/day quota is fine on a
+  // button and wasteful if every glance re-queries.
+  function galCached() {
+    try {
+      const c = JSON.parse(localStorage.getItem(GAL_KEY) || "null");
+      if (c && Date.now() - c.t < (CLOUD.galleryTtlMs || 300000)) return c.items;
+    } catch (e) { /* fall through to a live fetch */ }
+    return null;
+  }
+  function galStore(items) {
+    try { localStorage.setItem(GAL_KEY, JSON.stringify({ t: Date.now(), items })); } catch (e) {}
+  }
+  function galBust() { try { localStorage.removeItem(GAL_KEY); } catch (e) {} }
+
+  function galRender(items) {
+    const host = el("gal-list");
+    host.textContent = "";
+    if (!items.length) {
+      el("gal-hint").textContent = "No one has published a profile yet. Tick “Publish to gallery” to be the first.";
+      return;
+    }
+    el("gal-hint").textContent = "Loading a profile opens the usual restore dialog, so you choose merge or replace — nothing is overwritten without asking.";
+    items.forEach(p => {
+      const row = document.createElement("div");
+      row.className = "gal-row";
+      const nm = document.createElement("div");
+      nm.className = "gal-name";
+      nm.textContent = p.name;
+      const meta = document.createElement("div");
+      meta.className = "gal-meta";
+      meta.textContent = p.count + " preset" + (p.count === 1 ? "" : "s")
+        + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "audbtn"; btn.textContent = "Load";
+      btn.title = "Fetch this profile's presets";
+      btn.addEventListener("click", () => galLoad(p));
+      row.appendChild(nm); row.appendChild(meta); row.appendChild(btn);
+      host.appendChild(row);
+    });
+  }
+  function galLoad(p) {
+    el("gal-hint").textContent = "Fetching “" + p.name + "”…";
+    galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
+      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      return r.json();
+    }).then(doc => {
+      const d = fsIn(doc);
+      if (!d.payload) throw new Error("that profile is empty");
+      return unzipFromB64(d.payload);
+    }).then(json => {
+      if (json == null) throw new Error("could not read that profile");
+      let raw;
+      try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
+      galOpen(false);
+      openSharedLibrary(raw);           // same path as a shared link: validate + merge/replace
+      track("cloud_gallery_load", {});
+    }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
+  }
+  function galOpen(show, force) {
+    const dlg = el("galdlg");
+    if (!dlg) return;
+    dlg.classList.toggle("hidden", !show);
+    if (!show) return;
+    const cached = force ? null : galCached();
+    if (cached) { galRender(cached); return; }
+    el("gal-list").textContent = "";
+    el("gal-hint").textContent = "Loading…";
+    galList().then(items => { galStore(items); galRender(items); })
+      .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
   // ---- UI ----
@@ -259,6 +409,8 @@
     if (authed) authed.style.display = inS ? "" : "none";
     if (signin) signin.style.display = inS ? "none" : "";
     if (who) who.textContent = inS ? "· signed in" : "";
+    const pubBox = el("cloud-pub");
+    if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
     if (!inS) cloudMsg("");
   }
 
@@ -296,4 +448,9 @@
   if (el("cloud-load")) el("cloud-load").addEventListener("click", cloudLoad);
   if (el("cloud-delete")) el("cloud-delete").addEventListener("click", cloudDelete);
   if (el("cloud-signout")) el("cloud-signout").addEventListener("click", cloudSignOut);
+  if (el("cloud-pub")) el("cloud-pub").addEventListener("change", e => cloudPublish(e.target.checked));
+  if (el("cloud-browse")) el("cloud-browse").addEventListener("click", () => galOpen(true));
+  if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
+  if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
+  if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
   cloudInit();
