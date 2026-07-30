@@ -812,6 +812,20 @@ reads `stack`. If `EFFECTS[effect]` ever reappears in a render path it will rend
 selected item's descriptor for *every* item — invisible whenever two items share an
 effect.
 
+**Pressing anywhere in a layer row selects that layer** — the mute dot, the gain slider, the
+blend dropdown, the effect chooser, all of it. Those controls each `stopPropagation()` on
+`click` so their own action doesn't double-fire, which is why selection is a **capture-phase
+`pointerdown`** on the row: it runs before any child handler can stop it *and* before the
+control acts, so a gain drag or a blend pick applies to a layer that is already selected
+rather than selecting afterwards off a stale index. The row's `click` listener is kept
+alongside it because a synthetic click (tests, assistive tech) emits no `pointerdown`, and
+`selectStack` early-returns when the row is already selected so the pair cannot double-work.
+
+**The grab handle is the one exclusion, for a mechanical reason.** `selectStack` re-runs
+`syncStackUI`, which rebuilds every row — that would detach the handle holding the pointer
+capture mid-drag, and Chromium drops capture on reparent, killing the drag after the first
+pixel (the same trap the drag code documents). So you still drag to reorder without selecting.
+
 **Every layer row carries its own effect `<select>`** (`select.lyr-name`, built in
 `syncStackUI`) — re-pointing a layer is the commonest thing you do to one, and it used to
 mean select the row, then scroll to the chooser in *Effect & Filters*. Both go through the

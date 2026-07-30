@@ -101,8 +101,24 @@
       const row = document.createElement("div");
       row.className = "lyr" + (j === stackSel ? " sel" : "") + (L.mute ? " muted" : "");
       row.title = "Click to edit this layer";
-      // Selecting is what the Effect chooser and every slider below follow, so the whole
-      // row is the target; the buttons inside stopPropagation so they don't also select.
+      // Selecting is what every slider in the box below follows, so pressing ANYWHERE in the
+      // row selects it — including on the mute dot, the gain slider, the blend dropdown and
+      // the effect chooser. Those all stopPropagation on `click` (so their own action doesn't
+      // double-fire), which is why this listens for `pointerdown` in the CAPTURE phase: it
+      // runs before any child handler can stop it, and before the control acts, so a gain drag
+      // or a blend pick applies to a layer that is already selected rather than selecting
+      // afterwards off a stale index.
+      //
+      // The grab handle is the one exclusion, for a mechanical reason rather than a taste one:
+      // selectStack re-runs syncStackUI, which rebuilds every row — that would detach the
+      // handle holding the pointer capture mid-drag, and Chromium drops capture on reparent,
+      // killing the drag after the first pixel (the trap documented on the drag code below).
+      // So you still drag to reorder without selecting; a press anywhere else selects.
+      row.addEventListener("pointerdown", e => {
+        if (!e.target.closest(".lyr-grab")) selectStack(j);
+      }, true);
+      // Kept as well: a synthetic click (tests, assistive tech) never emits pointerdown, and
+      // selectStack early-returns when the row is already selected, so this cannot double-work.
       row.addEventListener("click", () => selectStack(j));
 
       // Grab handle → drag to reorder. It captures the pointer and live-moves this row
