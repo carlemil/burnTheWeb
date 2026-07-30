@@ -109,11 +109,11 @@
       // or a blend pick applies to a layer that is already selected rather than selecting
       // afterwards off a stale index.
       //
-      // The grab handle is the one exclusion, for a mechanical reason rather than a taste one:
-      // selectStack re-runs syncStackUI, which rebuilds every row — that would detach the
-      // handle holding the pointer capture mid-drag, and Chromium drops capture on reparent,
-      // killing the drag after the first pixel (the trap documented on the drag code below).
-      // So you still drag to reorder without selecting; a press anywhere else selects.
+      // The grab handle is excluded HERE only, for a mechanical reason rather than a taste
+      // one: selectStack re-runs syncStackUI, which rebuilds every row — that would detach
+      // the handle holding the pointer capture mid-drag, and Chromium drops capture on
+      // reparent, killing the drag after the first pixel (the trap documented on the drag
+      // code below). The handle still selects, just on pointerUP — see its onUp.
       row.addEventListener("pointerdown", e => {
         if (!e.target.closest(".lyr-grab")) selectStack(j);
       }, true);
@@ -166,13 +166,25 @@
           marker.remove();
           row.style.transform = "";
           row.classList.remove("dragging");
-          if (to === from) return;                       // dropped where it started
-          const sel = stack[stackSel];
-          // `to` indexes the array with the dragged item already removed, so splice-out
-          // then splice-in at `to` directly (no gap adjustment needed).
-          stack.splice(to, 0, stack.splice(from, 1)[0]);
-          stackSel = stack.indexOf(sel);
-          syncStackUI(); persist(); autosavePreset();
+          // Using the handle selects that layer too — but ON RELEASE, never on press. The
+          // rest of the row selects from a capture-phase pointerdown; doing that here would
+          // rebuild the rows mid-gesture, and since selectStack → syncStackUI reparents the
+          // handle that holds the pointer capture, Chromium drops the capture and the drag
+          // dies after the first pixel. Deferring to pointerup gets the selection without
+          // touching the DOM while the pointer is down.
+          //
+          // Held by IDENTITY, not by index: a reorder moves it, so `from` no longer names it.
+          const dragged = stack[from];
+          const moved = to !== from;
+          if (moved) {
+            // `to` indexes the array with the dragged item already removed, so splice-out
+            // then splice-in at `to` directly (no gap adjustment needed).
+            stack.splice(to, 0, stack.splice(from, 1)[0]);
+          }
+          const at = stack.indexOf(dragged);
+          if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
+          else syncStackUI();                                // a plain click on the selected row
+          if (moved) { persist(); autosavePreset(); }
         };
         grab.addEventListener("pointermove", onMove);
         grab.addEventListener("pointerup", onUp);

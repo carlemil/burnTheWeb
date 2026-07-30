@@ -320,6 +320,13 @@
     el("sharepredlg").classList.remove("hidden");
   }
   const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
+  // "Share this scene": one link to what is running. copyText takes the Promise directly so
+  // the clipboard write stays inside the user gesture (a plain writeText after an await is
+  // rejected by Safari) — the same reason libraryUrl is passed unresolved below.
+  el("sharescene").addEventListener("click", () => {
+    copyText(cloudShareScene(), el("sharescene"), "Link copied!", "Share this scene");
+    track("share_scene", {});
+  });
   el("sharepresets").addEventListener("click", openSharePresets);
   el("sharepre-close").addEventListener("click", closeSharePresets);
   el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop

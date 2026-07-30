@@ -86,7 +86,10 @@
   // beatTune rides along now that it is scene data. `cycle` and `ttl` deliberately do
   // NOT: they are the recipient's own auto-cycle preferences, and sharing a scene is no
   // reason to reach in and change them. Same for resolution, which was never sent.
-  async function shareUrl() {
+  // The live scene as a serialized blob. Split out of shareUrl so the cloud scene-share
+  // (which stores this same payload in Firestore instead of in a URL) cannot drift from it —
+  // one definition of "what a shared scene is", two transports.
+  function sceneBlob() {
     saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
     const only = m => ({ [effect]: m[effect] });
     const blob = {
@@ -106,7 +109,10 @@
     // rather than failing — a graceful degrade, not an error.
     const st = stackOut();
     if (st) blob.layers = st;
-    const json = JSON.stringify(serializeBlob(blob));   // effect stored as a stable id
+    return serializeBlob(blob);       // effect stored as a stable id
+  }
+  async function shareUrl() {
+    const json = JSON.stringify(sceneBlob());
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/ — the link goes
     // straight to it and the scene rides in the ?z= (or legacy ?s=) param.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");

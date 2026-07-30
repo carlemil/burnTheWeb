@@ -23,6 +23,11 @@ rules_version = '2';
 //   7. write with a name over 40 chars                              → DENY
 //   8. delete your own profile                                      → ALLOW
 //   9. delete someone else's profile                                → DENY
+//  10. unauthenticated GET of any /scenes document                  → ALLOW (that is the point)
+//  11. unauthenticated CREATE in /scenes                            → DENY
+//  12. authenticated create in /scenes with owner != your uid       → DENY
+//  13. UPDATE of an existing /scenes document                       → DENY (snapshots are immutable)
+//  14. delete a /scenes document you do not own                     → DENY
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -57,6 +62,33 @@ service cloud.firestore {
         && request.resource.data.count >= 0
         && request.resource.data.count <= 500
         && request.resource.data.pub is bool;
+    }
+
+    // A shared SCENE: one immutable snapshot per "Share this scene", holding just the scene
+    // that was running. Separate from /profiles on purpose — pointing a share link at a
+    // profile would only work while that profile is published, so sharing one scene would
+    // force the sharer's whole library public. This keeps the two decisions independent.
+    match /scenes/{id} {
+      // World-readable, and that is the entire point: a share link has to open for someone
+      // with no account. Only what the sharer deliberately shared lives here.
+      allow read: if true;
+
+      // Signed-in users only, and the document must name its creator — so `delete` below has
+      // an owner to check, and abuse is attributable rather than anonymous.
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['owner', 'payload', 'name', 'created'])
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.payload is string
+        && request.resource.data.payload.size() < 200000
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 60;
+
+      // Immutable: a share link is a SNAPSHOT. Allowing updates would let the content behind
+      // an already-circulated link be swapped for something else after the fact.
+      allow update: if false;
+
+      // The sharer can retract their own link.
+      allow delete: if request.auth != null && request.auth.uid == resource.data.owner;
     }
 
     // Everything else is closed. Explicit, so adding a collection later is a deliberate act

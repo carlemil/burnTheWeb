@@ -395,6 +395,59 @@
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
+  // ---- share the running scene through Firestore -------------------------------------
+  // Signed in, "Share this scene" stores the scene as one immutable document in /scenes and
+  // hands back a ~30-character link. Signed out (or if the write fails for any reason) it
+  // falls back to the self-contained ?z= link, so sharing never stops working and never
+  // requires an account — the cloud route is an optimisation, not a gate.
+  //
+  // /scenes is deliberately NOT /profiles: a link pointing into a profile would only open
+  // while that profile was published to the gallery, so sharing one scene would drag the
+  // sharer's entire library public with it. These stay independent decisions.
+  //
+  // The payload is `sceneBlob()` — the exact blob the ?z= link carries, through the exact
+  // same codec — so both transports describe a shared scene identically and the recipient
+  // path is the one that already exists (installShared).
+  function cloudShareScene() {
+    const json = JSON.stringify(sceneBlob());
+    const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
+    if (!cloudOn() || !cloudSess) return shareUrl();          // signed out ⇒ the classic link
+    return zipToB64(json).then(payload => {
+      if (payload == null || payload.length >= 200000) return shareUrl();
+      const body = fsOut({
+        owner: cloudSess.uid,
+        payload,
+        name: (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]
+          ? String(presets[curPreset].name) : "Shared scene").slice(0, 60),
+        created: new Date(),
+      });
+      // POST to the COLLECTION mints an auto-id; PATCH would need us to invent one and risk
+      // colliding with (or overwriting) someone else's — and /scenes forbids update anyway.
+      return cloudFetch(galUrl + "/scenes", { method: "POST", body: JSON.stringify(body) })
+        .then(r => (r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))))
+        .then(doc => {
+          const id = String(doc.name || "").split("/").pop();
+          if (!id) throw new Error("no document id returned");
+          track("share_scene_cloud", {});
+          return dir + "#c=" + id;
+        })
+        .catch(() => shareUrl());       // quota, rules, offline — the link still works
+    });
+  }
+  // Recipient side of #c=<id>. Called (deferred) from applyShared: the fetch is anonymous,
+  // because a share link must open for someone with no account.
+  function cloudFetchScene(id) {
+    if (!CLOUD.apiKey || !CLOUD.projectId) return Promise.resolve(null);
+    return galFetchJson(galUrl + "/scenes/" + encodeURIComponent(id))
+      .then(r => (r.ok ? r.json() : null))
+      .then(doc => {
+        if (!doc) return null;
+        const d = fsIn(doc);
+        return d.payload ? unzipFromB64(d.payload) : null;
+      })
+      .catch(() => null);
+  }
+
   // ---- profile name: text, not a permanently open input ----
   // Signed in, the name is a label you click to edit. `#cloud-name` remains the VALUE STORE
   // (cloudSave and cloudFetchProfileMeta both read/write it, unchanged) — this only governs
@@ -466,7 +519,20 @@
             cloudSignIn(res.credential).catch(e => cloudMsg("Sign-in failed: " + e.message, true));
           },
         });
-        window.google.accounts.id.renderButton(el("cloud-signin"), { theme: "filled_black", size: "medium", text: "signin_with" });
+        // Google renders this button itself, under its branding rules — its internals cannot
+        // be restyled (it is their markup, and the shape/colour options are the supported
+        // surface). So: pick the variant that sits closest to this panel — black fill, pill,
+        // to match the rounded amber buttons — and size it to the panel width so it does not
+        // read as a foreign object dropped in. The surrounding padding/centreing is CSS on
+        // #cloud-signin, which IS ours.
+        // No explicit `width`: it would have to be measured here, and the panel is usually
+        // CLOSED when this runs, so getBoundingClientRect() reports 0 and any fallback bakes
+        // in a guess that is wrong for the real panel. Let the button size itself and let the
+        // flex container centre it — which stays right whatever the panel width is.
+        window.google.accounts.id.renderButton(el("cloud-signin"), {
+          theme: "filled_black", shape: "pill", size: "large",
+          text: "signin_with", logo_alignment: "left",
+        });
       } catch (e) { cloudMsg("Sign-in unavailable: " + e.message, true); }
     };
     s.onerror = () => cloudMsg("Could not reach Google sign-in.", true);

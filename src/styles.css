@@ -191,7 +191,17 @@
      build shows no trace of the feature rather than a dead button. */
   #panel #cloudrow.hidden { display: none; }
   #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
-  #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
+  /* The Google button is Google's own markup and cannot be restyled from here (branding
+     rules; the theme/shape/size options in renderButton are the supported surface). What IS
+     ours is the space around it — so give it room and centre it, rather than letting it butt
+     against the label above and the Browse button below looking like a foreign object. */
+  #panel #cloudrow #cloud-signin {
+    display: flex; justify-content: center;
+    margin: 6px 0 2px; padding: 10px 8px;
+    border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 9px;
+    background: rgba(255, 140, 40, 0.05);
+  }
+  #panel #cloudrow #cloud-signin:empty { display: none; }   /* no border before it renders */
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
   /* Profile name as a label once signed in. The dotted underline is the only affordance it
      needs — it reads as text, not as an empty field waiting to be filled. */

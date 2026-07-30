@@ -1347,6 +1347,35 @@ can't fail on a token that expired in flight; and a 401 mid-flight refreshes and
 **exactly once**, never in a loop. Session tokens live under their own `localStorage` key,
 deliberately **not** in the scene blob — same reasoning as the credits preference.
 
+**"Share this scene" stores the scene in Firestore and hands back a ~12-character fragment**
+(`#c=<docId>`) instead of carrying the whole scene in the URL — measured 4473 chars → 12.
+Signed out, or if the write is refused for any reason (rules, quota, offline), it falls back
+to the self-contained `?z=` link, so sharing never requires an account and never breaks; the
+cloud route is an optimisation, not a gate. That fallback is why `shareUrl()` — previously
+dead-but-kept — is a live function again.
+
+The payload is **`sceneBlob()`, split out of `shareUrl` for exactly this reason**: one
+definition of "what a shared scene is", two transports. The recipient path is the one that
+already existed (`installShared`), so a `#c=` link lands identically to a `?z=` one.
+
+**Shared scenes live in `/scenes`, NOT in `/profiles`**, and that separation is the point: a
+link pointing into a profile would only open while that profile was published to the gallery,
+so sharing one scene would drag the sharer's whole library public with it. `/scenes` documents
+are world-readable (a share link must open for someone with no account), created only by a
+signed-in user who stamps their own uid as `owner`, **immutable** (`allow update: if false` —
+otherwise the content behind an already-circulated link could be swapped afterwards), and
+deletable by their owner so a link can be retracted.
+
+`#c=` decoding is **deferred by a microtask** in `applyShared`, the same trap `#sp=` documents:
+`cloudFetchScene` lives in a much later slice whose `CLOUD` const is still in the temporal
+dead zone while `audio-tuning-data.js` is loading.
+
+**`installShared` now also resets the preset chooser to "— unsaved scene —".** It always set
+`curPreset = -1` but left the `<select>` displaying whichever preset startup had selected, so
+an arriving shared scene looked like it had loaded *your* preset of that name. Harmless to the
+data (`autosavePreset` early-returns while `curPreset < 0`) and purely misleading — which is
+why it survived unnoticed through every `?z=` link.
+
 **The gallery is browsable signed out**, which is why `galFetchJson` uses a plain keyed
 `fetch` rather than `cloudFetch` — a visitor with no account has no token to attach, and
 these documents are public by definition. The Browse button therefore sits *outside*

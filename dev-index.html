@@ -206,7 +206,17 @@
      build shows no trace of the feature rather than a dead button. */
   #panel #cloudrow.hidden { display: none; }
   #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
-  #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
+  /* The Google button is Google's own markup and cannot be restyled from here (branding
+     rules; the theme/shape/size options in renderButton are the supported surface). What IS
+     ours is the space around it — so give it room and centre it, rather than letting it butt
+     against the label above and the Browse button below looking like a foreign object. */
+  #panel #cloudrow #cloud-signin {
+    display: flex; justify-content: center;
+    margin: 6px 0 2px; padding: 10px 8px;
+    border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 9px;
+    background: rgba(255, 140, 40, 0.05);
+  }
+  #panel #cloudrow #cloud-signin:empty { display: none; }   /* no border before it renders */
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
   /* Profile name as a label once signed in. The dotted underline is the only affordance it
      needs — it reads as text, not as an empty field waiting to be filled. */
@@ -929,7 +939,8 @@
     <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
     <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
   </div>
-  <div class="presetrow">
+  <div class="presetrow grid2">
+    <button id="sharescene" class="audbtn" type="button" title="Copy a link to the scene running right now. Signed in, it is stored in the cloud and the link is tiny; otherwise the whole scene rides in the link itself.">Share this scene</button>
     <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
   </div>
   <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
@@ -7569,11 +7580,11 @@
       // or a blend pick applies to a layer that is already selected rather than selecting
       // afterwards off a stale index.
       //
-      // The grab handle is the one exclusion, for a mechanical reason rather than a taste one:
-      // selectStack re-runs syncStackUI, which rebuilds every row — that would detach the
-      // handle holding the pointer capture mid-drag, and Chromium drops capture on reparent,
-      // killing the drag after the first pixel (the trap documented on the drag code below).
-      // So you still drag to reorder without selecting; a press anywhere else selects.
+      // The grab handle is excluded HERE only, for a mechanical reason rather than a taste
+      // one: selectStack re-runs syncStackUI, which rebuilds every row — that would detach
+      // the handle holding the pointer capture mid-drag, and Chromium drops capture on
+      // reparent, killing the drag after the first pixel (the trap documented on the drag
+      // code below). The handle still selects, just on pointerUP — see its onUp.
       row.addEventListener("pointerdown", e => {
         if (!e.target.closest(".lyr-grab")) selectStack(j);
       }, true);
@@ -7626,13 +7637,25 @@
           marker.remove();
           row.style.transform = "";
           row.classList.remove("dragging");
-          if (to === from) return;                       // dropped where it started
-          const sel = stack[stackSel];
-          // `to` indexes the array with the dragged item already removed, so splice-out
-          // then splice-in at `to` directly (no gap adjustment needed).
-          stack.splice(to, 0, stack.splice(from, 1)[0]);
-          stackSel = stack.indexOf(sel);
-          syncStackUI(); persist(); autosavePreset();
+          // Using the handle selects that layer too — but ON RELEASE, never on press. The
+          // rest of the row selects from a capture-phase pointerdown; doing that here would
+          // rebuild the rows mid-gesture, and since selectStack → syncStackUI reparents the
+          // handle that holds the pointer capture, Chromium drops the capture and the drag
+          // dies after the first pixel. Deferring to pointerup gets the selection without
+          // touching the DOM while the pointer is down.
+          //
+          // Held by IDENTITY, not by index: a reorder moves it, so `from` no longer names it.
+          const dragged = stack[from];
+          const moved = to !== from;
+          if (moved) {
+            // `to` indexes the array with the dragged item already removed, so splice-out
+            // then splice-in at `to` directly (no gap adjustment needed).
+            stack.splice(to, 0, stack.splice(from, 1)[0]);
+          }
+          const at = stack.indexOf(dragged);
+          if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
+          else syncStackUI();                                // a plain click on the selected row
+          if (moved) { persist(); autosavePreset(); }
         };
         grab.addEventListener("pointermove", onMove);
         grab.addEventListener("pointerup", onUp);
@@ -8271,6 +8294,11 @@
     installStack([newStackItem(0)]);
     applyBlob(d, true);
     curPreset = -1;                  // a shared scene isn't one of your saved presets
+    // ...and the chooser has to say so. Without this it keeps displaying whichever preset
+    // startup had selected, so a shared link looks like it loaded YOUR preset of that name.
+    // Harmless to the data (autosavePreset early-returns while curPreset < 0) and purely
+    // misleading, which is exactly the kind of thing nobody reports and everybody misreads.
+    if (typeof presetSel !== "undefined" && presetSel) presetSel.value = "-1";
     return true;
   }
   // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
@@ -8296,6 +8324,21 @@
       try { history.replaceState(null, "", location.pathname); } catch (e) {}   // clear query AND fragment
       if (sp) { Promise.resolve().then(() => openSharedLibrary(parse(atobSafe(sp[1])))); return; }
       unzipFromB64(zp[1]).then(json => openSharedLibrary(parse(json)));
+      return;
+    }
+    // #c=<id> — a scene stored in Firestore (see cloudShareScene). Same payload as ?z=, just
+    // fetched instead of carried, so it lands through installShared exactly like one.
+    // DEFERRED for the same reason #sp= is: cloudFetchScene lives in a much later slice whose
+    // `CLOUD` const is still in the temporal dead zone while this slice is loading. The fetch
+    // is anonymous — a share link has to open for someone with no account.
+    const c = (location.hash.match(/[?&#]c=([A-Za-z0-9_-]+)/) || location.search.match(/[?&]c=([A-Za-z0-9_-]+)/));
+    if (c) {
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}
+      Promise.resolve().then(() => cloudFetchScene(c[1])).then(json => {
+        if (!json || !installShared(parse(json))) return;
+        resize();
+        setEffect(+effectSel.value, false);
+      });
       return;
     }
     const z = location.search.match(/[?&]z=([^&#]+)/);
@@ -8879,7 +8922,10 @@
   // beatTune rides along now that it is scene data. `cycle` and `ttl` deliberately do
   // NOT: they are the recipient's own auto-cycle preferences, and sharing a scene is no
   // reason to reach in and change them. Same for resolution, which was never sent.
-  async function shareUrl() {
+  // The live scene as a serialized blob. Split out of shareUrl so the cloud scene-share
+  // (which stores this same payload in Firestore instead of in a URL) cannot drift from it —
+  // one definition of "what a shared scene is", two transports.
+  function sceneBlob() {
     saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
     const only = m => ({ [effect]: m[effect] });
     const blob = {
@@ -8899,7 +8945,10 @@
     // rather than failing — a graceful degrade, not an error.
     const st = stackOut();
     if (st) blob.layers = st;
-    const json = JSON.stringify(serializeBlob(blob));   // effect stored as a stable id
+    return serializeBlob(blob);       // effect stored as a stable id
+  }
+  async function shareUrl() {
+    const json = JSON.stringify(sceneBlob());
     // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/ — the link goes
     // straight to it and the scene rides in the ?z= (or legacy ?s=) param.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
@@ -9603,6 +9652,13 @@
     el("sharepredlg").classList.remove("hidden");
   }
   const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
+  // "Share this scene": one link to what is running. copyText takes the Promise directly so
+  // the clipboard write stays inside the user gesture (a plain writeText after an await is
+  // rejected by Safari) — the same reason libraryUrl is passed unresolved below.
+  el("sharescene").addEventListener("click", () => {
+    copyText(cloudShareScene(), el("sharescene"), "Link copied!", "Share this scene");
+    track("share_scene", {});
+  });
   el("sharepresets").addEventListener("click", openSharePresets);
   el("sharepre-close").addEventListener("click", closeSharePresets);
   el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop
@@ -10110,6 +10166,59 @@
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
+  // ---- share the running scene through Firestore -------------------------------------
+  // Signed in, "Share this scene" stores the scene as one immutable document in /scenes and
+  // hands back a ~30-character link. Signed out (or if the write fails for any reason) it
+  // falls back to the self-contained ?z= link, so sharing never stops working and never
+  // requires an account — the cloud route is an optimisation, not a gate.
+  //
+  // /scenes is deliberately NOT /profiles: a link pointing into a profile would only open
+  // while that profile was published to the gallery, so sharing one scene would drag the
+  // sharer's entire library public with it. These stay independent decisions.
+  //
+  // The payload is `sceneBlob()` — the exact blob the ?z= link carries, through the exact
+  // same codec — so both transports describe a shared scene identically and the recipient
+  // path is the one that already exists (installShared).
+  function cloudShareScene() {
+    const json = JSON.stringify(sceneBlob());
+    const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
+    if (!cloudOn() || !cloudSess) return shareUrl();          // signed out ⇒ the classic link
+    return zipToB64(json).then(payload => {
+      if (payload == null || payload.length >= 200000) return shareUrl();
+      const body = fsOut({
+        owner: cloudSess.uid,
+        payload,
+        name: (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]
+          ? String(presets[curPreset].name) : "Shared scene").slice(0, 60),
+        created: new Date(),
+      });
+      // POST to the COLLECTION mints an auto-id; PATCH would need us to invent one and risk
+      // colliding with (or overwriting) someone else's — and /scenes forbids update anyway.
+      return cloudFetch(galUrl + "/scenes", { method: "POST", body: JSON.stringify(body) })
+        .then(r => (r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))))
+        .then(doc => {
+          const id = String(doc.name || "").split("/").pop();
+          if (!id) throw new Error("no document id returned");
+          track("share_scene_cloud", {});
+          return dir + "#c=" + id;
+        })
+        .catch(() => shareUrl());       // quota, rules, offline — the link still works
+    });
+  }
+  // Recipient side of #c=<id>. Called (deferred) from applyShared: the fetch is anonymous,
+  // because a share link must open for someone with no account.
+  function cloudFetchScene(id) {
+    if (!CLOUD.apiKey || !CLOUD.projectId) return Promise.resolve(null);
+    return galFetchJson(galUrl + "/scenes/" + encodeURIComponent(id))
+      .then(r => (r.ok ? r.json() : null))
+      .then(doc => {
+        if (!doc) return null;
+        const d = fsIn(doc);
+        return d.payload ? unzipFromB64(d.payload) : null;
+      })
+      .catch(() => null);
+  }
+
   // ---- profile name: text, not a permanently open input ----
   // Signed in, the name is a label you click to edit. `#cloud-name` remains the VALUE STORE
   // (cloudSave and cloudFetchProfileMeta both read/write it, unchanged) — this only governs
@@ -10181,7 +10290,20 @@
             cloudSignIn(res.credential).catch(e => cloudMsg("Sign-in failed: " + e.message, true));
           },
         });
-        window.google.accounts.id.renderButton(el("cloud-signin"), { theme: "filled_black", size: "medium", text: "signin_with" });
+        // Google renders this button itself, under its branding rules — its internals cannot
+        // be restyled (it is their markup, and the shape/colour options are the supported
+        // surface). So: pick the variant that sits closest to this panel — black fill, pill,
+        // to match the rounded amber buttons — and size it to the panel width so it does not
+        // read as a foreign object dropped in. The surrounding padding/centreing is CSS on
+        // #cloud-signin, which IS ours.
+        // No explicit `width`: it would have to be measured here, and the panel is usually
+        // CLOSED when this runs, so getBoundingClientRect() reports 0 and any fallback bakes
+        // in a guess that is wrong for the real panel. Let the button size itself and let the
+        // flex container centre it — which stays right whatever the panel width is.
+        window.google.accounts.id.renderButton(el("cloud-signin"), {
+          theme: "filled_black", shape: "pill", size: "large",
+          text: "signin_with", logo_alignment: "left",
+        });
       } catch (e) { cloudMsg("Sign-in unavailable: " + e.message, true); }
     };
     s.onerror = () => cloudMsg("Could not reach Google sign-in.", true);

@@ -214,6 +214,11 @@
     installStack([newStackItem(0)]);
     applyBlob(d, true);
     curPreset = -1;                  // a shared scene isn't one of your saved presets
+    // ...and the chooser has to say so. Without this it keeps displaying whichever preset
+    // startup had selected, so a shared link looks like it loaded YOUR preset of that name.
+    // Harmless to the data (autosavePreset early-returns while curPreset < 0) and purely
+    // misleading, which is exactly the kind of thing nobody reports and everybody misreads.
+    if (typeof presetSel !== "undefined" && presetSel) presetSel.value = "-1";
     return true;
   }
   // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
@@ -239,6 +244,21 @@
       try { history.replaceState(null, "", location.pathname); } catch (e) {}   // clear query AND fragment
       if (sp) { Promise.resolve().then(() => openSharedLibrary(parse(atobSafe(sp[1])))); return; }
       unzipFromB64(zp[1]).then(json => openSharedLibrary(parse(json)));
+      return;
+    }
+    // #c=<id> — a scene stored in Firestore (see cloudShareScene). Same payload as ?z=, just
+    // fetched instead of carried, so it lands through installShared exactly like one.
+    // DEFERRED for the same reason #sp= is: cloudFetchScene lives in a much later slice whose
+    // `CLOUD` const is still in the temporal dead zone while this slice is loading. The fetch
+    // is anonymous — a share link has to open for someone with no account.
+    const c = (location.hash.match(/[?&#]c=([A-Za-z0-9_-]+)/) || location.search.match(/[?&]c=([A-Za-z0-9_-]+)/));
+    if (c) {
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}
+      Promise.resolve().then(() => cloudFetchScene(c[1])).then(json => {
+        if (!json || !installShared(parse(json))) return;
+        resize();
+        setEffect(+effectSel.value, false);
+      });
       return;
     }
     const z = location.search.match(/[?&]z=([^&#]+)/);
