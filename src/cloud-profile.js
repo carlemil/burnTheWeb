@@ -229,7 +229,7 @@
       { method: "GET" }).then(r => (r.ok ? r.json() : null)).then(doc => {
         if (!doc) return;
         const d = fsIn(doc);
-        if (d.name && el("cloud-name")) el("cloud-name").value = d.name;
+        if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
         if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
         if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
         if (d.count != null) cloudMsg("Profile has " + d.count + " preset" + (d.count === 1 ? "" : "s") + " stored.");
@@ -395,6 +395,34 @@
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
+  // ---- profile name: text, not a permanently open input ----
+  // Signed in, the name is a label you click to edit. `#cloud-name` remains the VALUE STORE
+  // (cloudSave and cloudFetchProfileMeta both read/write it, unchanged) — this only governs
+  // which of the two is on screen, the same arrangement `#palette` has behind the swatches.
+  const NAME_EMPTY = "Set a profile name…";
+  function cloudNameShow() {
+    const view = el("cloud-nameview"), inp = el("cloud-name");
+    if (!view || !inp) return;
+    const v = (inp.value || "").trim();
+    view.textContent = v || NAME_EMPTY;
+    view.classList.toggle("empty", !v);
+    view.style.display = "";
+    inp.style.display = "none";
+  }
+  function cloudNameEdit() {
+    const view = el("cloud-nameview"), inp = el("cloud-name");
+    if (!view || !inp) return;
+    view.style.display = "none";
+    inp.style.display = "";
+    inp.focus();
+    inp.select();
+  }
+  function cloudNameCommit() {
+    const inp = el("cloud-name");
+    if (inp) inp.value = (inp.value || "").trim().slice(0, 40);
+    cloudNameShow();
+  }
+
   // ---- UI ----
   function cloudMsg(s, bad) {
     const m = el("cloud-msg");
@@ -411,6 +439,7 @@
     if (who) who.textContent = inS ? "· signed in" : "";
     const pubBox = el("cloud-pub");
     if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
+    cloudNameShow();                     // signing in/out always lands back on the label
     if (!inS) cloudMsg("");
   }
 
@@ -449,6 +478,20 @@
   if (el("cloud-delete")) el("cloud-delete").addEventListener("click", cloudDelete);
   if (el("cloud-signout")) el("cloud-signout").addEventListener("click", cloudSignOut);
   if (el("cloud-pub")) el("cloud-pub").addEventListener("change", e => cloudPublish(e.target.checked));
+  if (el("cloud-nameview")) {
+    el("cloud-nameview").addEventListener("click", cloudNameEdit);
+    // Keyboard parity: the label is focusable, so Enter/Space must open it too.
+    el("cloud-nameview").addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cloudNameEdit(); }
+    });
+  }
+  if (el("cloud-name")) {
+    el("cloud-name").addEventListener("blur", cloudNameCommit);
+    el("cloud-name").addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); cloudNameCommit(); }
+      else if (e.key === "Escape") { e.preventDefault(); cloudNameCommit(); }
+    });
+  }
   if (el("cloud-browse")) el("cloud-browse").addEventListener("click", () => galOpen(true));
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));

@@ -14,6 +14,43 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.2.0] — 2026-07-30
+
+### Added
+
+- **Cloud profiles.** Sign in with Google and keep your preset library online, so it follows
+  you between machines instead of living in one browser. In *Backup, restore & share*:
+  **Save to cloud** uploads your presets, **Load from cloud** fetches them back and opens the
+  usual restore dialog so you choose merge or replace, and **Delete profile** removes
+  everything you have stored. Stored against your account: the profile name you type and your
+  presets — not your email, name or picture. Your profile name reads as plain text once you
+  are signed in; click it to rename.
+- **A public gallery.** Tick **Publish to gallery** to list your profile, and
+  **Browse profiles…** to see everyone who has. Loading someone's profile goes through the
+  same merge-or-replace dialog, so nothing of yours is overwritten without asking. Browsing
+  needs no account — anyone can look. Publishing is opt-in and off by default.
+
+### Changed
+
+- **Pressing anywhere in a layer row selects that layer** — the mute dot, the gain slider,
+  the blend dropdown, the effect chooser, all of it. Previously those controls acted on their
+  layer while the sliders below kept editing a different one. Dragging the grab handle still
+  reorders without selecting.
+- The divider above the first slider group in *Effect & Filters* is gone. It sat directly
+  under the box title, where it read as a stray rule rather than a separator.
+
+### Internal
+
+- `firestore.rules` is checked in: with no backend, it is the entire authorization boundary,
+  so it belongs in review rather than only in a web console. Verified against the live
+  database that an unauthenticated read of a private profile, an unauthenticated write, and
+  an unfiltered listing are all denied, while the gallery's `pub == true` query is allowed.
+- The Firebase web API key sits in the source deliberately — it is a public project
+  identifier, not a credential (GitHub secret-scanning alert #1, resolved on that basis).
+- New `tools/cloudprobe.js`, plus headless suites covering the gallery, the configured
+  save/load path with `fetch` stubbed, and the assertion that an unconfigured build makes no
+  network request at all.
+
 ## [1.1.0] — 2026-07-30
 
 ### Added

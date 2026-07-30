@@ -208,6 +208,17 @@
   #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
   #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
+  /* Profile name as a label once signed in. The dotted underline is the only affordance it
+     needs — it reads as text, not as an empty field waiting to be filled. */
+  #panel #cloudrow #cloud-nameline { margin: 5px 0 2px; }
+  #panel #cloudrow #cloud-nameview {
+    display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #ffcf87; font-size: 12px; cursor: text; padding: 2px 0;
+    border-bottom: 1px dotted rgba(255, 207, 135, 0.4);
+  }
+  #panel #cloudrow #cloud-nameview:hover { border-bottom-color: #ffcf87; }
+  #panel #cloudrow #cloud-nameview.empty { color: #ffb15a; opacity: .5; font-style: italic; }
+  #panel #cloudrow #cloud-nameview:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
   /* Public profile gallery — floating and translucent like the other popups. */
   #galdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
@@ -933,7 +944,13 @@
     <!-- Google renders its own sign-in button into this node (Identity Services). -->
     <div id="cloud-signin"></div>
     <div id="cloud-authed" style="display:none">
-      <input type="text" id="cloud-name" maxlength="40" placeholder="Profile name" title="The name shown on your profile — this is yours to choose, not your Google name">
+      <!-- The name reads as TEXT once you are signed in, not a permanently open text box:
+           it is set once and rarely changed, and an input sitting there implies otherwise.
+           Click it (or focus + Enter) to edit; it swaps back to text on Enter/blur. -->
+      <div id="cloud-nameline">
+        <span id="cloud-nameview" tabindex="0" role="button" title="Click to rename your profile — written with your next Save to cloud"></span>
+        <input type="text" id="cloud-name" maxlength="40" placeholder="Profile name" style="display:none" title="The name shown on your profile — this is yours to choose, not your Google name">
+      </div>
       <div class="presetrow grid2">
         <button id="cloud-save" class="audbtn" type="button" title="Upload your preset library to your profile, replacing what is there">Save to cloud</button>
         <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your presets or replace them">Load from cloud</button>
@@ -1243,7 +1260,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.1.0",
+    version: "1.2.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -9927,7 +9944,7 @@
       { method: "GET" }).then(r => (r.ok ? r.json() : null)).then(doc => {
         if (!doc) return;
         const d = fsIn(doc);
-        if (d.name && el("cloud-name")) el("cloud-name").value = d.name;
+        if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
         if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
         if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
         if (d.count != null) cloudMsg("Profile has " + d.count + " preset" + (d.count === 1 ? "" : "s") + " stored.");
@@ -10093,6 +10110,34 @@
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
+  // ---- profile name: text, not a permanently open input ----
+  // Signed in, the name is a label you click to edit. `#cloud-name` remains the VALUE STORE
+  // (cloudSave and cloudFetchProfileMeta both read/write it, unchanged) — this only governs
+  // which of the two is on screen, the same arrangement `#palette` has behind the swatches.
+  const NAME_EMPTY = "Set a profile name…";
+  function cloudNameShow() {
+    const view = el("cloud-nameview"), inp = el("cloud-name");
+    if (!view || !inp) return;
+    const v = (inp.value || "").trim();
+    view.textContent = v || NAME_EMPTY;
+    view.classList.toggle("empty", !v);
+    view.style.display = "";
+    inp.style.display = "none";
+  }
+  function cloudNameEdit() {
+    const view = el("cloud-nameview"), inp = el("cloud-name");
+    if (!view || !inp) return;
+    view.style.display = "none";
+    inp.style.display = "";
+    inp.focus();
+    inp.select();
+  }
+  function cloudNameCommit() {
+    const inp = el("cloud-name");
+    if (inp) inp.value = (inp.value || "").trim().slice(0, 40);
+    cloudNameShow();
+  }
+
   // ---- UI ----
   function cloudMsg(s, bad) {
     const m = el("cloud-msg");
@@ -10109,6 +10154,7 @@
     if (who) who.textContent = inS ? "· signed in" : "";
     const pubBox = el("cloud-pub");
     if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
+    cloudNameShow();                     // signing in/out always lands back on the label
     if (!inS) cloudMsg("");
   }
 
@@ -10147,6 +10193,20 @@
   if (el("cloud-delete")) el("cloud-delete").addEventListener("click", cloudDelete);
   if (el("cloud-signout")) el("cloud-signout").addEventListener("click", cloudSignOut);
   if (el("cloud-pub")) el("cloud-pub").addEventListener("change", e => cloudPublish(e.target.checked));
+  if (el("cloud-nameview")) {
+    el("cloud-nameview").addEventListener("click", cloudNameEdit);
+    // Keyboard parity: the label is focusable, so Enter/Space must open it too.
+    el("cloud-nameview").addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cloudNameEdit(); }
+    });
+  }
+  if (el("cloud-name")) {
+    el("cloud-name").addEventListener("blur", cloudNameCommit);
+    el("cloud-name").addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); cloudNameCommit(); }
+      else if (e.key === "Escape") { e.preventDefault(); cloudNameCommit(); }
+    });
+  }
   if (el("cloud-browse")) el("cloud-browse").addEventListener("click", () => galOpen(true));
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));

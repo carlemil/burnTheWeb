@@ -202,6 +202,49 @@
   }
   #reset:hover, #cardbtn:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
   #cardbtn, #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
+  /* Cloud profile row. Hidden wholesale when CONFIG.cloud.apiKey is "" — an unconfigured
+     build shows no trace of the feature rather than a dead button. */
+  #panel #cloudrow.hidden { display: none; }
+  #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
+  #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
+  #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
+  /* Profile name as a label once signed in. The dotted underline is the only affordance it
+     needs — it reads as text, not as an empty field waiting to be filled. */
+  #panel #cloudrow #cloud-nameline { margin: 5px 0 2px; }
+  #panel #cloudrow #cloud-nameview {
+    display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #ffcf87; font-size: 12px; cursor: text; padding: 2px 0;
+    border-bottom: 1px dotted rgba(255, 207, 135, 0.4);
+  }
+  #panel #cloudrow #cloud-nameview:hover { border-bottom-color: #ffcf87; }
+  #panel #cloudrow #cloud-nameview.empty { color: #ffb15a; opacity: .5; font-style: italic; }
+  #panel #cloudrow #cloud-nameview:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
+  /* Public profile gallery — floating and translucent like the other popups. */
+  #galdlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;
+  }
+  #galdlg.hidden { display: none; }
+  #galdlg .gal-box {
+    position: relative; pointer-events: auto;
+    width: min(90vw, 460px); max-height: 86vh; overflow-y: auto;
+    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 18px 20px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  #galdlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* name grows, meta sits right of it, Load pinned to the end */
+  #galdlg .gal-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center;
+    padding: 7px 8px; margin-bottom: 5px;
+    border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
+  }
+  #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #galdlg .gal-meta { color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap; }
+  #galdlg .gal-row .audbtn { padding: 4px 10px; }
+  #galdlg .pal-hint { margin: 10px 0 0; opacity: .6; font-size: 10.5px; }
+  body.ui-hidden #galdlg { display: none !important; }
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
@@ -545,10 +588,12 @@
     color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   }
   /* The Effect chooser that used to sit above #fxctl is hidden (every layer row has one), so
-     the first group again butts straight against the box title — where a top border reads as
-     a stray rule under the heading rather than as a separator between two groups. This rule
-     existed before the chooser moved into this box and comes back now that it is gone. */
-  #panel #fxctl > .ctl-grp:first-child { margin-top: 4px; padding-top: 0; border-top: none; }
+     the topmost group again butts straight against the box title — where a top border reads as
+     a stray rule under the heading rather than as a separator between two groups.
+     `.grp-first` is set by markFirstGroup() per visibility pass, NOT :first-child: every group
+     is in the DOM and only some are shown, so the first *child* is whichever comes first in
+     the CONTROLS schema while the first *visible* one depends on the effect. */
+  #panel #fxctl > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
   /* the "what this group of filters does" caption under a filter-group heading */
   #panel .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;
@@ -889,6 +934,44 @@
   </div>
   <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
   <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
+
+  <!-- Cloud profile. Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as
+       analytics), so an unconfigured build shows no trace of it. Lives in this box because
+       this is already the "move my scenes in and out" box. -->
+  <div id="cloudrow" class="hidden">
+    <hr class="sep">
+    <label>Cloud profile <span id="cloud-who" class="cloud-who"></span></label>
+    <!-- Google renders its own sign-in button into this node (Identity Services). -->
+    <div id="cloud-signin"></div>
+    <div id="cloud-authed" style="display:none">
+      <!-- The name reads as TEXT once you are signed in, not a permanently open text box:
+           it is set once and rarely changed, and an input sitting there implies otherwise.
+           Click it (or focus + Enter) to edit; it swaps back to text on Enter/blur. -->
+      <div id="cloud-nameline">
+        <span id="cloud-nameview" tabindex="0" role="button" title="Click to rename your profile — written with your next Save to cloud"></span>
+        <input type="text" id="cloud-name" maxlength="40" placeholder="Profile name" style="display:none" title="The name shown on your profile — this is yours to choose, not your Google name">
+      </div>
+      <div class="presetrow grid2">
+        <button id="cloud-save" class="audbtn" type="button" title="Upload your preset library to your profile, replacing what is there">Save to cloud</button>
+        <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your presets or replace them">Load from cloud</button>
+      </div>
+      <!-- Opt-in, and off by default: publishing is a deliberate act, not a side effect of
+           saving. Ticking it re-saves the whole profile (see cloudPublish for why a
+           pub-only write cannot satisfy the rules). -->
+      <label class="check" title="List your profile in the public gallery so anyone can load your presets. Your name and preset count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
+      <div class="presetrow grid2">
+        <button id="cloud-signout" class="audbtn" type="button" title="Sign out on this device. Your profile stays in the cloud.">Sign out</button>
+        <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>
+      </div>
+    </div>
+    <!-- Outside #cloud-authed on purpose: the gallery is readable by signed-out visitors
+         (the rules allow a `pub == true` query unauthenticated), so browsing needs no account. -->
+    <div class="presetrow">
+      <button id="cloud-browse" class="audbtn" type="button" title="Browse profiles other people have published, and load their presets">Browse profiles…</button>
+    </div>
+    <p id="cloud-msg" class="hint"></p>
+    <p class="hint">Stored against your account: the profile name you choose and your presets — nothing else. Not your email, name or picture.</p>
+  </div>
   </details>
 
   <!-- Box — Scene: saved scenes and how long each is held. The Effect chooser used to
@@ -1013,6 +1096,20 @@
     <h2 id="pal-title">Palette</h2>
     <div id="pal-grid"></div>
     <p class="pal-hint">The whole ramp — index 0 (top-left) → 255 (bottom-right), the heat value each colour maps. Hover a cell for its index and hex.</p>
+  </div>
+</div>
+
+<!-- Public profile gallery. Readable without signing in, so it is available to any visitor.
+     Loading one routes through the same Restore dialog a shared link uses. -->
+<div id="galdlg" class="hidden">
+  <div class="gal-box">
+    <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
+    <h2>Published profiles</h2>
+    <div id="gal-list"></div>
+    <p class="pal-hint" id="gal-hint"></p>
+    <div class="presetrow">
+      <button id="gal-refresh" class="audbtn" type="button" title="Fetch the list again, ignoring the cached copy">Refresh</button>
+    </div>
   </div>
 </div>
 
@@ -1163,7 +1260,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.1.0",
+    version: "1.2.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -1193,6 +1290,41 @@
     // --- "Sync with your music" nudge + analytics ---
     sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
     analyticsId: "G-7CMDJP72N7",                  // GA4 Measurement id; "" makes analytics completely inert
+
+    // --- cloud profiles (Firebase Auth + Firestore, over REST; no SDK) ---
+    // apiKey "" makes the WHOLE feature inert: no Google script is loaded, no request is
+    // made, and the Cloud row is hidden from the menu — the same kill switch analyticsId
+    // above has. Fill both in from the Firebase console (Project settings → Web app) to
+    // turn it on.
+    //
+    // ┌─ THE apiKey BELOW IS NOT A SECRET, AND SECRET SCANNERS WILL FLAG IT ANYWAY ─────┐
+    // A Firebase *web* API key is a project IDENTIFIER, not a credential: it selects which
+    // project a request is for, and grants nothing on its own. It has to reach the browser
+    // for the app to work, so it is in this file, in dev-index.html, and in index.html —
+    // there is nowhere to hide it and nothing is gained by trying. Rotating it changes the
+    // string and nothing else, since the replacement is equally public.
+    //
+    // What actually protects the data:
+    //   1. firestore.rules (repo root) — the authorization boundary. Verified live: an
+    //      unauthenticated read of a private profile, an unauthenticated write, and an
+    //      unfiltered listing are all denied.
+    //   2. Only Google sign-in is enabled, so the key cannot be used to mint accounts
+    //      (accounts:signUp returns ADMIN_ONLY_OPERATION). Do NOT enable Anonymous or
+    //      Email/Password sign-in without re-checking that — those turn this key into a
+    //      way for anyone to create users on the project.
+    //   3. The key is restricted in Google Cloud Console (Credentials → this key) by HTTP
+    //      referrer to the site's own origins, and to only the APIs used: Identity Toolkit,
+    //      Token Service, Cloud Firestore. That is what limits quota abuse from elsewhere.
+    // GitHub secret-scanning alert #1 is resolved as intentional on exactly this basis.
+    // └────────────────────────────────────────────────────────────────────────────────┘
+    cloud: {
+      apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // public identifier, see above ⇒ "" = feature off
+      projectId: "burntheweb-3cd05",              // Firebase project id
+      clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
+      galleryTtlMs: 300000,                       // cache the gallery listing 5 min (reads are quota)
+      galleryLimit: 20,                           // profiles per gallery page
+      maxPayload: 300000,                         // must match the cap in firestore.rules
+    },
 
     // --- effect / physics tuning (implementation constants; several are load-bearing) ---
     tuning: {
@@ -5586,6 +5718,23 @@
     shown.add("heatboost");           // a palette-box control that applies to every effect (like palcycle/palhold)
     return shown;
   }
+  // The topmost VISIBLE group heading in #fxctl sits directly under the box title, where its
+  // top border reads as a stray rule below the heading rather than as a separator between two
+  // groups. CSS `:first-child` cannot express this: every group exists in the DOM (they are
+  // all built once, from CONTROLS) and only some are shown, so the first *child* is whichever
+  // group comes first in the schema — "Shape & motion" — while the first *visible* one depends
+  // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
+  // re-marked on every visibility pass.
+  function markFirstGroup() {
+    const host = el("fxctl");
+    if (!host) return;
+    let seen = false;
+    host.querySelectorAll(".ctl-grp").forEach(h => {
+      const vis = h.style.display !== "none";
+      h.classList.toggle("grp-first", vis && !seen);
+      if (vis) seen = true;
+    });
+  }
   function refreshControlVisibility() {
     const shown = shownKeys();
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
@@ -5597,6 +5746,7 @@
       const hdr = el("grp-" + g);
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
+    markFirstGroup();                  // ...and the topmost visible one loses its divider
     refreshBreakout();                // show/hide the pop-out boxes to match
     refreshBlocked(shown);            // grey any control another setting has neutralised
     refreshChanged(shown);            // mark any slider moved off its shipped default
@@ -7411,8 +7561,24 @@
       const row = document.createElement("div");
       row.className = "lyr" + (j === stackSel ? " sel" : "") + (L.mute ? " muted" : "");
       row.title = "Click to edit this layer";
-      // Selecting is what the Effect chooser and every slider below follow, so the whole
-      // row is the target; the buttons inside stopPropagation so they don't also select.
+      // Selecting is what every slider in the box below follows, so pressing ANYWHERE in the
+      // row selects it — including on the mute dot, the gain slider, the blend dropdown and
+      // the effect chooser. Those all stopPropagation on `click` (so their own action doesn't
+      // double-fire), which is why this listens for `pointerdown` in the CAPTURE phase: it
+      // runs before any child handler can stop it, and before the control acts, so a gain drag
+      // or a blend pick applies to a layer that is already selected rather than selecting
+      // afterwards off a stale index.
+      //
+      // The grab handle is the one exclusion, for a mechanical reason rather than a taste one:
+      // selectStack re-runs syncStackUI, which rebuilds every row — that would detach the
+      // handle holding the pointer capture mid-drag, and Chromium drops capture on reparent,
+      // killing the drag after the first pixel (the trap documented on the drag code below).
+      // So you still drag to reorder without selecting; a press anywhere else selects.
+      row.addEventListener("pointerdown", e => {
+        if (!e.target.closest(".lyr-grab")) selectStack(j);
+      }, true);
+      // Kept as well: a synthetic click (tests, assistive tech) never emits pointerdown, and
+      // selectStack early-returns when the row is already selected, so this cannot double-work.
       row.addEventListener("click", () => selectStack(j));
 
       // Grab handle → drag to reorder. It captures the pointer and live-moves this row
@@ -9547,6 +9713,505 @@
     if (matchMedia("(prefers-reduced-motion: reduce)").matches)
       requestAnimationFrame(() => requestAnimationFrame(() => setPaused(true)));
   } catch (e) {}
+  // ---- cloud profiles: Firebase Auth + Firestore, over REST ---------------------------
+  // Keep your preset library against a Google account so it follows you between machines.
+  //
+  // NO FIREBASE SDK. Everything here is fetch() against three documented REST endpoints, so
+  // the page stays a single self-contained file with no bundled dependency. The one remote
+  // script is Google Identity Services, for the sign-in button — the same class of thing
+  // initAnalytics() already loads (gtag.js), not a new one.
+  //
+  // The whole feature is gated on CONFIG.cloud.apiKey: empty ⇒ no script, no request, and the
+  // Cloud row stays hidden. Identical kill switch to CONFIG.analyticsId.
+  //
+  // **The security boundary is firestore.rules in the repo root, not this file.** The web API
+  // key below is public by design (it names the project; it authorises nothing), so anything
+  // this file declines to do can still be attempted by hand. Client-side checks here are for
+  // the user's benefit — clear errors, no pointless round trips — never for security.
+  const CLOUD = CONFIG.cloud;
+  const cloudOn = () => !!(CLOUD && CLOUD.apiKey && CLOUD.projectId);
+  const CLOUD_KEY = "burnTheWeb.cloud.v1";     // its own localStorage key, NOT part of the scene blob
+  const IDP_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp";
+  const TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
+  const GIS_SRC = "https://accounts.google.com/gsi/client";
+  const docUrl = uid => "https://firestore.googleapis.com/v1/projects/" + CLOUD.projectId
+    + "/databases/(default)/documents/profiles/" + encodeURIComponent(uid);
+
+  // Session: uid + the two tokens + when the short-lived one expires. Refresh tokens live in
+  // localStorage, which any XSS on the page could read — standard for a static app, and the
+  // blast radius is one user's presets, but it is a real trade and worth knowing.
+  let cloudSess = null;
+  function cloudLoadSess() {
+    try { cloudSess = JSON.parse(localStorage.getItem(CLOUD_KEY) || "null"); }
+    catch (e) { cloudSess = null; }
+    if (cloudSess && !cloudSess.refreshToken) cloudSess = null;
+  }
+  function cloudSaveSess() {
+    try {
+      if (cloudSess) localStorage.setItem(CLOUD_KEY, JSON.stringify(cloudSess));
+      else localStorage.removeItem(CLOUD_KEY);
+    } catch (e) { /* private mode — session just won't survive the reload */ }
+  }
+
+  // ---- Firestore typed values ----
+  // The REST API wraps every field in its type: {"stringValue":…}, {"integerValue":"7"} —
+  // integers really are strings on the wire, which is the one genuinely surprising bit. This
+  // stays a dozen lines ONLY because a profile is five scalar fields; the preset library
+  // itself rides as one already-compressed string (see cloudPayload below) rather than being
+  // mapped into Firestore structure, which would mean re-encoding the whole preset schema.
+  function fsOut(o) {
+    const f = {};
+    for (const k in o) {
+      const v = o[k];
+      if (typeof v === "string") f[k] = { stringValue: v };
+      else if (typeof v === "boolean") f[k] = { booleanValue: v };
+      else if (typeof v === "number") f[k] = Number.isInteger(v)
+        ? { integerValue: String(v) } : { doubleValue: v };
+      else if (v instanceof Date) f[k] = { timestampValue: v.toISOString() };
+    }
+    return { fields: f };
+  }
+  function fsIn(doc) {
+    const out = {};
+    const f = (doc && doc.fields) || {};
+    for (const k in f) {
+      const v = f[k];
+      if ("stringValue" in v) out[k] = v.stringValue;
+      else if ("booleanValue" in v) out[k] = v.booleanValue;
+      else if ("integerValue" in v) out[k] = +v.integerValue;
+      else if ("doubleValue" in v) out[k] = +v.doubleValue;
+      else if ("timestampValue" in v) out[k] = v.timestampValue;
+      else if ("nullValue" in v) out[k] = null;
+    }
+    return out;
+  }
+
+  // ---- tokens ----
+  // Firebase id tokens last about an hour. Refresh 60s early so a save can't fail on a token
+  // that expired between the check and the request landing.
+  function cloudFresh() {
+    if (!cloudSess) return Promise.reject(new Error("not signed in"));
+    if (cloudSess.idToken && Date.now() < (cloudSess.expires || 0) - 60000) {
+      return Promise.resolve(cloudSess.idToken);
+    }
+    return fetch(TOKEN_URL + "?key=" + encodeURIComponent(CLOUD.apiKey), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(cloudSess.refreshToken),
+    }).then(r => (r.ok ? r.json() : Promise.reject(new Error("refresh failed (" + r.status + ")"))))
+      .then(j => {
+        cloudSess.idToken = j.id_token;
+        cloudSess.refreshToken = j.refresh_token || cloudSess.refreshToken;
+        cloudSess.expires = Date.now() + (+j.expires_in || 3600) * 1000;
+        cloudSess.uid = j.user_id || cloudSess.uid;
+        cloudSaveSess();
+        return cloudSess.idToken;
+      })
+      .catch(e => {                       // a dead refresh token is permanent — sign out cleanly
+        cloudSignOut();
+        throw e;
+      });
+  }
+  // One authorised Firestore call. A 401 mid-flight means the token died early (revoked, or a
+  // clock skew) — refresh ONCE and retry, never loop, or a genuinely rejected token spins.
+  function cloudFetch(url, opts, retried) {
+    return cloudFresh().then(tok => fetch(url, {
+      ...opts,
+      headers: { ...(opts && opts.headers), "Content-Type": "application/json", Authorization: "Bearer " + tok },
+    })).then(r => {
+      if (r.status === 401 && !retried) {
+        cloudSess.expires = 0;            // force the refresh, then one more attempt
+        return cloudFetch(url, opts, true);
+      }
+      return r;
+    });
+  }
+
+  // ---- sign in / out ----
+  function cloudSignIn(googleIdToken) {
+    return fetch(IDP_URL + "?key=" + encodeURIComponent(CLOUD.apiKey), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        postBody: "id_token=" + encodeURIComponent(googleIdToken) + "&providerId=google.com",
+        requestUri: location.origin,
+        returnSecureToken: true,
+      }),
+    }).then(r => (r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(t || ("HTTP " + r.status))))))
+      .then(j => {
+        cloudSess = {
+          uid: j.localId,
+          idToken: j.idToken,
+          refreshToken: j.refreshToken,
+          expires: Date.now() + (+j.expiresIn || 3600) * 1000,
+        };
+        cloudSaveSess();
+        track("cloud_sign_in", {});
+        cloudSyncUI();
+        cloudFetchProfileMeta();          // pick up the profile name, if there is one already
+      });
+  }
+  function cloudSignOut() {
+    cloudSess = null;
+    cloudSaveSess();
+    cloudSyncUI();
+  }
+
+  // ---- the payload ----
+  // Exactly the blob a preset-bundle link carries (libraryUrl), through exactly the same
+  // codec — so one encoder and one decoder serve both, and a cloud profile and a #zp= link
+  // are the same bytes. That is what keeps this feature small and what makes the existing
+  // decode path (openSharedLibrary) able to consume a downloaded profile unchanged.
+  function cloudBlob() {
+    autosavePreset();                     // fold pending edits into the selected preset first
+    const snap = fullSnapshot();
+    const blob = { presets: snap.presets, cycle: snap.cycle };
+    if (snap.curPreset >= 0) blob.curPreset = snap.curPreset;
+    return serializeBlob(blob);
+  }
+
+  // ---- save / load / delete ----
+  function cloudSave() {
+    if (!cloudSess) return;
+    const blob = cloudBlob();
+    const n = (blob.presets || []).length;
+    if (!n) { cloudMsg("Nothing to save — you have no presets yet.", true); return; }
+    cloudMsg("Saving…");
+    zipToB64(JSON.stringify(blob)).then(payload => {
+      if (payload == null) throw new Error("this browser cannot compress the payload");
+      if (payload.length >= CLOUD.maxPayload) {
+        throw new Error("library too big to store (" + Math.round(payload.length / 1024) + " KB)");
+      }
+      const body = fsOut({
+        name: (el("cloud-name").value || "").trim().slice(0, 40) || "burnTheWeb",
+        payload,
+        count: n,
+        pub: !!(cloudSess && cloudSess.pub),
+        updated: new Date(),
+      });
+      // Name every field in the mask so the write is a deterministic full replace rather than
+      // a merge onto whatever happens to be there — the rules' hasOnly() check is against the
+      // RESULTING document, so a stray leftover field would fail the write.
+      const mask = ["name", "payload", "count", "pub", "updated"]
+        .map(f => "updateMask.fieldPaths=" + f).join("&");
+      return cloudFetch(docUrl(cloudSess.uid) + "?" + mask, { method: "PATCH", body: JSON.stringify(body) });
+    }).then(r => {
+      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      cloudMsg("Saved " + n + " preset" + (n === 1 ? "" : "s") + " to your profile.");
+      track("cloud_save", { count: n });
+    }).catch(e => cloudMsg("Could not save: " + e.message, true));
+  }
+
+  function cloudLoad() {
+    if (!cloudSess) return;
+    cloudMsg("Loading…");
+    cloudFetch(docUrl(cloudSess.uid), { method: "GET" }).then(r => {
+      if (r.status === 404) return Promise.reject(new Error("you have not saved a profile yet"));
+      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      return r.json();
+    }).then(doc => {
+      const d = fsIn(doc);
+      if (!d.payload) throw new Error("that profile is empty");
+      return unzipFromB64(d.payload);
+    }).then(json => {
+      if (json == null) throw new Error("could not read the stored payload");
+      let raw;
+      try { raw = JSON.parse(json); } catch (e) { throw new Error("stored payload is corrupt"); }
+      cloudMsg("");
+      // Straight into the existing shared-library path: validation, the merge-vs-replace
+      // Restore dialog, and landing on the stored selected preset all come for free.
+      openSharedLibrary(raw);
+      track("cloud_load", {});
+    }).catch(e => cloudMsg("Could not load: " + e.message, true));
+  }
+
+  function cloudDelete() {
+    if (!cloudSess) return;
+    if (!confirm("Delete your cloud profile permanently? Your presets in this browser are not touched.")) return;
+    cloudMsg("Deleting…");
+    cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }).then(r => {
+      if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      cloudMsg("Profile deleted.");
+      track("cloud_delete", {});
+    }).catch(e => cloudMsg("Could not delete: " + e.message, true));
+  }
+
+  // Read just the metadata after signing in, so the name field shows what is already stored
+  // rather than starting blank and overwriting it on the next save.
+  function cloudFetchProfileMeta() {
+    if (!cloudSess) return;
+    cloudFetch(docUrl(cloudSess.uid) + "?mask.fieldPaths=name&mask.fieldPaths=count&mask.fieldPaths=pub",
+      { method: "GET" }).then(r => (r.ok ? r.json() : null)).then(doc => {
+        if (!doc) return;
+        const d = fsIn(doc);
+        if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
+        if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
+        if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
+        if (d.count != null) cloudMsg("Profile has " + d.count + " preset" + (d.count === 1 ? "" : "s") + " stored.");
+      }).catch(() => { /* no profile yet — nothing to show */ });
+  }
+
+  // Firestore returns a JSON error envelope; surface its message rather than a bare status,
+  // because "Missing or insufficient permissions" is the one users will actually hit.
+  function cloudErr(text, status) {
+    try {
+      const j = JSON.parse(text);
+      if (j && j.error && j.error.message) return j.error.message;
+    } catch (e) { /* not JSON */ }
+    return "HTTP " + status;
+  }
+
+  // ---- publish ----
+  // Toggling this re-saves the WHOLE profile rather than patching `pub` alone, and that is
+  // forced by the rules, not laziness: they require the resulting document to carry
+  // name/payload/count/pub, so a pub-only write to a profile that does not exist yet fails
+  // validation. Going through cloudSave() always produces a document the rules accept.
+  function cloudPublish(on) {
+    if (!cloudSess) return;
+    cloudSess.pub = !!on;
+    cloudSaveSess();
+    track("cloud_publish", { on: !!on });
+    cloudSave();
+    galBust();                          // this profile just entered or left the listing
+  }
+
+  // ---- gallery ----
+  // Public profiles, readable WITHOUT signing in: the rules allow a `pub == true` query from
+  // an unauthenticated caller (and deny an unfiltered one), so any visitor can browse.
+  const GAL_KEY = "burnTheWeb.gallery.v1";
+  const galUrl = "https://firestore.googleapis.com/v1/projects/" + (CLOUD.projectId || "")
+    + "/databases/(default)/documents";
+  // Plain fetch with the api key, NOT cloudFetch: these documents are public, and gallery
+  // browsing must work for a signed-out visitor who has no token to attach.
+  function galFetchJson(url, opts) {
+    return fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "key=" + encodeURIComponent(CLOUD.apiKey), opts);
+  }
+  // `select` projects away the payload. Without it every listed profile drags its whole
+  // compressed library down the wire — 20 profiles would be megabytes to render a list of
+  // names. (It does not reduce the read quota, which is per document either way.)
+  function galQuery(ordered) {
+    const q = {
+      structuredQuery: {
+        from: [{ collectionId: "profiles" }],
+        where: { fieldFilter: { field: { fieldPath: "pub" }, op: "EQUAL", value: { booleanValue: true } } },
+        select: { fields: [{ fieldPath: "name" }, { fieldPath: "count" }, { fieldPath: "updated" }] },
+        limit: CLOUD.galleryLimit || 20,
+      },
+    };
+    if (ordered) q.structuredQuery.orderBy = [{ field: { fieldPath: "updated" }, direction: "DESCENDING" }];
+    return galFetchJson(galUrl + ":runQuery", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(q),
+    });
+  }
+  // Ordered first, unordered as a fallback. `where pub == true` + `orderBy updated` needs a
+  // COMPOSITE INDEX, which a fresh project does not have — Firestore answers 400
+  // FAILED_PRECONDITION with a one-click creation URL. Rather than making the gallery dead
+  // until someone visits that URL, fall back to the unordered query (no index required) and
+  // sort client-side; the index simply makes it correct beyond the page limit later.
+  let galIndexWarned = false;
+  function galList() {
+    return galQuery(true).then(r => {
+      if (r.ok) return r.json().then(j => ({ rows: j, ordered: true }));
+      return r.text().then(t => {
+        if (/FAILED_PRECONDITION|requires an index/i.test(t)) {
+          if (!galIndexWarned) {
+            galIndexWarned = true;
+            const m = /https:\/\/console\.firebase\.google\.com\S*/.exec(t);
+            console.info("[burnTheWeb] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
+          }
+          return galQuery(false).then(r2 => (r2.ok ? r2.json().then(j => ({ rows: j, ordered: false }))
+            : r2.text().then(t2 => Promise.reject(new Error(cloudErr(t2, r2.status))))));
+        }
+        return Promise.reject(new Error(cloudErr(t, r.status)));
+      });
+    }).then(res => {
+      const items = (res.rows || []).filter(x => x.document).map(x => {
+        const d = fsIn(x.document);
+        return { uid: String(x.document.name).split("/").pop(), name: d.name || "Untitled",
+                 count: d.count || 0, updated: d.updated || "" };
+      });
+      // Sort ALWAYS, not only on the fallback. The two paths differ in what they SELECT —
+      // an indexed query returns the genuinely newest `limit` documents, the unordered one
+      // returns an arbitrary `limit` — but neither is a reason for the rendered order to
+      // depend on which path ran. Sorting ≤20 items is free, and it means the list reads the
+      // same before and after the composite index exists.
+      items.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+      return items;
+    });
+  }
+  // Cache the listing: 20 document reads per open against a 50k/day quota is fine on a
+  // button and wasteful if every glance re-queries.
+  function galCached() {
+    try {
+      const c = JSON.parse(localStorage.getItem(GAL_KEY) || "null");
+      if (c && Date.now() - c.t < (CLOUD.galleryTtlMs || 300000)) return c.items;
+    } catch (e) { /* fall through to a live fetch */ }
+    return null;
+  }
+  function galStore(items) {
+    try { localStorage.setItem(GAL_KEY, JSON.stringify({ t: Date.now(), items })); } catch (e) {}
+  }
+  function galBust() { try { localStorage.removeItem(GAL_KEY); } catch (e) {} }
+
+  function galRender(items) {
+    const host = el("gal-list");
+    host.textContent = "";
+    if (!items.length) {
+      el("gal-hint").textContent = "No one has published a profile yet. Tick “Publish to gallery” to be the first.";
+      return;
+    }
+    el("gal-hint").textContent = "Loading a profile opens the usual restore dialog, so you choose merge or replace — nothing is overwritten without asking.";
+    items.forEach(p => {
+      const row = document.createElement("div");
+      row.className = "gal-row";
+      const nm = document.createElement("div");
+      nm.className = "gal-name";
+      nm.textContent = p.name;
+      const meta = document.createElement("div");
+      meta.className = "gal-meta";
+      meta.textContent = p.count + " preset" + (p.count === 1 ? "" : "s")
+        + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "audbtn"; btn.textContent = "Load";
+      btn.title = "Fetch this profile's presets";
+      btn.addEventListener("click", () => galLoad(p));
+      row.appendChild(nm); row.appendChild(meta); row.appendChild(btn);
+      host.appendChild(row);
+    });
+  }
+  function galLoad(p) {
+    el("gal-hint").textContent = "Fetching “" + p.name + "”…";
+    galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
+      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      return r.json();
+    }).then(doc => {
+      const d = fsIn(doc);
+      if (!d.payload) throw new Error("that profile is empty");
+      return unzipFromB64(d.payload);
+    }).then(json => {
+      if (json == null) throw new Error("could not read that profile");
+      let raw;
+      try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
+      galOpen(false);
+      openSharedLibrary(raw);           // same path as a shared link: validate + merge/replace
+      track("cloud_gallery_load", {});
+    }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
+  }
+  function galOpen(show, force) {
+    const dlg = el("galdlg");
+    if (!dlg) return;
+    dlg.classList.toggle("hidden", !show);
+    if (!show) return;
+    const cached = force ? null : galCached();
+    if (cached) { galRender(cached); return; }
+    el("gal-list").textContent = "";
+    el("gal-hint").textContent = "Loading…";
+    galList().then(items => { galStore(items); galRender(items); })
+      .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
+  }
+
+  // ---- profile name: text, not a permanently open input ----
+  // Signed in, the name is a label you click to edit. `#cloud-name` remains the VALUE STORE
+  // (cloudSave and cloudFetchProfileMeta both read/write it, unchanged) — this only governs
+  // which of the two is on screen, the same arrangement `#palette` has behind the swatches.
+  const NAME_EMPTY = "Set a profile name…";
+  function cloudNameShow() {
+    const view = el("cloud-nameview"), inp = el("cloud-name");
+    if (!view || !inp) return;
+    const v = (inp.value || "").trim();
+    view.textContent = v || NAME_EMPTY;
+    view.classList.toggle("empty", !v);
+    view.style.display = "";
+    inp.style.display = "none";
+  }
+  function cloudNameEdit() {
+    const view = el("cloud-nameview"), inp = el("cloud-name");
+    if (!view || !inp) return;
+    view.style.display = "none";
+    inp.style.display = "";
+    inp.focus();
+    inp.select();
+  }
+  function cloudNameCommit() {
+    const inp = el("cloud-name");
+    if (inp) inp.value = (inp.value || "").trim().slice(0, 40);
+    cloudNameShow();
+  }
+
+  // ---- UI ----
+  function cloudMsg(s, bad) {
+    const m = el("cloud-msg");
+    if (!m) return;
+    m.textContent = s || "";
+    m.style.color = bad ? "#ff8b6a" : "";
+  }
+  function cloudSyncUI() {
+    if (!cloudOn()) return;
+    const inS = !!cloudSess;
+    const authed = el("cloud-authed"), signin = el("cloud-signin"), who = el("cloud-who");
+    if (authed) authed.style.display = inS ? "" : "none";
+    if (signin) signin.style.display = inS ? "none" : "";
+    if (who) who.textContent = inS ? "· signed in" : "";
+    const pubBox = el("cloud-pub");
+    if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
+    cloudNameShow();                     // signing in/out always lands back on the label
+    if (!inS) cloudMsg("");
+  }
+
+  // Google Identity Services renders the sign-in button and hands back a Google ID token,
+  // which cloudSignIn trades for a Firebase session. Loaded lazily and ONLY when configured,
+  // so an unconfigured build makes no third-party request at all.
+  function cloudInit() {
+    if (!cloudOn()) return;              // feature off ⇒ the row stays hidden, nothing loads
+    const row = el("cloudrow");
+    if (row) row.classList.remove("hidden");
+    cloudLoadSess();
+    cloudSyncUI();
+    if (cloudSess) cloudFetchProfileMeta();
+    if (!CLOUD.clientId) { cloudMsg("Sign-in is not configured for this build.", true); return; }
+    const s = document.createElement("script");
+    s.src = GIS_SRC; s.async = true; s.defer = true;
+    s.onload = () => {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: CLOUD.clientId,
+          callback: res => {
+            if (!res || !res.credential) return;
+            cloudMsg("Signing in…");
+            cloudSignIn(res.credential).catch(e => cloudMsg("Sign-in failed: " + e.message, true));
+          },
+        });
+        window.google.accounts.id.renderButton(el("cloud-signin"), { theme: "filled_black", size: "medium", text: "signin_with" });
+      } catch (e) { cloudMsg("Sign-in unavailable: " + e.message, true); }
+    };
+    s.onerror = () => cloudMsg("Could not reach Google sign-in.", true);
+    document.head.appendChild(s);
+  }
+
+  if (el("cloud-save")) el("cloud-save").addEventListener("click", cloudSave);
+  if (el("cloud-load")) el("cloud-load").addEventListener("click", cloudLoad);
+  if (el("cloud-delete")) el("cloud-delete").addEventListener("click", cloudDelete);
+  if (el("cloud-signout")) el("cloud-signout").addEventListener("click", cloudSignOut);
+  if (el("cloud-pub")) el("cloud-pub").addEventListener("change", e => cloudPublish(e.target.checked));
+  if (el("cloud-nameview")) {
+    el("cloud-nameview").addEventListener("click", cloudNameEdit);
+    // Keyboard parity: the label is focusable, so Enter/Space must open it too.
+    el("cloud-nameview").addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cloudNameEdit(); }
+    });
+  }
+  if (el("cloud-name")) {
+    el("cloud-name").addEventListener("blur", cloudNameCommit);
+    el("cloud-name").addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); cloudNameCommit(); }
+      else if (e.key === "Escape") { e.preventDefault(); cloudNameCommit(); }
+    });
+  }
+  if (el("cloud-browse")) el("cloud-browse").addEventListener("click", () => galOpen(true));
+  if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
+  if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
+  if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
+  cloudInit();
   // ---- Orbit editor ----------------------------------------------------------
   // AnimeJulia, Burning Ship and Multibrot all take their seed c from a point tracing
   // a base curve over the Mandelbrot set (see juliaSeedAt), with a riding circle on top.

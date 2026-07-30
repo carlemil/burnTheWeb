@@ -193,6 +193,17 @@
   #panel #cloudrow .cloud-who { color: #ffcf87; opacity: .7; font-weight: normal; }
   #panel #cloudrow #cloud-signin { margin: 4px 0 2px; min-height: 0; }
   #panel #cloudrow #cloud-msg { margin-top: 7px; min-height: 1em; }
+  /* Profile name as a label once signed in. The dotted underline is the only affordance it
+     needs — it reads as text, not as an empty field waiting to be filled. */
+  #panel #cloudrow #cloud-nameline { margin: 5px 0 2px; }
+  #panel #cloudrow #cloud-nameview {
+    display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #ffcf87; font-size: 12px; cursor: text; padding: 2px 0;
+    border-bottom: 1px dotted rgba(255, 207, 135, 0.4);
+  }
+  #panel #cloudrow #cloud-nameview:hover { border-bottom-color: #ffcf87; }
+  #panel #cloudrow #cloud-nameview.empty { color: #ffb15a; opacity: .5; font-style: italic; }
+  #panel #cloudrow #cloud-nameview:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
   /* Public profile gallery — floating and translucent like the other popups. */
   #galdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
