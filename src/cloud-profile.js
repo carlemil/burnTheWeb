@@ -488,7 +488,24 @@
     const inS = !!cloudSess;
     const authed = el("cloud-authed"), signin = el("cloud-signin"), who = el("cloud-who");
     if (authed) authed.style.display = inS ? "" : "none";
-    if (signin) signin.style.display = inS ? "none" : "";
+    // Signed in, the sign-in box is hidden AND EMPTIED. Hiding alone left an empty bordered
+    // box on screen for at least one real user — Google's button is an iframe in markup that
+    // is theirs, not ours, so what survives a `display:none` on the container is not something
+    // to reason about from here. Removing the children removes the question, and also stops a
+    // third-party iframe sitting in the page for a signed-in session that has no use for it.
+    // The `.signed-in` class is what actually hides it, so no inline style (ours or Google's)
+    // can win; gsiWidth resets so sign-out re-renders it at the right width.
+    const row = el("cloudrow");
+    if (row) row.classList.toggle("signed-in", inS);
+    if (signin) {
+      signin.style.display = inS ? "none" : "";
+      if (inS && signin.children.length) { signin.textContent = ""; gsiWidth = 0; }
+      // Signed out, draw the button back straight away. Leaving this to the ResizeObserver
+      // looked equivalent and was not: it left an empty bordered box after sign-out — the
+      // mirror image of the bug being fixed. gsiRender self-guards on GIS being loaded and on
+      // the box having a width, so calling it here is safe even during startup.
+      if (!inS) gsiRender();
+    }
     if (who) who.textContent = inS ? "· signed in" : "";
     const pubBox = el("cloud-pub");
     if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);

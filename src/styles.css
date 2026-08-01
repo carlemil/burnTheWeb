@@ -209,6 +209,12 @@
     overflow: hidden;
   }
   #panel #cloudrow #cloud-signin > * { max-width: 100%; }
+  /* Signed in there is nothing to sign in with, so the box must not be there at all — border,
+     padding and background included. `!important` on purpose: this has to beat any inline
+     display Google's own script might set on or inside the host, which is markup we do not
+     control. cloudSyncUI also empties the container; this is the half that cannot be undone
+     by a stray style. */
+  #panel #cloudrow.signed-in #cloud-signin { display: none !important; }
   /* NB there is deliberately no `:empty { display: none }` here, tempting as it is to hide
      the bare box before the button arrives. It deadlocks: display:none gives the element no
      box, so its clientWidth is 0, so gsiRender never fires and the box never stops being
