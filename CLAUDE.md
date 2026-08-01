@@ -1304,6 +1304,33 @@ because any later slider drag *did* autosave and retroactively captured the chip
   `sessionStorage`, which survives the navigation.) There is no per-effect text
   Export/Import — removed; **Share** is the only text-export path.
 
+### Moving scenes in and out: cloud only
+**The Backup, Restore, Share this scene and Share presets… buttons are gone from the menu.**
+The cloud profile is the one way in and out now, and the box is titled *Cloud profile* to say
+so. What was removed is only the half that **creates** files and links.
+
+**Everything that DECODES is untouched, and must stay that way** — the standing rule is that
+every link ever generated keeps working. `?z=`/`?s=` scene links, `#zp=`/`#sp=` preset bundles
+and `#c=` cloud scenes all still open, and they land in the **Restore dialog**, which is also
+where *Load from cloud* and the gallery land. Deleting that dialog with the import button
+would have broken the cloud path itself. `validatePresetList` and `normalizeBackup` are
+likewise live for exactly that reason.
+
+`libraryUrl`, `shareUrl`, `cloudShareScene`, `shortenUrl`, `backupFiles`, `safeFileName` and
+the IndexedDB folder-handle helpers are now unreachable from the UI and deliberately **kept**:
+pure builders with no DOM dependency, `shareUrl` is the documented partner of the still-live
+`?z=` decode, `presetprobe` pins `safeFileName`'s Windows filename traps, and re-attaching a
+button to any of them is a one-line change. Same treatment `shareUrl` already had.
+
+Two knock-ons worth knowing. **`presetprobe`'s slice markers moved**: it used
+`el("importpresets")` as the end anchor for both `validatePresetList` and `normalizeBackup`,
+and that line no longer exists — the anchor is now the comment that replaced it. And
+**`tools/shareparity.js` was deleted**: it drove the "Share presets…" button end-to-end, which
+no longer exists. The coverage it gave — that a new per-layer or scene field actually travels
+with a shared payload — now applies to the cloud profile instead, where `cloudprobe` pins the
+structural half (same `serializeBlob` shape, same codec) but nothing yet drives a real
+two-browser round trip.
+
 ### Cloud profiles (Firebase Auth + Firestore, over REST)
 Keep a preset library against a Google account so it follows you between machines.
 `src/cloud-profile.js` is the whole client; `firestore.rules` (repo root) is the whole

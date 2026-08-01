@@ -45,7 +45,7 @@ const snapSrc = cut("  function snapshotScene()", "  function defaultPresets(");
 const applySrc = cut("  function applyPreset(", "  function createPreset(");
 // The import mapping now lives in validatePresetList (shared by file import and preset-bundle
 // links), so slice that function's body — its object literal is the per-preset rebuild.
-const importSrc = cut("function validatePresetList(", "el(\"importpresets\")");
+const importSrc = cut("function validatePresetList(", "  // `validatePresetList` and `normalizeBackup` above");
 
 // Keys of the object literal snapshotScene returns (one per line, `key:` or `key,`).
 const snapKeys = new Set();
@@ -197,7 +197,7 @@ const D = P.BEAT_DEFAULTS;
 // --- 5. backup file naming + shape normalization ------------------------------
 const B = new Function(
   cut("  const WIN_RESERVED", "  function stampNow(") +
-  cut("  function normalizeBackup(", "  el(\"importpresets\")") +
+  cut("  function normalizeBackup(", "  // `validatePresetList` and `normalizeBackup` above") +
   "\nreturn { safeFileName, normalizeBackup };")();
 
 {

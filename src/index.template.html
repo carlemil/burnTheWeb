@@ -56,27 +56,20 @@
        just another place for the two to disagree. -->
   </details>
 
-  <!-- Box — Backup/share. Boxed like the rest so the panel is one consistent
-       stack of foldable sections. -->
+  <!-- Box — Cloud profile: the ONE way in and out of the app now.
+       The Backup / Restore / Share this scene / Share presets buttons were removed from the
+       menu deliberately — moving scenes around is a cloud-profile job from here on. What is
+       NOT removed is the receiving half: every `?z=`, `#zp=` and `#c=` link ever generated
+       still decodes (the standing rule), and the Restore dialog they land in is the same one
+       "Load from cloud" and the gallery open. Only the controls that CREATE files and links
+       are gone. -->
   <details class="box">
-  <summary class="box-t">Backup, restore &amp; share</summary>
-  <div class="presetrow grid2">
-    <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
-  </div>
-  <div class="presetrow grid2">
-    <button id="sharescene" class="audbtn" type="button" title="Copy a link to the scene running right now. Signed in, it is stored in the cloud and the link is tiny; otherwise the whole scene rides in the link itself.">Share this scene</button>
-    <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
-  </div>
-  <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
-  <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
+  <summary class="box-t">Cloud profile</summary>
 
-  <!-- Cloud profile. Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as
-       analytics), so an unconfigured build shows no trace of it. Lives in this box because
-       this is already the "move my scenes in and out" box. -->
+  <!-- Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as analytics), so
+       an unconfigured build shows an empty box rather than a broken one. -->
   <div id="cloudrow" class="hidden">
-    <hr class="sep">
-    <label>Cloud profile <span id="cloud-who" class="cloud-who"></span></label>
+    <p class="hint" id="cloud-who"></p>
     <!-- Google renders its own sign-in button into this node (Identity Services). -->
     <div id="cloud-signin"></div>
     <div id="cloud-authed" style="display:none">
@@ -342,20 +335,9 @@
   </div>
 </div>
 
-<div id="sharepredlg" class="hidden">
-  <div class="rst-box">
-    <h2>Share presets</h2>
-    <p class="rst-sub">Pick the presets to bundle into a link. The recipient chooses merge or replace when they open it.</p>
-    <div class="rst-grp">Presets <button type="button" id="sharepre-all" class="sharepre-toggle">Select none</button></div>
-    <div class="sharepre-list" id="sharepre-list"></div>
-    <p class="rst-sub" id="sharepre-hint"></p>
-    <div class="rst-actions">
-      <button type="button" id="sharepre-copy">Copy link</button>
-      <button type="button" id="sharepre-short" title="Shorten via tinyurl.com — needs the internet, and sends the presets to TinyURL">Copy short link</button>
-      <button type="button" id="sharepre-close">Close</button>
-    </div>
-  </div>
-</div>
+<!-- The "Share presets" curation dialog is gone with the button that opened it. The Restore
+     dialog above is NOT: it is where "Load from cloud", the gallery, and every previously
+     generated #zp= / ?z= / #c= link still land. -->
 
 <div id="syncpop" class="hidden">
   <div class="sync-box">

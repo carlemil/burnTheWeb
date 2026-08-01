@@ -146,11 +146,13 @@
     say("Saving " + files.length + " files…", 400 + files.length * 150);
     track("backup_files", { files: files.length });
   }
-  el("exportpresets").addEventListener("click", e => {
-    const btn = el("exportpresets");
-    btn.textContent = "Saving…";
-    runBackup(btn, e.shiftKey);      // shift ⇒ re-pick the folder (see the button's title)
-  });
+  // NB `backupFiles`/`runBackup`/`safeFileName`/`bkStore` above are no longer reachable from
+  // the UI — the Backup button is gone and moving scenes around is a cloud-profile job now.
+  // They are kept rather than deleted for two reasons: they are pure data/IO helpers with no
+  // DOM dependency (so they cost nothing sitting here), and `presetprobe` pins safeFileName's
+  // Windows filename traps, which are exactly the kind of thing that is painful to re-derive
+  // if a local export ever comes back. Same treatment `shareUrl` already gets.
+  //
   // Fold every shape we have ever written into the one the restore path understands:
   // a single-preset file, a _settings.json, a whole-library snapshot (the old Backup),
   // a legacy { presets, ranges }, or the oldest bare array. Run BEFORE deserializeBlob,
@@ -178,36 +180,9 @@
                    ttl: p.ttl, tdur: p.tdur,
                    layers: Array.isArray(p.layers) ? p.layers : undefined }));
   }
-  el("importpresets").addEventListener("click", () => el("presetsfile").click());
-  el("presetsfile").addEventListener("change", async ev => {
-    const files = [...(ev.target.files || [])];
-    ev.target.value = "";             // allow re-picking the same files later
-    if (!files.length) return;
-    try {
-      const texts = await Promise.all(files.map(f => f.text()));
-      const parts = texts.map((t, i) => {
-        const n = normalizeBackup(JSON.parse(t));
-        if (!n) throw new Error(files[i].name + " isn't a burnTheWeb backup");
-        return deserializeBlob(n);
-      });
-      // Presets accumulate across every file selected; the settings come from whichever
-      // file actually carries them (a folder holds one _settings.json among N presets).
-      const arr = parts.flatMap(p => (Array.isArray(p) ? p : (p && p.presets) || []));
-      const parsed = Object.assign({}, parts.find(p => p && !Array.isArray(p) && p.states) || {});
-      for (const p of parts) {        // a legacy { presets, ranges } carries these without states
-        if (!p || Array.isArray(p)) continue;
-        if (!parsed.ranges && p.ranges) parsed.ranges = p.ranges;
-        if (!parsed.beatTune && p.beatTune) parsed.beatTune = p.beatTune;
-      }
-      parsed.presets = arr;
-      delete parsed.curPreset;        // meaningless once presets arrive as separate files
-      if (!arr.length && !parsed.states) throw new Error("no presets or settings found");
-      const valid = validatePresetList(arr);
-      if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
-      const label = files.length === 1 ? files[0].name : files.length + " files";
-      openRestore(parsed, valid, label);   // let the user pick what to restore + how
-    } catch (err) { alert("Couldn't read backup: " + err.message); }
-  });
+  // `validatePresetList` and `normalizeBackup` above are very much still live: the cloud
+  // load path and the gallery both run a fetched profile through them before it reaches the
+  // Restore dialog. Only the FILE import that used to call them here is gone.
 
   // ---- Restore dialog: choose which parts to bring back, and merge vs replace ----
   let pendingRestore = null;
@@ -290,70 +265,17 @@
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
 
-  // ---- Share a curated bundle of presets as one link -------------------------
-  // The dialog only CURATES which presets go in — it copies a link (libraryUrl →
-  // serializeBlob({presets}) → deflate, in persist-share.js), never touching the local
-  // library. The recipient's #zp=/#sp= decode lands in openSharedLibrary below, which routes
-  // into the SAME Restore dialog a file import uses, so they pick merge vs replace.
-  let sharePreBoxes = [];
-  const chosenPresets = () => sharePreBoxes.filter(cb => cb.checked).map(cb => presets[+cb.dataset.i]);
-  function syncSharePreHint() {
-    const n = chosenPresets().length, anyOn = sharePreBoxes.some(cb => cb.checked);
-    el("sharepre-hint").textContent = n
-      ? n + " preset" + (n === 1 ? "" : "s") + " selected — a bundle link can get long, so use Copy short link if it won't paste."
-      : "No presets selected.";
-    el("sharepre-all").textContent = anyOn ? "Select none" : "Select all";
-    el("sharepre-copy").disabled = el("sharepre-short").disabled = !n;
-  }
-  function openSharePresets() {
-    autosavePreset();                 // fold live edits into the selected preset before bundling
-    const list = el("sharepre-list"); list.textContent = "";
-    sharePreBoxes = presets.map((p, i) => {
-      const lab = document.createElement("label"); lab.className = "sharepre-opt";
-      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true; cb.dataset.i = String(i);
-      cb.addEventListener("change", syncSharePreHint);
-      const span = document.createElement("span"); span.textContent = p.name; span.title = p.name;
-      lab.appendChild(cb); lab.appendChild(span); list.appendChild(lab);
-      return cb;
-    });
-    syncSharePreHint();
-    el("sharepredlg").classList.remove("hidden");
-  }
-  const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
-  // "Share this scene": one link to what is running. copyText takes the Promise directly so
-  // the clipboard write stays inside the user gesture (a plain writeText after an await is
-  // rejected by Safari) — the same reason libraryUrl is passed unresolved below.
-  el("sharescene").addEventListener("click", () => {
-    copyText(cloudShareScene(), el("sharescene"), "Link copied!", "Share this scene");
-    track("share_scene", {});
-  });
-  el("sharepresets").addEventListener("click", openSharePresets);
-  el("sharepre-close").addEventListener("click", closeSharePresets);
-  el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop
-  el("sharepre-all").addEventListener("click", () => {
-    const anyOn = sharePreBoxes.some(cb => cb.checked);
-    sharePreBoxes.forEach(cb => { cb.checked = !anyOn; });   // all/some on → none; none on → all
-    syncSharePreHint();
-  });
-  el("sharepre-copy").addEventListener("click", () => {
-    const chosen = chosenPresets(); if (!chosen.length) return;
-    copyText(libraryUrl(chosen), el("sharepre-copy"), "Link copied!", "Copy link");   // copyText takes the Promise
-    track("share_presets", { n: chosen.length });
-  });
-  el("sharepre-short").addEventListener("click", async () => {
-    const chosen = chosenPresets(); if (!chosen.length) return;
-    const btn = el("sharepre-short");
-    btn.disabled = true; btn.textContent = "Shortening…";
-    try {
-      const short = await shortenUrl(await libraryUrl(chosen));
-      btn.disabled = false;
-      copyText(short, btn, "Short link copied!", "Copy short link");
-      track("share_presets_short", { n: chosen.length });
-    } catch (e) {
-      btn.textContent = "Shorten failed";
-      setTimeout(() => { btn.textContent = "Copy short link"; syncSharePreHint(); }, 1800);
-    }
-  });
+  // ---- Sending is gone; RECEIVING is not ------------------------------------------
+  // The "Share this scene" and "Share presets…" buttons, and the curation dialog behind the
+  // second one, were removed: sharing is a cloud-profile job now. Nothing that DECODES was
+  // touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=` link ever
+  // generated still opens, and still lands in the Restore dialog below.
+  //
+  // `libraryUrl`, `shareUrl`, `cloudShareScene` and `shortenUrl` are consequently unreachable
+  // from the UI. They are kept, like `shareUrl` already was before this: they are pure
+  // builders with no DOM dependency, `shareUrl` is the documented partner of the still-live
+  // `?z=` decode, and re-attaching a button to any of them is a one-line change.
+  //
   // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
   // beatTune), so openRestore lights up just the Presets option with merge/replace.

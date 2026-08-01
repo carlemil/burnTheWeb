@@ -506,7 +506,11 @@
       // the box having a width, so calling it here is safe even during startup.
       if (!inS) gsiRender();
     }
-    if (who) who.textContent = inS ? "· signed in" : "";
+    // Its own line now, not a suffix to a "Cloud profile" label — the box title says that.
+    // So it has to state both halves rather than only marking the signed-in one.
+    if (who) who.textContent = inS
+      ? "Signed in — your presets can be saved here and picked up on another machine."
+      : "Sign in to keep your presets online and pick them up on another machine.";
     const pubBox = el("cloud-pub");
     if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
     cloudNameShow();                     // signing in/out always lands back on the label
