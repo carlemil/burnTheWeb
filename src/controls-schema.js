@@ -203,7 +203,7 @@
     FILTERS.forEach(f => {
       const g = filterGroup(f);
       // The "Whole scene · final image" group lives in the Scene filters box; the
-      // per-effect groups stay in the Effect & Filters box. The box title already says
+      // per-effect groups stay in the Layer effect & filters box. The box title already says
       // "Scene filters", so the scene group needs no in-box caption of its own.
       const dest = g.key === "scene" ? screenHost : host;
       if (g.key !== openKey) {

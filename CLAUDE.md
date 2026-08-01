@@ -623,12 +623,12 @@ row until you rotate, and then they aren't.
 sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is
 **transient**, like Diagnostics): *System* (audio, resolution, Diagnostics — collapsed by
 default), *Backup, restore & share* (the 2×2 `.presetrow.grid2`), *Scene* (the preset
-chooser, auto-cycle and TTL), ***Effect & Filters*** (`#effect`, `#fxctl`, Orbit editor,
+chooser, auto-cycle and TTL), ***Layer effect & filters*** (`#effect`, `#fxctl`, Orbit editor,
 Reset) and
 *Palette settings* (`#palette`, `#palctl`, `#bandctl`). `buildControls` routes a control by
 `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
-The box title is **singular** — everything in it edits the ONE selected layer, and the
-plural read as "all of the effects".
+The box title is **singular in the effect** and names the layer — everything in it edits the
+ONE selected layer, and a plural "Effects" read as "all of the effects".
 **`#effect` is hidden in this box, not deleted.** Every layer row carries its own chooser
 (see the stack section), so a second visible copy of the same control was redundant — but the
 `<select>` remains the effect **value store**: `setEffect` writes `effectSel.value`,
@@ -828,7 +828,7 @@ pixel (the same trap the drag code documents). So you still drag to reorder with
 
 **Every layer row carries its own effect `<select>`** (`select.lyr-name`, built in
 `syncStackUI`) — re-pointing a layer is the commonest thing you do to one, and it used to
-mean select the row, then scroll to the chooser in *Effect & Filters*. Both go through the
+mean select the row, then scroll to the chooser in *Layer effect & filters*. Both go through the
 same path. The load-bearing part: a change on a row that is **not** selected calls
 `selectStack(j)` **first**, because `setEffect` edits whatever `stackSel` names, and going
 through `selectStack` is what runs the `freezeItem`/`stageLayerExtras` sequence — writing

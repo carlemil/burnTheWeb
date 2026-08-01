@@ -192,7 +192,7 @@
       });
       row.appendChild(grab);
 
-      // The effect chooser sits ON the row, not only in the Effect & Filters box below —
+      // The effect chooser sits ON the row, not only in the Layer effect & filters box below —
       // re-pointing a layer is the single most common thing you do to one, and it used to
       // mean select the row, scroll down, then use the other chooser. Both drive the same
       // path: changing a row that is NOT selected selects it FIRST, because setEffect edits
