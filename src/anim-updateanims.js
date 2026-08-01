@@ -98,7 +98,7 @@
           const c = corners[(rnd() * 3) | 0];
           px = (px + c[0]) * 0.5;
           py = (py + c[1]) * 0.5;
-          if (i > 15) plot(px, py, 255);
+          if (i > 15) plot(px, py, POINT_HEAT);
         }
       }
     } else {
@@ -195,7 +195,7 @@
           cur[0] = (cur[0] + wv[kk][0]) * 0.5;
           cur[1] = (cur[1] + wv[kk][1]) * 0.5;
           cur[2] = (cur[2] + wv[kk][2]) * 0.5;
-          if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], 255); }
+          if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], POINT_HEAT); }
         }
       }
     }

@@ -90,6 +90,21 @@
       cardPowQ: 0.05,     // Multibrot locus quantisation = the Power slider's step  (CARD_POW_Q)
       juliaMargin: 0.06,  // push the seed's big loop this far outside the cardioid  (JULIA_MARGIN)
       juliaEaseA: 0.5,    // cardioid lap-speed easing amplitude; EASE_K is derived  (JULIA_EASE_A)
+      // Heat every chaos-game / attractor point stamps, 0..255.                    (POINT_HEAT)
+      // NOT 255, and that is the whole point. Measured over the catalog: 14 of 19 palettes
+      // are near-white at index 255 (Fire, Grayscale, C64, CGA and Chrome are literally
+      // [255,255,255]) — the hot core a fire ramp is meant to have. Every point stamped at
+      // exactly 255 therefore drew the fractal in that white whatever palette was selected,
+      // and since point effects now ship with NO filters, the raw stamps ARE the picture:
+      // the palette looked like it did nothing at all.
+      //
+      // 209 (0.82) sits below the white tip and inside the saturated band — 17 of 19 palettes
+      // now draw in colour (Matrix green, Ice cyan, Copper copper). The two that don't are
+      // Fire and Grayscale, which are achromatic at the top BY DESIGN and stay white/grey at
+      // any value down to ~150; lowering further would only dim the rest for no gain. With
+      // the Fire filter ticked on, the flame runs the ramp downward from here exactly as
+      // before, just starting a hair lower.
+      pointHeat: 209,
     },
   };
   // ==== end CONFIG ==== (probes slice `const CONFIG =` … this line; keep it)

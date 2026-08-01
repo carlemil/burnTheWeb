@@ -57,7 +57,7 @@
   </details>
 
   <!-- Box — Cloud profile: the ONE way in and out of the app now.
-       The Backup / Restore / Share this scene / Share presets buttons were removed from the
+       The Backup / Restore / Share this scene / Share scenes buttons were removed from the
        menu deliberately — moving scenes around is a cloud-profile job from here on. What is
        NOT removed is the receiving half: every `?z=`, `#zp=` and `#c=` link ever generated
        still decodes (the standing rule), and the Restore dialog they land in is the same one
@@ -81,13 +81,13 @@
         <input type="text" id="cloud-name" maxlength="40" placeholder="Profile name" style="display:none" title="The name shown on your profile — this is yours to choose, not your Google name">
       </div>
       <div class="presetrow grid2">
-        <button id="cloud-save" class="audbtn" type="button" title="Upload your preset library to your profile, replacing what is there">Save to cloud</button>
-        <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your presets or replace them">Load from cloud</button>
+        <button id="cloud-save" class="audbtn" type="button" title="Upload your scene library to your profile, replacing what is there">Save to cloud</button>
+        <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your scenes or replace them">Load from cloud</button>
       </div>
       <!-- Opt-in, and off by default: publishing is a deliberate act, not a side effect of
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
-      <label class="check" title="List your profile in the public gallery so anyone can load your presets. Your name and preset count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
+      <label class="check" title="List your profile in the public gallery so anyone can load your scenes. Your name and scene count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
       <div class="presetrow grid2">
         <button id="cloud-signout" class="audbtn" type="button" title="Sign out on this device. Your profile stays in the cloud.">Sign out</button>
         <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>
@@ -96,10 +96,10 @@
     <!-- Outside #cloud-authed on purpose: the gallery is readable by signed-out visitors
          (the rules allow a `pub == true` query unauthenticated), so browsing needs no account. -->
     <div class="presetrow">
-      <button id="cloud-browse" class="audbtn" type="button" title="Browse profiles other people have published, and load their presets">Browse profiles…</button>
+      <button id="cloud-browse" class="audbtn" type="button" title="Browse the scenes other people have published, and load them">Browse published scenes…</button>
     </div>
     <p id="cloud-msg" class="hint"></p>
-    <p class="hint">Stored against your account: the profile name you choose and your presets — nothing else. Not your email, name or picture.</p>
+    <p class="hint">Stored against your account: the profile name you choose and your scenes — nothing else. Not your email, name or picture.</p>
   </div>
   </details>
 
@@ -107,24 +107,26 @@
        live here too; it moved down to Effects, next to the sliders it drives. -->
   <details class="box" open>
   <summary class="box-t">Scene</summary>
-  <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
-  <label>Presets <button type="button" id="preset-help-btn" class="lbl-help" title="What a preset saves — its data structure" aria-label="What a preset saves — its data structure">?</button></label>
+  <!-- Scenes: choose / manage saved scenes, and auto-cycle between them. The ids below still
+       say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
+       and link keeps loading. Only the wording the user reads is "scene". -->
+  <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
   <select id="preset"></select>
   <div class="presetrow">
-    <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
-    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
-    <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
+    <button id="newpreset" class="audbtn" type="button" title="Save what is on screen as a new scene">New</button>
+    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected scene">Rename</button>
+    <button id="delpreset" class="audbtn" type="button" title="Delete the selected scene">Delete</button>
   </div>
-  <!-- Auto-cycle / Preset TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
+  <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle presets</label>
+  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
   <div id="grp-ttl">
-    <label>Preset TTL <span class="val" id="vTtl"></span></label>
+    <label>Scene TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="ttl-lo" min="0" max="180" step="any">
       <input type="range" id="ttl-hi" min="0" max="180" step="any"></div>
   </div>
-  <!-- How long a preset change takes to blend. Both thumbs at 0 = cut straight over. -->
+  <!-- How long a scene change takes to blend. Both thumbs at 0 = cut straight over. -->
   <div id="grp-tdur">
     <label>Transition <span class="val" id="vTdur"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -144,7 +146,7 @@
   </details>
 
   <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting; it is
-       per-preset scene data now, so it belongs beside the other scene controls and autosaves
+       per-scene data now, so it belongs beside the other scene controls and autosaves
        like them. The beat-trace toggle below is the one thing in here that must NOT autosave,
        which is what data-nopersist marks. -->
   <details class="box" id="beatDetails">
@@ -152,11 +154,11 @@
   <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
   <!-- The trace lives here, beside the thresholds it exists to help you set, rather than in a
        separate Diagnostics section. data-nopersist is load-bearing: everything else in this
-       box is per-preset scene data that onEdit deliberately DOES autosave, so without an
-       explicit opt-out this dev-tool toggle would be folded into the selected preset too. -->
+       box is per-scene data that onEdit deliberately DOES autosave, so without an
+       explicit opt-out this dev-tool toggle would be folded into the selected scene too. -->
   <label class="check" data-nopersist title="Show the scrolling flux + threshold graph per band — the tool for diagnosing a missed beat"><input type="checkbox" id="diagTrace" data-nopersist> Beat-detection trace</label>
   <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
-  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
+  <p id="beatMsg">Saved with this scene, so each one can react to music its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
   </details>
 
   <!-- Box — Layers: the effect stack (up to 4 effects composited into one scene, in
@@ -196,7 +198,9 @@
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
-    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="black">Black</option><option value="white">White</option><option value="palette">Palette</option></select>
+    <!-- Palette first: it is the default, so the markup's own initial selection matches the
+         live global before any JS runs (applyLayerExtras sets .value on every layer switch). -->
+    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
   <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
@@ -234,12 +238,15 @@
   </div>
 </div>
 
-<!-- Public profile gallery. Readable without signing in, so it is available to any visitor.
-     Loading one routes through the same Restore dialog a shared link uses. -->
+<!-- Public scene gallery. Readable without signing in, so it is available to any visitor.
+     Each row applies STRAIGHT AWAY on its own two buttons — the Restore dialog would only
+     ask merge-vs-replace a second time, having already been asked here. (That dialog is
+     still live for `#zp=` links and Load from cloud, where the answer isn't in the click.) -->
 <div id="galdlg" class="hidden">
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
-    <h2>Published profiles</h2>
+    <h2>Published scenes</h2>
+    <p class="pal-hint gal-help"><b>Load and merge</b> adds these scenes to your own, overwriting any of yours that share a name and keeping the rest. <b>Load and replace</b> throws your scenes away and keeps only these. Either way the page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
     <div class="presetrow">
@@ -319,10 +326,10 @@
     <h2>Restore from backup</h2>
     <p class="rst-sub" id="rst-sub"></p>
     <div class="rst-grp">What to restore</div>
-    <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Presets <small id="rst-presets-n"></small></span></label>
+    <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Scenes <small id="rst-presets-n"></small></span></label>
     <div class="rst-mode" id="rst-mode">
       <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-merge" checked><span>Merge — add new &amp; overwrite same-named, keep the rest</span></label>
-      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-replace"><span>Replace — delete my presets, use only the backup's</span></label>
+      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-replace"><span>Replace — delete my scenes, use only the backup's</span></label>
     </div>
     <label class="rst-opt" id="rst-opt-settings"><input type="checkbox" id="rst-settings" checked><span>Effect settings <small>each effect's sliders, beats &amp; palette; active effect, resolution, auto-cycle</small></span></label>
     <label class="rst-opt" id="rst-opt-ranges"><input type="checkbox" id="rst-ranges" checked><span>Custom slider ranges</span></label>
@@ -335,7 +342,7 @@
   </div>
 </div>
 
-<!-- The "Share presets" curation dialog is gone with the button that opened it. The Restore
+<!-- The "Share scenes" curation dialog is gone with the button that opened it. The Restore
      dialog above is NOT: it is where "Load from cloud", the gallery, and every previously
      generated #zp= / ?z= / #c= link still land. -->
 

@@ -22,7 +22,7 @@
       .replace(/\s+/g, " ")
       .trim()
       .replace(/[. ]+$/, "");             // Windows silently drops trailing dots/spaces
-    if (!s) s = "Preset";
+    if (!s) s = "Scene";
     if (WIN_RESERVED.test(s)) s = "_" + s;
     return s.slice(0, 80);
   }
@@ -174,7 +174,7 @@
   function validatePresetList(arr) {
     return (Array.isArray(arr) ? arr : [])
       .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-      .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
+      .map(p => ({ name: String(p.name || "Scene"), effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    ttl: p.ttl, tdur: p.tdur,
@@ -192,7 +192,7 @@
     const hasBeat = !Array.isArray(parsed) && parsed.beatTune && typeof parsed.beatTune === "object";
     pendingRestore = { parsed, valid, hasSettings, hasRanges, hasBeat };
     const bits = [];
-    if (valid.length) bits.push(valid.length + " preset" + (valid.length === 1 ? "" : "s"));
+    if (valid.length) bits.push(valid.length + " scene" + (valid.length === 1 ? "" : "s"));
     if (hasSettings) bits.push("settings"); if (hasRanges) bits.push("ranges"); if (hasBeat) bits.push("beat tuning");
     el("rst-sub").textContent = (fileName || "backup") + " — " + (bits.join(", ") || "nothing usable");
     el("rst-presets-n").textContent = "(" + valid.length + ")";
@@ -280,15 +280,39 @@
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
   // beatTune), so openRestore lights up just the Presets option with merge/replace.
   function openSharedLibrary(raw) {
+    const parsed = sharedLibrary(raw);
+    if (!parsed) return;
+    openRestore(parsed.parsed, parsed.valid, "shared link");
+  }
+  // Decode + validate a shared/fetched library into the pair openRestore takes. Shared by the
+  // dialog route above and the dialogless one below, so both see identical validation.
+  // Carries the sender's auto-cycle toggle + selected-scene index; __link marks it a shared
+  // bundle (backups force cycle off, links honour it).
+  function sharedLibrary(raw) {
     const norm = normalizeBackup(raw);
-    if (!norm) return;
+    if (!norm) return null;
     const parts = deserializeBlob(norm);
     const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
     const valid = validatePresetList(arr);
-    if (!valid.length) { alert("This link has no usable presets."); return; }
-    // Carry the sender's auto-cycle toggle + selected-preset index through to applyRestore;
-    // __link marks this as a shared bundle (backups force cycle off, links honour it).
-    openRestore({ presets: arr, curPreset: parts.curPreset, cycle: parts.cycle, __link: true }, valid, "shared link");
+    if (!valid.length) { alert("This link has no usable scenes."); return null; }
+    return { parsed: { presets: arr, curPreset: parts.curPreset, cycle: parts.cycle, __link: true }, valid };
+  }
+  // Apply a shared library with NO dialog, for the gallery — whose per-row "Load and merge" /
+  // "Load and replace" buttons have already asked the only question the dialog asks, so
+  // opening it would be a second prompt for an answer it already has.
+  //
+  // It stages the SAME pendingRestore + checkbox state the dialog would have produced and
+  // then calls applyRestore, rather than reimplementing the merge / curPreset / write /
+  // reload sequence — one copy of that logic is the point. The checkboxes are ordinary DOM
+  // nodes whether or not #restoredlg is visible, so this needs no special case in there.
+  function applySharedLibrary(raw, replace) {
+    const parsed = sharedLibrary(raw);
+    if (!parsed) return;
+    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false };
+    el("rst-presets").checked = true;                 // a bundle carries scenes and nothing else
+    el("rst-merge").checked = !replace;
+    el("rst-replace").checked = !!replace;
+    applyRestore();                                   // writes localStorage + reloads
   }
 
   // Initial paint: setEffect loads the restored effect's per-effect extras (show-box,

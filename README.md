@@ -125,7 +125,7 @@ that slider out into its own box in a column to the right of the menu; the menu
 keeps the slider's name with a **−** to put it back. Pop out several and the boxes
 stack from the top down, so you can line up just the controls you're playing with.
 (This layout is per-session and isn't saved — it clears whenever the scene changes:
-switching effect, picking or creating or deleting a preset, or dropping to
+switching effect, picking or creating or deleting a scene, or dropping to
 "— unsaved scene —".) Each box is titled with what it
 belongs to — the effect or the filter, e.g. *Camera*, *Plasma*, *Filter · Bloom* —
 so a stack of boxes reading "Speed", "Strength", "Size" stays readable. A box
@@ -140,12 +140,12 @@ from sane. Custom bounds are saved: they persist in your browser, ride along in 
 
 A slider's menu row also shows small **beat dots** just left of that **+** — one per
 armed band, in the band's colour (L blue, M green, H red). They sit dim and light up
-on the beat that drives them, so you can see at a glance which sliders a preset has
+on the beat that drives them, so you can see at a glance which sliders a scene has
 wired to the music without opening a single box.
 
 **The menu is eight foldable sections** — click a heading's chevron to collapse it:
 **System** (audio, resolution and the diagnostics tools; folded by default),
-**Backup, restore & share**, **Scene** (which preset, and how long each is held),
+**Backup, restore & share**, **Scene** (which scene, and how long each is held),
 **Effects** (pick the visual, then its sliders), **Filters** (the post-processing
 stack), **Beat tuning** (how beats are detected), **Palette settings** (the ramp,
 how fast it cycles, and banding) and **Credits**.
@@ -182,10 +182,10 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 
 | Control | What it does |
 | --- | --- |
-| **Presets** | A preset is a named full scene (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves the current scene as a fresh preset, selects it, and switches auto-cycle off so it stays on screen; **Delete** removes the selected one. Pick "— unsaved scene —" to tweak without touching a saved preset. Switching to a different **effect** keeps you on the preset you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the preset keeps its **name**, so one called "Sierpiński" that you switch to Tunnel stays called Sierpiński until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a preset leaves the previous effect on screen to burn away under the new one rather than cutting to black (visible whenever the incoming scene has the Fire or Fade pixel filter on), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the preset's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** saves **one `.json` per preset**, each named after the preset, plus a `_settings.json` holding everything that isn't a preset (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution). One file per preset is the point: to send someone a scene, send them that one file. In Chrome and Edge you pick a folder **once, ever** — it is remembered from then on, and each backup lands in its own dated folder, `BurnTheWeb/<date-time>/`. Shift-click **Backup** to choose a different folder. Other browsers download the files individually with the date in the name. **Restore** takes as many files as you select — a whole backup folder, or the single preset a friend sent you. A dialog lets you tick **which parts** to bring in (presets, effect settings, slider ranges, beat tuning — only the ones your selection actually contains) and, for presets, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. Older single-file backups still restore. |
+| **Scenes** | A saved scene is a named full snapshot (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves what is on screen as a fresh scene, selects it, and switches auto-cycle off so it stays on screen; **Delete** removes the selected one. Pick "— unsaved scene —" to tweak without touching a saved scene. Switching to a different **effect** keeps you on the scene you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the scene keeps its **name**, so one called "Sierpiński" that you switch to Tunnel stays called Sierpiński until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a scene leaves the previous effect on screen to burn away under the new one rather than cutting to black (visible whenever the incoming scene has the Fire or Fade pixel filter on), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the scene's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** saves **one `.json` per scene**, each named after the scene, plus a `_settings.json` holding everything that isn't a scene (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution). One file per scene is the point: to send someone a scene, send them that one file. In Chrome and Edge you pick a folder **once, ever** — it is remembered from then on, and each backup lands in its own dated folder, `BurnTheWeb/<date-time>/`. Shift-click **Backup** to choose a different folder. Other browsers download the files individually with the date in the name. **Restore** takes as many files as you select — a whole backup folder, or the single scene a friend sent you. A dialog lets you tick **which parts** to bring in (scenes, effect settings, slider ranges, beat tuning — only the ones your selection actually contains) and, for scenes, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. Older single-file backups still restore. |
 | **Effect** | Switch between all twenty effects listed above, in dropdown order (Sierpiński, Tetrahedron, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor, Polygon, Shape grid, Concentric rings, Bouncing shapes, Bouncing solids). Each shows its own sliders. There are **two** copies of this chooser and they do the same thing: one on every row in the **Layers** box (so you can re-point a layer without leaving the list — picking on a row that isn't selected selects it first), and one at the top of the **Layer effect & filters** box for the layer you have selected. |
-| **Auto-cycle presets** | When on, a random saved preset is applied every so often (needs ≥2 presets); off to stay put. *(Shared, not per-effect.)* |
-| **Preset TTL** *(ranged, seconds)* | How long auto-cycle holds each preset before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
+| **Auto-cycle scenes** | When on, a random saved scene is applied every so often (needs ≥2 scenes); off to stay put. *(Shared, not per-effect.)* |
+| **Scene TTL** *(ranged, seconds)* | How long auto-cycle holds each scene before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
 | **Palette** | Pick one of nineteen colour ramps — each is shown as a gradient swatch, so you preview the colours instead of reading a name. Click one to select it; the active ramp is highlighted. The **👁** button beside the label opens the inspector: the whole 0–255 ramp as a grid, hover any cell for its index and hex. |
 | **Palette editor** | Hover a swatch and click **+** to make an editable copy of it, or **✎** on one of your own to edit it in place — the nineteen built-in ramps are never changed. The ramp is edited as **colour stops** on a gradient bar: click the bar to add a stop where you clicked, drag a handle to move it, and use the colour box to recolour the selected one. **Everything previews live on the scene as you edit**, so there is nothing to apply. Your palettes join the swatch list (and the palette-cycle rotation) and are saved with your settings and backups. A copy you open and close without changing anything is discarded, so looking costs nothing — use **Save & close** if you wanted the duplicate anyway. **Delete palette** removes one of yours; any layer using it falls back to the ramp it was copied from. |
 | **Palette cycle** | How long one blend to a random palette takes, as a min–max range in seconds — each cycle picks a time inside it. Collapse both thumbs to **0** for a fixed palette that never cycles. (This replaced the old Auto-morph checkbox.) |
@@ -219,7 +219,7 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
 | **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
-| **Share presets…** | Bundles a **chosen set of your presets** — a whole list, not just the current scene — into one link to send someone. A dialog lists your presets with checkboxes (all ticked by default) so you pick exactly the cool ones; then **Copy link**, or **Copy short link** (via TinyURL) since a bundle of presets makes a longer link. When the recipient opens it they get the same Restore dialog as a backup — they choose **merge** (add to their library) or **replace**, so it never quietly wipes their presets. The link also carries your **auto-cycle** setting and **which preset was selected**, so they open on the same scene and, if you had auto-cycle on, the same show plays. This only copies a link; it doesn't change your own library. |
+| **Share scenes…** | Bundles a **chosen set of your scenes** — a whole list, not just the current scene — into one link to send someone. A dialog lists your scenes with checkboxes (all ticked by default) so you pick exactly the cool ones; then **Copy link**, or **Copy short link** (via TinyURL) since a bundle of scenes makes a longer link. When the recipient opens it they get the same Restore dialog as a backup — they choose **merge** (add to their library) or **replace**, so it never quietly wipes their scenes. The link also carries your **auto-cycle** setting and **which scene was selected**, so they open on the same scene and, if you had auto-cycle on, the same show plays. This only copies a link; it doesn't change your own library. |
 
 Press **M** or **☰** to toggle the menu, **F** or **⛶** for fullscreen (works on
 mobile too), **H** to hide all the UI (buttons, FPS counter and menu — press again
@@ -233,7 +233,7 @@ tab/screen audio capture isn't available, so only **Mic** is shown.
 
 ## Transitions
 
-When one preset gives way to the next, the change is blended rather than cut. Some
+When one scene gives way to the next, the change is blended rather than cut. Some
 scenes always did this on their own — anything with **Fire** or **Fade pixel** on
 keeps its buffer, so the old picture burns or smears away under the new one. Scenes
 with neither redraw from scratch every frame, so they used to snap over in a single
@@ -260,7 +260,7 @@ ones that break the picture up (pixelate, blur, wipe) — they destroy the image
 where it changes, which is what hides the join. Big jumps in palette lean toward dip
 and flash. Scenes that already dissolve on their own mostly get left alone.
 
-**Transition** (in the **Scene** box, under Preset TTL) sets how long they take, as a
+**Transition** (in the **Scene** box, under Scene TTL) sets how long they take, as a
 min–max range in seconds — each switch draws a length from it. Collapse both thumbs to
 **0** for a hard cut, which is exactly how the app behaved before.
 
@@ -300,9 +300,9 @@ effect; change it with the Effect chooser). Each row also carries:
   full.
 - **✕** — remove it.
 
-Layers are part of the scene: they save into presets, ride along in backups, and travel
+Layers are part of the scene: they save into scenes, ride along in backups, and travel
 in share links. A scene with a single layer is stored exactly the way it always was, so
-every preset, backup and link made before layers existed still opens unchanged.
+every scene, backup and link made before layers existed still opens unchanged.
 
 Each layer keeps its **own palette and its own filters**, so every effect in a stack shows
 in its own colours and is shaped on its own — set a layer's palette and tick its filters
@@ -323,7 +323,7 @@ stacking is a GPU feature, and each extra layer there would be a full software r
 Under **Filters** in the menu is a list of twenty-two post-processing effects you
 can stack on top of whatever effect is running — tick as many as you like and they
 apply in order. Each one's settings appear underneath it while it's ticked, and the
-whole selection is remembered per effect and saved into presets. The list is split
+whole selection is remembered per effect and saved into scenes. The list is split
 into the three stages of the pipeline, which is the one thing worth understanding
 about them: **feedback** filters change what the *next* frame starts from, **post**
 filters repaint the image, and **screen** filters sit on the finished frame.
@@ -393,7 +393,7 @@ ones — are greyed out there rather than pretending to work.
 ## Diagnostics
 
 The tuning tools live in a collapsible **Diagnostics** section at the bottom of the
-menu's **System** box (no more secret keys). They're off by default and never put in a preset (their
+menu's **System** box (no more secret keys). They're off by default and never put in a scene (their
 open/closed state isn't saved):
 
 - **Frame + FPS counter** — a checkbox that shows/hides the on-screen counter.
@@ -423,7 +423,7 @@ It also lets you **choose the shape the seed follows**, per effect:
 The **Riding circle** checkbox toggles the small epicycle that keeps the seed's
 neighbourhood varying — leave it on for the lively look, turn it off to follow the
 bare curve exactly. The shape, the toggle and any drawn loop are saved with the
-scene and travel in presets, backups and share links.
+scene and travel in scenes, backups and share links.
 
 It's a floating panel, not a modal: the menu stays live underneath it, so you can
 drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
@@ -436,14 +436,14 @@ gap (the minimum time between two beats), and each band's **frequency range** in
 **Reset** restores the shipped defaults. Open the **Beat-detection trace** in
 Diagnostics alongside it and you can watch the effect of every change.
 
-**The tuning is part of the preset**, not a global setting — so a punchy kick-driven
+**The tuning is part of the scene**, not a global setting — so a punchy kick-driven
 scene and a hi-hat-driven one can each detect beats their own way, and switching
-between them switches the tuning too. It rides along in presets, Share links and
+between them switches the tuning too. It rides along in scenes, Share links and
 Backups, which means a scene you send someone reacts to music the way you set it up.
 
 ### What a shared scene does and doesn't carry
 
-A preset is a complete copy of the settings: every slider, the palette, the filters,
+A saved scene is a complete copy of the settings: every slider, the palette, the filters,
 the camera, the beat chips and pulse shapes, the beat tuning, and any slider bounds
 you widened. A few things deliberately stay behind:
 
@@ -467,7 +467,7 @@ whatever effect and filters you have on (Pixelate and Mirror used to chew them
 up), and they ignore the camera and zoom.
 
 That menu box also has a checkbox to stop them appearing on future visits
-(remembered in this browser only, and kept out of presets, share links and backups
+(remembered in this browser only, and kept out of scenes, share links and backups
 since it's a per-browser preference). `?credits=<seconds>` overrides the **hold**
 if you want a longer look; the three-second fade is always added on top.
 

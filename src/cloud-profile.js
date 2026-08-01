@@ -160,7 +160,7 @@
     if (!cloudSess) return;
     const blob = cloudBlob();
     const n = (blob.presets || []).length;
-    if (!n) { cloudMsg("Nothing to save — you have no presets yet.", true); return; }
+    if (!n) { cloudMsg("Nothing to save — you have no scenes yet.", true); return; }
     cloudMsg("Saving…");
     zipToB64(JSON.stringify(blob)).then(payload => {
       if (payload == null) throw new Error("this browser cannot compress the payload");
@@ -182,7 +182,7 @@
       return cloudFetch(docUrl(cloudSess.uid) + "?" + mask, { method: "PATCH", body: JSON.stringify(body) });
     }).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      cloudMsg("Saved " + n + " preset" + (n === 1 ? "" : "s") + " to your profile.");
+      cloudMsg("Saved " + n + " scene" + (n === 1 ? "" : "s") + " to your profile.");
       track("cloud_save", { count: n });
     }).catch(e => cloudMsg("Could not save: " + e.message, true));
   }
@@ -212,7 +212,7 @@
 
   function cloudDelete() {
     if (!cloudSess) return;
-    if (!confirm("Delete your cloud profile permanently? Your presets in this browser are not touched.")) return;
+    if (!confirm("Delete your cloud profile permanently? Your scenes in this browser are not touched.")) return;
     cloudMsg("Deleting…");
     cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }).then(r => {
       if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -232,7 +232,7 @@
         if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
         if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
         if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
-        if (d.count != null) cloudMsg("Profile has " + d.count + " preset" + (d.count === 1 ? "" : "s") + " stored.");
+        if (d.count != null) cloudMsg("Profile has " + d.count + " scene" + (d.count === 1 ? "" : "s") + " stored.");
       }).catch(() => { /* no profile yet — nothing to show */ });
   }
 
@@ -342,10 +342,10 @@
     const host = el("gal-list");
     host.textContent = "";
     if (!items.length) {
-      el("gal-hint").textContent = "No one has published a profile yet. Tick “Publish to gallery” to be the first.";
+      el("gal-hint").textContent = "No one has published any scenes yet. Tick “Publish to gallery” to be the first.";
       return;
     }
-    el("gal-hint").textContent = "Loading a profile opens the usual restore dialog, so you choose merge or replace — nothing is overwritten without asking.";
+    el("gal-hint").textContent = "";
     items.forEach(p => {
       const row = document.createElement("div");
       row.className = "gal-row";
@@ -354,17 +354,25 @@
       nm.textContent = p.name;
       const meta = document.createElement("div");
       meta.className = "gal-meta";
-      meta.textContent = p.count + " preset" + (p.count === 1 ? "" : "s")
+      meta.textContent = p.count + " scene" + (p.count === 1 ? "" : "s")
         + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
-      const btn = document.createElement("button");
-      btn.type = "button"; btn.className = "audbtn"; btn.textContent = "Load";
-      btn.title = "Fetch this profile's presets";
-      btn.addEventListener("click", () => galLoad(p));
-      row.appendChild(nm); row.appendChild(meta); row.appendChild(btn);
+      // Two buttons rather than one, because the answer to merge-vs-replace is the whole
+      // content of the dialog this used to open: asking it here makes the click decisive.
+      const btns = document.createElement("div");
+      btns.className = "gal-btns";
+      const mk = (label, title, replace) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "audbtn"; b.textContent = label; b.title = title;
+        b.addEventListener("click", () => galLoad(p, replace));
+        return b;
+      };
+      btns.appendChild(mk("Load and merge", "Add these scenes to yours, overwriting any of yours with the same name", false));
+      btns.appendChild(mk("Load and replace", "Delete your own scenes and keep only these", true));
+      row.appendChild(nm); row.appendChild(meta); row.appendChild(btns);
       host.appendChild(row);
     });
   }
-  function galLoad(p) {
+  function galLoad(p, replace) {
     el("gal-hint").textContent = "Fetching “" + p.name + "”…";
     galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -378,8 +386,11 @@
       let raw;
       try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
       galOpen(false);
-      openSharedLibrary(raw);           // same path as a shared link: validate + merge/replace
-      track("cloud_gallery_load", {});
+      // Straight in, no Restore dialog — the button that was clicked already said merge or
+      // replace. Same validation and the same write/reload underneath (applySharedLibrary
+      // drives applyRestore), so nothing about the load path itself changes.
+      applySharedLibrary(raw, replace);
+      track("cloud_gallery_load", { replace: !!replace });
     }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
   }
   function galOpen(show, force) {
@@ -509,8 +520,8 @@
     // Its own line now, not a suffix to a "Cloud profile" label — the box title says that.
     // So it has to state both halves rather than only marking the signed-in one.
     if (who) who.textContent = inS
-      ? "Signed in — your presets can be saved here and picked up on another machine."
-      : "Sign in to keep your presets online and pick them up on another machine.";
+      ? "Signed in — your scenes can be saved here and picked up on another machine."
+      : "Sign in to keep your scenes online and pick them up on another machine.";
     const pubBox = el("cloud-pub");
     if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
     cloudNameShow();                     // signing in/out always lands back on the label

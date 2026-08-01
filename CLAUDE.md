@@ -249,6 +249,20 @@ per axis against that available span rather than an absolute number.
   stamp points into the heat grid via `plot()`. `simulate()` dispatches to the
   descriptor's **`stamp(box)`** hook if present (Attractor), else the `fractal2d` (2D
   chaos game) / tetra branches. Adding one = a descriptor with a `stamp` hook, no `draw`.
+
+  **They stamp at `POINT_HEAT` (`CONFIG.tuning.pointHeat` = 209), not 255, and that is a
+  deliberate fix rather than a taste call.** Measured over the catalog: **14 of 19 palettes
+  are near-white at index 255** — Fire, Grayscale, C64, CGA and Chrome are literally
+  `[255,255,255]`, because a white-hot tip is what a fire ramp is *for*. Every point being
+  stamped at exactly 255 therefore drew the fractal in that white **whatever palette was
+  selected**, and since every effect now ships with **no filters**, the raw stamps *are* the
+  picture — so on Sierpiński/Tetrafyer/Attractor the palette looked completely inert. At 209
+  (0.82) **17 of 19 draw in colour**; the two that don't are Fire and Grayscale, achromatic at
+  the top by design and still white/grey anywhere down to ~150, so lowering further would only
+  dim the rest for nothing. With the Fire filter on, the flame runs the ramp downward from
+  here exactly as before, just from a hair lower. `tools/palcheck` is not a shipped probe —
+  the numbers above came from slicing `PALETTES` and evaluating `fn(255)` vs `fn(209)`, which
+  is the cheap way to re-check this if the catalog gains a ramp.
 - **Glow**: `glRender()` / `render()` map heat through the palette, then composite
   an additive blurred copy for the bloom.
 
@@ -678,8 +692,13 @@ banding just runs the stripes the other way. Because it flips the baked bytes ra
 palette function, it needs no change to `paletteRGB`/morph.
 
 **Background** (`#palbg`) sets what heat-0 (unlit) pixels show, **per layer**: `paletteBg` ∈
-`"black"` (default, byte-identical to the old forced black) | `"white"` | `"palette"` (leave
-index 0 as the composed colour). Same per-layer plumbing as `paletteRev` (`L.paletteBg`,
+`"palette"` (**the default** — leave index 0 as the composed colour) | `"black"` (the old
+forced black) | `"white"`. The default used to be `"black"`; it is `"palette"` in both places
+that decide it — the initial global and **`bgOk`'s fallback**, which is also the validator for
+loaded scenes. So a scene that stored a background explicitly keeps it, and only one saved
+before the control existed opens on `"palette"` instead. Every built-in ramp starts at
+`[0,0,0]`, so the shipped look is unchanged; what the default fixes is a *custom* ramp whose
+colour 0 is not black, which was silently overridden. Same per-layer plumbing as `paletteRev` (`L.paletteBg`,
 `extras[e].paletteBg`, `layerPalBg(L)`, `bgOk` validation — also stubbed in `filterprobe`), applied
 at the same two choke points: `composePalette` forces `palette[0]` and `bakeLayerBytes(…, bg)` forces
 `out[0]`. In a multi-layer scene it is genuinely per-layer — a layer's unlit pixels take its own
@@ -1021,6 +1040,19 @@ later TDZ on `nextSwitch` inside `frame()`. Same shape as `card` and `beatUi`.
 of `?debug=1`, never persisted.
 
 ### Presets & persistence
+
+**The user-facing word is "scene", the code word is "preset", and that split is deliberate.**
+The menu says *Scenes* / *Scene TTL* / *Auto-cycle scenes*, and every prompt, title, hint and
+help blurb says scene. Nothing in the **code or the wire format** was renamed: `presets`,
+`curPreset`, `kind: "preset"`, the element ids (`#preset`, `#newpreset`, `#rst-presets`), the
+`.presetrow` class and every `*Preset*` function keep their names. Renaming the blob fields
+would stop every saved scene, backup, share link and cloud profile from loading — a major
+version by this file's own rule, and the standing rule is that never happens. So when reading
+this document, "preset" means the stored object; the thing the user picks in the menu is a
+scene. Two consequences worth knowing: **`HELP.sliders[].n` must match the rendered label
+text** (`ctlHelpBlurb` looks a control's blurb up by `ctlLabel(key)`), so renaming a label
+means renaming its `n:`; and `safeFileName`'s empty-name fallback became `"Scene"`, which
+`presetprobe` asserts on — the probe was updated with it.
 A **preset** is a named full-scene snapshot, built by `snapshotScene()`:
 `{name, effect, state, beat, pulse, plen, cam, sceneFx, beatTune, ranges, ttl, tdur, extra, layers}`.
 Several of those are **globals deliberately remembered per preset**, because a
@@ -1402,6 +1434,17 @@ dead zone while `audio-tuning-data.js` is loading.
 an arriving shared scene looked like it had loaded *your* preset of that name. Harmless to the
 data (`autosavePreset` early-returns while `curPreset < 0`) and purely misleading — which is
 why it survived unnoticed through every `?z=` link.
+
+**The gallery ("Published scenes") applies a row straight away — no Restore dialog.** Each
+row carries **two** buttons, *Load and merge* and *Load and replace*, because merge-vs-replace
+is the entire content of the dialog it used to open: having been asked in the click, asking
+again is a second prompt for an answer already given. **`applySharedLibrary(raw, replace)`
+does not reimplement the apply** — it stages the same `pendingRestore` + checkbox state the
+dialog would have produced and calls `applyRestore`, so the merge / `curPreset` / write /
+reload sequence has exactly one copy. The checkboxes are ordinary DOM nodes whether or not
+`#restoredlg` is visible, which is what makes that free. `sharedLibrary(raw)` is the shared
+decode+validate half, so the dialog route (`openSharedLibrary`, still used by `#zp=` links and
+*Load from cloud*, where the answer *isn't* in the click) and the dialogless one cannot drift.
 
 **The gallery is browsable signed out**, which is why `galFetchJson` uses a plain keyed
 `fetch` rather than `cloudFetch` — a visitor with no account has no token to attach, and

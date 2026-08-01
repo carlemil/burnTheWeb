@@ -106,7 +106,7 @@
       let px = cx + x * sx, py = cy + y * sy;
       // Guarded so jit === 0 stays byte-identical to the un-jittered map.
       if (jit > 0) { px += (Math.random() - 0.5) * 2 * jit; py += (Math.random() - 0.5) * 2 * jit; }
-      plot(px, py, 255);
+      plot(px, py, POINT_HEAT);
     }
   }
 

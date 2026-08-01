@@ -252,7 +252,7 @@
     persist();
   }
   function createPreset() {           // save the current scene as a new preset
-    const name = (prompt("Preset name:", "Preset " + (presets.length + 1)) || "").trim();
+    const name = (prompt("Scene name:", "Scene " + (presets.length + 1)) || "").trim();
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
     curPreset = presets.length - 1;
@@ -270,7 +270,7 @@
   }
   el("renamepreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
-    const name = (prompt("Rename preset:", presets[curPreset].name) || "").trim();
+    const name = (prompt("Rename scene:", presets[curPreset].name) || "").trim();
     if (!name) return;
     presets[curPreset].name = name;
     rebuildPresetOptions();

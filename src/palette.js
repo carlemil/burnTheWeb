@@ -3,9 +3,16 @@
   // so unlit areas stay dark. The active one is baked into `palette` (ABGR).
   const palette = new Uint32Array(256);       // final ABGR pixels the render reads
   let paletteReverse = false;                 // reverse colour order (per-layer; the selected layer's live value)
-  let paletteBg = "black";                    // background (heat 0): "black" | "white" | "palette" (per-layer)
+  // Background (heat 0): "black" | "white" | "palette", per layer. The default is
+  // **palette** — heat 0 shows whatever colour 0 the ramp itself defines, rather than a
+  // forced black. Every built-in ramp starts at [0,0,0] anyway, so the shipped look is
+  // unchanged; what it fixes is a CUSTOM ramp whose colour 0 is not black, which used to
+  // be silently overridden. `bgOk` is also the validator for loaded scenes, so a scene that
+  // stored a background explicitly keeps it — only one that never had the field (saved
+  // before this control existed) now opens on "palette" instead of "black".
+  let paletteBg = "palette";
   const BG_MODES = { black: 1, white: 1, palette: 1 };
-  const bgOk = v => BG_MODES[v] ? v : "black";
+  const bgOk = v => BG_MODES[v] ? v : "palette";
   const paletteBase = new Float32Array(256 * 3);   // the smooth, unbanded RGB ramp
   const clamp = v => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
   // Ease the lowest few colours (1..PAL_FADE_N−1) into the background so lit areas

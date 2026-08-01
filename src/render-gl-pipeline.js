@@ -1102,6 +1102,10 @@
     if (i + 3 > glPts.length) { const n = new Float32Array(glPts.length * 2); n.set(glPts); glPts = n; }
     glPts[i] = x; glPts[i + 1] = y; glPts[i + 2] = v; glPtCount++;
   }
+  // The heat every point-accumulation effect stamps. Deliberately below 255 — see
+  // CONFIG.tuning.pointHeat for why (255 is the white tip of every palette, so it made
+  // the palette look inert on the point effects, which now ship with no filters).
+  const POINT_HEAT = CONFIG.tuning.pointHeat;
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
   // (It briefly took a `raw` flag to let the credits skip the camera; they render on
   // their own layer now, so every caller wants the camera and the flag is gone.)

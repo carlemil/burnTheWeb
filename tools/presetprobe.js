@@ -208,7 +208,7 @@ const B = new Function(
      f('a/b\\c:d*e?f"g<h>i|j'));
   ok(f("  padded  ") === "padded", "surrounding whitespace is trimmed", "'" + f("  padded  ") + "'");
   ok(!/[. ]$/.test(f("trailing dot.")), "no trailing dot (Windows drops them silently)", f("trailing dot."));
-  ok(f("") === "Preset" && f(null) === "Preset" && f(undefined) === "Preset",
+  ok(f("") === "Scene" && f(null) === "Scene" && f(undefined) === "Scene",
      "an empty/missing name falls back rather than producing '.json'");
   ok(f("CON") === "_CON" && f("nul") === "_nul" && f("COM1") === "_COM1",
      "Windows reserved device names are escaped", f("CON") + "," + f("nul"));
