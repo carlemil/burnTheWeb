@@ -214,7 +214,7 @@
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
   </details>
 
-  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>
   <!-- Version + release notes, the conventional place for an "about" line: the very foot of
        the panel, below every box. The text is filled in from CONFIG.version at startup so the
        version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
@@ -224,6 +224,12 @@
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
+<!-- Mute the music reaction. It does NOT stop the stream (see setMuted) — a browser cannot
+     silently re-grab tab/screen audio, so stopping would cost a fresh picker dialog to come
+     back, which is not what a mute button means. The glyph is the same ♪ either way; the
+     .muted class strikes it through, so this stays monochrome beside ☰ and ⛶ instead of
+     swapping in a colour emoji. -->
+<button id="mute" type="button" aria-label="Mute the music reaction (S)" aria-pressed="false">♪</button>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>

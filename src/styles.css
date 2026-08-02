@@ -110,7 +110,7 @@
   }
   #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
-  #toggle, #fs {
+  #toggle, #fs, #mute {
     position: fixed;
     top: 14px;
     left: 14px;
@@ -130,11 +130,18 @@
     transition: background .15s;
   }
   #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
-  #toggle:hover, #fs:hover { background: rgba(255, 122, 26, 0.3); }
+  #mute { left: 94px; font-size: 18px; }  /* mute the music reaction, right of fullscreen */
+  /* Muted reads as a struck-through note — same glyph, so the button never changes width or
+     baseline as you toggle it, and it stays monochrome with its two neighbours. */
+  #mute.muted { color: #8a6a52; text-decoration: line-through; }
+  /* No source running: nothing to mute, so the button is visibly inert (a click only
+     surfaces the hint in the menu's audio line — see toggleMute). */
+  #mute.off { opacity: .38; cursor: default; }
+  #toggle:hover, #fs:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
   /* keyboard focus rings (a11y) */
-  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible,
+  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute { transition: none !important; } }
   #frames {
     position: fixed;
     top: 14px;
@@ -155,7 +162,7 @@
   #frames.hidden { display: none; }
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
-  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
+  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
   #paused {

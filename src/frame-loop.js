@@ -92,9 +92,12 @@
     cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     // Beats are detected off-thread of the render loop (audioTick, every HOP_MS);
     // here we only consume the latch and refresh the audio UI at frame rate.
-    if (audio.on) { updateMeter(); flashChips(); }
+    // audioLive(), not audio.on: while muted the meter and chips are already zeroed and
+    // audioTick refills nothing, so refreshing them every frame would only redraw the same
+    // empty bars — and there is no latch left to clear.
+    if (audioLive()) { updateMeter(); flashChips(); }
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
-    if (audio.on) clearBeats();
+    if (audioLive()) clearBeats();
     if (dbg.on) dbgDraw();
 
     postTime += dt;                         // clock for the self-animating post/screen passes

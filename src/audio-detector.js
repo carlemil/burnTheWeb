@@ -44,6 +44,11 @@
   const audio = {
     ctx: null, analyser: null, db: null, mag: null, prev: null, stream: null,
     on: false, src: "off", timer: 0, tPrev: 0, warm: 0,
+    // Muted: the stream and the analyser stay exactly as they are and we simply stop
+    // looking at them (see setMuted for why this is not stopAudio). TRANSIENT — the same
+    // class as pause and fullscreen, deliberately absent from fullSnapshot: a reload that
+    // silently came back muted would read as "the beat detection is broken".
+    muted: false,
     bins: [[1, 7], [7, 116], [116, 557]],   // [start,end] FFT bin per band; set from sampleRate
     energy: [0, 0, 0], pulse: [0, 0, 0],
     flux: [0, 0, 0], thr: [0, 0, 0], peak: [0, 0, 0],
@@ -51,6 +56,12 @@
     hist: [null, null, null], hi: 0,        // ring buffer of flux per band
     beatNow: [false, false, false], lastBeat: [0, 0, 0], bpm: [0, 0, 0],
   };
+  // "A source is running AND it is reaching the visual" — the predicate every REACTION site
+  // wants, as opposed to `audio.on`, which means only "a stream is open". The two differ
+  // exactly while muted. Kept separate rather than clearing `audio.on`, because `audio.on`
+  // is what the Capture/Mic buttons, the resume-on-gesture path and fullSnapshot's
+  // last-live-source all read, and none of those should think the source went away.
+  const audioLive = () => audio.on && !audio.muted;
   const meterBars = panel.querySelectorAll(".meter i");
   function computeBins() {
     const hz = audio.ctx.sampleRate / audio.analyser.fftSize;   // Hz per bin
@@ -68,17 +79,54 @@
   function median(a) { medBuf.set(a); medBuf.sort(); return medBuf[FLUX_HIST >> 1]; }
   function audioMsg(m) { const e = el("audMsg"); e.textContent = m || ""; e.style.display = m ? "block" : "none"; }
   function setAudioUI() {
-    el("vAudio").textContent = audio.on ? audio.src : "off";
+    el("vAudio").textContent = audio.on ? (audio.muted ? audio.src + " · muted" : audio.src) : "off";
+    // Capture/Mic stay LIT while muted — the source really is still running, and dimming
+    // them would invite a click that tears the stream down and re-opens the picker.
     el("audCapture").classList.toggle("on", audio.on && audio.src === "capture");
     el("audMic").classList.toggle("on", audio.on && audio.src === "mic");
-    panel.classList.toggle("audio-off", !audio.on);
-    el("breakout").classList.toggle("audio-off", !audio.on);   // dim popped-out chips too
+    // The chips dim on audioLive(), not audio.on: while muted they genuinely cannot fire,
+    // so showing them armed-and-ready would be a lie.
+    panel.classList.toggle("audio-off", !audioLive());
+    el("breakout").classList.toggle("audio-off", !audioLive());   // dim popped-out chips too
+    const mb = el("mute");
+    if (mb) {
+      mb.classList.toggle("muted", audio.muted);
+      mb.classList.toggle("off", !audio.on);          // nothing to mute
+      mb.setAttribute("aria-pressed", audio.muted ? "true" : "false");
+      mb.setAttribute("aria-label", audio.muted ? "Unmute the music reaction (S)" : "Mute the music reaction (S)");
+      mb.title = !audio.on ? "No audio source — start Capture or Mic in the menu"
+        : audio.muted ? "Muted — the source is still running (S)"
+        : "Mute the music reaction, keeping the source running (S)";
+    }
+  }
+  // Mute WITHOUT touching the stream. stopAudio() would be wrong here: a browser cannot
+  // silently re-grab tab/screen audio, so coming back would cost a fresh picker dialog —
+  // that is a Stop button, not a mute button. Everything downstream reads audioLive(), so
+  // muting looks exactly like "audio off" to the visual: armed sliders resume their free
+  // drift between the thumbs rather than freezing at the low one, which is what merely
+  // starving them of beats would have looked like.
+  function setMuted(m) {
+    audio.muted = !!m;
+    if (audio.muted) {
+      // Zero what the visual is still holding. audioTick early-returns from here on, so
+      // nothing refills these; flashChips() once on the way down clears the inline lit
+      // styles back to the CSS default, exactly as stopAudio does.
+      for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
+      updateMeter(); flashChips();
+    }
+    setAudioUI();
+  }
+  function toggleMute() {
+    if (!audio.on) { audioMsg("Nothing to mute yet — start Capture or Mic above."); return; }
+    setMuted(!audio.muted);
+    audioMsg("");
   }
   function stopStream() { if (audio.stream) { audio.stream.getTracks().forEach(t => t.stop()); audio.stream = null; } }
   function stopAudio() {
     stopStream();
     if (audio.timer) { clearInterval(audio.timer); audio.timer = 0; }
     audio.on = false; audio.src = "off";
+    audio.muted = false;          // don't leave the next Capture/Mic silently muted
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
       audio.flux[b] = audio.thr[b] = audio.peak[b] = audio.f1[b] = audio.f2[b] = audio.bpm[b] = 0;
@@ -137,6 +185,11 @@
   // `t` is only passed by the headless tests, which drive the detector with
   // synthetic spectra on a fake clock; the live timer calls audioTick() bare.
   function audioTick(t) {
+    // Muted: stop analysing entirely rather than analysing and discarding. The interval
+    // keeps running so unmuting is instant, and `tPrev` is deliberately left stale — the
+    // next live tick sees one long dt, which only widens that tick's flux window; the
+    // adaptive median re-settles within its own ~1s history either way.
+    if (audio.muted) return;
     const now = t === undefined ? performance.now() : t;
     const dt = audio.tPrev ? (now - audio.tPrev) / 1000 : HOP_MS / 1000;
     audio.tPrev = now;
@@ -205,7 +258,7 @@
     for (const id in chipEls) {
       for (const k in chipEls[id]) {
         const el = chipEls[id][k];
-        const lit = audio.on && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
+        const lit = audioLive() && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
         if (lit > 0.05) {
           // punchy flash: a bright halo that snaps on the beat and a quick scale pop,
           // both riding the band's decaying pulse.
@@ -338,5 +391,9 @@
     document.addEventListener("keydown", resume, true);
   }
   el("audStop").addEventListener("click", stopAudio);
+  // The floating ♪ beside ☰ and ⛶. Wired here rather than with the other chrome buttons so
+  // it sits next to the state it owns; the S key in the keydown handler calls the same fn.
+  el("mute").addEventListener("click", toggleMute);
+  setAudioUI();                 // paint the button's initial (no source ⇒ inert) state
   setAudioUI();
 

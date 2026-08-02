@@ -1480,6 +1480,47 @@ Effects section — `pulseShape[id]`, default `snap` = the original linear drop)
 Browsers can't silently re-grab audio after a reload, so `armAudioResume()` re-opens
 the last-used source on the first post-load gesture.
 
+**Mute is `audio.muted`, and the split between it and `audio.on` is the whole design.**
+The `♪` button beside `☰`/`⛶` (and the **S** key — `M` would be the video-player
+convention but is the menu here) calls `toggleMute` → `setMuted`, which **never touches the
+stream**. That is not a shortcut: the same "can't silently re-grab" rule above means
+`stopAudio()` would cost a fresh picker dialog to come back from, which is a Stop button,
+not a mute button. So the stream, the analyser and the 100Hz interval all stay exactly as
+they are and `audioTick` early-returns instead.
+
+`audio.on` therefore keeps its old meaning — **a stream is open** — and everything that
+asks "is audio reaching the visual?" goes through **`audioLive() = audio.on && !audio.muted`**
+instead. Four sites, and each would be a visible bug if it read the wrong one:
+`stepAnim`'s `armed` (the important one — reading `audio.on` there would leave every armed
+slider parked at its low thumb with no beats coming, i.e. frozen, when the intent is that
+muting looks exactly like audio-off and the sliders resume their free drift), `flashChips`'s
+`lit`, `frame()`'s `updateMeter`/`flashChips`/`clearBeats` pair, and the `audio-off` class on
+`#panel`/`#breakout`. What deliberately still reads `audio.on`: the Capture/Mic buttons' lit
+state (the source really is live, and dimming them invites a click that tears it down),
+`armAudioResume`, and `fullSnapshot`'s last-live-source field.
+
+`setMuted` zeroes `pulse`/`energy`/`beatNow` and calls `updateMeter()` + `flashChips()`
+**once** on the way down — the same "plus once on the way down" trick `stopAudio` uses to
+clear the inline lit styles back to the CSS default, and necessary because `frame()` stops
+refreshing them the moment `audioLive()` goes false. `stopAudio` clears `muted`, so the next
+Capture/Mic can't start silently muted. `audio.muted` is **transient** — deliberately absent
+from `fullSnapshot`, same class as pause and fullscreen; a reload that came back muted would
+read as broken beat detection.
+
+The button is `.off` (inert) while no source is running, and the glyph is the **same `♪` in
+both states** with `.muted` adding `line-through` — so it never changes width or baseline as
+you toggle it, and it stays monochrome beside its two neighbours instead of swapping in a
+colour emoji.
+
+**Testing it needs `AudioContext` stubbed, not just `getUserMedia`.** A real one hangs
+headless — `await audio.ctx.resume()` never settles with no audio device, which wedges
+`startAudio` and then the whole run (this cost two killed browsers). The detector's contract
+with it is small — `sampleRate`, `resume`, `createAnalyser`, `createMediaStreamSource`, and
+an analyser with `fftSize`/`frequencyBinCount`/`getFloatFrequencyData`/`min|maxDecibels` —
+so a fake covers the entire live path with `audio.on` genuinely true. Pair it with a no-op
+`requestAnimationFrame`: none of this is about pixels, and software rendering is what makes
+these runs take minutes.
+
 **The detector (`audioTick`) is an onset detector, not an energy detector** — don't
 "simplify" it back. Per band it computes **spectral flux**: the sum of the positive
 bin-to-bin changes since the previous tick. Four properties are load-bearing:

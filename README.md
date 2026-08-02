@@ -192,6 +192,14 @@ Browsers can't silently re-grab tab/screen (or mic) audio after a reload, so the
 last source is remembered and re-opened on your **first click/keypress** after
 the page loads.
 
+**Mute** — the **♪** button beside ☰ and ⛶ (or the **S** key) stops the music driving the
+visual, and armed sliders go back to drifting on their own as if no audio were running.
+It is **not** Stop: the source stays open, so unmuting is instant. That distinction is the
+whole point — a browser can't silently re-grab tab or screen audio, so actually stopping
+would make you pick the tab again to come back. Use it to calm the scene down for a moment
+without losing the capture. The button is inert until a source is running, and is not
+remembered across reloads — like pause and fullscreen, it's a per-moment thing.
+
 *(ranged)* controls are the two-thumb sliders described above; the rest are
 single sliders, dropdowns or toggles. Everything is remembered per effect (or per layer)
 except the shared few listed above.
@@ -241,9 +249,9 @@ except the shared few listed above.
 | **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
 
 Press **M** or **☰** to toggle the menu, **F** or **⛶** for fullscreen (works on
-mobile too), **H** to hide all the UI (buttons, FPS counter and menu — press again
-to bring it back), **Esc** to close whatever popup is open, and click the canvas to
-pause. Add **`?hideui`** to the URL to open with the UI already hidden — handy for a
+mobile too), **S** or **♪** to mute the music reaction, **H** to hide all the UI (buttons,
+FPS counter and menu — press again to bring it back), **Esc** to close whatever popup is
+open, and click the canvas to pause. Add **`?hideui`** to the URL to open with the UI already hidden — handy for a
 clean screen recording or a kiosk. **M** also tucks away the floating tool panels
 (the Orbit editor, the palette inspector and the palette editor) so you get a clean
 view. A **Resolution** control in **System** drops the render

@@ -128,7 +128,7 @@
   }
   #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
-  #toggle, #fs {
+  #toggle, #fs, #mute {
     position: fixed;
     top: 14px;
     left: 14px;
@@ -148,11 +148,18 @@
     transition: background .15s;
   }
   #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
-  #toggle:hover, #fs:hover { background: rgba(255, 122, 26, 0.3); }
+  #mute { left: 94px; font-size: 18px; }  /* mute the music reaction, right of fullscreen */
+  /* Muted reads as a struck-through note — same glyph, so the button never changes width or
+     baseline as you toggle it, and it stays monochrome with its two neighbours. */
+  #mute.muted { color: #8a6a52; text-decoration: line-through; }
+  /* No source running: nothing to mute, so the button is visibly inert (a click only
+     surfaces the hint in the menu's audio line — see toggleMute). */
+  #mute.off { opacity: .38; cursor: default; }
+  #toggle:hover, #fs:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
   /* keyboard focus rings (a11y) */
-  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible,
+  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute { transition: none !important; } }
   #frames {
     position: fixed;
     top: 14px;
@@ -173,7 +180,7 @@
   #frames.hidden { display: none; }
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
-  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
+  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
   #paused {
@@ -1088,7 +1095,7 @@
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
   </details>
 
-  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>
   <!-- Version + release notes, the conventional place for an "about" line: the very foot of
        the panel, below every box. The text is filled in from CONFIG.version at startup so the
        version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
@@ -1098,6 +1105,12 @@
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
+<!-- Mute the music reaction. It does NOT stop the stream (see setMuted) — a browser cannot
+     silently re-grab tab/screen audio, so stopping would cost a fresh picker dialog to come
+     back, which is not what a mute button means. The glyph is the same ♪ either way; the
+     .muted class strikes it through, so this stays monochrome beside ☰ and ⛶ instead of
+     swapping in a colour emoji. -->
+<button id="mute" type="button" aria-label="Mute the music reaction (S)" aria-pressed="false">♪</button>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
@@ -4971,9 +4984,12 @@
     cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     // Beats are detected off-thread of the render loop (audioTick, every HOP_MS);
     // here we only consume the latch and refresh the audio UI at frame rate.
-    if (audio.on) { updateMeter(); flashChips(); }
+    // audioLive(), not audio.on: while muted the meter and chips are already zeroed and
+    // audioTick refills nothing, so refreshing them every frame would only redraw the same
+    // empty bars — and there is no latch left to clear.
+    if (audioLive()) { updateMeter(); flashChips(); }
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
-    if (audio.on) clearBeats();
+    if (audioLive()) clearBeats();
     if (dbg.on) dbgDraw();
 
     postTime += dt;                         // clock for the self-animating post/screen passes
@@ -5181,6 +5197,11 @@
   const audio = {
     ctx: null, analyser: null, db: null, mag: null, prev: null, stream: null,
     on: false, src: "off", timer: 0, tPrev: 0, warm: 0,
+    // Muted: the stream and the analyser stay exactly as they are and we simply stop
+    // looking at them (see setMuted for why this is not stopAudio). TRANSIENT — the same
+    // class as pause and fullscreen, deliberately absent from fullSnapshot: a reload that
+    // silently came back muted would read as "the beat detection is broken".
+    muted: false,
     bins: [[1, 7], [7, 116], [116, 557]],   // [start,end] FFT bin per band; set from sampleRate
     energy: [0, 0, 0], pulse: [0, 0, 0],
     flux: [0, 0, 0], thr: [0, 0, 0], peak: [0, 0, 0],
@@ -5188,6 +5209,12 @@
     hist: [null, null, null], hi: 0,        // ring buffer of flux per band
     beatNow: [false, false, false], lastBeat: [0, 0, 0], bpm: [0, 0, 0],
   };
+  // "A source is running AND it is reaching the visual" — the predicate every REACTION site
+  // wants, as opposed to `audio.on`, which means only "a stream is open". The two differ
+  // exactly while muted. Kept separate rather than clearing `audio.on`, because `audio.on`
+  // is what the Capture/Mic buttons, the resume-on-gesture path and fullSnapshot's
+  // last-live-source all read, and none of those should think the source went away.
+  const audioLive = () => audio.on && !audio.muted;
   const meterBars = panel.querySelectorAll(".meter i");
   function computeBins() {
     const hz = audio.ctx.sampleRate / audio.analyser.fftSize;   // Hz per bin
@@ -5205,17 +5232,54 @@
   function median(a) { medBuf.set(a); medBuf.sort(); return medBuf[FLUX_HIST >> 1]; }
   function audioMsg(m) { const e = el("audMsg"); e.textContent = m || ""; e.style.display = m ? "block" : "none"; }
   function setAudioUI() {
-    el("vAudio").textContent = audio.on ? audio.src : "off";
+    el("vAudio").textContent = audio.on ? (audio.muted ? audio.src + " · muted" : audio.src) : "off";
+    // Capture/Mic stay LIT while muted — the source really is still running, and dimming
+    // them would invite a click that tears the stream down and re-opens the picker.
     el("audCapture").classList.toggle("on", audio.on && audio.src === "capture");
     el("audMic").classList.toggle("on", audio.on && audio.src === "mic");
-    panel.classList.toggle("audio-off", !audio.on);
-    el("breakout").classList.toggle("audio-off", !audio.on);   // dim popped-out chips too
+    // The chips dim on audioLive(), not audio.on: while muted they genuinely cannot fire,
+    // so showing them armed-and-ready would be a lie.
+    panel.classList.toggle("audio-off", !audioLive());
+    el("breakout").classList.toggle("audio-off", !audioLive());   // dim popped-out chips too
+    const mb = el("mute");
+    if (mb) {
+      mb.classList.toggle("muted", audio.muted);
+      mb.classList.toggle("off", !audio.on);          // nothing to mute
+      mb.setAttribute("aria-pressed", audio.muted ? "true" : "false");
+      mb.setAttribute("aria-label", audio.muted ? "Unmute the music reaction (S)" : "Mute the music reaction (S)");
+      mb.title = !audio.on ? "No audio source — start Capture or Mic in the menu"
+        : audio.muted ? "Muted — the source is still running (S)"
+        : "Mute the music reaction, keeping the source running (S)";
+    }
+  }
+  // Mute WITHOUT touching the stream. stopAudio() would be wrong here: a browser cannot
+  // silently re-grab tab/screen audio, so coming back would cost a fresh picker dialog —
+  // that is a Stop button, not a mute button. Everything downstream reads audioLive(), so
+  // muting looks exactly like "audio off" to the visual: armed sliders resume their free
+  // drift between the thumbs rather than freezing at the low one, which is what merely
+  // starving them of beats would have looked like.
+  function setMuted(m) {
+    audio.muted = !!m;
+    if (audio.muted) {
+      // Zero what the visual is still holding. audioTick early-returns from here on, so
+      // nothing refills these; flashChips() once on the way down clears the inline lit
+      // styles back to the CSS default, exactly as stopAudio does.
+      for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
+      updateMeter(); flashChips();
+    }
+    setAudioUI();
+  }
+  function toggleMute() {
+    if (!audio.on) { audioMsg("Nothing to mute yet — start Capture or Mic above."); return; }
+    setMuted(!audio.muted);
+    audioMsg("");
   }
   function stopStream() { if (audio.stream) { audio.stream.getTracks().forEach(t => t.stop()); audio.stream = null; } }
   function stopAudio() {
     stopStream();
     if (audio.timer) { clearInterval(audio.timer); audio.timer = 0; }
     audio.on = false; audio.src = "off";
+    audio.muted = false;          // don't leave the next Capture/Mic silently muted
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
       audio.flux[b] = audio.thr[b] = audio.peak[b] = audio.f1[b] = audio.f2[b] = audio.bpm[b] = 0;
@@ -5274,6 +5338,11 @@
   // `t` is only passed by the headless tests, which drive the detector with
   // synthetic spectra on a fake clock; the live timer calls audioTick() bare.
   function audioTick(t) {
+    // Muted: stop analysing entirely rather than analysing and discarding. The interval
+    // keeps running so unmuting is instant, and `tPrev` is deliberately left stale — the
+    // next live tick sees one long dt, which only widens that tick's flux window; the
+    // adaptive median re-settles within its own ~1s history either way.
+    if (audio.muted) return;
     const now = t === undefined ? performance.now() : t;
     const dt = audio.tPrev ? (now - audio.tPrev) / 1000 : HOP_MS / 1000;
     audio.tPrev = now;
@@ -5342,7 +5411,7 @@
     for (const id in chipEls) {
       for (const k in chipEls[id]) {
         const el = chipEls[id][k];
-        const lit = audio.on && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
+        const lit = audioLive() && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
         if (lit > 0.05) {
           // punchy flash: a bright halo that snaps on the beat and a quick scale pop,
           // both riding the band's decaying pulse.
@@ -5475,6 +5544,10 @@
     document.addEventListener("keydown", resume, true);
   }
   el("audStop").addEventListener("click", stopAudio);
+  // The floating ♪ beside ☰ and ⛶. Wired here rather than with the other chrome buttons so
+  // it sits next to the state it owns; the S key in the keydown handler calls the same fn.
+  el("mute").addEventListener("click", toggleMute);
+  setAudioUI();                 // paint the button's initial (no source ⇒ inert) state
   setAudioUI();
 
   // ---- per-effect controls, generated from the CONTROLS schema ----
@@ -6190,10 +6263,12 @@
     return q < mn ? mn : q > mx ? mx : q;
   }
   function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply) {
-    // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
-    // drifting and only move on a beat — snap to the high thumb, drop back to
+    // Armed: audio reaching the visual and at least one L/M/H chip selected. Armed sliders
+    // stop drifting and only move on a beat — snap to the high thumb, drop back to
     // the low thumb over this slider's own pulse length (default PULSE_DROP).
-    const armed = audio.on && br && (br.low || br.mid || br.high);
+    // audioLive(), not audio.on, so muting drops straight through to the wander below
+    // instead of leaving every armed slider parked at its low thumb with no beats coming.
+    const armed = audioLive() && br && (br.low || br.mid || br.high);
 
     if (armed) {
       const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
@@ -10841,6 +10916,8 @@
     // editor and the Palette inspector — along with it, so M gives a clean view.
     if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
+    // S for sound — M would be the video-player convention, but it is the menu here.
+    else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
     else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); cardWanted = false; cardOpen(false); }
   });

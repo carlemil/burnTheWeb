@@ -232,10 +232,12 @@
     return q < mn ? mn : q > mx ? mx : q;
   }
   function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply) {
-    // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
-    // drifting and only move on a beat — snap to the high thumb, drop back to
+    // Armed: audio reaching the visual and at least one L/M/H chip selected. Armed sliders
+    // stop drifting and only move on a beat — snap to the high thumb, drop back to
     // the low thumb over this slider's own pulse length (default PULSE_DROP).
-    const armed = audio.on && br && (br.low || br.mid || br.high);
+    // audioLive(), not audio.on, so muting drops straight through to the wander below
+    // instead of leaving every armed slider parked at its low thumb with no beats coming.
+    const armed = audioLive() && br && (br.low || br.mid || br.high);
 
     if (armed) {
       const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
