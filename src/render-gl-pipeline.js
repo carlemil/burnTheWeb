@@ -1110,10 +1110,24 @@
   // (It briefly took a `raw` flag to let the credits skip the camera; they render on
   // their own layer now, so every caller wants the camera and the flag is gone.)
   function plot(x, y, v) {
-    if (camOn()) {                      // camera: rotate the stamped point about the grid centre
-      const dx = x - fw * 0.5, dy = y - fh * 0.5;
-      x = camM[0] * dx + camM[1] * dy + fw * 0.5;
-      y = camM[2] * dx + camM[3] * dy + fh * 0.5;
+    // Zoom is applied HERE, to the point, not to the finished picture. FS_ZOOM magnifies
+    // an fw×fh raster, so detail falls off as 1/zoom and the point effects went visibly
+    // blocky — the 17 shader effects never had that because they divide their coordinates
+    // by zoom and re-evaluate per pixel (`bakesOwnZoom`). A stamped point is mathematical
+    // in exactly the same way, so scaling it before it lands is the same fix: the fractal
+    // is rasterised ONCE, at full grid resolution, whatever the zoom. Points pushed off
+    // the grid are dropped by the bounds test below, which is the crop a zoom should do.
+    // Uniform scale commutes with the camera's 2×2, so the two compose in either order.
+    const z = zoom;                     // this LAYER's zoom (installStackItem installed it)
+    if (z !== 1 || camOn()) {
+      let dx = (x - fw * 0.5) * z, dy = (y - fh * 0.5) * z;
+      if (camOn()) {                    // camera: rotate the stamped point about the grid centre
+        const rx = camM[0] * dx + camM[1] * dy;
+        dy = camM[2] * dx + camM[3] * dy;
+        dx = rx;
+      }
+      x = dx + fw * 0.5;
+      y = dy + fh * 0.5;
     }
     const xi = x | 0, yi = y | 0;
     if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;

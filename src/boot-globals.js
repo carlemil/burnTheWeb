@@ -48,10 +48,19 @@
   let cycleOn = CONFIG.scene.autoCycle;   // auto-cycle saved presets on the TTL timer (toggle); default from config
   let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
-  // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
-  // by shrinking the complex-plane span (revealing real fractal detail); the fire
-  // has no sub-pixel detail, so it zooms by scaling the rendered image.
+  // Zoom factor, per LAYER (1 = default; installStackItem installs the drawing layer's).
+  // EVERY effect now zooms by re-evaluating its content at the zoomed coordinates rather
+  // than by magnifying the finished picture: the shader effects divide their coordinates
+  // by it, and the point effects scale the stamp in plot(). So the whole registry carries
+  // `bakesOwnZoom` and the display-zoom pass is never asked for anything but 1 — see
+  // stackZoom. (The point effects used to magnify the raster, which is exactly why they
+  // went blocky as you zoomed while the shaders stayed sharp.)
   let zoom = 1;
+  // How many more points to stamp to hold the on-screen density steady while the geometry
+  // is zoomed: the stamps spread over zoom² the area, so the count follows zoom². Capped,
+  // because the zoom slider's max is only a default the range editor can raise, and the
+  // stacking multiplies it — up to 4 layers × ~2× for the Objects copies on top of this.
+  const zoomPoints = () => zoom <= 1 ? 1 : Math.min(zoom * zoom, CONFIG.tuning.zoomPointCap);
   // Additive glow strength. Was a hardcoded 0.35 in FS_COMP and its CPU twin;
   // hoisted so the Bloom filter can drive it (0 = no glow). BLOOM_DEFAULT is what
   // every scene was authored under, so it stays the default everywhere.

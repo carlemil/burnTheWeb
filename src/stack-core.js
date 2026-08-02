@@ -30,6 +30,14 @@
   // than a doubly-zoomed fractal. A one-item stack reduces to the original rule exactly.
   // Visible consequence, and intended: adding a shader item to a point scene un-zooms
   // the point item.
+  // Display zoom for the composite. EVERY effect in the registry now bakes its own zoom —
+  // the shaders divide their coordinates by it, the point effects scale the stamp in
+  // plot() — so in practice this always returns 1 and the FS_ZOOM pass is an identity.
+  // Kept as-is rather than ripped out: it is the one place that would have to come back if
+  // an effect ever zoomed by magnification again, the CPU path reads it too, and at z == 1
+  // the pass samples exact texel centres, so it costs a blit and changes nothing.
+  // Its old job — one un-baked point layer beside a baking shader layer un-zoomed the point
+  // layer — is gone with it: every layer zooms itself now, so a mixed stack is correct.
   const stackZoom = () => stack.some(L => !L.mute && EFFECTS[L.fx].bakesOwnZoom) ? 1 : zoom;
   // The four accessors that make the "DOM is the selected item's store" rule work.
   // With a one-item stack they all short-circuit to today's singletons on every call,

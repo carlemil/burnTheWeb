@@ -69,7 +69,15 @@
     // random shimmer.
     const xL = 1, xR = fw - 1;
     const yT = 1, yB = fh - 1;
-    const n = cfg.points;
+    // Zoom now scales the point coordinates in plot() instead of magnifying the finished
+    // raster, which is what keeps the fractal sharp — but it also spreads the stamps over
+    // zoom² the area, so the same count would read as a thinner picture the further you
+    // zoom in. Scaling the count by zoom² holds stamps-per-screen-area constant, so the
+    // zoom gains detail without losing weight. The old magnification faked that density by
+    // blurring; this fills it in for real.
+    // One choke point for all three point effects on purpose — the `stamp` hook, the 2D
+    // chaos game and the tetrahedron branch all take `n` from here.
+    const n = Math.round(cfg.points * zoomPoints());
     // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
     if (EFFECTS[L.fx].stamp) {

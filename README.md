@@ -232,7 +232,7 @@ except the shared few listed above.
 | **Show box** | On: draw the wireframe box the tetrahedron bounces in (with a spark-sphere burst on each wall hit). Off: no box — with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead. *(Tetrahedron.)* |
 | **Box size** *(ranged)* | How large the box the tetrahedra bounce inside is — bigger gives them more room. *(Tetrahedron.)* |
 | **Sway** *(ranged)* | With **Show box** off, how far the free-floating tetrahedron wanders around the centre on its slow drift (0 pins it to the middle and it just tumbles in place). *(Tetrahedron.)* |
-| **Zoom** *(ranged)* | Zoom the whole view in and out. |
+| **Zoom** *(ranged)* | Zoom this layer's view in and out. Every effect zooms by **re-drawing itself at the zoomed scale**, not by blowing up the finished picture, so it stays sharp however far you go in — the fractals resolve more detail and the point effects stamp more points to match. Flames and glow keep their real size, so what you gain is detail rather than a bigger blur. *(Per layer.)* |
 | **Camera X / Y / Z** *(ranged, degrees)* | Tilt and spin the whole scene in 3D — X and Y rock it away from you, Z rolls it in the plane of the screen. Shared across effects rather than per-effect, so it acts as a camera over whatever is running. |
 | **Power** | Multibrot only — the exponent in `z^power + c`, a whole number. Each step adds a bulb of symmetry, and adds a cusp to the seed's cardioid, so the orbit gains a fast/slow stretch with it. |
 | **Point jitter** *(ranged)* | Attractor only — scatters each plotted point by up to this many pixels to soften the map's hard threads. 0 gives the bare, razor-thin curves. |
@@ -351,9 +351,9 @@ the **per-effect** ones (Fire, Fade and the trail effects; Wedge fold, Twist, Ed
 rest of the image filters) live in **Layer effect & filters** and run on each layer on its
 own, before they blend; the **whole-scene** ones (Bloom, Scanlines, Vignette, Film grain,
 Barrel) have their own **Scene filters** box, and act once on the finished, blended
-picture — as do the camera, beat tuning and render resolution. Because display
-**Zoom** is applied once to that composite, adding a shader effect (which does its own
-optical zoom) to a point-based scene will stop the point effect zooming.
+picture — as do beat tuning and render resolution. **Zoom** and the **camera** are per layer,
+and every effect zooms by re-drawing itself at the zoomed scale, so each layer of a stack can
+sit at its own zoom and all of them stay sharp.
 
 On machines without WebGL the Canvas2D fallback renders the first unmuted layer only:
 stacking is a GPU feature, and each extra layer there would be a full software render.

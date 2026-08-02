@@ -112,8 +112,11 @@ layer on top of each other and update at different rates.
   registered in `initGL`; the descriptor's `draw(dt)` calls the generic
   **`glShaderDraw(name, setU)`** (binds the heat FBO, `uSize`, then `setU` sets the
   effect's uniforms) or the CPU mirror. A `*Seed(dt)` advances the animation phase
-  (identical GL/CPU). `bakesOwnZoom: true` bakes zoom into the shader so `glRender`/
-  `render` force display-zoom to 1. **Adding a shader effect = append one descriptor**
+  (identical GL/CPU). `bakesOwnZoom: true` means the effect consumes zoom itself so
+  `glRender`/`render` force display-zoom to 1 — **every** descriptor carries it now (the
+  shaders divide their coordinates by it, the point effects scale the stamp in `plot()`), so
+  a new effect must handle zoom itself too; see the zoom section under the effect stack.
+  **Adding a shader effect = append one descriptor**
   with an `FS_*`+`glProg` pair, a `draw`/`cpu` pair, `params`/`defaults`; its presence
   routes `frame()` past the fire sim, and its sliders generate from the `CONTROLS` schema.
 **The three cardioid-seeded effects share one seed path.** AnimeJulia, Burning Ship
@@ -1016,9 +1019,42 @@ which clears the *other* buffer and would flip the parity `heatprobe` pins.
 rather than MAX, so a second would erase the first, and each is a full per-pixel JS loop
 on exactly the machines with no GPU.
 
-**`stackZoom()`** replaces the two `bakesOwnZoom` reads: display zoom is scene-level and
-applied once to the composite, so *any* item that bakes its own forces it to 1. Visible
-and intended consequence — adding a shader item to a point scene un-zooms the point item.
+**Zoom is applied to the CONTENT, never to the finished picture — all 20 effects.** The 17
+shader effects always did it: they divide their coordinates by `zoom` and re-evaluate per
+pixel, which is what `bakesOwnZoom` marks. The three point effects (Sierpiński, Tetrahedron,
+Attractor) used to fall through to `FS_ZOOM`, which magnifies the `fw×fh` raster — so their
+detail fell off as 1/zoom and they went visibly blocky while every shader stayed razor sharp
+at the same setting. A stamped point is as mathematical as a shader sample, so the fix is the
+same fix: **`plot()` scales the point about the grid centre before stamping it**, composed
+with the camera's 2×2 that was already there (a uniform scale commutes with it, so the order
+is free). The fractal is then rasterised once, at full grid resolution, whatever the zoom;
+points pushed off the grid are dropped by the existing bounds test, which is exactly the crop
+a zoom should do.
+
+**The count is scaled with it, and that is not optional.** Zooming the geometry spreads the
+stamps over `zoom²` the area, so the same count reads as a *thinner* picture the further you
+go in — the old magnification faked that density by blurring. `zoomPoints()` multiplies by
+`zoom²` (the stamps-per-screen-area rule) at the one choke point in `stampTick` that all
+three effects take `n` from. Capped at `CONFIG.tuning.zoomPointCap` = **8**, not the 16 that
+zoom 4 asks for, because `zoom²` is an *area* rule and a Sierpiński triangle has dimension
+~1.585: at full compensation zoom 4 measured 41% of the frame lit against 11.7% at zoom 1,
+3.5× denser than the thing it was matching. At 8 it measures 14.3% vs 13.3% — still above,
+so nothing thins — and it halves a real cost, since the chaos game stays on the CPU even on
+the GPU path (one default layer at 1920×1080: 0.2 ms/frame at zoom 1, 4.4 ms at zoom 4
+uncapped, and four stacked point layers at max Points multiply that).
+
+Consequence to know: zoom no longer magnifies the flames or the glow — those stay at native
+scale while the geometry grows. That is what makes the whole frame sharp rather than one
+sharp layer under a magnified one, and it is why a scene saved with zoom ≠ 1 on a point
+effect renders differently (it still *loads* identically; the wire format did not move).
+
+**`stackZoom()`** is consequently always 1: every descriptor now carries `bakesOwnZoom`, so
+the `FS_ZOOM` pass is an identity blit (at z == 1 it samples exact texel centres, so it
+changes nothing) and the CPU path's zoom block is dead. Both are kept rather than ripped out
+— it is the one place that would have to come back if an effect ever zoomed by magnification
+again, and removing it means touching the transition path and `render()` for no gain. Its old
+job is gone with it: the documented wart where **adding a shader item to a point scene
+un-zoomed the point item** cannot happen now that every layer zooms itself.
 
 **Persistence: an optional `layers` array.** When the stack holds one item **nothing is
 emitted at all** (`stackOut` returns null), so every scene saved, shared or backed up

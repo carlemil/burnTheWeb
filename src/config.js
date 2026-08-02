@@ -105,6 +105,21 @@
       // the Fire filter ticked on, the flame runs the ramp downward from here exactly as
       // before, just starting a hair lower.
       pointHeat: 209,
+      // Ceiling on the zoom density compensation (see zoomPoints). Zooming the point
+      // GEOMETRY rather than the picture spreads the stamps over zoom² the area, so the
+      // count follows zoom² to hold stamps-per-screen-area steady — but that is unbounded,
+      // and the slider's max is only a default the per-slider range editor can raise.
+      //
+      // 8, not the 16 that zoom 4 would ask for, and the reason is measured rather than
+      // cautious. zoom² is the AREA rule, but a Sierpiński triangle has dimension ~1.585,
+      // so it over-fills by zoom^0.415 — at full compensation zoom 4 came out at 41% of
+      // the frame lit against 11.7% at zoom 1, i.e. 3.5× denser than the thing it was
+      // meant to match. Halving it still lands comfortably above zoom 1 (measured 25%),
+      // so nothing thins out, and it halves the worst case: the chaos game stays on the
+      // CPU even on the GPU path, and at 1920×1080 one default Sierpiński layer costs
+      // 0.2 ms/frame at zoom 1, 4.4 ms at zoom 4 uncapped — which four stacked point
+      // layers at max Points would have turned into a dropped frame all on its own.
+      zoomPointCap: 8,
     },
   };
   // ==== end CONFIG ==== (probes slice `const CONFIG =` … this line; keep it)
