@@ -1,6 +1,6 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **fifteen effects** in three families,
+A GPU demoscene visual: a collection of **twenty effects** in four families,
 all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, or a de
@@ -8,7 +8,11 @@ all sharing one palette + glow + banding pipeline —
 - **Shader fractals** — animated Julia, Burning Ship, Multibrot and Newton.
 - **Coordinate / pattern classics** — plasma, tunnel, metaballs, kaleidoscope,
   rotozoomer, moiré, munching squares and copper bars.
+- **Signed-distance shapes** — rotating polygons, a pulsing shape grid,
+  concentric ring tunnels, bouncing 2D shapes, and a raymarched 3D room of
+  tumbling solids.
 
+Stack up to four of them into one scene, each with its own palette and filters.
 The whole thing burns, flickers, and morphs continuously — and every effect can
 **react to whatever music you're playing**.
 
@@ -16,10 +20,11 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 
 ## Effects
 
-An **Effect** selector in the panel's **Effects** section switches between fifteen visuals
-that share the same palette, glow and music-reactivity pipeline — but each is an
-independent "scene" that remembers its own settings (see Controls). You can also **stack
-up to four of them at once** — see Layers below:
+Every row in the panel's **Layers** box carries an **Effect** chooser, switching that layer
+between twenty visuals that share the same palette, glow and music-reactivity pipeline —
+but each is an independent "scene" that remembers its own settings (see Controls). You can
+**stack up to four of them at once**, each with its own palette and filters — see Layers
+below:
 
 - **Sierpiński** — the classic 2D Sierpiński-**triangle** fire described below.
 - **Tetrahedron** — the same fire seeded by a 3D Sierpiński **tetrahedron** that
@@ -71,12 +76,16 @@ up to four of them at once** — see Layers below:
 - **Fire** — a low-resolution heat buffer where each cell averages the pixels
   below it with a slight decay, so heat rises and flickers. This is the classic
   algorithm from [Lode's computer graphics tutorial](https://lodev.org/cgtutor/fire.html).
+  It's a *filter* now rather than something built into the point effects, so any effect
+  can burn — and an effect with nothing ticked draws its raw output over black.
 - **Sierpiński seed** — the fractal is generated with the
   [chaos game](https://en.wikipedia.org/wiki/Sierpi%C5%84ski_triangle): repeatedly
   jump halfway toward a randomly chosen corner. **Sierpiński** uses a 2D triangle
   (three corners); **Tetrahedron** uses a 3D tetrahedron (four vertices), running the
   walk in 3D and perspective-projecting each point. Each point is stamped into the
-  fire buffer as maximum heat, so flames rise out of the fractal.
+  heat buffer near the hot end of the ramp — near, not at the very top, because most
+  palettes are white up there and the fractal would draw white whichever one you picked.
+  Tick **Fire** and flames rise out of it.
 - **Moving geometry** — the triangle's corners drift on their own `sin`/`cos`
   mixes driven by a phase that accumulates per simulation tick (not the wall clock,
   so changing Drift speed eases the motion instead of teleporting it), fit into a safe box that fills the frame with a
@@ -89,10 +98,12 @@ up to four of them at once** — see Layers below:
 - **Palettes & glow** — nineteen classic demoscene-style palettes (including a set of
   Rastafari ramps), each shown as a gradient swatch you click to preview and pick
   (Fire, Ice, Toxic, Copper, Purple, Rainbow, Grayscale, Electric, Amber, Matrix,
-  Sunset, C64, CGA, Blood, Chrome), plus a subtle
-  additive bloom that makes the white-hot points glow. The palette-cycle slider
+  Sunset, C64, CGA, Blood, Chrome) — plus as many of your own as you like, made in the
+  palette editor. Tick the **Bloom** filter for the additive glow that makes the hot
+  points flare. The palette-cycle slider
   continuously blends from the current palette to a random next one, taking a time
-  drawn from its min–max range each cycle (set it to 0 to hold one palette).
+  drawn from its min–max range each cycle (set it to 0 to hold one palette), and each
+  layer cycles on its own clock.
 - **Banding** — an optional *filter* over whichever palette is active (not a
   palette of its own). It posterises the heat ramp into bands and dims
   alternating groups of three, turning any palette into crisp light/dark contour
@@ -111,14 +122,17 @@ time, eased, on repeat). Collapse the two thumbs together to pin a constant
 value, so a ranged slider also works as an ordinary one.
 
 **Each effect is a fully independent scene** — its sliders, beat chips, pulse shapes
-and lengths, palette, palette cycle and show-box are all remembered *separately per
-effect*, so tweaking Tetrahedron never touches AnimeJulia. A handful of things are
-deliberately **shared** instead: auto-cycle and its hold time, the render resolution,
-the camera angles, and the panel's open/closed state. Everything is **saved to your browser** and
+and lengths and show-box are all remembered *separately per effect*, so tweaking
+Tetrahedron never touches AnimeJulia. Palette and filters go one better and are
+remembered **per layer**, so two layers running the same effect can look completely
+different. A handful of things are deliberately **shared** across the whole scene
+instead: auto-cycle and its hold time, the transition length, the camera angles, the
+whole-scene filters, the beat tuning — and, outside the scene entirely, the render
+resolution and the panel's open/closed state. Everything is **saved to your browser** and
 restored on your next visit (persisted values that fall outside a slider's
 current range are ignored, so updates can't load junk). The **?** by the title
 opens an effect-aware help panel; a small **frame counter + rolling FPS** sits in
-the top-right corner.
+the top-right corner (**H** hides it along with the rest of the UI).
 
 **Pop out a slider** — every slider has a small **+** button. Click it to break
 that slider out into its own box in a column to the right of the menu; the menu
@@ -135,8 +149,8 @@ everything that belongs to it: its value, the **L / M / H** beat chips and
 **min / max** row that retunes that slider's own range live. **↺ resets the whole
 slider** — value, bounds, beat chips, pulse shape and pulse length all go back to
 this effect's defaults, so a slider you've wandered somewhere strange is one click
-from sane. Custom bounds are saved: they persist in your browser, ride along in a
-**Share** link and go into your **Backup**.
+from sane. Custom bounds are saved: they persist in your browser and travel with the
+scene into your cloud profile.
 
 A slider's menu row also shows small **beat dots** just left of that **+** — one per
 armed band, in the band's colour (L blue, M green, H red). They sit dim and light up
@@ -144,11 +158,13 @@ on the beat that drives them, so you can see at a glance which sliders a scene h
 wired to the music without opening a single box.
 
 **The menu is eight foldable sections** — click a heading's chevron to collapse it:
-**System** (audio, resolution and the diagnostics tools; folded by default),
-**Backup, restore & share**, **Scene** (which scene, and how long each is held),
-**Effects** (pick the visual, then its sliders), **Filters** (the post-processing
-stack), **Beat tuning** (how beats are detected), **Palette settings** (the ramp,
-how fast it cycles, and banding) and **Credits**.
+**System** (audio input and render resolution; folded by default), **Cloud profile**
+(sign in to keep your scenes online, and browse what other people have published),
+**Scene** (which scene, how long each is held and how long the change takes),
+**Scene filters** (the effects that act once on the finished picture), **Beat tuning**
+(how beats are detected), **Layers** (the effect stack), **Layer effect & filters**
+(the selected layer's visual, its sliders, its own filters and its palette) and
+**Credits**.
 
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
@@ -177,19 +193,22 @@ last source is remembered and re-opened on your **first click/keypress** after
 the page loads.
 
 *(ranged)* controls are the two-thumb sliders described above; the rest are
-single sliders, dropdowns or toggles. Everything is remembered per effect except
-the shared few listed above (auto-cycle, hold time, resolution, camera, panel state).
+single sliders, dropdowns or toggles. Everything is remembered per effect (or per layer)
+except the shared few listed above.
 
 | Control | What it does |
 | --- | --- |
-| **Scenes** | A saved scene is a named full snapshot (the effect + all its settings). Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves what is on screen as a fresh scene, selects it, and switches auto-cycle off so it stays on screen; **Delete** removes the selected one. Pick "— unsaved scene —" to tweak without touching a saved scene. Switching to a different **effect** keeps you on the scene you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the scene keeps its **name**, so one called "Sierpiński" that you switch to Tunnel stays called Sierpiński until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a scene leaves the previous effect on screen to burn away under the new one rather than cutting to black (visible whenever the incoming scene has the Fire or Fade pixel filter on), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the scene's own stored palette when the cycle is pinned to 0. At the top of the panel, **Backup** saves **one `.json` per scene**, each named after the scene, plus a `_settings.json` holding everything that isn't a scene (each effect's current values, custom slider ranges, the active effect, auto-cycle, render resolution). One file per scene is the point: to send someone a scene, send them that one file. In Chrome and Edge you pick a folder **once, ever** — it is remembered from then on, and each backup lands in its own dated folder, `BurnTheWeb/<date-time>/`. Shift-click **Backup** to choose a different folder. Other browsers download the files individually with the date in the name. **Restore** takes as many files as you select — a whole backup folder, or the single scene a friend sent you. A dialog lets you tick **which parts** to bring in (scenes, effect settings, slider ranges, beat tuning — only the ones your selection actually contains) and, for scenes, whether to **merge** (overwrite same-named, keep the rest) or **replace** (delete yours, use only the backup's). Applying reloads the page. Older single-file backups still restore. |
-| **Effect** | Switch between all twenty effects listed above, in dropdown order (Sierpiński, Tetrahedron, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor, Polygon, Shape grid, Concentric rings, Bouncing shapes, Bouncing solids). Each shows its own sliders. There are **two** copies of this chooser and they do the same thing: one on every row in the **Layers** box (so you can re-point a layer without leaving the list — picking on a row that isn't selected selects it first), and one at the top of the **Layer effect & filters** box for the layer you have selected. |
+| **Scenes** | A saved scene is a named full snapshot — every layer, its effect and all its settings. Pick one to load it; from then on every change is **auto-saved** back into it. **New** saves what is on screen as a fresh scene, selects it, and switches auto-cycle off so it stays on screen; **Rename** relabels it; **Delete** removes it. Pick "— unsaved scene —" to tweak without touching a saved scene. Switching a layer to a different **effect** keeps you on the scene you have selected and folds the change into it, the same as moving a slider does — so you carry on working on your scene rather than being moved somewhere else. Note the scene keeps its **name**, so one called "Sierpiński" that you switch to Tunnel stays called Sierpiński until you rename it. In "— unsaved scene —" nothing is written, as usual. Switching to a scene blends over rather than cutting (see Transitions), and blends the palette in from whatever is on screen: to a fresh random one while the palette cycle is running, or to the scene's own stored palette when the cycle is pinned to 0. To get scenes on or off this machine, see **Cloud profile** below. |
+| **Effect** | Switch a layer between all twenty effects listed above, in dropdown order (Sierpiński, Tetrahedron, AnimeJulia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Munching Squares, Moiré, Newton, Multibrot, Copper Bars, Attractor, Polygon, Shape grid, Concentric rings, Bouncing shapes, Bouncing solids). The chooser lives on **every row in the Layers box**, so you re-point a layer without leaving the list — picking on a row that isn't selected selects it first. The layer's sliders then appear in **Layer effect & filters** below. A layer keeps its palette and filters when you change its effect: they belong to the layer, not the effect. |
 | **Auto-cycle scenes** | When on, a random saved scene is applied every so often (needs ≥2 scenes); off to stay put. *(Shared, not per-effect.)* |
-| **Scene TTL** *(ranged, seconds)* | How long auto-cycle holds each scene before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. *(Global, not per-effect.)* |
+| **Scene TTL** *(ranged, seconds)* | How long auto-cycle holds each scene before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. Each saved scene remembers the TTL it was authored with, so selecting one sets this to that scene's own pacing. |
 | **Palette** | Pick one of nineteen colour ramps — each is shown as a gradient swatch, so you preview the colours instead of reading a name. Click one to select it; the active ramp is highlighted. The **👁** button beside the label opens the inspector: the whole 0–255 ramp as a grid, hover any cell for its index and hex. |
-| **Palette editor** | Hover a swatch and click **+** to make an editable copy of it, or **✎** on one of your own to edit it in place — the nineteen built-in ramps are never changed. The ramp is edited as **colour stops** on a gradient bar: click the bar to add a stop where you clicked, drag a handle to move it, and use the colour box to recolour the selected one. **Everything previews live on the scene as you edit**, so there is nothing to apply. Your palettes join the swatch list (and the palette-cycle rotation) and are saved with your settings and backups. A copy you open and close without changing anything is discarded, so looking costs nothing — use **Save & close** if you wanted the duplicate anyway. **Delete palette** removes one of yours; any layer using it falls back to the ramp it was copied from. |
+| **Palette editor** | Hover a swatch and click **+** to make an editable copy of it, or **✎** on one of your own to edit it in place — the nineteen built-in ramps are never changed. The ramp is edited as **colour stops** on a gradient bar: click the bar to add a stop where you clicked, drag a handle to move it, and use the colour box to recolour the selected one. **Everything previews live on the scene as you edit**, so there is nothing to apply. Your palettes join the swatch list (and the palette-cycle rotation) and are saved with your settings. A copy you open and close without changing anything is discarded, so looking costs nothing — use **Save & close** if you wanted the duplicate anyway. **Delete palette** removes one of yours; any layer using it falls back to the ramp it was copied from. |
 | **Palette cycle** | How long one blend to a random palette takes, as a min–max range in seconds — each cycle picks a time inside it. Collapse both thumbs to **0** for a fixed palette that never cycles. (This replaced the old Auto-morph checkbox.) |
 | **Palette hold** | How long to rest on each palette before the next blend begins, as a min–max range in seconds — a fresh dwell is drawn each time. At **0** (the default) the palette cross-fades continuously; raise it to pause on each palette between changes. Only applies while Palette cycle is running. |
+| **Reverse colours** | Runs this layer's ramp the other way, so what was the hot end becomes the cool one. The dark background end stays dark, so the effect still fades out of the background instead of sitting on a bright slab. *(Per layer.)* |
+| **Background** | What unlit pixels show for this layer: **Palette** (the default — whatever colour the ramp itself defines at index 0), **Black** or **White**. Every built-in ramp starts black, so this only shows up on a custom palette, or on a bottom layer you want to sit on white. *(Per layer.)* |
+| **Heat boost** *(ranged)* | Pushes the whole picture toward the bright end of the palette — a gamma curve on the heat before it is coloured, so faint structure lights up without touching the palette itself. **off** (the default) leaves the ramp exactly as it is. *(Per layer, and animatable / beat-armable like any other slider.)* |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
 | **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
@@ -204,6 +223,7 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Nod speed** *(ranged)* | Tetrahedron only — multiplier on how fast that nod swings. 0 freezes it mid-swing; the swing is also scaled by Drift speed, as it always was. |
 | **Show box** | On: draw the wireframe box the tetrahedron bounces in (with a spark-sphere burst on each wall hit). Off: no box — with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead. *(Tetrahedron.)* |
 | **Box size** *(ranged)* | How large the box the tetrahedra bounce inside is — bigger gives them more room. *(Tetrahedron.)* |
+| **Sway** *(ranged)* | With **Show box** off, how far the free-floating tetrahedron wanders around the centre on its slow drift (0 pins it to the middle and it just tumbles in place). *(Tetrahedron.)* |
 | **Zoom** *(ranged)* | Zoom the whole view in and out. |
 | **Camera X / Y / Z** *(ranged, degrees)* | Tilt and spin the whole scene in 3D — X and Y rock it away from you, Z rolls it in the plane of the screen. Shared across effects rather than per-effect, so it acts as a camera over whatever is running. |
 | **Power** | Multibrot only — the exponent in `z^power + c`, a whole number. Each step adds a bulb of symmetry, and adds a cusp to the seed's cardioid, so the orbit gains a fast/slow stretch with it. |
@@ -219,14 +239,14 @@ the shared few listed above (auto-cycle, hold time, resolution, camera, panel st
 | **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
 | **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
-| **Share scenes…** | Bundles a **chosen set of your scenes** — a whole list, not just the current scene — into one link to send someone. A dialog lists your scenes with checkboxes (all ticked by default) so you pick exactly the cool ones; then **Copy link**, or **Copy short link** (via TinyURL) since a bundle of scenes makes a longer link. When the recipient opens it they get the same Restore dialog as a backup — they choose **merge** (add to their library) or **replace**, so it never quietly wipes their scenes. The link also carries your **auto-cycle** setting and **which scene was selected**, so they open on the same scene and, if you had auto-cycle on, the same show plays. This only copies a link; it doesn't change your own library. |
 
 Press **M** or **☰** to toggle the menu, **F** or **⛶** for fullscreen (works on
 mobile too), **H** to hide all the UI (buttons, FPS counter and menu — press again
-to bring it back), and click the canvas to pause. Add **`?hideui`** to the URL to
-open with the UI already hidden — handy for a clean screen recording or a kiosk.
-The frame + FPS counter is a checkbox in
-the menu's **Diagnostics** section. A **Resolution** control drops the render
+to bring it back), **Esc** to close whatever popup is open, and click the canvas to
+pause. Add **`?hideui`** to the URL to open with the UI already hidden — handy for a
+clean screen recording or a kiosk. **M** also tucks away the floating tool panels
+(the Orbit editor, the palette inspector and the palette editor) so you get a clean
+view. A **Resolution** control in **System** drops the render
 resolution on low-end devices. If your browser requests **reduced motion**, the
 page opens paused (a static frame) — click the canvas to animate. On mobile,
 tab/screen audio capture isn't available, so only **Mic** is shown.
@@ -262,7 +282,8 @@ and flash. Scenes that already dissolve on their own mostly get left alone.
 
 **Transition** (in the **Scene** box, under Scene TTL) sets how long they take, as a
 min–max range in seconds — each switch draws a length from it. Collapse both thumbs to
-**0** for a hard cut, which is exactly how the app behaved before.
+**0** for a hard cut, which is exactly how the app behaved before. Like Scene TTL, each
+saved scene remembers its own, so a scene plays the way it was authored.
 
 One thing to know: during a transition the outgoing scene is a frozen frame, not still
 running. Two effects can't be rendered at once here. At well under a second it reads
@@ -270,48 +291,59 @@ the way a video mixer's dissolve does.
 
 ## Layers
 
-A scene can stack **up to four effects at once**, composited into the same fire buffer.
-The **Layers** list sits at the top of the **Effects** section, one row per layer, and
-they combine in list order.
+A scene can stack **up to four effects at once**, composited into one picture. The
+**Layers** box holds one row per layer, and they combine in list order.
 
-Click a row to select it — the **Effect** chooser and every slider below then edit *that*
-layer, so each one keeps its own settings, its own drifting sliders and its own beat
-reactions. **+ Add layer** adds another (it starts as a copy of the selected layer's
-effect; change it with the Effect chooser). Each row also carries:
+Press anywhere on a row to select it — the sliders in **Layer effect & filters** below
+then edit *that* layer, so each one keeps its own settings, its own drifting sliders and
+its own beat reactions. **+ Add layer** adds another (it starts as a copy of the selected
+layer's effect; change it with the row's own Effect chooser). Each row carries:
 
-- **⠿** — the grab handle: drag it up or down to reorder the layer in the stack.
+- **⠿** — the grab handle: drag it up or down to reorder the layer in the stack. The
+  layer you dragged ends up selected wherever it lands.
+- The **effect chooser** — what this layer draws.
 - **●** — mute it. A muted layer costs nothing and leaves nothing behind, which makes it
   the quickest way to see what a layer is actually contributing.
-- **Blend** — how it combines with the layers below; click to cycle. Because each layer
-  carries its own palette (below), a multi-layer stack blends in **colour**, in the
-  perceptual OKLab space, so hues mix cleanly instead of muddying to grey. Five modes:
-  - **MAX** — the brighter layer wins each pixel. Clean separation, the safe default.
-  - **ADD** — screens the layers' brightness and averages their hue by brightness, so
-    each colour shows in proportion to how bright it is where they overlap.
-  - **DIF** *(difference)* — `|below − this|`. Psychedelic where the two disagree, dark
-    where they match.
-  - **COL** *(colour)* — keeps the **brightness** of the layers below, repainted in **this**
-    layer's hue.
-  - **LUM** *(luminosity)* — the inverse: this layer's brightness wearing the hue of the
-    layers below.
-  DIF, COL and LUM only do anything with two or more layers — a lone layer has nothing
-  underneath to blend against.
 - The **strength** slider — how much of the layer reaches the composite, from nothing to
   full.
 - **✕** — remove it.
+- **Blend** — how it combines with the layers below: a dropdown, with **▲/▼** beside it to
+  step through the list one at a time when you just want to try them all. Because each
+  layer carries its own palette (below), a multi-layer stack blends in **colour**, in the
+  perceptual OKLab space, so hues mix cleanly instead of muddying to grey.
 
-Layers are part of the scene: they save into scenes, ride along in backups, and travel
-in share links. A scene with a single layer is stored exactly the way it always was, so
-every scene, backup and link made before layers existed still opens unchanged.
+There are **twenty blend modes**. Every one has a tooltip in the dropdown; the ones worth
+knowing first:
+
+| | |
+| --- | --- |
+| **MAX** | The brighter layer wins each pixel. Clean separation, the safe default. |
+| **ADD** | Screens the layers' brightness and averages their hue by brightness, so each colour shows in proportion to how bright it is where they overlap. |
+| **CMX** *(channel max)* | The brighter of the two in *each* of red, green and blue separately — so red over green gives yellow where they overlap, which MAX never does. |
+| **RGB** | Screens the three channels independently, keeping both layers' full colour instead of merging to one hue. |
+| **OKL** / **HSV** | The vivid pair: blend the two hues around the colour wheel and keep the *higher* saturation, so overlaps stay saturated instead of greying out. HSV is the louder of the two. |
+| **DOM** | At each pixel the more colourful layer keeps its exact hue — no mixing, crisp boundaries between two palettes. |
+| **MUL** / **OVL** / **DDG** / **BRN** | The photo-editing family: multiply into rich ink, overlay for hard contrast, colour dodge for neon blowout, colour burn for crushed shadow. |
+| **DIF** / **NEG** / **XOR** | The psychedelic ones: difference, negation, and a bitwise XOR of the raw channels for hard demoscene interference bands. |
+| **COL** / **LUM** | Split hue from brightness — COL repaints the layers below in this layer's hue, LUM does the reverse. |
+| **AVG** / **INT** / **CMP** / **RFL** | A plain perceptual 50/50; scanline interleave (even lines this layer, odd lines the one below); complement push, which rotates overlaps to the opposite hue; and reflect/glow, which flares this layer's highlights. |
+
+Everything except MAX and ADD needs two or more layers to do anything — a lone layer has
+nothing underneath to blend against.
+
+Layers are part of the scene: they save into scenes and travel in cloud profiles and
+links. A scene with a single layer is stored exactly the way it always was, so every
+scene, backup and link made before layers existed still opens unchanged.
 
 Each layer keeps its **own palette and its own filters**, so every effect in a stack shows
 in its own colours and is shaped on its own — set a layer's palette and tick its filters
 while that layer is selected, and they are remembered per layer. With the palette cycle
-running, layers even morph on their own schedules. The **Filters** list says which is which:
-the **Per-effect** filters (Fire, Fade and the trail effects; Wedge fold, Twist, Edge and
-the rest of the image filters) run on each effect on its own, before the layers blend; the
-**Whole-scene** filters (Bloom, Scanlines, Vignette, Film grain, Barrel) plus the camera,
-beat tuning and render resolution act once on the finished, blended picture. Because display
+running, layers even morph on their own schedules. The menu splits the filters accordingly:
+the **per-effect** ones (Fire, Fade and the trail effects; Wedge fold, Twist, Edge and the
+rest of the image filters) live in **Layer effect & filters** and run on each layer on its
+own, before they blend; the **whole-scene** ones (Bloom, Scanlines, Vignette, Film grain,
+Barrel) have their own **Scene filters** box, and act once on the finished, blended
+picture — as do the camera, beat tuning and render resolution. Because display
 **Zoom** is applied once to that composite, adding a shader effect (which does its own
 optical zoom) to a point-based scene will stop the point effect zooming.
 
@@ -320,15 +352,17 @@ stacking is a GPU feature, and each extra layer there would be a full software r
 
 ## Filters
 
-Under **Filters** in the menu is a list of twenty-two post-processing effects you
-can stack on top of whatever effect is running — tick as many as you like and they
-apply in order. Each one's settings appear underneath it while it's ticked, and the
-whole selection is remembered per effect and saved into scenes. The list is split
-into the three stages of the pipeline, which is the one thing worth understanding
-about them: **feedback** filters change what the *next* frame starts from, **post**
-filters repaint the image, and **screen** filters sit on the finished frame.
+There are twenty-two post-processing effects you can stack on top of whatever is
+running — tick as many as you like and they apply in order. Each one folds open to
+show its own settings while it's ticked, and the whole selection is saved into the
+scene. They live in two places, which mirrors what they actually do: the first two
+groups below are **per layer** and sit in **Layer effect & filters**, while the last
+group acts on the finished picture and has its own **Scene filters** box. Within
+that, the three stages of the pipeline are the one thing worth understanding:
+**feedback** filters change what the *next* frame starts from, **post** filters
+repaint the image, and **screen** filters sit on the finished frame.
 
-**Feedback (heat)** — these run on the retained heat, before the effect's fresh
+**Feedback (heat)** *— per layer* — these run on the retained heat, before the effect's fresh
 output is mixed in, so they're what trails and long exposures are made of. Each
 carries its own **Keep**, so it decays on its own rather than piling up to white.
 
@@ -344,7 +378,8 @@ carries its own **Keep**, so it decays on its own rather than piling up to white
 - **Swirl** — the same, rotating instead of scaling, so trails spiral. Stack it
   with Zoom feedback for a vortex.
 
-**Post (image)** — these repaint the palette-mapped picture.
+**Post (image)** *— per layer* — these repaint each layer's coloured picture, before
+the layers blend together.
 
 - **Twist** — spin the middle of the image and leave the rim, so straight
   structure curls into the centre.
@@ -363,14 +398,14 @@ carries its own **Keep**, so it decays on its own rather than piling up to white
 - **Chromatic aberration** — split red and blue radially, so the picture fringes
   toward the corners the way a cheap lens does.
 - **Mirror** — fold the image about its centre, on **X**, **Y** or both.
+
+**Whole scene (final)** *— the Scene filters box* — these go on top of the finished,
+blended frame, at your display's real resolution rather than the fire grid's. They're the
+"it's a screen you're looking at" layer, and they only read right after the bloom — a
+vignette *under* an additive glow just gets lit back up again.
+
 - **Bloom** — the additive glow: a blurred copy of the scene added back over it.
   **Strength** at 0 turns it off entirely.
-
-**Screen (final)** — these go on top of the finished, glowing frame, at your
-display's real resolution rather than the fire grid's. They're the "it's a screen
-you're looking at" layer, and they only read right after the bloom — a vignette
-*under* an additive glow just gets lit back up again.
-
 - **Barrel distortion** — bulge the image as if it were painted on a CRT.
 - **Scanlines** — darken alternating rows. **Lines** sets how many across the height.
 - **Vignette** — fall off toward the corners.
@@ -387,26 +422,16 @@ where trails, smears and long exposures come from.
 
 On machines without WebGL the app falls back to a Canvas2D renderer. Every
 feedback filter runs on both paths, so the fallback keeps its trails; the filters
-that are GPU passes — everything under Post except Bloom, and all four Screen
-ones — are greyed out there rather than pretending to work.
+that are GPU passes — everything under Post, and the whole-scene ones except Bloom —
+are greyed out there rather than pretending to work.
 
-## Diagnostics
+## The Orbit editor
 
-The tuning tools live in a collapsible **Diagnostics** section at the bottom of the
-menu's **System** box (no more secret keys). They're off by default and never put in a scene (their
-open/closed state isn't saved):
-
-- **Frame + FPS counter** — a checkbox that shows/hides the on-screen counter.
-- **Beat-detection trace** (a checkbox; also `?debug=1`) — a scrolling plot per band
-  of the spectral flux, the adaptive threshold it has to clear, and a tick on every
-  detected beat, plus a rough BPM. This is how you see *why* a beat was missed:
-  the flux never rose, or it rose but stayed under the threshold. (Shows nothing
-  that gets saved.)
-**Beat tuning has its own box** in the menu now, not a Diagnostics tool — because it is
-part of the scene rather than a dev setting. See below.
-Two more tools sit outside that section: each slider's **min / max / step** row
-(in its pop-out box — see above), and the **Orbit editor**, a button in **Effects**
-for the effects whose seed orbits a cardioid (AnimeJulia, Burning Ship,
+There's no separate Diagnostics section: the tuning tools sit next to the things they
+tune. The **beat-detection trace** is a checkbox in the **Beat tuning** box (below), each
+slider's **min / max / step** row is in its own pop-out box (above), and the third one is
+the **Orbit editor** — a button in **Layer effect & filters**, shown for the effects whose
+seed orbits a cardioid (AnimeJulia, Burning Ship,
 Multibrot). It opens the fractal set the seed is riding — the Mandelbrot set, or
 the matching Multibrot set once you move Multibrot's **Power** off 2 — with that
 orbit drawn on top: the base curve, the path the seed actually traces at the
@@ -414,16 +439,19 @@ current ratio and radii, the little riding circle and the live seed point, so yo
 can see exactly where your **Cardioid RPM / ratio / radius / start / X offset**
 settings land.
 
-It also lets you **choose the shape the seed follows**, per effect:
+It also lets you **choose the shape the seed follows**, per layer:
 - **Cardioid** — the classic path just outside the set's main cardioid (the default).
 - **Circle** — a plain circle, sized by **Outer radius** and slid by **Cardioid X offset**.
 - **Freehand** — drag on the canvas to draw a loop; it snaps to a smooth **closed spline**
-  the seed then traces at even speed. **Clear** starts over.
+  the seed then traces at even speed. **Edit** then shows the control points so you can drag
+  them to reshape it, **Undo** steps back a change, and **Clear** starts over.
 
-The **Riding circle** checkbox toggles the small epicycle that keeps the seed's
+**⏸** pauses the seed where it is, so you can study one frame of the fractal (or line the
+seed up on a spot by hand) without it drifting off. The **Riding circle** checkbox toggles
+the small epicycle that keeps the seed's
 neighbourhood varying — leave it on for the lively look, turn it off to follow the
 bare curve exactly. The shape, the toggle and any drawn loop are saved with the
-scene and travel in scenes, backups and share links.
+scene, per layer, so two cardioid layers can trace completely different paths.
 
 It's a floating panel, not a modal: the menu stays live underneath it, so you can
 drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
@@ -433,13 +461,44 @@ drag those sliders and watch the orbit redraw. **×** or **Esc** closes it.
 Its own box in the menu: live sliders for how beats are detected — per-band
 **sensitivity** (lower = more beats), the **relative floor**, per-band **refractory**
 gap (the minimum time between two beats), and each band's **frequency range** in Hz.
-**Reset** restores the shipped defaults. Open the **Beat-detection trace** in
-Diagnostics alongside it and you can watch the effect of every change.
+**Reset** restores the shipped defaults. The **Beat-detection trace** checkbox at the
+foot of the same box (also `?debug=1`) draws a scrolling plot per band of the spectral
+flux, the adaptive threshold it has to clear and a tick on every detected beat, plus a
+rough BPM — so you can see *why* a beat was missed: the flux never rose, or it rose but
+stayed under the threshold. The trace itself is a dev tool and is never saved into a scene.
 
 **The tuning is part of the scene**, not a global setting — so a punchy kick-driven
 scene and a hi-hat-driven one can each detect beats their own way, and switching
-between them switches the tuning too. It rides along in scenes, Share links and
-Backups, which means a scene you send someone reacts to music the way you set it up.
+between them switches the tuning too. It rides along in scenes and in anything you
+share, which means a scene you send someone reacts to music the way you set it up.
+
+## Cloud profile
+
+Your scenes live in this browser by default. The **Cloud profile** box is how you get them
+off it — sign in with Google and your library follows you between machines.
+
+- **Save to cloud** uploads every scene you have, replacing what is stored.
+- **Load from cloud** fetches it back and asks whether to **merge** (add them to yours,
+  overwriting any of yours with the same name) or **replace** (throw yours away and keep
+  only these). Applying reloads the page.
+- Your **profile name** is yours to pick — click it to rename. It's written with your next
+  save.
+- **Delete profile** removes everything you have stored, and leaves this browser's scenes
+  alone.
+- **Sign out** signs out on this device only.
+
+Stored against your account: the profile name you choose and your scenes. Nothing else —
+not your email, name or picture.
+
+**Publish to gallery** is opt-in and off by default. Tick it and your profile is listed
+publicly, with your chosen name and how many scenes it holds. **Browse published
+scenes…** opens that list — and it needs no account, so anyone can look. Each row loads
+straight away on either **Load and merge** or **Load and replace**, since that's the only
+question there is to ask.
+
+Links still work too, even though there are no longer buttons that make new ones: every
+share link and preset-bundle link ever generated still opens, and lands in the same
+merge-or-replace dialog, so nothing of yours is ever quietly overwritten.
 
 ### What a shared scene does and doesn't carry
 
@@ -467,27 +526,49 @@ whatever effect and filters you have on (Pixelate and Mirror used to chew them
 up), and they ignore the camera and zoom.
 
 That menu box also has a checkbox to stop them appearing on future visits
-(remembered in this browser only, and kept out of scenes, share links and backups
+(remembered in this browser only, and kept out of scenes and share links
 since it's a per-browser preference). `?credits=<seconds>` overrides the **hold**
 if you want a longer look; the three-second fade is always added on top.
 
 ## Running locally
 
-It's a single self-contained `index.html` — no build step, no dependencies.
-Open the file directly in a browser, or serve the folder:
+The page that ships is a single self-contained `index.html` with no dependencies —
+open it directly in a browser, or serve the folder:
 
 ```sh
 python -m http.server
 # then open http://localhost:8000
 ```
 
+To work on it, edit `src/` and rebuild — the authoring is split into `src/styles.css`
+plus a set of JS slices concatenated in `src/manifest.txt` order:
+
+```sh
+node tools/build.js          # regenerate dev-index.html from src/
+node tools/build.js --check  # non-zero if dev-index.html is stale
+```
+
+`dev-index.html` is the current build (also served live as a preview);
+`index.html` is the published page, and a release promotes one to the other. Both are
+generated — never hand-edit them. The build script has no dependencies either; there is
+no package manager and no test framework, and the checks under `tools/*probe.js` are
+plain Node scripts that slice the built file and assert against it. Every release is
+tagged and written up in [`CHANGELOG.md`](CHANGELOG.md), which is linked from the foot of
+the menu.
+
 ## Tech
 
-A single self-contained `index.html` — vanilla JavaScript, no build step, no
-dependencies. The per-pixel work (fire propagation, palette + glow, and the Julia
-escape-time) runs on the GPU via **WebGL2**, with a Canvas2D fallback if WebGL2
+Vanilla JavaScript, no runtime dependencies, no framework. The per-pixel work (fire
+propagation, palette + glow, the fractal escape-times, the raymarched solids and every
+filter pass) runs on the GPU via **WebGL2**, with a Canvas2D fallback if WebGL2
 is unavailable. The deterministic chaos game stays on the CPU and is drawn as
 additive GL points. Hosted on GitHub Pages. Settings persist in `localStorage`.
+
+Cloud profiles are **Firebase Auth + Firestore over plain REST** — no SDK, so the page
+stays one self-contained file; the only remote script is Google's sign-in button. The
+security boundary is [`firestore.rules`](firestore.rules), checked in so it's reviewable
+in a diff rather than living only in a web console. The Firebase web API key in the
+source is public by design: it names the project and authorises nothing.
 
 A first-run **"Sync with your music"** nudge explains the Capture/Mic audio
 buttons to visitors who haven't tried them yet — shown at three growing gaps of
