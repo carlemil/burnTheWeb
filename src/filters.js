@@ -4,7 +4,8 @@
   // pipeline the filter writes — and they must be listed in that order (filterprobe):
   //   feedback — mutates heat that survives to the next frame (Fire, Fade, Diffuse,
   //              Echo, Zoom feedback, Swirl). Runs inside glBeginHeat, before the
-  //              effect's output is MAX-injected. Each carries its own Keep: a pure
+  //              effect's output is MAX-injected. Each carries its own Lifetime (the
+  //              `*Keep` globals — the label was renamed, the state names were not): a pure
   //              displacement conserves heat, so a warp with nothing decaying it
   //              saturates to white on its own.
   //   post     — reads the palette-mapped image; Bloom is the existing glow composite,

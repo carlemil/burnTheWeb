@@ -364,13 +364,14 @@ repaint the image, and **screen** filters sit on the finished frame.
 
 **Feedback (heat)** *— per layer* — these run on the retained heat, before the effect's fresh
 output is mixed in, so they're what trails and long exposures are made of. Each
-carries its own **Keep**, so it decays on its own rather than piling up to white.
+carries its own **Lifetime** — how much of the picture survives each tick — so it decays
+on its own rather than piling up to white.
 
 - **Fire** — the rising, cooling heat simulation. It used to be hardwired to the
   three point effects; now any effect can burn. **Flame rise** sets how tall the
   flames climb, **Burn rate** how many times a second the fire advances.
 - **Fade pixel** — every pixel keeps a fraction of its brightness each tick, so
-  the image smears into phosphor trails. **Keep** near 100% holds almost forever.
+  the image smears into phosphor trails. **Lifetime** near 100% holds almost forever.
 - **Diffuse** — heat bleeds sideways as well as up, so Fire's flames turn to smoke.
 - **Echo** — trails drag in a **Direction** instead of just dimming in place.
 - **Zoom feedback** — the retained heat is rescaled about the centre every tick.

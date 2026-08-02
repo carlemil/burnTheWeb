@@ -365,11 +365,14 @@ the pipeline the filter writes** — and the registry must list them in that ord
   exact texels and must stay that way) and a sub-pixel warp read through `NEAREST`
   quantises into chunky rings instead of drifting; a sampler binds to the **texture unit**,
   not the program, so it is unbound immediately after or it silently softens whatever is
-  sampled on unit 0 next. And **each of the four carries its own `Keep`** rather than
+  sampled on unit 0 next. And **each of the four carries its own `Lifetime`** rather than
   leaning on Fade: a pure displacement conserves heat, so a warp ticked on its own with
-  nothing to decay it saturates to white within seconds. Four sliders labelled "Keep" in
-  four groups is exactly what the pop-out box's owner line (`ctlOwner`) exists to
-  disambiguate.
+  nothing to decay it saturates to white within seconds. Four sliders labelled "Lifetime"
+  in four groups is exactly what the pop-out box's owner line (`ctlOwner`) exists to
+  disambiguate. **The label is the only thing that says "Lifetime"** — the control keys
+  (`fade`, `diffkeep`, `echokeep`, `zfbkeep`, `swirlkeep`), the globals (`fadeKeep`,
+  `diffKeep`, …) and the `uKeep` uniform keep their names, because the keys are the wire
+  format: renaming one would strand that slider's value in every saved scene.
   All four have **CPU mirrors** (`heatWarpCPU`/`heatDiffuseCPU`, sharing `bilinearHeat` and
   a `warpBuf` scratch) — unlike a post filter, a feedback filter marked `cpuOk: false`
   would leave the fallback with *nothing carrying heat over*, a far bigger visual change
