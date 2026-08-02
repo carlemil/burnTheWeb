@@ -252,7 +252,14 @@
     persist();
   }
   function createPreset() {           // save the current scene as a new preset
-    const name = (prompt("Scene name:", "Scene " + (presets.length + 1)) || "").trim();
+    // New nearly always means "a variation on the one I am editing", so it proposes that
+    // scene's name with its version bumped. With nothing selected ("— unsaved scene —")
+    // there is no name to vary, so fall back to the plain "Scene N" — routed through the
+    // same bump so it can't land on a number already used either.
+    const suggest = curPreset >= 0 && curPreset < presets.length
+      ? bumpName(presets[curPreset].name)
+      : bumpName("Scene " + presets.length);
+    const name = (prompt("Scene name:", suggest) || "").trim();
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
     curPreset = presets.length - 1;
@@ -260,6 +267,28 @@
     dockAll();                        // back to just the menu (see Break-out boxes)
     rebuildPresetOptions();
     persist();
+  }
+  // Bump a trailing version number: "Sunset" → "Sunset 2" → "Sunset 3". A trailing integer
+  // IS the version, so it is incremented rather than appended to; anything else keeps its
+  // text and gains a 2. A name that is nothing BUT digits ("2001") bumps as the number it
+  // is, with no stem bolted on.
+  // It also skips past names already in the library, so pressing New repeatedly from one
+  // scene walks up instead of proposing the same name twice. That matters beyond tidiness:
+  // a cloud/link merge resolves scenes BY NAME and overwrites the same-named one, so two
+  // scenes called "Sunset 2" silently become one on the way back in.
+  //
+  // It sits BELOW createPreset (hoisted, so the call above still resolves) on purpose:
+  // presetprobe slices `function applyPreset(` … `function createPreset(` as applyPreset's
+  // body and greps it for `p.<field>` reads off a stored preset. Declared above, this
+  // function's `p.name` lands in that slice and reads as applyPreset restoring a field
+  // snapshotScene never captures — which is exactly what the probe went red on.
+  function bumpName(name) {
+    const m = /^(.*?)\s*(\d+)$/.exec(name);
+    const stem = (m ? m[1] : name).trim();
+    const make = k => stem ? stem + " " + k : String(k);
+    let n = (m ? +m[2] : 1) + 1;
+    while (presets.some(p => p.name === make(n))) n++;
+    return make(n);
   }
   el("newpreset").addEventListener("click", createPreset);
   // When a preset is selected, edits flow straight back into it (auto-save); this
