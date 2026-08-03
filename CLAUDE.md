@@ -564,9 +564,17 @@ adopt trick the ☰ menubar uses on `#sysbox`.
   block, so reaching layer 3 otherwise means scrolling past layer 1's sliders. It only HIDES:
   `#lyrctl` stays in the row and in the document either way, so every id lookup keeps working.
   Transient and per-session, like the panel's own box folds.
-- **The chevron goes in `.lyr-ctl`, not as the row's first child.** The row is a two-column
-  grid; prepending a cell shifts every later child into the wrong column and the effect chooser
-  and blend row visibly collapse.
+- **The chevron sits top-left beside the effect chooser, in a `.lyr-nameline` flex WRAPPER that
+  takes the chooser's grid cell** — never as a new grid child. The row is a two-column grid whose
+  handle spans `grid-row: 1 / 4`, so an extra cell shifts every later child into the wrong column
+  and the chooser and blend row visibly collapse.
+- It is styled as **`#panel .lyr b.lyr-chev`**, with the type selector: `#panel .lyr b` gives
+  every `<b>` in a row the mute/✕ button chrome (border, background, `font: 10px/1`) and outranks
+  a plain class selector, so a class-only rule renders the chevron as a 10px mark in a little box.
+- **Every chevron in the app is 2x** (~20–22px): the panel boxes, the scene collections, the
+  filter sections, the menubar submenus and this one. The `::before` ones pin `line-height: 0`
+  so a bigger glyph cannot grow its row; the layer one uses `line-height: 1` because as a FLEX
+  item a zero line box collapses the glyph to a sliver.
 - **`#effect` is hidden in this box, not deleted** — every layer row has its own chooser, but the
   `<select>` remains the effect **value store** (`setEffect` writes `.value`, `applyBlob` validates
   against its options, its `change` is what everything dispatches through). Same arrangement

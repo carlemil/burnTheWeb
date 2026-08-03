@@ -322,11 +322,22 @@
         // is harmless here (it is already selected) but would re-run syncStackUI mid-click.
         chev.addEventListener("pointerdown", e => e.stopPropagation());
         chev.addEventListener("click", e => { e.stopPropagation(); lyrFolded = !lyrFolded; syncStackUI(); });
-        // Into the existing .lyr-ctl flex row (mute · gain · ✕), NOT as the row's first grid
-        // child: the row is a two-column grid and prepending a cell shifts every later child
-        // into the wrong column — the effect chooser ends up squeezed and the blend row wraps.
-        const ctlRow = row.querySelector(".lyr-ctl");
-        if (ctlRow) ctlRow.insertBefore(chev, ctlRow.firstChild); else row.appendChild(chev);
+        // Top-left, beside the effect chooser — the fold belongs with the layer's headline,
+        // not down in the mute/gain row.
+        //
+        // It goes in a flex WRAPPER that takes the chooser's existing grid cell, never as a
+        // new grid child: the row is a two-column grid whose handle spans `grid-row: 1 / 4`,
+        // so an extra cell shifts every later child into the wrong column and the chooser and
+        // blend row visibly collapse. (Tried it; that is what it looks like.)
+        const nameSel = row.querySelector("select.lyr-name");
+        if (nameSel) {
+          const line = document.createElement("div");
+          line.className = "lyr-nameline";
+          row.insertBefore(line, nameSel);      // claim the cell the chooser was in
+          line.append(chev, nameSel);
+        } else {
+          row.appendChild(chev);
+        }
       }
     });
     const add = el("addlayer");
