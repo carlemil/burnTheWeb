@@ -435,7 +435,13 @@
     for (const L of items) L.phase = Object.assign({}, now);
     stack = items;
     stackSel = 0;
+    pointMaps(0);
     thawItem(stack[0]);
+    // Every slot holds a DIFFERENT layer now, so every block has to be repainted. Missing
+    // this is silent: the records are right, so the render is right and only the panel lies.
+    // It lives here rather than in applyPreset so presetprobe's structural check — that
+    // applyPreset reads no field snapshotScene does not capture — still holds by construction.
+    repaintAllBlocks();
   }
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;

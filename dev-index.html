@@ -778,9 +778,6 @@
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > .lyrblock { display: none; }
-  /* M4a scaffolding: a block that is not the selected layer's holds stale values until
-     paintBlock exists, so it is hidden rather than shown wrong. Dropped at M4b. */
-  #panel .lyrblock.inactive { display: none; }
   #panel .lyr.folded { padding-bottom: 6px; }
   #panel .lyr > .lyrblock {
     grid-column: 1 / -1;
@@ -6876,9 +6873,17 @@
   // A control is visible when the current effect declares it OR it belongs to a
   // ticked filter — so filter params appear and vanish with their checkbox without
   // any effect needing to list them.
-  function shownKeys() {
-    const shown = new Set(EFFECTS[effect].params);
-    for (const f of activeFilters()) for (const k of f.params) shown.add(k);
+  function shownKeys() { return shownKeysFor(stackSel); }
+  // What ONE slot's block shows: its own effect's params plus its own ticked filters'. For the
+  // selected layer that is the live `effect` + activeFilters(); for any other it is read off
+  // the record, so four open blocks each show their own controls instead of four copies of
+  // whichever layer happens to be selected.
+  function shownKeysFor(slot) {
+    const L = stack[slot];
+    const sel = slot === stackSel || !L;
+    const shown = new Set(EFFECTS[sel ? effect : L.fx].params);
+    const fs = sel ? activeFilters() : orderFilters(filtersOk(L.filters) || presetFilters(L.fx));
+    for (const f of fs) for (const k of f.params) shown.add(k);
     shown.add("heatboost");           // a palette-box control that applies to every effect (like palcycle/palhold)
     return shown;
   }
@@ -6889,8 +6894,8 @@
   // group comes first in the schema — "Shape & motion" — while the first *visible* one depends
   // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
   // re-marked on every visibility pass.
-  function markFirstGroup() {
-    const host = ctl("fxctl");
+  function markFirstGroup(slot) {
+    const host = ctlIn(slot, "fxctl");
     if (!host) return;
     let seen = false;
     host.querySelectorAll(".ctl-grp").forEach(h => {
@@ -6900,44 +6905,55 @@
     });
   }
   function refreshControlVisibility() {
-    const shown = shownKeys();
+    for (let slot = 0; slot < STACK_MAX; slot++) refreshBlockVisibility(slot);
+    refreshBreakout();                // show/hide the pop-out boxes to match
+  }
+  // One block, against its own layer's effect and filters.
+  function refreshBlockVisibility(slot) {
+    const shown = shownKeysFor(slot);
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
       const vis = shown.has(c.key) ? "" : "none";
-      if (rows[c.key]) rows[c.key].style.display = vis;
-      else ctl("ctl-" + c.key).style.display = vis;
+      const row = ctlIn(slot, "row-" + c.key), box = ctlIn(slot, "ctl-" + c.key);
+      if (row) row.style.display = vis;
+      else if (box) box.style.display = vis;
+      // A scene control has one row and one box, both outside every block; slot 0 owns them.
+      else if (slot === 0 && rows[c.key]) rows[c.key].style.display = vis;
+      else if (slot === 0 && el("ctl-" + c.key)) el("ctl-" + c.key).style.display = vis;
     });
     for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
-      const hdr = ctl("grp-" + g);
+      const hdr = ctlIn(slot, "grp-" + g);
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
-    markFirstGroup();                  // ...and the topmost visible one loses its divider
-    refreshBreakout();                // show/hide the pop-out boxes to match
-    refreshBlocked(shown);            // grey any control another setting has neutralised
-    refreshChanged(shown);            // mark any slider moved off its shipped default
+    markFirstGroup(slot);              // ...and the topmost visible one loses its divider
+    refreshBlocked(slot, shown);      // grey any control another setting has neutralised
+    refreshChanged(slot, shown);      // mark any slider moved off its shipped default
   }
   // Mark a slider's menu row (and its pop-out box) when its live value differs from the
   // current effect's SHIPPED default — a modified-from-default dot, so you can see at a
   // glance what you've customised. Reads the DOM thumbs (stable; the drift lives elsewhere),
   // so it must run on every edit too. Dual → compare [lo,hi]; plain → the single value.
-  function refreshChanged(shown) {
-    shown = shown || shownKeys();
-    const def = presetState(effect);
+  function refreshChanged(slot, shown) {
+    if (slot === undefined) slot = stackSel;
+    shown = shown || shownKeysFor(slot);
+    const L = stack[slot];
+    const def = presetState(slot === stackSel || !L ? effect : L.fx);
+    const g = k => ctlIn(slot, k) || (slot === 0 ? el(k) : null);
     for (const c of CONTROLS) {
-      const row = rows[c.key];
+      const row = ctlIn(slot, "row-" + c.key) || (slot === 0 ? rows[c.key] : null);
       if (!row) continue;             // only poppable sliders carry a launcher row
       let changed = false;
       if (shown.has(c.key)) {
         const d = def[c.key];
         if (Array.isArray(d)) {
-          const lo = ctl(c.key + "-lo"), hi = ctl(c.key + "-hi");
+          const lo = g(c.key + "-lo"), hi = g(c.key + "-hi");
           if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
         } else if (d != null) {
-          const e = ctl(c.key);
+          const e = g(c.key);
           if (e) changed = Math.abs(+e.value - d) > 1e-9;
         }
       }
       row.classList.toggle("ctl-changed", changed);
-      const box = ctl("ctl-" + c.key);
+      const box = g("ctl-" + c.key);
       if (box) box.classList.toggle("ctl-changed", changed);
     }
   }
@@ -6945,15 +6961,23 @@
   // whose HIGH thumb is 0 — i.e. turned fully off, so the drift can never leave 0). Keyed
   // blocked-control → the blocker it depends on. Extend by adding an entry.
   const CTL_BLOCKED = { bandsize: "band", banddim: "band", nodspd: "nod" };
-  function ctlHi(key) { const a = anims[key]; return a ? (a.hi ? +a.hi.value : +a.lo.value) : 1; }
+  function ctlHi(key) { return ctlHiIn(stackSel, key); }
+  // A control is "off" when its dual's HIGH thumb is 0 — read off that block's own thumb, so a
+  // blocked control is greyed per layer rather than from whichever one is selected.
+  function ctlHiIn(slot, key) {
+    const n = ctlIn(slot, key + "-hi") || ctlIn(slot, key) || el(key + "-hi") || el(key);
+    return n ? +n.value : 1;
+  }
   // Grey the blocked control's menu row + box, kill its +/- button, and stash the blocker
   // on the row so a click can flash it. Reads live thumb values, so it must run on edits too.
-  function refreshBlocked(shown) {
-    shown = shown || shownKeys();
+  function refreshBlocked(slot, shown) {
+    if (slot === undefined) slot = stackSel;
+    shown = shown || shownKeysFor(slot);
     for (const key in CTL_BLOCKED) {
       const by = CTL_BLOCKED[key];
-      const blocked = shown.has(key) && ctlHi(by) === 0;
-      const row = rows[key], box = ctl("ctl-" + key);
+      const blocked = shown.has(key) && ctlHiIn(slot, by) === 0;
+      const row = ctlIn(slot, "row-" + key) || (slot === 0 ? rows[key] : null);
+      const box = ctlIn(slot, "ctl-" + key) || (slot === 0 ? el("ctl-" + key) : null);
       if (row) {
         row.classList.toggle("ctl-blocked", blocked);
         row.dataset.blocker = blocked ? by : "";
@@ -9166,8 +9190,58 @@
   // freezeItem reads the OUTGOING block, so it must run while the maps still point at it;
   // pointMaps then installs the incoming block, so the loadState inside setEffect writes
   // there. freeze -> stackSel -> pointMaps -> everything else.
+  // Paint a NON-selected block from its layer's frozen record. The selected block is skipped
+  // because it IS the store — overwriting it would throw away whatever is being edited.
+  //
+  // It sets values and calls that slider's own ui() DIRECTLY; it must never dispatch `input`.
+  // A dispatch would reach the delegated onEdit, which persists and autosaves the live scene,
+  // so painting three blocks would write the scene three times per selection for no reason.
+  function paintBlock(slot, L) {
+    if (!L || slot === stackSel || !W[slot]) return;
+    // Bounds BEFORE values: paint a value into a slider still carrying the shipped bounds and
+    // the browser silently clamps it, and the next freezeItem writes the clamped number back.
+    applyLayerRangesTo(slot, L.ranges);
+    const st = L.state || {};
+    for (const id in W[slot]) {
+      const w = W[slot][id], v = st[id];
+      if (Array.isArray(v)) { w.lo.value = String(v[0]); w.hi.value = String(v[1]); }
+      else if (v !== undefined && v !== null) { w.lo.value = String(v); w.hi.value = String(v); }
+      w.ui();
+      // The beat wiring: which bands arm it, the fall curve, how long the fall takes.
+      const b = L.beat && L.beat[id];
+      if (w.chips) for (const k in w.chips) w.chips[k].classList.toggle("on", !!(b && b[k]));
+      if (w.dots) for (const k in w.dots) w.dots[k].classList.toggle("armed", !!(b && b[k]));
+      if (w.psel) w.psel.value = (L.pulse && L.pulse[id]) || PULSE_DEFAULT;
+      if (w.plen) {
+        const p = (L.plen && L.plen[id]) != null ? L.plen[id] : PULSE_DROP;
+        w.plen.inp.value = String(p);
+        w.plen.out.textContent = plenFmt(+p);
+      }
+    }
+    // The non-slider per-layer controls.
+    const lv = st.layers;
+    if (ctlIn(slot, "layers") && lv != null) {
+      ctlIn(slot, "layers").value = String(lv);
+      ctlIn(slot, "vLayers").textContent = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
+    }
+    const px = presetExtra(L.fx);
+    if (ctlIn(slot, "palrev")) ctlIn(slot, "palrev").checked = !!(L.paletteRev != null ? L.paletteRev : px.paletteRev);
+    if (ctlIn(slot, "palbg")) ctlIn(slot, "palbg").value = bgOk(L.paletteBg != null ? L.paletteBg : px.paletteBg);
+    if (ctlIn(slot, "showbox")) ctlIn(slot, "showbox").checked = !!(L.showBox != null ? L.showBox : px.showBox);
+    if (ctlIn(slot, "cardbtn")) ctlIn(slot, "cardbtn").style.display = EFFECTS[L.fx].cardioid ? "" : "none";
+    // This layer's filter chain — membership, order and the stage divider.
+    const own = new Set(filtersOk(L.filters) || presetFilters(L.fx));
+    FILTERS.forEach(f => { const cb = ctlIn(slot, "flt-" + f.id); if (cb) cb.checked = own.has(f.id); });
+    renderFilterListsFor(slot);
+    refreshBlockVisibility(slot);      // ...against ITS effect and ITS filters
+  }
+  // A reorder, an add, a remove and a scene load all change WHICH LAYER a slot holds, so
+  // every block has to be repainted. Missing one is silent: the records are still right, so
+  // the render is still right and only the panel lies.
+  function repaintAllBlocks() { stack.forEach((L, s) => paintBlock(s, L)); }
   function selectStack(j) {
     if (j === stackSel || !stack[j]) return;
+    const prev = stackSel;
     freezeItem(stack[stackSel]);
     stackSel = j;
     pointMaps(j);
@@ -9177,6 +9251,7 @@
     setEffect(stack[j].fx, false, false);   // reloads the maps for editing; enter=false ⇒ no reseed, the layer keeps running
     applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
     restoreLayerUi(stack[j], pops);  // ...and re-open the pop-out boxes it had open
+    paintBlock(prev, stack[prev]);   // the block that just lost selection, from its frozen record
     syncStackUI();
   }
   function addStackItem(fx) {
@@ -9203,6 +9278,7 @@
     setEffect(L.fx, false);
     applyLayerExtras(L);
     restoreLayerUi(L, null);         // a fresh layer has no pop-out boxes ⇒ clean editing surface
+    repaintAllBlocks();
     syncStackUI();
   }
   function removeStackItem(j) {
@@ -9218,6 +9294,7 @@
     setEffect(stack[stackSel].fx, false, false);   // re-selecting a surviving layer ⇒ no reseed
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
     restoreLayerUi(stack[stackSel], pops);   // ...and its remembered pop-out boxes
+    repaintAllBlocks();              // the splice moved every later layer down a slot
     syncStackUI();
   }
   // ---- the layer list ----
@@ -9376,6 +9453,7 @@
             moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
           }
           const at = stack.indexOf(dragged);
+          if (moved) repaintAllBlocks();                     // slots now hold different layers
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row
           if (moved) { persist(); autosavePreset(); }
@@ -9535,9 +9613,6 @@
       // header (effect, mute, gain, blend), then what it draws, then what filters it, then how
       // it is coloured. The block lives here permanently.
       adoptLayerCtl(slot, r.row);
-      // M4a: only the selected layer's block is meaningful yet — the others hold whatever they
-      // were built with until paintBlock exists. Hidden rather than shown wrong.
-      blocks[slot].classList.toggle("inactive", slot !== stackSel);
     }
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
@@ -9853,15 +9928,16 @@
   // shipped bounds first, so this is a REPLACE, not a merge: `r` is always the complete
   // set of non-default bounds (collectRanges only stores what differs), and switching to
   // a preset that widened nothing must narrow the previous preset's widening back.
-  function applyRangesFor(r, want) {      // reset the wanted sliders to shipped, then apply r's bounds for them
+  function applyRangesFor(r, want, slot) {      // reset the wanted sliders to shipped, then apply r's bounds for them
+    const g = id => (slot === undefined ? ctl(id) : (ctlIn(slot, id) || (slot === 0 ? el(id) : null)));
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = ctl(id), o = RNG_ORIG[id];
+      const inp = g(id), o = RNG_ORIG[id];
       if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
     if (r && typeof r === "object") for (const id in r) {
       if (!want(id)) continue;
-      const inp = ctl(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
+      const inp = g(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
       inp.min = String(mn); inp.max = String(mx);
@@ -9874,6 +9950,12 @@
   }
   function applyRanges(r) { applyRangesFor(r, id => !rangeIsLayer(id)); }   // scene-wide bounds (a REPLACE — see the old note)
   function applyLayerRanges(r) { applyRangesFor(r, rangeIsLayer); }         // one layer's per-layer-slider bounds
+  // ...and the same for a block that is not the selected one. paintBlock MUST call this
+  // BEFORE it writes that block's values: a value painted into a slider whose bounds are
+  // still the shipped ones is silently clamped by the browser, and the next freezeItem then
+  // writes the clamped number back. That is data loss, not cosmetics, and it only shows on
+  // scenes with widened sliders.
+  function applyLayerRangesTo(slot, r) { applyRangesFor(r, rangeIsLayer, slot); }
   // After bounds change mid-session, re-clamp stray values and re-run each slider's
   // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
   // Every scene range slider, whether docked in the menu or popped into #breakout.
@@ -11389,7 +11471,13 @@
     for (const L of items) L.phase = Object.assign({}, now);
     stack = items;
     stackSel = 0;
+    pointMaps(0);
     thawItem(stack[0]);
+    // Every slot holds a DIFFERENT layer now, so every block has to be repainted. Missing
+    // this is silent: the records are right, so the render is right and only the panel lies.
+    // It lives here rather than in applyPreset so presetprobe's structural check — that
+    // applyPreset reads no field snapshotScene does not capture — still holds by construction.
+    repaintAllBlocks();
   }
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;

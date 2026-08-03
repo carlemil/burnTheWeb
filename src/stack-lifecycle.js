@@ -41,8 +41,58 @@
   // freezeItem reads the OUTGOING block, so it must run while the maps still point at it;
   // pointMaps then installs the incoming block, so the loadState inside setEffect writes
   // there. freeze -> stackSel -> pointMaps -> everything else.
+  // Paint a NON-selected block from its layer's frozen record. The selected block is skipped
+  // because it IS the store — overwriting it would throw away whatever is being edited.
+  //
+  // It sets values and calls that slider's own ui() DIRECTLY; it must never dispatch `input`.
+  // A dispatch would reach the delegated onEdit, which persists and autosaves the live scene,
+  // so painting three blocks would write the scene three times per selection for no reason.
+  function paintBlock(slot, L) {
+    if (!L || slot === stackSel || !W[slot]) return;
+    // Bounds BEFORE values: paint a value into a slider still carrying the shipped bounds and
+    // the browser silently clamps it, and the next freezeItem writes the clamped number back.
+    applyLayerRangesTo(slot, L.ranges);
+    const st = L.state || {};
+    for (const id in W[slot]) {
+      const w = W[slot][id], v = st[id];
+      if (Array.isArray(v)) { w.lo.value = String(v[0]); w.hi.value = String(v[1]); }
+      else if (v !== undefined && v !== null) { w.lo.value = String(v); w.hi.value = String(v); }
+      w.ui();
+      // The beat wiring: which bands arm it, the fall curve, how long the fall takes.
+      const b = L.beat && L.beat[id];
+      if (w.chips) for (const k in w.chips) w.chips[k].classList.toggle("on", !!(b && b[k]));
+      if (w.dots) for (const k in w.dots) w.dots[k].classList.toggle("armed", !!(b && b[k]));
+      if (w.psel) w.psel.value = (L.pulse && L.pulse[id]) || PULSE_DEFAULT;
+      if (w.plen) {
+        const p = (L.plen && L.plen[id]) != null ? L.plen[id] : PULSE_DROP;
+        w.plen.inp.value = String(p);
+        w.plen.out.textContent = plenFmt(+p);
+      }
+    }
+    // The non-slider per-layer controls.
+    const lv = st.layers;
+    if (ctlIn(slot, "layers") && lv != null) {
+      ctlIn(slot, "layers").value = String(lv);
+      ctlIn(slot, "vLayers").textContent = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
+    }
+    const px = presetExtra(L.fx);
+    if (ctlIn(slot, "palrev")) ctlIn(slot, "palrev").checked = !!(L.paletteRev != null ? L.paletteRev : px.paletteRev);
+    if (ctlIn(slot, "palbg")) ctlIn(slot, "palbg").value = bgOk(L.paletteBg != null ? L.paletteBg : px.paletteBg);
+    if (ctlIn(slot, "showbox")) ctlIn(slot, "showbox").checked = !!(L.showBox != null ? L.showBox : px.showBox);
+    if (ctlIn(slot, "cardbtn")) ctlIn(slot, "cardbtn").style.display = EFFECTS[L.fx].cardioid ? "" : "none";
+    // This layer's filter chain — membership, order and the stage divider.
+    const own = new Set(filtersOk(L.filters) || presetFilters(L.fx));
+    FILTERS.forEach(f => { const cb = ctlIn(slot, "flt-" + f.id); if (cb) cb.checked = own.has(f.id); });
+    renderFilterListsFor(slot);
+    refreshBlockVisibility(slot);      // ...against ITS effect and ITS filters
+  }
+  // A reorder, an add, a remove and a scene load all change WHICH LAYER a slot holds, so
+  // every block has to be repainted. Missing one is silent: the records are still right, so
+  // the render is still right and only the panel lies.
+  function repaintAllBlocks() { stack.forEach((L, s) => paintBlock(s, L)); }
   function selectStack(j) {
     if (j === stackSel || !stack[j]) return;
+    const prev = stackSel;
     freezeItem(stack[stackSel]);
     stackSel = j;
     pointMaps(j);
@@ -52,6 +102,7 @@
     setEffect(stack[j].fx, false, false);   // reloads the maps for editing; enter=false ⇒ no reseed, the layer keeps running
     applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
     restoreLayerUi(stack[j], pops);  // ...and re-open the pop-out boxes it had open
+    paintBlock(prev, stack[prev]);   // the block that just lost selection, from its frozen record
     syncStackUI();
   }
   function addStackItem(fx) {
@@ -78,6 +129,7 @@
     setEffect(L.fx, false);
     applyLayerExtras(L);
     restoreLayerUi(L, null);         // a fresh layer has no pop-out boxes ⇒ clean editing surface
+    repaintAllBlocks();
     syncStackUI();
   }
   function removeStackItem(j) {
@@ -93,6 +145,7 @@
     setEffect(stack[stackSel].fx, false, false);   // re-selecting a surviving layer ⇒ no reseed
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
     restoreLayerUi(stack[stackSel], pops);   // ...and its remembered pop-out boxes
+    repaintAllBlocks();              // the splice moved every later layer down a slot
     syncStackUI();
   }
   // ---- the layer list ----
@@ -251,6 +304,7 @@
             moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
           }
           const at = stack.indexOf(dragged);
+          if (moved) repaintAllBlocks();                     // slots now hold different layers
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row
           if (moved) { persist(); autosavePreset(); }
@@ -410,9 +464,6 @@
       // header (effect, mute, gain, blend), then what it draws, then what filters it, then how
       // it is coloured. The block lives here permanently.
       adoptLayerCtl(slot, r.row);
-      // M4a: only the selected layer's block is meaningful yet — the others hold whatever they
-      // were built with until paintBlock exists. Hidden rather than shown wrong.
-      blocks[slot].classList.toggle("inactive", slot !== stackSel);
     }
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);

@@ -110,15 +110,16 @@
   // shipped bounds first, so this is a REPLACE, not a merge: `r` is always the complete
   // set of non-default bounds (collectRanges only stores what differs), and switching to
   // a preset that widened nothing must narrow the previous preset's widening back.
-  function applyRangesFor(r, want) {      // reset the wanted sliders to shipped, then apply r's bounds for them
+  function applyRangesFor(r, want, slot) {      // reset the wanted sliders to shipped, then apply r's bounds for them
+    const g = id => (slot === undefined ? ctl(id) : (ctlIn(slot, id) || (slot === 0 ? el(id) : null)));
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = ctl(id), o = RNG_ORIG[id];
+      const inp = g(id), o = RNG_ORIG[id];
       if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
     if (r && typeof r === "object") for (const id in r) {
       if (!want(id)) continue;
-      const inp = ctl(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
+      const inp = g(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
       inp.min = String(mn); inp.max = String(mx);
@@ -131,6 +132,12 @@
   }
   function applyRanges(r) { applyRangesFor(r, id => !rangeIsLayer(id)); }   // scene-wide bounds (a REPLACE — see the old note)
   function applyLayerRanges(r) { applyRangesFor(r, rangeIsLayer); }         // one layer's per-layer-slider bounds
+  // ...and the same for a block that is not the selected one. paintBlock MUST call this
+  // BEFORE it writes that block's values: a value painted into a slider whose bounds are
+  // still the shipped ones is silently clamped by the browser, and the next freezeItem then
+  // writes the clamped number back. That is data loss, not cosmetics, and it only shows on
+  // scenes with widened sliders.
+  function applyLayerRangesTo(slot, r) { applyRangesFor(r, rangeIsLayer, slot); }
   // After bounds change mid-session, re-clamp stray values and re-run each slider's
   // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
   // Every scene range slider, whether docked in the menu or popped into #breakout.

@@ -760,9 +760,6 @@
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > .lyrblock { display: none; }
-  /* M4a scaffolding: a block that is not the selected layer's holds stale values until
-     paintBlock exists, so it is hidden rather than shown wrong. Dropped at M4b. */
-  #panel .lyrblock.inactive { display: none; }
   #panel .lyr.folded { padding-bottom: 6px; }
   #panel .lyr > .lyrblock {
     grid-column: 1 / -1;

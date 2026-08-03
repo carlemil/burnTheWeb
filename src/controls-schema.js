@@ -596,9 +596,17 @@
   // A control is visible when the current effect declares it OR it belongs to a
   // ticked filter — so filter params appear and vanish with their checkbox without
   // any effect needing to list them.
-  function shownKeys() {
-    const shown = new Set(EFFECTS[effect].params);
-    for (const f of activeFilters()) for (const k of f.params) shown.add(k);
+  function shownKeys() { return shownKeysFor(stackSel); }
+  // What ONE slot's block shows: its own effect's params plus its own ticked filters'. For the
+  // selected layer that is the live `effect` + activeFilters(); for any other it is read off
+  // the record, so four open blocks each show their own controls instead of four copies of
+  // whichever layer happens to be selected.
+  function shownKeysFor(slot) {
+    const L = stack[slot];
+    const sel = slot === stackSel || !L;
+    const shown = new Set(EFFECTS[sel ? effect : L.fx].params);
+    const fs = sel ? activeFilters() : orderFilters(filtersOk(L.filters) || presetFilters(L.fx));
+    for (const f of fs) for (const k of f.params) shown.add(k);
     shown.add("heatboost");           // a palette-box control that applies to every effect (like palcycle/palhold)
     return shown;
   }
@@ -609,8 +617,8 @@
   // group comes first in the schema — "Shape & motion" — while the first *visible* one depends
   // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
   // re-marked on every visibility pass.
-  function markFirstGroup() {
-    const host = ctl("fxctl");
+  function markFirstGroup(slot) {
+    const host = ctlIn(slot, "fxctl");
     if (!host) return;
     let seen = false;
     host.querySelectorAll(".ctl-grp").forEach(h => {
@@ -620,44 +628,55 @@
     });
   }
   function refreshControlVisibility() {
-    const shown = shownKeys();
+    for (let slot = 0; slot < STACK_MAX; slot++) refreshBlockVisibility(slot);
+    refreshBreakout();                // show/hide the pop-out boxes to match
+  }
+  // One block, against its own layer's effect and filters.
+  function refreshBlockVisibility(slot) {
+    const shown = shownKeysFor(slot);
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
       const vis = shown.has(c.key) ? "" : "none";
-      if (rows[c.key]) rows[c.key].style.display = vis;
-      else ctl("ctl-" + c.key).style.display = vis;
+      const row = ctlIn(slot, "row-" + c.key), box = ctlIn(slot, "ctl-" + c.key);
+      if (row) row.style.display = vis;
+      else if (box) box.style.display = vis;
+      // A scene control has one row and one box, both outside every block; slot 0 owns them.
+      else if (slot === 0 && rows[c.key]) rows[c.key].style.display = vis;
+      else if (slot === 0 && el("ctl-" + c.key)) el("ctl-" + c.key).style.display = vis;
     });
     for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
-      const hdr = ctl("grp-" + g);
+      const hdr = ctlIn(slot, "grp-" + g);
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
-    markFirstGroup();                  // ...and the topmost visible one loses its divider
-    refreshBreakout();                // show/hide the pop-out boxes to match
-    refreshBlocked(shown);            // grey any control another setting has neutralised
-    refreshChanged(shown);            // mark any slider moved off its shipped default
+    markFirstGroup(slot);              // ...and the topmost visible one loses its divider
+    refreshBlocked(slot, shown);      // grey any control another setting has neutralised
+    refreshChanged(slot, shown);      // mark any slider moved off its shipped default
   }
   // Mark a slider's menu row (and its pop-out box) when its live value differs from the
   // current effect's SHIPPED default — a modified-from-default dot, so you can see at a
   // glance what you've customised. Reads the DOM thumbs (stable; the drift lives elsewhere),
   // so it must run on every edit too. Dual → compare [lo,hi]; plain → the single value.
-  function refreshChanged(shown) {
-    shown = shown || shownKeys();
-    const def = presetState(effect);
+  function refreshChanged(slot, shown) {
+    if (slot === undefined) slot = stackSel;
+    shown = shown || shownKeysFor(slot);
+    const L = stack[slot];
+    const def = presetState(slot === stackSel || !L ? effect : L.fx);
+    const g = k => ctlIn(slot, k) || (slot === 0 ? el(k) : null);
     for (const c of CONTROLS) {
-      const row = rows[c.key];
+      const row = ctlIn(slot, "row-" + c.key) || (slot === 0 ? rows[c.key] : null);
       if (!row) continue;             // only poppable sliders carry a launcher row
       let changed = false;
       if (shown.has(c.key)) {
         const d = def[c.key];
         if (Array.isArray(d)) {
-          const lo = ctl(c.key + "-lo"), hi = ctl(c.key + "-hi");
+          const lo = g(c.key + "-lo"), hi = g(c.key + "-hi");
           if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
         } else if (d != null) {
-          const e = ctl(c.key);
+          const e = g(c.key);
           if (e) changed = Math.abs(+e.value - d) > 1e-9;
         }
       }
       row.classList.toggle("ctl-changed", changed);
-      const box = ctl("ctl-" + c.key);
+      const box = g("ctl-" + c.key);
       if (box) box.classList.toggle("ctl-changed", changed);
     }
   }
@@ -665,15 +684,23 @@
   // whose HIGH thumb is 0 — i.e. turned fully off, so the drift can never leave 0). Keyed
   // blocked-control → the blocker it depends on. Extend by adding an entry.
   const CTL_BLOCKED = { bandsize: "band", banddim: "band", nodspd: "nod" };
-  function ctlHi(key) { const a = anims[key]; return a ? (a.hi ? +a.hi.value : +a.lo.value) : 1; }
+  function ctlHi(key) { return ctlHiIn(stackSel, key); }
+  // A control is "off" when its dual's HIGH thumb is 0 — read off that block's own thumb, so a
+  // blocked control is greyed per layer rather than from whichever one is selected.
+  function ctlHiIn(slot, key) {
+    const n = ctlIn(slot, key + "-hi") || ctlIn(slot, key) || el(key + "-hi") || el(key);
+    return n ? +n.value : 1;
+  }
   // Grey the blocked control's menu row + box, kill its +/- button, and stash the blocker
   // on the row so a click can flash it. Reads live thumb values, so it must run on edits too.
-  function refreshBlocked(shown) {
-    shown = shown || shownKeys();
+  function refreshBlocked(slot, shown) {
+    if (slot === undefined) slot = stackSel;
+    shown = shown || shownKeysFor(slot);
     for (const key in CTL_BLOCKED) {
       const by = CTL_BLOCKED[key];
-      const blocked = shown.has(key) && ctlHi(by) === 0;
-      const row = rows[key], box = ctl("ctl-" + key);
+      const blocked = shown.has(key) && ctlHiIn(slot, by) === 0;
+      const row = ctlIn(slot, "row-" + key) || (slot === 0 ? rows[key] : null);
+      const box = ctlIn(slot, "ctl-" + key) || (slot === 0 ? el("ctl-" + key) : null);
       if (row) {
         row.classList.toggle("ctl-blocked", blocked);
         row.dataset.blocker = blocked ? by : "";
