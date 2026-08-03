@@ -148,18 +148,23 @@ camera, display zoom and accumulation smear, plus the panel's real colours.
 - `CREDITS` drives **both** the overlay and the panel's Credits box (`buildCreditList()`).
 - The on/off preference lives in its own `localStorage` key, **not** in the scene blob.
 
-**The scene title is the credits' second tenant.** On every scene change it names what you
-switched to — `"<scene name> — <account>"`, one centred line in the credits' own typography
-(bold white name, dim dash, handle-amber author, same dark-halo-then-warm-glow double draw).
-`showSceneTitle(name, author)` arms `titleLeft` from `CONFIG.credits.titleHold`/`titleFade`
-(2.5s + 1.5s — shorter than the credits because it fires on every auto-cycle tick too), and
-`creditDraw` picks a tenant: credits while `creditLeft > 0`, else the title. `drawCredits` is
-the old body, extracted.
-- **"After the credits" is enforced by the TICK, not the draw.** `frame()` decrements
-  `titleLeft` only in the `else` of `creditLeft > 0`, so a scene applied during the opening
-  credits (the first visit applies one) starts its title when they finish instead of being
-  drawn over or silently expiring underneath them. Re-arming just restarts the countdown, so
-  switching twice quickly shows the second name rather than queueing.
+**The scene banner (`#scenebanner`) is DOM CHROME, not part of the frame.** On every scene
+change it names what you switched to — `"<scene name>  ·  <account>"` — as a small element in
+the top button row, right of the mute button. It used to be painted onto the credits canvas in
+their typography; as chrome it is immune to the filters and the camera without needing to be an
+overlay canvas at all, stays crisp at any render resolution, and costs the render nothing.
+`showSceneTitle(name, author)` fills it and arms `titleLeft` from
+`CONFIG.credits.titleHold`/`titleFade` (2.5s + 1.5s — shorter than the credits because it fires
+on every auto-cycle tick too); `sceneBannerTick()` pushes that clock onto the element.
+- **"After the credits" needs BOTH halves now.** `frame()` still decrements `titleLeft` only in
+  the `else` of `creditLeft > 0`, so a scene applied during the opening credits waits rather
+  than expiring underneath them — but `sceneBannerTick` must ALSO gate on `creditLeft <= 0`.
+  The canvas version got that free (creditDraw simply drew the credits instead); a DOM element
+  shows the moment it is armed, and startup arms one **before** `startCredits()` sets the clock.
+  And the tick is called **unconditionally**, not inside that `else`: the tick that takes
+  `titleLeft` to 0 must still run to hide it, and a tick that only runs while counting could
+  never correct the startup case. Both were caught by the probe, neither by reading.
+  Re-arming just restarts the countdown, so switching twice quickly shows the second name.
 - **`applyPreset` must not read `p.name`/`p.collection`.** `presetprobe` slices
   `function applyPreset(` … `function createPreset(` and asserts every `p.<field>` in there is
   one `snapshotScene` captures — and neither is (a preset's label and provenance are not what
@@ -1160,7 +1165,12 @@ is identical each frame — only the moving geometry reshapes the fractal. Auto-
 `cfg = { points, speed, decay, scale, burn }` holds live fire state. Sliders are wired via
 `bindRange(id, valId, fmt, apply, durScale, beat)` and registered in `anims`; `updateAnims()`
 drives their drift between the two thumbs. `bindRange`'s `ui()` reads `lo.min`/`lo.max` **live**
-rather than closing over them, because bounds are editable at runtime. Non-obvious mappings:
+rather than closing over them, because bounds are editable at runtime — and it uses them to pick
+precision: **a slider whose range spans more than 1 shows at most one decimal**. Three significant
+digits is right for a 0–1 knob and absurd on a wider one, where it produced readouts like
+`0.00815×–1.5×`. The rounding is applied to the value handed to `fmt`, so each control keeps its
+own units and suffixes, and it is **readout only** — the applied value stays a free float.
+Non-obvious mappings:
 - **Flame rise** is linear in flame *height*: `decay = 128 * R / (R - 1)`.
 - **Drift speed** slider value is divided by 100 → `cfg.speed`.
 - **Rotation** slider is degrees/second → rad/s (`rotSpeed`), accumulated into `spinAngle` per tick

@@ -592,7 +592,8 @@ That menu box also has a checkbox to stop them appearing on future visits
 since it's a per-browser preference). `?credits=<seconds>` overrides the **hold**
 if you want a longer look; the three-second fade is always added on top.
 
-**The scene title** uses the same layer and the same lettering. Every time you switch
+**The scene banner** names what you just landed on, in the top button row beside the mute
+button. Every time you switch
 scene — by hand, or on the auto-cycle — it names what you just landed on: the scene's
 name, then a dash, then the account that made it. Scenes loaded from someone's published
 profile are credited to them; your own show your cloud profile name, or just the scene

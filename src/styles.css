@@ -228,6 +228,21 @@
   }
   #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
   #mute { left: 94px; font-size: 18px; }  /* mute the music reaction, right of fullscreen */
+  /* The scene banner, continuing that row. It used to be drawn into the frame at ~1/26 of the
+     viewport width; as chrome it can be small and quiet, because it no longer has to survive
+     being composited under a bloom. Not a button — no border or background, so it reads as a
+     caption on the row rather than a fourth control you could press. */
+  #scenebanner {
+    position: fixed; top: 14px; left: 134px; z-index: 10;
+    height: 34px; display: flex; align-items: center;
+    max-width: calc(100vw - 160px);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #ffcf87; font: 12px/1 ui-monospace, Consolas, monospace; letter-spacing: .03em;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+    pointer-events: none;                 /* never in the way of a click on the canvas */
+    transition: opacity .2s;
+  }
+  #scenebanner.hidden { display: none; }
   /* Muted reads as a struck-through note — same glyph, so the button never changes width or
      baseline as you toggle it, and it stays monochrome with its two neighbours. */
   #mute.muted { color: #8a6a52; text-decoration: line-through; }
@@ -260,6 +275,7 @@
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
+  body.ui-hidden #scenebanner,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,

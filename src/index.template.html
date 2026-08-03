@@ -291,6 +291,11 @@
      .muted class strikes it through, so this stays monochrome beside ☰ and ⛶ instead of
      swapping in a colour emoji. -->
 <button id="mute" type="button" aria-label="Mute the music reaction (S)" aria-pressed="false">♪</button>
+<!-- Which scene just came up, and who made it. Sits in the top button row rather than being
+     drawn into the frame: it is chrome, so it belongs with the chrome — immune to the filters
+     and the camera for free, readable at any resolution, and it costs the render nothing.
+     Filled and faded by showSceneTitle/sceneBannerTick; aria-live so it is announced. -->
+<div id="scenebanner" class="hidden" aria-live="polite"></div>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>

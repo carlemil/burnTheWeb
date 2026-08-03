@@ -139,6 +139,12 @@
     // (the first visit applies one) starts its title the moment they finish rather than
     // being drawn over or silently expiring underneath them.
     else if (titleLeft > 0) titleLeft -= dt;
+    // UNCONDITIONAL, not inside the branch above. Two ways that bit: the tick that takes
+    // titleLeft to 0 must still run to hide the banner, and startup arms a scene title
+    // BEFORE startCredits() sets the credit clock — so a tick that only runs while the title
+    // is counting would show the banner over the credits and never get a chance to correct
+    // itself. Cheap: a class check, and one opacity write only while it is up.
+    sceneBannerTick();
     transStep(dt);                          // ...and so does the preset transition
 
     // WHICH LAYER THE RENDER FOLLOWS. `activeIds`, the palette globals and `zoom` are the

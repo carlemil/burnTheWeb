@@ -83,13 +83,16 @@
     const w = window.innerWidth, h = window.innerHeight;
     if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
     g.clearRect(0, 0, w, h);
-    if (creditLeft <= 0 && titleLeft <= 0) {   // done: clear once, then get out of the way
+    // The scene title is NOT drawn here any more — it is a DOM element in the top button row
+    // (#scenebanner, see sceneBannerTick). It is chrome, so it belongs with the chrome: immune
+    // to the filters and the camera without having to be an overlay canvas, crisp at any
+    // render resolution, and free of the frame entirely. This canvas is the credits' alone.
+    if (creditLeft <= 0) {                     // done: clear once, then get out of the way
       if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
       return;
     }
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
-    if (creditLeft > 0) drawCredits(g, w, h, creditAlpha());
-    else drawSceneTitle(g, w, h, titleAlpha());
+    drawCredits(g, w, h, creditAlpha());
   }
   function drawCredits(g, w, h, a) {
     g.textAlign = "left"; g.textBaseline = "middle";
@@ -150,44 +153,6 @@
       y += nameLh / 2 + gap + roleLh / 2;
     }
   }
-  // The scene title: "<scene name> — <who made it>", one centred line in the credits'
-  // own typography — bold white for the name, the credits' dim grey for the dash, and the
-  // handle amber for the author, so it reads as the same piece of chrome rather than a
-  // caption bolted on. Two draws again (dark halo, then warm glow) for legibility over a
-  // bright frame.
-  function drawSceneTitle(g, w, h, a) {
-    g.textAlign = "left"; g.textBaseline = "middle";
-    const MONO = "px ui-monospace, Consolas, monospace";
-    // The author half is dropped entirely when there is none — a trailing dash pointing at
-    // nothing reads as a bug, and an unclaimed scene is the common case.
-    const segs = [[titleName, CR_COL.name + a + ")", true]];
-    if (titleAuthor) {
-      segs.push([" — ", CR_COL.aka + (CR_AKA * a) + ")", false]);
-      segs.push([titleAuthor, CR_COL.handle, true]);
-    }
-    const lineW = px => segs.reduce((acc, sg) => {
-      g.font = (sg[2] ? "bold " : "") + px + MONO;
-      return acc + g.measureText(sg[0]).width;
-    }, 0);
-    // Same shrink-to-fit as the credits: start from a size proportional to the viewport and
-    // step down until the whole line clears the margins. A scene name is free text, so this
-    // is the only thing standing between a long one and the edge of the screen.
-    let px = Math.max(11, Math.floor(w / 26));
-    for (let i = 0; i < 80 && px > 10; i++) { if (lineW(px) <= w * 0.88) break; px--; }
-    const y = h * 0.5;
-    let x = (w - lineW(px)) / 2;              // lineW sets g.font as it measures — reset in the loop
-    for (const [txt, col, bold] of segs) {
-      g.font = (bold ? "bold " : "") + px + MONO;
-      g.shadowColor = "rgba(0,0,0," + (0.85 * a) + ")"; g.shadowBlur = Math.round(px * 0.7);
-      g.fillStyle = col; g.globalAlpha = bold ? a : 1;   // the bold runs carry their alpha here
-      g.fillText(txt, x, y);
-      g.shadowColor = "rgba(255,180,90," + (0.6 * a) + ")"; g.shadowBlur = Math.round(px * 0.45);
-      g.fillText(txt, x, y);
-      g.globalAlpha = 1;
-      x += g.measureText(txt).width;
-    }
-    g.shadowBlur = 0; g.shadowColor = "transparent";
-  }
   // The last CREDIT_FADE seconds ramp the whole layer down to nothing rather than
   // cutting out.
   function creditAlpha() {
@@ -207,10 +172,32 @@
   // the countdown instead, which is what makes "after the credits" free.
   function showSceneTitle(name, author) {
     name = (name || "").trim();
-    if (!sceneTitleEnabled() || !name) { titleLeft = 0; return; }
+    if (!sceneTitleEnabled() || !name) { titleLeft = 0; sceneBannerTick(); return; }
     titleName = name;
     titleAuthor = (author || "").trim();
     titleLeft = TITLE_HOLD + TITLE_FADE;
+    const b = el("scenebanner");
+    if (b) {
+      b.textContent = titleAuthor ? titleName + "  ·  " + titleAuthor : titleName;
+      b.title = titleAuthor ? titleName + " — by " + titleAuthor : titleName;
+    }
+    sceneBannerTick();
+  }
+  // Push titleLeft onto the DOM banner. Called every frame from the loop, so it inherits the
+  // rendered-time countdown (and therefore the wait-for-the-credits behaviour) that the
+  // canvas version had — the element is just a different way of showing the same clock.
+  // `.hidden` rather than a style wipe, so nothing is laid out while it is away.
+  let bannerShown = false;
+  function sceneBannerTick() {
+    const b = el("scenebanner");
+    if (!b) return;
+    // `creditLeft <= 0` is what keeps the banner QUEUED BEHIND the opening credits. The
+    // canvas version got that free — creditDraw simply drew the credits instead — but a DOM
+    // element shows the moment it is armed, and the first visit arms one during the credits.
+    // Without this the banner sits in the corner while the credits are still running.
+    const on = titleLeft > 0 && creditLeft <= 0;
+    if (on !== bannerShown) { b.classList.toggle("hidden", !on); bannerShown = on; }
+    if (on) b.style.opacity = titleAlpha();
   }
   function creditsEnabled() {
     // Per-browser preference in its own key; the DEFAULT (no key stored yet) is CONFIG.credits.on.

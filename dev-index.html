@@ -246,6 +246,21 @@
   }
   #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
   #mute { left: 94px; font-size: 18px; }  /* mute the music reaction, right of fullscreen */
+  /* The scene banner, continuing that row. It used to be drawn into the frame at ~1/26 of the
+     viewport width; as chrome it can be small and quiet, because it no longer has to survive
+     being composited under a bloom. Not a button — no border or background, so it reads as a
+     caption on the row rather than a fourth control you could press. */
+  #scenebanner {
+    position: fixed; top: 14px; left: 134px; z-index: 10;
+    height: 34px; display: flex; align-items: center;
+    max-width: calc(100vw - 160px);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #ffcf87; font: 12px/1 ui-monospace, Consolas, monospace; letter-spacing: .03em;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+    pointer-events: none;                 /* never in the way of a click on the canvas */
+    transition: opacity .2s;
+  }
+  #scenebanner.hidden { display: none; }
   /* Muted reads as a struck-through note — same glyph, so the button never changes width or
      baseline as you toggle it, and it stays monochrome with its two neighbours. */
   #mute.muted { color: #8a6a52; text-decoration: line-through; }
@@ -278,6 +293,7 @@
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
+  body.ui-hidden #scenebanner,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
@@ -1443,6 +1459,11 @@
      .muted class strikes it through, so this stays monochrome beside ☰ and ⛶ instead of
      swapping in a colour emoji. -->
 <button id="mute" type="button" aria-label="Mute the music reaction (S)" aria-pressed="false">♪</button>
+<!-- Which scene just came up, and who made it. Sits in the top button row rather than being
+     drawn into the frame: it is chrome, so it belongs with the chrome — immune to the filters
+     and the camera for free, readable at any resolution, and it costs the render nothing.
+     Filled and faded by showSceneTitle/sceneBannerTick; aria-live so it is announced. -->
+<div id="scenebanner" class="hidden" aria-live="polite"></div>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
@@ -5539,6 +5560,12 @@
     // (the first visit applies one) starts its title the moment they finish rather than
     // being drawn over or silently expiring underneath them.
     else if (titleLeft > 0) titleLeft -= dt;
+    // UNCONDITIONAL, not inside the branch above. Two ways that bit: the tick that takes
+    // titleLeft to 0 must still run to hide the banner, and startup arms a scene title
+    // BEFORE startCredits() sets the credit clock — so a tick that only runs while the title
+    // is counting would show the banner over the credits and never get a chance to correct
+    // itself. Cheap: a class check, and one opacity write only while it is up.
+    sceneBannerTick();
     transStep(dt);                          // ...and so does the preset transition
 
     // WHICH LAYER THE RENDER FOLLOWS. `activeIds`, the palette globals and `zoom` are the
@@ -8010,13 +8037,16 @@
     const w = window.innerWidth, h = window.innerHeight;
     if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
     g.clearRect(0, 0, w, h);
-    if (creditLeft <= 0 && titleLeft <= 0) {   // done: clear once, then get out of the way
+    // The scene title is NOT drawn here any more — it is a DOM element in the top button row
+    // (#scenebanner, see sceneBannerTick). It is chrome, so it belongs with the chrome: immune
+    // to the filters and the camera without having to be an overlay canvas, crisp at any
+    // render resolution, and free of the frame entirely. This canvas is the credits' alone.
+    if (creditLeft <= 0) {                     // done: clear once, then get out of the way
       if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
       return;
     }
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
-    if (creditLeft > 0) drawCredits(g, w, h, creditAlpha());
-    else drawSceneTitle(g, w, h, titleAlpha());
+    drawCredits(g, w, h, creditAlpha());
   }
   function drawCredits(g, w, h, a) {
     g.textAlign = "left"; g.textBaseline = "middle";
@@ -8077,44 +8107,6 @@
       y += nameLh / 2 + gap + roleLh / 2;
     }
   }
-  // The scene title: "<scene name> — <who made it>", one centred line in the credits'
-  // own typography — bold white for the name, the credits' dim grey for the dash, and the
-  // handle amber for the author, so it reads as the same piece of chrome rather than a
-  // caption bolted on. Two draws again (dark halo, then warm glow) for legibility over a
-  // bright frame.
-  function drawSceneTitle(g, w, h, a) {
-    g.textAlign = "left"; g.textBaseline = "middle";
-    const MONO = "px ui-monospace, Consolas, monospace";
-    // The author half is dropped entirely when there is none — a trailing dash pointing at
-    // nothing reads as a bug, and an unclaimed scene is the common case.
-    const segs = [[titleName, CR_COL.name + a + ")", true]];
-    if (titleAuthor) {
-      segs.push([" — ", CR_COL.aka + (CR_AKA * a) + ")", false]);
-      segs.push([titleAuthor, CR_COL.handle, true]);
-    }
-    const lineW = px => segs.reduce((acc, sg) => {
-      g.font = (sg[2] ? "bold " : "") + px + MONO;
-      return acc + g.measureText(sg[0]).width;
-    }, 0);
-    // Same shrink-to-fit as the credits: start from a size proportional to the viewport and
-    // step down until the whole line clears the margins. A scene name is free text, so this
-    // is the only thing standing between a long one and the edge of the screen.
-    let px = Math.max(11, Math.floor(w / 26));
-    for (let i = 0; i < 80 && px > 10; i++) { if (lineW(px) <= w * 0.88) break; px--; }
-    const y = h * 0.5;
-    let x = (w - lineW(px)) / 2;              // lineW sets g.font as it measures — reset in the loop
-    for (const [txt, col, bold] of segs) {
-      g.font = (bold ? "bold " : "") + px + MONO;
-      g.shadowColor = "rgba(0,0,0," + (0.85 * a) + ")"; g.shadowBlur = Math.round(px * 0.7);
-      g.fillStyle = col; g.globalAlpha = bold ? a : 1;   // the bold runs carry their alpha here
-      g.fillText(txt, x, y);
-      g.shadowColor = "rgba(255,180,90," + (0.6 * a) + ")"; g.shadowBlur = Math.round(px * 0.45);
-      g.fillText(txt, x, y);
-      g.globalAlpha = 1;
-      x += g.measureText(txt).width;
-    }
-    g.shadowBlur = 0; g.shadowColor = "transparent";
-  }
   // The last CREDIT_FADE seconds ramp the whole layer down to nothing rather than
   // cutting out.
   function creditAlpha() {
@@ -8134,10 +8126,32 @@
   // the countdown instead, which is what makes "after the credits" free.
   function showSceneTitle(name, author) {
     name = (name || "").trim();
-    if (!sceneTitleEnabled() || !name) { titleLeft = 0; return; }
+    if (!sceneTitleEnabled() || !name) { titleLeft = 0; sceneBannerTick(); return; }
     titleName = name;
     titleAuthor = (author || "").trim();
     titleLeft = TITLE_HOLD + TITLE_FADE;
+    const b = el("scenebanner");
+    if (b) {
+      b.textContent = titleAuthor ? titleName + "  ·  " + titleAuthor : titleName;
+      b.title = titleAuthor ? titleName + " — by " + titleAuthor : titleName;
+    }
+    sceneBannerTick();
+  }
+  // Push titleLeft onto the DOM banner. Called every frame from the loop, so it inherits the
+  // rendered-time countdown (and therefore the wait-for-the-credits behaviour) that the
+  // canvas version had — the element is just a different way of showing the same clock.
+  // `.hidden` rather than a style wipe, so nothing is laid out while it is away.
+  let bannerShown = false;
+  function sceneBannerTick() {
+    const b = el("scenebanner");
+    if (!b) return;
+    // `creditLeft <= 0` is what keeps the banner QUEUED BEHIND the opening credits. The
+    // canvas version got that free — creditDraw simply drew the credits instead — but a DOM
+    // element shows the moment it is armed, and the first visit arms one during the credits.
+    // Without this the banner sits in the corner while the credits are still running.
+    const on = titleLeft > 0 && creditLeft <= 0;
+    if (on !== bannerShown) { b.classList.toggle("hidden", !on); bannerShown = on; }
+    if (on) b.style.opacity = titleAlpha();
   }
   function creditsEnabled() {
     // Per-browser preference in its own key; the DEFAULT (no key stored yet) is CONFIG.credits.on.
