@@ -169,9 +169,15 @@ the old body, extracted.
   yours ⇒ the `#cloud-name` value, and with no profile the title is the name alone (the dash is
   dropped with it). Deliberately **not** `myCollectionLabel()`, whose `"My scenes"` fallback is
   a list heading and would read as an author.
-- Its own `localStorage` key + `#sceneTitleOn` checkbox, beside the credits' — same per-browser
-  class, never in a scene blob. Two prefs because turning the opening credits off is about the
-  first five seconds, and this fires forever after.
+- Its own `localStorage` key + the **"Show author"** checkbox (`#sceneTitleOn`), which sits in
+  the **Scene box under Auto-cycle** — that is when you notice the banner, since every cycle
+  tick draws one — not beside the credits' switch, even though it shares their canvas. Two
+  prefs because turning the opening credits off is about the first five seconds and this fires
+  forever after. Do not add a second copy in the Credits box; the two would disagree.
+- Both that checkbox and `#creditsOn` carry **`data-nopersist`**: they are per-browser
+  preferences authored inside `#panel`, so without it the delegated `onEdit` autosaves the live
+  scene into the selected preset every time one is ticked — writing scene data on a non-scene
+  toggle.
 - **`createPreset` does not arm it**: saving the scene you are already on changes its label, not
   the picture. (Cost one red probe assertion before the reasoning was written down.)
 
@@ -389,6 +395,16 @@ and destroyed on close, so an adopted block must be moved back to its home box *
 is removed — otherwise closing the menu **deletes the real audio buttons, resolution select,
 `#cloudrow` and credits list from the document**. `box.dataset.adopt` is how each knows home.
 
+**Shared widget CSS is keyed on the CLASS, not scoped to a container — this trap has bitten
+three times.** A rule written as `#paldlg .pal-close` or `#panel .audbtn` looks tidy and then
+silently leaves every *other* user of that class as a raw browser default: the palette editor's
+×, then the gallery's × (a grey button in normal flow above the title), then every `.audbtn` in
+every dialog. So `.pal-close, .card-close, .help-close, .sync-close` and `.audbtn` are now
+single unscoped rules. The only requirement on a dialog is that its box is `position: relative`
+(or deliberately `static`, as `#carddlg .card-box` is, so the × pins to the floating panel).
+The control-appearance CSS is the deliberate exception — it names `#panel …, #breakout …,
+#menubar …` because those really are three different hosts for the same nodes.
+
 Two consequences: `#menubar` is a full-screen overlay that **catches** pointer events while open
 (it's the click-outside closer; without that a dismissing click pauses the animation), and every
 CSS rule an adopted block needs must name `#menubar` alongside `#panel` — including the *font*,
@@ -569,9 +585,13 @@ flattens everything into one grayscale buffer coloured once. That is still exact
   here. `FS_OKMERGE` takes a finished RGB layer (`uLayer`), not heat+palette. Bloom has no `f.gl`
   hook so it stays whole-scene. `glRender` starts from `glColorTex` and skips both the shared
   `FS_PAL` and the composite-level `glPostChain`.
-- **Menu grouping mirrors it**: `buildFilterUI` groups by `filterGroup(f)` — feedback →
-  "Per-effect · heat & trails", post minus Bloom → "Per-effect · image", Bloom + screen → "Whole
-  scene · final image". Bloom lands right because it is registry-last among `post`.
+- **Menu grouping mirrors it**: `buildFilterUI` groups by `filterGroup(f)` — feedback **and**
+  post-minus-Bloom are ONE group ("Per-effect · heat, trails & image"), Bloom + screen are
+  "Whole scene · final image". Bloom lands right because it is registry-last among `post`, so
+  the group key changes at the right boundary without reordering `FILTERS`. The per-effect side
+  was two headings until they were merged: the split was the pipeline's, not the user's — both
+  are "this layer's own filters". The single heading only works because the registry order puts
+  all feedback, then all post-but-Bloom, then the whole-scene set, keeping the run contiguous.
 - The Canvas2D fallback is untouched: one item, one palette.
 - `STACK_MAX` is declared up by the canvas/GL setup (TDZ — `initGL` allocates per-layer buffers).
 
@@ -642,9 +662,46 @@ collapse an `<optgroup>`**. `buildPresetList` is called from `rebuildPresetOptio
 `change` handler's `-1` branch; miss any one and the highlight goes stale.
 
 **`openCollections` is a transient Set that starts empty** — every group folds on load while
-surviving rebuilds. Your own group is always emitted even when empty, labelled from `#cloud-name`
-falling back to "My scenes". `dropCollection` re-finds the selection **by identity** after
-filtering.
+surviving rebuilds. Your own group is always emitted even when empty. `dropCollection` re-finds
+the selection **by identity** after filtering.
+
+**Your own group is labelled with your profile name, cached so it is right on the FIRST paint.**
+`#cloud-name` is filled by `cloudFetchProfileMeta`, a network round trip, so a label resolved
+only from the live field said one thing at load and another the next time anything rebuilt the
+list — i.e. it renamed itself when you clicked the group open. Two halves, both needed:
+`myProfileName()` reads `#cloud-name` then falls back to **`PROFILE_NAME_KEY`**
+(`burnTheWeb.profile.v1`), read *synchronously*, so there is nothing to flip; and
+**`setProfileName(v)`** is the one way the name is set — it writes the field, the cache, and
+calls `buildPresetList()`, which covers a first-ever sign-in and a rename, where no cache can
+help. Its own key, **not** part of `cloudSess`: this is what to call your local library, so it
+outlives a sign-out. `myCollectionLabel()` = `myProfileName() || DEFAULT_PROFILE_NAME`
+(`"burnTheWeb"`, the same string `cloudSave` writes, so the heading and the published name
+agree). `sceneTitleFor` uses `myProfileName()` **without** the default — crediting a scene to
+"burnTheWeb" is noise.
+
+**Auto-cycle rotation: `p.rotate`.** Each scene row carries a checkbox; unticked scenes stay
+selectable by hand but are skipped by the cycler, so a show can be a subset of the library.
+`inRotation(p)` is `!(p.rotate === false)` — **absent means IN**, so every scene saved, shared,
+backed up or published before the field existed keeps cycling with nothing to migrate, and
+`setRotation` *deletes* the key rather than writing `true`, so a fully-ticked library serialises
+byte-identically. `rotationPool()` is rebuilt per tick (ticks, library and collections all move
+under it); with nothing ticked the cycler **idles** rather than falling back to the whole
+library, because "none in the rotation" is a real choice. `setRotation` calls `persist()` but
+deliberately **not** `autosavePreset()` — the tick belongs to the scene in the library, not the
+scene on screen.
+- Like `collection`, `rotate` is **not** in `snapshotScene` and **must be listed explicitly in
+  `validatePresetList`**, or it is silently dropped on every cloud load and gallery install.
+- The row is a `.pl-row` holding the checkbox **beside** the `.pl-scene` button — a checkbox
+  cannot live inside a `<button>`. Its click `stopPropagation()`s so ticking never selects.
+- **`.pl-unsaved` also carries `.pl-scene`**: "— unsaved scene —" is a mode, not a saved scene,
+  and correctly has no checkbox. Anything selecting `.pl-scene` to count scenes is off by one.
+
+**`autosavePreset` must carry over every field that rides beside `name`.** It rebuilds
+`presets[curPreset]` from `snapshotScene()`, which by definition captures none of them, so a
+bare `{name, ...}` silently dropped `collection` (quietly reassigning someone else's scene to
+you on the first slider drag) and `rotate` (putting a scene you had taken out of the show back
+in). Adding a field beside `name` means editing **three** places: here, `validatePresetList`,
+and wherever it is set.
 
 ### Presets & persistence
 

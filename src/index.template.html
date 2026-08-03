@@ -142,6 +142,15 @@
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
   <label class="check"><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
+  <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
+       Auto-cycle, because that is when you see it most — every cycle tick draws one — even
+       though it is drawn by the credits overlay and remembered per browser like the credits
+       preference, not in the scene. Moved out of the Credits menu box for that reason; do not
+       add a second copy there, or the two will disagree. -->
+  <!-- data-nopersist: a per-browser preference sitting inside #panel, so without it the
+       delegated onEdit would autosave the live scene into the selected preset every time you
+       ticked it — writing scene data on a non-scene toggle. Same marker the beat-trace uses. -->
+  <label class="check" data-nopersist title="Name each scene on screen as you switch to it — the scene name and who made it"><input type="checkbox" id="sceneTitleOn" checked> Show author</label>
   <div id="grp-ttl">
     <label>Scene TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -233,11 +242,12 @@
        System and Cloud profile above. -->
   <div id="creditbox" hidden>
   <div id="creditlist"></div>
-  <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
-  <!-- The scene title uses the credits' canvas and typography, so its switch lives beside
-       theirs. Separate preference, separate key: turning the opening credits off is about
-       the first five seconds, and this fires on every scene change. -->
-  <label class="check" title="Name each scene on screen as you switch to it, after the credits"><input type="checkbox" id="sceneTitleOn" checked> Show scene title on change</label>
+  <!-- data-nopersist for the same reason as "Show author": a per-browser preference authored
+       inside #panel, which onEdit would otherwise treat as a scene edit. -->
+  <label class="check" data-nopersist><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
+  <!-- The scene-title switch ("Show author") is NOT here: it lives in the Scene box under
+       Auto-cycle, where you actually notice the banner. It shares this overlay's canvas and
+       typography but has its own preference and key. -->
   </div>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>

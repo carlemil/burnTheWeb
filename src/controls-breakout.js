@@ -225,11 +225,25 @@
     const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
     return (a + Math.random() * (b - a)) * 1000;
   }
+  // The scenes the cycler is allowed to pick from: the ticked ones (see inRotation).
+  // Rebuilt per tick rather than cached — the ticks, the library and the collections all
+  // change under it, and a stale pool would cycle to a scene that no longer exists.
+  function rotationPool() {
+    const pool = [];
+    for (let i = 0; i < presets.length; i++) if (inRotation(presets[i])) pool.push(i);
+    return pool;
+  }
   function cyclePresets(now) {
-    if (!cycleOn || presets.length < 2 || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
+    const pool = rotationPool();
+    // Something to switch TO: two or more ticked scenes, or exactly one that isn't the one
+    // already on screen (having hand-picked an unticked scene, the cycle should still take
+    // you back into the show). Untick everything and the cycler simply idles — it does not
+    // fall back to the whole library, because "none in the rotation" is a real choice.
+    const canSwitch = pool.length > 1 || (pool.length === 1 && pool[0] !== curPreset);
+    if (!cycleOn || !canSwitch || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
     if (!nextSwitch) { nextSwitch = now + ttlMs(); return; }
     if (now >= nextSwitch) {
-      let n; do { n = (Math.random() * presets.length) | 0; } while (n === curPreset && presets.length > 1);
+      let n; do { n = pool[(Math.random() * pool.length) | 0]; } while (n === curPreset && pool.length > 1);
       applyPreset(n);
       nextSwitch = now + ttlMs();
     }

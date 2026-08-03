@@ -187,16 +187,29 @@
   .pl-body { display: none; padding: 3px 0 2px 10px; }
   .pl-grp.open > .pl-body { display: block; }
   .pl-empty { padding: 4px 8px; font-size: 11px; opacity: .45; }
+  /* A scene is a row: the auto-cycle tick, then the name button. The checkbox is a SIBLING
+     of the button rather than inside it — nested interactive content is invalid and the tick
+     would fight the button for the click. */
+  .pl-row { display: flex; align-items: center; gap: 6px; }
+  .pl-cyc {
+    flex: 0 0 auto; width: 13px; height: 13px; margin: 0; cursor: pointer;
+    accent-color: #ff9a4a;
+  }
+  /* Out of the rotation reads as "still here, just not in the show" — the name dims, it is
+     never hidden or disabled, because an unticked scene is still selectable by hand. */
+  .pl-cyc:not(:checked) + .pl-scene { opacity: .5; }
   .pl-scene {
-    display: block; width: 100%; text-align: left; margin: 2px 0; padding: 5px 8px;
+    display: block; flex: 1 1 auto; min-width: 0; text-align: left; margin: 2px 0; padding: 5px 8px;
     background: rgba(255, 255, 255, 0.04); border: 1px solid transparent; border-radius: 5px;
     color: #ffdcb0; font: 12px/1.25 inherit; cursor: pointer;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .pl-scene:hover { background: rgba(255, 122, 26, 0.22); }
   .pl-scene.on { border-color: #ffcf87; background: rgba(255, 122, 26, 0.28); color: #fff; }
+  .pl-cyc:not(:checked) + .pl-scene.on { opacity: .8; }   /* selected still reads as selected */
   .pl-unsaved { font-style: italic; opacity: .85; }
-  .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible {
+  .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible,
+  .pl-cyc:focus-visible {
     outline: 2px solid #ffb15a; outline-offset: 1px;
   }
   #panel .check, #menubar .check {
@@ -353,17 +366,26 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  /* Name grows and meta sits right of it on the top line; the two Load buttons span the full
-     width underneath, right-aligned — "Load and replace" is far too wide to sit inline. */
+  /* ONE line: name, then the scene count / date centred between, then Load at the end.
+     It used to wrap the buttons onto a second row spanning the full width, because there
+     were two of them and "Load and replace" was far too wide to sit inline. There is one
+     button now (the gallery installs a collection, so there is no merge-vs-replace question),
+     and one button fits — so a row is a row.
+     Both text columns are 1fr and min-width:0, which is what lets a long name ellipsize
+     instead of shoving the button off the end; `auto` there would let it push. */
   #galdlg .gal-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 6px 12px; align-items: center;
     padding: 11px 12px; margin-bottom: 9px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
   }
   #galdlg .gal-row:last-child { margin-bottom: 0; }
   #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #galdlg .gal-meta { color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap; }
-  #galdlg .gal-btns { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 3px; }
+  #galdlg .gal-meta {
+    color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap;
+    text-align: center; overflow: hidden; text-overflow: ellipsis;
+  }
+  #galdlg .gal-btns { display: flex; gap: 8px; justify-content: flex-end; }
   #galdlg .gal-row .audbtn { padding: 5px 12px; }
   #galdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
   /* The merge-vs-replace explainer sits above the list, so the two buttons on every row need
@@ -425,13 +447,17 @@
   }
   /* ---- music beat reactivity ---- */
   #panel .audiorow, #menubar .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-  #panel .audbtn, #menubar .audbtn {
+  /* Keyed on the class alone, NOT scoped to #panel/#menubar — the same trap the close-button
+     rule documents. .audbtn is used by every dialog too (Public scenes' "Load scenes" and
+     "Refresh", the palette editor's actions, the restore dialog), and while this was scoped
+     to the panel all of those rendered as raw grey browser buttons. */
+  .audbtn {
     padding: 4px 8px; background: rgba(255, 122, 26, 0.15);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 6px;
     color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #panel .audbtn:hover, #menubar .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
-  #panel .audbtn.on, #menubar .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
+  .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
   #panel .meter, #menubar .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
   #panel .meter i, #menubar .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
@@ -760,14 +786,25 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  /* Shared by the inspector and the editor — both carry a .pal-close. Scoping this to
-     #paldlg alone left the editor's × unstyled (a default grey button above the title). */
-  #paldlg .pal-close, #paledlg .pal-close {
+  /* ---- EVERY dialog's close button, in ONE rule ----------------------------------
+     Top-right of its box, out of the flow, uniform across the palette inspector, the
+     palette editor, the Public scenes gallery, the Orbit editor, the help panel and the
+     sync nudge.
+     This used to be four near-identical copies scoped per dialog (#paldlg, #carddlg,
+     #help, #syncpop), and that failed the same way twice: a new dialog reuses .pal-close,
+     nobody adds it to the selector list, and its × silently renders as a default grey
+     button in the normal flow ABOVE the title — which is exactly how the gallery shipped.
+     Keyed on the class alone, so a dialog gets the right button by using the right class.
+     The one requirement on the box is `position: relative` (or, for #carddlg, a box that is
+     deliberately `static` so the × pins to the floating panel itself). */
+  .pal-close, .card-close, .help-close, .sync-close {
     position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer; z-index: 1;
   }
-  #paldlg .pal-close:hover, #paledlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
+    background: rgba(255, 122, 26, 0.25);
+  }
   #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
@@ -862,12 +899,7 @@
   #help dl { margin: 4px 0 0; }
   #help dt { color: #ffcf87; margin-top: 11px; }
   #help dd { margin: 2px 0 0; opacity: .82; }
-  #help .help-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #help .help-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .help-close is styled by the shared close-button rule above. */
 
   /* "Sync with your music" nudge popup */
   #syncpop {
@@ -888,12 +920,7 @@
   #syncpop dl { margin: 4px 0 12px; }
   #syncpop dt { color: #ffcf87; margin-top: 10px; font-weight: 600; }
   #syncpop dd { margin: 2px 0 0; opacity: .82; }
-  #syncpop .sync-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #syncpop .sync-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .sync-close is styled by the shared close-button rule above. */
   #syncpop .sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   #syncpop .sync-actions button {
     flex: 1 1 auto; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
@@ -921,12 +948,8 @@
   #carddlg .card-box { position: static; }
   #carddlg h2 { margin: 0 30px 10px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #carddlg canvas { display: block; max-width: 100%; border: 1px solid rgba(255, 140, 40, 0.25); border-radius: 6px; }
-  #carddlg .card-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #carddlg .card-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .card-close is styled by the shared close-button rule above; #carddlg .card-box is
+     deliberately `position: static` so it pins to the floating panel, not the inner box. */
   #carddlg .card-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; }
   #carddlg .card-seg { display: inline-flex; border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 6px; overflow: hidden; }
   #carddlg .card-seg .cardmode { border: 0; border-right: 1px solid rgba(255, 140, 40, 0.25); border-radius: 0; }
@@ -1105,6 +1128,15 @@
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
   <label class="check"><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
+  <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
+       Auto-cycle, because that is when you see it most — every cycle tick draws one — even
+       though it is drawn by the credits overlay and remembered per browser like the credits
+       preference, not in the scene. Moved out of the Credits menu box for that reason; do not
+       add a second copy there, or the two will disagree. -->
+  <!-- data-nopersist: a per-browser preference sitting inside #panel, so without it the
+       delegated onEdit would autosave the live scene into the selected preset every time you
+       ticked it — writing scene data on a non-scene toggle. Same marker the beat-trace uses. -->
+  <label class="check" data-nopersist title="Name each scene on screen as you switch to it — the scene name and who made it"><input type="checkbox" id="sceneTitleOn" checked> Show author</label>
   <div id="grp-ttl">
     <label>Scene TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1196,11 +1228,12 @@
        System and Cloud profile above. -->
   <div id="creditbox" hidden>
   <div id="creditlist"></div>
-  <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
-  <!-- The scene title uses the credits' canvas and typography, so its switch lives beside
-       theirs. Separate preference, separate key: turning the opening credits off is about
-       the first five seconds, and this fires on every scene change. -->
-  <label class="check" title="Name each scene on screen as you switch to it, after the credits"><input type="checkbox" id="sceneTitleOn" checked> Show scene title on change</label>
+  <!-- data-nopersist for the same reason as "Show author": a per-browser preference authored
+       inside #panel, which onEdit would otherwise treat as a scene edit. -->
+  <label class="check" data-nopersist><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
+  <!-- The scene-title switch ("Show author") is NOT here: it lives in the Scene box under
+       Auto-cycle, where you actually notice the banner. It shares this overlay's canvas and
+       typography but has its own preference and key. -->
   </div>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>
@@ -5908,14 +5941,21 @@
   // the list is the same for every effect, only the ticks differ.
   // Subheadings that say not just what each group of filters does, but WHERE it acts —
   // the one thing that matters now that filters are per-layer. Feedback and post filters
-  // run on EACH stacked effect on its own (with that effect's own values), so the group
-  // is titled "Per-effect"; Bloom (the glow) and the screen filters act once on the
-  // finished, blended image, so they read "Whole scene". Grouping is by this behaviour,
-  // not raw stage — Bloom is a "post" filter internally but belongs with the whole-scene
-  // set, and it sits last among the post filters (so it falls into that group in order).
+  // both run on EACH stacked effect on its own, with that effect's own values, so they are
+  // ONE group; Bloom (the glow) and the screen filters act once on the finished, blended
+  // image, so they read "Whole scene". Grouping is by this behaviour, not raw stage — Bloom
+  // is a "post" filter internally but belongs with the whole-scene set, and it sits last
+  // among the post filters, so it falls into that group without reordering FILTERS.
+  //
+  // Feedback and post were two headings ("heat & trails" / "image") until they were merged:
+  // the split was the pipeline's, not the user's — both are "this layer's own filters", and
+  // two captions saying so in different words only made the list longer. The single heading
+  // still works out of the registry order (all feedback, then all post-but-Bloom, then the
+  // whole-scene set), so the run stays contiguous and one caption is emitted for it.
   function filterGroup(f) {
-    if (f.stage === "feedback") return { key: "fb", title: "Per-effect · heat & trails", desc: "each layer keeps its own fire, fade and warp" };
-    if (f.stage === "post" && f.id !== "bloom") return { key: "post", title: "Per-effect · image", desc: "each layer is filtered on its own, before they blend" };
+    if (f.stage === "feedback" || (f.stage === "post" && f.id !== "bloom"))
+      return { key: "layer", title: "Per-effect · heat, trails & image",
+               desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
     return { key: "scene", title: "Whole scene · final image", desc: "applied once to the finished, blended picture" };
   }
   // One <details> per filter: chevron + tick + name in the summary, that filter's own
@@ -9018,11 +9058,25 @@
     const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
     return (a + Math.random() * (b - a)) * 1000;
   }
+  // The scenes the cycler is allowed to pick from: the ticked ones (see inRotation).
+  // Rebuilt per tick rather than cached — the ticks, the library and the collections all
+  // change under it, and a stale pool would cycle to a scene that no longer exists.
+  function rotationPool() {
+    const pool = [];
+    for (let i = 0; i < presets.length; i++) if (inRotation(presets[i])) pool.push(i);
+    return pool;
+  }
   function cyclePresets(now) {
-    if (!cycleOn || presets.length < 2 || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
+    const pool = rotationPool();
+    // Something to switch TO: two or more ticked scenes, or exactly one that isn't the one
+    // already on screen (having hand-picked an unticked scene, the cycle should still take
+    // you back into the show). Untick everything and the cycler simply idles — it does not
+    // fall back to the whole library, because "none in the rotation" is a real choice.
+    const canSwitch = pool.length > 1 || (pool.length === 1 && pool[0] !== curPreset);
+    if (!cycleOn || !canSwitch || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
     if (!nextSwitch) { nextSwitch = now + ttlMs(); return; }
     if (now >= nextSwitch) {
-      let n; do { n = (Math.random() * presets.length) | 0; } while (n === curPreset && presets.length > 1);
+      let n; do { n = pool[(Math.random() * pool.length) | 0]; } while (n === curPreset && pool.length > 1);
       applyPreset(n);
       nextSwitch = now + ttlMs();
     }
@@ -9497,18 +9551,70 @@
   // The field is deliberately NOT part of snapshotScene: it labels where a scene came from,
   // not what it renders, so it rides beside `name` and applyPreset never reads it.
   const collectionOf = p => (p && typeof p.collection === "string" && p.collection.trim()) || "";
-  // Your own group is labelled with your cloud profile name once you have one, so the list
-  // reads "Erbsman / dyze" rather than "My scenes / dyze". #cloud-name is that value's store.
-  function myCollectionLabel() {
+  // Whether a scene is in the AUTO-CYCLE ROTATION — the tick beside it in the scene list.
+  // Unticked scenes are still perfectly selectable by hand; they are just skipped when
+  // "Auto-cycle scenes" is running, so you can build a show out of a subset of your library.
+  //
+  // Stored as `rotate` beside `name`/`collection`, and ABSENT MEANS IN — so every scene saved,
+  // shared, backed up or published before this existed keeps cycling exactly as it did, with
+  // nothing to migrate. Only an explicit `false` excludes. Same backward-compatibility
+  // discipline as `layers` being omitted for a one-item stack.
+  //
+  // Like `collection` it is deliberately NOT part of snapshotScene: it says how a scene is
+  // USED, not what it renders, and applyPreset never reads it (presetprobe would flag it).
+  // And like `collection` it MUST be listed explicitly in validatePresetList, which rebuilds
+  // each preset from an object literal — a field missing from there is silently dropped on
+  // every cloud load and gallery install.
+  const inRotation = p => !(p && p.rotate === false);
+  // Your own group is labelled with YOUR name, so the list reads "Erbsman / dyze".
+  //
+  // It used to fall back to "My scenes", and that fallback was visible in the worst possible
+  // way: #cloud-name is filled by cloudFetchProfileMeta, a network round trip, so the first
+  // paint said "My scenes" and the label only became "Erbsman" the next time anything rebuilt
+  // the list — clicking the group to open it. A heading that renames itself when you touch it
+  // reads as a bug, because it is one.
+  //
+  // Two fixes, and BOTH are needed. The name is cached in its own localStorage key and read
+  // SYNCHRONOUSLY here, so the very first build already has it and there is nothing to flip;
+  // and setProfileName() rebuilds the list whenever the name actually changes, which covers
+  // the first-ever sign-in and a rename, where no cache can help.
+  //
+  // The key is deliberately its own, not part of cloudSess: this is what to call your local
+  // library, so it outlives a sign-out. Same per-browser class as the credits preference.
+  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";
+  // What an unnamed profile is called — the same string cloudSave writes as the default
+  // profile name, so the heading and what would actually be published cannot disagree.
+  const DEFAULT_PROFILE_NAME = "burnTheWeb";
+  function storedProfileName() {
+    try { return (localStorage.getItem(PROFILE_NAME_KEY) || "").trim(); } catch (e) { return ""; }
+  }
+  // The live field wins (it is the value store, and may hold an edit not yet committed), then
+  // the cache. Returns "" when there is genuinely no name — callers that need a *label*
+  // add the default, callers that need an *author* drop it (see sceneTitleFor).
+  function myProfileName() {
     const n = el("cloud-name");
-    return (n && (n.value || "").trim()) || "My scenes";
+    return (n && (n.value || "").trim()) || storedProfileName();
+  }
+  function myCollectionLabel() { return myProfileName() || DEFAULT_PROFILE_NAME; }
+  // The one way the name is set. Writes the field (still the value store), caches it, and
+  // rebuilds the scene list so the heading follows immediately rather than at the next
+  // incidental rebuild.
+  function setProfileName(v) {
+    const name = (v || "").trim().slice(0, 40);
+    const n = el("cloud-name");
+    if (n) n.value = name;
+    try {
+      if (name) localStorage.setItem(PROFILE_NAME_KEY, name);
+      else localStorage.removeItem(PROFILE_NAME_KEY);
+    } catch (e) { /* private mode — the name just won't survive the reload */ }
+    buildPresetList();
   }
   // Arm the on-screen scene title for preset `i`: its name, and the account that made it.
   //
   // The author is `collection` — the published profile a scene came from, stamped on by the
   // gallery install. Absent means it is one of YOURS, so it falls back to your cloud profile
   // name; with no profile there is no account to name and the title shows the scene name
-  // alone. Deliberately NOT myCollectionLabel(), whose "My scenes" fallback is a list heading
+  // alone. Deliberately NOT myCollectionLabel(), whose "burnTheWeb" default is a list heading
   // and would read as an author here.
   //
   // Declared here rather than inline in applyPreset ON PURPOSE: presetprobe slices
@@ -9518,8 +9624,9 @@
   // would go red — correctly. Taking the INDEX keeps applyPreset's body clean.
   function sceneTitleFor(i) {
     const p = presets[i]; if (!p) return;
-    const n = el("cloud-name");
-    showSceneTitle(p.name, collectionOf(p) || (n && (n.value || "").trim()) || "");
+    // myProfileName(), NOT myCollectionLabel(): with no profile there is no account to name,
+    // and crediting a scene to "burnTheWeb" is noise. The dash goes with the empty author.
+    showSceneTitle(p.name, collectionOf(p) || myProfileName());
   }
   // Groups in a stable order: yours always first (and always present, even while empty, so
   // there is somewhere obvious for New to land), then each collection by first appearance.
@@ -9587,17 +9694,50 @@
         body.appendChild(e);
       }
       for (const { p, i } of g.items) {
+        // A row, not a bare button: a checkbox cannot live INSIDE a <button> (nested
+        // interactive content), so the tick and the name-button are siblings under .pl-row.
+        // Same shape as .pl-grp holding .pl-head + .pl-drop.
+        const row = document.createElement("div");
+        row.className = "pl-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "pl-cyc";
+        cb.checked = inRotation(p);
+        cb.title = "Include “" + p.name + "” when Auto-cycle scenes is on";
+        cb.setAttribute("aria-label", "Auto-cycle " + p.name);
+        // Ticking must NOT select the scene — that is the whole point of it being a separate
+        // hit target — so the click is stopped from reaching the row.
+        cb.addEventListener("click", e => e.stopPropagation());
+        cb.addEventListener("change", () => setRotation(i, cb.checked));
         const b = document.createElement("button");
         b.type = "button";
         b.className = "pl-scene" + (i === curPreset ? " on" : "");
         b.textContent = p.name;
         b.title = g.key ? p.name + " — from " + g.label : p.name;
         b.addEventListener("click", () => pickPreset(i));
-        body.appendChild(b);
+        row.appendChild(cb); row.appendChild(b);
+        body.appendChild(row);
       }
       sec.appendChild(body);
       host.appendChild(sec);
     }
+  }
+  // Tick / untick one scene's place in the auto-cycle rotation.
+  //
+  // It writes `rotate` ONLY when excluding and deletes the key when including, so a library
+  // where everything is ticked serialises exactly as it did before the feature — no key, no
+  // diff in any saved scene, share link, backup or cloud profile.
+  //
+  // persist() only, deliberately NOT autosavePreset(): the tick is a property of the scene in
+  // your library, not of the scene on screen, and folding it into the SELECTED preset would
+  // write the wrong one every time you ticked a different row. It also must not disturb
+  // curPreset or the picture — unticking the scene you are watching leaves it on screen and
+  // simply stops the cycler coming back to it.
+  function setRotation(i, on) {
+    const p = presets[i]; if (!p) return;
+    if (on) delete p.rotate; else p.rotate = false;
+    buildPresetList();     // the row is rebuilt, so the tick reflects what is stored
+    persist();
   }
   // Every pick routes through the <select>'s change event, so applyPreset, dockAll, the
   // autosave and persist all run exactly as a native dropdown pick did. The swatch picker
@@ -9851,9 +9991,18 @@
   el("newpreset").addEventListener("click", createPreset);
   // When a preset is selected, edits flow straight back into it (auto-save); this
   // writes the current scene over the selected preset, keeping its name.
+  // Fold the live scene back into the selected preset. Everything that rides BESIDE `name` —
+  // the fields snapshotScene deliberately does not capture, because they are not what the
+  // scene renders — has to be carried over by hand: spreading snapshotScene() over a bare
+  // `{name}` silently dropped them on the first slider drag after selecting a scene.
+  // `collection` losing that way quietly reassigned someone else's scene to you (it left
+  // their collection and appeared under your name), and `rotate` losing that way put a scene
+  // you had taken out of the show straight back into it.
   function autosavePreset() {
-    if (curPreset >= 0 && curPreset < presets.length)
-      presets[curPreset] = { name: presets[curPreset].name, ...snapshotScene() };
+    if (curPreset >= 0 && curPreset < presets.length) {
+      const p = presets[curPreset];
+      presets[curPreset] = { name: p.name, collection: p.collection, rotate: p.rotate, ...snapshotScene() };
+    }
   }
   el("renamepreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
@@ -10059,11 +10208,13 @@
   function validatePresetList(arr) {
     return (Array.isArray(arr) ? arr : [])
       .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-      // `collection` rides beside `name`: which published profile a scene came from, or
-      // absent for one of yours. It must be listed here explicitly — this mapping rebuilds
-      // each preset from a literal, so a field left out of it is silently dropped on every
-      // cloud load and gallery install (the trap presetprobe pins for the scene fields).
-      .map(p => ({ name: String(p.name || "Scene"), collection: p.collection, effect: p.effect,
+      // `collection` (which published profile a scene came from) and `rotate` (whether it is
+      // in the auto-cycle rotation) ride beside `name`. Both MUST be listed here explicitly —
+      // this mapping rebuilds each preset from a literal, so a field left out of it is
+      // silently dropped on every cloud load and gallery install (the trap presetprobe pins
+      // for the scene fields). `rotate` is only ever `false` or absent, and absent means in.
+      .map(p => ({ name: String(p.name || "Scene"), collection: p.collection,
+                   rotate: p.rotate === false ? false : undefined, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    ttl: p.ttl, tdur: p.tdur,
@@ -10461,7 +10612,7 @@
         throw new Error("library too big to store (" + Math.round(payload.length / 1024) + " KB)");
       }
       const body = fsOut({
-        name: (el("cloud-name").value || "").trim().slice(0, 40) || "burnTheWeb",
+        name: myProfileName() || DEFAULT_PROFILE_NAME,   // same default the list heading shows
         payload,
         count: n,
         pub: !!(cloudSess && cloudSess.pub),
@@ -10522,7 +10673,10 @@
       { method: "GET" }).then(r => (r.ok ? r.json() : null)).then(doc => {
         if (!doc) return;
         const d = fsIn(doc);
-        if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
+        // Through setProfileName, so the cache and the scene-list heading follow. This is the
+        // async arrival the cache exists to pre-empt — on a first-ever sign-in it is the only
+        // thing that puts your name on the list, and it must not wait for a rebuild.
+        if (d.name) { setProfileName(d.name); cloudNameShow(); }
         if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
         if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
         if (d.count != null) cloudMsg("Profile has " + d.count + " scene" + (d.count === 1 ? "" : "s") + " stored.");
@@ -10649,9 +10803,10 @@
       meta.className = "gal-meta";
       meta.textContent = p.count + " scene" + (p.count === 1 ? "" : "s")
         + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
-      // ONE button now, because there is no longer a merge-vs-replace question to answer:
+      // ONE button, because there is no longer a merge-vs-replace question to answer:
       // someone else's scenes are installed as their own collection under their name, so
-      // they cannot overwrite yours and re-loading simply refreshes their set.
+      // they cannot overwrite yours and re-loading simply refreshes their set. That is also
+      // what lets the whole row be one line — see the .gal-row grid.
       const btns = document.createElement("div");
       btns.className = "gal-btns";
       const b = document.createElement("button");
@@ -10775,7 +10930,7 @@
   }
   function cloudNameCommit() {
     const inp = el("cloud-name");
-    if (inp) inp.value = (inp.value || "").trim().slice(0, 40);
+    setProfileName(inp ? inp.value : "");   // trims, caches, and relabels the scene list
     cloudNameShow();
   }
 
@@ -10854,6 +11009,11 @@
     const row = el("cloudrow");
     if (row) row.classList.remove("hidden");
     cloudLoadSess();
+    // Seed the field from the cached name BEFORE any request, so the box shows who you are
+    // straight away and the scene list's heading (already reading the same cache) agrees.
+    const cached = storedProfileName();
+    if (cached && el("cloud-name") && !el("cloud-name").value) el("cloud-name").value = cached;
+    cloudNameShow();
     cloudSyncUI();
     if (cloudSess) cloudFetchProfileMeta();
     if (!CLOUD.clientId) { cloudMsg("Sign-in is not configured for this build.", true); return; }
@@ -11134,7 +11294,9 @@
   creditsChk.addEventListener("change", () => {
     try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
   });
-  // Scene title — same deal, its own key (see sceneTitleEnabled).
+  // Scene title ("Show author") — same deal, its own key (see sceneTitleEnabled). The
+  // checkbox lives in the Scene box rather than beside this one; el() is location-independent,
+  // so wiring it from here needs no change.
   const titleChk = el("sceneTitleOn");
   if (titleChk) {
     titleChk.checked = sceneTitleEnabled();

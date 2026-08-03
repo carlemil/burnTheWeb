@@ -169,16 +169,29 @@
   .pl-body { display: none; padding: 3px 0 2px 10px; }
   .pl-grp.open > .pl-body { display: block; }
   .pl-empty { padding: 4px 8px; font-size: 11px; opacity: .45; }
+  /* A scene is a row: the auto-cycle tick, then the name button. The checkbox is a SIBLING
+     of the button rather than inside it — nested interactive content is invalid and the tick
+     would fight the button for the click. */
+  .pl-row { display: flex; align-items: center; gap: 6px; }
+  .pl-cyc {
+    flex: 0 0 auto; width: 13px; height: 13px; margin: 0; cursor: pointer;
+    accent-color: #ff9a4a;
+  }
+  /* Out of the rotation reads as "still here, just not in the show" — the name dims, it is
+     never hidden or disabled, because an unticked scene is still selectable by hand. */
+  .pl-cyc:not(:checked) + .pl-scene { opacity: .5; }
   .pl-scene {
-    display: block; width: 100%; text-align: left; margin: 2px 0; padding: 5px 8px;
+    display: block; flex: 1 1 auto; min-width: 0; text-align: left; margin: 2px 0; padding: 5px 8px;
     background: rgba(255, 255, 255, 0.04); border: 1px solid transparent; border-radius: 5px;
     color: #ffdcb0; font: 12px/1.25 inherit; cursor: pointer;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .pl-scene:hover { background: rgba(255, 122, 26, 0.22); }
   .pl-scene.on { border-color: #ffcf87; background: rgba(255, 122, 26, 0.28); color: #fff; }
+  .pl-cyc:not(:checked) + .pl-scene.on { opacity: .8; }   /* selected still reads as selected */
   .pl-unsaved { font-style: italic; opacity: .85; }
-  .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible {
+  .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible,
+  .pl-cyc:focus-visible {
     outline: 2px solid #ffb15a; outline-offset: 1px;
   }
   #panel .check, #menubar .check {
@@ -335,17 +348,26 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  /* Name grows and meta sits right of it on the top line; the two Load buttons span the full
-     width underneath, right-aligned — "Load and replace" is far too wide to sit inline. */
+  /* ONE line: name, then the scene count / date centred between, then Load at the end.
+     It used to wrap the buttons onto a second row spanning the full width, because there
+     were two of them and "Load and replace" was far too wide to sit inline. There is one
+     button now (the gallery installs a collection, so there is no merge-vs-replace question),
+     and one button fits — so a row is a row.
+     Both text columns are 1fr and min-width:0, which is what lets a long name ellipsize
+     instead of shoving the button off the end; `auto` there would let it push. */
   #galdlg .gal-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 6px 12px; align-items: center;
     padding: 11px 12px; margin-bottom: 9px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
   }
   #galdlg .gal-row:last-child { margin-bottom: 0; }
   #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #galdlg .gal-meta { color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap; }
-  #galdlg .gal-btns { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 3px; }
+  #galdlg .gal-meta {
+    color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap;
+    text-align: center; overflow: hidden; text-overflow: ellipsis;
+  }
+  #galdlg .gal-btns { display: flex; gap: 8px; justify-content: flex-end; }
   #galdlg .gal-row .audbtn { padding: 5px 12px; }
   #galdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
   /* The merge-vs-replace explainer sits above the list, so the two buttons on every row need
@@ -407,13 +429,17 @@
   }
   /* ---- music beat reactivity ---- */
   #panel .audiorow, #menubar .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-  #panel .audbtn, #menubar .audbtn {
+  /* Keyed on the class alone, NOT scoped to #panel/#menubar — the same trap the close-button
+     rule documents. .audbtn is used by every dialog too (Public scenes' "Load scenes" and
+     "Refresh", the palette editor's actions, the restore dialog), and while this was scoped
+     to the panel all of those rendered as raw grey browser buttons. */
+  .audbtn {
     padding: 4px 8px; background: rgba(255, 122, 26, 0.15);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 6px;
     color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #panel .audbtn:hover, #menubar .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
-  #panel .audbtn.on, #menubar .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
+  .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
   #panel .meter, #menubar .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
   #panel .meter i, #menubar .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
@@ -742,14 +768,25 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  /* Shared by the inspector and the editor — both carry a .pal-close. Scoping this to
-     #paldlg alone left the editor's × unstyled (a default grey button above the title). */
-  #paldlg .pal-close, #paledlg .pal-close {
+  /* ---- EVERY dialog's close button, in ONE rule ----------------------------------
+     Top-right of its box, out of the flow, uniform across the palette inspector, the
+     palette editor, the Public scenes gallery, the Orbit editor, the help panel and the
+     sync nudge.
+     This used to be four near-identical copies scoped per dialog (#paldlg, #carddlg,
+     #help, #syncpop), and that failed the same way twice: a new dialog reuses .pal-close,
+     nobody adds it to the selector list, and its × silently renders as a default grey
+     button in the normal flow ABOVE the title — which is exactly how the gallery shipped.
+     Keyed on the class alone, so a dialog gets the right button by using the right class.
+     The one requirement on the box is `position: relative` (or, for #carddlg, a box that is
+     deliberately `static` so the × pins to the floating panel itself). */
+  .pal-close, .card-close, .help-close, .sync-close {
     position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer; z-index: 1;
   }
-  #paldlg .pal-close:hover, #paledlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
+    background: rgba(255, 122, 26, 0.25);
+  }
   #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
@@ -844,12 +881,7 @@
   #help dl { margin: 4px 0 0; }
   #help dt { color: #ffcf87; margin-top: 11px; }
   #help dd { margin: 2px 0 0; opacity: .82; }
-  #help .help-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #help .help-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .help-close is styled by the shared close-button rule above. */
 
   /* "Sync with your music" nudge popup */
   #syncpop {
@@ -870,12 +902,7 @@
   #syncpop dl { margin: 4px 0 12px; }
   #syncpop dt { color: #ffcf87; margin-top: 10px; font-weight: 600; }
   #syncpop dd { margin: 2px 0 0; opacity: .82; }
-  #syncpop .sync-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #syncpop .sync-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .sync-close is styled by the shared close-button rule above. */
   #syncpop .sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   #syncpop .sync-actions button {
     flex: 1 1 auto; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
@@ -903,12 +930,8 @@
   #carddlg .card-box { position: static; }
   #carddlg h2 { margin: 0 30px 10px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #carddlg canvas { display: block; max-width: 100%; border: 1px solid rgba(255, 140, 40, 0.25); border-radius: 6px; }
-  #carddlg .card-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #carddlg .card-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .card-close is styled by the shared close-button rule above; #carddlg .card-box is
+     deliberately `position: static` so it pins to the floating panel, not the inner box. */
   #carddlg .card-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; }
   #carddlg .card-seg { display: inline-flex; border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 6px; overflow: hidden; }
   #carddlg .card-seg .cardmode { border: 0; border-right: 1px solid rgba(255, 140, 40, 0.25); border-radius: 0; }

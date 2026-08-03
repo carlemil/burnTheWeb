@@ -181,14 +181,21 @@
   // the list is the same for every effect, only the ticks differ.
   // Subheadings that say not just what each group of filters does, but WHERE it acts —
   // the one thing that matters now that filters are per-layer. Feedback and post filters
-  // run on EACH stacked effect on its own (with that effect's own values), so the group
-  // is titled "Per-effect"; Bloom (the glow) and the screen filters act once on the
-  // finished, blended image, so they read "Whole scene". Grouping is by this behaviour,
-  // not raw stage — Bloom is a "post" filter internally but belongs with the whole-scene
-  // set, and it sits last among the post filters (so it falls into that group in order).
+  // both run on EACH stacked effect on its own, with that effect's own values, so they are
+  // ONE group; Bloom (the glow) and the screen filters act once on the finished, blended
+  // image, so they read "Whole scene". Grouping is by this behaviour, not raw stage — Bloom
+  // is a "post" filter internally but belongs with the whole-scene set, and it sits last
+  // among the post filters, so it falls into that group without reordering FILTERS.
+  //
+  // Feedback and post were two headings ("heat & trails" / "image") until they were merged:
+  // the split was the pipeline's, not the user's — both are "this layer's own filters", and
+  // two captions saying so in different words only made the list longer. The single heading
+  // still works out of the registry order (all feedback, then all post-but-Bloom, then the
+  // whole-scene set), so the run stays contiguous and one caption is emitted for it.
   function filterGroup(f) {
-    if (f.stage === "feedback") return { key: "fb", title: "Per-effect · heat & trails", desc: "each layer keeps its own fire, fade and warp" };
-    if (f.stage === "post" && f.id !== "bloom") return { key: "post", title: "Per-effect · image", desc: "each layer is filtered on its own, before they blend" };
+    if (f.stage === "feedback" || (f.stage === "post" && f.id !== "bloom"))
+      return { key: "layer", title: "Per-effect · heat, trails & image",
+               desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
     return { key: "scene", title: "Whole scene · final image", desc: "applied once to the finished, blended picture" };
   }
   // One <details> per filter: chevron + tick + name in the summary, that filter's own

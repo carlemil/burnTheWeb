@@ -80,18 +80,70 @@
   // The field is deliberately NOT part of snapshotScene: it labels where a scene came from,
   // not what it renders, so it rides beside `name` and applyPreset never reads it.
   const collectionOf = p => (p && typeof p.collection === "string" && p.collection.trim()) || "";
-  // Your own group is labelled with your cloud profile name once you have one, so the list
-  // reads "Erbsman / dyze" rather than "My scenes / dyze". #cloud-name is that value's store.
-  function myCollectionLabel() {
+  // Whether a scene is in the AUTO-CYCLE ROTATION — the tick beside it in the scene list.
+  // Unticked scenes are still perfectly selectable by hand; they are just skipped when
+  // "Auto-cycle scenes" is running, so you can build a show out of a subset of your library.
+  //
+  // Stored as `rotate` beside `name`/`collection`, and ABSENT MEANS IN — so every scene saved,
+  // shared, backed up or published before this existed keeps cycling exactly as it did, with
+  // nothing to migrate. Only an explicit `false` excludes. Same backward-compatibility
+  // discipline as `layers` being omitted for a one-item stack.
+  //
+  // Like `collection` it is deliberately NOT part of snapshotScene: it says how a scene is
+  // USED, not what it renders, and applyPreset never reads it (presetprobe would flag it).
+  // And like `collection` it MUST be listed explicitly in validatePresetList, which rebuilds
+  // each preset from an object literal — a field missing from there is silently dropped on
+  // every cloud load and gallery install.
+  const inRotation = p => !(p && p.rotate === false);
+  // Your own group is labelled with YOUR name, so the list reads "Erbsman / dyze".
+  //
+  // It used to fall back to "My scenes", and that fallback was visible in the worst possible
+  // way: #cloud-name is filled by cloudFetchProfileMeta, a network round trip, so the first
+  // paint said "My scenes" and the label only became "Erbsman" the next time anything rebuilt
+  // the list — clicking the group to open it. A heading that renames itself when you touch it
+  // reads as a bug, because it is one.
+  //
+  // Two fixes, and BOTH are needed. The name is cached in its own localStorage key and read
+  // SYNCHRONOUSLY here, so the very first build already has it and there is nothing to flip;
+  // and setProfileName() rebuilds the list whenever the name actually changes, which covers
+  // the first-ever sign-in and a rename, where no cache can help.
+  //
+  // The key is deliberately its own, not part of cloudSess: this is what to call your local
+  // library, so it outlives a sign-out. Same per-browser class as the credits preference.
+  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";
+  // What an unnamed profile is called — the same string cloudSave writes as the default
+  // profile name, so the heading and what would actually be published cannot disagree.
+  const DEFAULT_PROFILE_NAME = "burnTheWeb";
+  function storedProfileName() {
+    try { return (localStorage.getItem(PROFILE_NAME_KEY) || "").trim(); } catch (e) { return ""; }
+  }
+  // The live field wins (it is the value store, and may hold an edit not yet committed), then
+  // the cache. Returns "" when there is genuinely no name — callers that need a *label*
+  // add the default, callers that need an *author* drop it (see sceneTitleFor).
+  function myProfileName() {
     const n = el("cloud-name");
-    return (n && (n.value || "").trim()) || "My scenes";
+    return (n && (n.value || "").trim()) || storedProfileName();
+  }
+  function myCollectionLabel() { return myProfileName() || DEFAULT_PROFILE_NAME; }
+  // The one way the name is set. Writes the field (still the value store), caches it, and
+  // rebuilds the scene list so the heading follows immediately rather than at the next
+  // incidental rebuild.
+  function setProfileName(v) {
+    const name = (v || "").trim().slice(0, 40);
+    const n = el("cloud-name");
+    if (n) n.value = name;
+    try {
+      if (name) localStorage.setItem(PROFILE_NAME_KEY, name);
+      else localStorage.removeItem(PROFILE_NAME_KEY);
+    } catch (e) { /* private mode — the name just won't survive the reload */ }
+    buildPresetList();
   }
   // Arm the on-screen scene title for preset `i`: its name, and the account that made it.
   //
   // The author is `collection` — the published profile a scene came from, stamped on by the
   // gallery install. Absent means it is one of YOURS, so it falls back to your cloud profile
   // name; with no profile there is no account to name and the title shows the scene name
-  // alone. Deliberately NOT myCollectionLabel(), whose "My scenes" fallback is a list heading
+  // alone. Deliberately NOT myCollectionLabel(), whose "burnTheWeb" default is a list heading
   // and would read as an author here.
   //
   // Declared here rather than inline in applyPreset ON PURPOSE: presetprobe slices
@@ -101,8 +153,9 @@
   // would go red — correctly. Taking the INDEX keeps applyPreset's body clean.
   function sceneTitleFor(i) {
     const p = presets[i]; if (!p) return;
-    const n = el("cloud-name");
-    showSceneTitle(p.name, collectionOf(p) || (n && (n.value || "").trim()) || "");
+    // myProfileName(), NOT myCollectionLabel(): with no profile there is no account to name,
+    // and crediting a scene to "burnTheWeb" is noise. The dash goes with the empty author.
+    showSceneTitle(p.name, collectionOf(p) || myProfileName());
   }
   // Groups in a stable order: yours always first (and always present, even while empty, so
   // there is somewhere obvious for New to land), then each collection by first appearance.
@@ -170,17 +223,50 @@
         body.appendChild(e);
       }
       for (const { p, i } of g.items) {
+        // A row, not a bare button: a checkbox cannot live INSIDE a <button> (nested
+        // interactive content), so the tick and the name-button are siblings under .pl-row.
+        // Same shape as .pl-grp holding .pl-head + .pl-drop.
+        const row = document.createElement("div");
+        row.className = "pl-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "pl-cyc";
+        cb.checked = inRotation(p);
+        cb.title = "Include “" + p.name + "” when Auto-cycle scenes is on";
+        cb.setAttribute("aria-label", "Auto-cycle " + p.name);
+        // Ticking must NOT select the scene — that is the whole point of it being a separate
+        // hit target — so the click is stopped from reaching the row.
+        cb.addEventListener("click", e => e.stopPropagation());
+        cb.addEventListener("change", () => setRotation(i, cb.checked));
         const b = document.createElement("button");
         b.type = "button";
         b.className = "pl-scene" + (i === curPreset ? " on" : "");
         b.textContent = p.name;
         b.title = g.key ? p.name + " — from " + g.label : p.name;
         b.addEventListener("click", () => pickPreset(i));
-        body.appendChild(b);
+        row.appendChild(cb); row.appendChild(b);
+        body.appendChild(row);
       }
       sec.appendChild(body);
       host.appendChild(sec);
     }
+  }
+  // Tick / untick one scene's place in the auto-cycle rotation.
+  //
+  // It writes `rotate` ONLY when excluding and deletes the key when including, so a library
+  // where everything is ticked serialises exactly as it did before the feature — no key, no
+  // diff in any saved scene, share link, backup or cloud profile.
+  //
+  // persist() only, deliberately NOT autosavePreset(): the tick is a property of the scene in
+  // your library, not of the scene on screen, and folding it into the SELECTED preset would
+  // write the wrong one every time you ticked a different row. It also must not disturb
+  // curPreset or the picture — unticking the scene you are watching leaves it on screen and
+  // simply stops the cycler coming back to it.
+  function setRotation(i, on) {
+    const p = presets[i]; if (!p) return;
+    if (on) delete p.rotate; else p.rotate = false;
+    buildPresetList();     // the row is rebuilt, so the tick reflects what is stored
+    persist();
   }
   // Every pick routes through the <select>'s change event, so applyPreset, dockAll, the
   // autosave and persist all run exactly as a native dropdown pick did. The swatch picker
@@ -434,9 +520,18 @@
   el("newpreset").addEventListener("click", createPreset);
   // When a preset is selected, edits flow straight back into it (auto-save); this
   // writes the current scene over the selected preset, keeping its name.
+  // Fold the live scene back into the selected preset. Everything that rides BESIDE `name` —
+  // the fields snapshotScene deliberately does not capture, because they are not what the
+  // scene renders — has to be carried over by hand: spreading snapshotScene() over a bare
+  // `{name}` silently dropped them on the first slider drag after selecting a scene.
+  // `collection` losing that way quietly reassigned someone else's scene to you (it left
+  // their collection and appeared under your name), and `rotate` losing that way put a scene
+  // you had taken out of the show straight back into it.
   function autosavePreset() {
-    if (curPreset >= 0 && curPreset < presets.length)
-      presets[curPreset] = { name: presets[curPreset].name, ...snapshotScene() };
+    if (curPreset >= 0 && curPreset < presets.length) {
+      const p = presets[curPreset];
+      presets[curPreset] = { name: p.name, collection: p.collection, rotate: p.rotate, ...snapshotScene() };
+    }
   }
   el("renamepreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected

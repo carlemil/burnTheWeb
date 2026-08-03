@@ -168,7 +168,7 @@
         throw new Error("library too big to store (" + Math.round(payload.length / 1024) + " KB)");
       }
       const body = fsOut({
-        name: (el("cloud-name").value || "").trim().slice(0, 40) || "burnTheWeb",
+        name: myProfileName() || DEFAULT_PROFILE_NAME,   // same default the list heading shows
         payload,
         count: n,
         pub: !!(cloudSess && cloudSess.pub),
@@ -229,7 +229,10 @@
       { method: "GET" }).then(r => (r.ok ? r.json() : null)).then(doc => {
         if (!doc) return;
         const d = fsIn(doc);
-        if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
+        // Through setProfileName, so the cache and the scene-list heading follow. This is the
+        // async arrival the cache exists to pre-empt — on a first-ever sign-in it is the only
+        // thing that puts your name on the list, and it must not wait for a rebuild.
+        if (d.name) { setProfileName(d.name); cloudNameShow(); }
         if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
         if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
         if (d.count != null) cloudMsg("Profile has " + d.count + " scene" + (d.count === 1 ? "" : "s") + " stored.");
@@ -356,9 +359,10 @@
       meta.className = "gal-meta";
       meta.textContent = p.count + " scene" + (p.count === 1 ? "" : "s")
         + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
-      // ONE button now, because there is no longer a merge-vs-replace question to answer:
+      // ONE button, because there is no longer a merge-vs-replace question to answer:
       // someone else's scenes are installed as their own collection under their name, so
-      // they cannot overwrite yours and re-loading simply refreshes their set.
+      // they cannot overwrite yours and re-loading simply refreshes their set. That is also
+      // what lets the whole row be one line — see the .gal-row grid.
       const btns = document.createElement("div");
       btns.className = "gal-btns";
       const b = document.createElement("button");
@@ -482,7 +486,7 @@
   }
   function cloudNameCommit() {
     const inp = el("cloud-name");
-    if (inp) inp.value = (inp.value || "").trim().slice(0, 40);
+    setProfileName(inp ? inp.value : "");   // trims, caches, and relabels the scene list
     cloudNameShow();
   }
 
@@ -561,6 +565,11 @@
     const row = el("cloudrow");
     if (row) row.classList.remove("hidden");
     cloudLoadSess();
+    // Seed the field from the cached name BEFORE any request, so the box shows who you are
+    // straight away and the scene list's heading (already reading the same cache) agrees.
+    const cached = storedProfileName();
+    if (cached && el("cloud-name") && !el("cloud-name").value) el("cloud-name").value = cached;
+    cloudNameShow();
     cloudSyncUI();
     if (cloudSess) cloudFetchProfileMeta();
     if (!CLOUD.clientId) { cloudMsg("Sign-in is not configured for this build.", true); return; }

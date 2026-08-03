@@ -174,11 +174,13 @@
   function validatePresetList(arr) {
     return (Array.isArray(arr) ? arr : [])
       .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-      // `collection` rides beside `name`: which published profile a scene came from, or
-      // absent for one of yours. It must be listed here explicitly — this mapping rebuilds
-      // each preset from a literal, so a field left out of it is silently dropped on every
-      // cloud load and gallery install (the trap presetprobe pins for the scene fields).
-      .map(p => ({ name: String(p.name || "Scene"), collection: p.collection, effect: p.effect,
+      // `collection` (which published profile a scene came from) and `rotate` (whether it is
+      // in the auto-cycle rotation) ride beside `name`. Both MUST be listed here explicitly —
+      // this mapping rebuilds each preset from a literal, so a field left out of it is
+      // silently dropped on every cloud load and gallery install (the trap presetprobe pins
+      // for the scene fields). `rotate` is only ever `false` or absent, and absent means in.
+      .map(p => ({ name: String(p.name || "Scene"), collection: p.collection,
+                   rotate: p.rotate === false ? false : undefined, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    ttl: p.ttl, tdur: p.tdur,

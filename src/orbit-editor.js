@@ -221,7 +221,9 @@
   creditsChk.addEventListener("change", () => {
     try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
   });
-  // Scene title — same deal, its own key (see sceneTitleEnabled).
+  // Scene title ("Show author") — same deal, its own key (see sceneTitleEnabled). The
+  // checkbox lives in the Scene box rather than beside this one; el() is location-independent,
+  // so wiring it from here needs no change.
   const titleChk = el("sceneTitleOn");
   if (titleChk) {
     titleChk.checked = sceneTitleEnabled();
