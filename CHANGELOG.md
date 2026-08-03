@@ -14,6 +14,23 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.10.0] — 2026-08-03
+
+### Changed
+
+- **Scene TTL and Transition are global again.** They were remembered per scene, so picking any
+  scene silently retuned your hold time and transition length underneath you — and that is the
+  show's pacing, not any one scene's. Scenes saved while they were per-scene still load fine;
+  their stored values are simply ignored.
+- **The scene banner moved into the top button row**, beside the mute button, and is much
+  smaller. It used to be painted into the picture itself, centred and large — it had to be, to
+  stay readable over a bright frame. As part of the interface it does not: it is never touched
+  by the filters or the camera, stays crisp whatever the render resolution, and costs the
+  visual nothing.
+- **Sliders whose range spans more than 1 now show at most one decimal.** Three significant
+  digits suits a 0–1 knob and looks absurd on a wider one — Bloom read "0.00815×–1.5×" and now
+  reads "0×–1.5×". Only the readout rounds; the value itself is unchanged.
+
 ## [1.9.2] — 2026-08-03
 
 ### Changed
