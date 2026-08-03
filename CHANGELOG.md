@@ -14,6 +14,14 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.9.1] — 2026-08-03
+
+### Changed
+
+- **A slider's min / max / step now sit directly under it**, instead of at the foot of the box
+  below the beat controls — they describe that slider, so they belong with it. A divider
+  separates them from the **Triggers** section below.
+
 ## [1.9.0] — 2026-08-03
 
 ### Added
