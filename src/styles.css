@@ -541,10 +541,18 @@
   #breakout .plen-val { flex: none; min-width: 40px; text-align: right; color: #ffcf87; }
   /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
      (This replaced the one shared "Slider ranges" list in Diagnostics.) */
+  /* Directly under the slider it describes, so NO top border — that rule used to separate
+     the editor from the beat controls above it, and here it would only cut a slider off from
+     its own bounds. The divider below it does that job now. */
   #breakout .rng-edit {
     display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; align-items: end;
-    margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.18);
+    margin-top: 7px;
   }
+  /* Closes the slider + its bounds off from the Triggers section below. */
+  #breakout .ctl-div {
+    margin: 10px 0 0; border-top: 1px solid rgba(255, 140, 40, 0.18);
+  }
+  #panel .ctl-div { display: none; }          /* boxes only, like .plen and .trig-t */
   #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
   #breakout .rng-cell input {
     display: block; width: 100%; margin-top: 3px; padding: 3px 4px;

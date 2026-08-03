@@ -119,8 +119,25 @@
     hb.addEventListener("click", e => { e.stopPropagation(); openCtlHelp(key); });
     t.appendChild(hb);
     ctl.insertBefore(t, ctl.firstChild);
+    // Bounds editor goes directly UNDER THE SLIDER, not at the foot of the box: min/max/step
+    // describe that slider, so they belong with it rather than below the beat controls, which
+    // are a different subject. A divider closes the block off from the Triggers section.
+    //
+    // Inserted rather than appended, because makeChips (run earlier, from bindRange) has
+    // already appended the trigger block — so the anchor is the first thing it added, and
+    // everything lands in front of that. `.trig-t` is that anchor; with no chips (a `plain`
+    // control that can't be beat-armed) there is nothing to insert before and appending is
+    // right, which insertBefore(…, null) does for free.
     const rngEd = makeRangeEditor(key);
-    if (rngEd) ctl.appendChild(rngEd);         // bounds editor at the foot of the box
+    if (rngEd) {
+      const anchor = ctl.querySelector(".trig-t");
+      ctl.insertBefore(rngEd, anchor);
+      if (anchor) {
+        const hr = document.createElement("div");
+        hr.className = "ctl-div";
+        ctl.insertBefore(hr, anchor);
+      }
+    }
     ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
     const row = document.createElement("div");   // the launcher that stays in the menu slot
     row.className = "ctl-row";

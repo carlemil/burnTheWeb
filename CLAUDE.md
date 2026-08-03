@@ -400,14 +400,20 @@ keys; `refreshBreakout()` (called by `setEffect`) shows a box iff
 - Because `#breakout` sits **outside** `#panel` (the panel's `backdrop-filter` + `overflow` would
   clip a fixed child), three things reach it: the control CSS is scoped `#panel …, #breakout …`;
   the delegated `onEdit` is attached to `#breakout` too; `sceneRangeInputs()` scans both.
-- A box holds top→bottom: the **owner line** (`.ctl-owner`), label + value, **the slider**, a
-  **Triggers** title (`.trig-t`) over the beat chips + pulse picker, a **Trigger duration**
-  title (`.plen-name`) over its length slider (`.plen`), and the **range editor** (`.rng-edit`).
+- A box holds top→bottom: the **owner line** (`.ctl-owner`), label + value, **the slider**, its
+  **range editor** (`.rng-edit`, min/max/step + ↺), a divider (`.ctl-div`), a **Triggers** title
+  (`.trig-t`) over the beat chips + pulse picker, and a **Trigger duration** title
+  (`.plen-name`) over its length slider (`.plen`). The bounds sit with the slider they describe;
+  the divider closes that block off from the beat wiring, which is a different subject.
   The slider sits directly under its own name and readout because that is what you are tuning;
   the beat wiring is a second subject below it, titled rather than inferred from three lettered
   buttons. `makeChips` **appends** all of it to the `.ctl`, which holds only `[label, slider]`
   at that point — so append order is display order, and the chips are no longer inserted into
-  the label (they were a `float: right` in its right edge). The last four exist only in a box.
+  the label (they were a `float: right` in its right edge). The range editor is built LATER (the
+  `POPPABLE` pass) and so must **insertBefore `.trig-t`**, not append; with no chips (a `plain`
+  control that cannot be beat-armed) there is no anchor and `insertBefore(…, null)` appends,
+  which is the right answer for free. It also lost its own `border-top` in the move — under the
+  slider that rule cut a control off from its own bounds. The last five exist only in a box.
 - The **owner line** (`ctlOwner(key)` → `CTL_GROUPS[control.group]`, with a `"Filter · "` prefix
   for `f_*` groups) exists because controls are singletons reused across effects — a stack of
   boxes labelled "Speed", "Strength", "Size" is unreadable. Added in `POPPABLE.forEach`, not
