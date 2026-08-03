@@ -14,6 +14,39 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.7.0] — 2026-08-03
+
+### Added
+
+- **Seven more transitions**, taking the set from nine to sixteen:
+  - **Checkerboard** — tiles flip in a checkerboard, staggered so the change ripples across
+    the grid.
+  - **Bars** — vertical bars, alternate ones rising and falling.
+  - **Shutter** — horizontal slats opening from their centres, like a venetian blind.
+  - **Slide** — the new scene pushes the old one out sideways.
+  - **Clock wipe** — a hand sweeps round from twelve, revealing as it goes.
+  - **Dissolve** — grain by grain, in a random order. The gentlest of the set, and the one
+    that suits a palette jump, since the two ramps interleave instead of meeting along an edge.
+  - **Ripple** — a ring expands from the centre, carrying the change and bending the image as
+    it passes.
+- **Choose which transitions get used.** **+ Choose transitions**, under the Transition slider
+  in the Scene box, opens the full list with a tick beside each one and a line on what it does.
+  Only the ticked ones are ever picked — so if you want nothing but shutters and dissolves, say
+  so. They still only turn up where they suit the two scenes, since the pick stays weighted;
+  unticking narrows the pool rather than overriding the taste. Untick everything and scene
+  changes cut straight over. Remembered per browser, like auto-cycle, and not part of a scene
+  you share.
+
+### Internal
+
+- The six staggered-reveal modes are one shader idea with six delay fields — cell parity, bar
+  index, distance from a slat centre, angle, hash, ring radius — which is what keeps them cheap
+  to add and consistent to look at. The Canvas2D mirror reuses wipe/iris's mask shape for the
+  four that are masks and lets dissolve/ripple degrade to a crossfade rather than mirroring
+  per-pixel work on the fallback path.
+- A driven probe forces each transition in turn, holds it mid-blend and compares every mode
+  against every other, since a bad shader branch renders silently as a plain crossfade.
+
 ## [1.6.0] — 2026-08-03
 
 ### Changed
