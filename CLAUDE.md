@@ -512,6 +512,25 @@ and destroyed on close, so an adopted block must be moved back to its home box *
 is removed — otherwise closing the menu **deletes the real audio buttons, resolution select,
 `#cloudrow` and credits list from the document**. `box.dataset.adopt` is how each knows home.
 
+**Every dialog's title and close button are STICKY at the top.** They are scrolling boxes
+whose first two children are the `.pal-close`-family button and an `<h2>`; a long list used to
+scroll both away, leaving no title and no way out.
+- The button is `position: sticky` + `float: right`, **not `absolute`** — an absolutely
+  positioned child of a scrolling box is placed against its padding box and scrolls with the
+  content, which is the bug itself. Floating keeps it in flow so sticky applies.
+- **The box gives up its `padding-top` and the header carries it.** Sticky pins to the
+  scrollport's top edge, not the padding edge, so any top padding is a gap that content passes
+  through in full view above the header.
+- The header's background bleeds over the box's *side* padding via `box-shadow: 0 -30px 0 30px`
+  rather than negative margins, because the padding differs per dialog (18–26px) and the shadow
+  need not know: the offset lands its bottom edge exactly on the title's, so nothing spills over
+  the content below. It also carries a `backdrop-filter` — at 0.93–0.97 alpha alone, text
+  passing underneath still ghosted through legibly.
+- **A probe that opens a dialog by un-hiding it proves nothing**: these build their content on
+  open, so the box is empty and cannot scroll, and the sticky assertion passes vacuously. Click
+  the real opener (`#transpick-open`, `#pal-detail-btn`), and say so when a box genuinely does
+  not scroll rather than reporting a pass.
+
 **Shared widget CSS is keyed on the CLASS, not scoped to a container — this trap has bitten
 three times.** A rule written as `#paldlg .pal-close` or `#panel .audbtn` looks tidy and then
 silently leaves every *other* user of that class as a raw browser default: the palette editor's

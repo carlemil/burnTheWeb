@@ -1010,11 +1010,47 @@
      Keyed on the class alone, so a dialog gets the right button by using the right class.
      The one requirement on the box is `position: relative` (or, for #carddlg, a box that is
      deliberately `static` so the × pins to the floating panel itself). */
+  /* ---- STICKY DIALOG HEADERS -------------------------------------------------------
+     Every dialog is a scrolling box whose first two children are the close button and the
+     <h2>. Both stay put while the body scrolls, so a long list never leaves you without a
+     title or a way out.
+     The button is `sticky` + `float: right`, NOT absolute: an absolutely-positioned child of
+     a scrolling box is placed against its padding box and scrolls away with the content,
+     which is exactly the bug. Floating it keeps it in flow (so sticky applies) and at the
+     top-right where it already lived.
+     The title's background bleeds over the box's own padding via a box-shadow rather than
+     negative margins, because the padding differs per dialog (18–26px) and the shadow does
+     not need to know: `0 -30px 0 30px` covers the top and both sides and lands its bottom
+     edge exactly on the title's, so nothing spills over the content below it. */
   .pal-close, .card-close, .help-close, .sync-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer; z-index: 1;
+    position: sticky; float: right; top: 12px; margin: 0 0 -30px 10px; z-index: 3;
+    width: 26px; height: 26px; padding: 0;
+    background: rgba(14, 8, 5, 0.92); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 6px; color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
   }
+  /* The titles. Same treatment in every dialog. */
+  /* The BOX gives up its top padding and the sticky header carries it. Without that there is
+     a padding-height gap above the header that scrolling content passes through in full view
+     — the header sticks to the scrollport's top edge, not to the padding edge. */
+  #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
+  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
+  #help .help-box, #syncpop, #carddlg, #restoredlg .rst-box { padding-top: 0; }
+  #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
+  #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
+  #help .help-box > h2, #syncpop > h2, #carddlg > h2, #restoredlg .rst-box > h2 {
+    position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;
+    /* Near-opaque AND backdrop-blurred: at 0.97 alone the line of text passing underneath
+       still ghosted through legibly. The blur matches the box's own, so the header reads as
+       part of it rather than as a solid bar dropped on a translucent panel. */
+    background: rgba(14, 8, 5, 0.93);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    /* Bleed over the box's side padding without knowing it: spread 30 covers 18–26px, and
+       the -30 offset lands the shadow's bottom edge exactly on the title's, so nothing
+       spills over the content below. */
+    box-shadow: 0 -30px 0 30px rgba(14, 8, 5, 0.97);
+  }
+  /* The × sticks level with the title, allowing for the padding the header now carries. */
+  .pal-close, .card-close, .help-close, .sync-close { top: 18px; }
   .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
     background: rgba(255, 122, 26, 0.25);
   }
