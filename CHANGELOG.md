@@ -14,6 +14,17 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.11.2] — 2026-08-03
+
+### Changed
+
+- **Every layer row has a fold chevron now**, in its upper-left corner — so the same control
+  both opens a collapsed layer and closes the open one, instead of appearing only once you are
+  already there.
+- **Dialog titles and close buttons stay put while you scroll.** In a long list — the transition
+  picker, the filter catalogue, the palette list — both used to scroll away, leaving no heading
+  and no visible way out.
+
 ## [1.11.1] — 2026-08-03
 
 ### Changed
