@@ -77,6 +77,7 @@
   function removeStackItem(j) {
     if (stack.length <= 1 || !stack[j]) return;
     stack.splice(j, 1);
+    dropOpen(j);                     // the fold state follows the surviving layers, not the slots
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
     const pops = stack[stackSel].popped;   // before setEffect's persist wipes it
@@ -99,31 +100,65 @@
   // controls (the DOM is the store for the selected layer), so the block is MOVED rather
   // than rebuilt, exactly like the ☰ menubar adopting #sysbox.
   //
-  // parkLayerCtl MUST run before the rows are cleared. syncStackUI wipes #stacklist on every
-  // call — a selection change, a mute, a gain drag — and anything adopted into a row goes
-  // with it. That would not "reset" the panel, it would DELETE every slider, filter and
-  // palette control from the document, and nothing that looks them up by id would work
-  // again. Same failure the menubar's returnAdopted exists to prevent.
-  // Is the open layer's control block folded away? Transient and per-session, like the
-  // panel's own box folds — deliberately not persisted and not part of a scene.
-  let lyrFolded = false;
-  function parkLayerCtl() {
-    const ctl = el("lyrctl"), home = el("fxbox");
-    if (ctl && home && ctl.parentNode !== home) home.appendChild(ctl);
+  // Which layers are UNFOLDED, by slot index. A Set of open slots rather than a single
+  // "is the open one folded" flag, because any number of layers can be open at once now.
+  // It starts EMPTY — every layer loads folded and you unfold the ones you want to work
+  // on; they stay unfolded as you move between them, since selecting is no longer what
+  // opens a layer. An open-set rather than a folded-set so the default needs no seeding
+  // and adding a layer can't accidentally open it. Transient and per-session, like the
+  // panel's own box folds — deliberately not persisted and not part of a scene, and
+  // deliberately not a field on the stack item, which would risk reaching stackItemOut.
+  const openSlots = new Set();
+  // Keep the open set pointing at the same ITEMS when the array is spliced.
+  function dropOpen(j) {                       // ...after removeStackItem's splice(j, 1)
+    const o = [...openSlots];
+    openSlots.clear();
+    for (const s of o) { if (s !== j) openSlots.add(s > j ? s - 1 : s); }
   }
+  function moveOpen(from, to) {                // ...mirroring splice(to, 0, splice(from, 1)[0])
+    const o = [...openSlots], was = openSlots.has(from);
+    openSlots.clear();
+    for (const s of o) {
+      if (s === from) continue;
+      let n = s > from ? s - 1 : s;
+      if (n >= to) n++;
+      openSlots.add(n);
+    }
+    if (was) openSlots.add(to);
+  }
+  // There is no parkLayerCtl any more, and its absence is the point. syncStackUI used to
+  // wipe #stacklist on every call, so the control block had to be rescued to #fxbox first or
+  // it was DELETED from the document along with the rows. Nothing is wiped now, so there is
+  // nothing to rescue — and the hazard it guarded cannot recur, because the rows outlive
+  // every call.
   function adoptLayerCtl(row) {
     const ctl = el("lyrctl");
     if (ctl && row) row.appendChild(ctl);
   }
-  function syncStackUI() {
+  // The rows are a FIXED POOL of STACK_MAX, keyed by slot, built exactly once and never
+  // destroyed — `lyrRows[slot] = {row, …}` holding each row's own widgets. syncStackUI
+  // used to wipe #stacklist and rebuild every row on every call (a selection, a mute, a
+  // gain drag, a blend pick), which is why parkLayerCtl had to rescue the control block
+  // first. Rebuilding is no longer survivable at all: once each row owns its layer's
+  // controls, a wipe deletes them from the document, and — sooner — it destroys the very
+  // node the user has a pointer down on, killing any drag that started inside a row.
+  //
+  // Keyed by SLOT, not by item identity: installStack replaces the whole array with fresh
+  // objects on every scene load, i.e. every auto-cycle tick, so an identity key would
+  // rebuild every row every few seconds. The cost of a slot key is that a reorder changes
+  // which item a row shows, so syncStackUI must repaint all of them — which it does.
+  //
+  // Every handler closes over `slot` and reads stack[slot] LIVE. Closing over the item
+  // would strand each row on whatever occupied its slot when the pool was built.
+  const lyrRows = [];
+  function buildStackRows() {
     const host = el("stacklist");
-    if (!host) return;
-    parkLayerCtl();                 // ...before the wipe below, or the controls go with it
-    host.textContent = "";
-    stack.forEach((L, j) => {
+    if (!host || lyrRows.length) return;
+    for (let slot = 0; slot < STACK_MAX; slot++) {
       const row = document.createElement("div");
-      row.className = "lyr" + (j === stackSel ? " sel" : "") + (L.mute ? " muted" : "");
+      row.className = "lyr";
       row.title = "Click to edit this layer";
+      const j = slot;
       // Selecting is what every slider in the box below follows, so pressing ANYWHERE in the
       // row selects it — including on the mute dot, the gain slider, the blend dropdown and
       // the effect chooser. Those all stopPropagation on `click` (so their own action doesn't
@@ -132,11 +167,11 @@
       // or a blend pick applies to a layer that is already selected rather than selecting
       // afterwards off a stale index.
       //
-      // The grab handle is excluded HERE only, for a mechanical reason rather than a taste
-      // one: selectStack re-runs syncStackUI, which rebuilds every row — that would detach
-      // the handle holding the pointer capture mid-drag, and Chromium drops capture on
-      // reparent, killing the drag after the first pixel (the trap documented on the drag
-      // code below). The handle still selects, just on pointerUP — see its onUp.
+      // The grab handle is excluded HERE only: dragging is not selecting, and the handle
+      // still selects on pointerUP (see its onUp). It used to be excluded for a mechanical
+      // reason too — syncStackUI rebuilt every row, so selecting mid-drag detached the
+      // handle holding the pointer capture and Chromium drops capture on reparent. The row
+      // pool means nothing is rebuilt any more, so only the taste reason is left.
       row.addEventListener("pointerdown", e => {
         if (!e.target.closest(".lyr-grab")) selectStack(j);
       }, true);
@@ -152,9 +187,13 @@
       // pointer capture, and Chromium drops capture on reparent — which killed the drag
       // after the first pixel. The actual reorder happens once, on release. Selection is
       // left untouched — you drag to reorder, click the row body to select.
+      //
+      // `from` is the row's SLOT, and a row's slot never changes — the pool is slot-keyed
+      // and a reorder moves the items under it, not the rows. So this is a live index into
+      // `stack`, not a snapshot that a rebuild could stale.
       const from = j;
       const grab = document.createElement("div");
-      grab.className = "lyr-grab" + (stack.length < 2 ? " off" : "");
+      grab.className = "lyr-grab";
       grab.textContent = "⠿";
       grab.title = "Drag to reorder — layers higher in the list draw first (underneath)";
       grab.setAttribute("aria-label", "Drag to reorder layer");
@@ -172,7 +211,9 @@
           row.style.transform = "translateY(" + (ev.clientY - startY) + "px)";
           // Scan only the other rows: their rects are stable (untransformed), whereas the
           // dragged row's rect rides the pointer. `to` = how many of them sit above it.
-          const others = [...host.querySelectorAll(".lyr")].filter(r => r !== row);
+          // ...and only the rows actually in use: the pool keeps STACK_MAX rows in the DOM
+          // and hides the spares, which would otherwise count as drop targets below the list.
+          const others = [...host.querySelectorAll(".lyr")].filter(r => r !== row && !r.hidden);
           to = 0;
           for (const r of others) {
             const b = r.getBoundingClientRect();     // DOMRect: .height, NOT .offsetHeight
@@ -189,12 +230,8 @@
           marker.remove();
           row.style.transform = "";
           row.classList.remove("dragging");
-          // Using the handle selects that layer too — but ON RELEASE, never on press. The
-          // rest of the row selects from a capture-phase pointerdown; doing that here would
-          // rebuild the rows mid-gesture, and since selectStack → syncStackUI reparents the
-          // handle that holds the pointer capture, Chromium drops the capture and the drag
-          // dies after the first pixel. Deferring to pointerup gets the selection without
-          // touching the DOM while the pointer is down.
+          // Using the handle selects that layer too — but ON RELEASE, never on press, so the
+          // selection can't run under a pointer that is still down.
           //
           // Held by IDENTITY, not by index: a reorder moves it, so `from` no longer names it.
           const dragged = stack[from];
@@ -203,6 +240,7 @@
             // `to` indexes the array with the dragged item already removed, so splice-out
             // then splice-in at `to` directly (no gap adjustment needed).
             stack.splice(to, 0, stack.splice(from, 1)[0]);
+            moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
           }
           const at = stack.indexOf(dragged);
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
@@ -222,8 +260,10 @@
       // whatever `stackSel` names, and routing through selectStack is what keeps the
       // freeze/stageLayerExtras ordering honest (writing L.fx directly here would strand the
       // layer's palette + filters on the outgoing effect — the load-order trap in CLAUDE.md).
-      // `fx` is read off the <select> BEFORE either call: both re-run syncStackUI, which
-      // rebuilds these rows, so `nm` is a detached node by the time they return.
+      // `fx` is still read off the <select> BEFORE either call. The row survives them now,
+      // so `nm` is no longer detached by the time they return — but both re-run syncStackUI,
+      // which repaints `nm.value` from stack[slot], so reading after would see the new value
+      // rather than the pick that caused it.
       const nm = document.createElement("select");
       nm.className = "lyr-name";
       EFFECTS.forEach((f, i) => {
@@ -231,8 +271,6 @@
         o.value = String(i); o.textContent = f.name; o.title = f.subtitle;
         nm.appendChild(o);
       });
-      nm.value = String(L.fx);
-      nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
       nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row
       nm.addEventListener("change", e => {
         e.stopPropagation();
@@ -245,33 +283,31 @@
       });
       row.appendChild(nm);
 
-      const ctl = document.createElement("div");
-      ctl.className = "lyr-ctl";
-      row.appendChild(ctl);
+      const lyrctl = document.createElement("div");
+      lyrctl.className = "lyr-ctl";
+      row.appendChild(lyrctl);
 
       const mute = document.createElement("b");
-      mute.textContent = L.mute ? "○" : "●";
-      mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
       mute.addEventListener("click", e => {
         e.stopPropagation();
+        const L = stack[j]; if (!L) return;
         L.mute = !L.mute;
         syncStackUI(); persist(); autosavePreset();
       });
-      ctl.appendChild(mute);
+      lyrctl.appendChild(mute);
 
       const gn = document.createElement("input");
-      gn.type = "range"; gn.min = 0; gn.max = 1; gn.step = 0.01; gn.value = L.gain;
+      gn.type = "range"; gn.min = 0; gn.max = 1; gn.step = 0.01;
       gn.title = "Layer strength";
       gn.addEventListener("click", e => e.stopPropagation());
-      gn.addEventListener("input", e => { e.stopPropagation(); L.gain = gainOk(+gn.value); });
+      gn.addEventListener("input", e => { e.stopPropagation(); const L = stack[j]; if (L) L.gain = gainOk(+gn.value); });
       gn.addEventListener("change", () => { persist(); autosavePreset(); });
-      ctl.appendChild(gn);
+      lyrctl.appendChild(gn);
 
       const rm = document.createElement("b");
       rm.textContent = "✕"; rm.title = "Remove this layer";
-      if (stack.length <= 1) rm.classList.add("off");
       rm.addEventListener("click", e => { e.stopPropagation(); removeStackItem(j); persist(); autosavePreset(); });
-      ctl.appendChild(rm);
+      lyrctl.appendChild(rm);
 
       // Blend mode on its own row: a <select> (with the mode's tip as its title) flanked by
       // ▲/▼ steppers that cycle through BLEND_MODES, so you can either pick directly or nudge.
@@ -280,14 +316,22 @@
       const blbl = document.createElement("span");
       blbl.className = "lyr-blend-lbl"; blbl.textContent = "Blend";
       blendRow.appendChild(blbl);
-      const bcur = () => BLEND_BY_ID[L.blend] || BLEND_MODES[0];
+      const bcur = () => BLEND_BY_ID[stack[j] && stack[j].blend] || BLEND_MODES[0];
       const sel = document.createElement("select");
       BLEND_MODES.forEach(m => { const o = document.createElement("option"); o.value = m.id; o.textContent = m.label; o.title = m.tip; sel.appendChild(o); });
-      sel.value = bcur().id; sel.title = bcur().tip;
       sel.addEventListener("click", e => e.stopPropagation());
-      sel.addEventListener("change", e => { e.stopPropagation(); L.blend = blendOk(sel.value); syncStackUI(); persist(); autosavePreset(); });
+      sel.addEventListener("change", e => {
+        e.stopPropagation();
+        const L = stack[j]; if (!L) return;
+        L.blend = blendOk(sel.value); syncStackUI(); persist(); autosavePreset();
+      });
       blendRow.appendChild(sel);
-      const cycleBlend = dir => { const i = BLEND_MODES.indexOf(bcur()); L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id; syncStackUI(); persist(); autosavePreset(); };
+      const cycleBlend = dir => {
+        const L = stack[j]; if (!L) return;
+        const i = BLEND_MODES.indexOf(bcur());
+        L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id;
+        syncStackUI(); persist(); autosavePreset();
+      };
       const up = document.createElement("b");
       up.className = "lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
       up.addEventListener("click", e => { e.stopPropagation(); cycleBlend(-1); });
@@ -297,47 +341,74 @@
       blendRow.appendChild(up); blendRow.appendChild(dn);
       row.appendChild(blendRow);
 
-      host.appendChild(row);
-      // The selected layer's row carries the controls, so the header you just built and the
-      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
-      // the row's own markup; everything below is #lyrctl, moved in.
       // EVERY row gets a chevron, not just the open one — the same control opens a collapsed
       // layer and closes the open one, so there is one obvious way to fold and unfold rather
       // than a control that only appears once you are already there.
       //
-      // Open means "selected and not folded". So on an unselected row the chevron reads ▸ and
-      // clicking it selects that layer AND clears the fold; on the selected row it toggles.
-      const isOpen = j === stackSel && !lyrFolded;
+      // It is the ONLY thing that unfolds: selecting a layer no longer opens it, because any
+      // number can be open at once and a click meant to reach one layer's controls should not
+      // rearrange the others. Unfolding does still select, so the layer you just opened to
+      // look at is the one you are editing.
       const chev = document.createElement("b");
       chev.className = "lyr-chev";
-      chev.textContent = isOpen ? "▾" : "▸";
-      chev.title = isOpen ? "Hide this layer's settings" : "Show this layer's settings";
-      chev.setAttribute("aria-label", chev.title);
-      chev.setAttribute("aria-expanded", String(isOpen));
       // stopPropagation on pointerdown, or the row's capture-phase handler would select first
       // and re-run syncStackUI underneath this click.
       chev.addEventListener("pointerdown", e => e.stopPropagation());
       chev.addEventListener("click", e => {
         e.stopPropagation();
-        if (j !== stackSel) { lyrFolded = false; selectStack(j); }   // ...which re-runs syncStackUI
-        else { lyrFolded = !lyrFolded; syncStackUI(); }
+        if (!stack[j]) return;
+        if (openSlots.has(j)) { openSlots.delete(j); syncStackUI(); }
+        else { openSlots.add(j); selectStack(j); syncStackUI(); }   // selectStack no-ops if already selected
       });
       // A grid child, but an EXPLICITLY PLACED one (column 1 / row 1 — see .lyr-chev). Appended
       // without placement it takes the next auto cell and shifts the chooser, the mute row and
       // the blend row each one along, which visibly collapses the row.
       row.appendChild(chev);
-      // The selected layer's row carries the controls, so the header you just built and the
-      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is the
-      // row's own markup; everything below is #lyrctl, moved in.
-      if (j === stackSel) {
-        adoptLayerCtl(row);
-        row.classList.toggle("folded", lyrFolded);
-      }
-    });
+
+      lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev };
+      host.appendChild(row);
+    }
+  }
+  // Paint the pool. Creates nothing, moves nothing out, destroys nothing — so a pointer held
+  // down inside a row survives every call, and (from M4a) each row can own its layer's
+  // controls without them being swept away by a mute or a blend pick.
+  function syncStackUI() {
+    const host = el("stacklist");
+    if (!host) return;
+    buildStackRows();
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const r = lyrRows[slot], L = stack[slot];
+      if (!r) continue;
+      if (!L) { r.row.hidden = true; continue; }   // a spare row: kept in the DOM, hidden
+      r.row.hidden = false;
+      const open = openSlots.has(slot);
+      r.row.classList.toggle("sel", slot === stackSel);
+      r.row.classList.toggle("muted", !!L.mute);
+      r.row.classList.toggle("folded", !open);
+      r.grab.classList.toggle("off", stack.length < 2);
+      r.nm.value = String(L.fx);
+      r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
+      r.mute.textContent = L.mute ? "○" : "●";
+      r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
+      r.gn.value = L.gain;
+      r.rm.classList.toggle("off", stack.length <= 1);
+      const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
+      r.sel.value = bm.id; r.sel.title = bm.tip;
+      r.chev.textContent = open ? "▾" : "▸";
+      r.chev.title = open ? "Hide this layer's settings" : "Show this layer's settings";
+      r.chev.setAttribute("aria-label", r.chev.title);
+      r.chev.setAttribute("aria-expanded", String(open));
+      // The selected layer's row carries the controls, so its header and the sliders it
+      // governs read as one block. Everything above (mute, effect, gain, blend) is the row's
+      // own markup; everything below is #lyrctl, moved in. appendChild MOVES it, so this both
+      // installs it here and takes it out of whichever row had it.
+      if (slot === stackSel) adoptLayerCtl(r.row);
+    }
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
     // The old box is empty now — hide the chrome rather than showing a stray heading over
-    // nothing. Kept in the DOM: it is #lyrctl's home (see parkLayerCtl).
+    // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
+    // first syncStackUI moves it into a row.
     const fxbox = el("fxbox");
     if (fxbox) fxbox.classList.toggle("hidden", !!el("lyrctl") && el("lyrctl").parentNode !== fxbox);
   }

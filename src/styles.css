@@ -676,6 +676,10 @@
     padding: 6px 7px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
     background: rgba(255, 140, 40, 0.05); cursor: pointer;
   }
+  /* The rows are a fixed pool of STACK_MAX, built once; the spares are hidden rather than
+     removed, so nothing is ever destroyed under a pointer. `display: grid` above outranks
+     the UA's [hidden] rule, so hiding needs saying explicitly. */
+  #panel .lyr[hidden] { display: none; }
   /* The selected layer is the one the Effect chooser and every slider below edit, so it
      has to be unmistakable — everything else in the box refers to it. */
   #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
