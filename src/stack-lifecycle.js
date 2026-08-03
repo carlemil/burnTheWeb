@@ -230,6 +230,15 @@
       row.addEventListener("pointerdown", e => {
         if (!e.target.closest(".lyr-grab")) selectStack(j);
       }, true);
+      // ...and the same on FOCUS, which covers what a pointer cannot: tab into another
+      // layer's slider and press an arrow key and `input` fires with no pointerdown at all.
+      // The value would land on a node that is not in `anims`, so nothing would render, the
+      // edit would persist against the wrong layer, and the next paintBlock would quietly
+      // revert it — a slider that "won't stick". Also what makes the panel work with
+      // assistive tech, where every edit arrives this way.
+      row.addEventListener("focusin", e => {
+        if (!e.target.closest(".lyr-grab")) selectStack(j);
+      }, true);
       // Kept as well: a synthetic click (tests, assistive tech) never emits pointerdown, and
       // selectStack early-returns when the row is already selected, so this cannot double-work.
       row.addEventListener("click", () => selectStack(j));

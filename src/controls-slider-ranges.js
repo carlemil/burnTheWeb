@@ -138,21 +138,10 @@
   // writes the clamped number back. That is data loss, not cosmetics, and it only shows on
   // scenes with widened sliders.
   function applyLayerRangesTo(slot, r) { applyRangesFor(r, rangeIsLayer, slot); }
-  // After bounds change mid-session, re-clamp stray values and re-run each slider's
-  // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
-  // Every scene range slider, whether docked in the menu or popped into #breakout.
-  function sceneRangeInputs() {
-    const b = document.getElementById("breakout");
-    return [...panel.querySelectorAll("input[type=range]"), ...(b ? b.querySelectorAll("input[type=range]") : [])];
-  }
-  function refreshRangeUI() {
-    sceneRangeInputs().forEach(inp => {
-      // The beat-tuning sliders have no ids and fixed bounds — re-dispatching on them
-      // would fire their handlers (and another persist) for no gain.
-      if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;
-      const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
-      if (c !== +inp.value) inp.value = String(c);
-      inp.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  }
+  // sceneRangeInputs() and refreshRangeUI() used to live here and are GONE. They had no
+  // callers, and with one control block per stack slot they had become a landmine for
+  // whoever re-attached them: the scan walked the whole panel, so it would have found
+  // every layer's copy of every slider and re-dispatched `input` on all of them — one
+  // delegated onEdit, one persist and one autosave per slider per block. Re-clamping
+  // after a bounds change is done per slider by rngApply and per block by paintBlock.
 

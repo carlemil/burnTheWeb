@@ -416,16 +416,29 @@ isn't a real control). Everything derives from it:
 
 **Break-out boxes.** Every `dual`/`plain` slider shows in the menu as just a name + a `+`/`−`
 button (a `.ctl-row` launcher). The whole `#ctl-<key>` node lives in `#breakout`, a
-`position:fixed` column that fills top→down in click order. `popped` is a global set of control
-keys; `refreshBreakout()` (called by `setEffect`) shows a box iff
-`popped.has(key) && effect.params.has(key)`. State is **transient**.
-- **`dockAll()`** empties the column whenever the scene changes — called by `setEffect`,
-  `createPreset`, Delete, and the preset `<select>`'s `change` (that one docks **up front, before
-  dispatching**, because "— unsaved scene —" never reaches `setEffect`). Rename deliberately does
-  not dock. `dockAll` goes through `dockCtl` per key so the rows' buttons can't desync from `popped`.
+`position:fixed` column that fills top→down in click order. **So the sliders are not in the
+layer block** — a block holds launcher rows, group headings, the filter chain and the palette
+strip, and the only place a thumb is ever visible is the column.
+- **A box belongs to a LAYER.** `popped` is keyed `"<slot>/<key>"` (a scene control is `"s/<key>"`),
+  so layer 1's Speed box and layer 3's Speed box are two boxes and both can be open.
+  `refreshBreakout()` shows one iff its own slot/key is popped **and** that layer still uses the
+  control — so a box whose layer moved to another effect hides itself rather than lying.
+  `ctlOwner(slot, key)` prefixes the title with `L2 ·`, without which two layers on the same
+  effect give two identically-titled boxes; `syncPopOwners()` re-stamps it after a reorder,
+  because the layer a box belongs to can change while it is open. State is **transient**.
+- **NOTHING calls `dockAll()`.** `setEffect`, `createPreset`, Delete and the preset `<select>` all
+  used to empty the column on the reasoning that a new scene swaps every slider out from under
+  you. That does not survive per-layer boxes: the moment two layers' boxes sit side by side,
+  anything that empties the column takes away the comparison you opened it for — you click the
+  other layer and both close. The function is kept and has no callers; the column is yours to
+  curate. `L.popped`/`restoreLayerUi`'s restore went with it, and so did their freeze-during-
+  persist trap (`L.popped` had to be read *before* `setEffect`, or `stackOut`→`freezeItem`
+  re-captured it from the just-cleared live set).
 - Because `#breakout` sits **outside** `#panel` (the panel's `backdrop-filter` + `overflow` would
   clip a fixed child), three things reach it: the control CSS is scoped `#panel …, #breakout …`;
-  the delegated `onEdit` is attached to `#breakout` too; `sceneRangeInputs()` scans both.
+  the delegated `onEdit` is attached to `#breakout` too; and it carries its **own capture-phase
+  `pointerdown` + `focusin`** which selects `box.dataset.slot`'s layer — a box there gets no
+  selection from its layer's row, and only the selected block's nodes are in `anims`.
 - A box holds top→bottom: the **owner line** (`.ctl-owner`), label + value, **the slider**, its
   **range editor** (`.rng-edit`, min/max/step + ↺), a divider (`.ctl-div`), then three titled
   rows — **Triggers** (`.trig-t`) over the beat chips, **Trigger shape** over the `PULSE_SHAPES`
@@ -562,30 +575,66 @@ already the single choke point every path goes through to move the list highligh
 rename, delete, restore, a manual pick, and the auto-cycle via `applyPreset`). Hang it there and
 the title cannot drift from the selection without the highlight drifting too.
 
-**The last box is normally EMPTY and hidden: its body is moved into the selected layer's row.**
-`#lyrctl` wraps everything after that box's summary, and `syncStackUI` appends it to the selected
-`.lyr` — so a layer reads as one complete object: header (effect chooser, mute, gain, ✕, blend),
-then its effect's sliders, then its filters, then its palette. These are singleton controls (the
-DOM is the store for the selected layer), so the block is **moved**, never duplicated — the same
-adopt trick the ☰ menubar uses on `#sysbox`.
-- **`parkLayerCtl()` must run BEFORE `host.textContent = ""`, and its absence is destructive.**
-  `syncStackUI` wipes `#stacklist` on every call — selecting a layer, muting, a gain drag, a
-  blend pick, add/remove — and anything adopted into a row goes with it. That would not reset
-  the panel, it would **delete every slider, filter and palette control from the document**, and
-  `el()` is `getElementById`, so nothing would find them again. Identical to the menubar's
-  `returnAdopted`.
-- Safe against re-entry because **`selectStack` early-returns when the row is already selected**,
-  so interacting with a control inside the selected row cannot rebuild the rows underneath it.
-- `#fxbox` keeps its `.hidden` toggled from whether `#lyrctl` is currently parked there, so the
-  heading never shows over nothing. It stays in the DOM as the home.
-- The open layer's block folds away behind a **chevron** in its `.lyr-ctl` row (`lyrFolded`,
-  `.lyr.folded > #lyrctl { display: none }`) — the unselected rows sit *below* the whole control
-  block, so reaching layer 3 otherwise means scrolling past layer 1's sliders. It only HIDES:
-  `#lyrctl` stays in the row and in the document either way, so every id lookup keeps working.
-  Transient and per-session, like the panel's own box folds.
+### One control block PER LAYER
+
+**Every layer row owns its own control block, and any number can be open at once.** A block is a
+`.lyrblock` cloned from `<template id="lyrblock">` — `STACK_MAX` of them, built at startup, living
+permanently in their row — so a layer reads as one complete object: header (effect chooser, mute,
+gain, ✕, blend), then its effect's controls, then its filters, then its palette. There is no
+`#lyrctl` and no `parkLayerCtl`.
+
+- **Nothing inside a block carries an `id`.** Four elements with `id="speed-lo"` are invalid and
+  `getElementById` returns whichever comes first, so every edit would quietly land on layer 1.
+  They carry the same string on **`data-k`** and resolve through **`ctl(k)`** (the selected
+  layer's), **`ctlIn(slot, k)`** (one specific layer's) or **`ctlEach(k)`** (all of them).
+  The STRING never changes: `speed-lo` is a wire key — a stored `ranges` map is named by it.
+  `ctlReg` registers a node *and* stamps `data-k` on it, so the DOM and the map agree.
+- **Node REFERENCES, not a subtree query.** `keyMap[slot]` is a hash, because the POPPABLE pass
+  moves every `.ctl` out of its block into `#breakout` — `blocks[slot].querySelector` would stop
+  finding them. Same property `anims` already relies on.
+- **A SCENE control keeps its `id` and is generated in slot 0 only** — the seven
+  `SHARED_FILTER_KEYS` plus `ttl`/`tdur`. `ctl()` falls through to `getElementById`, which is what
+  leaves all of their sites untouched. `isSceneCtl` moved up above `ctlHTML` so the generator can
+  read it. **`#effect` and `#palette` are hoisted OUT of the block**: they are pure value stores
+  behind visible pickers, and four copies would mean `setEffect` writing one, `applyBlob`
+  validating another and the render reading a third.
+- **The wiring is one set of maps pointed at one block.** `wireRange(slot, …)` builds a block's
+  nodes, `ui()` closure, clamp listeners and beat block; `registerAnim` creates `anims`/`animPhase`
+  and runs the single startup `apply()` from slot 0; **`pointMaps(slot)`** re-points the maps on
+  selection. It must never re-create `animPhase` (teleports every drifting slider on every layer
+  click) and never call `apply()` (rewrites the render globals out of turn). `makeChips`'s
+  handlers guard on being the **live** block, not on `slot === stackSel` — the slot test is the
+  obvious form and it is wrong whenever one block serves a different selection.
+- **`paintBlock(slot, L)`** fills a NON-selected block from its layer's frozen record. It skips
+  the selected block (which IS the store), applies that layer's **bounds BEFORE its values** (a
+  value painted against shipped bounds is silently clamped, and the next `freezeItem` writes the
+  clamped number back — data loss), and **never dispatches `input`** (that reaches the delegated
+  `onEdit`, so painting three blocks would persist the scene three times).
+  **`repaintAllBlocks()` must run wherever a slot changes which layer it holds** — reorder, add,
+  remove, `installStack`. Missing one is the quietest failure here: the records stay right, so
+  the render stays right, and only the panel lies. It lives inside `installStack`, not
+  `applyPreset`, so `presetprobe`'s structural check still holds.
+- **The visibility passes are per block.** `shownKeysFor(slot)` reads that layer's effect params
+  and its own ticked filters; `refreshBlockVisibility`, `markFirstGroup`, `refreshChanged`,
+  `refreshBlocked` and `ctlHiIn` all take a slot. Left global, every block shows the SELECTED
+  effect's controls — which looks like the feature half-works rather than like a bug.
+- **`RNG_ORIG` is built from the `CONTROLS` schema, not a DOM scan.** Layer controls carry no id
+  (every key would be `undefined`), and by the time it runs the layer rows exist, so a scan would
+  also swallow the four gain sliders into that same junk key.
+- **`selectStack`'s order is load-bearing**: `freezeItem` (reads the OUTGOING block) → `stackSel = j`
+  → `pointMaps(j)` → the rest. Any other order loses the last edit silently.
+- Selection is a capture-phase **`pointerdown` AND `focusin`** on the row. Pointer alone leaves a
+  keyboard hole: tab into another layer's slider, press an arrow key, and `input` fires with no
+  pointerdown — the value lands on a node not in `anims`, nothing renders, and the next
+  `paintBlock` reverts it. Also what makes the panel work with assistive tech.
+- A block folds behind its **chevron** (`openSlots`, `.lyr.folded > .lyrblock { display: none }`).
+  It only HIDES — the block stays in the row and in the document, so every `ctl()` lookup keeps
+  working. **Every layer starts folded** and `openSlots` starts empty; **selecting a layer does
+  not unfold it**, because with several open a click meant to reach one layer's controls should
+  not rearrange the others. Unfolding does still select. `dropOpen`/`moveOpen` remap the set on a
+  remove and a drag, since the fold belongs to the layer and not to the slot.
 - **The chevron is on EVERY row, in the upper-left corner**, and is the one control that both
-  opens and closes: on an unselected row it reads ▸ and selects + unfolds that layer, on the
-  selected row it toggles the fold.
+  opens and closes.
 - **It is an explicitly PLACED grid child** (`grid-column: 1; grid-row: 1`), and that placement
   is what makes it safe. Appended without one it takes the next auto cell and pushes the
   chooser, the mute row and the blend row a cell along each, visibly collapsing the row — tried
@@ -700,12 +749,21 @@ descriptor for every item — invisible whenever two items share an effect.
 
 **Pressing anywhere in a layer row selects that layer.** Child controls `stopPropagation()` on
 `click`, so selection is a **capture-phase `pointerdown`** on the row — it runs before any child
-handler and before the control acts, so a gain drag applies to an already-selected layer. The
-row's `click` listener is kept alongside for synthetic clicks; `selectStack` early-returns when
-already selected.
+handler and before the control acts, so a gain drag applies to an already-selected layer. A
+capture-phase **`focusin`** sits beside it for keyboard and assistive tech. The row's `click`
+listener is kept alongside for synthetic clicks; `selectStack` early-returns when already selected.
 
-**The grab handle is the one exclusion**: `selectStack` re-runs `syncStackUI`, which rebuilds every
-row — that would detach the handle holding pointer capture, and Chromium drops capture on reparent.
+**The rows are a FIXED POOL of `STACK_MAX`, keyed by SLOT, built once and never destroyed.**
+`syncStackUI` only paints them; spares are hidden. It used to wipe `#stacklist` and rebuild every
+row on every call, which is why `parkLayerCtl` had to rescue the control block first — and which
+would now destroy the very node the user has a pointer down on. Keyed by slot rather than by item
+identity because `installStack` replaces the whole array on every scene load (every auto-cycle
+tick), so an identity key would rebuild every row every few seconds; the cost is that a reorder
+changes which item a row shows, so **every handler reads `stack[slot]` live** and the paint covers
+all of them.
+
+**The grab handle is still excluded from row selection**, now for taste rather than mechanics —
+dragging is not selecting. It selects on pointer**up**.
 
 **Every layer row carries its own effect `<select>`** (`select.lyr-name`). A change on a row that
 is **not** selected calls `selectStack(j)` **first** — `setEffect` edits whatever `stackSel` names,

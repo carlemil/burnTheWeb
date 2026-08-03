@@ -9379,6 +9379,15 @@
       row.addEventListener("pointerdown", e => {
         if (!e.target.closest(".lyr-grab")) selectStack(j);
       }, true);
+      // ...and the same on FOCUS, which covers what a pointer cannot: tab into another
+      // layer's slider and press an arrow key and `input` fires with no pointerdown at all.
+      // The value would land on a node that is not in `anims`, so nothing would render, the
+      // edit would persist against the wrong layer, and the next paintBlock would quietly
+      // revert it — a slider that "won't stick". Also what makes the panel work with
+      // assistive tech, where every edit arrives this way.
+      row.addEventListener("focusin", e => {
+        if (!e.target.closest(".lyr-grab")) selectStack(j);
+      }, true);
       // Kept as well: a synthetic click (tests, assistive tech) never emits pointerdown, and
       // selectStack early-returns when the row is already selected, so this cannot double-work.
       row.addEventListener("click", () => selectStack(j));
@@ -9950,23 +9959,12 @@
   // writes the clamped number back. That is data loss, not cosmetics, and it only shows on
   // scenes with widened sliders.
   function applyLayerRangesTo(slot, r) { applyRangesFor(r, rangeIsLayer, slot); }
-  // After bounds change mid-session, re-clamp stray values and re-run each slider's
-  // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
-  // Every scene range slider, whether docked in the menu or popped into #breakout.
-  function sceneRangeInputs() {
-    const b = document.getElementById("breakout");
-    return [...panel.querySelectorAll("input[type=range]"), ...(b ? b.querySelectorAll("input[type=range]") : [])];
-  }
-  function refreshRangeUI() {
-    sceneRangeInputs().forEach(inp => {
-      // The beat-tuning sliders have no ids and fixed bounds — re-dispatching on them
-      // would fire their handlers (and another persist) for no gain.
-      if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;
-      const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
-      if (c !== +inp.value) inp.value = String(c);
-      inp.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  }
+  // sceneRangeInputs() and refreshRangeUI() used to live here and are GONE. They had no
+  // callers, and with one control block per stack slot they had become a landmine for
+  // whoever re-attached them: the scan walked the whole panel, so it would have found
+  // every layer's copy of every slider and re-dispatched `input` on all of them — one
+  // delegated onEdit, one persist and one autosave per slider per block. Re-clamping
+  // after a bounds change is done per slider by rngApply and per block by paintBlock.
 
   // ---- beat-detection tuning — per-preset scene data (localStorage, Backup, Share
   // and every preset). A snapshot of the live beatCfg, validated field by field.
@@ -10587,6 +10585,16 @@
   // has been popped and the layer that owns it still uses that control — so boxes from
   // different layers coexist, and one whose layer changed to an effect without that slider
   // hides itself rather than lying.
+  // #breakout is outside #stacklist, so a box there gets no selection from its layer's row.
+  // Each box is stamped with its slot; touching or focusing one selects that layer, exactly
+  // as pressing anywhere in the row does. Capture phase, so it runs before the control acts
+  // and a drag started in another layer's box applies to an already-selected layer.
+  for (const ev of ["pointerdown", "focusin"]) breakout.addEventListener(ev, e => {
+    const box = e.target.closest(".ctl[data-slot]");
+    if (!box) return;                             // a scene control's box belongs to no layer
+    const slot = +box.dataset.slot;
+    if (slot !== stackSel && stack[slot]) selectStack(slot);
+  }, true);
   function refreshBreakout() {
     let anyVisible = false;
     for (let slot = 0; slot < STACK_MAX; slot++) {

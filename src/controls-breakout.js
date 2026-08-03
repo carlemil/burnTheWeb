@@ -242,6 +242,16 @@
   // has been popped and the layer that owns it still uses that control — so boxes from
   // different layers coexist, and one whose layer changed to an effect without that slider
   // hides itself rather than lying.
+  // #breakout is outside #stacklist, so a box there gets no selection from its layer's row.
+  // Each box is stamped with its slot; touching or focusing one selects that layer, exactly
+  // as pressing anywhere in the row does. Capture phase, so it runs before the control acts
+  // and a drag started in another layer's box applies to an already-selected layer.
+  for (const ev of ["pointerdown", "focusin"]) breakout.addEventListener(ev, e => {
+    const box = e.target.closest(".ctl[data-slot]");
+    if (!box) return;                             // a scene control's box belongs to no layer
+    const slot = +box.dataset.slot;
+    if (slot !== stackSel && stack[slot]) selectStack(slot);
+  }, true);
   function refreshBreakout() {
     let anyVisible = false;
     for (let slot = 0; slot < STACK_MAX; slot++) {
