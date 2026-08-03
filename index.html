@@ -42,7 +42,10 @@
     max-height: calc(100vh - 72px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: rgba(10, 6, 4, 0.55);
+    /* 0.8, not the old 0.55: every panel and dialog floats over the visual, and at 55% a
+       bright frame (a white-hot fire tip, a full-screen plasma) read straight through the
+       text. Raised on all seven translucent surfaces at once so they stay a matched set. */
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px;
     backdrop-filter: blur(6px);
@@ -52,18 +55,15 @@
     user-select: none;
     transition: opacity .3s, transform .3s, visibility .3s;
   }
-  #panel h1 {
-    margin: 0 0 2px;
-    font-size: 14px;
-    letter-spacing: .04em;
-    color: #ffb15a;
-    text-shadow: 0 0 12px rgba(255, 120, 20, .8);
-  }
-  #panel .sub { margin: 0 0 12px; opacity: .6; font-size: 11px; }
-  #panel label { display: block; margin: 10px 0 3px; opacity: .85; }
+  /* The panel opens straight onto the scene controls: no title, no per-effect subtitle.
+     Both nodes stay in the DOM and stay wired (setEffect writes #sub on every effect change,
+     #help-btn opens the help panel, which the ☰ menu also offers) — only the chrome is gone,
+     so nothing needs null-guarding. The first .box supplies its own top margin. */
+  #panel h1, #panel .sub { display: none; }
+  #panel label, #menubar label { display: block; margin: 10px 0 3px; opacity: .85; }
   /* Control appearance is scoped to both the menu and the pop-out column so a
      control keeps its styling after it moves into a break-out box (#breakout). */
-  #panel .val, #breakout .val { float: right; color: #ffcf87; opacity: 1; }
+  #panel .val, #breakout .val, #menubar .val { float: right; color: #ffcf87; opacity: 1; }
   #panel input[type=range], #breakout input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
   /* dual-thumb range: two overlaid sliders set a [lo,hi] band */
   #panel .dual, #breakout .dual { position: relative; height: 22px; }
@@ -92,7 +92,7 @@
     pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
     background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
   }
-  #panel select {
+  #panel select, #menubar select {
     width: 100%;
     margin: 0;
     padding: 5px 7px;
@@ -103,7 +103,7 @@
     font: 12px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     cursor: pointer;
   }
-  #panel select option { background: #1a0f08; color: #ffcf87; }
+  #panel select option, #menubar select option { background: #1a0f08; color: #ffcf87; }
   /* Palette preview picker: a gradient swatch per palette, replacing the plain
      dropdown (the <select> stays as the value store, hidden once JS builds these). */
   #palswatches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
@@ -118,7 +118,104 @@
   }
   .palsw.active { border-color: #ffcf87; box-shadow: 0 0 0 1px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.55); }
   .palsw:focus-visible { outline: 2px solid #ffb15a; outline-offset: 1px; }
-  #panel .check {
+  /* ---- ☰ fold-out menubar --------------------------------------------------------
+     Panels are position:fixed children of #menubar and are positioned in JS (measured
+     after insertion so a submenu can flip left rather than run off the edge). Above the
+     panel (z 10) but below the modal-ish dialogs. */
+  /* The overlay deliberately CATCHES pointer events while open: it is the click-outside
+     closer, and without it a click meant to dismiss the menu would fall through to the
+     canvas and pause the animation. Hidden ⇒ display:none, so it never interferes closed. */
+  /* The font lives on #panel, not on body, so an adopted block dropped in here would fall
+     back to the browser's serif default — set the same face on the menubar. */
+  #menubar {
+    position: fixed; inset: 0; z-index: 12;
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    user-select: none;
+  }
+  #menubar.hidden { display: none; }
+  .mb-panel {
+    position: fixed; min-width: 190px; max-width: 320px;
+    padding: 5px; border-radius: 9px;
+    background: rgba(10, 6, 4, 0.92);
+    border: 1px solid rgba(255, 140, 40, 0.4);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+    max-height: calc(100vh - 24px); overflow-y: auto;
+  }
+  .mb-item {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 7px 9px; text-align: left; cursor: pointer;
+    background: none; border: 0; border-radius: 6px;
+    color: #ffdcb0; font: 13px/1.2 inherit;
+  }
+  .mb-item:hover, .mb-item.open { background: rgba(255, 122, 26, 0.26); color: #fff; }
+  .mb-lab { flex: 1 1 auto; }
+  .mb-chev { flex: 0 0 auto; opacity: .7; font-size: 11px; }
+  .mb-tick { flex: 0 0 auto; width: 12px; color: #ffcf87; }
+  .mb-sep { height: 1px; margin: 4px 6px; background: rgba(255, 140, 40, 0.28); }
+  .mb-item:focus-visible { outline: 2px solid #ffb15a; outline-offset: -2px; }
+  /* An adopted block keeps the panel's own control styling — the CSS for those controls is
+     scoped to "#panel …, #breakout …", so the menubar is added as a third home rather than
+     the styles being duplicated (see the scoped rules above). */
+  .mb-adopt { padding: 4px 6px 2px; min-width: 240px; }
+  .mb-adopt > label:first-child { margin-top: 0; }
+
+  /* ---- Scenes list: collections, foldable, collapsed by default ------------------
+     Replaces the <select> as the visible control (#preset stays as the value store).
+     A collection is a <div class="pl-grp">: a header button that folds it, an optional ✕
+     to drop the whole set, and a body of scene buttons shown only while .open. */
+  #presetlist { margin: 0 0 6px; }
+  .pl-grp { position: relative; margin-top: 3px; }
+  .pl-head {
+    width: 100%; display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px 5px 20px; text-align: left; cursor: pointer;
+    background: rgba(255, 140, 40, 0.09); border: 1px solid rgba(255, 140, 40, 0.28);
+    border-radius: 5px; color: #ffcf87; font: 12px/1.25 inherit; letter-spacing: .2px;
+  }
+  .pl-head:hover { background: rgba(255, 122, 26, 0.2); }
+  /* Chevron, rotated when open — same idiom as the .box-t sections above. */
+  .pl-head::before {
+    content: "▸"; position: absolute; left: 7px; font-size: 10px; color: #ffb15a;
+    transition: transform .12s;
+  }
+  .pl-grp.open > .pl-head::before { transform: rotate(90deg); }
+  .pl-nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-ct { flex: 0 0 auto; opacity: .6; font-variant-numeric: tabular-nums; }
+  .pl-drop {
+    position: absolute; right: 4px; top: 3px; width: 20px; height: 20px; padding: 0;
+    background: none; border: 0; color: #ffb15a; opacity: .45; cursor: pointer; font-size: 12px;
+  }
+  .pl-drop:hover { opacity: 1; color: #ff9a4a; }
+  .pl-grp .pl-head { padding-right: 46px; }         /* room for the count + ✕ */
+  .pl-body { display: none; padding: 3px 0 2px 10px; }
+  .pl-grp.open > .pl-body { display: block; }
+  .pl-empty { padding: 4px 8px; font-size: 11px; opacity: .45; }
+  /* A scene is a row: the auto-cycle tick, then the name button. The checkbox is a SIBLING
+     of the button rather than inside it — nested interactive content is invalid and the tick
+     would fight the button for the click. */
+  .pl-row { display: flex; align-items: center; gap: 6px; }
+  .pl-cyc {
+    flex: 0 0 auto; width: 13px; height: 13px; margin: 0; cursor: pointer;
+    accent-color: #ff9a4a;
+  }
+  /* Out of the rotation reads as "still here, just not in the show" — the name dims, it is
+     never hidden or disabled, because an unticked scene is still selectable by hand. */
+  .pl-cyc:not(:checked) + .pl-scene { opacity: .5; }
+  .pl-scene {
+    display: block; flex: 1 1 auto; min-width: 0; text-align: left; margin: 2px 0; padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid transparent; border-radius: 5px;
+    color: #ffdcb0; font: 12px/1.25 inherit; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pl-scene:hover { background: rgba(255, 122, 26, 0.22); }
+  .pl-scene.on { border-color: #ffcf87; background: rgba(255, 122, 26, 0.28); color: #fff; }
+  .pl-cyc:not(:checked) + .pl-scene.on { opacity: .8; }   /* selected still reads as selected */
+  .pl-unsaved { font-style: italic; opacity: .85; }
+  .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible,
+  .pl-cyc:focus-visible {
+    outline: 2px solid #ffb15a; outline-offset: 1px;
+  }
+  #panel .check, #menubar .check {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -126,7 +223,7 @@
     cursor: pointer;
     opacity: .9;
   }
-  #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
+  #panel .check input, #menubar .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
   #toggle, #fs, #mute {
     position: fixed;
@@ -137,7 +234,7 @@
     padding: 0; appearance: none; -webkit-appearance: none;
     display: flex;
     align-items: center; justify-content: center;
-    background: rgba(10, 6, 4, 0.55);
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 8px;
     color: #ffb15a;
@@ -157,8 +254,8 @@
   #mute.off { opacity: .38; cursor: default; }
   #toggle:hover, #fs:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
   /* keyboard focus rings (a11y) */
-  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
-  #panel select:focus-visible, #panel input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
+  #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
+  #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute { transition: none !important; } }
   #frames {
     position: fixed;
@@ -166,7 +263,7 @@
     right: 14px;
     z-index: 10;
     padding: 6px 10px;
-    background: rgba(10, 6, 4, 0.55);
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 8px;
     color: #ffcf87;
@@ -181,8 +278,10 @@
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
+  body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
-  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
+  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
+  body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -265,23 +364,32 @@
   #galdlg .gal-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 480px); max-height: 86vh; overflow-y: auto;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 24px 26px 22px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  /* Name grows and meta sits right of it on the top line; the two Load buttons span the full
-     width underneath, right-aligned — "Load and replace" is far too wide to sit inline. */
+  /* ONE line: name, then the scene count / date centred between, then Load at the end.
+     It used to wrap the buttons onto a second row spanning the full width, because there
+     were two of them and "Load and replace" was far too wide to sit inline. There is one
+     button now (the gallery installs a collection, so there is no merge-vs-replace question),
+     and one button fits — so a row is a row.
+     Both text columns are 1fr and min-width:0, which is what lets a long name ellipsize
+     instead of shoving the button off the end; `auto` there would let it push. */
   #galdlg .gal-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 6px 12px; align-items: center;
     padding: 11px 12px; margin-bottom: 9px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
   }
   #galdlg .gal-row:last-child { margin-bottom: 0; }
   #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #galdlg .gal-meta { color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap; }
-  #galdlg .gal-btns { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 3px; }
+  #galdlg .gal-meta {
+    color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap;
+    text-align: center; overflow: hidden; text-overflow: ellipsis;
+  }
+  #galdlg .gal-btns { display: flex; gap: 8px; justify-content: flex-end; }
   #galdlg .gal-row .audbtn { padding: 5px 12px; }
   #galdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
   /* The merge-vs-replace explainer sits above the list, so the two buttons on every row need
@@ -290,10 +398,10 @@
   #galdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
   #galdlg .gal-help b { color: #ffcf87; font-weight: 600; }
   body.ui-hidden #galdlg { display: none !important; }
-  #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
-  #panel .presetrow .audbtn { flex: 1; text-align: center; }
+  #panel .presetrow, #menubar .presetrow { display: flex; gap: 6px; margin-top: 6px; }
+  #panel .presetrow .audbtn, #menubar .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
-  #panel .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
+  #panel .presetrow.grid2, #menubar .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
   #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
   /* The menu is grouped boxes — the app-wide stuff (audio, resolution,
      diagnostics), backup/share, what the scene IS (presets/effect/palette) and
@@ -342,16 +450,20 @@
     border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
   }
   /* ---- music beat reactivity ---- */
-  #panel .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-  #panel .audbtn {
+  #panel .audiorow, #menubar .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  /* Keyed on the class alone, NOT scoped to #panel/#menubar — the same trap the close-button
+     rule documents. .audbtn is used by every dialog too (Public scenes' "Load scenes" and
+     "Refresh", the palette editor's actions, the restore dialog), and while this was scoped
+     to the panel all of those rendered as raw grey browser buttons. */
+  .audbtn {
     padding: 4px 8px; background: rgba(255, 122, 26, 0.15);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 6px;
     color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #panel .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
-  #panel .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
-  #panel .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
-  #panel .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
+  .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
+  .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  #panel .meter, #menubar .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
+  #panel .meter i, #menubar .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
   .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
   /* Unarmed chips are deliberately colourless and dim: the band colours below
@@ -513,15 +625,15 @@
     border-radius: 1px;
     background: linear-gradient(180deg, #ffb15a, rgba(255, 140, 40, 0));
   }
-  #panel .credit-role {
+  #panel .credit-role, #menubar .credit-role {
     color: #ffb15a; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
     text-shadow: 0 0 10px rgba(255, 120, 20, .75);
   }
-  #panel .credit-name { opacity: .8; font-size: 11px; line-height: 1.5; }
+  #panel .credit-name, #menubar .credit-name { opacity: .8; font-size: 11px; line-height: 1.5; }
   /* keep "aka <handle>" together so a long name wraps as name / alias, never
      stranding the "aka" at the end of a line */
-  #panel .credit-alias { white-space: nowrap; }
-  #panel .credit-aka { opacity: .45; }
+  #panel .credit-alias, #menubar .credit-alias { white-space: nowrap; }
+  #panel .credit-aka, #menubar .credit-aka { opacity: .45; }
   #panel .credit-handle { color: #ffcf87; font-weight: bold; }
   #panel .credit + label.check { margin-top: 12px; }
   /* Filters: the stackable post-FX checkboxes */
@@ -605,6 +717,103 @@
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
   #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
+  /* ---- the chain: drag handle, remove, and the Add button --------------------------
+     The list shows only the filters you have added, in the order they run. The handle is
+     the same ⠿ the layer rows use, and the drag is the same gesture (see makeFilterGrab). */
+  #panel .filter-grab {
+    flex: 0 0 auto; width: 13px; cursor: grab; color: #ffb15a; opacity: .5;
+    font-size: 11px; line-height: 1; text-align: center; touch-action: none;
+  }
+  #panel .filter-grab:hover { opacity: 1; }
+  #panel .filter-sec.solo .filter-grab { opacity: .18; cursor: default; }   /* nothing to reorder against */
+  #panel .filter-sec.dragging {
+    position: relative; z-index: 3; opacity: .92;
+    background: rgba(255, 122, 26, 0.12); border-radius: 5px;
+  }
+  #panel .filter-drop { height: 2px; margin: 2px 0; background: #ff8c28; border-radius: 1px; }
+  /* Where one pipeline stage ends and the next begins. A row can only be dragged within its
+     own run, so the line has to be visible or the constraint reads as a broken drag. */
+  #panel .filter-div {
+    margin: 6px 0 3px; padding-top: 5px; border-top: 1px dashed rgba(255, 140, 40, 0.28);
+    color: #ffb15a; opacity: .5; font-size: 9px; letter-spacing: .04em;
+  }
+  /* Why a drop snapped back. Shown for a few seconds after the drag, then faded out. */
+  #panel .filter-note {
+    max-height: 0; overflow: hidden; opacity: 0;
+    text-transform: none; letter-spacing: 0; font-size: 9.5px; line-height: 1.45;
+    color: #ffcf87; transition: max-height .18s, opacity .18s, margin-top .18s;
+  }
+  #panel .filter-note.on { max-height: 4em; opacity: .95; margin-top: 4px; }
+  @keyframes fltbump {
+    0% { transform: translateX(0); } 25% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); } 100% { transform: translateX(0); }
+  }
+  #panel .filter-sec.bump { animation: fltbump .32s ease-out; }
+  #panel .filter-rm {
+    flex: 0 0 auto; width: 16px; height: 16px; padding: 0; background: none; border: 0;
+    color: #ffb15a; opacity: .4; cursor: pointer; font-size: 11px; line-height: 1;
+  }
+  #panel .filter-rm:hover { opacity: 1; color: #ff9a4a; }
+  #panel .filter-add {
+    display: block; width: 100%; margin: 6px 0 2px; padding: 4px 8px;
+    background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
+    border-radius: 6px; color: #ffcf87; font: 11px/1.3 inherit; cursor: pointer; text-align: center;
+  }
+  #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
+  /* ---- the "Add filter" / "Palettes in use" pickers ---- */
+  #fltdlg, #palpickdlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;   /* only the box itself is interactive */
+  }
+  #fltdlg.hidden, #palpickdlg.hidden { display: none; }
+  #fltdlg .flt-box, #palpickdlg .flt-box {
+    position: relative; pointer-events: auto;
+    width: min(90vw, 430px); max-height: 86vh; overflow-y: auto;
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 20px 22px 18px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #fltdlg h2, #palpickdlg h2 {
+    margin: 0 30px 8px 0; color: #ffb15a; font-size: 15px;
+    text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
+  }
+  #fltdlg .pal-hint, #palpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
+  #fltdlg .flt-stage {
+    margin: 12px 0 4px; padding-top: 7px; border-top: 1px solid rgba(255, 140, 40, 0.16);
+    color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  #fltdlg .flt-stage:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  #fltdlg .flt-opt {
+    display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline;
+    padding: 4px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
+  }
+  #fltdlg .flt-opt:hover { background: rgba(255, 122, 26, 0.14); }
+  #fltdlg .flt-opt input { margin: 0; }
+  #fltdlg .flt-opt-n { color: #ffdcb0; }
+  #fltdlg .flt-opt-d { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.45; }
+  #fltdlg .flt-opt:has(input:disabled) { opacity: .4; cursor: default; }
+  #palpickdlg .palpick-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
+  }
+  #palpickdlg .palpick-row:hover { background: rgba(255, 122, 26, 0.14); }
+  #palpickdlg .palpick-row input { margin: 0; flex: 0 0 auto; }
+  #palpickdlg .palpick-sw {
+    flex: 0 0 auto; width: 84px; height: 14px; border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  #palpickdlg .palpick-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #palpickdlg .presetrow { margin-top: 14px; }
+  /* The "+" tile that ends the swatch strip — same size and rhythm as a ramp, so the strip
+     reads as one object with an empty slot rather than a control bolted underneath. */
+  .palsw-add {
+    display: block; width: 100%; height: 22px; padding: 0;
+    background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
+    border-radius: 4px; color: #ffcf87; font: 13px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
   #panel .filter-chk { margin: 4px 0 0; }
   #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
@@ -671,21 +880,32 @@
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
-    position: relative; background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
   #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  /* Shared by the inspector and the editor — both carry a .pal-close. Scoping this to
-     #paldlg alone left the editor's × unstyled (a default grey button above the title). */
-  #paldlg .pal-close, #paledlg .pal-close {
+  /* ---- EVERY dialog's close button, in ONE rule ----------------------------------
+     Top-right of its box, out of the flow, uniform across the palette inspector, the
+     palette editor, the Public scenes gallery, the Orbit editor, the help panel and the
+     sync nudge.
+     This used to be four near-identical copies scoped per dialog (#paldlg, #carddlg,
+     #help, #syncpop), and that failed the same way twice: a new dialog reuses .pal-close,
+     nobody adds it to the selector list, and its × silently renders as a default grey
+     button in the normal flow ABOVE the title — which is exactly how the gallery shipped.
+     Keyed on the class alone, so a dialog gets the right button by using the right class.
+     The one requirement on the box is `position: relative` (or, for #carddlg, a box that is
+     deliberately `static` so the × pins to the floating panel itself). */
+  .pal-close, .card-close, .help-close, .sync-close {
     position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
     background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
+    color: #ffb15a; font: 16px/1 monospace; cursor: pointer; z-index: 1;
   }
-  #paldlg .pal-close:hover, #paledlg .pal-close:hover { background: rgba(255, 122, 26, 0.25); }
+  .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
+    background: rgba(255, 122, 26, 0.25);
+  }
   #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
@@ -701,7 +921,7 @@
   #paledlg .pale-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -780,12 +1000,7 @@
   #help dl { margin: 4px 0 0; }
   #help dt { color: #ffcf87; margin-top: 11px; }
   #help dd { margin: 2px 0 0; opacity: .82; }
-  #help .help-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #help .help-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .help-close is styled by the shared close-button rule above. */
 
   /* "Sync with your music" nudge popup */
   #syncpop {
@@ -806,12 +1021,7 @@
   #syncpop dl { margin: 4px 0 12px; }
   #syncpop dt { color: #ffcf87; margin-top: 10px; font-weight: 600; }
   #syncpop dd { margin: 2px 0 0; opacity: .82; }
-  #syncpop .sync-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #syncpop .sync-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .sync-close is styled by the shared close-button rule above. */
   #syncpop .sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   #syncpop .sync-actions button {
     flex: 1 1 auto; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
@@ -830,7 +1040,7 @@
     position: fixed; right: 16px; bottom: 16px; z-index: 5;
     max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
     padding: 16px 18px 14px;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -839,12 +1049,8 @@
   #carddlg .card-box { position: static; }
   #carddlg h2 { margin: 0 30px 10px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
   #carddlg canvas { display: block; max-width: 100%; border: 1px solid rgba(255, 140, 40, 0.25); border-radius: 6px; }
-  #carddlg .card-close {
-    position: absolute; top: 12px; right: 14px; width: 26px; height: 26px; padding: 0;
-    background: transparent; border: 1px solid rgba(255, 140, 40, 0.4); border-radius: 6px;
-    color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
-  }
-  #carddlg .card-close:hover { background: rgba(255, 122, 26, 0.25); }
+  /* .card-close is styled by the shared close-button rule above; #carddlg .card-box is
+     deliberately `position: static` so it pins to the floating panel, not the inner box. */
   #carddlg .card-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; }
   #carddlg .card-seg { display: inline-flex; border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 6px; overflow: hidden; }
   #carddlg .card-seg .cardmode { border: 0; border-right: 1px solid rgba(255, 140, 40, 0.25); border-radius: 0; }
@@ -904,14 +1110,27 @@
 <canvas id="creditcv"></canvas>
 
 <div id="panel" class="hidden">
+  <!-- Title + subtitle are HIDDEN, not deleted (see the `#panel h1` rule in the CSS): the
+       panel opens straight onto the scene controls. Both nodes stay because they are still
+       wired — `sub` is written by setEffect on every effect change, and #help-btn opens the
+       help panel — and the same help is reachable from the ☰ menu ("What the controls do…").
+       Deleting them would mean null-guarding both call sites for no gain. -->
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
-  <!-- Box — System: app-wide, never part of a scene — audio input, render
-       resolution and the dev tools. -->
-  <details class="box">
-  <summary class="box-t">System</summary>
-  <!-- Sound &amp; quality: music reactivity and the global render resolution -->
+  <!-- System / Cloud profile / Credits are NOT boxes any more: their contents are ADOPTED
+       into the ☰ fold-out menubar at startup (buildMenubar), which moves these very nodes
+       rather than rebuilding them — so every listener, id and sync path already wired to
+       them keeps working untouched. They stay here in the markup because this is where they
+       are authored and where the wiring code looks them up by id; the wrappers below are
+       hidden and emptied by the move. Do not "tidy" them into the menubar markup: the audio
+       buttons, the resolution select, #cloudrow (which Google renders its sign-in button
+       into) and the credits list are all wired by id from other slices. -->
+  <!-- System is TWO adopt hosts, not one: the menubar opens Audio and Resolution as separate
+       submenus, so each needs its own home element for returnAdopted to put its children back
+       into. They were one #sysbox ("Audio & resolution") until the split. -->
+  <div id="audiobox" hidden>
+  <!-- Music reactivity: pick a source, watch the three-band meter -->
   <label>React to music <span class="val" id="vAudio">off</span></label>
   <div class="audiorow">
     <button id="audCapture" class="audbtn" type="button" title="Capture system / tab audio (e.g. Spotify)">Capture</button>
@@ -920,7 +1139,10 @@
     <div class="meter" title="low · mid · high"><i></i><i></i><i></i></div>
   </div>
   <p id="audMsg" class="hint"></p>
+  </div>
 
+  <div id="resbox" hidden>
+  <!-- The global render resolution — a device setting, deliberately not part of a scene -->
   <label>Resolution</label>
   <select id="res" title="Render resolution — lower it if the frame rate is low">
     <option value="1">Full</option>
@@ -935,7 +1157,7 @@
        exists to help you set; the frame + FPS counter no longer has a toggle at all, because
        H (hide all chrome) already governs it and a second control for the same thing was
        just another place for the two to disagree. -->
-  </details>
+  </div>
 
   <!-- Box — Cloud profile: the ONE way in and out of the app now.
        The Backup / Restore / Share this scene / Share scenes buttons were removed from the
@@ -944,8 +1166,7 @@
        still decodes (the standing rule), and the Restore dialog they land in is the same one
        "Load from cloud" and the gallery open. Only the controls that CREATE files and links
        are gone. -->
-  <details class="box">
-  <summary class="box-t">Cloud profile</summary>
+  <div id="cloudbox" hidden>
 
   <!-- Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as analytics), so
        an unconfigured build shows an empty box rather than a broken one. -->
@@ -974,15 +1195,15 @@
         <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>
       </div>
     </div>
-    <!-- Outside #cloud-authed on purpose: the gallery is readable by signed-out visitors
-         (the rules allow a `pub == true` query unauthenticated), so browsing needs no account. -->
-    <div class="presetrow">
-      <button id="cloud-browse" class="audbtn" type="button" title="Browse the scenes other people have published, and load them">Browse published scenes…</button>
-    </div>
+    <!-- "Browse published scenes…" used to live here, outside #cloud-authed because the
+         gallery is readable by signed-out visitors (the rules allow a `pub == true` query
+         unauthenticated). It is now the ROOT ☰ item "Public scenes" instead — browsing other
+         people's scenes needs no account, so burying it inside "Cloud profile" implied it did.
+         The menubar calls galOpen(true) directly rather than adopting a button. -->
     <p id="cloud-msg" class="hint"></p>
     <p class="hint">Stored against your account: the profile name you choose and your scenes — nothing else. Not your email, name or picture.</p>
   </div>
-  </details>
+  </div>
 
   <!-- Box — Scene: saved scenes and how long each is held. The Effect chooser used to
        live here too; it moved down to Effects, next to the sliders it drives. -->
@@ -992,7 +1213,14 @@
        say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
        and link keeps loading. Only the wording the user reads is "scene". -->
   <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
+  <!-- #preset is HIDDEN and remains the VALUE STORE, exactly the arrangement #palette has
+       behind its swatches: applyPreset writes .value, applyBlob validates against it, and
+       every pick in the list below dispatches its `change`. The visible control is
+       #presetlist, a foldable list grouped by COLLECTION — a <select> cannot collapse an
+       <optgroup>, which is the whole point of the grouping. Keep the select in the DOM: a
+       JS failure leaves the native dropdown usable. -->
   <select id="preset"></select>
+  <div id="presetlist"><!-- collapsible per-collection scene list, built in JS --></div>
   <div class="presetrow">
     <button id="newpreset" class="audbtn" type="button" title="Save what is on screen as a new scene">New</button>
     <button id="renamepreset" class="audbtn" type="button" title="Rename the selected scene">Rename</button>
@@ -1001,6 +1229,15 @@
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
   <label class="check"><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
+  <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
+       Auto-cycle, because that is when you see it most — every cycle tick draws one — even
+       though it is drawn by the credits overlay and remembered per browser like the credits
+       preference, not in the scene. Moved out of the Credits menu box for that reason; do not
+       add a second copy there, or the two will disagree. -->
+  <!-- data-nopersist: a per-browser preference sitting inside #panel, so without it the
+       delegated onEdit would autosave the live scene into the selected preset every time you
+       ticked it — writing scene data on a non-scene toggle. Same marker the beat-trace uses. -->
+  <label class="check" data-nopersist title="Name each scene on screen as you switch to it — the scene name and who made it"><input type="checkbox" id="sceneTitleOn" checked> Show author</label>
   <div id="grp-ttl">
     <label>Scene TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1087,13 +1324,18 @@
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </details>
 
-  <!-- Box — Credits. Generated from CREDITS in the script — the same array the
-       startup burn-in rasterises, so the two can no longer drift apart. -->
-  <details class="box">
-  <summary class="box-t">Credits</summary>
+  <!-- Credits. Generated from CREDITS in the script — the same array the startup burn-in
+       rasterises, so the two can no longer drift apart. Adopted into the ☰ menubar, like
+       System and Cloud profile above. -->
+  <div id="creditbox" hidden>
   <div id="creditlist"></div>
-  <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
-  </details>
+  <!-- data-nopersist for the same reason as "Show author": a per-browser preference authored
+       inside #panel, which onEdit would otherwise treat as a scene edit. -->
+  <label class="check" data-nopersist><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
+  <!-- The scene-title switch ("Show author") is NOT here: it lives in the Scene box under
+       Auto-cycle, where you actually notice the banner. It shares this overlay's canvas and
+       typography but has its own preference and key. -->
+  </div>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>
   <!-- Version + release notes, the conventional place for an "about" line: the very foot of
@@ -1103,7 +1345,11 @@
   <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
      title="What changed in this and previous releases">burnTheWeb <span id="vernum">·</span> — release notes ↗</a></p>
 </div>
-<button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
+<button id="toggle" type="button" aria-label="Open the menu" aria-haspopup="true" aria-expanded="false">☰</button>
+<!-- The fold-out application menu the ☰ opens: a traditional multi-level menubar. Its
+     structure is built in JS (buildMenubar) and its leaf panels are filled by MOVING the
+     #audiobox / #resbox / #cloudbox / #creditbox contents in, so nothing has to be re-wired. -->
+<div id="menubar" class="hidden" role="menu" aria-label="Main menu"></div>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
 <!-- Mute the music reaction. It does NOT stop the stream (see setMuted) — a browser cannot
      silently re-grab tab/screen audio, so stopping would cost a fresh picker dialog to come
@@ -1132,8 +1378,8 @@
 <div id="galdlg" class="hidden">
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
-    <h2>Published scenes</h2>
-    <p class="pal-hint gal-help"><b>Load and merge</b> adds these scenes to your own, overwriting any of yours that share a name and keeping the rest. <b>Load and replace</b> throws your scenes away and keeps only these. Either way the page reloads onto what you loaded.</p>
+    <h2>Public scenes</h2>
+    <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
     <div class="presetrow">
@@ -1145,6 +1391,34 @@
 <!-- Palette editor: edit a ramp as colour stops on a gradient bar. Opened by the + on any
      palette swatch. Floating and non-modal like the inspector and the Orbit editor, so you
      can watch the scene change while you drag — every edit previews live. -->
+<!-- "+ Add filter" picker. The menu lists only the filters you have added, in the order they
+     run; this is the only place the full catalogue appears. Floating, translucent and
+     non-modal like the palette editor — you tick a filter and watch it land. Serves BOTH
+     lists (per-layer and whole-scene); openFilterPicker(key) sets which. -->
+<div id="fltdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="flt-close" aria-label="Close">×</button>
+    <h2 id="flt-title">Filters</h2>
+    <p class="pal-hint" id="flt-hint"></p>
+    <div id="flt-pick"></div>
+  </div>
+</div>
+
+<!-- Which palettes are in play: the swatch strip shows only these, and the palette cycle
+     draws only from them. Same shape as the filter picker. -->
+<div id="palpickdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="palpick-close" aria-label="Close">×</button>
+    <h2>Palettes in use</h2>
+    <p class="pal-hint">Ticked palettes show in the strip and are the ones the palette cycle picks from. Untick the ones you never reach for — nothing is deleted, and the palette a scene stores always still loads.</p>
+    <div id="palpick-list"></div>
+    <div class="presetrow grid2">
+      <button id="palpick-all" class="audbtn" type="button">Select all</button>
+      <button id="palpick-none" class="audbtn" type="button">Select none</button>
+    </div>
+  </div>
+</div>
+
 <div id="paledlg" class="hidden">
   <div class="pale-box">
     <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>
@@ -1278,7 +1552,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.4.0",
+    version: "1.5.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -1291,8 +1565,12 @@
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
     scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
 
-    // --- startup credits overlay ---
-    credits: { hold: 5, fade: 3, on: true },   // seconds at full / fade seconds / shown on first visit
+    // --- startup credits overlay, and the per-scene title that follows it ---
+    // The scene title rides the SAME canvas and the same rendered-time countdown, so it is
+    // configured here beside them. Shorter than the credits on purpose: it fires on every
+    // scene change, including each auto-cycle tick, so it has to read and get out of the way.
+    credits: { hold: 5, fade: 3, on: true,          // seconds at full / fade seconds / shown on first visit
+               titleHold: 2.5, titleFade: 1.5, titleOn: true },   // ...same three for the scene title
 
     // --- palette ---
     paletteMorphMs: 8000, // fallback auto-morph duration; live value comes from the slider (MORPH_MS)
@@ -1648,12 +1926,14 @@
     { name: "CGA", fn: grad([[0, [0, 0, 0]], [0.35, [0, 0, 170]], [0.55, [0, 170, 170]], [0.75, [255, 85, 255]], [1, [255, 255, 255]]]) },
     { name: "Blood", fn: grad([[0, [0, 0, 0]], [0.35, [50, 0, 0]], [0.6, [150, 0, 10]], [0.8, [225, 40, 30]], [0.92, [255, 140, 110]], [1, [255, 230, 215]]]) },
     { name: "Chrome", fn: grad([[0, [0, 0, 0]], [0.25, [20, 30, 55]], [0.45, [90, 110, 140]], [0.62, [200, 215, 235]], [0.75, [70, 90, 120]], [0.9, [180, 200, 225]], [1, [255, 255, 255]]]) },
-    // Rastafari palettes — green / gold / red. "One love" runs the full tricolor;
-    // the other three each lean on one of the three colours.
-    { name: "One love", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
-    { name: "Rasta Red", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
-    { name: "Rasta Green", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
-    { name: "Rasta Yellow", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
+    // A green / gold / red family. "Tricolor" runs all three in sequence; the other three
+    // each lean on one of them. Renaming these is SAFE: a palette is referenced everywhere
+    // by INDEX (see palRemapDeleted), never by name, so no saved scene, share link, backup
+    // or cloud profile is affected — keep the ORDER, though.
+    { name: "Tricolor", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
+    { name: "Ember", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
+    { name: "Verdant", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
+    { name: "Sunburst", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
   ];
 
   // ---- custom palettes (the palette editor) ---------------------------------
@@ -1856,10 +2136,34 @@
     arr[0] = arr[1] = arr[2] = 0; // index 0 black
     return arr;
   }
-  function pickOther(cur) {                 // random palette index != cur
-    let n;
-    do { n = (Math.random() * PALETTES.length) | 0; } while (n === cur);
-    return n;
+  // ---- which palettes are IN USE ---------------------------------------------------
+  // The swatch strip shows only these, and the palette cycle picks only from them — so you
+  // can keep a catalogue of 20+ ramps and still have the cycle stay inside the four that
+  // suit a set. NOTHING is deleted by unticking: a scene that stores an untick-ed palette
+  // still loads it and still renders it, because this gates the STRIP and the CYCLE, not
+  // `paletteRGB`. (The strip therefore also shows the current palette whether or not it is
+  // ticked, or selecting a scene would blank the highlight.)
+  //
+  // `null` means "all of them", which is the shipped state and what every blob saved before
+  // this existed decodes to — so there is nothing to migrate and no key is written until you
+  // actually narrow the set. Indices, like every other palette reference here, which is why
+  // palRemapDeleted has to remap this too.
+  //
+  // Global, not per-scene: the same class as auto-cycle and Preset TTL. A shared scene
+  // deliberately does not carry it — it is the recipient's own library preference.
+  let palUse = null;
+  const palInUse = i => !palUse || palUse.has(i);
+  function palUseOk(v) {                    // validate a stored list
+    if (!Array.isArray(v)) return null;
+    const s = new Set();
+    for (const n of v) if (Number.isInteger(n) && n >= 0 && n < PALETTES.length) s.add(n);
+    return s.size ? s : null;               // empty ⇒ treat as "all", never as "none"
+  }
+  function pickOther(cur) {                 // random IN-USE palette index != cur
+    const pool = [];
+    for (let i = 0; i < PALETTES.length; i++) if (i !== cur && palInUse(i)) pool.push(i);
+    if (!pool.length) return cur;           // one palette in use ⇒ stay on it (a pinned cycle)
+    return pool[(Math.random() * pool.length) | 0];
   }
   // reflect the palette we're heading toward in the dropdown
   function showMorphTarget() { el("palette").value = morphTargetIndex; syncPalSwatches(); }
@@ -3424,8 +3728,10 @@
     // back to it made every not-yet-captured same-effect layer mirror the last one edited — the
     // "all layers share one filter set" bug (identical in shape to the seedPts one, see
     // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
+    // orderFilters, not FILTERS.filter: the stored list is the user's drag order (see the
+    // ORDER block in filters.js), and this chain must run in it.
     const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
-    return FILTERS.filter(f => f.stage === "feedback" && f.glFeedback && ids.has(f.id));
+    return orderFilters(ids).filter(f => f.stage === "feedback" && f.glFeedback);
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
   // wrote (the buffer left bound), so the caller can stamp/inject into it. Deliberately
@@ -3503,7 +3809,7 @@
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
     const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
-    const chain = FILTERS.filter(f => f.stage === "post" && f.gl && set.has(f.id));
+    const chain = orderFilters(set).filter(f => f.stage === "post" && f.gl);   // the user's drag order
     if (!chain.length) return src;
     let s = src, slot = 0;
     for (const f of chain) {
@@ -5048,6 +5354,11 @@
 
     postTime += dt;                         // clock for the self-animating post/screen passes
     if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
+    // The scene title queues BEHIND the credits and shares their canvas: holding its
+    // countdown here is the whole mechanism, so a scene applied during the opening credits
+    // (the first visit applies one) starts its title the moment they finish rather than
+    // being drawn over or silently expiring underneath them.
+    else if (titleLeft > 0) titleLeft -= dt;
     transStep(dt);                          // ...and so does the preset transition
 
     // WHICH LAYER THE RENDER FOLLOWS. `activeIds`, the palette globals and `zoom` are the
@@ -5787,60 +6098,98 @@
   // the list is the same for every effect, only the ticks differ.
   // Subheadings that say not just what each group of filters does, but WHERE it acts —
   // the one thing that matters now that filters are per-layer. Feedback and post filters
-  // run on EACH stacked effect on its own (with that effect's own values), so the group
-  // is titled "Per-effect"; Bloom (the glow) and the screen filters act once on the
-  // finished, blended image, so they read "Whole scene". Grouping is by this behaviour,
-  // not raw stage — Bloom is a "post" filter internally but belongs with the whole-scene
-  // set, and it sits last among the post filters (so it falls into that group in order).
+  // both run on EACH stacked effect on its own, with that effect's own values, so they are
+  // ONE group; Bloom (the glow) and the screen filters act once on the finished, blended
+  // image, so they read "Whole scene". Grouping is by this behaviour, not raw stage — Bloom
+  // is a "post" filter internally but belongs with the whole-scene set, and it sits last
+  // among the post filters, so it falls into that group without reordering FILTERS.
+  //
+  // Feedback and post were two headings ("heat & trails" / "image") until they were merged:
+  // the split was the pipeline's, not the user's — both are "this layer's own filters", and
+  // two captions saying so in different words only made the list longer. The single heading
+  // still works out of the registry order (all feedback, then all post-but-Bloom, then the
+  // whole-scene set), so the run stays contiguous and one caption is emitted for it.
   function filterGroup(f) {
-    if (f.stage === "feedback") return { key: "fb", title: "Per-effect · heat & trails", desc: "each layer keeps its own fire, fade and warp" };
-    if (f.stage === "post" && f.id !== "bloom") return { key: "post", title: "Per-effect · image", desc: "each layer is filtered on its own, before they blend" };
+    if (f.stage === "feedback" || (f.stage === "post" && f.id !== "bloom"))
+      return { key: "layer", title: "Per-effect · heat, trails & image",
+               desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
     return { key: "scene", title: "Whole scene · final image", desc: "applied once to the finished, blended picture" };
   }
-  // One <details> per filter: chevron + tick + name in the summary, that filter's own
-  // params in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's
-  // .ctl-row launcher next to its .ctl — moving the .ctl into a body afterwards would
-  // strand the row in #filterctl.
+  // One <details> per filter: a grab handle + name in the summary, that filter's own params
+  // in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's .ctl-row
+  // launcher next to its .ctl — moving the .ctl into a body afterwards would strand the row
+  // in #filterctl.
+  //
+  // THE LIST SHOWS ONLY THE FILTERS YOU HAVE ADDED. It used to show all 22 with a checkbox
+  // each, which is a wall of options you mostly are not using; now "+ Add filter" opens a
+  // picker and the menu is just your chain, in order. Two consequences worth knowing:
+  //
+  //  - **Every section is built once and stays in the DOM forever**, hidden rather than
+  //    removed. It holds this filter's `#ctl-<key>` param nodes, which were ADOPTED out of
+  //    #filterctl — and `el()` is getElementById, which cannot find a detached node. Drop a
+  //    section from the document and every lookup of its sliders (loadState, bindRange,
+  //    refreshControlVisibility, the pop-out boxes) silently stops finding them.
+  //  - **Order is expressed by re-appending**, since appendChild MOVES a node. renderFilterList
+  //    re-appends the added sections in chain order on every change, so DOM order is the
+  //    order, and a moved node keeps its children, listeners and adopted controls.
+  //
+  // `#flt-<id>` survives as a hidden checkbox inside each section: it is still the on/off
+  // VALUE STORE that syncFilterUI writes and the picker reads, exactly as `#preset` and
+  // `#palette` sit behind their visible pickers. Deleting it would mean rewriting all of them.
   const filterSecs = {};
+  // The two lists, and whether their order is the user's to choose. Only the per-effect
+  // group is reorderable: the whole-scene filters are one fixed post-composite pass each,
+  // and there is nothing meaningful to permute.
+  const FILTER_LISTS = [
+    { key: "layer", hostId: "filterlist", addId: "filter-add", reorder: true },
+    { key: "scene", hostId: "screenfilterlist", addId: "screenfilter-add", reorder: false },
+  ];
+  function filterListOf(f) { return filterGroup(f).key === "scene" ? FILTER_LISTS[1] : FILTER_LISTS[0]; }
+  const filterSetOf = id => (isSceneFilter(id) ? sceneOn : activeIds);
+  // The ids currently in one list, in the order they will be applied.
+  function listIds(key) {
+    return orderFilters(key === "scene" ? [...sceneOn] : [...activeIds])
+      .filter(f => filterListOf(f).key === key).map(f => f.id);
+  }
   function buildFilterUI() {
-    const host = el("filterlist"), ctlHost = el("filterctl");
-    const screenHost = el("screenfilterlist");   // whole-scene filters get their own box
-    let openKey = null;
+    const ctlHost = el("filterctl");
+    // One caption over the per-effect chain. The Scene filters box's own title already says
+    // what that list is, so only this one gets a heading — and it earns it twice over now:
+    // it distinguishes per-layer from whole-scene, and it is where "top to bottom is the
+    // order they run" is stated.
+    const lay = el(FILTER_LISTS[0].hostId);
+    if (lay) {
+      const g = filterGroup(FILTERS.find(f => f.stage === "feedback"));
+      const h = document.createElement("div");
+      h.className = "ctl-grp filter-grp";
+      h.textContent = g.title;
+      const d = document.createElement("div");
+      d.className = "filter-grp-d";
+      d.textContent = "runs top to bottom — drag ⠿ to reorder";
+      h.appendChild(d);
+      lay.appendChild(h);
+    }
     FILTERS.forEach(f => {
-      const g = filterGroup(f);
-      // The "Whole scene · final image" group lives in the Scene filters box; the
-      // per-effect groups stay in the Layer effect & filters box. The box title already says
-      // "Scene filters", so the scene group needs no in-box caption of its own.
-      const dest = g.key === "scene" ? screenHost : host;
-      if (g.key !== openKey) {
-        openKey = g.key;
-        if (g.key !== "scene") {
-          const h = document.createElement("div");
-          h.className = "ctl-grp filter-grp";
-          h.textContent = g.title;
-          const d = document.createElement("div");
-          d.className = "filter-grp-d"; d.textContent = g.desc;
-          h.appendChild(d);
-          dest.appendChild(h);
-        }
-      }
+      const L = filterListOf(f), dest = el(L.hostId);
+      if (!dest) return;
       const sec = document.createElement("details");
       sec.className = "filter-sec";
+      sec.dataset.fid = f.id;
       const sum = document.createElement("summary");
+      // Hidden value store — the picker dialog ticks it, syncFilterUI reads it.
       const cb = document.createElement("input");
       cb.type = "checkbox"; cb.id = "flt-" + f.id;
-      // The tick sits inside the summary, so its click must not also fold the section.
-      cb.addEventListener("click", e => e.stopPropagation());
-      cb.addEventListener("change", () => {
-        const set = isSceneFilter(f.id) ? sceneOn : activeIds;   // scene filters toggle the scene-global set
-        if (cb.checked) set.add(f.id); else set.delete(f.id);
-        syncFilterSec(f.id);
-        if (cb.checked && !sec.open) sec.open = true;   // reveal what you just enabled
-        applyFilters();
-      });
+      cb.style.display = "none";
+      if (L.reorder) sum.appendChild(makeFilterGrab(f, sec));
       const nm = document.createElement("span");
       nm.className = "filter-name"; nm.textContent = f.name;
-      sum.appendChild(cb); sum.appendChild(nm);
+      // Remove from the chain without opening the picker — the commonest edit by far.
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "filter-rm"; rm.textContent = "✕";
+      rm.title = "Remove " + f.name + " from this list";
+      rm.setAttribute("aria-label", "Remove " + f.name);
+      rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
+      sum.appendChild(cb); sum.appendChild(nm); sum.appendChild(rm);
       sum.title = f.help || f.name;
       sec.appendChild(sum);
       const body = document.createElement("div");
@@ -5848,8 +6197,8 @@
       // Adopt this filter's controls out of the flat #filterctl list.
       (f.params || []).forEach(k => { const n = el("ctl-" + k); if (n) body.appendChild(n); });
       sec.appendChild(body);
-      // A GPU-only filter on the Canvas2D fallback: disable it visibly rather than
-      // leaving a checkbox that silently does nothing.
+      // A GPU-only filter on the Canvas2D fallback: say so rather than leaving a row that
+      // silently does nothing. (It stays in the list — see cpuBlocked: never removed.)
       if (f.cpuOk === false && !useGL) {
         cb.disabled = true;
         sec.classList.add("off");
@@ -5858,9 +6207,241 @@
       filterSecs[f.id] = sec;
       dest.appendChild(sec);
     });
+    // "+ Add filter" per list, plus the caption that used to head the group.
+    FILTER_LISTS.forEach(L => {
+      const dest = el(L.hostId);
+      if (!dest) return;
+      const b = document.createElement("button");
+      b.type = "button"; b.id = L.addId; b.className = "filter-add";
+      b.textContent = "+ Add filter";
+      b.title = "Choose which filters this list runs";
+      b.addEventListener("click", () => openFilterPicker(L.key));
+      dest.appendChild(b);
+    });
     if (ctlHost) ctlHost.style.display = "none";   // now empty; keep the node for scans
+    renderFilterLists();
   }
-  // Unticked ⇒ the body has nothing in it worth opening, so fold it and say so.
+  // Put one list in order: the added sections first, in chain order, then the rest hidden,
+  // then the Add button. Everything stays a child of the host — see the note above on why a
+  // section must never leave the document.
+  // A labelled hairline marking where one pipeline stage ends and the next begins. Made fresh
+  // each render and stamped with the pass id, so the sweep at the end of renderFilterLists can
+  // drop the ones left over from the previous layout.
+  let renderPass = "0";
+  const STAGE_LABEL = { feedback: "heat · before the effect draws", post: "image · after the effect draws" };
+  function stageDivider(stage) {
+    const d = document.createElement("div");
+    d.className = "filter-div";
+    d.dataset.live = renderPass;
+    d.textContent = STAGE_LABEL[stage] || stage;
+    return d;
+  }
+  function renderFilterLists() {
+    renderPass = String(+renderPass + 1);
+    FILTER_LISTS.forEach(L => {
+      const host = el(L.hostId);
+      if (!host) return;
+      const ids = listIds(L.key), added = new Set(ids);
+      const cap = host.querySelector(".filter-grp");
+      if (cap) host.appendChild(cap);                       // caption stays on top
+      // THE STAGE BOUNDARY IS DRAWN, not just enforced. Heat filters run before the effect
+      // draws and image filters after it, so a drag can only move a row within its own run —
+      // and in one undivided list that reads as "the drag did nothing" rather than as a rule.
+      // (Reported exactly that way: Swirl is heat, Mirror is image, so dragging one past the
+      // other snapped back with nothing to show for it.) One hairline with a two-word label
+      // is enough; it is far lighter than the two full captions this list used to carry.
+      let prevStage = null;
+      ids.forEach(id => {
+        const sec = filterSecs[id];
+        if (!sec) return;
+        const st = FILTER_BY_ID[id].stage;
+        if (L.reorder && prevStage && st !== prevStage) host.appendChild(stageDivider(st));
+        prevStage = st;
+        sec.style.display = "";
+        // "solo" greys the handle when there is nothing to reorder against — which now means
+        // nothing else IN THE SAME STAGE, since that is as far as a row can travel.
+        sec.classList.toggle("solo", ids.filter(o => FILTER_BY_ID[o].stage === st).length < 2);
+        host.appendChild(sec);
+      });
+      // Stale dividers from the previous render, now that the runs have moved.
+      [...host.querySelectorAll(".filter-div")].forEach(d => { if (d.dataset.live !== renderPass) d.remove(); });
+      FILTERS.forEach(f => {
+        const sec = filterSecs[f.id];
+        if (!sec || added.has(f.id) || filterListOf(f).key !== L.key) return;
+        sec.style.display = "none";
+        sec.open = false;
+        host.appendChild(sec);
+      });
+      const btn = el(L.addId);
+      if (btn) host.appendChild(btn);
+      host.classList.toggle("empty", ids.length === 0);
+    });
+  }
+  // The one way a filter goes on or off, wherever it is toggled from (the picker, a row's ✕,
+  // or a programmatic load). Adding appends, so a new filter lands at the end of its stage.
+  function setFilterOn(id, on) {
+    const set = filterSetOf(id);
+    if (on) set.add(id); else set.delete(id);
+    const sec = filterSecs[id];
+    if (sec && on) sec.open = true;        // reveal what you just added
+    applyFilters();
+    syncFilterPicker();
+  }
+  // Drag to reorder, modelled directly on the layer rows' handle (see syncStackUI) — same
+  // gesture, same trick: the dragged section is TRANSFORMED and a marker shows where it will
+  // land, and the actual reorder happens once, on release. Moving the section's DOM node
+  // mid-drag would detach the handle holding the pointer capture, and Chromium drops capture
+  // on reparent, which kills the drag after the first pixel.
+  //
+  // The handle also swallows the summary's click, or every drag would toggle the fold open.
+  function makeFilterGrab(f, sec) {
+    const grab = document.createElement("span");
+    grab.className = "filter-grab";
+    grab.textContent = "⠿";
+    grab.title = "Drag to reorder — filters run top to bottom";
+    grab.setAttribute("aria-label", "Drag to reorder " + f.name);
+    grab.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
+    grab.addEventListener("pointerdown", e => {
+      const host = sec.parentNode;
+      const rows = () => [...host.querySelectorAll(".filter-sec")].filter(s => s.style.display !== "none");
+      if (rows().length < 2) return;
+      e.preventDefault(); e.stopPropagation();
+      grab.setPointerCapture(e.pointerId);
+      const startY = e.clientY;
+      sec.classList.add("dragging");
+      const marker = document.createElement("div");
+      marker.className = "filter-drop";
+      let to = rows().indexOf(sec);
+      const onMove = ev => {
+        sec.style.transform = "translateY(" + (ev.clientY - startY) + "px)";
+        // Scan only the OTHER rows: their rects are stable, while the dragged one's rides
+        // the pointer.
+        const others = rows().filter(s => s !== sec);
+        to = 0;
+        for (const s of others) {
+          const b = s.getBoundingClientRect();
+          if (ev.clientY < b.top + b.height / 2) break;
+          to++;
+        }
+        host.insertBefore(marker, others[to] || el(filterListOf(f).addId) || null);
+      };
+      const onUp = () => {
+        grab.releasePointerCapture(e.pointerId);
+        grab.removeEventListener("pointermove", onMove);
+        grab.removeEventListener("pointerup", onUp);
+        grab.removeEventListener("pointercancel", onUp);
+        marker.remove();
+        sec.style.transform = "";
+        sec.classList.remove("dragging");
+        // Rebuild the set in the new order. A Set iterates in INSERTION order, so the way
+        // to reorder one is to rebuild it — which is also why `activeIds` is re-assigned
+        // rather than mutated in place.
+        const key = filterListOf(f).key;
+        const ids = listIds(key);
+        const from = ids.indexOf(f.id);
+        if (from < 0 || to === from) { renderFilterLists(); return; }
+        ids.splice(to, 0, ids.splice(from, 1)[0]);
+        // Did the pipeline overrule the drop? orderFilters re-partitions by stage, so a row
+        // dragged past the boundary comes back to it. Say so, rather than letting the row
+        // slide back with no explanation — which is precisely what read as "reordering is
+        // broken" when the two filters under test were Swirl (heat) and Mirror (image).
+        if (orderFilters(ids).map(x => x.id).join() !== ids.join()) flashStageBlock(f);
+        if (key === "scene") { sceneOn = new Set(ids); }
+        else {
+          // Keep any id the list does not own (scene ids never live here, but a stale one
+          // from an old blob might) rather than dropping it on a reorder.
+          const keep = [...activeIds].filter(id => !ids.includes(id));
+          activeIds = new Set(ids.concat(keep));
+        }
+        applyFilters();          // re-render, re-derive the chains, persist
+        autosavePreset();
+      };
+      grab.addEventListener("pointermove", onMove);
+      grab.addEventListener("pointerup", onUp);
+      grab.addEventListener("pointercancel", onUp);
+    });
+    return grab;
+  }
+  // A drop the pipeline cannot honour: pulse the row and put the reason under the caption for
+  // a few seconds. Not an alert and not a permanent line — you learn it once.
+  let stageBlockT = 0;
+  function flashStageBlock(f) {
+    const host = el(FILTER_LISTS[0].hostId);
+    if (!host) return;
+    let note = host.querySelector(".filter-note");
+    if (!note) {
+      note = document.createElement("div");
+      note.className = "filter-note";
+      const cap = host.querySelector(".filter-grp");
+      if (cap) cap.appendChild(note); else host.prepend(note);
+    }
+    note.textContent = f.stage === "feedback"
+      ? f.name + " works on the heat, so it always runs before the image filters."
+      : f.name + " works on the finished picture, so it always runs after the heat filters.";
+    note.classList.remove("on"); void note.offsetWidth; note.classList.add("on");
+    clearTimeout(stageBlockT);
+    stageBlockT = setTimeout(() => note.classList.remove("on"), 5200);
+    const sec = filterSecs[f.id];
+    if (sec) { sec.classList.remove("bump"); void sec.offsetWidth; sec.classList.add("bump"); }
+  }
+  // ---- "Add filter" picker ----------------------------------------------------------
+  // A floating, translucent, non-modal panel like the palette editor and the Orbit editor,
+  // hidden on m/Esc with the rest. It is the ONLY place the full catalogue is listed now,
+  // which is the whole point: the menu shows your chain, this shows what you could add.
+  let filterPickKey = "layer";
+  function openFilterPicker(key) {
+    const dlg = el("fltdlg");
+    if (!dlg) return;
+    filterPickKey = key;
+    el("flt-title").textContent = key === "scene" ? "Scene filters" : "Filters for this layer";
+    el("flt-hint").textContent = key === "scene"
+      ? "Applied once to the finished, blended picture."
+      : "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
+    buildFilterPicker();
+    dlg.classList.remove("hidden");
+  }
+  function closeFilterPicker() { const d = el("fltdlg"); if (d) d.classList.add("hidden"); }
+  function filterPickerOpen() { const d = el("fltdlg"); return !!d && !d.classList.contains("hidden"); }
+  function buildFilterPicker() {
+    const host = el("flt-pick");
+    if (!host) return;
+    host.textContent = "";
+    let stage = null;
+    FILTERS.forEach(f => {
+      if (filterListOf(f).key !== filterPickKey) return;
+      // Sub-captions inside the picker only — the menu list itself is one flat chain.
+      const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
+      if (s !== stage) {
+        stage = s;
+        const h = document.createElement("div");
+        h.className = "flt-stage"; h.textContent = s;
+        host.appendChild(h);
+      }
+      const lab = document.createElement("label");
+      lab.className = "flt-opt";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = filterSetOf(f.id).has(f.id);
+      cb.disabled = f.cpuOk === false && !useGL;
+      cb.addEventListener("change", () => setFilterOn(f.id, cb.checked));
+      const nm = document.createElement("span");
+      nm.className = "flt-opt-n"; nm.textContent = f.name;
+      lab.appendChild(cb); lab.appendChild(nm);
+      if (f.help) {
+        const d = document.createElement("span");
+        d.className = "flt-opt-d"; d.textContent = f.help;
+        lab.appendChild(d);
+      }
+      if (cb.disabled) lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
+      host.appendChild(lab);
+    });
+  }
+  // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
+  // ✕, a scene load, an effect switch). Cheap enough to just rebuild.
+  function syncFilterPicker() { if (filterPickerOpen()) buildFilterPicker(); }
+  if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
+  if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
+  // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) {
     const sec = filterSecs[id], cb = el("flt-" + id);
     if (!sec || !cb) return;
@@ -5965,7 +6546,9 @@
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = (isSceneFilter(f.id) ? sceneOn : activeIds).has(f.id); syncFilterSec(f.id); });
+    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
+    renderFilterLists();     // membership AND order both come from the sets, so re-render
+    syncFilterPicker();
   }
   // Re-derive everything a filter change affects: which param groups are visible,
   // the bloom strength (off ⇒ 0), and the banked sim time (a fresh Fire shouldn't
@@ -6503,6 +7086,9 @@
     if (cur) paletteSel.value = cur;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
+      // Only the palettes in use — plus whichever is selected, always, or picking a scene
+      // that stores an unticked ramp would leave the strip with no highlight at all.
+      if (!palInUse(i) && String(i) !== paletteSel.value) return;
       // A wrapper, because the swatch is a <button> and HTML forbids nesting one inside it —
       // the edit + is a SIBLING positioned over the swatch's right edge.
       const w = document.createElement("div");
@@ -6530,11 +7116,65 @@
       w.appendChild(e);
       host.appendChild(w);
     });
+    // A swatch-shaped "+" at the end of the strip opens the in-use picker. Deliberately the
+    // same size and rhythm as the ramps rather than a button underneath: it reads as "one
+    // more slot" and keeps the strip a single object.
+    const add = document.createElement("button");
+    add.type = "button"; add.className = "palsw-add"; add.textContent = "+";
+    add.title = "Choose which palettes are in use";
+    add.setAttribute("aria-label", "Choose which palettes are in use");
+    add.addEventListener("click", openPalPick);
+    host.appendChild(add);
     paletteSel.classList.add("pal-hidden");   // the swatches are the control now; keep the select for its value
     paletteSel.style.display = "none";
     syncPalSwatches();
   }
+  // ---- "Palettes in use" picker -----------------------------------------------------
+  // Every ramp with a tick, so the strip can stay short. Floating, translucent and
+  // non-modal like the other popups; hides on m/Esc with them.
+  function openPalPick() { buildPalPick(); el("palpickdlg").classList.remove("hidden"); }
+  const closePalPick = () => el("palpickdlg").classList.add("hidden");
+  const palPickOpen = () => !el("palpickdlg").classList.contains("hidden");
+  function buildPalPick() {
+    const host = el("palpick-list");
+    if (!host) return;
+    host.textContent = "";
+    PALETTES.forEach((p, i) => {
+      const lab = document.createElement("label");
+      lab.className = "palpick-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = palInUse(i);
+      cb.addEventListener("change", () => setPalUse(i, cb.checked));
+      const sw = document.createElement("span");
+      sw.className = "palpick-sw"; sw.style.background = palGradientCss(i);
+      const nm = document.createElement("span");
+      nm.className = "palpick-n"; nm.textContent = p.name + (p.custom ? " (custom)" : "");
+      lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(nm);
+      host.appendChild(lab);
+    });
+  }
+  // Tick / untick one ramp. `palUse` is null while everything is in use, so the first
+  // untick has to materialise the full set before removing from it.
+  function setPalUse(i, on) {
+    if (!palUse) palUse = new Set(PALETTES.map((_, k) => k));
+    if (on) palUse.add(i); else palUse.delete(i);
+    // Never leave it empty: with nothing in use the strip would vanish and the cycle would
+    // have nowhere to go. Emptying it means "all", which is also how it is stored.
+    if (!palUse.size) palUse = null;
+    if (palUse && palUse.size === PALETTES.length) palUse = null;
+    buildPalSwatches();
+    buildPalPick();
+    persist();
+  }
+  function setPalUseAll(on) {
+    palUse = on ? null : new Set([+paletteSel.value]);   // "none" keeps the one on screen
+    buildPalSwatches(); buildPalPick(); persist();
+  }
   buildPalSwatches();
+  el("palpick-close").addEventListener("click", closePalPick);
+  el("palpickdlg").addEventListener("click", e => { if (e.target === el("palpickdlg")) closePalPick(); });
+  el("palpick-all").addEventListener("click", () => setPalUseAll(true));
+  el("palpick-none").addEventListener("click", () => setPalUseAll(false));
   // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
@@ -6783,6 +7423,13 @@
       (p.layers || []).forEach(L => { L.palette = palRemapOne(L.palette, gone, back); });
     });
     paletteSel.value = String(palRemapOne(+paletteSel.value, gone, back));
+    // The in-use set is indices too, so it shifts with everything else — without this,
+    // deleting the first of three customs silently drops a different ramp out of the cycle.
+    if (palUse) {
+      const next = new Set();
+      palUse.forEach(i => { const r = palRemapOne(i, gone, back); if (r >= 0 && r < PALETTES.length) next.add(r); });
+      palUse = next.size ? next : null;
+    }
   }
 
   // ---- wiring ----
@@ -7123,7 +7770,14 @@
   const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
   const CREDIT_KEY = "burnTheWeb.credits.v1";
+  // The scene title shares this canvas, this countdown style and this drawing treatment —
+  // it IS the credits' typography, saying the name of the scene you just switched to and
+  // who made it. Its own hold/fade because it fires on every scene change (see CONFIG).
+  const TITLE_HOLD = CONFIG.credits.titleHold;
+  const TITLE_FADE = CONFIG.credits.titleFade;
+  const TITLE_KEY = "burnTheWeb.scenetitle.v1";
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
+  let titleLeft = 0, titleName = "", titleAuthor = "";
   // The credits render on their OWN canvas above the effect, not stamped into the heat
   // grid. They used to be stamped — which gave them the palette and let them burn away
   // with the fire, but also fed them through the post-filter chain, so Pixelate blocked
@@ -7140,20 +7794,28 @@
     if (!creditCv) { creditCv = el("creditcv"); creditCtx = creditCv.getContext("2d"); }
     return creditCtx;
   }
-  // Paint the credits at the current fade. Called from frame() AFTER the render, so it
+  // Paint the overlay at the current fade. Called from frame() AFTER the render, so it
   // lands over the finished image — filters included.
+  //
+  // ONE canvas, two tenants, and they never overlap: the credits own it until they expire,
+  // then the scene title does. That ordering is not a rule enforced here — frame() simply
+  // does not decrement titleLeft while credits are up (see the tick), so a scene applied
+  // during the credits waits its turn instead of fighting them.
   function creditDraw() {
     const g = creditLayer();
     if (!g) return;
     const w = window.innerWidth, h = window.innerHeight;
     if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
     g.clearRect(0, 0, w, h);
-    if (creditLeft <= 0) {                 // done: clear once, then get out of the way
+    if (creditLeft <= 0 && titleLeft <= 0) {   // done: clear once, then get out of the way
       if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
       return;
     }
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
-    const a = creditAlpha();
+    if (creditLeft > 0) drawCredits(g, w, h, creditAlpha());
+    else drawSceneTitle(g, w, h, titleAlpha());
+  }
+  function drawCredits(g, w, h, a) {
     g.textAlign = "left"; g.textBaseline = "middle";
     const MONO = "px ui-monospace, Consolas, monospace";
     const roleSize = q => Math.max(9, Math.round(q * 0.8));   // panel: 10px role vs 11px name
@@ -7212,10 +7874,67 @@
       y += nameLh / 2 + gap + roleLh / 2;
     }
   }
+  // The scene title: "<scene name> — <who made it>", one centred line in the credits'
+  // own typography — bold white for the name, the credits' dim grey for the dash, and the
+  // handle amber for the author, so it reads as the same piece of chrome rather than a
+  // caption bolted on. Two draws again (dark halo, then warm glow) for legibility over a
+  // bright frame.
+  function drawSceneTitle(g, w, h, a) {
+    g.textAlign = "left"; g.textBaseline = "middle";
+    const MONO = "px ui-monospace, Consolas, monospace";
+    // The author half is dropped entirely when there is none — a trailing dash pointing at
+    // nothing reads as a bug, and an unclaimed scene is the common case.
+    const segs = [[titleName, CR_COL.name + a + ")", true]];
+    if (titleAuthor) {
+      segs.push([" — ", CR_COL.aka + (CR_AKA * a) + ")", false]);
+      segs.push([titleAuthor, CR_COL.handle, true]);
+    }
+    const lineW = px => segs.reduce((acc, sg) => {
+      g.font = (sg[2] ? "bold " : "") + px + MONO;
+      return acc + g.measureText(sg[0]).width;
+    }, 0);
+    // Same shrink-to-fit as the credits: start from a size proportional to the viewport and
+    // step down until the whole line clears the margins. A scene name is free text, so this
+    // is the only thing standing between a long one and the edge of the screen.
+    let px = Math.max(11, Math.floor(w / 26));
+    for (let i = 0; i < 80 && px > 10; i++) { if (lineW(px) <= w * 0.88) break; px--; }
+    const y = h * 0.5;
+    let x = (w - lineW(px)) / 2;              // lineW sets g.font as it measures — reset in the loop
+    for (const [txt, col, bold] of segs) {
+      g.font = (bold ? "bold " : "") + px + MONO;
+      g.shadowColor = "rgba(0,0,0," + (0.85 * a) + ")"; g.shadowBlur = Math.round(px * 0.7);
+      g.fillStyle = col; g.globalAlpha = bold ? a : 1;   // the bold runs carry their alpha here
+      g.fillText(txt, x, y);
+      g.shadowColor = "rgba(255,180,90," + (0.6 * a) + ")"; g.shadowBlur = Math.round(px * 0.45);
+      g.fillText(txt, x, y);
+      g.globalAlpha = 1;
+      x += g.measureText(txt).width;
+    }
+    g.shadowBlur = 0; g.shadowColor = "transparent";
+  }
   // The last CREDIT_FADE seconds ramp the whole layer down to nothing rather than
   // cutting out.
   function creditAlpha() {
     return creditLeft >= CREDIT_FADE ? 1 : Math.max(0, creditLeft / CREDIT_FADE);
+  }
+  function titleAlpha() {
+    return titleLeft >= TITLE_FADE ? 1 : Math.max(0, titleLeft / TITLE_FADE);
+  }
+  function sceneTitleEnabled() {
+    // Its own key, like the credits': a per-browser preference, never part of a scene blob.
+    try { const v = localStorage.getItem(TITLE_KEY); return v === null ? CONFIG.credits.titleOn : v !== "off"; }
+    catch (e) { return CONFIG.credits.titleOn; }
+  }
+  // Arm the title. Called on every scene change (applyPreset → sceneTitleFor), so it must be
+  // cheap and must simply RESTART when it is already up — switching twice quickly shows the
+  // second name, not a queue of them. It does not wait for the credits here; frame() holds
+  // the countdown instead, which is what makes "after the credits" free.
+  function showSceneTitle(name, author) {
+    name = (name || "").trim();
+    if (!sceneTitleEnabled() || !name) { titleLeft = 0; return; }
+    titleName = name;
+    titleAuthor = (author || "").trim();
+    titleLeft = TITLE_HOLD + TITLE_FADE;
   }
   function creditsEnabled() {
     // Per-browser preference in its own key; the DEFAULT (no key stored yet) is CONFIG.credits.on.
@@ -7380,10 +8099,54 @@
   if (!useGL) FILTERS.forEach(f => { if (f.cpuOk === false) cpuBlocked.add(f.id); });
   const FILTER_DEFAULTS = {};                 // merged into every effect's state
   FILTERS.forEach(f => Object.assign(FILTER_DEFAULTS, f.defaults));
+  // ---- ORDER: the stored list is the USER's order, not the registry's ----------------
+  // Each per-effect filter carries a drag handle, so `L.filters` is an ORDERED list and
+  // everything that walks a chain iterates that order. (`filtersOk` builds its Set by
+  // inserting in array order and a JS Set iterates in insertion order, so the stored order
+  // survives it untouched.) Registry order is still the fallback for anything with no
+  // stored list, and ids are still matched by name, so reordering FILTERS itself cannot
+  // remap a saved scene.
+  //
+  // STAGE OUTRANKS THE USER'S ORDER, and it has to. A `feedback` filter mutates retained
+  // heat BEFORE the effect draws, a `post` filter runs on the palette-mapped image AFTER,
+  // and a `screen` filter after the composite — there is no pipeline position where
+  // Pixelate could run before Fire. So a chain is stage-partitioned, stably, and the MENU
+  // is rendered from this same normalized order. That is what keeps "applied in the order
+  // shown" literally true rather than approximately: drag an image filter above a heat one
+  // and it visibly lands at the boundary instead of pretending to move.
+  //
+  // A function declaration, not a const arrow: render-gl-pipeline.js is 5th in the manifest
+  // and calls this, while FILTERS lives here at 21st. Hoisting is what makes that legal —
+  // exactly the arrangement `filtersOk` already relies on.
+  const FILTER_STAGE_RANK = { feedback: 0, post: 1, screen: 2 };
+  function orderFilters(ids) {
+    const out = [], seen = new Set();
+    for (const id of ids || []) {
+      const f = FILTER_BY_ID[id];
+      if (f && !seen.has(id)) { seen.add(id); out.push(f); }
+    }
+    // Array#sort has been stable since ES2019, so filters within one stage keep the
+    // user's order and only the stage boundary moves anything.
+    return out.sort((a, b) => FILTER_STAGE_RANK[a.stage] - FILTER_STAGE_RANK[b.stage]);
+  }
+  // Which filters are on for the live effect, in the order they will be applied: the
+  // selected layer's own ordered set, plus the scene-global ones (which are not per-layer
+  // and so have no user order of their own).
+  function activeFilters() {
+    const ids = [...(renderFilters || activeIds)];
+    for (const f of FILTERS) if (isSceneFilter(f.id) && sceneOn.has(f.id)) ids.push(f.id);
+    return orderFilters(ids).filter(f => filterOn(f.id));
+  }
+  // The SELECTED layer's per-effect filter ids in the user's order — what saveExtra and
+  // captureLayerExtras write back. They used to write `FILTERS.filter(...)`, i.e. registry
+  // order, which silently discarded any reordering on the very next capture.
+  const activeFilterIds = () => orderFilters(activeIds).map(f => f.id);
+  // AFTER the ORDER block, not before it: buildFilterUI ends in renderFilterLists, which
+  // calls orderFilters, which reads the `const FILTER_STAGE_RANK` above. Called any earlier
+  // that const is in the temporal dead zone and the whole list silently fails to render —
+  // every filter showing at once, because nothing ever hid the ones you have not added.
+  // (`function orderFilters` itself hoists fine; it is the const it closes over that does not.)
   buildFilterUI();                           // must follow FILTERS, not buildControls
-  // Which filters are on for the live effect, in registry order (never in stored
-  // order — reordering FILTERS must not remap a saved scene).
-  const activeFilters = () => FILTERS.filter(f => filterOn(f.id));
   // transBurning(): a "burn off" transition lends retention to a scene that has none,
   // so the outgoing image decays under it instead of being wiped on the first frame.
   const hasFeedback = () => transBurning() || FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));
@@ -7999,8 +8762,12 @@
   function mergeExtra(e, saved) {
     const base = presetExtra(e);
     if (saved) for (const k in base) if (saved[k] !== undefined) base[k] = saved[k];
+    // orderFilters, NOT FILTERS.filter: the stored list is the user's drag order and this
+    // is the gate every loaded scene passes through, so re-sorting to registry order here
+    // would throw the chain away on load and leave the reorder feature working only until
+    // you reloaded. It still normalizes by stage and drops unknown/duplicate ids.
     const ok = filtersOk(saved && saved.filters);
-    base.filters = ok ? FILTERS.filter(f => ok.has(f.id)).map(f => f.id) : presetFilters(e);
+    base.filters = ok ? orderFilters(ok).map(f => f.id) : presetFilters(e);
     base.seedPath = seedModeOk(base.seedPath);       // sanitize the seed-path fields a
     base.seedRide = base.seedRide !== false;          // preset/blob may or may not carry
     base.seedPts = seedPtsOk(base.seedPts);
@@ -8012,7 +8779,7 @@
   initExtras();
   function saveExtra(e) {
     extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
-      filters: FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id),   // always registry order
+      filters: activeFilterIds(),        // the user's drag order, not registry order
       // Seed-path config for the selected effect. Points are rounded to trim share links.
       seedPath: seedPathMode, seedRide: seedRideOn, seedPts: seedPts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) };
   }
@@ -8045,7 +8812,7 @@
     L.paletteBg = paletteBg;
     captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
     L.showBox = showBoxChk.checked;   // the wireframe box is per-layer, not per-effect
-    L.filters = FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id);
+    L.filters = activeFilterIds();    // the user's drag order, not registry order
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
   // captureLayerExtras reads back — WITHOUT the UI/morph work. This must run before
@@ -8300,6 +9067,7 @@
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
+      palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -8333,6 +9101,11 @@
       installCustomPalettes(customPalettesOk(saved.palettes));
       buildPalSwatches();                          // regenerate the swatch grid + <select> options
     }
+    // ...and the in-use set AFTER them, since it validates indices against PALETTES.length.
+    // Absent (every blob predating the picker) ⇒ null ⇒ all in use, so nothing changes.
+    // Skipped while `sharing`: which ramps you keep in your strip is your own preference,
+    // the same class as auto-cycle and the TTL, not part of the scene you were sent.
+    if (!sharing && saved.palUse !== undefined) { palUse = palUseOk(saved.palUse); buildPalSwatches(); }
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
@@ -8419,6 +9192,30 @@
     if (Array.isArray(saved.layers) && saved.layers.length) {
       installStack(mergeLayers(saved));
       effectSel.value = stack[0].fx;
+    } else {
+      // NO `layers` ⇒ a single-layer scene, and mergeLayers never runs — so nothing ever
+      // read the filter list back and every reload silently unticked Fire / Fade / the
+      // image filters while the blob still held them. (Multi-layer scenes were fine: their
+      // items carry `filters` and go through mergeLayers, which is why this only bit once
+      // you were down to one layer.)
+      //
+      // The item's `filters` is given a CONCRETE value here, which is what the comment in
+      // layerFeedbackChain means by "old-scene compat is handled at load in mergeLayers":
+      // `applyLayerExtras` must keep falling back to the DESCRIPTOR default rather than the
+      // runtime `extras[L.fx]`, because that fallback is what made every not-yet-captured
+      // same-effect layer mirror the last one edited. So the value has to be in place
+      // BEFORE it is read, not discovered afterwards.
+      //
+      // Setting the live `activeIds` instead does NOT work, and the reason is worth
+      // recording: `stackOut()` returns null the moment the stack holds one item, so it
+      // never freezes and persist() never captures the live set into `L.filters` — the
+      // restored `activeIds` is simply overwritten by applyLayerExtras a moment later.
+      // Nothing clobbers `L.filters` for a one-item stack, for exactly the same reason.
+      const e = Number.isInteger(saved.effect) && EFFECTS[saved.effect] ? saved.effect : 0;
+      const fset = filtersOk(extras[e] && extras[e].filters);
+      // Written in registry order, like every other stored list, so reordering FILTERS
+      // cannot remap a saved scene.
+      if (fset && stack.length === 1) stack[0].filters = FILTERS.filter(f => fset.has(f.id)).map(f => f.id);
     }
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);
@@ -8801,11 +9598,25 @@
     const b = Math.max(+el("ttl-lo").value, +el("ttl-hi").value);
     return (a + Math.random() * (b - a)) * 1000;
   }
+  // The scenes the cycler is allowed to pick from: the ticked ones (see inRotation).
+  // Rebuilt per tick rather than cached — the ticks, the library and the collections all
+  // change under it, and a stale pool would cycle to a scene that no longer exists.
+  function rotationPool() {
+    const pool = [];
+    for (let i = 0; i < presets.length; i++) if (inRotation(presets[i])) pool.push(i);
+    return pool;
+  }
   function cyclePresets(now) {
-    if (!cycleOn || presets.length < 2 || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
+    const pool = rotationPool();
+    // Something to switch TO: two or more ticked scenes, or exactly one that isn't the one
+    // already on screen (having hand-picked an unticked scene, the cycle should still take
+    // you back into the show). Untick everything and the cycler simply idles — it does not
+    // fall back to the whole library, because "none in the rotation" is a real choice.
+    const canSwitch = pool.length > 1 || (pool.length === 1 && pool[0] !== curPreset);
+    if (!cycleOn || !canSwitch || Math.max(+el("ttl-lo").value, +el("ttl-hi").value) <= 0) { nextSwitch = 0; return; }
     if (!nextSwitch) { nextSwitch = now + ttlMs(); return; }
     if (now >= nextSwitch) {
-      let n; do { n = (Math.random() * presets.length) | 0; } while (n === curPreset && presets.length > 1);
+      let n; do { n = pool[(Math.random() * pool.length) | 0]; } while (n === curPreset && pool.length > 1);
       applyPreset(n);
       nextSwitch = now + ttlMs();
     }
@@ -9263,6 +10074,231 @@
     presetSel.appendChild(new Option("— unsaved scene —", "-1"));
     presets.forEach((p, i) => presetSel.appendChild(new Option(p.name, String(i))));
     presetSel.value = curPreset < 0 ? "-1" : String(curPreset);
+    buildPresetList();
+  }
+
+  // ---- Scene collections -------------------------------------------------------------
+  // A preset carries an optional `collection`: the name of the published profile it came
+  // from. Absent (or empty) means it is one of YOURS — which is what every scene saved
+  // before this existed has, so an old library opens as a single collection of your own
+  // with nothing to migrate.
+  //
+  // Loading someone's published scenes installs them UNDER THEIR NAME instead of merging
+  // into your library, so the two never mix, a name collision between your "Sunset" and
+  // theirs is not a collision at all, and re-loading the same profile replaces just their
+  // set (see applyRestore's collection branch).
+  //
+  // The field is deliberately NOT part of snapshotScene: it labels where a scene came from,
+  // not what it renders, so it rides beside `name` and applyPreset never reads it.
+  const collectionOf = p => (p && typeof p.collection === "string" && p.collection.trim()) || "";
+  // Whether a scene is in the AUTO-CYCLE ROTATION — the tick beside it in the scene list.
+  // Unticked scenes are still perfectly selectable by hand; they are just skipped when
+  // "Auto-cycle scenes" is running, so you can build a show out of a subset of your library.
+  //
+  // Stored as `rotate` beside `name`/`collection`, and ABSENT MEANS IN — so every scene saved,
+  // shared, backed up or published before this existed keeps cycling exactly as it did, with
+  // nothing to migrate. Only an explicit `false` excludes. Same backward-compatibility
+  // discipline as `layers` being omitted for a one-item stack.
+  //
+  // Like `collection` it is deliberately NOT part of snapshotScene: it says how a scene is
+  // USED, not what it renders, and applyPreset never reads it (presetprobe would flag it).
+  // And like `collection` it MUST be listed explicitly in validatePresetList, which rebuilds
+  // each preset from an object literal — a field missing from there is silently dropped on
+  // every cloud load and gallery install.
+  const inRotation = p => !(p && p.rotate === false);
+  // Your own group is labelled with YOUR name, so the list reads "Erbsman / dyze".
+  //
+  // It used to fall back to "My scenes", and that fallback was visible in the worst possible
+  // way: #cloud-name is filled by cloudFetchProfileMeta, a network round trip, so the first
+  // paint said "My scenes" and the label only became "Erbsman" the next time anything rebuilt
+  // the list — clicking the group to open it. A heading that renames itself when you touch it
+  // reads as a bug, because it is one.
+  //
+  // Two fixes, and BOTH are needed. The name is cached in its own localStorage key and read
+  // SYNCHRONOUSLY here, so the very first build already has it and there is nothing to flip;
+  // and setProfileName() rebuilds the list whenever the name actually changes, which covers
+  // the first-ever sign-in and a rename, where no cache can help.
+  //
+  // The key is deliberately its own, not part of cloudSess: this is what to call your local
+  // library, so it outlives a sign-out. Same per-browser class as the credits preference.
+  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";
+  // What an unnamed profile is called — the same string cloudSave writes as the default
+  // profile name, so the heading and what would actually be published cannot disagree.
+  const DEFAULT_PROFILE_NAME = "burnTheWeb";
+  function storedProfileName() {
+    try { return (localStorage.getItem(PROFILE_NAME_KEY) || "").trim(); } catch (e) { return ""; }
+  }
+  // The live field wins (it is the value store, and may hold an edit not yet committed), then
+  // the cache. Returns "" when there is genuinely no name — callers that need a *label*
+  // add the default, callers that need an *author* drop it (see sceneTitleFor).
+  function myProfileName() {
+    const n = el("cloud-name");
+    return (n && (n.value || "").trim()) || storedProfileName();
+  }
+  function myCollectionLabel() { return myProfileName() || DEFAULT_PROFILE_NAME; }
+  // The one way the name is set. Writes the field (still the value store), caches it, and
+  // rebuilds the scene list so the heading follows immediately rather than at the next
+  // incidental rebuild.
+  function setProfileName(v) {
+    const name = (v || "").trim().slice(0, 40);
+    const n = el("cloud-name");
+    if (n) n.value = name;
+    try {
+      if (name) localStorage.setItem(PROFILE_NAME_KEY, name);
+      else localStorage.removeItem(PROFILE_NAME_KEY);
+    } catch (e) { /* private mode — the name just won't survive the reload */ }
+    buildPresetList();
+  }
+  // Arm the on-screen scene title for preset `i`: its name, and the account that made it.
+  //
+  // The author is `collection` — the published profile a scene came from, stamped on by the
+  // gallery install. Absent means it is one of YOURS, so it falls back to your cloud profile
+  // name; with no profile there is no account to name and the title shows the scene name
+  // alone. Deliberately NOT myCollectionLabel(), whose "burnTheWeb" default is a list heading
+  // and would read as an author here.
+  //
+  // Declared here rather than inline in applyPreset ON PURPOSE: presetprobe slices
+  // `function applyPreset(` … `function createPreset(` and greps that body for `p.<field>`
+  // reads, asserting each is a field snapshotScene captures. `name` and `collection` are not
+  // (a preset's label and its provenance are not what it renders), so reading them in there
+  // would go red — correctly. Taking the INDEX keeps applyPreset's body clean.
+  function sceneTitleFor(i) {
+    const p = presets[i]; if (!p) return;
+    // myProfileName(), NOT myCollectionLabel(): with no profile there is no account to name,
+    // and crediting a scene to "burnTheWeb" is noise. The dash goes with the empty author.
+    showSceneTitle(p.name, collectionOf(p) || myProfileName());
+  }
+  // Groups in a stable order: yours always first (and always present, even while empty, so
+  // there is somewhere obvious for New to land), then each collection by first appearance.
+  function presetGroups() {
+    const groups = [], byKey = new Map();
+    const add = key => {
+      let g = byKey.get(key);
+      if (!g) { g = { key, label: key || myCollectionLabel(), items: [] }; byKey.set(key, g); groups.push(g); }
+      return g;
+    };
+    add("");
+    presets.forEach((p, i) => add(collectionOf(p)).items.push({ p, i }));
+    return groups;
+  }
+  // Which groups are expanded. Transient and starting EMPTY, so every collection is folded
+  // on load and the list opens as a short stack of names — the requested default. Surviving
+  // rebuilds is what stops a pick from folding the group you are working in.
+  const openCollections = new Set();
+  function buildPresetList() {
+    const host = el("presetlist");
+    if (!host) return;
+    presetSel.style.display = "none";       // the <select> is the value store, not the control
+    host.textContent = "";
+    // "— unsaved scene —" sits OUTSIDE every group: it is a mode, not a saved scene.
+    const un = document.createElement("button");
+    un.type = "button";
+    un.className = "pl-scene pl-unsaved" + (curPreset < 0 ? " on" : "");
+    un.textContent = "— unsaved scene —";
+    un.title = "Tweak without touching a saved scene — nothing is written while this is selected";
+    un.addEventListener("click", () => pickPreset(-1));
+    host.appendChild(un);
+
+    for (const g of presetGroups()) {
+      const sec = document.createElement("div");
+      sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");
+      const head = document.createElement("button");
+      head.type = "button";
+      head.className = "pl-head";
+      head.title = (openCollections.has(g.key) ? "Collapse" : "Expand") + " “" + g.label + "”";
+      const nm = document.createElement("span");
+      nm.className = "pl-nm"; nm.textContent = g.label;
+      const ct = document.createElement("span");
+      ct.className = "pl-ct"; ct.textContent = String(g.items.length);
+      head.appendChild(nm); head.appendChild(ct);
+      head.addEventListener("click", () => {
+        if (openCollections.has(g.key)) openCollections.delete(g.key); else openCollections.add(g.key);
+        buildPresetList();
+      });
+      sec.appendChild(head);
+      // Someone else's collection can be dropped whole. Without this the only way to undo a
+      // gallery load would be deleting their scenes one at a time; your own group has no ✕
+      // because it is not a thing you loaded.
+      if (g.key) {
+        const rm = document.createElement("button");
+        rm.type = "button"; rm.className = "pl-drop"; rm.textContent = "✕";
+        rm.title = "Remove the “" + g.label + "” collection — your own scenes are untouched";
+        rm.addEventListener("click", e => { e.stopPropagation(); dropCollection(g.key, g.label); });
+        sec.appendChild(rm);
+      }
+      const body = document.createElement("div");
+      body.className = "pl-body";
+      if (!g.items.length) {
+        const e = document.createElement("div");
+        e.className = "pl-empty"; e.textContent = "no scenes yet — New saves one here";
+        body.appendChild(e);
+      }
+      for (const { p, i } of g.items) {
+        // A row, not a bare button: a checkbox cannot live INSIDE a <button> (nested
+        // interactive content), so the tick and the name-button are siblings under .pl-row.
+        // Same shape as .pl-grp holding .pl-head + .pl-drop.
+        const row = document.createElement("div");
+        row.className = "pl-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "pl-cyc";
+        cb.checked = inRotation(p);
+        cb.title = "Include “" + p.name + "” when Auto-cycle scenes is on";
+        cb.setAttribute("aria-label", "Auto-cycle " + p.name);
+        // Ticking must NOT select the scene — that is the whole point of it being a separate
+        // hit target — so the click is stopped from reaching the row.
+        cb.addEventListener("click", e => e.stopPropagation());
+        cb.addEventListener("change", () => setRotation(i, cb.checked));
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "pl-scene" + (i === curPreset ? " on" : "");
+        b.textContent = p.name;
+        b.title = g.key ? p.name + " — from " + g.label : p.name;
+        b.addEventListener("click", () => pickPreset(i));
+        row.appendChild(cb); row.appendChild(b);
+        body.appendChild(row);
+      }
+      sec.appendChild(body);
+      host.appendChild(sec);
+    }
+  }
+  // Tick / untick one scene's place in the auto-cycle rotation.
+  //
+  // It writes `rotate` ONLY when excluding and deletes the key when including, so a library
+  // where everything is ticked serialises exactly as it did before the feature — no key, no
+  // diff in any saved scene, share link, backup or cloud profile.
+  //
+  // persist() only, deliberately NOT autosavePreset(): the tick is a property of the scene in
+  // your library, not of the scene on screen, and folding it into the SELECTED preset would
+  // write the wrong one every time you ticked a different row. It also must not disturb
+  // curPreset or the picture — unticking the scene you are watching leaves it on screen and
+  // simply stops the cycler coming back to it.
+  function setRotation(i, on) {
+    const p = presets[i]; if (!p) return;
+    if (on) delete p.rotate; else p.rotate = false;
+    buildPresetList();     // the row is rebuilt, so the tick reflects what is stored
+    persist();
+  }
+  // Every pick routes through the <select>'s change event, so applyPreset, dockAll, the
+  // autosave and persist all run exactly as a native dropdown pick did. The swatch picker
+  // does the same thing for palettes, and for the same reason: no second code path.
+  function pickPreset(i) {
+    presetSel.value = String(i);
+    presetSel.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  function dropCollection(key, label) {
+    const n = presets.filter(p => collectionOf(p) === key).length;
+    if (!confirm("Remove the “" + label + "” collection?\n\n" + n + " scene" + (n === 1 ? "" : "s")
+      + " will be deleted. Your own scenes are not touched.")) return;
+    // Re-find the selection by IDENTITY afterwards: every index above the removed run
+    // shifts, so keeping the old number would silently select someone else's scene.
+    const cur = curPreset >= 0 ? presets[curPreset] : null;
+    presets = presets.filter(p => collectionOf(p) !== key);
+    curPreset = cur ? presets.indexOf(cur) : -1;      // −1 if the scene we were on just went
+    openCollections.delete(key);
+    dockAll();
+    rebuildPresetOptions();
+    persist();
   }
   // Normalize a saved state to the current slider set: keep only keys that still
   // exist (drops retired ones like `radius`) and default any newly-added keys.
@@ -9448,7 +10484,9 @@
     morphOnce = !morphing;
     beginMorph(fromRamp, morphing ? pickOther(+paletteSel.value) : +paletteSel.value);
     curPreset = i; presetSel.value = String(i);
-    applyingPreset = false;
+    buildPresetList();                 // move the highlight — covers the auto-cycle too,
+    applyingPreset = false;            // which sets the value without firing `change`
+    sceneTitleFor(i);                  // name the scene on screen (queues behind the credits)
     persist();
   }
   function createPreset() {           // save the current scene as a new preset
@@ -9493,9 +10531,18 @@
   el("newpreset").addEventListener("click", createPreset);
   // When a preset is selected, edits flow straight back into it (auto-save); this
   // writes the current scene over the selected preset, keeping its name.
+  // Fold the live scene back into the selected preset. Everything that rides BESIDE `name` —
+  // the fields snapshotScene deliberately does not capture, because they are not what the
+  // scene renders — has to be carried over by hand: spreading snapshotScene() over a bare
+  // `{name}` silently dropped them on the first slider drag after selecting a scene.
+  // `collection` losing that way quietly reassigned someone else's scene to you (it left
+  // their collection and appeared under your name), and `rotate` losing that way put a scene
+  // you had taken out of the show straight back into it.
   function autosavePreset() {
-    if (curPreset >= 0 && curPreset < presets.length)
-      presets[curPreset] = { name: presets[curPreset].name, ...snapshotScene() };
+    if (curPreset >= 0 && curPreset < presets.length) {
+      const p = presets[curPreset];
+      presets[curPreset] = { name: p.name, collection: p.collection, rotate: p.rotate, ...snapshotScene() };
+    }
   }
   el("renamepreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
@@ -9519,7 +10566,10 @@
   // this quietly depend on where setEffect happens to call dockAll.
   presetSel.addEventListener("change", () => {
     dockAll();
-    const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1;
+    const i = +presetSel.value;
+    // applyPreset repaints the list itself; "— unsaved scene —" never reaches it, so it has
+    // to move the highlight by hand (the same asymmetry dockAll is called up front for).
+    if (i >= 0) applyPreset(i); else { curPreset = -1; buildPresetList(); }
   });
 
   // ---- Backup: ONE FILE PER PRESET, so a single scene can be sent to someone ----
@@ -9698,7 +10748,13 @@
   function validatePresetList(arr) {
     return (Array.isArray(arr) ? arr : [])
       .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-      .map(p => ({ name: String(p.name || "Scene"), effect: p.effect,
+      // `collection` (which published profile a scene came from) and `rotate` (whether it is
+      // in the auto-cycle rotation) ride beside `name`. Both MUST be listed here explicitly —
+      // this mapping rebuilds each preset from a literal, so a field left out of it is
+      // silently dropped on every cloud load and gallery install (the trap presetprobe pins
+      // for the scene fields). `rotate` is only ever `false` or absent, and absent means in.
+      .map(p => ({ name: String(p.name || "Scene"), collection: p.collection,
+                   rotate: p.rotate === false ? false : undefined, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    ttl: p.ttl, tdur: p.tdur,
@@ -9740,8 +10796,16 @@
     autosavePreset();                          // fold pending live edits before snapshotting
     const out = fullSnapshot();                // current everything is the base; override chosen parts
     if (el("rst-presets").checked) {
+      const coll = p.collection || "";
       let lib;
-      if (el("rst-replace").checked) {
+      if (coll) {
+        // COLLECTION install (a gallery load). Someone else's scenes are kept as their own
+        // set under their name rather than merged into yours: your library is untouched,
+        // their "Sunset" and your "Sunset" are not a collision, and loading the same
+        // profile again replaces just their set instead of piling up duplicates.
+        lib = out.presets.filter(x => (x.collection || "") !== coll);
+        for (const q of p.valid) lib.push({ ...q, collection: coll });
+      } else if (el("rst-replace").checked) {
         lib = p.valid.slice();                 // Replace: only the backup's presets
       } else {                                 // Merge: overwrite same-named, keep the rest, append new
         lib = out.presets.slice();
@@ -9750,7 +10814,12 @@
       out.presets = lib;
       const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
         ? p.parsed.presets[p.parsed.curPreset].name : null;
-      out.curPreset = sel ? lib.findIndex(x => x.name === sel) : -1;
+      // Match the sender's selection INSIDE the collection it was installed into — by name
+      // alone it could land on a same-named scene of your own, which is exactly the
+      // collision collections exist to stop.
+      out.curPreset = sel
+        ? lib.findIndex(x => x.name === sel && (x.collection || "") === coll)
+        : -1;
       // A shared bundle records which preset the sender had open; land the receiver on it
       // (its scene, not just the dropdown) after the reload — a one-shot marker the startup
       // reads. Cleared on use, so ordinary reloads keep the persisted scene. Backups don't
@@ -9829,10 +10898,13 @@
   // then calls applyRestore, rather than reimplementing the merge / curPreset / write /
   // reload sequence — one copy of that logic is the point. The checkboxes are ordinary DOM
   // nodes whether or not #restoredlg is visible, so this needs no special case in there.
-  function applySharedLibrary(raw, replace) {
+  // `collection` set ⇒ install as that profile's own set (the gallery path) and merge/replace
+  // no longer applies; unset ⇒ the old merge-vs-replace over your own library.
+  function applySharedLibrary(raw, replace, collection) {
     const parsed = sharedLibrary(raw);
     if (!parsed) return;
-    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false };
+    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false,
+      collection: (collection || "").trim() };
     el("rst-presets").checked = true;                 // a bundle carries scenes and nothing else
     el("rst-merge").checked = !replace;
     el("rst-replace").checked = !!replace;
@@ -9889,9 +10961,12 @@
     panel.classList.toggle("hidden", hidden);
     persist();                          // remember panel open/closed across reloads
   }
-  // The ☰ hamburger (and the "m" key) toggle the one menu — the dev tools now live
-  // inside it as the Diagnostics section, so there's nothing else to collapse.
-  toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
+  // The ☰ hamburger opens the fold-out MENUBAR (ui-menubar.js), not the controls panel —
+  // it is the app's application menu now, holding System / Cloud profile / Credits and a
+  // Controls panel toggle. The "m" key still toggles the panel directly, so the fastest
+  // route to the sliders is unchanged. `menubarToggle` is a function declaration in a later
+  // slice, hence safe to reference here (it only runs on click).
+  toggle.addEventListener("click", e => { e.stopPropagation(); menubarToggle(); });
   // Fullscreen toggle (works on mobile too, where F11 doesn't exist; also the "f" key).
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
@@ -10077,7 +11152,7 @@
         throw new Error("library too big to store (" + Math.round(payload.length / 1024) + " KB)");
       }
       const body = fsOut({
-        name: (el("cloud-name").value || "").trim().slice(0, 40) || "burnTheWeb",
+        name: myProfileName() || DEFAULT_PROFILE_NAME,   // same default the list heading shows
         payload,
         count: n,
         pub: !!(cloudSess && cloudSess.pub),
@@ -10138,7 +11213,10 @@
       { method: "GET" }).then(r => (r.ok ? r.json() : null)).then(doc => {
         if (!doc) return;
         const d = fsIn(doc);
-        if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
+        // Through setProfileName, so the cache and the scene-list heading follow. This is the
+        // async arrival the cache exists to pre-empt — on a first-ever sign-in it is the only
+        // thing that puts your name on the list, and it must not wait for a rebuild.
+        if (d.name) { setProfileName(d.name); cloudNameShow(); }
         if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
         if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
         if (d.count != null) cloudMsg("Profile has " + d.count + " scene" + (d.count === 1 ? "" : "s") + " stored.");
@@ -10265,23 +11343,22 @@
       meta.className = "gal-meta";
       meta.textContent = p.count + " scene" + (p.count === 1 ? "" : "s")
         + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
-      // Two buttons rather than one, because the answer to merge-vs-replace is the whole
-      // content of the dialog this used to open: asking it here makes the click decisive.
+      // ONE button, because there is no longer a merge-vs-replace question to answer:
+      // someone else's scenes are installed as their own collection under their name, so
+      // they cannot overwrite yours and re-loading simply refreshes their set. That is also
+      // what lets the whole row be one line — see the .gal-row grid.
       const btns = document.createElement("div");
       btns.className = "gal-btns";
-      const mk = (label, title, replace) => {
-        const b = document.createElement("button");
-        b.type = "button"; b.className = "audbtn"; b.textContent = label; b.title = title;
-        b.addEventListener("click", () => galLoad(p, replace));
-        return b;
-      };
-      btns.appendChild(mk("Load and merge", "Add these scenes to yours, overwriting any of yours with the same name", false));
-      btns.appendChild(mk("Load and replace", "Delete your own scenes and keep only these", true));
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "audbtn"; b.textContent = "Load scenes";
+      b.title = "Add these as a “" + p.name + "” collection in your scene list — your own scenes are untouched";
+      b.addEventListener("click", () => galLoad(p));
+      btns.appendChild(b);
       row.appendChild(nm); row.appendChild(meta); row.appendChild(btns);
       host.appendChild(row);
     });
   }
-  function galLoad(p, replace) {
+  function galLoad(p) {
     el("gal-hint").textContent = "Fetching “" + p.name + "”…";
     galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -10295,11 +11372,12 @@
       let raw;
       try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
       galOpen(false);
-      // Straight in, no Restore dialog — the button that was clicked already said merge or
-      // replace. Same validation and the same write/reload underneath (applySharedLibrary
-      // drives applyRestore), so nothing about the load path itself changes.
-      applySharedLibrary(raw, replace);
-      track("cloud_gallery_load", { replace: !!replace });
+      // Straight in, no Restore dialog: there is nothing left to ask, since the scenes go
+      // into their own collection rather than over yours. Same validation and the same
+      // write/reload underneath (applySharedLibrary drives applyRestore), so nothing about
+      // the load path itself changes — only where the scenes land.
+      applySharedLibrary(raw, false, p.name);
+      track("cloud_gallery_load", { collection: p.name });
     }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
   }
   function galOpen(show, force) {
@@ -10392,7 +11470,7 @@
   }
   function cloudNameCommit() {
     const inp = el("cloud-name");
-    if (inp) inp.value = (inp.value || "").trim().slice(0, 40);
+    setProfileName(inp ? inp.value : "");   // trims, caches, and relabels the scene list
     cloudNameShow();
   }
 
@@ -10471,6 +11549,11 @@
     const row = el("cloudrow");
     if (row) row.classList.remove("hidden");
     cloudLoadSess();
+    // Seed the field from the cached name BEFORE any request, so the box shows who you are
+    // straight away and the scene list's heading (already reading the same cache) agrees.
+    const cached = storedProfileName();
+    if (cached && el("cloud-name") && !el("cloud-name").value) el("cloud-name").value = cached;
+    cloudNameShow();
     cloudSyncUI();
     if (cloudSess) cloudFetchProfileMeta();
     if (!CLOUD.clientId) { cloudMsg("Sign-in is not configured for this build.", true); return; }
@@ -10522,7 +11605,8 @@
       else if (e.key === "Escape") { e.preventDefault(); cloudNameCommit(); }
     });
   }
-  if (el("cloud-browse")) el("cloud-browse").addEventListener("click", () => galOpen(true));
+  // No #cloud-browse listener: the gallery is opened from the ☰ root item "Public scenes",
+  // which calls galOpen(true) directly (see ui-menubar.js).
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
   if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
@@ -10750,6 +11834,16 @@
   creditsChk.addEventListener("change", () => {
     try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
   });
+  // Scene title ("Show author") — same deal, its own key (see sceneTitleEnabled). The
+  // checkbox lives in the Scene box rather than beside this one; el() is location-independent,
+  // so wiring it from here needs no change.
+  const titleChk = el("sceneTitleOn");
+  if (titleChk) {
+    titleChk.checked = sceneTitleEnabled();
+    titleChk.addEventListener("change", () => {
+      try { localStorage.setItem(TITLE_KEY, titleChk.checked ? "on" : "off"); } catch (e) {}
+    });
+  }
 
   el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
   el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });
@@ -10976,12 +12070,12 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
-    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); setPanel(!panel.classList.contains("hidden")); }
+    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
@@ -11236,6 +12330,206 @@
       saveSync();
     }, 1000);
   }
+  // ---- ☰ fold-out menubar ------------------------------------------------------------
+  // A traditional multi-level menu: the ☰ opens a root list, items with a ▸ open a submenu
+  // beside it, and those can nest again (System ▸ Audio ▸ Capture). It holds what used to be
+  // the panel's System, Cloud profile and Credits boxes, plus the Controls panel toggle —
+  // the ☰ no longer toggles the panel itself, so this is where that lives (the "m" key still
+  // does it directly, which is the fast route).
+  //
+  // THE LEAF PANELS ADOPT THE EXISTING NODES rather than rebuilding them. `#audiobox`,
+  // `#resbox`, `#cloudbox` and `#creditbox` are authored in the panel markup and moved in here,
+  // which is the same trick buildFilterUI uses to pull `#ctl-<key>` into a filter body. That
+  // is not laziness — it is what keeps every listener, every `el(id)` lookup and every sync
+  // path (setAudioUI, cloudSync, the Google sign-in button rendered into #cloud-signin)
+  // working with no changes at all. Rebuilding this markup here would mean re-wiring the
+  // whole cloud module.
+  //
+  // Runs LAST in the manifest: by the time it moves anything, every other slice has already
+  // found its elements and attached its listeners. Moving a node never detaches a listener,
+  // so the order only matters for code that looks nodes up at startup.
+
+  const menubar = el("menubar");
+
+  // One open path, from the root down: menuPath[0] is the root panel, [1] its open submenu,
+  // and so on. Opening an item at depth d closes everything at depth > d, which is what
+  // makes hovering across siblings behave like a real menu.
+  let menuPath = [];
+
+  function menubarOpen() { return !menubar.classList.contains("hidden"); }
+
+  // Put every adopted block back where it came from before its panel is destroyed.
+  // WITHOUT THIS, closing the menu deletes the real audio buttons, the resolution select,
+  // #cloudrow and the credits list from the document — they are MOVED here, not copied, so
+  // discarding the panel discards them and nothing that looks them up by id works again.
+  // (Caught by the probe reopening the menu and finding an empty panel.)
+  function returnAdopted(root) {
+    for (const box of root.querySelectorAll(".mb-adopt")) {
+      const home = el(box.dataset.adopt);
+      if (!home) continue;
+      while (box.firstChild) home.appendChild(box.firstChild);
+      home.hidden = true;
+    }
+  }
+
+  function menuCloseFrom(depth) {
+    while (menuPath.length > depth) {
+      const p = menuPath.pop();
+      returnAdopted(p.el);
+      p.el.remove();
+      if (p.owner) p.owner.classList.remove("open");
+    }
+  }
+
+  function menubarClose() {
+    menuCloseFrom(0);
+    menubar.classList.add("hidden");
+    returnAdopted(menubar);        // belt and braces: nothing should be left, but if a panel
+    menubar.textContent = "";      // ever escapes menuPath this stops it taking the DOM with it
+    el("toggle").setAttribute("aria-expanded", "false");
+  }
+
+  // Build one panel of items and place it. `anchor` is the element it hangs off: the ☰ for
+  // the root, the parent item for a submenu.
+  function menuPanel(items, anchor, depth) {
+    menuCloseFrom(depth);
+    const p = document.createElement("div");
+    p.className = "mb-panel";
+    p.setAttribute("role", "menu");
+    items.forEach(it => p.appendChild(menuItem(it, p, depth)));
+    menubar.appendChild(p);
+
+    // Position: the root drops below the ☰, a submenu opens to the right of its parent item.
+    // Measured after insertion, then flipped/clamped so a deep submenu cannot run off screen.
+    const a = anchor.getBoundingClientRect();
+    const w = p.offsetWidth, h = p.offsetHeight;
+    let left = depth === 0 ? a.left : a.right - 4;
+    let top = depth === 0 ? a.bottom + 6 : a.top;
+    if (left + w > innerWidth - 8) left = depth === 0 ? Math.max(8, innerWidth - w - 8) : Math.max(8, a.left - w + 4);
+    if (top + h > innerHeight - 8) top = Math.max(8, innerHeight - h - 8);
+    p.style.left = left + "px";
+    p.style.top = top + "px";
+
+    menuPath.push({ el: p, owner: depth === 0 ? null : anchor });
+    return p;
+  }
+
+  // An item is one of:
+  //   {label, sub: [...]}        — opens a submenu
+  //   {label, run: fn}           — an action; closes the menu unless `keep` is set
+  //   {label, check: () => bool, run: fn}  — a tick that stays open
+  //   {adopt: "elementId"}       — moves that element's CHILDREN in as the panel body
+  //   {sep: true}                — a rule
+  function menuItem(it, panel, depth) {
+    if (it.sep) {
+      const s = document.createElement("div");
+      s.className = "mb-sep";
+      return s;
+    }
+    if (it.adopt) {
+      // The adopted block is menu CONTENT, not a menu item: it keeps its own controls and
+      // its own event handling, so clicks inside must not close the menu or open a sibling.
+      const box = document.createElement("div");
+      box.className = "mb-adopt";
+      box.dataset.adopt = it.adopt;          // returnAdopted needs to know where home is
+      const src = el(it.adopt);
+      if (src) { src.hidden = false; while (src.firstChild) box.appendChild(src.firstChild); }
+      box.addEventListener("click", e => e.stopPropagation());
+      return box;
+    }
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "mb-item" + (it.sub ? " mb-sub" : "");
+    b.setAttribute("role", "menuitem");
+    if (it.title) b.title = it.title;
+    const lab = document.createElement("span");
+    lab.className = "mb-lab";
+    lab.textContent = it.label;
+    b.appendChild(lab);
+    if (it.check) {
+      const t = document.createElement("span");
+      t.className = "mb-tick";
+      t.textContent = it.check() ? "✓" : "";
+      b.appendChild(t);
+    }
+    if (it.sub) {
+      const c = document.createElement("span");
+      c.className = "mb-chev";
+      c.textContent = "▸";
+      b.appendChild(c);
+      // Open on hover as well as click — the hover is what makes it feel like a menubar,
+      // and the click is what makes it work on a touchscreen.
+      const open = () => {
+        if (b.classList.contains("open")) return;
+        [...panel.querySelectorAll(".mb-item.open")].forEach(o => o.classList.remove("open"));
+        b.classList.add("open");
+        menuPanel(typeof it.sub === "function" ? it.sub() : it.sub, b, depth + 1);
+      };
+      b.addEventListener("mouseenter", open);
+      b.addEventListener("click", e => { e.stopPropagation(); open(); });
+    } else {
+      // A leaf closes everything deeper on hover, so moving from an open submenu onto a
+      // plain sibling collapses it rather than leaving two panels open at once.
+      b.addEventListener("mouseenter", () => {
+        [...panel.querySelectorAll(".mb-item.open")].forEach(o => o.classList.remove("open"));
+        menuCloseFrom(depth + 1);
+      });
+      b.addEventListener("click", e => {
+        e.stopPropagation();
+        if (it.run) it.run();
+        if (it.check) { b.querySelector(".mb-tick").textContent = it.check() ? "✓" : ""; }
+        else if (!it.keep) menubarClose();
+      });
+    }
+    return b;
+  }
+
+  // The menu itself. `sub` may be a function so a submenu is built fresh each time it opens
+  // — the cloud entries in particular depend on whether you are signed in right now.
+  function menuModel() {
+    return [
+      { label: "Controls panel", title: "Show or hide the sliders (also the M key)",
+        check: () => !panel.classList.contains("hidden"),
+        run: () => setPanel(!panel.classList.contains("hidden")) },
+      { label: "Fullscreen", title: "Toggle fullscreen (also the F key)",
+        check: () => !!document.fullscreenElement, run: () => toggleFullscreen() },
+      { label: "Hide all UI", title: "Strip every button and the menu for a clean capture (also the H key)",
+        run: () => document.body.classList.add("ui-hidden") },
+      { sep: true },
+      { label: "System", sub: [
+        { label: "Audio", sub: [{ adopt: "audiobox" }] },
+        { label: "Resolution", sub: [{ adopt: "resbox" }] },
+      ] },
+      { label: "Cloud profile", sub: [{ adopt: "cloudbox" }] },
+      // A ROOT item, not a row inside Cloud profile: the gallery is readable signed out (the
+      // rules allow an unauthenticated `pub == true` query), so filing it under a sign-in box
+      // implied an account was needed. Gated on cloudOn() for the same reason #cloudrow is —
+      // with no apiKey there is nothing to browse. Calls galOpen directly; the app is one
+      // IIFE and this slice runs last, so the function is simply in scope.
+      ...(cloudOn() ? [{ label: "Public scenes", title: "Browse the scenes other people have published, and load them",
+        run: () => galOpen(true) }] : []),
+      { label: "Credits", sub: [{ adopt: "creditbox" }] },
+      { sep: true },
+      { label: "What the controls do…", title: "Open the help panel", run: () => openHelp() },
+    ];
+  }
+
+  function menubarToggle() {
+    if (menubarOpen()) { menubarClose(); return; }
+    menubar.classList.remove("hidden");
+    menubar.textContent = "";
+    menuPath = [];
+    menuPanel(menuModel(), el("toggle"), 0);
+    el("toggle").setAttribute("aria-expanded", "true");
+  }
+
+  // #menubar is a full-screen overlay that CATCHES clicks while open, so clicking away
+  // closes the menu instead of falling through to the canvas and pausing the animation.
+  // Panels stopPropagation, so a click on an item never reaches this.
+  menubar.addEventListener("click", () => menubarClose());
+  window.addEventListener("keydown", e => {
+    if (e.key === "Escape" && menubarOpen()) menubarClose();
+  });
 })();
 </script>
 </body>

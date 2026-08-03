@@ -14,6 +14,90 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.5.0] — 2026-08-03
+
+### Added
+
+- **Build your own filter chain, in the order it runs.** The filter list used to show all
+  twenty-two with a checkbox each; it now shows only the ones you have **added**. Press
+  **+ Add filter** for the full catalogue, drag a row's **⠿** handle to move it up or down the
+  chain, **✕** to drop it. The order is the order the filters are applied, and it saves with
+  the scene and travels in links and cloud profiles.
+  One thing that looks odd until you know why: **heat filters always sit above image filters,
+  and a drag that would cross that line stops at it.** A dashed divider marks where the two
+  runs meet and the row tells you why it would not move. That is the pipeline, not the menu
+  being stubborn — a heat filter changes what the *next* frame starts from, before the effect
+  has drawn, while an image filter repaints the finished picture. There is no moment at which
+  Mirror could run before Swirl. Reordering *within* a run does exactly what you would expect:
+  put Mirror above Twist and you mirror the untwisted picture; swap them and you twist the
+  mirrored one.
+- **Choose which palettes are in play.** The **+** tile at the end of the swatch strip opens a
+  list of every ramp with a tick beside it. Only the ticked ones show in the strip, and only
+  they are picked when the palette cycle runs — so a nineteen-ramp catalogue can still cycle
+  inside the four that suit a set. Nothing is deleted by unticking: a scene that stores an
+  unticked ramp still loads and still renders it, and the one you are on always stays visible.
+- **A tick beside every scene decides whether it is in the show.** Ticked scenes are the ones
+  **Auto-cycle** picks from; unticked ones dim slightly and are skipped, but stay there and
+  stay selectable by hand. Everything starts ticked, and unticking them all leaves the cycle
+  sitting still rather than falling back to the whole list. The ticks travel with your scenes
+  into backups, cloud profiles and published collections.
+- **Each scene names itself on screen as you land on it** — its name, a dash, and who made it,
+  in the credits' own lettering. Scenes loaded from someone's published profile are credited
+  to them; your own show your profile name. On startup it waits for the credits to finish
+  rather than talking over them. **Show author** in the Scene box turns it off.
+- **A proper application menu behind ☰** — a multi-level fold-out for everything that is not
+  scene data: **System ▸ Audio** and **System ▸ Resolution**, **Cloud profile**, **Credits**,
+  plus Controls panel / Fullscreen / Hide all UI and the help link. The **m** key still opens
+  the sliders directly.
+- **Public scenes** sits at the top level of that menu. Browsing what other people have
+  published needs no account, so it is no longer filed inside the sign-in box.
+- **Collections.** Someone else's scenes load as their own group, named after them, so their
+  "Sunset" and yours never collide and loading the same person again just refreshes their set.
+  Groups fold; **✕** removes a whole collection.
+
+### Changed
+
+- **Panels and dialogs are far more readable over a bright scene** — every translucent surface
+  went from 55% to 80% solid. At 55% a white-hot fire tip or a full-screen plasma read straight
+  through the text.
+- **Your own group in the scene list is labelled with your profile name from the moment the
+  page opens.** It used to say "My scenes" and then rename itself to your name the first time
+  you clicked the group open, because the name only arrived once the cloud had answered.
+- **The two per-effect filter groups are one.** "Heat & trails" and "image" were the
+  pipeline's distinction, not yours — both are this layer's own filters.
+- **Every dialog's ✕ is in the top-right corner**, and dialog buttons are styled like the rest
+  of the app rather than as plain grey browser buttons.
+- **The Public scenes rows are one line each** — name, scene count and date, then **Load
+  scenes** at the end.
+- **Three palettes were renamed**: *Rasta Red*, *Rasta Green* and *Rasta Yellow* are now
+  **Ember**, **Verdant** and **Sunburst**, and *One love* is **Tricolor**. The ramps
+  themselves are unchanged, and no saved scene is affected — palettes are stored by position,
+  not by name.
+- The panel opens straight onto the scene controls; the title and per-effect subtitle are gone.
+
+### Fixed
+
+- **Per-layer filters survived a reload again.** Ticking Fire, Fade or an image filter on a
+  single-layer scene, then reloading the tab, came back with every checkbox empty — the
+  settings were being saved correctly and then never read back.
+- **Editing a scene no longer quietly reassigns it.** The first slider drag after selecting a
+  scene loaded from someone's collection moved it out of their group and under your name.
+
+### Internal
+
+- `orderFilters()` is the single normalizer for a filter chain: it preserves the stored (drag)
+  order, drops unknown and duplicate ids, and partitions by pipeline stage. Four call sites
+  must route through it — `activeFilters`, `layerFeedbackChain`, `glLayerPostChain` and
+  `mergeExtra`, the last being the gate every loaded scene passes through.
+- Shared widget CSS is keyed on the class, not scoped to a container. `.pal-close`/`.card-close`
+  /`.help-close`/`.sync-close` and `.audbtn` are single unscoped rules; the previous
+  per-dialog copies left every new user of those classes unstyled.
+- `filterprobe` was rewritten around the new ordering contract (its "always registry order"
+  assertions were the old one). Nine driven browser probes now cover the filter chain, the
+  scene-list heading, the rotation ticks, the scene title and the dialog layouts, and a
+  SwiftShader probe asserts that a same-stage reorder actually changes the rendered frame in
+  both the single-layer and the multi-layer render paths.
+
 ## [1.4.0] — 2026-08-03
 
 ### Added
