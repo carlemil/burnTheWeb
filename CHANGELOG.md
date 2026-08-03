@@ -14,6 +14,15 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.8.1] — 2026-08-03
+
+### Changed
+
+- **The Layers list lost its own frame.** With each layer now a box, and the open layer
+  holding a third box for its controls, the border around the whole list was a fourth frame
+  saying "these are layers" a second time. **Layers** is a plain section heading now — the
+  rows sit directly under it, and nothing else about them changed.
+
 ## [1.8.0] — 2026-08-03
 
 ### Changed
