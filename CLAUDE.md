@@ -401,9 +401,11 @@ keys; `refreshBreakout()` (called by `setEffect`) shows a box iff
   clip a fixed child), three things reach it: the control CSS is scoped `#panel …, #breakout …`;
   the delegated `onEdit` is attached to `#breakout` too; `sceneRangeInputs()` scans both.
 - A box holds top→bottom: the **owner line** (`.ctl-owner`), label + value, **the slider**, its
-  **range editor** (`.rng-edit`, min/max/step + ↺), a divider (`.ctl-div`), a **Triggers** title
-  (`.trig-t`) over the beat chips + pulse picker, and a **Trigger duration** title
-  (`.plen-name`) over its length slider (`.plen`). The bounds sit with the slider they describe;
+  **range editor** (`.rng-edit`, min/max/step + ↺), a divider (`.ctl-div`), then three titled
+  rows — **Triggers** (`.trig-t`) over the beat chips, **Trigger shape** over the `PULSE_SHAPES`
+  picker, and **Trigger duration** (`.plen-name`) over its length slider (`.plen`). Shape and
+  duration describe the same fall, one its curve and one its length, which is why they read as a
+  pair rather than the picker floating at the right of the chips as it used to. The bounds sit with the slider they describe;
   the divider closes that block off from the beat wiring, which is a different subject.
   The slider sits directly under its own name and readout because that is what you are tuning;
   the beat wiring is a second subject below it, titled rather than inferred from three lettered

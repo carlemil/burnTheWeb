@@ -518,7 +518,14 @@
      edge — so no float, no order/flex-basis (they are no longer a flex child of the label). */
   #breakout .bandchips { float: none; display: flex; gap: 4px; margin: 3px 0 0; align-items: center; }
   #breakout .bandchips button { width: 22px; height: 18px; font-size: 10px; line-height: 16px; }
-  #breakout .bandchips select { height: 18px; margin-left: auto; padding: 0 2px; font-size: 10px; }
+  /* The shape picker is its own titled row now, not a float at the right of the chips —
+     so it is no longer a .bandchips child and needs its own sizing. Full width, because a
+     dropdown that names a curve ("Sustain", "Bounce") reads better than one clipped to a
+     corner. The .bandchips select rule stays for the menu-row copy. */
+  #breakout .pulsesel {
+    display: block; width: 100%; height: 20px; margin: 3px 0 0; padding: 0 3px;
+    font-size: 10px;
+  }
   #breakout .dual { margin: 2px 0 4px; }
   #breakout .ctl > input[type=range] { margin: 4px 0; }
   /* Per-slider beat-pulse length: how long this slider's beat kick takes to fall

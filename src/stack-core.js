@@ -129,7 +129,6 @@
     PULSE_SHAPES.forEach(s => psel.appendChild(new Option(s.name, s.key)));
     psel.value = PULSE_DEFAULT;
     psel.addEventListener("change", () => { pulseShape[id] = psel.value; });
-    wrap.appendChild(psel);
     pulseEls[id] = psel;
     pulseShape[id] = PULSE_DEFAULT;
     // ---- pop-out box layout: value on top, then the SLIDER, then the beat controls ----
@@ -145,8 +144,15 @@
     const host = label.parentNode;
     const trigT = document.createElement("div");
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
-    trigT.title = "Which beat bands make this slider jump, and how it falls back";
+    trigT.title = "Which beat bands make this slider jump";
     host.append(trigT, wrap);
+    // The fall-back CURVE, titled like everything else here rather than left as an unlabelled
+    // dropdown floated to the right of the chips. Named "Trigger shape" to match "Trigger
+    // duration" — the two describe the same fall together, one its curve and one its length.
+    const shapeT = document.createElement("div");
+    shapeT.className = "trig-t"; shapeT.textContent = "Trigger shape";
+    shapeT.title = "The curve this slider follows on its way back down after a trigger";
+    host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
     pulseLen[id] = PULSE_DROP;
