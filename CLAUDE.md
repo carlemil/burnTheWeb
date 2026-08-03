@@ -1,2066 +1,1084 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
 ## What this is
 
 A single self-contained demoscene visual published as a GitHub Pages site at
-https://carlemil.github.io/burnTheWeb/. A registry of effects (see below) in three
-families, all sharing one palette + glow + banding + beat-reactive pipeline:
-- **Fire / point-accumulation** — Sierpiński (2D Sierpiński triangle, id `sirpinfyer`), Tetrafyer (3D
-  bouncing tetrahedron), Attractor (de Jong): stamp points into a rising-fire heat grid.
-- **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton: per-pixel escape/
-  iteration fractals.
-- **Shader coordinate/pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer,
-  Moiré, Munching Squares, Copper Bars.
-- **Shader shapes (SDF)** — Polygon, Shape grid, Concentric rings, Bouncing shapes (2D),
-  and **Bouncing solids** (3D: a raymarched room of tumbling primitives — see below).
+https://carlemil.github.io/burnTheWeb/. A registry of effects in four families, all sharing
+one palette + glow + banding + beat-reactive pipeline:
 
-Each is one `EFFECTS` descriptor (metadata + `params`/`defaults`/`beat`/`extras` + a
-`draw(dt)` shader hook or a `stamp(box)` point hook). There is **no package manager,
-test framework, or runtime dependency**. The deployed page is a single self-contained
-file (one `<style>`, one IIFE `<script>`), but it is **generated** — the source lives
-split across `src/*.js` + `src/styles.css`, which a dependency-free Node script
-(`tools/build.js`) concatenates **verbatim** into **`dev-index.html`** (the build's
-output file; served live at `…/burnTheWeb/dev-index.html` as a preview). **Deploying to
-production is the `/deploy` skill**: it builds, copies `dev-index.html` over `index.html`
-(the page Pages serves at the site root), commits and pushes. There are **no git hooks**.
-See **Build** below. `README.md` documents it for end users; keep it in sync when
-behaviour changes.
+- **Point-accumulation** — Sierpiński (id `sirpinfyer`), Tetrafyer (3D bouncing tetrahedron),
+  Attractor (de Jong): stamp points into a rising-fire heat grid.
+- **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton.
+- **Shader coordinate/pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré,
+  Munching Squares, Copper Bars.
+- **Shader shapes (SDF)** — Polygon, Shape grid, Concentric rings, Bouncing shapes (2D),
+  Bouncing solids (3D raymarched).
+
+Each is one `EFFECTS` descriptor (metadata + `params`/`defaults`/`beat`/`extras` + a `draw(dt)`
+shader hook or a `stamp(box)` point hook). **No package manager, test framework, or runtime
+dependency.** `README.md` documents it for end users — keep it in sync when behaviour changes.
 
 ## Build
 
-- **Source of truth is `src/`, not `index.html`.** `src/styles.css` is the CSS;
-  `src/*.js` are JS slices whose **concatenation order is `src/manifest.txt`** (that order is
-  load-bearing — TDZ + forward-reference traps below — so don't reorder it). Files are **named
-  by subsystem, not by order**, so a directory listing groups related code even where execution
-  order keeps the pieces apart: `audio-*` (detector / tuning-data / tuning-ui), `render-*` (GL
-  shaders / pipeline), `effects-*`, `orbit-*` (seed / editor), `persist-*` (share / presets /
-  backup-restore), `stack-*`, `controls-*`, `ui-*`. **`src/config.js` loads first and holds
-  `CONFIG` — every DEFAULT that is not part of a preset** (stack/layer limits, initial `cfg` fire
-  state incl. default resolution, credits timing + on, scene auto-cycle/TTL/transition, palette
-  morph/band, pulse defaults, beat-detector `beatDefaults`, sync-nudge delays, analytics id, and a
-  `tuning` block of effect/physics constants). Each scattered `const NAME = CONFIG.path` keeps its
-  original name/site (so hoisting is unchanged) — change a default THERE, in one place. The palette
-  catalog is `PALETTES` (single source); the `<select id="palette">` options and swatches are both
-  generated from it (`buildPalSwatches`), so adding a palette is one `PALETTES` entry.
-  `src/index.template.html` is the HTML shell
-  with `{{CSS}}` / `{{JS}}` markers. **Never hand-edit `dev-index.html`** — it is regenerated
-  and your edit will be lost. To move code between files, cut/paste between `src/*.js` and
-  rebuild; keep each moved block in the same manifest position (the build will not be
-  byte-identical if you reorder across the concatenation seams).
-- **`node tools/build.js`** rebuilds `dev-index.html` from `src/`. It joins the JS slices with
-  the empty string and substitutes via split/join (not `String.replace`, whose `$` handling
-  would corrupt the JS), so the output is a **byte-for-byte** reproduction of the source.
-- **`node tools/build.js --check`** exits non-zero if `dev-index.html` is stale.
-- **Deploy with the `/deploy` skill** (`.claude/skills/deploy/`): it builds, copies
-  `dev-index.html` → `index.html`, commits both and pushes (one normal push, no hooks). So
-  `index.html` = production main page, `dev-index.html` = current build / preview; a deploy
-  promotes dev → prod. Probes/tests run against **`dev-index.html`** (the current artifact),
-  e.g. `node tools/filterprobe.js dev-index.html`.
-- **Every deploy is a numbered release.** `CONFIG.version` in `src/config.js` is the **one**
-  place a version string lives (the menu footer's release-notes link reads it — never add a
-  second copy), and `/deploy` bumps it, writes the matching `CHANGELOG.md` section, and tags
-  `v<version>`. Semver, where **major means a saved scene / share link / backup stops loading
-  exactly as it did** — the standing rule is that never happens, so in practice it is patch
-  for fixes and minor for a new effect/filter/control. The tag is what makes "commits since
-  the last release" computable, so it must be pushed. A version with **no tag** is one that
-  was prepared during development but not yet released: `/deploy` publishes *that* version
-  rather than bumping past it, or the number would be skipped. `CHANGELOG.md` is linked from
-  the live page, so it is user-facing documentation, not just a repo file.
-- The split was bootstrapped once by `tools/split-once.js` (kept in history). To re-slice at
-  different boundaries, edit its `SLICES` markers and re-run, or just move code between
-  `src/*.js` files and rebuild — the manifest order is the load order.
-- `.gitattributes` pins LF so the build is byte-reproducible despite a global
-  `core.autocrlf=true`.
+- **Source of truth is `src/`, not `index.html`.** `src/styles.css` + `src/*.js` slices,
+  concatenated in **`src/manifest.txt`** order into `dev-index.html`. That order is load-bearing
+  (TDZ + forward-reference traps) — don't reorder it. Files are named by subsystem, not order:
+  `audio-*`, `render-*`, `effects-*`, `orbit-*`, `persist-*`, `stack-*`, `controls-*`, `ui-*`.
+- **`src/config.js` loads first and holds `CONFIG`** — every DEFAULT that is not part of a preset
+  (stack/layer limits, initial `cfg` fire state, credits timing, scene auto-cycle/TTL/transition,
+  palette morph/band, pulse defaults, `beatDefaults`, sync-nudge delays, analytics id, `version`,
+  and a `tuning` block of effect/physics constants). Scattered `const NAME = CONFIG.path` keeps
+  each original name/site — change a default THERE, in one place.
+- `PALETTES` is the single palette catalog; the `<select id="palette">` options and swatches are
+  both generated from it, so adding a palette is one entry.
+- **Never hand-edit `dev-index.html` or `index.html`** — both are generated.
+- **`node tools/build.js`** rebuilds `dev-index.html` (byte-for-byte reproduction of the source;
+  it joins with `""` and substitutes via split/join, not `String.replace`, whose `$` handling
+  would corrupt the JS). **`--check`** exits non-zero if stale.
+- **Deploy with the `/deploy` skill**: builds, copies `dev-index.html` → `index.html`, commits,
+  tags, pushes. `index.html` = production, `dev-index.html` = preview. Probes run against
+  `dev-index.html`, e.g. `node tools/filterprobe.js dev-index.html`.
+- **Every deploy is a numbered release.** `CONFIG.version` is the one place a version string
+  lives. `/deploy` bumps it, writes the `CHANGELOG.md` section, and tags `v<version>` (the tag
+  must be pushed — it's what makes "commits since last release" computable). A version with **no
+  tag** was prepared but not released: `/deploy` publishes *that* one rather than bumping past it.
+  Semver where **major = a saved scene / share link / backup stops loading exactly as it did** —
+  the standing rule is that never happens, so in practice patch for fixes, minor for a new
+  effect/filter/control. `CHANGELOG.md` is linked from the live page: user-facing documentation.
+- `.gitattributes` pins LF so the build is byte-reproducible despite global `core.autocrlf=true`.
 
 ## Workflow
 
 - **Always commit and push after a completed, verified change.** Edit `src/`, run
-  `node tools/build.js`, and commit **`src/` + `dev-index.html`** together, then
-  `git push origin HEAD:main` — that updates the live `/dev-index.html` preview (~1 min;
-  hard-refresh to bypass cache). To publish to the production page, run **`/deploy`** (see
-  Build). Do not ask "want me to deploy?" before pushing the preview.
-- **Code lives in `src/*.js` + `src/styles.css`** (see **Build**). Never hand-edit
-  `dev-index.html` or `index.html` — both are generated.
-- Commit trailers must end with:
-  `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` and the
-  `Claude-Session:` line.
-- **Preview**: build, then open `dev-index.html` directly, or `python -m http.server`
-  → `http://localhost:8000/dev-index.html`. The built file is self-contained (Pages serves
-  it as-is); only the authoring is split.
-- Pages was configured once (`gh api -X POST repos/carlemil/burnTheWeb/pages`); do not re-run it.
+  `node tools/build.js`, commit **`src/` + `dev-index.html`** together, `git push origin HEAD:main`
+  — that updates the live `/dev-index.html` preview (~1 min). Don't ask before pushing the preview.
+- Commit trailers must end with
+  `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>` and the `Claude-Session:` line.
+- **Preview**: open `dev-index.html` directly, or `python -m http.server`.
+- Pages was configured once; do not re-run `gh api -X POST repos/carlemil/burnTheWeb/pages`.
 
 ## Architecture (one IIFE, authored across `src/*.js`)
 
-The whole app is one IIFE (built from the `src/*.js` slices in `manifest.txt` order —
-see **Build**; line references below are into the generated `index.html`). Systems
-layer on top of each other and update at different rates.
-
 ### Dual render pipeline — WebGL2 primary, Canvas2D fallback
-`useGL` is set by `initGL()` at startup; every draw path branches on it.
-- **Fire**: a low-res heat grid. On GPU, `glPropagate()` ping-pongs heat textures
-  (cgtutor averaging `v = sum_of_4_below * 32 / decay`; `decay > 128` decays,
-  `< 128` amplifies). The CPU fallback is the double loop in `simulate()`.
-- **Chaos-game points** stay on the **CPU** (deterministic — see below) and are
-  drawn as additive GL points via `pushPt()`/`glDrawPoints()`, or stamped into the
-  heat grid with `plot()` on the CPU path.
-- **Shader effects** (Julia, Plasma, Tunnel, Metaballs, Burning Ship, Kaleidoscope,
-  Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) are fragment shaders writing
-  per-pixel heat to the texture's `.r` channel (`o = vec4(heat,0,0,1)`), with a CPU
-  mirror (`julia()`/`plasma()`/`tunnel()`/…). Each has an `FS_*` source + a `glProg.<id>`
-  registered in `initGL`; the descriptor's `draw(dt)` calls the generic
-  **`glShaderDraw(name, setU)`** (binds the heat FBO, `uSize`, then `setU` sets the
-  effect's uniforms) or the CPU mirror. A `*Seed(dt)` advances the animation phase
-  (identical GL/CPU). `bakesOwnZoom: true` means the effect consumes zoom itself so
-  `glRender`/`render` force display-zoom to 1 — **every** descriptor carries it now (the
-  shaders divide their coordinates by it, the point effects scale the stamp in `plot()`), so
-  a new effect must handle zoom itself too; see the zoom section under the effect stack.
-  **Adding a shader effect = append one descriptor**
-  with an `FS_*`+`glProg` pair, a `draw`/`cpu` pair, `params`/`defaults`; its presence
-  routes `frame()` past the fire sim, and its sliders generate from the `CONTROLS` schema.
-**The three cardioid-seeded effects share one seed path.** AnimeJulia, Burning Ship
-and Multibrot each call `juliaSeed(dt)` **once** in their `draw` hook and hand the
-resulting seed to either the shader (`uC`) or the CPU mirror — `julia(seed)` /
-`burningShip(seed)` / `multibrot(seed)` take the seed as an argument and must never
-call `juliaSeed()` themselves, or the Canvas2D path advances the orbit twice a frame
-(it did, until fixed). `juliaSeed` = rim point on the scaled main cardioid **plus**
-the small riding circle of radius `juliaInnerR` at `ratio ×` the outer phase; the
-riding circle is what keeps the seed's neighbourhood varying instead of retracing
-one closed curve.
+`useGL` is set by `initGL()`; every draw path branches on it.
+- **Fire**: a low-res heat grid. GPU `glPropagate()` ping-pongs heat textures (cgtutor averaging
+  `v = sum_of_4_below * 32 / decay`; `>128` decays, `<128` amplifies). CPU fallback = the double
+  loop in `simulate()`.
+- **Chaos-game points** stay on the **CPU** (deterministic) — additive GL points via
+  `pushPt()`/`glDrawPoints()`, or `plot()` into the heat grid on the CPU path.
+- **Shader effects** write per-pixel heat to the texture's `.r` (`o = vec4(heat,0,0,1)`), each
+  with a CPU mirror. Each has an `FS_*` source + a `glProg.<id>` registered in `initGL`; the
+  descriptor's `draw(dt)` calls **`glShaderDraw(name, setU)`** or the CPU mirror. A `*Seed(dt)`
+  advances the animation phase (identical GL/CPU).
+- **Adding a shader effect = append one descriptor** with an `FS_*`+`glProg` pair, a `draw`/`cpu`
+  pair, `params`/`defaults`. Its presence routes `frame()` past the fire sim; sliders generate
+  from the `CONTROLS` schema.
+- **Glow**: `glRender()`/`render()` map heat through the palette, then composite an additive
+  blurred copy.
 
-**Which cardioid depends on the exponent.** The seed is only interesting just *outside*
-the **connectedness locus** — the set of `c` for which the filled Julia set of `z^d + c`
-is connected. Inside it, the filled set has interior that never escapes, so the render
-pins whole regions at `i >= maxIter` ⇒ max palette. For `d = 2` the locus is the
-Mandelbrot set and its period-1 boundary is the familiar cardioid. For any other `d` it
-is the **degree-d Multibrot set**, whose period-1 boundary is a *different* curve:
-`c = z − z^d` on `|z| = d^(−1/(d−1))` (from the fixed point `z^d + c = z` with neutral
-multiplier `|d·z^(d−1)| = 1`). `cardioidAt(th, d)` is that curve.
+### Cardioid seed orbit (AnimeJulia / Burning Ship / Multibrot)
+- All three call `juliaSeed(dt)` **once** in their `draw` hook and pass the seed to the shader
+  (`uC`) or the CPU mirror. `julia(seed)` / `burningShip(seed)` / `multibrot(seed)` must **never**
+  call `juliaSeed()` themselves, or the CPU path advances the orbit twice a frame.
+- `juliaSeed` = rim point on the scaled main cardioid **plus** a riding circle of radius
+  `juliaInnerR` at `ratio ×` the outer phase (that circle is what keeps the seed's neighbourhood
+  varying instead of retracing one closed curve).
+- **The cardioid depends on the exponent.** The seed is interesting just *outside* the
+  connectedness locus. For `d=2` that's the Mandelbrot cardioid; for any other `d` it's the
+  degree-d Multibrot boundary `c = z − z^d` on `|z| = d^(−1/(d−1))`. `cardioidAt(th, d)` is that
+  curve. `juliaPower` carries the exponent — `setEffect` resets it to 2, Multibrot's `draw` sets
+  it from `mbPower` **before** calling `juliaSeed`. At `d=2` the formula is bit-identical to the
+  old hardcoded one, which is what keeps every existing preset unchanged.
+- **Lap-speed easing.** Each step is scaled by `EASE_K · (1 + JULIA_EASE_A·cos((power−1)·θ))`, so
+  the seed sprints through every cusp. `power−1` **is the cusp count**, not a tuning knob (the
+  degree-d cardioid has `d−1` cusps). This is also why **Multibrot's Power is an integer**
+  (`apply` rounds): a fractional power makes the warp not close over a lap.
+  **`EASE_K = 1/√(1−A²)` is load-bearing** — it preserves lap *time* (`1/rpm` minutes) at any
+  power, so existing presets keep their pace. The warp applies to the **outer phase only**; the
+  easing is symmetric about θ=π so the two half-laps take equal time.
+- `juliaPower` is declared **above `juliaEase`** on purpose (the arrow reads it during startup).
+- `juliaSeedAt` stays unwarped, so the Orbit editor **integrates** `dφ = ratio·dθ/ease(θ)` as it
+  walks the path instead of assuming φ is linear in θ.
+- **Burning Ship rides the "wrong" cardioid deliberately — do not "fix" it.** Its shipped
+  `outrad` **[1.4, 1.9]** empirically compensates (measured better than AnimeJulia's own
+  inside-locus fraction). Dragging Outer radius down degrades it fast — if Burning Ship ever
+  looks washed out, that slider is the first thing to check.
+- `tools/juliaprobe.js` locks all of this down.
 
-This was hardcoded to the `d = 2` cardioid whatever the Power slider said, and Multibrot
-ships Power *drifting* 2→3.5, so ~3/4 of every lap put the seed inside the real locus —
-a solid white blob instead of dendrites. `juliaPower` carries the exponent: `setEffect`
-resets it to 2 and Multibrot's `draw` sets it from `mbPower` **before** calling
-`juliaSeed`, so the orbit rides this frame's power. At `d = 2` the formula reduces to
-`|z| = 0.5`, `c = z − z²` — **bit-identical** (every power involved is exact in binary
-floating point), which is what keeps AnimeJulia, Burning Ship and every `d = 2` preset
-unchanged; `juliaprobe` asserts `max |Δ| == 0` over a full lap.
+### Bouncing solids (the one 3D shader effect)
+`src/solids-3d.js` runs rigid-body physics on the CPU once per frame for up to 8 bodies and hands
+the shader only the pose — `uPos` (centre+radius `vec4`), `uQuat`, `uShape`. `FS_SOLIDS`
+raymarches it; the CPU mirror `solids()` marches the same scene with half the steps.
+- **Orientation is a quaternion**, not a rotated-vertex list — implicit surfaces have no vertices,
+  so the shader undoes it per sample (`toBody`, rotating by the conjugate). Cannot shear the way
+  an accumulated 3×3 basis does; one renormalise per frame.
+- **Collision is a bounding SPHERE**, and every SDF is authored to fit inside radius `r` (box
+  half-extent `0.55r`, torus `0.70r`+`0.30r`, …). `Size` IS that radius.
+- **The step is clamped (`min(0.05, dt)`)** — a backgrounded tab returns one enormous `dt` and a
+  body would tunnel through a wall and never come back.
+- Bodies live on the **layer** (`L.solids`), like `L.tetras` — they're a list of objects, not a
+  scalar clock, so they can't ride `PHASE_VARS`. `installStackItem` calls **`installSolids(L)`**;
+  without it two Bouncing solids layers share one set.
+- Start state uses `sdHash(k, salt, i)` (not sines — a near-π multiplier once stacked every body
+  at x≈0), and positions scale to the room actually available (`SOLID_BOX[ax] − radius`).
+- `tools/solidsprobe.js` pins containment, quaternion normality, per-layer ownership and spread.
 
-Two residuals worth knowing, both measured by the probe rather than hand-waved:
-the inside-the-locus fraction is **not** 0 even at `d = 2` (≈15%) — scaling the cardioid
-radially by `JULIA_MARGIN` walks the seed through the period-2 bulb near θ=π, and those
-fat Julia sets are part of AnimeJulia's shipped look. And **fractional powers stay worse
-than integer ones** (≈40–55% vs ≈20%): `z^d` uses the principal branch, discontinuous
-across the negative real axis, so their locus is a messier object with more attached
-components. The probe therefore asserts *matched beats mismatched by ≥20 points*, not
-perfection — the honest property, and the one that goes red if `juliaPower` stops tracking.
-
-**Lap-speed easing.** The orbit is *not* swept at constant angular speed: `juliaSeed`
-scales each step by `EASE_K · (1 + JULIA_EASE_A·cos((power−1)·θ))`, so the seed sprints
-through every cusp of the cardioid and eases off between them.
-`JULIA_EASE_A = 0.5` ⇒ a cusp is exactly `(1+A)/(1−A)` = **3×** the slowest point.
-
-**The `power−1` is the cusp count, not a tuning knob.** The degree-d cardioid
-`c = z − z^d` has `dc/dθ = 0` exactly where `e^{i(d−1)θ} = 1`, i.e. at `θ = 2πk/(d−1)` —
-**`d−1` cusps**: one at power 2 (the classic cardioid), two at 3, three at 4. A fixed
-`cos θ` would sprint through the first cusp and crawl straight through all the others,
-which is the opposite of the intent. This is also why **Multibrot's Power is an integer**
-(`apply` rounds; the thumbs still animate continuously between them): a fractional power
-makes `power−1` fractional, the warp no longer closes over a lap, and the locus itself is
-ragged anyway because `z^d` uses the principal branch.
-
-**`EASE_K = 1/√(1−A²)` is load-bearing**, and works unchanged at every power:
-`∮dθ/(1+A·cos nθ) = 2π/√(1−A²)` for *any* integer `n`, since `u = nθ` just covers the
-cosine's period `n` times. So a lap takes exactly `1/rpm` minutes at any power and every
-existing preset keeps its pace; without `EASE_K` the same rpm would run ~15% slow.
-At power 2 the whole expression is `cos(1·θ)` — bit-identical to the original, which is
-what leaves AnimeJulia and Burning Ship untouched.
-
-`juliaPower` is declared **above `juliaEase`** on purpose: the arrow reads it, and leaving
-it below only worked while nothing called the ease during startup — this file has been
-bitten by exactly that three times.
-
-The warp applies to the **outer phase only** — the riding circle keeps its steady rate,
-so its epicycles bunch up where the cardioid crawls and stretch where it sprints; that
-unevenness is the point. Because lap *time* is preserved the
-inner still completes exactly `ratio` turns per lap, just unevenly distributed. Note the
-easing is symmetric about θ=π, so the two half-laps take **equal** time — the asymmetry
-is per quarter (a probe assertion got this wrong before the maths did). `juliaSeedAt`
-stays unwarped; the Orbit editor therefore **integrates** `dφ = ratio·dθ/ease(θ)`
-as it walks the path (via the shared `juliaEase`) instead of assuming φ is linear in θ,
-or the drawn epicycles would not match the ones on screen.
-`juliaprobe` locks all of this down.
-
-**Burning Ship rides the wrong cardioid too — and it does not matter. Measured, twice.**
-Its connectedness locus is the Burning Ship set (iterate the critical point 0 under
-`zy = 2|zx·zy| + cy; zx = zx² − zy² + cx`), not the Mandelbrot cardioid the seed traces,
-so in principle it has exactly the bug Multibrot had. In practice it does not, because its
-shipped `outrad` is **[1.4, 1.9]** where AnimeJulia's is 1.05 — whoever tuned it pushed the
-orbit out by eye until it looked right, which empirically compensates. Sweeping a full lap
-(720 outer × 24 inner phases) against the real ship locus: **4.6–31% inside across its
-drift range, ~17% typical**, versus AnimeJulia's own **27.1%** against the Mandelbrot at its
-defaults. Burning Ship is *better* than the reference scene, and screenshots agree — small
-bright clusters with filigree, a disconnected Julia set, not a filled blob.
-
-So: **do not "fix" this.** There is no closed form for the ship boundary, tracing it
-numerically is real work, and it would change every Burning Ship preset for no visible
-gain. The one thing worth knowing is that the compensation is a *magic number, not a
-correction*: drag Outer radius down toward AnimeJulia-like values and it degrades fast —
-28% inside at 1.2, 39% at 1.05, 45% at 1.0 — noticeably worse than AnimeJulia at the same
-setting, because the curve genuinely is wrong for this family. If Burning Ship ever looks
-washed out, Outer radius is the first thing to check.
-
-**Bouncing solids is the one 3D shader effect, and it is split CPU/GPU down the middle.**
-`src/solids-3d.js` runs the rigid-body physics on the CPU once per frame for up to 8 bodies
-and hands the shader nothing but the resulting pose — centre+radius in `uPos` (a `vec4`),
-orientation in `uQuat`, which primitive in `uShape`. `FS_SOLIDS` raymarches that; the CPU
-mirror `solids()` marches the *same* scene with half the steps. So there is exactly one
-copy of the motion, which is what lets the two paths agree.
-
-Three things about it are load-bearing:
-- **Orientation is a quaternion, not the tetrahedron's rotated-vertex list.** These are
-  implicit surfaces with no vertices to carry a rotation, so the shader undoes it per
-  sample (`toBody`, rotating by the conjugate). 4 floats to upload, and it cannot shear the
-  way an accumulated 3×3 basis does — it only needs renormalising, one divide per frame.
-- **Collision is a bounding SPHERE, and every SDF is authored to fit inside radius `r`**
-  (box half-extent `0.55r`, torus `0.70r`+`0.30r`, …). That is what lets one radius drive
-  every contact test, so a doughnut bounces off the same wall a sphere would. `Size` IS
-  that radius, so widening it makes them turn sooner as well as look bigger.
-- **The step is clamped (`min(0.05, dt)`)**. A backgrounded tab returns one enormous `dt`,
-  and a body that travels further than the room in a single step tunnels through a wall and
-  never comes back — invisible on screen (the frame just looks emptier). `solidsprobe`
-  pins it, along with containment at every slider extreme.
-
-The bodies live on the **layer** (`L.solids`), exactly like the tetrahedron's `L.tetras`,
-because they are a list of objects rather than a scalar clock and so cannot ride
-`PHASE_VARS`. `installStackItem` calls **`installSolids(L)`** to point the globals at the
-drawing layer's set — without it two Bouncing solids layers share one set and render as one
-slightly brighter layer.
-
-**Its start state is a hash, not a row of sines, and that was a real bug.** The first
-version seeded x as `0.55·sin(k·3.1)`; 3.1 is π to within 1.3%, so `sin(k·3.1)` is near
-zero for every small k and all five bodies started stacked in a column at x≈0. They spread
-out after a few bounces, so it read as a slow start rather than a distribution bug — only a
-screenshot of the opening frames showed it. `sdHash(k, salt, i)` gives three independent
-values per vector instead, and positions scale to the room actually **available**
-(`SOLID_BOX[ax] − radius`, different per axis since x follows the frame aspect and z is
-shallowest) so nothing starts embedded in a wall at any Size. The probe asserts the spread
-per axis against that available span rather than an absolute number.
-
-- **Point-accumulation effects** (Sierpiński, Tetrafyer, Attractor) run the fire sim and
-  stamp points into the heat grid via `plot()`. `simulate()` dispatches to the
-  descriptor's **`stamp(box)`** hook if present (Attractor), else the `fractal2d` (2D
-  chaos game) / tetra branches. Adding one = a descriptor with a `stamp` hook, no `draw`.
-
-  **They stamp at `POINT_HEAT` (`CONFIG.tuning.pointHeat` = 209), not 255, and that is a
-  deliberate fix rather than a taste call.** Measured over the catalog: **14 of 19 palettes
-  are near-white at index 255** — Fire, Grayscale, C64, CGA and Chrome are literally
-  `[255,255,255]`, because a white-hot tip is what a fire ramp is *for*. Every point being
-  stamped at exactly 255 therefore drew the fractal in that white **whatever palette was
-  selected**, and since every effect now ships with **no filters**, the raw stamps *are* the
-  picture — so on Sierpiński/Tetrafyer/Attractor the palette looked completely inert. At 209
-  (0.82) **17 of 19 draw in colour**; the two that don't are Fire and Grayscale, achromatic at
-  the top by design and still white/grey anywhere down to ~150, so lowering further would only
-  dim the rest for nothing. With the Fire filter on, the flame runs the ramp downward from
-  here exactly as before, just from a hair lower. `tools/palcheck` is not a shipped probe —
-  the numbers above came from slicing `PALETTES` and evaluating `fn(255)` vs `fn(209)`, which
-  is the cheap way to re-check this if the catalog gains a ramp.
-- **Glow**: `glRender()` / `render()` map heat through the palette, then composite
-  an additive blurred copy for the bloom.
+### Point-accumulation effects
+Run the fire sim and stamp via `plot()`. `simulate()` dispatches to the descriptor's `stamp(box)`
+hook if present (Attractor), else the `fractal2d` / tetra branches. Adding one = a descriptor with
+a `stamp` hook, no `draw`.
+- **They stamp at `POINT_HEAT` (`CONFIG.tuning.pointHeat` = 209), not 255.** 14 of 19 palettes are
+  near-white at index 255, so stamping at 255 drew the fractal white whatever palette was
+  selected — and since effects ship with no filters, the raw stamps *are* the picture. At 209,
+  17 of 19 draw in colour; Fire and Grayscale are achromatic at the top by design.
+- The chaos game is stamped inside a **safe box** — the heat grid less a 1px margin — shared by
+  all three point effects. Size/Rotation scale & spin the corners about the box centre.
 
 ### Credits overlay
-The startup credits render on **their own canvas** (`#creditcv`, `z-index: 4`,
-`pointer-events: none`) drawn by `creditDraw()` from `frame()` **after** `glRender()`/
-`render()` — so they sit above the effect *and* above the whole post-filter chain, and
-below the menu at `z-index: 10`.
-
-**They used to be stamped into the heat grid** through the same `plot()` the effects use,
-which gave them the palette and let them burn away with the fire — genuinely nicer, and
-the reason the old design existed. It was abandoned because the post filters mangled
-them: Pixelate blocked the glyphs up, Mirror doubled them, Edge reduced them to outlines.
-Chrome you cannot read is not chrome. Consequences of the move, all of them wins except
-the first: no palette tie-in and no burn-away; but immunity to the camera and to display
-zoom **for free** (an overlay is not in the buffer those transform), no accumulation
-smear, and the panel's *actual* colours instead of a one-channel brightness stand-in —
-role `#ffb15a`, name white at `.8`, "aka" at `.45`, handle `#ffcf87`, straight off
-`#panel .credit-*`. Each run is drawn twice, once with a dark halo and once with a warm
-glow, so it stays legible over a bright frame without looking like a caption.
-
-Gone with it: `creditStamp`, `creditRaster`, the `fw`/`fh` mask cache, `creditZoomCap`,
-and `plot`'s fourth `raw` argument (added solely so the credits could skip the camera —
-every caller wants the camera now). `CREDITS` still drives **both** the overlay and the
-panel's Credits box via `buildCreditList()`, so the two cannot drift.
-
-**Timing is `CREDIT_HOLD` (5s) at full, then `CREDIT_FADE` (3s) ramping to nothing**;
-`CREDIT_S` is their sum and `creditLeft` counts the whole thing down in **rendered** time
-(`dt` from the frame loop), not wall clock — a backgrounded tab stops rAF, and a
-wall-clock timer would run the credits out unseen. `creditAlpha()` is 1 while
-`creditLeft >= CREDIT_FADE`, then `creditLeft/CREDIT_FADE`. `?credits=<s>` overrides the
-**hold**; the fade is always added on top, so `?credits=600` parks them on screen and
-still fades the same way. Once expired `creditDraw` clears the layer once and sets
-`display: none`, so it costs nothing for the rest of the session.
-
-The on/off preference lives in its own `localStorage` key, deliberately **not** in the
-scene blob — it is a per-browser choice, not part of a shared or backed-up scene.
+Rendered on **their own canvas** (`#creditcv`, `z-index: 4`, `pointer-events: none`) by
+`creditDraw()` from `frame()` **after** `glRender()`/`render()` — above the effect and the whole
+post-filter chain, below the menu at `z-index: 10`. They used to be stamped into the heat grid
+(palette tie-in, burn-away) but the post filters mangled them; the overlay buys immunity to the
+camera, display zoom and accumulation smear, plus the panel's real colours.
+- Timing: `CREDIT_HOLD` (5s) full, then `CREDIT_FADE` (3s) ramp; `creditLeft` counts **rendered**
+  time (`dt`), not wall clock. `?credits=<s>` overrides the hold; the fade is always added on top.
+  Once expired, `creditDraw` clears once and sets `display: none`.
+- `CREDITS` drives **both** the overlay and the panel's Credits box (`buildCreditList()`).
+- The on/off preference lives in its own `localStorage` key, **not** in the scene blob.
 
 ### Preset transitions
-`TRANSITIONS` is a third registry beside `EFFECTS` and `FILTERS`: how one preset gives way
-to the next. It exists because the dissolve `setEffect` gives you for free only works when
-something **retains** the buffer — with Fire or Fade ticked the old heat decays under the
-new scene, but with no feedback filter `glBeginHeat`/`applyFilters` rewrite the buffer on
-frame one *by design*, so those switches cut hard. That is 12 of 15 effects at their
-shipped defaults.
+`TRANSITIONS` is a third registry beside `EFFECTS` and `FILTERS`. It exists because the free
+dissolve from `setEffect` only works when something **retains** the buffer; with no feedback
+filter, `glBeginHeat`/`applyFilters` rewrite the buffer on frame one by design.
 
-Nine entries, each a `mode` of the single **`FS_TRANS`** pass: `cut`, `burnoff`,
-`crossfade`, `dip`, `flash`, `pixelate`, `blur`, `wipe`, `iris`. Two need no pass at all —
-`cut` does nothing, and **`burnoff` lends retention**: `hasFeedback()` returns true while
-`transBurning()`, so a scene with no feedback filter decays its predecessor exactly like
-the ones that already work. That one is the cheapest and most native of the set.
-
-**Where the pass runs matters.** `glRender` sends the zoom output to `glFbo.post[0]`
-instead of `glFbo.scene` while a transition is live, then `FS_TRANS` writes `glFbo.scene`
-— so the blend happens *before* the glow, and the bloom follows the blended image instead
-of a frozen glow fighting a live one. Zero cost when idle: the branch just picks the
-normal FBO. `render()` mirrors all seven visible modes with canvas ops (`globalAlpha`,
-`filter: blur()`, a downsample/upsample pair for pixelate, `destination-in` clipping for
-wipe/iris).
-
-**The outgoing frame is frozen**, not kept live: `transBegin` copies `glTex.scene` into
-`glTex.prev` with `copyTexSubImage2D` (CPU: `drawImage` into `transOff`). Rendering both
-scenes at once would need two live copies of state that is singleton here. For a
-sub-second transition it reads like a video switcher's dissolve; it is the one real
-compromise in the design.
-
-**Auto-picking** is `fits(a, b) → weight`, `0` = never, then a weighted random draw over
-the survivors. Both sides are `sceneInfo()` summaries — `{dense, retains, palette}` — so
-the choice costs nothing: **no pixel readback**, just descriptors. `dense` is `!!fx.draw`
-(a full-screen shader vs a sparse point cloud), `retains` is read from the *incoming
-preset's* stored filter list before it is applied, and `palDist` walks the two ramps that
-are already in memory. The rules that fall out: either side retains ⇒ favour `cut`;
-both dense ⇒ favour `crossfade` (crossfading sparse against dense just reads as a double
-exposure); density differs ⇒ favour the structure-destroying `pixelate`/`blur`/`wipe`,
-which wreck the image exactly when it changes; palettes far apart ⇒ favour `dip`/`flash`.
-
-The **Transition** slider (Scene box, beside Preset TTL) is a [min,max] seconds range
-drawn per switch like `ttlMs`/`morphMs`, scaling each transition's own `dur`. Both thumbs
-at **0 = cut**, which is the old behaviour exactly. Global, not per-effect and not in a
-preset — same class as auto-cycle and TTL, and `tdur` rides in `fullSnapshot`.
-`trans.t` advances in **rendered** time from `frame()`, like the credits, so a
-backgrounded tab cannot burn through a transition unseen.
+Nine entries, each a `mode` of the single **`FS_TRANS`** pass: `cut`, `burnoff`, `crossfade`,
+`dip`, `flash`, `pixelate`, `blur`, `wipe`, `iris`. Two need no pass — `cut` does nothing, and
+**`burnoff` lends retention** (`hasFeedback()` returns true while `transBurning()`).
+- **Where the pass runs matters**: `glRender` sends the zoom output to `glFbo.post[0]` instead of
+  `glFbo.scene` while a transition is live, so the blend happens *before* the glow. Zero cost when
+  idle. `render()` mirrors all seven visible modes with canvas ops.
+- **The outgoing frame is frozen** (`transBegin` copies `glTex.scene` → `glTex.prev`); rendering
+  both scenes live would need two copies of singleton state.
+- **Auto-picking** is `fits(a, b) → weight` over `sceneInfo()` summaries (`{dense, retains,
+  palette}`) — no pixel readback. Either side retains ⇒ favour `cut`; both dense ⇒ `crossfade`;
+  density differs ⇒ the structure-destroying `pixelate`/`blur`/`wipe`; palettes far apart ⇒
+  `dip`/`flash`.
+- The **Transition** slider is a [min,max] seconds range drawn per switch like `ttlMs`/`morphMs`.
+  Both thumbs at 0 = cut. `trans.t` advances in **rendered** time.
 
 ### Filters (post-FX)
-`FILTERS` is a second registry beside `EFFECTS`: stackable post-processing any effect can
-use, ticked in a checkbox list (registry order is the apply order — a checkbox list can't
-be reordered, so that order is a design decision). **Three** stages, split by **where in
-the pipeline the filter writes** — and the registry must list them in that order, which
-`filterprobe` asserts:
-- **feedback** (`Fire`, `Fade pixel`, `Diffuse`, `Echo`, `Zoom feedback`, `Swirl`) —
-  mutates heat that survives to the next
-  frame, so it runs inside `glBeginHeat` *before* the effect's output is MAX-injected. With
-  no feedback filter, `glBeginHeat` **clears** (skipping it would read 2-frames-stale heat)
-  and the CPU path zeroes `fire` instead of running the propagation loop.
-  Echo/Zoom feedback/Swirl are **one program**, `FS_HWARP`, driven through
-  `glWarpFeedback(src, dist, ang, scale, spin, keep)` — they are the same affine resample
-  with the other terms at identity, so they share a pass instead of triplicating it.
-  Two things about that pass are load-bearing. It samples through **`glSampLin`, a WebGL2
-  sampler object**, because the heat textures are `NEAREST` (the fire propagation reads
-  exact texels and must stay that way) and a sub-pixel warp read through `NEAREST`
-  quantises into chunky rings instead of drifting; a sampler binds to the **texture unit**,
-  not the program, so it is unbound immediately after or it silently softens whatever is
-  sampled on unit 0 next. And **each of the four carries its own `Lifetime`** rather than
-  leaning on Fade: a pure displacement conserves heat, so a warp ticked on its own with
-  nothing to decay it saturates to white within seconds. Four sliders labelled "Lifetime"
-  in four groups is exactly what the pop-out box's owner line (`ctlOwner`) exists to
-  disambiguate. **The label is the only thing that says "Lifetime"** — the control keys
-  (`fade`, `diffkeep`, `echokeep`, `zfbkeep`, `swirlkeep`), the globals (`fadeKeep`,
-  `diffKeep`, …) and the `uKeep` uniform keep their names, because the keys are the wire
-  format: renaming one would strand that slider's value in every saved scene.
-  All four have **CPU mirrors** (`heatWarpCPU`/`heatDiffuseCPU`, sharing `bilinearHeat` and
-  a `warpBuf` scratch) — unlike a post filter, a feedback filter marked `cpuOk: false`
-  would leave the fallback with *nothing carrying heat over*, a far bigger visual change
-  than a greyed-out checkbox. Row order differs from GL's texture space, so a given angle
-  drags the opposite way vertically on that path; it feeds back into itself either way.
-- **post** (Twist, Wedge fold, Slice glitch, Pixelate, Blur/sharpen, Edge, Posterize,
-  Halftone, Solarize, Chromatic aberration, Mirror, Bloom) — read the
-  palette-mapped image. `glPostChain()` ping-pongs them through `glTex.post[0]/[1]`
-  between FS_PAL and FS_ZOOM and **returns `glTex.native` untouched when the chain is
-  empty** — it must not run a pass-through copy, since an extra RGBA8 sample through a
-  nominally identity pass can shift a value by a LSB and read as a brightness change.
-  Bloom has no pass of its own: it is the pre-existing glow composite with its strength
-  under `bloomAmt`/`uBloom` (0 when off).
-- **screen** (Barrel distortion, Scanlines, Vignette, Film grain) — run **after** the
-  composite, in `glRender` step F, at **display resolution**. Both halves of that are the
-  reason the stage exists rather than these being four more post filters. *After* the
-  composite because the post chain runs between FS_PAL and FS_ZOOM, i.e. under the glow —
-  and a vignette under an additive glow gets lit back up, scanlines under it bloom into
-  mush. *Display resolution* because a scanline count means nothing against `fw×fh`;
-  `glTex.screen[0..1]` are the only buffers here sized to `canvas.width/height`, resized
-  in `glResize` (which is safe because `resize()` sets the canvas dimensions **first**).
-  The chain's **last** pass is the one that binds the default framebuffer, so an empty
-  chain still composites straight to the screen and costs nothing — same "no pass-through
-  copy" rule as `glPostChain`. They are all `cpuOk: false`: the Canvas2D path never
-  performs the composite these sit on top of. `screenPass` mirrors `postPass` but feeds
-  `uSize` the display size.
+`FILTERS` is a second registry: stackable post-processing, ticked in a checkbox list (registry
+order **is** the apply order). **Three stages, split by where in the pipeline the filter writes**,
+and the registry must list them in that order (`filterprobe` asserts it):
+
+- **feedback** (`Fire`, `Fade pixel`, `Diffuse`, `Echo`, `Zoom feedback`, `Swirl`) — mutate heat
+  that survives to the next frame, so they run inside `glBeginHeat` *before* the effect's output
+  is MAX-injected. With no feedback filter `glBeginHeat` **clears** (skipping would read
+  2-frames-stale heat) and the CPU path zeroes `fire`.
+  - Echo/Zoom feedback/Swirl are **one program**, `FS_HWARP`, via
+    `glWarpFeedback(src, dist, ang, scale, spin, keep)`.
+  - That pass samples through **`glSampLin`, a WebGL2 sampler object** — heat textures are
+    `NEAREST` (fire propagation reads exact texels) and a sub-pixel warp through `NEAREST`
+    quantises into chunky rings. A sampler binds to the **texture unit**, so unbind it
+    immediately after or it silently softens whatever samples unit 0 next.
+  - **Each of the four carries its own `Lifetime`** — a pure displacement conserves heat, so a
+    warp with nothing decaying it saturates to white. **The label is the only thing that says
+    "Lifetime"**: the keys (`fade`, `diffkeep`, `echokeep`, `zfbkeep`, `swirlkeep`), globals and
+    the `uKeep` uniform keep their names, because keys are the wire format.
+  - All four have **CPU mirrors** (`heatWarpCPU`/`heatDiffuseCPU`, sharing `bilinearHeat` + a
+    `warpBuf`) — `cpuOk: false` here would leave the fallback with nothing carrying heat over.
+- **post** (Twist, Wedge fold, Slice glitch, Pixelate, Blur/sharpen, Edge, Posterize, Halftone,
+  Solarize, Chromatic aberration, Mirror, Bloom) — read the palette-mapped image. `glPostChain()`
+  ping-pongs through `glTex.post[0]/[1]` between FS_PAL and FS_ZOOM and **returns `glTex.native`
+  untouched when the chain is empty** — no pass-through copy (an extra RGBA8 sample can shift a
+  value by an LSB). Bloom has no pass of its own: it's the glow composite under `bloomAmt`/`uBloom`.
+- **screen** (Barrel distortion, Scanlines, Vignette, Film grain) — run **after** the composite in
+  `glRender` step F, at **display resolution**. Both halves are the reason the stage exists: a
+  vignette under an additive glow gets lit back up, and a scanline count means nothing against
+  `fw×fh`. `glTex.screen[0..1]` are the only buffers sized to `canvas.width/height` (resized in
+  `glResize`, safe because `resize()` sets canvas dimensions first). The chain's **last** pass
+  binds the default framebuffer, so an empty chain still composites straight to screen. All are
+  `cpuOk: false`. `screenPass` mirrors `postPass` but feeds `uSize` the display size.
 
 **Two filters animate on their own** (Slice glitch, Film grain) and read **`postTime`**,
-accumulated from the frame loop's `dt` — deliberately not `performance.now()`, which would
-break the stubbed-rAF pixel gate's reproducibility, and not `simT`, which does not advance
-for shader effects.
+accumulated from the frame loop's `dt` — not `performance.now()` (breaks the stubbed-rAF pixel
+gate) and not `simT` (doesn't advance for shader effects).
 
-`glBeginHeat` runs the feedback chain — every ticked `stage: "feedback"` filter's
-`glFeedback(srcTex)` in registry order, one ping-pong pass each — with **`pendingDst` set
-to wherever the last pass landed**, not a fixed `1 - curHeat`, so any number of passes
-works without a parity fixup. With two filters the result ends up back in the buffer it
-started in, which is why `pendingDst = src` (not `dst`) after the loop; a `1 - curHeat`
-assumption is correct for one pass and wrong for two, so it is easy to ship broken.
-`tools/heatprobe.js` locks the parity down.
+**Ping-pong parity.** `glBeginHeat` runs each ticked feedback filter's `glFeedback(srcTex)` in
+registry order, one pass each, with **`pendingDst` set to wherever the last pass landed** — not a
+fixed `1 - curHeat`. With two filters the result lands back where it started, which is why
+`pendingDst = src` after the loop. `tools/heatprobe.js` locks this down.
 
-**Feedback filters apply to shader effects too, not just the point ones.** A shader
-effect overwrites the whole heat buffer, so `frame()` advances the retained heat first
-(`heatFeedbackTick()` × `ticks`) and then `glShaderDraw` **MAX-blends** its output over
-it instead of replacing it — the same injection point stamps use. `hasFeedback()` is the
-single predicate: false ⇒ the original clean-slate overwrite, byte for byte. On the CPU
-path the mirrors still write every cell unconditionally, so `frame()` hands the mirror
-the *other* buffer (a `fire`/`fireKeep` **pointer swap**, not a per-frame memcpy) and
-MAX-merges afterwards; this depends on the invariant that **every CPU mirror writes every
-cell** — an early-out in one would leak two-frames-stale pixels. `beginHeatTick()` is the
-shared tick body (extracted from `simulate`) and does **not** flip `curHeat`;
-`heatFeedbackTick()` is the flipping variant for shader effects, which have no stamp
-phase to close the tick. `applyFilters()` wipes `fire` on `!hasFeedback()`, not
-`!filterOn("fire")` — otherwise unticking Fire would wipe Fade's trails.
+**Feedback filters apply to shader effects too.** A shader overwrites the whole heat buffer, so
+`frame()` advances retained heat first (`heatFeedbackTick()` × `ticks`) and `glShaderDraw`
+**MAX-blends** over it. `hasFeedback()` is the single predicate; false ⇒ the original clean-slate
+overwrite, byte for byte. On CPU, `frame()` hands the mirror the *other* buffer (a `fire`/`fireKeep`
+**pointer swap**) and MAX-merges — this depends on the invariant that **every CPU mirror writes
+every cell**; an early-out would leak stale pixels. `beginHeatTick()` is the shared tick body and
+does **not** flip `curHeat`; `heatFeedbackTick()` is the flipping variant. `applyFilters()` wipes
+`fire` on `!hasFeedback()`, not `!filterOn("fire")`.
 
-Post filters are GPU passes; on the Canvas2D fallback they carry `cpuOk: false`, which
-greys out their checkbox. They are masked **at the point of use** — `cpuBlocked` is
-consulted by `filterOn()`, which `activeFilters()`/`hasFeedback()` route through — and
-are deliberately **never removed from `activeIds`**. `loadExtra` used to delete them on
-load, and since `saveExtra` writes `activeIds` straight back out, opening a scene on a
-fallback machine and touching anything **permanently stripped Pixelate/Blur/Edge/
-Posterize/Mirror from it**. A ticked-but-greyed checkbox honestly reads "stored on,
-unavailable here" and survives the round trip. `cpuBlocked` is filled by the FILTERS
-block but declared up with the render globals, and is empty until then — which is what
-keeps `filterOn` safe to call during slider wiring, long before the registry exists.
+**CPU masking.** Post filters carry `cpuOk: false` on the Canvas2D fallback, which greys the
+checkbox. They are masked **at the point of use** (`cpuBlocked` → `filterOn()` →
+`activeFilters()`/`hasFeedback()`) and deliberately **never removed from `activeIds`** — deleting
+them on load permanently stripped filters from scenes opened on a fallback machine. `cpuBlocked`
+is filled by the FILTERS block but declared up with the render globals, which keeps `filterOn`
+safe to call during slider wiring.
 
-**The filter list is one column of foldable sections.** Each filter is a `<details>`:
-the summary carries the chevron, its checkbox and its name; the body holds that filter's
-own params, adopted out of the flat `#filterctl` list by `buildFilterUI`. It was a
-two-column checkbox grid with every param stacked in one list underneath, which stopped
-fitting once the registry grew past a handful of filters.
+**The filter list is one column of foldable `<details>` sections** — summary carries chevron +
+checkbox + name; the body holds that filter's params, adopted out of the flat `#filterctl` list by
+`buildFilterUI`. Three load-bearing details: `buildFilterUI` must run **before** the `POPPABLE`
+pass (it moves `#ctl-<key>` into a body, and the pop-out pass inserts the `.ctl-row` launcher next
+to it); the checkbox is inside the summary so its handler calls `stopPropagation()`; and
+`syncFilterSec` (called per filter by `syncFilterUI`) keeps the fold honest for programmatic
+changes. `#filterctl` survives as an empty hidden node — the panel-wide scans still walk it.
 
-Three things are load-bearing. `buildFilterUI` must run **before** the `POPPABLE` pass —
-it moves each `#ctl-<key>` into a body, and the pop-out pass later inserts that slider's
-`.ctl-row` launcher next to it; do it the other way round and the row is stranded in
-`#filterctl`. The checkbox lives *inside* the summary, so its click handler calls
-`stopPropagation()` or ticking a filter would also fold it. And `syncFilterSec` keeps the
-fold honest for programmatic changes — `syncFilterUI` calls it per filter, so loading a
-preset or switching effect leaves an unticked filter collapsed and greyed rather than
-open onto an empty body.
+A filter's `params` are ordinary CONTROLS keys (host `"filter"`, one `group` per filter,
+contiguous). `refreshControlVisibility()` shows a control when the effect declares it **or** a
+ticked filter owns it. `presetState` merges `FILTER_DEFAULTS` into every effect's state, so a new
+filter needs no descriptor edits (an effect naming the same key still wins).
 
-`#filterctl` survives as an empty hidden node: the panel-wide scans still walk it, and
-removing it would mean touching `buildControls`'s host routing for no gain.
+**Every effect defaults to NO filters** (`presetFilters` → `[]`) — raw output until you tick.
+Point effects show raw stamped points until you enable **Fire**; nothing glows until **Bloom**.
+Bloom + screen FX are SCENE-global (`sceneOn`), also empty by default, so `DEFAULT_SCENE` carries
+an explicit `sceneFx:{on:["bloom"]}`. The per-effect list is `extras[e].filters` (stable string
+ids, always written in registry order). **`mergeExtra` is still mandatory.** Ordering trap:
+`setEffect` runs its visibility pass before `loadExtra` knows the new list, so `loadExtra` re-runs
+`refreshControlVisibility()`.
 
-A filter's `params` are ordinary CONTROLS keys (host `"filter"` → `#filterctl`, one
-`group` per filter, contiguous in the array). `refreshControlVisibility()` shows a control
-when the effect declares it **or** a ticked filter owns it, so `Flame rise` follows the
-Fire checkbox rather than living in any effect's `params`. `presetState` merges
-`FILTER_DEFAULTS` into every effect's state, so a new filter needs no edit to the 19
-descriptors — an effect that names the same key still wins.
+**Effect `defaults` are NEUTRAL**: palette cycle off (`palcycle [0,0]`), banding off, no rotation,
+every dual slider collapsed to `[lo,lo]`. Only affects fresh effects / per-effect default presets.
 
-The **list** is per-effect in `extras[e].filters` (stable string ids, always written in
-registry order so reordering `FILTERS` can't remap a saved scene). **Every effect now
-defaults to NO filters** (`presetFilters` → `[]`): a fresh effect / layer renders as its
-raw output and you tick the filters you want. Point effects (Sierpiński / Tetrafyer /
-Attractor) therefore show raw stamped points until you enable **Fire**; nothing glows
-until you enable **Bloom**. Bloom + the screen FX are SCENE-global (`sceneOn`), which also
-defaults **empty** — so the shipped `DEFAULT_SCENE` carries an explicit
-`sceneFx:{on:["bloom"]}` to keep its curated glow while everything else starts off.
-**`mergeExtra` is still mandatory**: a preset with no `filters` key falls back to the
-(now empty) descriptor default. Ordering trap: `setEffect` runs its visibility pass before
-`loadExtra` knows the new filter list, so `loadExtra` re-runs `refreshControlVisibility()`.
-
-**Effect `defaults` are NEUTRAL**: palette cycle off (`palcycle [0,0]`, `morph:false`),
-banding off (`band [0,0]`), no rotation (`rot [0,0]`), and every dual slider collapsed to
-a single static value (`[lo,lo]`) so a fresh effect is calm and predictable. This only
-affects fresh effects / the per-effect default presets; explicit scenes (`DEFAULT_SCENE`,
-saved presets) carry their own values and are unchanged.
-
-Three ordering constraints bit during implementation and are load-bearing: the registry
-block must sit **above `presetState`** (which reads `FILTER_DEFAULTS`), `buildFilterUI()`
-must be called **after** the registry (not next to `buildControls`), and `activeIds` +
-`filterOn` live up with the render globals because `bindRange` runs a slider's `apply()`
-during wiring — all three were temporal-dead-zone crashes.
+Three TDZ constraints: the registry block sits **above `presetState`**; `buildFilterUI()` is
+called **after** the registry; `activeIds` + `filterOn` live up with the render globals (because
+`bindRange` runs a slider's `apply()` during wiring).
 
 ### Effects & per-effect "scenes"
-**The `EFFECTS` registry is the single source of truth per effect** — an array of
-descriptors `{id, name, presetName?, subtitle, help, params, helpTags, draw?/fractal2d,
-bakesOwnZoom?, onEnter?, defaults, beat, extras}`. *Adding an effect = append one
-descriptor*, nothing else (a dev `assertRegistry()` warns on a dup id or a
-param/default that isn't a real control). Everything derives from the registry:
-- **Dropdown / subtitle / help / default-preset name** — from `name`/`subtitle`/`help`.
-- **Controls** — each effect's sliders are **generated from the shared `CONTROLS`
-  schema** (one entry per slider/checkbox: type, label, range, `fmt`, `apply`,
-  `durScale`, host). `buildControls()` renders them into `#fxctl`/`#bandctl`; `setEffect`
+**`EFFECTS` is the single source of truth per effect** — `{id, name, presetName?, subtitle, help,
+params, helpTags, draw?/fractal2d, bakesOwnZoom?, cardioid?, onEnter?, defaults, beat, extras}`.
+*Adding an effect = append one descriptor* (`assertRegistry()` warns on a dup id or a param that
+isn't a real control). Everything derives from it:
+- **Controls** are generated from the shared `CONTROLS` schema (type, label, range, `fmt`,
+  `apply`, `durScale`, host). `buildControls()` renders into `#fxctl`/`#bandctl`; `setEffect`
   shows only the keys in the descriptor's ordered `params`. No hand-written control HTML.
-- **Break-out boxes** — every slider (the `dual`/`plain` `CONTROLS`) shows in the menu
-  as **just a name + a `+`/`−` button on the right** (a `.ctl-row` launcher). The
-  slider itself, its value readout, beat chips and pulse picker never sit in the menu —
-  the whole `#ctl-<key>` node lives in `#breakout`, a `position:fixed` column to the
-  right of the menu that fills top→down in click order, and is only shown while popped.
-  Clicking `+` pops it (`breakout.appendChild` reorders it to the end); `−` docks it
-  (the box stays a hidden child of `#breakout`). Both the row's button and the box's own
-  gutter button stay in sync via `syncPopBtns`. `popped` is a global set of control keys
-  (a control is one singleton reused across effects); `refreshBreakout()` — called by
-  `setEffect` — shows a box iff `popped.has(key) && effect.params.has(key)` and toggles
-  `#breakout.empty`. `setEffect` toggles the **menu row** for poppable keys (the box
-  itself is left to `refreshBreakout`) and the control node directly for the rest. State
-  is **transient** (not persisted). **`dockAll()`** empties the column whenever the scene
-  changes, so a stack left over from the previous one isn't stale furniture: `setEffect`
-  calls it first (covering effect switches, preset applies and the auto-cycle), and so do
-  `createPreset`, the Delete handler and the preset `<select>`'s `change`. That last one
-  docks **up front, before dispatching**, because it has to cover both branches — picking a
-  preset would dock anyway via `applyPreset` → `setEffect`, but **"— unsaved scene —" never reaches
-  `setEffect`**, and leaning on that chain would make the behaviour quietly depend on where
-  `setEffect` happens to call `dockAll`. Rename deliberately does *not* dock: the scene is
-  unchanged, only its label. `dockAll` goes through `dockCtl` per key rather than clearing
-  the set, so the menu rows' `+`/`−` buttons can't desync from `popped`. Because `#breakout` sits *outside* `#panel` (the
-  panel's `backdrop-filter` + `overflow` would clip a fixed child), three things are
-  wired to reach it too: the control-appearance CSS is scoped to `#panel …, #breakout …`;
-  the delegated `onEdit` (persist/autosave) is attached to `#breakout` as well; and
-  `sceneRangeInputs()` scans `#panel` + `#breakout`. Element refs (`anims`, `el(id)`) are
-  location-independent, so a moved slider keeps animating, saving and loading unchanged.
-  A box holds, top→bottom: the **owner line** (`.ctl-owner`), the label + value, the beat
-  chips + pulse picker on their own line, the slider, its **pulse-length** knob (`.plen`)
-  and its **range editor** (`.rng-edit`) — the last three exist only in a box
-  (`#panel .plen { display:none }`, and the owner line and editor are added to the `.ctl`
-  node when the box is built).
-  The **owner line** says which effect/filter the box belongs to, from `ctlOwner(key)` →
-  `CTL_GROUPS[control.group]`, with a `"Filter · "` prefix for the `f_*` groups so the
-  Fire *filter* can't read as the Fire *effect family*. It exists because controls are
-  singletons reused across effects, so a stack of boxes labelled "Speed", "Strength",
-  "Size" is unreadable — Plasma's Speed and Tunnel's Fly speed, or Bloom's Strength, are
-  otherwise indistinguishable once popped. It is safe to add unconditionally in
-  `POPPABLE.forEach` because a `.ctl` node is *only* ever visible inside `#breakout`; the
-  menu slot shows the `.ctl-row` launcher instead. (Non-poppable controls — `check`,
-  `layers` — keep their `.ctl` in the panel, which is why the line is added in the
-  poppable loop and not in `ctlHTML`.)
-- **Defaults** — `defaults` (slider values), `beat` (chip selections), `extras`
-  (palette/morph/showBox/randSeed) seed `states[e]`/`beatStates[e]`/`extras[e]` via
-  `presetState`/`presetBeat`/`presetExtra`. `defaults` includes a few render-affecting
-  keys the effect doesn't display (e.g. `band` at 0) so switching to it resets them.
-- **Render** — `frame()` runs the effect's `draw(dt)` (shader) or the fire-sim
-  accumulator; `simulate()` stamps 2D when `fractal2d`; `glRender/render` force display
-  zoom to 1 when `bakesOwnZoom`; `setEffect` runs `onEnter`; `renderHelp` filters by `helpTags`.
-- **Identity** — persistence uses the **stable string `id`**, not the numeric index:
-  `serializeBlob`/`deserializeBlob` convert at the storage edge and `LEGACY_EFFECT_IDS`
-  migrates pre-id blobs, so reordering/removing effects never corrupts saved data.
-  `effect` stays the runtime numeric index (registry position).
-  That covers **two** things, and for a long time it only covered one. `effect` and
-  `presets[].effect` were converted, but the per-effect maps (`states`, `beats`,
-  `pulses`, `plens`, `extras`) were still stored keyed by registry *position* — so a
-  reorder handed every saved scene to whichever effect had moved into that slot, in
-  localStorage, Backups and share links alike, while presets stayed correct. `EFFECT_MAPS`
-  + `keysToIds`/`keysToIdx` close that: keys go out as ids and come back as indices, a
-  numeric key is read as a pre-id blob (the registry has only ever been appended to, so
-  its recorded position is still right), and an id that no longer ships is dropped rather
-  than misfiled. `presetprobe` serializes under one registry and deserializes under a
-  shuffled one to prove scenes follow their effect — the failure is otherwise invisible
-  until the day someone actually reorders `EFFECTS`, by which point every user's saved
-  settings are already wrong.
+- **Defaults** — `defaults`/`beat`/`extras` seed `states[e]`/`beatStates[e]`/`extras[e]` via
+  `presetState`/`presetBeat`/`presetExtra`. `defaults` includes render-affecting keys the effect
+  doesn't display (e.g. `band` at 0) so switching to it resets them.
+- **Render** — `frame()` runs `draw(dt)` or the fire-sim accumulator; `simulate()` stamps 2D when
+  `fractal2d`; `setEffect` runs `onEnter`; `renderHelp` filters by `helpTags`.
+- **Identity** — persistence uses the **stable string `id`**, never the numeric index.
+  `serializeBlob`/`deserializeBlob` convert at the storage edge; `LEGACY_EFFECT_IDS` migrates
+  pre-id blobs. `effect` stays the runtime numeric index. **`EFFECT_MAPS` + `keysToIds`/`keysToIdx`
+  cover the per-effect maps too** (`states`, `beats`, `pulses`, `plens`, `extras`) — they were
+  keyed by registry position for a long time, so a reorder would have handed every saved scene to
+  whichever effect moved into that slot. A numeric key is read as a pre-id blob; an id that no
+  longer ships is dropped rather than misfiled. `presetprobe` deserializes under a shuffled
+  registry to prove scenes follow their effect.
 
-**Per-slider range editor** (`makeRangeEditor`, at the foot of every pop-out box).
-`min`/`max`/`step` number fields + a ↺ (restore the shipped bounds from `RNG_ORIG`) for
-*that* slider — this replaced the one shared "Slider ranges" list in Diagnostics (and its
-"Copy changed" button; bake a bound by reading it off the field). `rngApply` writes the
-attribute onto the real slider(s) (a dual's two thumbs share one set), re-clamps the value
-and dispatches `input` on the **slider**, so the delegated `onEdit` persists it the normal
-way — the number fields themselves are skipped in `onEdit`. `applyRanges` calls
-`rngSyncAll()` so bounds arriving from a blob show up in the fields.
+**Break-out boxes.** Every `dual`/`plain` slider shows in the menu as just a name + a `+`/`−`
+button (a `.ctl-row` launcher). The whole `#ctl-<key>` node lives in `#breakout`, a
+`position:fixed` column that fills top→down in click order. `popped` is a global set of control
+keys; `refreshBreakout()` (called by `setEffect`) shows a box iff
+`popped.has(key) && effect.params.has(key)`. State is **transient**.
+- **`dockAll()`** empties the column whenever the scene changes — called by `setEffect`,
+  `createPreset`, Delete, and the preset `<select>`'s `change` (that one docks **up front, before
+  dispatching**, because "— unsaved scene —" never reaches `setEffect`). Rename deliberately does
+  not dock. `dockAll` goes through `dockCtl` per key so the rows' buttons can't desync from `popped`.
+- Because `#breakout` sits **outside** `#panel` (the panel's `backdrop-filter` + `overflow` would
+  clip a fixed child), three things reach it: the control CSS is scoped `#panel …, #breakout …`;
+  the delegated `onEdit` is attached to `#breakout` too; `sceneRangeInputs()` scans both.
+- A box holds top→bottom: the **owner line** (`.ctl-owner`), label + value, beat chips + pulse
+  picker, the slider, its **pulse-length** knob (`.plen`), and its **range editor** (`.rng-edit`).
+  The last three exist only in a box.
+- The **owner line** (`ctlOwner(key)` → `CTL_GROUPS[control.group]`, with a `"Filter · "` prefix
+  for `f_*` groups) exists because controls are singletons reused across effects — a stack of
+  boxes labelled "Speed", "Strength", "Size" is unreadable. Added in `POPPABLE.forEach`, not
+  `ctlHTML`, because non-poppable controls keep their `.ctl` in the panel.
 
-**Orbit editor** (`#carddlg`, button `#cardbtn`, formerly "Cardioid debug"). Descriptor-gated
-on `cardioid: true` (AnimeJulia / Burning Ship / Multibrot — the effects seeded from a
-Mandelbrot point): a **floating panel** (bottom-right, `z-index: 5` like `#breakout`, **no
-backdrop and not a modal**) rendering the connectedness locus in the c-plane with the seed's
-base curve, the path it actually traces at the current ratio/radii, the riding circle and the
-live seed point drawn over it. Non-modal on purpose: you tune the orbit sliders *while watching
-it*, so it must never intercept a click — don't reintroduce a backdrop or click-outside-closes.
-Its box is translucent (`rgba(10,6,4,0.55)` + `blur(6px)`, the same as `#panel`), and — like
-the **Palette inspector** (`#paldlg`, whose full-screen dark modal backdrop was likewise dropped
-for a translucent floating box) — it **hides on `m`** (and `Esc`) along with the menu, so the
-key gives a clean view; the `m`/`Esc` handlers call `cardOpen(false)` + `closePalDetail()`.
-It samples **`juliaSeedAt(outer, inner)`** — the pure part split out of `juliaSeed(dt)`, which
-also applies the **`cardx`** slider's `juliaOffX` real-axis shift — so opening it never advances
-the animation and it always shows the true orbit. `frame()` redraws it while open. The backdrop
-is **`cardLocus(w, h, d)`** — the Mandelbrot set at power 2, the degree-d Multibrot otherwise,
-matching whatever the seed is actually riding. Drawing the Mandelbrot under a Multibrot orbit
-made the panel *lie*: the seed looked comfortably outside the set while sitting deep inside the
-locus that governs it. Since Power drifts continuously, the bitmap is quantised to `CARD_POW_Q`
-(= the slider's own step) and rendered at **half resolution** into an offscreen canvas that
-`drawImage` scales up — a full-res 120-iteration repaint per frame is far too slow for a debug
-overlay. It keeps an integer-2 fast path (no `pow`/`atan2` per step). `card` is a **`var`** and
-`cardOpen`/`cardDraw` early-return on a falsy `card`, because `setEffect` calls `cardOpen` during
-startup before the declaration runs.
+**Per-slider range editor** (`makeRangeEditor`, foot of every pop-out box): `min`/`max`/`step`
+fields + ↺ (restore `RNG_ORIG`). `rngApply` writes the attribute onto the real slider(s), re-clamps
+and dispatches `input` on the **slider** so the delegated `onEdit` persists it normally (the number
+fields themselves are skipped in `onEdit`). `applyRanges` calls `rngSyncAll()`.
 
-**Seed PATH shape.** The editor also *chooses* the base curve, via **`seedPathMode`**
-(`"cardioid"` | `"circle"` | `"freehand"`), a per-path **`seedRideOn`** toggle, and freehand
-**`seedPts`** (compiled to an arc-length LUT `seedSpline`). **`basePathAt(th)`** is the fork:
-cardioid = the old `cardioidAt(th, power)·(1+MARGIN)·outerR + offX`; circle = a plain circle at
-that same scale; freehand = **`seedSplineAt`** on a closed periodic Catmull-Rom through `seedPts`,
-traversed by **arc length** so speed is even. `juliaSeedAt` adds the riding circle only when
-`seedRideOn` (radius 0 otherwise). **`juliaEase` is a flat 1 off the cardioid** — circle and
-freehand have no cusps, and constant-rate advance over `2π` already gives a `1/rpm` lap, so the
-whole ease/EASE_K apparatus is cardioid-only. The **default (cardioid + ride on) reproduces the
-original seed math byte-for-byte**, which is what keeps `juliaprobe` and every existing scene
-unchanged; all of this lives inside the `const RPM … function julia(` slice the probe drives.
-Config is **per-LAYER scene data** — `L.seedPath`/`seedRide`/`seedPts` on the stack item, mirroring
-`palette`/`paletteRev` exactly — so two layers of the same effect keep separate orbits. It saves,
-shares (points rounded to 4dp + capped by `seedPtsOk`) and rides in presets/backups through the
-layer serialization (`stackItemOut`/`mergeLayers`), with `extras[e]` (`presetExtra`/`saveExtra`/
-`mergeExtra`) as the per-effect **fallback** for a fresh layer or a scene saved before per-layer seed.
-Each stacked cardioid layer draws with its own shape: **`installSeedPath(L)`** (from `installStackItem`
-for `cardioid` effects) installs `L.seed*` (fallback `extras`) into the globals per layer, and the
-epilogue restores the selected layer's for the editor. **`captureSeed(L)`** (folded into
-`captureLayerExtras`, plus on every drag-move and `commitSeedPath`) writes the live globals back to the
-layer — a drag swaps in a NEW `seedPts` array (never mutate in place) so the per-layer `seedSplineFor`
-`WeakMap` cache invalidates and the render loop can't clobber the drag. `stageLayerExtras`/
-`applyLayerExtras` install the seed from the layer (NOT `loadExtra` — that would capture the effect
-default over the staged layer path during `setEffect`'s persist-freeze, the load-order trap). Editor
-wiring: mode buttons / the `Riding circle` box / `Clear` set the globals then `commitSeedPath()`
-(`captureSeed`+`saveExtra`+`persist`+`autosavePreset`); **freehand** captures a
-pointer stroke on `#cardcv`, thins it by min-spacing, and on release `resampleClosed`s it to evenly
-spaced control points before fitting. `syncOrbitUI()` reflects the live state onto the controls and
-is called from `loadExtra` (scene/layer switch) and on open. `seedDrawing` (the in-progress stroke)
-is transient; the committed shape is not.
+**Blocked controls.** A slider neutralised by another is greyed, its `+`/`−` killed, and a click
+flashes the blocker. `CTL_BLOCKED` maps blocked key → blocker key (`bandsize`/`banddim` → `band`,
+`nodspd` → `nod`); a control is *off* when its dual's **high thumb is 0** (`ctlHi`) — a stable read
+off the thumb, not the animated value. `refreshBlocked` runs from `refreshControlVisibility` **and
+`onEdit`**. Extend by adding a `CTL_BLOCKED` entry.
 
-**Camera on the CPU path.** The 12 shader effects' CPU mirrors call `camPix(x, y)` per
-pixel (writing the scratch pair `camPX`/`camPY` rather than allocating), which applies the
-same 2×2 `camM` map the shader camera uses. This forced the hoisted per-row terms inside
-the x loop: a rotation mixes x into the y coordinate, so `const py = f(y)` outside the
-inner loop is only valid while the camera is upright. **Copper Bars** keeps its
-row-constant fast path but gates it on `camOn()` — its bars really are constant across a
-row until you rotate, and then they aren't.
+**Orbit editor** (`#carddlg`, `#cardbtn`). Descriptor-gated on `cardioid: true`. A **floating,
+non-modal** panel (bottom-right, `z-index: 5`, translucent) — you tune the orbit sliders while
+watching it, so **never reintroduce a backdrop or click-outside-closes**. Like the Palette
+inspector (`#paldlg`) it **hides on `m`/`Esc`**.
+- Samples **`juliaSeedAt(outer, inner)`** — the pure part split out of `juliaSeed(dt)` — so opening
+  it never advances the animation. `frame()` redraws it while open.
+- Backdrop is **`cardLocus(w, h, d)`**: Mandelbrot at power 2, degree-d Multibrot otherwise —
+  drawing the wrong one made the panel lie. Quantised to `CARD_POW_Q` and rendered at half
+  resolution into an offscreen canvas; keeps an integer-2 fast path.
+- `card` is a **`var`** and `cardOpen`/`cardDraw` early-return on falsy `card`, because `setEffect`
+  calls `cardOpen` during startup before the declaration runs.
 
-**Two menus, split by what the thing IS.** The ☰ opens the **menubar** (`src/ui-menubar.js`,
-`#menubar`) — a traditional multi-level fold-out for everything that is *not* scene data:
-System (audio + resolution), Cloud profile, Credits, plus Controls panel / Fullscreen /
-Hide all UI and the help link. The **panel** (`#panel`) is now only the scene editor. The ☰
-therefore **no longer toggles the panel** — `menubarToggle()` does the menu, and the `m` key
-still toggles the panel directly, which keeps the fast route to the sliders.
+**Seed PATH shape.** `seedPathMode` (`"cardioid"` | `"circle"` | `"freehand"`), a per-path
+`seedRideOn` toggle, and freehand `seedPts` (compiled to an arc-length LUT `seedSpline`).
+**`basePathAt(th)`** is the fork; freehand is a closed periodic Catmull-Rom traversed by arc
+length. `juliaSeedAt` adds the riding circle only when `seedRideOn`. **`juliaEase` is a flat 1 off
+the cardioid** — circle and freehand have no cusps. The default (cardioid + ride on) reproduces
+the original seed math byte-for-byte.
+- Config is **per-LAYER scene data** (`L.seedPath`/`seedRide`/`seedPts`), mirroring
+  `palette`/`paletteRev`, with `extras[e]` as the per-effect fallback. Saves, shares (4dp + capped
+  by `seedPtsOk`) and rides in presets/backups via `stackItemOut`/`mergeLayers`.
+- **`installSeedPath(L)`** (from `installStackItem`) installs per layer; the epilogue restores the
+  selected layer's. **`captureSeed(L)`** writes globals back — a drag swaps in a **NEW** `seedPts`
+  array (never mutate in place) so the `seedSplineFor` WeakMap invalidates.
+- `stageLayerExtras`/`applyLayerExtras` install the seed from the layer, **not `loadExtra`** —
+  that would capture the effect default over the staged layer path during `setEffect`'s
+  persist-freeze.
+- `syncOrbitUI()` reflects live state onto the controls (from `loadExtra` and on open).
+  `seedDrawing` is transient; the committed shape is not.
 
-**The menubar ADOPTS the existing nodes, it does not rebuild them.** `#sysbox`, `#cloudbox`
-and `#creditbox` are authored in the panel markup (hidden), and a `{adopt: "id"}` menu item
-*moves their children* into its panel — the same trick `buildFilterUI` uses to pull
-`#ctl-<key>` into a filter body. That is what keeps every listener, every `el(id)` lookup and
-every sync path (`setAudioUI`, the cloud module, the Google button rendered into
-`#cloud-signin`) working with no changes: rebuilding this markup in the menubar would mean
-re-wiring the whole cloud module. `ui-menubar.js` is **last in the manifest** so every other
-slice has already found its elements — moving a node never detaches a listener, so order only
-matters for startup lookups.
+**Camera on the CPU path.** The shader effects' CPU mirrors call `camPix(x, y)` per pixel (writing
+the scratch pair `camPX`/`camPY` rather than allocating). This forced hoisted per-row terms inside
+the x loop — a rotation mixes x into y, so `const py = f(y)` outside the inner loop is only valid
+while the camera is upright. **Copper Bars** keeps its row-constant fast path but gates it on
+`camOn()`.
 
-**`returnAdopted()` is load-bearing and its absence is destructive.** Panels are rebuilt on
-every open and destroyed on close, so an adopted block must be moved back to its home box
-*before* its panel is removed — otherwise closing the menu **deletes the real audio buttons,
-the resolution select, `#cloudrow` and the credits list from the document**, and nothing that
-looks them up by id works again. It shipped broken exactly once; the probe caught it by
-reopening the menu and finding an empty panel. `box.dataset.adopt` is how each block knows
-where home is.
+### UI: two menus
+The ☰ opens the **menubar** (`src/ui-menubar.js`, `#menubar`) — everything that is *not* scene
+data: System ▸ Audio / Resolution, Cloud profile, Credits, Controls panel / Fullscreen / Hide all
+UI, help link. The **panel** (`#panel`) is only the scene editor. ☰ **no longer toggles the
+panel**; the `m` key does.
 
-Two smaller consequences. `#menubar` is a full-screen overlay that **catches** pointer
-events while open, because it is the click-outside closer and without that a dismissing click
-falls through to the canvas and pauses the animation. And the control CSS is scoped
-`#panel …`, so every rule an adopted block needs names `#menubar` too — including the *font*,
-which lives on `#panel` rather than `body`, so an adopted block would otherwise render in the
-browser's serif default.
+**The menubar ADOPTS existing nodes, it does not rebuild them.** `#audiobox`, `#resbox`,
+`#cloudbox`, `#creditbox` are authored in the panel markup (hidden) and a `{adopt: "id"}` menu item
+*moves their children* into its panel — same trick `buildFilterUI` uses. That keeps every listener,
+`el(id)` lookup and sync path working. `ui-menubar.js` is **last in the manifest** so every slice
+has already found its elements. **One adopt host per submenu**: Audio and Resolution were one
+`#sysbox` until they were split, and each leaf needs its own home element for `returnAdopted`.
 
-**Panel layout.** A header (title + subtitle) followed by **five `.box`
-sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is
-**transient**): *Scene* (the scene chooser, auto-cycle, TTL and transition),
-*Scene filters*, *Beat tuning*, *Layers*, and ***Layer effect & filters*** (`#effect`,
-`#fxctl`, Orbit editor, Reset, the per-layer filters and the palette).
-`buildControls` routes a control by
-`host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
-The box title is **singular in the effect** and names the layer — everything in it edits the
-ONE selected layer, and a plural "Effects" read as "all of the effects".
-**`#effect` is hidden in this box, not deleted.** Every layer row carries its own chooser
-(see the stack section), so a second visible copy of the same control was redundant — but the
-`<select>` remains the effect **value store**: `setEffect` writes `effectSel.value`,
-`applyBlob` validates against its `<option>` list, and its `change` event is what the layer
-rows and everything else dispatch through. Deleting it would mean rewriting all of those.
-Exactly the arrangement `#palette` has behind the swatches. Consequence: the topmost group
-heading in `#fxctl` butts straight against the box title again, where its top border reads as
-a stray line under the heading rather than as a separator — so it is suppressed via
-**`.grp-first`, set by `markFirstGroup()` from `refreshControlVisibility`, NOT `:first-child`**.
-That distinction is the whole point: every group exists in the DOM (they are built once from
-`CONTROLS`) and only some are *shown*, so the first *child* is always "Shape & motion" while
-the first *visible* one depends on the effect — "Cardioid seed" on AnimeJulia, "Plasma" on
-Plasma, and so on for 16 different values. A `:first-child` rule therefore fixed the point
-effects and left the divider showing on every other effect, which is exactly how it shipped
-once. Because it re-runs on every visibility pass it also survives ticking a filter, which can
-introduce a new group above the rest. Note the Restore dialog's "Effect settings" checkbox is a
-*different* thing — a blob category (states/beats/extras), not this section.
+**`returnAdopted()` is load-bearing and its absence is destructive.** Panels are rebuilt on open
+and destroyed on close, so an adopted block must be moved back to its home box *before* its panel
+is removed — otherwise closing the menu **deletes the real audio buttons, resolution select,
+`#cloudrow` and credits list from the document**. `box.dataset.adopt` is how each knows home.
 
-**Palette cycle.** The old "Auto-morph palettes" checkbox is gone; a `palcycle` dual
-slider (host `pal`) sets the **[min,max] seconds one morph takes**, and `morphMs()` draws
-each cycle's duration from it the way `ttlMs()` does for presets. Both thumbs at 0 pins
-the palette — `morphing` is now *derived* (`palCycleOn()`), not stored, and
-`syncMorphFromSlider()` starts/pins the blend on any edit. `extras.morph` is still
-written for backward compatibility, and `loadExtra` seeds the slider to 0 for a scene
-saved with `morph:false` before the slider existed.
+Two consequences: `#menubar` is a full-screen overlay that **catches** pointer events while open
+(it's the click-outside closer; without that a dismissing click pauses the animation), and every
+CSS rule an adopted block needs must name `#menubar` alongside `#panel` — including the *font*,
+which lives on `#panel` rather than `body`.
 
-**Blocked controls.** A slider that currently does nothing because another is at its neutral
-value is greyed, its `+`/`−` button killed, and a click flashes the blocker so you know what to
-change first. `CTL_BLOCKED` maps a blocked key → the blocker key (e.g. `bandsize`/`banddim` →
-`band`, `nodspd` → `nod`); a control counts as *off* when its dual's **high thumb is 0** (`ctlHi`),
-so the drift can never leave 0 — a stable read off the thumb, not the animated value. `refreshBlocked`
-toggles `.ctl-blocked` on the menu row + its `#breakout` box and stashes the blocker in
-`row.dataset.blocker`; it runs from `refreshControlVisibility` (effect switch) **and `onEdit`** (a
-live thumb drag can neutralise or free a dependent). A delegated `#panel` click on a blocked row
-calls `flashCtl(blocker)` — opens its section, scrolls it in, pulses it (`.ctl-flash`, a one-shot
-keyframe restarted via `void offsetWidth`). Extend by adding a `CTL_BLOCKED` entry.
+**Panel layout.** Header + **five `.box` `<details>` sections** (fold state transient): *Scene*
+(chooser, auto-cycle, TTL, transition), *Scene filters*, *Beat tuning*, *Layers*, and *Layer effect
+& filters* (`#effect`, `#fxctl`, Orbit editor, Reset, per-layer filters, palette). `buildControls`
+routes by `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
+- **`#effect` is hidden in this box, not deleted** — every layer row has its own chooser, but the
+  `<select>` remains the effect **value store** (`setEffect` writes `.value`, `applyBlob` validates
+  against its options, its `change` is what everything dispatches through). Same arrangement
+  `#palette` has behind the swatches.
+- The first *visible* group heading's top border is suppressed via **`.grp-first`, set by
+  `markFirstGroup()` from `refreshControlVisibility` — NOT `:first-child`**. Every group exists in
+  the DOM and only some are shown, so `:first-child` is always "Shape & motion" while the first
+  visible one differs per effect.
 
-**Reverse colours** (`#palrev`) flips the palette's colour order **per layer** — it mirrors
-`palette` exactly: a live global `paletteReverse` is the selected layer's value, stored on the
-item as `L.paletteRev` (and in `extras[e].paletteRev` for the single-layer fallback), with
-`layerPalRev(L)` the read-through (live checkbox for the selected, `L.paletteRev` else). It flips
-indices **1..255** of the final baked LUT (255↔1, …, 128 fixed), leaving index 0 as the forced
-black — so the dark/background end stays black while the ramp runs the other way. Applied at both
-bake choke points: `composePalette` (single-layer/CPU `palette[]`) and `bakeLayerBytes(…, rev)`
-(per-layer `palL[]`, re-baked every frame so a toggle needs no cache bust). Reversing *after*
-banding just runs the stripes the other way. Because it flips the baked bytes rather than the
-palette function, it needs no change to `paletteRGB`/morph.
+**Palette cycle.** A `palcycle` dual slider (host `pal`) sets the **[min,max] seconds one morph
+takes**; `morphMs()` draws each cycle's duration like `ttlMs()`. Both thumbs at 0 pins the palette
+— `morphing` is *derived* (`palCycleOn()`), not stored, and `syncMorphFromSlider()` starts/pins the
+blend on any edit. `extras.morph` is still written for backward compat.
 
-**Background** (`#palbg`) sets what heat-0 (unlit) pixels show, **per layer**: `paletteBg` ∈
-`"palette"` (**the default** — leave index 0 as the composed colour) | `"black"` (the old
-forced black) | `"white"`. The default used to be `"black"`; it is `"palette"` in both places
-that decide it — the initial global and **`bgOk`'s fallback**, which is also the validator for
-loaded scenes. So a scene that stored a background explicitly keeps it, and only one saved
-before the control existed opens on `"palette"` instead. Every built-in ramp starts at
-`[0,0,0]`, so the shipped look is unchanged; what the default fixes is a *custom* ramp whose
-colour 0 is not black, which was silently overridden. Same per-layer plumbing as `paletteRev` (`L.paletteBg`,
-`extras[e].paletteBg`, `layerPalBg(L)`, `bgOk` validation — also stubbed in `filterprobe`), applied
-at the same two choke points: `composePalette` forces `palette[0]` and `bakeLayerBytes(…, bg)` forces
-`out[0]`. In a multi-layer scene it is genuinely per-layer — a layer's unlit pixels take its own
-background colour into the OKLab blend — so "white" is most useful on a bottom/background layer.
+**Reverse colours** (`#palrev`) flips the palette order **per layer** — live global
+`paletteReverse` for the selected layer, `L.paletteRev` otherwise (`layerPalRev(L)` reads through),
+plus `extras[e].paletteRev` as the single-layer fallback. Flips indices **1..255** of the final
+baked LUT, leaving 0 as the background. Applied at both bake choke points: `composePalette` and
+`bakeLayerBytes(…, rev)`.
 
-**Palette editor** (`#paledlg`, `src/palette-editor.js`). Every swatch carries a small button:
-**`+` on a built-in makes an editable copy**, **`✎` on a custom edits it** — the shipped ramps
-stay pristine, so "Reset this effect" and every existing scene keep meaning what they meant.
-The ramp is edited as colour **stops** on a gradient bar (click the bar to add one, drag a
-handle to move it, native `<input type="color">` for the colour). It is a floating,
-translucent, non-modal panel like the inspector and the Orbit editor, and hides on `m`/`Esc`.
+**Background** (`#palbg`) sets what heat-0 pixels show, **per layer**: `paletteBg` ∈ `"palette"`
+(**default** — leave index 0 as composed) | `"black"` | `"white"`. `"palette"` is the default in
+both places that decide it: the initial global and **`bgOk`'s fallback** (also the loaded-scene
+validator). Same per-layer plumbing as `paletteRev`, same two choke points.
 
-**It edits LIVE, not as a draft, and that is the whole design.** A palette is referenced by
-*index* and re-derived from `PALETTES` every frame (per-layer bakes, the morph clock, the CPU
-mirror), so a draft ramp held to one side would have to be threaded through all of those.
-Instead the custom is created and *selected* the moment the editor opens and every edit
-rewrites it in place, so the entire pipeline previews it for free with no special case. The
-cost of that: opening `+` on a built-in creates a copy immediately, which would litter the
-list every time you merely looked — so **a fresh copy closed without a single edit is
-removed again**. `Save & close` exists precisely to override that (keep an unedited
-duplicate); it flushes nothing, because edits are already saved.
+**Palette editor** (`#paledlg`, `src/palette-editor.js`). `+` on a built-in makes an editable copy;
+`✎` on a custom edits it — the shipped ramps stay pristine. Floating, translucent, non-modal;
+hides on `m`/`Esc`.
+- **It edits LIVE, not as a draft.** A palette is referenced by *index* and re-derived from
+  `PALETTES` every frame, so a draft would have to be threaded through all of that. The custom is
+  created and selected on open and every edit rewrites it in place. Consequence: **a fresh copy
+  closed without a single edit is removed again**; `Save & close` overrides that.
+- **Customs live in the SAME `PALETTES` array**, appended after the built-ins, so everything works
+  untouched. `PAL_BUILTIN` is captured immediately after the array literal. `grad()` hangs its
+  `stops` on the returned fn; `palStopsOf` falls back to sampling for the three procedural ramps.
+- **`applyBlob` must install customs BEFORE it validates any palette value.** `customPalettesOk`
+  drops malformed entries and **sorts stop lists** (`grad` interpolates backwards through an
+  unsorted one and renders flat).
+- **Deleting a custom shifts every later custom's index down**, so `palRemapDeleted` rewrites the
+  live stack, per-effect `extras`, and every preset. Already-generated share links aren't rewritten
+  (a link naming a missing custom falls back like any out-of-range palette).
 
-**Customs live in the SAME `PALETTES` array**, appended after the built-ins, so `paletteRGB`,
-`setBase`, `pickOther`, `bakeLayerBytes`, the swatches and the `<select>` options all work
-untouched and a custom is a first-class choice everywhere. `PAL_BUILTIN` is captured
-immediately after the array literal, so it is the shipped count whatever is appended later.
-`grad()` now hangs its `stops` on the returned fn, which is what lets the editor seed itself
-with a built-in's **exact** control points; `palStopsOf` falls back to sampling for the three
-procedural ramps (Fire / Rainbow / Grayscale).
+**Palette preview picker.** `#palette <select>` is the value store but **hidden**; the visible
+control is `#palswatches` (one gradient per `PALETTES` entry from `palGradientCss(i)`). A swatch
+click sets `paletteSel.value` and dispatches a bubbling `change` — **no** extra state or
+persistence. `syncPalSwatches()` mirrors the highlight wherever the value changes programmatically
+(`showMorphTarget`, `applyLayerExtras`, the `change` handler). Keep the select in the DOM.
 
-Two consequences to keep in mind, both load-bearing:
-- **`applyBlob` must install customs BEFORE it validates any palette value** — a scene naming
-  custom #21 needs #21 to exist by then, or `paletteOK` rejects it and silently falls back to
-  a built-in. `customPalettesOk` drops malformed entries (and sorts stop lists, since `grad`
-  interpolates backwards through an unsorted one and renders as one flat colour) instead of
-  letting bad data reach `grad()`.
-- **Deleting a custom shifts every later custom's index down**, so `palRemapDeleted` rewrites
-  the stored references — the live stack, the per-effect `extras`, and every preset. Without
-  it, deleting the first of three customs silently re-points scenes at the wrong ramp. Share
-  links already generated are not rewritten; a link naming a custom the recipient lacks fails
-  validation and falls back, which is the same behaviour as any out-of-range palette.
+**`setEffect(i, save)`** shows the descriptor's `params`, runs `onEnter`, and swaps five parallel
+per-effect maps: `states[e]` (slider values), `beatStates[e]` (L/M/H chips), `pulseStates[e]`
+(`PULSE_SHAPES` key, default `"snap"`), `plenStates[e]` (pulse length, default `PULSE_DROP`),
+`extras[e]` (palette, morph, show-box, random-seed). It calls `save*` for the outgoing effect and
+`load*` for the incoming one.
 
-**Palette preview picker.** The `#palette <select>` is the palette **value store** but is
-**hidden** (`buildPalSwatches` sets `display:none`); the visible control is `#palswatches`,
-a gradient swatch per `PALETTES` entry built from `palGradientCss(i)`. A swatch click just
-sets `paletteSel.value` and dispatches a bubbling `change`, so the existing morph/`setPalette`
-handler and the delegated persist/autosave fire exactly as a manual dropdown pick did — the
-swatches add **no** state or persistence. `syncPalSwatches()` mirrors the active highlight
-from `paletteSel.value`; it is called wherever the value changes programmatically
-(`showMorphTarget` during a cycle, `applyLayerExtras` on a layer/effect switch, and the
-`change` handler). Because the swatches build from `PALETTES`, adding a palette needs an
-entry there **and** a matching `<option>` in the select (its value is the index, still read
-for validation). Keep the select in the DOM: a JS failure leaves the native dropdown usable.
+**`setEffect` deliberately does not clear the heat buffer** — it used to, which blinked black on
+every switch including every auto-cycle change. Leaving the outgoing heat lets it decay under the
+incoming scene. `acc = 0` still resets.
 
-`setEffect(i, save)` shows the descriptor's `params` controls, runs `onEnter`, and swaps
-five parallel per-effect state maps:
-- `states[e]` — slider values (seeded from the descriptor's `defaults`).
-- `beatStates[e]` — the L/M/H beat-chip selections (seeded from `beat`).
-- `pulseStates[e]` — per-slider **beat-pulse shape** (a `PULSE_SHAPES` key; seeded
-  from the descriptor's optional `pulse` map, else `"snap"`).
-- `plenStates[e]` — per-slider **beat-pulse length** in seconds (seeded from the
-  descriptor's optional `plen` map, else `PULSE_DROP`).
-- `extras[e]` — palette, auto-morph, show-box, random-seed (seeded from `extras`).
+**Beat chips ship unarmed** — every `beat` map is empty and unarmed styling is colourless and dim;
+the per-band colours (L blue, M green, H red) apply only to `.on`.
 
-Switching effects calls `saveState/saveBeat/savePulse/savePlen/saveExtra` for the outgoing
-effect and `loadState/loadBeat/loadPulse/loadPlen/loadExtra` for the incoming one, so each
-effect is a fully independent scene.
+**Beat-trigger dots** (`.ctl-dot`, `dotEls`): up to three per menu row, one per band, same colours
+as the chips. `display:none` unless armed, `opacity .34` when armed and idle, lit by `flashChips()`.
+Two things keep them honest: `syncDots()` is called *from* `syncChips()` (so every arming path
+updates both), and dots are built only for keys present in `chipEls`.
 
-**`setEffect` deliberately does not clear the heat buffer.** It used to
-(`fire.fill(0)` + `glClearHeat()`), which blinked the screen to black on every switch —
-including every auto-cycle preset change, a few seconds apart. Leaving the outgoing
-effect's heat in place lets it decay *under* the incoming scene, so the switch dissolves
-instead. It only reads as a fade when the incoming scene has a **feedback filter** (Fire
-or Fade pixel) to decay it; with none, `applyFilters`/`glBeginHeat` rewrite the whole
-buffer on the first frame regardless — that is the clean-slate contract those paths
-already document, not a regression. `acc = 0` still resets, so no banked sim time carries
-across.
-
-**Beat chips ship unarmed.** Every effect's `beat` map is empty and the *unarmed*
-chip styling is deliberately colourless and dim — the per-band colours (L blue, M green,
-H red) apply only to `.on`. A vividly outlined chip reads as enabled even when nothing is
-armed, which is exactly how it used to look.
-
-**Beat-trigger dots** (`.ctl-dot`, `dotEls`) give the same information *without* popping
-every box: each menu row carries up to three dots between the name and the `+`/`−` button,
-one per band, in the same colours as the chips. A dot is `display:none` unless its band is
-armed, sits at `opacity .34` when armed and idle, and is lit by `flashChips()` on that
-band's beat — same `audio.pulse` the chips ride, quieter treatment, because it is an
-overview rather than the control. So the shape of a preset's beat mapping reads straight
-off the menu. Two things keep it honest: `syncDots()` is called *from* `syncChips()` rather
-than alongside it, so every path that arms a chip (`loadBeat`, Reset, a chip click) updates
-both and none can be forgotten; and dots are built only for keys present in `chipEls`, so
-a `plain` control like `points` — poppable but never armable — correctly gets none.
-`#panel.audio-off .ctl-dot` dims them when nothing can trigger, matching `.bandchips`.
-`flashChips` only runs while `audio.on`, plus once on the way down, which is what clears
-the inline lit styles back to the CSS default.
-
-**Beat-pulse shape & length.** When an armed slider (audio on + an L/M/H chip) gets a
-beat, `updateAnims` snaps it to the high thumb and decays `a.pulse` linearly 1→0 over
-**that slider's own** `pulseLen[id]` seconds (a `.plen` range in its pop-out box, bounds
-`PLEN_MIN`–`PLEN_MAX`, default `PULSE_DROP` = the old hardcoded 0.2s, so untouched scenes
-are unchanged); the per-slider shape (`pulseShape[id]`, a `PULSE_FN` entry) *reshapes*
-that decay into the applied value — `a.apply(mn + shape(a.pulse)*(mx-mn))`. Every
-`PULSE_SHAPES` fn maps the phase `p∈[0,1]` to an amplitude in `[0,1]` (so the value
-never leaves `[lo,hi]`), with `f(1)=1` (full at the beat) and `f(0)=0` (back to rest);
-`snap` is the identity, i.e. the shipped default reproduces the old linear fall exactly.
-A `<select>.pulsesel` per slider (built in `makeChips`, alongside the chips) drives
-`pulseShape[id]`; its `change` bubbles to the delegated `onEdit` (persist + autosave),
-like the palette `<select>`. `pulseEls`/`syncPulse` mirror `chipEls`/`syncChips`, and
-`plenEls`/`syncPlen`/`prunePlens`/`mergePlen` mirror the pulse-shape set one-for-one. `cycle` (auto-cycle on/off), **`ttl` (Preset TTL)**, `scale`
-(resolution) and panel open/closed are shared/global (top-level blob fields, not per
-effect and not in a preset). `frame()` routes shader effects (those with a `draw`
-hook) past the fire sim; `simulate()` stamps the 2D chaos game when `fractal2d`, else
-the 3D tetra.
+**Beat-pulse shape & length.** On a beat, `updateAnims` snaps an armed slider to the high thumb and
+decays `a.pulse` linearly 1→0 over that slider's own `pulseLen[id]` seconds (`.plen` range,
+`PLEN_MIN`–`PLEN_MAX`, default `PULSE_DROP` = 0.2s). The per-slider `pulseShape[id]` *reshapes*
+that decay: `a.apply(mn + shape(a.pulse)*(mx-mn))`. Every `PULSE_SHAPES` fn maps `p∈[0,1]` →
+`[0,1]` with `f(1)=1` and `f(0)=0`; `snap` is the identity. `pulseEls`/`syncPulse` mirror
+`chipEls`/`syncChips`; `plenEls`/`syncPlen`/`prunePlens`/`mergePlen` mirror the pulse-shape set.
 
 ### The effect stack (layers)
-A scene is an **ordered list of up to 4 effects** composited into the one heat buffer,
-not a single effect. `stack` is the list, `stackSel` the selected index, `STACK_MAX` = 4.
+A scene is an **ordered list of up to 4 effects** composited into the one heat buffer. `stack` is
+the list, `stackSel` the selected index, `STACK_MAX` = 4.
 
-**Never call it `layers` in code.** `layers` is already a CONTROLS key (`layerCount` /
-`LAYER_MAX` — the count of progressively smaller copies of the *fractal*) and it is
-persisted in every `states[e]`. "Layer" is the user-facing word in the menu and README
-only. `stackSel`, not `slot`: `slot` is already a local in both ping-pong loops.
+**Never call it `layers` in code.** `layers` is already a CONTROLS key (`layerCount`/`LAYER_MAX` —
+copies of the *fractal*) persisted in every `states[e]`. "Layer" is the user-facing word only.
+`stackSel`, not `slot` (`slot` is a local in both ping-pong loops).
 
-**`effect` survives as the SELECTED item's effect**, assigned only in `setEffect`. That
-is what keeps this feature small — every editor-side use (`shownKeys`,
-`refreshControlVisibility`, `refreshBreakout`, `resetControl`, `ctlOwner`, the cardioid
-button) keeps its exact meaning and needed no edit. Only the render path
-reads `stack`. If `EFFECTS[effect]` ever reappears in a render path it will render the
-selected item's descriptor for *every* item — invisible whenever two items share an
-effect.
+**`effect` survives as the SELECTED item's effect**, assigned only in `setEffect` — that is what
+keeps this feature small (every editor-side use kept its meaning). Only the render path reads
+`stack`. **If `EFFECTS[effect]` ever reappears in a render path** it renders the selected item's
+descriptor for every item — invisible whenever two items share an effect.
 
-**Pressing anywhere in a layer row selects that layer** — the mute dot, the gain slider, the
-blend dropdown, the effect chooser, all of it. Those controls each `stopPropagation()` on
-`click` so their own action doesn't double-fire, which is why selection is a **capture-phase
-`pointerdown`** on the row: it runs before any child handler can stop it *and* before the
-control acts, so a gain drag or a blend pick applies to a layer that is already selected
-rather than selecting afterwards off a stale index. The row's `click` listener is kept
-alongside it because a synthetic click (tests, assistive tech) emits no `pointerdown`, and
-`selectStack` early-returns when the row is already selected so the pair cannot double-work.
+**Pressing anywhere in a layer row selects that layer.** Child controls `stopPropagation()` on
+`click`, so selection is a **capture-phase `pointerdown`** on the row — it runs before any child
+handler and before the control acts, so a gain drag applies to an already-selected layer. The
+row's `click` listener is kept alongside for synthetic clicks; `selectStack` early-returns when
+already selected.
 
-**The grab handle is the one exclusion, for a mechanical reason.** `selectStack` re-runs
-`syncStackUI`, which rebuilds every row — that would detach the handle holding the pointer
-capture mid-drag, and Chromium drops capture on reparent, killing the drag after the first
-pixel (the same trap the drag code documents). So you still drag to reorder without selecting.
+**The grab handle is the one exclusion**: `selectStack` re-runs `syncStackUI`, which rebuilds every
+row — that would detach the handle holding pointer capture, and Chromium drops capture on reparent.
 
-**Every layer row carries its own effect `<select>`** (`select.lyr-name`, built in
-`syncStackUI`) — re-pointing a layer is the commonest thing you do to one, and it used to
-mean select the row, then scroll to the chooser in *Layer effect & filters*. Both go through the
-same path. The load-bearing part: a change on a row that is **not** selected calls
-`selectStack(j)` **first**, because `setEffect` edits whatever `stackSel` names, and going
-through `selectStack` is what runs the `freezeItem`/`stageLayerExtras` sequence — writing
-`L.fx` directly here would strand that layer's palette + filters on the outgoing effect (the
-load-order trap below). `fx` is read off the `<select>` **before** either call, since both
-re-run `syncStackUI` and the element is detached by the time they return.
+**Every layer row carries its own effect `<select>`** (`select.lyr-name`). A change on a row that
+is **not** selected calls `selectStack(j)` **first** — `setEffect` edits whatever `stackSel` names,
+and going through `selectStack` is what runs the `freezeItem`/`stageLayerExtras` sequence. `fx` is
+read off the `<select>` **before** either call, since both re-run `syncStackUI`.
 
-**The DOM is the store for the selected item; every other item holds plain numbers.**
-`loadState` has always written the DOM and dispatched synthetic `input` rather than
-calling the CONTROLS `apply` functions, so this adopts the existing arrangement instead
-of fighting it. `bandOf`/`beatOf`/`shapeOf`/`plenOf` are one branch each and
-short-circuit to the existing singletons whenever the stack holds one item — which is
-what made the refactor inert *by construction* rather than by testing.
-`freezeItem`/`thawItem` move an item between the two representations and **null the
-record on thaw**: exactly one of "selected" / "holds numbers" is true for an item, ever.
-A path that reads a frozen record without freezing first silently loses the user's last
-edit — the failure class the `chipEdited()` history documents.
+**The DOM is the store for the selected item; every other item holds plain numbers.** `loadState`
+writes the DOM and dispatches synthetic `input`. `bandOf`/`beatOf`/`shapeOf`/`plenOf` short-circuit
+to the existing singletons when the stack holds one item. `freezeItem`/`thawItem` move an item
+between representations and **null the record on thaw**: exactly one of "selected" / "holds
+numbers" is true, ever. Reading a frozen record without freezing first silently loses the last edit.
 
-**Palette and the filter stack are per-layer**, stored on the item as `L.palette` +
-`L.filters` (not in the per-effect `extras[e]` map, so two layers of one effect can look
-different). The live `paletteSel.value` + `activeIds` are the SELECTED layer's — the same
-"DOM is the store for the selected item" rule. `loadExtra` handles only the still-per-effect
-bits (show-box, random-seed, the palette-cycle migration); `applyLayerExtras(L)` puts a
-layer's palette + filters live (falling back to the effect's stored/default extras when the
-field is null — a fresh layer, or a scene saved before per-layer, which is what makes an old
-stacked scene still load with every layer sharing one palette), and `captureLayerExtras`
-reads them back. `freezeItem` captures on deselect; the lifecycle applies on select.
-**The load-order trap:** `setEffect` ends in `persist()`, which snapshots the stack by
-freezing the selected item — so switching layers runs a `stageLayerExtras(L)` (the two
-assignments `captureLayerExtras` reads) BEFORE `setEffect`, or that persist would stamp the
-OUTGOING layer's palette/filters onto the incoming one and collapse both to one look. That
-bug is invisible on first glance and cost a full debug pass. Consequence worth knowing:
-changing a layer's effect via the chooser KEEPS its palette/filters (they belong to the
-layer, not the effect) — a deliberate change from the old per-effect behaviour. Single-layer
-scenes are byte-identical to before (verified on the deterministic Canvas2D path, since the
-SwiftShader GPU path is bistable and can't gate this).
+**Palette and the filter stack are per-layer** (`L.palette`, `L.filters` — not in `extras[e]`, so
+two layers of one effect can differ). The live `paletteSel.value` + `activeIds` are the SELECTED
+layer's. `loadExtra` handles only the still-per-effect bits; `applyLayerExtras(L)` puts a layer's
+palette + filters live (falling back to the effect's stored/default extras when null);
+`captureLayerExtras` reads them back.
+- **The load-order trap:** `setEffect` ends in `persist()`, which freezes the selected item — so
+  switching layers must run `stageLayerExtras(L)` **BEFORE** `setEffect`, or that persist stamps
+  the OUTGOING layer's palette/filters onto the incoming one.
+- Consequence: changing a layer's effect KEEPS its palette/filters (they belong to the layer).
 
-**Animation is split scene vs layer.** `bindRange` tags each `anims` entry `scene` via
-`isSceneCtl` — the palette, banding, the camera and display zoom. **Most filter params are
-now LAYER keys** (per stacked effect), so each effect in a stack carries its own filter
-settings; only `SHARED_FILTER_KEYS` stay scene-wide — `burn` (the sim tick-rate, a shared
-clock), `bloom` (the glow), and the four screen filters (`barrel`/`scan`/`scancount`/
-`vignette`/`grain`), because those act on the ONE finished image. Scene keys step once per
-frame from the DOM and apply immediately; layer keys are stepped once per item and only
-*computed*, then `installStackItem(L)` pushes that item's values into the globals just
-before it draws. **Feedback filter params are read during propagation, which in the
-single-layer path runs BEFORE `installStackItem`** — so the single-layer branch of `frame()`
-calls `installStackItem(live[0])` up front to apply them (the same values `updateAnims` used
-to apply directly, so a one-layer scene stays byte-identical). The CPU path already installs
-before it simulates, so it needed no change.
+**Animation is split scene vs layer.** `bindRange` tags each `anims` entry `scene` via `isSceneCtl`
+— palette, banding, camera, display zoom. **Most filter params are LAYER keys**; only
+`SHARED_FILTER_KEYS` stay scene-wide — `burn` (shared sim clock), `bloom`, and the screen filters
+(`barrel`/`scan`/`scancount`/`vignette`/`grain`), which act on the ONE finished image. Scene keys
+apply immediately; layer keys are only *computed*, then `installStackItem(L)` pushes them into the
+globals before that item draws. **Feedback params are read during propagation, which in the
+single-layer path runs BEFORE `installStackItem`** — so that branch of `frame()` calls
+`installStackItem(live[0])` up front.
 
-`updateAnims` is **key-major, not item-major**, and that ordering is load-bearing: each
-fresh drift segment draws twice from `Math.random`, so stepping key-by-key keeps a
-one-item stack drawing in exactly the sequence the un-stacked code did. Item-major is
-equally correct and would silently change every existing scene.
+`updateAnims` is **key-major, not item-major** — each fresh drift segment draws twice from
+`Math.random`, so key-major keeps a one-item stack drawing in exactly the old sequence.
 
-An **epilogue `installStackItem(stack[stackSel])`** runs after the loop, because
-`glRender`, `render()` and `cardDraw` read these globals outside any item's turn.
-Without it the Orbit editor tracks whichever item drew last.
+An **epilogue `installStackItem(stack[stackSel])`** runs after the loop, because `glRender`,
+`render()` and `cardDraw` read these globals outside any item's turn.
 
-Beats need no per-item work: `beatReact`/`pulseShape`/`pulseLen` stay singletons for the
-selected item, and because the stack loop lives *inside* `updateAnims`, every item sees
-the same latched `audio.beatNow[]`. **`clearBeats()` must stay after the whole loop** —
-hoisting the loop into `frame()` around `updateAnims` leaves items 2–4 never pulsing,
-which reads as flaky beat detection.
+Beats need no per-item work (`beatReact`/`pulseShape`/`pulseLen` stay singletons; the stack loop
+lives *inside* `updateAnims` so every item sees the same latched `audio.beatNow[]`).
+**`clearBeats()` must stay after the whole loop** — hoisting the loop into `frame()` leaves items
+2–4 never pulsing.
 
 **Phase clocks are per item, via `PHASE_VARS`** — a name/getter/setter table over all 16
-accumulators (`simT`, `spinAngle`, `nodPhase`, `juliaOuter/Inner`, `plasmaTime`, …),
-installed before an item draws and captured after. **Add a line when you add an effect
-that accumulates a clock**, or two items running it share one clock and render as a
-single slightly brighter copy — no error, no probe, the most easily missed thing here.
-A table rather than renaming the 16 into one object because `juliaprobe` slices the real
-`juliaOuter`/`juliaInner` source out of this file by marker.
-`installStack` seeds every item's phase from the **current** clocks, not the fresh ones
-`newStackItem` makes: accumulated phase deliberately does not travel with a preset, so
-applying one must not rewind `simT` and snap every animation back to its start.
+accumulators (`simT`, `spinAngle`, `nodPhase`, `juliaOuter/Inner`, `plasmaTime`, …), installed
+before an item draws and captured after. **Add a line when you add an effect that accumulates a
+clock**, or two items share one clock and render as a single brighter copy — no error, no probe,
+the most easily missed thing here. `installStack` seeds every item's phase from the **current**
+clocks, so applying a preset doesn't rewind `simT`.
 
-**Compositing.** Each item renders into a scratch heat texture (`glTex.layer`) and is
-merged into the shared buffer by `glMergeLayer(blend, gain)` — `FS_MERGE`, one pass.
-`glShaderDraw` lost its retain branch and always overwrites the scratch with blending
-off (its simpler pre-existing path, so no effect shader changed); that alone fixed two
-shader effects in one frame destroying each other when neither had a feedback filter
-forcing MAX on. **Gain must be a multiply inside the shader, not a blend factor**:
-`blendEquation(MAX)` ignores `blendFunc`, so gain via blend state works for Add and is
-silently dropped for Max. That asymmetry is the whole reason the pass exists.
-`glMergeLayer` restores BLEND **and** `blendEquation` **and** `blendFunc` — Add is the
-only thing in the file that touches `blendFunc`, so nothing else would put it back, and
-`glPostChain`/`postPass` assume blending is off.
+**Compositing (heat-space).** Each item renders into `glTex.layer` and merges via
+`glMergeLayer(blend, gain)` (`FS_MERGE`). `glShaderDraw` always overwrites the scratch with
+blending off. **Gain must be a multiply inside the shader, not a blend factor** —
+`blendEquation(MAX)` ignores `blendFunc`, so gain via blend state works for Add and is silently
+dropped for Max. `glMergeLayer` restores BLEND **and** `blendEquation` **and** `blendFunc`.
 
-**Per-layer palettes — two render paths, gated on the live-layer count.** The merge above
-is *heat-space*: every layer flattens into one grayscale buffer that `glRender` colours
-**once**, through the selected layer's palette — so a stacked scene used to render entirely
-in one ramp. That path is still exactly what runs for a **single** live layer (`live.length
-<= 1`), byte-for-byte, which is what keeps `heatprobe`/`filterprobe` and the shader pixel
-gate green. With **two or more** live layers, `frame()` calls **`renderStackColor`** instead:
-each layer is coloured with its **own** palette and the results are blended in **OKLab**, so
-every effect keeps its colours and overlaps mix perceptually instead of muddying to grey.
-The pieces (all just above `glJulia`):
-- **Per-layer heat + feedback.** Each layer owns a persistent heat pair `glTex.heatL[slot]`
-  and runs its OWN feedback filters (`L.filters`) via **`glLayerBeginHeat`** — a copy of
-  `glBeginHeat`'s ping-pong on that pair (NOT `glBeginHeat` itself, which stays untouched so
-  the `heatprobe` slice is unchanged). It reuses the exact `glFeedback` hooks, which only
-  need a source texture and a bound FBO. So each point *and* shader effect retains its own
-  fire/trails in its own colour. `renderLayerHeat` drives it: point layers propagate+stamp
-  per tick into their pair; shader layers draw into `glTex.layer`, then MAX onto the retained
-  pair if they carry feedback, else colour the scratch directly. It calls `installStackItem(L)`
-  first, so the layer's OWN feedback params (decay, keep, …) — now layer keys — are in the
-  globals the `glFeedback` hooks read. `burn` (tick-rate) is the one feedback param kept
-  scene-wide, so all layers share the sim clock.
-- **Independent palette cycling.** `stepLayerPal(slot)` is a per-slot morph clock — its own
-  from/to/target/hold — drawing durations from the shared Palette-cycle / hold sliders
-  (`morphMs`/`holdMs`), so layers drift out of phase. `bakeLayerBytes` bakes its ramp
-  (+ the live banding filter) into `glTex.palL[slot]`. `layerPalIndex` reads the **live
-  dropdown** for the SELECTED layer (its store is the DOM, `L.palette` is null while
-  selected — reading `L.palette` there would ignore live edits) and the captured `L.palette`
-  for the rest.
-- **Per-layer colour + post filters + OKLab blend.** For each layer: `glColorizeLayer` maps
-  its heat through its LUT to RGB (`glTex.layerCol`, via `FS_PAL`); `glLayerPostChain(L)` runs
-  that layer's OWN **post** filters (Wedge, Twist, Edge, …) on it, using `L.filters` and the
-  per-layer params `installStackItem` just installed (the `f.gl` hooks read those globals);
-  then `glOkMerge` blends the finished RGB into an RGBA8 ping-pong accumulator `glTex.color[0/1]`
-  in OKLab. The blend mode is the `L.blend` id → `BLEND_MODES[].u` → the `FS_OKMERGE`
-  branch: `0` add = brightness-weighted (screen lightness + hue averaged **by brightness**,
-  weight in alpha × `WMAX`), `1` max (brighter layer wins), `2` diff (`|below − this|`),
-  `3` colour (below's L, this layer's hue), `4` luminosity (this layer's L, below's hue).
-  **`BLEND_MODES` is the single source of truth** — the row's cycling blend button, `glOkMerge`'s
-  uniform, and `blendOk`'s validation all read it, so adding a mode is one array entry plus one
-  shader branch. A **`accW < ε` guard** returns the plain layer before the branch, so the modes
-  that read the accumulator's lightness (diff/colour/lum) don't render the first layer black; add
-  and max reduce to exactly that guard when there's nothing below, so they stay unchanged. The
-  heat-space fallbacks (`glBlitPoints`/`glMergeLayer`, used for point stamping and the single-layer
-  path) only understand `add` vs everything-else-is-MAX, which is fine — the new modes are colour-
-  space only and a lone layer has nothing to blend against. `L.gain`
-  scales the weight, applied ONCE here (heat/colour are rendered at gain 1). `FS_OKMERGE` takes
-  a finished RGB layer (`uLayer`), NOT heat+palette — the palette map moved out to
-  `glColorizeLayer` so post filters can sit between it and the blend. Bloom has no `f.gl` hook
-  (it's the glow), so it drops out of the per-layer chain and stays whole-scene. `glColorTex`
-  holds the accumulator; `glRender` starts from it, skips the shared-palette `FS_PAL` **and the
-  composite-level `glPostChain`** (posts already ran per layer) — only the screen filters + glow
-  still touch the blended image. `glPostChain` gained a source-texture argument.
-- **Menu grouping mirrors the behaviour.** `buildFilterUI` groups the checkbox list by
-  `filterGroup(f)`, not raw stage: feedback → "Per-effect · heat & trails", post (minus Bloom)
-  → "Per-effect · image", Bloom + screen → "Whole scene · final image" — each with a caption.
-  Bloom lands in the whole-scene group because it is registry-last among `post`, so the group
-  key changes at the right boundary without reordering `FILTERS`.
-The Canvas2D fallback is untouched: it renders one item in one palette, as always.
-`STACK_MAX` is declared up by the canvas/GL setup, not down by `newStackItem`, because
-`initGL` allocates the per-layer buffers during startup — a `const` down there would be in
-the temporal dead zone at that call (same reason as `card`/`beatUi`).
+**Per-layer palettes — two render paths, gated on the live-layer count.** The heat-space merge
+flattens everything into one grayscale buffer coloured once. That is still exactly what runs for a
+**single** live layer (`live.length <= 1`), byte-for-byte. With **two or more**, `frame()` calls
+**`renderStackColor`**: each layer is coloured with its own palette and blended in **OKLab**.
+- **Per-layer heat + feedback.** Each layer owns `glTex.heatL[slot]` and runs its OWN feedback
+  filters via **`glLayerBeginHeat`** — a copy of `glBeginHeat`'s ping-pong (NOT `glBeginHeat`
+  itself, which stays untouched for the `heatprobe` slice). `renderLayerHeat` drives it and calls
+  `installStackItem(L)` first, so the layer's own feedback params are in the globals.
+- **Independent palette cycling.** `stepLayerPal(slot)` is a per-slot morph clock drawing durations
+  from the shared sliders, so layers drift out of phase. `bakeLayerBytes` bakes its ramp (+ live
+  banding) into `glTex.palL[slot]`. `layerPalIndex` reads the **live dropdown** for the SELECTED
+  layer (`L.palette` is null while selected) and `L.palette` for the rest.
+- **Colour + post filters + OKLab blend.** `glColorizeLayer` (FS_PAL) → `glLayerPostChain(L)` (that
+  layer's own post filters) → `glOkMerge` into the RGBA8 ping-pong accumulator `glTex.color[0/1]`.
+  Blend mode = `L.blend` → `BLEND_MODES[].u` → an `FS_OKMERGE` branch: `0` add
+  (brightness-weighted), `1` max, `2` diff, `3` colour, `4` luminosity. **`BLEND_MODES` is the
+  single source of truth** (row button, uniform, `blendOk` validation) — adding a mode is one array
+  entry plus one shader branch. An **`accW < ε` guard** returns the plain layer before the branch
+  so diff/colour/lum don't render the first layer black. `L.gain` scales the weight, applied ONCE
+  here. `FS_OKMERGE` takes a finished RGB layer (`uLayer`), not heat+palette. Bloom has no `f.gl`
+  hook so it stays whole-scene. `glRender` starts from `glColorTex` and skips both the shared
+  `FS_PAL` and the composite-level `glPostChain`.
+- **Menu grouping mirrors it**: `buildFilterUI` groups by `filterGroup(f)` — feedback →
+  "Per-effect · heat & trails", post minus Bloom → "Per-effect · image", Bloom + screen → "Whole
+  scene · final image". Bloom lands right because it is registry-last among `post`.
+- The Canvas2D fallback is untouched: one item, one palette.
+- `STACK_MAX` is declared up by the canvas/GL setup (TDZ — `initGL` allocates per-layer buffers).
 
-**Point items own the tick loop.** `simulate()` propagates *and* stamps per tick, ticks
-run ~2× per frame at the shipped burn rate, and the two interleave. Advancing the heat
-once per frame — which is what the design originally called for — would visibly change
-every point effect whenever `ticks > 1`. So: one `beginHeatTick()` per tick, then every
-point item stamps and blits into it (`glPtCount` reset per item so each carries its own
-blend/gain), `curHeat = pendingDst` once at the end of the tick; shader items draw once
-per frame afterwards. `stampTick(L, now)` is the reusable stamp half, `simulate(now)`
-the thin wrapper the Canvas2D path still uses. With no point items and no retention,
-`glClearHeatCurrent()` clears without flipping — **not** `glBeginHeat`'s no-chain branch,
-which clears the *other* buffer and would flip the parity `heatprobe` pins.
+**Point items own the tick loop.** `simulate()` propagates *and* stamps per tick, and ticks run ~2×
+per frame. So: one `beginHeatTick()` per tick, then every point item stamps and blits into it
+(`glPtCount` reset per item), `curHeat = pendingDst` once at tick end; shader items draw once per
+frame afterwards. `stampTick(L, now)` is the reusable stamp half. With no point items and no
+retention, **`glClearHeatCurrent()`** clears without flipping — *not* `glBeginHeat`'s no-chain
+branch, which clears the other buffer and flips the parity `heatprobe` pins.
 
-**The Canvas2D fallback renders ONE item** (the first unmuted). CPU mirrors assign
-rather than MAX, so a second would erase the first, and each is a full per-pixel JS loop
-on exactly the machines with no GPU.
+**The Canvas2D fallback renders ONE item** (first unmuted) — CPU mirrors assign rather than MAX.
 
-**Zoom is applied to the CONTENT, never to the finished picture — all 20 effects.** The 17
-shader effects always did it: they divide their coordinates by `zoom` and re-evaluate per
-pixel, which is what `bakesOwnZoom` marks. The three point effects (Sierpiński, Tetrahedron,
-Attractor) used to fall through to `FS_ZOOM`, which magnifies the `fw×fh` raster — so their
-detail fell off as 1/zoom and they went visibly blocky while every shader stayed razor sharp
-at the same setting. A stamped point is as mathematical as a shader sample, so the fix is the
-same fix: **`plot()` scales the point about the grid centre before stamping it**, composed
-with the camera's 2×2 that was already there (a uniform scale commutes with it, so the order
-is free). The fractal is then rasterised once, at full grid resolution, whatever the zoom;
-points pushed off the grid are dropped by the existing bounds test, which is exactly the crop
-a zoom should do.
+**Zoom is applied to the CONTENT, never to the finished picture — all effects.** Shader effects
+divide their coordinates by `zoom` (that's what `bakesOwnZoom` marks); the point effects
+**`plot()`-scale the point about the grid centre before stamping**, composed with the camera's 2×2
+(a uniform scale commutes, so order is free). The fractal rasterises once at full grid resolution
+whatever the zoom; out-of-grid points are dropped by the existing bounds test.
+- **The count scales with it**: `zoomPoints()` multiplies by `zoom²` at the one choke point in
+  `stampTick`, capped at `CONFIG.tuning.zoomPointCap` = **8** (not the 16 zoom 4 asks for — `zoom²`
+  is an area rule and a Sierpiński triangle has dimension ~1.585, so full compensation renders
+  ~3.5× denser; the cap also halves a real CPU cost).
+- Consequence: zoom no longer magnifies flames or glow, so a scene saved with zoom ≠ 1 on a point
+  effect renders differently (it still *loads* identically; the wire format didn't move).
+- **`stackZoom()` is consequently always 1** — every descriptor carries `bakesOwnZoom`, so
+  `FS_ZOOM` is an identity blit and the CPU zoom block is dead. Both are kept deliberately.
 
-**The count is scaled with it, and that is not optional.** Zooming the geometry spreads the
-stamps over `zoom²` the area, so the same count reads as a *thinner* picture the further you
-go in — the old magnification faked that density by blurring. `zoomPoints()` multiplies by
-`zoom²` (the stamps-per-screen-area rule) at the one choke point in `stampTick` that all
-three effects take `n` from. Capped at `CONFIG.tuning.zoomPointCap` = **8**, not the 16 that
-zoom 4 asks for, because `zoom²` is an *area* rule and a Sierpiński triangle has dimension
-~1.585: at full compensation zoom 4 measured 41% of the frame lit against 11.7% at zoom 1,
-3.5× denser than the thing it was matching. At 8 it measures 14.3% vs 13.3% — still above,
-so nothing thins — and it halves a real cost, since the chaos game stays on the CPU even on
-the GPU path (one default layer at 1920×1080: 0.2 ms/frame at zoom 1, 4.4 ms at zoom 4
-uncapped, and four stacked point layers at max Points multiply that).
+**A single-layer scene never touches `mergeLayers`.** `applyBlob` only calls it when `saved.layers`
+exists, so a one-item scene keeps `newStackItem(0)` with `filters: null` — and `applyLayerExtras`
+falls back to the **descriptor default** on purpose. The fix is in `applyBlob`'s else-branch:
+**seed `stack[0].filters` from the restored `extras[e]`**, a concrete value at load. Two
+alternatives that do NOT work:
+- **Do not add an `extras[L.fx]` fallback to `applyLayerExtras`** — removing that fallback is what
+  fixed same-effect layers mirroring the last one edited.
+- **Setting the live `activeIds` does not survive** — `stackOut()` returns null for a one-item
+  stack, so nothing ever freezes it into `L.filters`. (That same fact is what makes the seed safe.)
 
-Consequence to know: zoom no longer magnifies the flames or the glow — those stay at native
-scale while the geometry grows. That is what makes the whole frame sharp rather than one
-sharp layer under a magnified one, and it is why a scene saved with zoom ≠ 1 on a point
-effect renders differently (it still *loads* identically; the wire format did not move).
+**Persistence: an optional `layers` array.** One item ⇒ **nothing is emitted** (`stackOut` returns
+null), so every pre-feature scene is byte-for-byte unchanged. `mergeLayers` is the `mergeExtra` of
+this feature: truncates to `STACK_MAX`, drops items whose effect id no longer ships, clamps gain,
+defaults blend, and runs every per-item map through its own `merge*` **against that item's own
+effect**. Items omitting `palette`/`filters` fall back to the scene's top-level `extra`.
+`installShared` re-seeds a single-item stack so a shared non-stacked scene doesn't inherit the
+recipient's. **`blendOk`/`gainOk` are function declarations, not const arrows** — `mergeLayers`
+runs from `applyBlob` far above where they sit (a const TDZ there aborts startup and surfaces as a
+confusing later TDZ on `nextSwitch`).
 
-**`stackZoom()`** is consequently always 1: every descriptor now carries `bakesOwnZoom`, so
-the `FS_ZOOM` pass is an identity blit (at z == 1 it samples exact texel centres, so it
-changes nothing) and the CPU path's zoom block is dead. Both are kept rather than ripped out
-— it is the one place that would have to come back if an effect ever zoomed by magnification
-again, and removing it means touching the transition path and `render()` for no gain. Its old
-job is gone with it: the documented wart where **adding a shader item to a point scene
-un-zoomed the point item** cannot happen now that every layer zooms itself.
-
-**A single-layer scene never touches `mergeLayers`, and that lost its filters on every
-reload.** `applyBlob` only calls `mergeLayers` when `saved.layers` exists, so a one-item
-scene kept the initial `newStackItem(0)` with `filters: null` — and `applyLayerExtras` falls
-back to the **descriptor default** (no filters) rather than the runtime `extras[L.fx]`, on
-purpose. So Fire / Fade / the image filters were faithfully written to `extras[e].filters`
-and then never read: the blob still held them, the checkboxes came back empty. Multi-layer
-scenes were unaffected (their items carry `filters` through `mergeLayers`), which is why it
-only bit once you were down to one layer, and why the palette — which *does* fall back to
-`fx.palette` — survived while the filters did not.
-
-The fix seeds `stack[0].filters` from the restored `extras[e]` in `applyBlob`'s else-branch:
-a **concrete value at load**, which is exactly what `layerFeedbackChain`'s comment means by
-"old-scene compat is handled at load in mergeLayers". Two things make that the only workable
-shape, both learned by trying the alternatives:
-- **Do not add an `extras[L.fx]` fallback to `applyLayerExtras`.** That is the fallback whose
-  removal fixed every not-yet-captured same-effect layer mirroring the last one edited.
-- **Setting the live `activeIds` instead does not survive.** `stackOut()` returns null the
-  moment the stack holds one item, so it never freezes and `persist()` never captures the
-  live set into `L.filters` — `applyLayerExtras` overwrites `activeIds` a moment later. The
-  same fact is what makes the seed safe: nothing clobbers `L.filters` for a one-item stack.
-
-**Persistence: an optional `layers` array.** When the stack holds one item **nothing is
-emitted at all** (`stackOut` returns null), so every scene saved, shared or backed up
-before the feature — and every non-stacked one after it — is byte-for-byte unchanged.
-Backward compatibility by construction, the same discipline as "`?s=` decodes forever".
-`mergeLayers` is the `mergeExtra` of this feature: truncates to `STACK_MAX`, drops items
-whose effect id no longer ships rather than misfiling them, clamps gain, defaults blend,
-and runs every per-item map through its own `merge*` **against that item's own effect**
-(merging one item's state against another effect's defaults silently drops every key
-that effect declares). No `layers` key ⇒ one item from the legacy top-level fields.
-Each item also carries `palette` + `filters`; an item that omits them (a scene saved
-before per-layer palette) falls back to the scene's top-level `extra`, so every layer of
-an old stacked scene loads sharing the one palette it had.
-`installShared` re-seeds a single-item stack for the same reason it re-seeds the five
-maps: otherwise a shared non-stacked scene inherits the recipient's stack.
-**`blendOk`/`gainOk` are function declarations, not const arrows** — `mergeLayers` runs
-from `applyBlob` during `restore()`, hundreds of lines above where they sit, so a const
-is in the temporal dead zone; that aborts startup and the error you actually *see* is a
-later TDZ on `nextSwitch` inside `frame()`. Same shape as `card` and `beatUi`.
-
-`?stack=plasma,tunnel` builds a stack at startup by effect id — a dev hook in the spirit
-of `?debug=1`, never persisted.
+`?stack=plasma,tunnel` builds a stack at startup by effect id — a dev hook, never persisted.
 
 ### Scene collections (the grouped chooser)
-A preset carries an optional **`collection`**: the name of the published profile it came
-from. Absent ⇒ one of yours, which is what every preset saved before the field existed has,
-so an old library opens as one collection with nothing to migrate. It rides **beside `name`**
-and is deliberately *not* part of `snapshotScene` — it says where a scene came from, not what
-it renders, and `applyPreset` never reads it (`presetprobe` would flag it if it did).
+A preset carries an optional **`collection`**: the name of the published profile it came from.
+Absent ⇒ one of yours. It rides **beside `name`** and is deliberately *not* part of
+`snapshotScene` — it says where a scene came from, not what it renders.
 
-**It must be listed explicitly in `validatePresetList`.** That mapping rebuilds each preset
-from an object literal, so a field missing from it is silently dropped on every cloud load
-and gallery install — the same trap the probe pins for the scene fields. `serializeBlob` /
-`deserializeBlob` spread, so they need no change.
+**It must be listed explicitly in `validatePresetList`** — that mapping rebuilds each preset from
+an object literal, so a field missing from it is silently dropped on every cloud load and gallery
+install. (`serializeBlob`/`deserializeBlob` spread, so they need no change.)
 
 **The gallery installs a collection instead of merging.** `applySharedLibrary(raw, replace,
-collection)` puts the name into `pendingRestore`, and `applyRestore` gains a third branch
-ahead of merge/replace: drop every preset already carrying that collection, then append the
-incoming ones stamped with it. So your library is untouched, their "Sunset" and yours are not
-a collision, and re-loading the same profile refreshes their set rather than duplicating it.
-`out.curPreset` matches the sender's selection **within that collection** — by name alone it
-could land on a same-named scene of your own, which is the collision the feature exists to
-prevent. The gallery row is consequently ONE button (`Load scenes`): merge-vs-replace is no
-longer a question anyone needs to answer.
+collection)` puts the name into `pendingRestore`, and `applyRestore` gains a third branch ahead of
+merge/replace: drop every preset already carrying that collection, then append the incoming ones
+stamped with it. `out.curPreset` matches the sender's selection **within that collection**. The
+gallery row is consequently ONE button (`Load scenes`).
 
-**`#preset` is hidden and stays the value store**, exactly the arrangement `#palette` has
-behind its swatches — `applyPreset` writes `.value`, `applyBlob` validates against its
-options, and every click in the visible list dispatches its `change`, so there is no second
-apply path. The visible control is `#presetlist`, built by `buildPresetList()`. It exists
-because **a `<select>` cannot collapse an `<optgroup>`**, and collapsing is the point.
-`buildPresetList` is called from `rebuildPresetOptions` (create/rename/delete/restore), from
-`applyPreset` (which covers the **auto-cycle**, since that sets `.value` without firing
-`change`) and from the `change` handler's `-1` branch (which never reaches `applyPreset`) —
-miss any one and the highlight goes stale.
+**`#preset` is hidden and stays the value store** (same arrangement as `#palette`); the visible
+control is `#presetlist`, built by `buildPresetList()` — it exists because **a `<select>` cannot
+collapse an `<optgroup>`**. `buildPresetList` is called from `rebuildPresetOptions`, from
+`applyPreset` (covering the auto-cycle, which sets `.value` without firing `change`) and from the
+`change` handler's `-1` branch; miss any one and the highlight goes stale.
 
-**`openCollections` is a transient Set that starts empty**, so every group is folded on load
-— the requested default — while surviving rebuilds, which is what stops picking a scene from
-folding the group you are working in. Your own group is always emitted even when empty, so
-`New` has somewhere visible to land, and it is labelled from `#cloud-name` (your profile
-name) falling back to "My scenes".
-
-`dropCollection` re-finds the selection **by identity** after filtering: every index above
-the removed run shifts, so keeping the old `curPreset` would silently select someone else's
-scene.
+**`openCollections` is a transient Set that starts empty** — every group folds on load while
+surviving rebuilds. Your own group is always emitted even when empty, labelled from `#cloud-name`
+falling back to "My scenes". `dropCollection` re-finds the selection **by identity** after
+filtering.
 
 ### Presets & persistence
 
-**The user-facing word is "scene", the code word is "preset", and that split is deliberate.**
-The menu says *Scenes* / *Scene TTL* / *Auto-cycle scenes*, and every prompt, title, hint and
-help blurb says scene. Nothing in the **code or the wire format** was renamed: `presets`,
-`curPreset`, `kind: "preset"`, the element ids (`#preset`, `#newpreset`, `#rst-presets`), the
-`.presetrow` class and every `*Preset*` function keep their names. Renaming the blob fields
-would stop every saved scene, backup, share link and cloud profile from loading — a major
-version by this file's own rule, and the standing rule is that never happens. So when reading
-this document, "preset" means the stored object; the thing the user picks in the menu is a
-scene. Two consequences worth knowing: **`HELP.sliders[].n` must match the rendered label
-text** (`ctlHelpBlurb` looks a control's blurb up by `ctlLabel(key)`), so renaming a label
-means renaming its `n:`; and `safeFileName`'s empty-name fallback became `"Scene"`, which
-`presetprobe` asserts on — the probe was updated with it.
-A **preset** is a named full-scene snapshot, built by `snapshotScene()`:
-`{name, effect, state, beat, pulse, plen, cam, sceneFx, beatTune, ranges, ttl, tdur, extra, layers}`.
-Several of those are **globals deliberately remembered per preset**, because a
-preset has to be a *complete* copy of what is on screen — it is something you hand to
-someone else, and anything it fails to carry renders as the recipient's value instead,
-invisibly. `cam` because `camrx/camry/camrz` exist nowhere else (no effect's `defaults`
-names them); `sceneFx` because the scene-global Scene filters (Bloom + the screen stage)
-live nowhere in an effect's state; `beatTune` because different thresholds mean different
-beats mean a different animation; `ranges` because `mergeState` does **no** bounds check and
-`loadState`'s `el.value = …` is then silently clamped by the DOM, so a value authored
-against a widened bound quietly animates differently. **`ttl` (Preset TTL) and `tdur`
-(Transition) are also per-preset**, even though they are otherwise global (auto-cycle
-timing, still kept in `fullSnapshot` for the "— unsaved scene —" case): a preset remembers
-the hold time and transition it was authored with, so a shared or backed-up scene *plays*
-the same, and `applyPreset` installs them (via `applyPresetDual`, validated against the
-live bounds). Consequence: selecting or auto-cycling to a preset now sets the global TTL /
-Transition to that preset's — each scene carries its own pacing. Older presets omit
-`ttl`/`tdur`; `applyPreset` then leaves the current globals alone. `applyPreset` applies
-`ranges` **first**, mirroring `applyBlob`'s ordering, and `ttl`/`tdur` right after so their
-thumbs validate against any custom bounds the preset carries.
-`tools/presetprobe.js` asserts by construction that every field `applyPreset` restores
-is one `snapshotScene` captures *and* one the import mapping carries — the check exists
-because `applyRestore`'s mapping silently dropped `cam` for a long time.
-What deliberately does **not** travel: resolution (`cfg.scale`, a device setting — it
-changes flame height in screen pixels, point density and glow radius, but a scene from a
-fast GPU must not tank a phone), audio on/off (needs a user gesture), the `randSeed`
-orbit re-roll, the `Date.now()` chaos seed, and every accumulated phase (`simT`,
-`spinAngle`, `*Time`). A shared scene is the same *configuration*, not the same *frame*.
+**The user-facing word is "scene", the code word is "preset".** The menu, prompts, titles and help
+all say scene; nothing in the **code or wire format** was renamed (`presets`, `curPreset`,
+`kind: "preset"`, `#preset`, `.presetrow`, every `*Preset*` function). Renaming blob fields would
+stop every saved scene, backup, link and cloud profile loading. Two consequences:
+**`HELP.sliders[].n` must match the rendered label text** (`ctlHelpBlurb` looks up by
+`ctlLabel(key)`), and `safeFileName`'s empty-name fallback is `"Scene"`.
 
-**The first-visit preset library** is built once, when `presets.length === 0` (no saved
-blob). It is `defaultPresets()` — one per effect — with **`DEFAULT_SCENE` prepended and
-applied** so a brand-new visitor opens on the shipped scene (`JuliaBgTet`, a four-layer
-Rasta-palette stack) rather than bare Sierpiński. `DEFAULT_SCENE` is a real exported preset stored in the
-**wire format** (effect *ids*, pruned to its deltas — `applyPreset` re-merges every map
-onto the effect defaults, so omitted keys cost nothing; only beat/pulse/plen are pruned,
-since their defaults are universal, while state maps are kept whole so nothing can silently
-drift). `defaultScenePreset()` runs it through `deserializeBlob` to numeric indices and
-returns null if it names a retired effect, in which case the visit falls back to the
-per-effect defaults. The fresh visit then `persist()`s once, so a reload rebuilds the scene
-from saved live state (no re-morph) instead of re-applying. A **returning** visitor never
-enters this branch — their `presets` come from `restore()` — so nothing here touches an
-existing library. To change the opening scene, export a preset from the app and replace
-`DEFAULT_SCENE`.
+A **preset** is `snapshotScene()`: `{name, effect, state, beat, pulse, plen, cam, sceneFx,
+beatTune, ranges, ttl, tdur, extra, layers}`. Several are globals **deliberately remembered per
+preset**, because a preset must be a complete copy of what's on screen — anything it fails to carry
+renders as the recipient's value, invisibly:
+- `cam` — `camrx/camry/camrz` exist in no effect's `defaults`.
+- `sceneFx` — the scene-global Scene filters live nowhere in an effect's state.
+- `beatTune` — different thresholds mean a different animation.
+- `ranges` — `mergeState` does **no** bounds check and `loadState`'s `el.value =` is silently
+  clamped by the DOM, so a value authored against a widened bound would quietly animate differently.
+- `ttl` + `tdur` — a preset remembers the pacing it was authored with, so a shared scene *plays*
+  the same. `applyPreset` installs them via `applyPresetDual`. Older presets omit them; then the
+  current globals are left alone.
 
-**Creating a preset and restoring a backup both stop the cycler** (`stopCycling()`).
-Auto-cycle is on by default, so `createPreset` selected the new preset correctly and then
-the very next TTL tick swapped it straight back out — which reads as "my new preset wasn't
-selected" when in fact it was, and then got cycled away from. `applyRestore` can't call
-`stopCycling()` because it reloads the page, so it writes `out.cycle = false` into the blob
-instead, set **last** so it also overrides the backup file's own `cycle`: whatever the
-backup was saved with, you want to see what you just restored.
+`applyPreset` applies `ranges` **first** (mirroring `applyBlob`), then `ttl`/`tdur`.
+`tools/presetprobe.js` asserts by construction that every field `applyPreset` restores is one
+`snapshotScene` captures *and* one the import mapping carries.
 
-**Switching effect stays on the selected preset and folds the change into it.** The
-handler is three lines — `setEffect`, `autosavePreset`, `persist` — and this has now been
-all three ways round, so the history is worth keeping.
+What deliberately does **not** travel: resolution (`cfg.scale` — a device setting), audio on/off
+(needs a gesture), the `randSeed` re-roll, the `Date.now()` chaos seed, and every accumulated phase.
+A shared scene is the same *configuration*, not the same *frame*.
 
-It first **deselected** (dropped to "— unsaved scene —"), because the delegated autosave
-folded the switch into the selected preset and a preset carries its own effect: pick
-"Sierpiński", switch to Tunnel, and that preset became a Tunnel scene under its old name.
-Suppressing autosave for just that one event would not have helped — the preset kept its
-old effect only until the next slider drag wrote the new one in. Then it **auto-selected**
-a preset belonging to the new effect, which kept you on a named scene but still moved you
-off *your* one.
+**The first-visit preset library** is built once when `presets.length === 0`: `defaultPresets()`
+(one per effect) with **`DEFAULT_SCENE` prepended and applied**, so a new visitor opens on the
+shipped scene (`JuliaBgTet`, a four-layer Rasta stack). `DEFAULT_SCENE` is a real exported preset
+in the **wire format** (effect ids, pruned to deltas — only beat/pulse/plen are pruned; state maps
+are kept whole). `defaultScenePreset()` runs it through `deserializeBlob` and returns null if it
+names a retired effect. The fresh visit then `persist()`s once. A returning visitor never enters
+this branch. To change the opening scene, export a preset and replace `DEFAULT_SCENE`.
 
-Both were solving for the wrong thing. A preset is "my scene", and its effect is just
-another field of it, so changing the effect is an edit like moving a slider. The knock-on
-is **intended, not a bug to re-fix**: a preset named after the effect it started as keeps
-that name after you change the effect. Rename it, or don't.
+**Creating a preset and restoring a backup both stop the cycler** (`stopCycling()`) — auto-cycle is
+on by default, so the next TTL tick used to swap a just-created preset straight back out.
+`applyRestore` can't call it (it reloads), so it writes `out.cycle = false` into the blob, set
+**last** so it also overrides the backup file's own `cycle`.
 
-`autosavePreset()` still early-returns while `curPreset < 0`, so "— unsaved scene —"
-remains a genuine scratch mode — switching effect there writes nothing to any preset.
-`presetprobe` asserts the *current* rule structurally (no `curPreset = -1`, an
-`autosavePreset()` call, a `setEffect()` call) precisely because the two previous
-behaviours both looked reasonable in isolation and will tempt someone to "fix" this again.
+**Switching effect stays on the selected preset and folds the change into it.** The handler is
+three lines — `setEffect`, `autosavePreset`, `persist`. This has been all three ways round: it once
+deselected (dropping to "— unsaved scene —"), then auto-selected a preset belonging to the new
+effect. Both solved the wrong thing — a preset is "my scene" and its effect is just another field,
+so changing it is an edit like moving a slider. The knock-on is **intended**: a preset named after
+the effect it started as keeps that name. `autosavePreset()` still early-returns while
+`curPreset < 0`, so "— unsaved scene —" is a genuine scratch mode. `presetprobe` asserts the
+current rule structurally, because the two previous behaviours both look reasonable in isolation.
 
-Presets are **local to the browser**. Selecting one links edits to it: `onEdit` → `autosavePreset()`
-writes the current scene straight back into the selected preset (no manual save).
-`mergeState()` normalizes a loaded preset to the current slider set — it drops
-retired keys and defaults new ones, so old saved presets keep loading after an
-effect's `defaults` change (it validates against `presetState(e)`, i.e. the
-descriptor's `defaults`). `mergePulse()` does the same for a preset's `pulse` map,
-so presets saved before pulse shapes existed (no `pulse` key) load as all-`snap`.
-`effect` in a saved preset is the stable string `id`.
+Presets are **local to the browser**. Selecting one links edits to it: `onEdit` →
+`autosavePreset()` (no manual save). `mergeState()` normalizes a loaded preset to the current
+slider set against `presetState(e)`; `mergePulse()` does the same for `pulse`.
 
 **Every one of `applyPreset`'s four maps must go through its `merge*`** — `mergeState`,
-`mergeBeat`, `mergePulse`, `mergePlen`. `beat` was copied verbatim for a long time and
-that was a real, ugly bug: a preset saved before a control existed has no entry for that
-id, `loadBeat` spread the `undefined` into `{}`, and **`classList.toggle("on", undefined)`
-*flips* the class** — per the DOM spec an explicitly-passed `undefined` counts as "force
-not supplied". So the chip inverted on every `loadBeat` (every effect switch, preset apply
-and Reset) while `updateAnims` saw `undefined` and never armed the slider: a chip that
-looked lit and did nothing. It hid well, because the chips only exist inside `#breakout`
-and an un-popped box is `display:none`, so the flips accumulated unseen and what you saw
-on first pop was just the parity of how many loads had happened. `saveBeat` then wrote the
-`{}` straight back, so it survived reloads. `loadBeat` now spreads over an all-false base
-and `syncChips` coerces with `!!` — belt and braces, since the flip is silent and the
-merge is easy to forget again.
+`mergeBeat`, `mergePulse`, `mergePlen`. `beat` was copied verbatim for a long time, and a preset
+saved before a control existed has no entry for it, so `loadBeat` spread `undefined` into `{}` —
+and **`classList.toggle("on", undefined)` *flips* the class** (per spec, an explicitly-passed
+`undefined` counts as "force not supplied"). The chip inverted on every load while `updateAnims`
+never armed the slider. `loadBeat` now spreads over an all-false base and `syncChips` coerces with
+`!!`.
 
-**Beat chips are `<button>`s, so they fire neither `input` nor `change`** and the delegated
-`onEdit` cannot see them. `chipEdited()` does `onEdit`'s job by hand — `autosavePreset()`
-(guarded on `persistReady && !applyingPreset`) then `persist()`. Calling only `persist()`
-was the second half of the same bug report: the chip reached `localStorage` but never the
-*selected preset*, so re-selecting that preset silently disarmed it. It looked intermittent
-because any later slider drag *did* autosave and retroactively captured the chip.
-- Persistence: `localStorage["burnTheWeb.v1"]` = `{states, beats, pulses, plens, extras, effect,
-  ranges, beatTune, presets, curPreset, cycle, ttl, scale, panelOpen, audio}` — built by the
-  single helper **`fullSnapshot()`**, which is *the* definition of "everything we
-  remember." `persist()` and the Backup file both serialize exactly `fullSnapshot()`, so
-  a newly saved setting can never land in one but not the other. `applyBlob(saved,
-  sharing)` is shared by `restore()` and `applyShared()`; it applies `ranges` +
-  `beatTune` **first** (so the live slider bounds / detector thresholds are the custom
-  ones) then validates every value against those bounds so a changed range can never
-  load junk. Anything a user can change that is *not* in `fullSnapshot()` is
-  deliberately transient: pause, fullscreen, the Diagnostics tools' open/closed state, and
-  the frame+fps counter's visibility (the `#diagFrames` checkbox toggles `#frames`'s `.hidden`).
-- **Custom slider ranges** (min/max/step) are saved, not just live. `RNG_ORIG`
-  captures the shipped bounds up top (before `restore()` can overwrite them);
-  `collectRanges()` stores only sliders whose bounds differ from shipped and
-  `applyRanges()` sets them back. They ride in `localStorage`, the `?s=` URL and the
-  Backup file. Each slider's in-box range editor writes them live via the normal persist path.
-- **Share** is **deflated**: the JSON goes through `CompressionStream("deflate-raw")`
-  and out as base64url under **`?z=`** (measured 9400 → 1368 chars, and a messy
-  full-precision scene 23252 → 646). base64url matters — `+` and `/` cost three
-  characters each once percent-encoded. `?s=` (plain base64) is still emitted when
-  `CompressionStream` is missing and **decoded forever**, so every link ever made keeps
-  working; `?z=` is checked first and the two are mutually exclusive. Values are rounded on encode to each control's declared `CONTROLS.step`
-  (`step="any"` sliders otherwise carry full-precision doubles, which more than doubles
-  the payload) and then **clamped to the live bounds** — `applyBlob`'s `ok()` is a hard
-  reject, so an out-of-range value would silently fall back to the seeded default.
-  Decoding `?z=` is **async**, so it lands after startup has already run `setEffect`;
-  the promise re-activates with `resize()` + `setEffect(...)` itself. `shareUrl()` is
-  therefore async too, and Share copies via `ClipboardItem`'s promise form so the user
-  gesture survives (a plain `writeText` after an `await` is rejected by Safari).
-- **The scene Share / Short-link BUTTONS were removed** — sharing is now preset-bundle only
-  (`#sharepresets`, see below). But `shareUrl()` and the whole **`?z=`/`?s=` codec + the
-  `applyShared` decode remain**, so every scene link ever generated still opens; only the two
-  buttons that *produced* new ones are gone (`shareUrl` is now dead-but-valid, kept for that
-  decode path and for `shareprobe`). `shortenUrl()` stayed too — the bundle dialog's "Copy
-  short link" uses it. The rest of this bullet describes that still-live codec.
-- **Share** encodes **only the current scene** — `{states, beats, pulses, plens, extras,
-  effect, cam, beatTune, ranges}` where every per-effect map holds exactly **one** entry,
-  the effect on screen (NOT presets). It used to send all fifteen effects' settings;
-  "here is the thing I made" should send that thing, and the other fourteen were most of
-  the payload. Measured on a Tunnel scene: **JSON 6808 → 661 chars, URL 1492 → 601**.
-  The map *shape* is deliberately unchanged (`{ [effectIndex]: … }`, just shorter), which
-  is what makes it a one-function change: **no decoder change, and every old
-  all-effects link still decodes** — `applyBlob` iterates its own maps and skips keys the
-  blob omits, so absent effects simply keep the defaults `installShared` re-seeded. A
-  probe builds an old-style two-effect payload and asserts both still restore.
-  `cycle` and `ttl` are deliberately **dropped**: they are the recipient's own auto-cycle
-  preferences and sharing a scene is no reason to reach in and change them (`applyBlob`
-  guards every read of them, so omitting is safe). `beatTune` is now included, since it
-  became scene data. Delivered as a `?z=<deflate-raw+base64url>` URL (legacy `?s=` is
-  plain base64 and still decodes); `applyShared()` decodes on load and strips the param.
-  **`stripShareParam()` runs during startup**, so anything reading `location.search`
-  after load — a test, say — sees it already gone.
-  `shareUrl()` builds it; **`pruneBeats()` diffs the beat chips against each
-  effect's `presetBeat(e)` defaults and sends only what differs** — the full map
-  is every control × L/M/H and was a large part of the blob back when every effect
-  rode along (49k-char URLs, which chat clients truncate and TinyURL rejects; a
-  truncated `?s=` silently JSON.parse-fails and opens the default scene). Still worth
-  keeping now that only one effect is sent: the pruning and the single-effect payload
-  compound rather than overlap. **`prunePulses()` does the same for
-  the pulse shapes** (only sliders whose shape ≠ the effect default, almost always
-  `snap`). Pruning is share-only: `fullSnapshot()` (localStorage/Backup) stays
-  verbose, and `applyBlob` leaves any id/band/shape a blob omits at its seeded
-  default — **but only because `applyShared` re-seeds first**. `restore()` runs before it
-  and `applyBlob` skips any key a blob omits, so without `initStates()`/`initBeatStates()`/
-  … the pruned maps would decode against *the recipient's own saved scene* and bleed their
-  chips and pulse shapes into the shared one. That was a real bug, invisible in a fresh
-  browser and wrong for everyone else. **Prune
-  against the descriptor's defaults, not against all-false** — the two happen to
-  coincide today (every effect ships `beat: {}`, so no chip is armed out of the
-  box), but the moment a descriptor arms one again, diffing against all-false
-  would silently drop the user turning it *off*.
-- **Share URL** links straight to the app root; the scene rides in the `?z=` (or legacy
-  `?s=`) param. (There were once per-effect `s/<n>/` unfurl landing pages with `og/`
-  preview images for four effects, routed via an `OG_PAGES` map — both the folders and
-  that routing were removed, so every share now points at the root.)
-- **Short link** (`#shorten`) POSTs the share URL to `tinyurl.com/api-create.php`
-  and copies the result. Opt-in and separate from Share on purpose: it needs the
-  network and hands the scene to a third party. TinyURL because it 301s
-  byte-for-byte (no interstitial/injected params), sends CORS headers, needs no
-  key, and doesn't block `github.io` (is.gd/v.gd reject all GitHub domains). POST
-  keeps a big scene off the query string; its URL ceiling is ~30k chars, so the
-  `pruneBeats` diff above is what keeps shares shortenable. The API signals
-  failure with **200 + an error string**, so the response shape is validated.
-  The POST is factored into **`shortenUrl(url)`** (in `persist-share.js`), shared by the
-  scene Short-link button and the preset-bundle dialog.
-- **Preset-bundle links** (`Share presets…`, `#sharepresets`) bundle a **curated set of
-  presets** — a whole *library*, not the current scene — into one URL, so you can hand
-  someone "a list of cool presets." The dialog (`#sharepredlg`) is pure curation: a
-  checklist of `presets`, an all/none toggle, and **Copy link** / **Copy short link**; it
-  copies a URL and **never touches the local library**. `libraryUrl(chosen)` uses the same
-  codec as `shareUrl` — `serializeBlob({presets, cycle, curPreset})` (the `presets` part is the
-  same call `backupFiles` makes per preset) → deflate. It also carries the **auto-cycle toggle**
-  and **which preset is selected** (`curPreset` as an index *within `chosen`*, so curation
-  reindexes it, omitted when the selected preset isn't in the bundle) — so the receiver opens on
-  the same scene and the same show plays. **The payload rides in the URL FRAGMENT — `#zp=` (uncompressed fallback
-  `#sp=`), not a `?query` — and that is load-bearing:** a bundle is several KB, and a
-  multi-KB query makes GitHub Pages / Fastly reject the link with **414 URI Too Long**
-  before any JS runs, whereas the fragment is never sent to the server, so a bundle of any
-  size loads. The `#zp=`/`#sp=` params are also **distinct** from the scene link's
-  `?z=`/`?s=` so the two decode paths never collide. No per-preset pruning: deflate already
-  crushes the repeated slider-key strings, and full presets keep the decode identical to
-  Backup — but a bundle is still several KB, which is why Short link sits beside Copy link.
-  **Recipient side:** `applyShared()` checks the fragment `#zp=`/`#sp=` (and the earlier
-  `?zp=`/`?sp=` query form) **first** and routes the decoded blob to **`openSharedLibrary`**,
-  which runs it through
-  `normalizeBackup` → `deserializeBlob` → **`validatePresetList`** (the per-preset
-  validate/normalize block extracted from the file-import handler and now shared by both)
-  → the **existing Restore dialog** (`openRestore`, merge-vs-replace), so a bundle never
-  silently overwrites the recipient's presets. `openSharedLibrary` passes the bundle's `cycle`
-  and `curPreset` plus a `__link` marker to `openRestore`. On apply: a **file** restore forces
-  auto-cycle **off** (don't cycle off what you just restored), but a **link** honours the
-  sender's toggle (`__link` gates it) — "share the show". And the receiver **lands on the
-  sender's selected preset's scene**, not just its dropdown row: `applyRestore` stashes the
-  resolved index in `sessionStorage["btw.applyPreset"]` and the startup reads it once (cleared
-  on use, so ordinary reloads keep the persisted scene). Backups carry no `curPreset`, so this
-  fires only for shared links. **Ordering trap:** `openSharedLibrary` lives
-  in `persist-backup-restore.js` but `applyShared()` is *called* during the earlier
-  `audio-tuning-data.js` slice's load — so its `pendingRestore`/`openRestore` state is in
-  the TDZ then. The async `#zp=` unzip `.then` naturally lands after all slices run; the sync
-  `#sp=` path is deferred the same way (`Promise.resolve().then(…)`) or it would throw —
-  the same trap `card`/`beatUi` document.
-- **Backup** writes **one file per preset**, named after the preset, plus one
-  `_settings.json` for everything that is not a preset. It used to be a single blob —
-  a fine backup and a terrible way to hand someone one scene, since they had to import
-  the whole library and hunt for it. `backupFiles()` builds `[{name, text}]`; each preset
-  file is `{app, kind: "preset", version, preset}` and each is routed through
-  `serializeBlob` so `effect` is the stable id. `curPreset` is deliberately **not** in
-  `_settings.json`: it is an index into a list that no longer travels as a list.
-  - **Delivery** splits on `showDirectoryPicker`. Chromium: write into
-    `BurnTheWeb/<YYYY-MM-DD_HHMM>/` — one dated folder per backup, all siblings. There
-    was briefly a `<scene>-backup/` level in between, named after the selected preset;
-    it was wrong, because a backup is *every* preset, so it described the wrong thing
-    and split one backup history across as many folders as you had presets.
-    Everything else: one download
-    per file, named `backup-<stamp> - <preset>.json`, **spaced ~150ms apart** because
-    browsers drop back-to-back downloads. The fallback flattens rather than nests
-    because the HTML spec has user agents sanitize path components out of `a.download`
-    — `"backup-x/y.json"` arrives as one mangled file, not a folder, so nesting that way
-    is not an option anywhere.
-  - **The folder is asked for once, then remembered.** A `FileSystemDirectoryHandle` is
-    structured-cloneable, so it lives in IndexedDB (`burnTheWeb.fs`) — localStorage can't
-    hold one, it only stores strings. `backupRoot()` reuses the stored handle when
-    `queryPermission` still says `granted` (silent) or `requestPermission` returns granted
-    (a one-click chip, *not* a folder browser); anything else falls through to a fresh
-    pick. **Shift-clicking Backup forces a re-pick** — that is the only way to move it, so
-    it is spelled out in the button's `title`. A write failure (folder deleted, grant
-    revoked) calls `bkClear()` so the next click re-picks instead of failing forever.
-  - **`bkStore` must always resolve.** Every IDB step is wrapped, because a throw inside
-    an IDB event handler leaves the promise pending *forever* and hangs Backup rather than
-    merely skipping the cache — `put()` throws `DataCloneError` wherever handles aren't
-    cloneable. The probe found this by accident and it is a real failure mode, not a test
-    artifact.
-  - Probing this needs **both** stubs: a fake `showDirectoryPicker` *and* a fake
-    `indexedDB` — and the latter must go in via `Object.defineProperty`, since plain
-    assignment to `window.indexedDB` silently no-ops in Chromium and the app then quietly
-    uses the real one (which rejects a fake, non-cloneable handle).
-  - **`safeFileName`** exists because a preset name is free text that becomes a filename:
-    it strips path separators and Windows-illegal characters and control codes, trims,
-    drops trailing dots/spaces (Windows removes them silently), escapes reserved device
-    names (`CON`, `NUL`, `COM1`…), truncates to 80, and falls back to `Preset` for an
-    empty name. `backupFiles` de-duplicates collisions with ` (2)`. `presetprobe` pins
-    all of it.
-- **Restore** takes **multiple files** (`#presetsfile` has `multiple`) — a whole backup
-  folder, or the single preset file a friend sent. `normalizeBackup()` folds every shape
-  we have ever written into the one the restore path understands (single preset file,
-  settings file, whole-library snapshot, legacy `{presets, ranges}`, oldest bare array)
-  and runs **before** `deserializeBlob`, so the id→index mapping lives in one place.
-  Presets accumulate across all selected files; the settings come from whichever file
-  carries them. `openRestore(parsed, valid, name)` shows a checkbox per part the
-  selection actually contains plus a merge-vs-replace radio — **Presets is no longer
-  always enabled**, since selecting only `_settings.json` is legitimate. `applyRestore()`
-  starts from the current `fullSnapshot()` and overrides only the ticked parts — presets
-  merge by name or fully replace — then writes to `localStorage` and **reloads**, so the
-  normal load path (`restore` → `applyBlob` → `setEffect` → `resize`) reapplies it
-  exactly. (`location.reload` is non-configurable in Chromium, so a test cannot stub it;
-  read `localStorage` synchronously after the click and stash the verdict in
-  `sessionStorage`, which survives the navigation.) There is no per-effect text
-  Export/Import — removed; **Share** is the only text-export path.
+**Beat chips are `<button>`s, so they fire neither `input` nor `change`** — the delegated `onEdit`
+cannot see them. `chipEdited()` does its job by hand: `autosavePreset()` (guarded on
+`persistReady && !applyingPreset`) then `persist()`. Calling only `persist()` reached
+`localStorage` but never the selected preset.
 
-### Moving scenes in and out: cloud only
-**The Backup, Restore, Share this scene and Share presets… buttons are gone from the menu.**
-The cloud profile is the one way in and out now, and the box is titled *Cloud profile* to say
-so. What was removed is only the half that **creates** files and links.
+- **Storage**: `localStorage["burnTheWeb.v1"]` = `{states, beats, pulses, plens, extras, effect,
+  ranges, beatTune, presets, curPreset, cycle, ttl, scale, panelOpen, audio}` — built by the single
+  helper **`fullSnapshot()`**, *the* definition of "everything we remember". `persist()` and the
+  Backup file both serialize exactly that, so a new setting can't land in one but not the other.
+  `applyBlob(saved, sharing)` (shared by `restore()` and `applyShared()`) applies `ranges` +
+  `beatTune` **first**, then validates every value against those bounds. Anything a user can change
+  that is *not* in `fullSnapshot()` is deliberately transient (pause, fullscreen, fold states).
+- **Custom slider ranges** (min/max/step) are saved. `RNG_ORIG` captures the shipped bounds up top
+  (before `restore()` can overwrite them); `collectRanges()` stores only sliders that differ;
+  `applyRanges()` sets them back. They ride in `localStorage`, the share URL and the Backup file.
 
-**Everything that DECODES is untouched, and must stay that way** — the standing rule is that
-every link ever generated keeps working. `?z=`/`?s=` scene links, `#zp=`/`#sp=` preset bundles
-and `#c=` cloud scenes all still open, and they land in the **Restore dialog**, which is also
-where *Load from cloud* and the gallery land. Deleting that dialog with the import button
-would have broken the cloud path itself. `validatePresetList` and `normalizeBackup` are
-likewise live for exactly that reason.
+### Share / bundle / backup codecs
+**Everything that DECODES must keep working forever** — that is the standing rule. `?z=`/`?s=`
+scene links, `#zp=`/`#sp=` preset bundles and `#c=` cloud scenes all still open, and they land in
+the **Restore dialog**, which is also where *Load from cloud* and the gallery land.
 
-`libraryUrl`, `shareUrl`, `cloudShareScene`, `shortenUrl`, `backupFiles`, `safeFileName` and
-the IndexedDB folder-handle helpers are now unreachable from the UI and deliberately **kept**:
-pure builders with no DOM dependency, `shareUrl` is the documented partner of the still-live
-`?z=` decode, `presetprobe` pins `safeFileName`'s Windows filename traps, and re-attaching a
-button to any of them is a one-line change. Same treatment `shareUrl` already had.
+- **Scene share (`?z=`)** — JSON through `CompressionStream("deflate-raw")` → base64url. base64url
+  matters (`+` and `/` cost three characters each percent-encoded). `?s=` (plain base64) is emitted
+  when `CompressionStream` is missing and **decoded forever**; `?z=` is checked first and the two
+  are mutually exclusive. Values are rounded on encode to each control's `CONTROLS.step` and then
+  **clamped to the live bounds** (`applyBlob`'s `ok()` is a hard reject). Decoding `?z=` is
+  **async**, landing after startup's `setEffect`, so the promise re-activates with `resize()` +
+  `setEffect(...)`. `shareUrl()` is therefore async, and Share copies via `ClipboardItem`'s promise
+  form so the user gesture survives an `await`.
+- **It encodes only the CURRENT scene** — `{states, beats, pulses, plens, extras, effect, cam,
+  beatTune, ranges}` with exactly one entry per per-effect map. The map *shape* is unchanged
+  (`{[effectIndex]: …}`), so **every old all-effects link still decodes** — `applyBlob` skips keys
+  the blob omits. `cycle`/`ttl` are deliberately dropped (the recipient's own preferences).
+  `stripShareParam()` runs during startup, so anything reading `location.search` later sees it gone.
+- **`pruneBeats()`/`prunePulses()`** send only what differs from each effect's `presetBeat(e)` /
+  pulse defaults. **Prune against the descriptor's defaults, not against all-false** — they coincide
+  today, but the moment a descriptor arms a chip, all-false would drop the user turning it *off*.
+  Pruning is share-only; `fullSnapshot()` stays verbose. This works **only because `applyShared`
+  re-seeds first** (`initStates()`/`initBeatStates()`/…) — otherwise pruned maps decode against the
+  recipient's own saved scene.
+- **Short link** — `shortenUrl(url)` POSTs to `tinyurl.com/api-create.php`. TinyURL because it 301s
+  byte-for-byte, sends CORS headers, needs no key, and doesn't block `github.io` (is.gd/v.gd reject
+  all GitHub domains). POST keeps a big scene off the query string. The API signals failure with
+  **200 + an error string**, so the response shape is validated.
+- **Preset-bundle links** — `libraryUrl(chosen)` = `serializeBlob({presets, cycle, curPreset})` →
+  deflate, carrying the auto-cycle toggle and the selected preset (as an index *within `chosen`*).
+  **The payload rides in the URL FRAGMENT — `#zp=` (fallback `#sp=`), not a `?query`** — a multi-KB
+  query makes GitHub Pages / Fastly answer **414 URI Too Long** before any JS runs. `#zp=`/`#sp=`
+  are also **distinct** from `?z=`/`?s=` so the decode paths never collide.
+  Recipient side: `applyShared()` checks the fragment **first** and routes to
+  **`openSharedLibrary`** → `normalizeBackup` → `deserializeBlob` → **`validatePresetList`** → the
+  **Restore dialog**. A **file** restore forces auto-cycle off; a **link** honours the sender's
+  toggle (the `__link` marker gates it). The receiver lands on the sender's selected preset's
+  *scene*: `applyRestore` stashes the index in `sessionStorage["btw.applyPreset"]` and startup reads
+  it once.
+- **Ordering trap:** `openSharedLibrary` lives in `persist-backup-restore.js` but `applyShared()`
+  is *called* during the earlier `audio-tuning-data.js` load, so `pendingRestore`/`openRestore` are
+  in the TDZ then. The async `#zp=` unzip `.then` lands after all slices; the sync `#sp=` path is
+  deferred the same way (`Promise.resolve().then(…)`) or it throws. Same for `#c=`.
+- **Backup** writes **one file per preset** (named after the preset) plus `_settings.json`.
+  `backupFiles()` builds `[{name, text}]`; each preset file is `{app, kind: "preset", version,
+  preset}` routed through `serializeBlob`. `curPreset` is deliberately **not** in `_settings.json`.
+  Delivery splits on `showDirectoryPicker`: Chromium writes into `BurnTheWeb/<YYYY-MM-DD_HHMM>/`;
+  everything else downloads one file per preset **~150ms apart** (browsers drop back-to-back
+  downloads) and **flattens** rather than nests, because the HTML spec has user agents sanitize
+  path components out of `a.download`.
+  - The folder handle lives in IndexedDB (`burnTheWeb.fs`) — localStorage only stores strings.
+    `backupRoot()` reuses it when permission is still granted. **Shift-clicking Backup forces a
+    re-pick.** A write failure calls `bkClear()`.
+  - **`bkStore` must always resolve** — a throw inside an IDB event handler leaves the promise
+    pending forever and hangs Backup (`put()` throws `DataCloneError` where handles aren't
+    cloneable).
+  - **`safeFileName`** strips path separators, Windows-illegal characters and control codes, trims,
+    drops trailing dots/spaces, escapes reserved device names (`CON`, `NUL`, `COM1`…), truncates to
+    80, and falls back to `Scene`. `backupFiles` de-duplicates with ` (2)`. `presetprobe` pins it.
+- **Restore** takes **multiple files**. `normalizeBackup()` folds every shape we have ever written
+  into one (single preset file, settings file, whole-library snapshot, legacy `{presets, ranges}`,
+  bare array) and runs **before** `deserializeBlob`. `openRestore(parsed, valid, name)` shows a
+  checkbox per part the selection contains plus a merge-vs-replace radio (Presets is **not** always
+  enabled — selecting only `_settings.json` is legitimate). `applyRestore()` starts from
+  `fullSnapshot()`, overrides only ticked parts, writes to `localStorage` and **reloads**, so the
+  normal load path reapplies it. (`location.reload` is non-configurable in Chromium, so tests read
+  `localStorage` synchronously and stash the verdict in `sessionStorage`.)
 
-Two knock-ons worth knowing. **`presetprobe`'s slice markers moved**: it used
-`el("importpresets")` as the end anchor for both `validatePresetList` and `normalizeBackup`,
-and that line no longer exists — the anchor is now the comment that replaced it. And
-**`tools/shareparity.js` was deleted**: it drove the "Share presets…" button end-to-end, which
-no longer exists. The coverage it gave — that a new per-layer or scene field actually travels
-with a shared payload — now applies to the cloud profile instead, where `cloudprobe` pins the
-structural half (same `serializeBlob` shape, same codec) but nothing yet drives a real
-two-browser round trip.
+**The Backup / Restore / Share buttons are gone from the menu** — the cloud profile is the one way
+in and out. Only the half that **creates** files and links was removed. `libraryUrl`, `shortenUrl`,
+`backupFiles`, `safeFileName` and the IndexedDB helpers are unreachable from the UI and
+deliberately **kept**: pure builders, pinned by probes, and re-attaching a button is a one-line
+change. `validatePresetList` and `normalizeBackup` are live because the cloud path uses them.
 
 ### Cloud profiles (Firebase Auth + Firestore, over REST)
-Keep a preset library against a Google account so it follows you between machines.
-`src/cloud-profile.js` is the whole client; `firestore.rules` (repo root) is the whole
-security boundary.
+`src/cloud-profile.js` is the whole client; `firestore.rules` (repo root) is the whole security
+boundary.
 
-**No Firebase SDK.** Everything is `fetch()` against three documented REST endpoints
-(`identitytoolkit` to exchange a Google ID token, `securetoken` to refresh, `firestore` for
-the document), so the page stays a single self-contained file. The one remote script is
-Google Identity Services for the sign-in button — the same class of thing `initAnalytics()`
-already loads, not a new one.
+**No Firebase SDK** — `fetch()` against three REST endpoints (`identitytoolkit` to exchange a
+Google ID token, `securetoken` to refresh, `firestore` for the document), so the page stays one
+self-contained file. The one remote script is Google Identity Services for the sign-in button.
 
-**`CONFIG.cloud.apiKey` is a kill switch**, exactly like `CONFIG.analyticsId`: empty ⇒ the
-row is hidden, no script is injected and **no request is made at all** (a probe asserts zero
-network during startup). That is what lets the feature ship and deploy before the Firebase
-project exists.
+**`CONFIG.cloud.apiKey` is a kill switch**, like `CONFIG.analyticsId`: empty ⇒ row hidden, no
+script injected, **no request made at all**.
 
-**The payload is one deflated string, not Firestore structure — this is the decision that
-makes the feature small.** Firestore's REST API wraps every field in its type
-(`{"stringValue":…}`, and integers are *strings*: `{"integerValue":"7"}`), so mapping the
-nested preset blob into it would mean a second encoder duplicating `serializeBlob` and
-tracking every future preset field. Instead `cloudBlob()` builds exactly the blob
-`libraryUrl()` builds and runs it through the same `zipToB64` — so **a cloud profile and a
-`#zp=` bundle are the same bytes**, the document has only five scalar fields, and the typed-
-value codec (`fsOut`/`fsIn`) is a dozen lines. The consequence worth protecting: a downloaded
-profile is handed straight to **`openSharedLibrary(raw)`**, inheriting validation, the
-merge-vs-replace Restore dialog and landing on the stored selected preset for free. If those
-two formats ever diverge, cloud loading needs its own decoder — `cloudprobe` asserts the
-shared path structurally.
+**The payload is one deflated string, not Firestore structure.** Firestore's REST API wraps every
+field in its type (`{"stringValue":…}`; integers are *strings*), so mapping the nested blob in
+would mean a second encoder duplicating `serializeBlob`. Instead `cloudBlob()` builds exactly the
+blob `libraryUrl()` builds and runs it through the same `zipToB64` — **a cloud profile and a `#zp=`
+bundle are the same bytes**, the document has five scalar fields, and the typed-value codec
+(`fsOut`/`fsIn`) is a dozen lines. A downloaded profile is handed straight to
+`openSharedLibrary(raw)`, inheriting validation and the Restore dialog. **If those two formats ever
+diverge, cloud loading needs its own decoder** — `cloudprobe` asserts the shared path structurally.
 
-**Rules are the only defence**, because the web API key in the page is public by design (it
-names the project; it authorises nothing) and there is no backend to check anything. So the
-rules carry the size caps a server's body limit would otherwise provide, and `hasOnly()`
-pins the document shape — without it the collection is a free 1 MiB-per-doc file host for
-anyone with a Google account. `firestore.rules` is checked in so the boundary is reviewable
-in a diff rather than living only in a web console; its header lists the nine cases to verify
-in the console Rules Playground (there is no npm here, so the emulator's test library is not
-available).
+**Rules are the only defence** — the web API key in the page is public by design and there is no
+backend. The rules carry the size caps a server's body limit would provide, and `hasOnly()` pins
+the document shape; without it the collection is a free 1 MiB-per-doc file host. `firestore.rules`
+is checked in so the boundary is reviewable in a diff; its header lists the nine cases to verify in
+the console Rules Playground.
 
-Two smaller things: the id token lasts ~an hour and is refreshed **60s early** so a save
-can't fail on a token that expired in flight; and a 401 mid-flight refreshes and retries
-**exactly once**, never in a loop. Session tokens live under their own `localStorage` key,
-deliberately **not** in the scene blob — same reasoning as the credits preference.
+Tokens: the id token lasts ~an hour and is refreshed **60s early**; a 401 mid-flight refreshes and
+retries **exactly once**. Session tokens live under their own `localStorage` key, **not** in the
+scene blob.
 
-**"Share this scene" stores the scene in Firestore and hands back a ~12-character fragment**
-(`#c=<docId>`) instead of carrying the whole scene in the URL — measured 4473 chars → 12.
-Signed out, or if the write is refused for any reason (rules, quota, offline), it falls back
-to the self-contained `?z=` link, so sharing never requires an account and never breaks; the
-cloud route is an optimisation, not a gate. That fallback is why `shareUrl()` — previously
-dead-but-kept — is a live function again.
+**"Share this scene"** stores the scene in Firestore and returns a ~12-character `#c=<docId>`
+fragment. Signed out, or if the write is refused for any reason, it falls back to the
+self-contained `?z=` link — the cloud route is an optimisation, not a gate. The payload is
+**`sceneBlob()`, split out of `shareUrl`**: one definition of "what a shared scene is", two
+transports; the recipient path is the existing `installShared`.
 
-The payload is **`sceneBlob()`, split out of `shareUrl` for exactly this reason**: one
-definition of "what a shared scene is", two transports. The recipient path is the one that
-already existed (`installShared`), so a `#c=` link lands identically to a `?z=` one.
+**Shared scenes live in `/scenes`, NOT `/profiles`** — a link into a profile would only open while
+that profile was published, so sharing one scene would drag the whole library public. `/scenes`
+docs are world-readable, created only by a signed-in user stamping their own uid as `owner`,
+**immutable** (`allow update: if false`, so circulated content can't be swapped), and deletable by
+their owner.
 
-**Shared scenes live in `/scenes`, NOT in `/profiles`**, and that separation is the point: a
-link pointing into a profile would only open while that profile was published to the gallery,
-so sharing one scene would drag the sharer's whole library public with it. `/scenes` documents
-are world-readable (a share link must open for someone with no account), created only by a
-signed-in user who stamps their own uid as `owner`, **immutable** (`allow update: if false` —
-otherwise the content behind an already-circulated link could be swapped afterwards), and
-deletable by their owner so a link can be retracted.
+**`installShared` also resets the preset chooser to "— unsaved scene —"** — it always set
+`curPreset = -1` but left the `<select>` showing whichever preset startup selected.
 
-`#c=` decoding is **deferred by a microtask** in `applyShared`, the same trap `#sp=` documents:
-`cloudFetchScene` lives in a much later slice whose `CLOUD` const is still in the temporal
-dead zone while `audio-tuning-data.js` is loading.
+**The gallery ("Published scenes") applies a row straight away — no Restore dialog.** Each row has
+*Load and merge* and *Load and replace*, because merge-vs-replace is the entire content of the
+dialog it used to open. **`applySharedLibrary(raw, replace)` does not reimplement the apply** — it
+stages the same `pendingRestore` + checkbox state and calls `applyRestore`. `sharedLibrary(raw)` is
+the shared decode+validate half, so the dialog route (`openSharedLibrary`, used by `#zp=` links and
+*Load from cloud*) can't drift from the dialogless one.
 
-**`installShared` now also resets the preset chooser to "— unsaved scene —".** It always set
-`curPreset = -1` but left the `<select>` displaying whichever preset startup had selected, so
-an arriving shared scene looked like it had loaded *your* preset of that name. Harmless to the
-data (`autosavePreset` early-returns while `curPreset < 0`) and purely misleading — which is
-why it survived unnoticed through every `?z=` link.
+**The gallery is browsable signed out**, so `galFetchJson` uses a plain keyed `fetch` rather than
+`cloudFetch`, and the Browse button sits *outside* `#cloud-authed`. Publishing is opt-in and
+**`cloudPublish` re-saves the whole profile** rather than patching `pub` alone (the rules require
+name/payload/count).
 
-**The gallery ("Published scenes") applies a row straight away — no Restore dialog.** Each
-row carries **two** buttons, *Load and merge* and *Load and replace*, because merge-vs-replace
-is the entire content of the dialog it used to open: having been asked in the click, asking
-again is a second prompt for an answer already given. **`applySharedLibrary(raw, replace)`
-does not reimplement the apply** — it stages the same `pendingRestore` + checkbox state the
-dialog would have produced and calls `applyRestore`, so the merge / `curPreset` / write /
-reload sequence has exactly one copy. The checkboxes are ordinary DOM nodes whether or not
-`#restoredlg` is visible, which is what makes that free. `sharedLibrary(raw)` is the shared
-decode+validate half, so the dialog route (`openSharedLibrary`, still used by `#zp=` links and
-*Load from cloud*, where the answer *isn't* in the click) and the dialogless one cannot drift.
-
-**The gallery is browsable signed out**, which is why `galFetchJson` uses a plain keyed
-`fetch` rather than `cloudFetch` — a visitor with no account has no token to attach, and
-these documents are public by definition. The Browse button therefore sits *outside*
-`#cloud-authed`. Publishing is the opposite: opt-in, off by default, and **`cloudPublish`
-re-saves the whole profile rather than patching `pub` alone** — the rules require the
-resulting document to carry name/payload/count, so a pub-only write to a profile that
-doesn't exist yet fails validation.
-
-**The listing survives a missing composite index, by design.** `where pub == true` +
-`orderBy updated` needs one, and a fresh project has none — Firestore answers 400
-`FAILED_PRECONDITION` with a one-click creation URL. Rather than leaving the gallery dead
-until someone visits that URL, `galList` retries **unordered** (which needs no index) and
-logs the URL once via `console.info`. The two paths differ in what they *select* — indexed
-returns the genuinely newest `limit` documents, unordered an arbitrary `limit` — so the
-index still matters once there are more profiles than fit a page. But the **sort is applied
-in both cases**: ordering ≤20 items client-side is free, and it stops the rendered order
-depending on which path ran. The query also `select`s away `payload`; without that, listing
-20 profiles drags 20 compressed libraries down the wire to render a list of names (it does
-not reduce the read quota, which is per document regardless). The listing is cached for
-`CONFIG.cloud.galleryTtlMs`, and `galBust()` clears it whenever publishing changes.
+**The listing survives a missing composite index.** `where pub == true` + `orderBy updated` needs
+one; a fresh project answers 400 `FAILED_PRECONDITION` with a creation URL. `galList` retries
+**unordered** and logs the URL once via `console.info`. The **sort is applied in both cases**, so
+rendered order doesn't depend on which path ran. The query `select`s away `payload`. Cached for
+`CONFIG.cloud.galleryTtlMs`; `galBust()` clears it when publishing changes.
 
 ### Audio & beat reactivity
-`audio` holds the WebAudio graph; `startAudio("capture"|"mic")` grabs
-`getDisplayMedia`/`getUserMedia` and must run inside a user gesture. **Pulse mode**:
-when audio is on and a slider has an armed chip, `updateAnims()` stops that slider
-drifting — it rests at the low thumb and snaps to the high thumb on each beat,
-dropping back over ~0.2s along the slider's chosen **beat-pulse shape** (see the
-Effects section — `pulseShape[id]`, default `snap` = the original linear drop).
-Browsers can't silently re-grab audio after a reload, so `armAudioResume()` re-opens
-the last-used source on the first post-load gesture.
+`audio` holds the WebAudio graph; `startAudio("capture"|"mic")` must run inside a user gesture.
+**Pulse mode**: with audio on and an armed chip, `updateAnims()` stops that slider drifting — it
+rests at the low thumb and snaps to the high thumb on each beat. Browsers can't silently re-grab
+audio after a reload, so `armAudioResume()` re-opens the last source on the first post-load gesture.
 
-**Mute is `audio.muted`, and the split between it and `audio.on` is the whole design.**
-The `♪` button beside `☰`/`⛶` (and the **S** key — `M` would be the video-player
-convention but is the menu here) calls `toggleMute` → `setMuted`, which **never touches the
-stream**. That is not a shortcut: the same "can't silently re-grab" rule above means
-`stopAudio()` would cost a fresh picker dialog to come back from, which is a Stop button,
-not a mute button. So the stream, the analyser and the 100Hz interval all stay exactly as
-they are and `audioTick` early-returns instead.
+**Mute is `audio.muted`, and the split from `audio.on` is the whole design.** The `♪` button (and
+the **S** key — `M` is the menu here) calls `toggleMute` → `setMuted`, which **never touches the
+stream**: the same "can't silently re-grab" rule means `stopAudio()` would cost a fresh picker
+dialog to come back from. `audioTick` early-returns instead.
+- `audio.on` keeps its meaning — **a stream is open**. Everything asking "is audio reaching the
+  visual?" goes through **`audioLive() = audio.on && !audio.muted`**. Four sites: `stepAnim`'s
+  `armed` (the important one — reading `audio.on` would leave armed sliders frozen at their low
+  thumb), `flashChips`'s `lit`, `frame()`'s `updateMeter`/`flashChips`/`clearBeats`, and the
+  `audio-off` class. What still reads `audio.on`: the Capture/Mic buttons' lit state,
+  `armAudioResume`, and `fullSnapshot`'s last-live-source field.
+- `setMuted` zeroes `pulse`/`energy`/`beatNow` and calls `updateMeter()` + `flashChips()` **once**
+  on the way down (`frame()` stops refreshing them once `audioLive()` is false). `stopAudio` clears
+  `muted`. `audio.muted` is **transient**.
+- The glyph is the **same `♪` in both states**, with `.muted` adding `line-through`, so it never
+  changes width or baseline.
 
-`audio.on` therefore keeps its old meaning — **a stream is open** — and everything that
-asks "is audio reaching the visual?" goes through **`audioLive() = audio.on && !audio.muted`**
-instead. Four sites, and each would be a visible bug if it read the wrong one:
-`stepAnim`'s `armed` (the important one — reading `audio.on` there would leave every armed
-slider parked at its low thumb with no beats coming, i.e. frozen, when the intent is that
-muting looks exactly like audio-off and the sliders resume their free drift), `flashChips`'s
-`lit`, `frame()`'s `updateMeter`/`flashChips`/`clearBeats` pair, and the `audio-off` class on
-`#panel`/`#breakout`. What deliberately still reads `audio.on`: the Capture/Mic buttons' lit
-state (the source really is live, and dimming them invites a click that tears it down),
-`armAudioResume`, and `fullSnapshot`'s last-live-source field.
+**The detector (`audioTick`) is an onset detector, not an energy detector** — don't "simplify" it
+back. Per band it computes **spectral flux**: the sum of positive bin-to-bin changes since the
+previous tick. Load-bearing properties:
+- **Float, linear magnitudes** — `getFloatFrequencyData` → `10^(dB/20)`. The *byte* spectrum is
+  dB-compressed, so a ratio test there is a ratio in log space and a real 6dB hit barely moves it.
+- **`smoothingTimeConstant = 0`** — the analyser's smoothing is a low-pass across frames.
+- **Adaptive threshold + peak picking** — a beat is a *local maximum* of flux above
+  `median(last ~1s) × beatCfg.fluxK[b]` and above `beatCfg.floor × recent peak`, with a per-band
+  refractory. Peak-picking is causal and inspects the *previous* tick (one 10ms hop of latency).
+- **Bands are narrow on purpose** (default 30–150 / 150–2500 / 2500–12000 Hz; `computeBins` maps
+  them to FFT bins) — a wide low band dilutes the kick, and 2k–16k over ~680 empty bins never
+  clears a floor.
+- **Thresholds are live-tunable and per-preset scene data.** `beatCfg` (defaults `BEAT_DEFAULTS`,
+  both in the detector constants block) holds per-band `fluxK`, global `floor`, per-band `refract`
+  and `bands`. `mergeBeatTune(saved)` has **replace semantics** (start from `BEAT_DEFAULTS`,
+  overlay only valid supplied fields) — merging into the live `beatCfg` would leak the previous
+  preset's tuning into any preset that omits a field. `installBeatTune` writes fields **in place**,
+  never replacing the object (`audioTick` closes over it and `beatprobe` slices it out of the
+  constants block). It also re-runs `beatBuild()` and `computeBins()` (the latter only when
+  `audio.on`, since it throws before audio starts).
 
-`setMuted` zeroes `pulse`/`energy`/`beatNow` and calls `updateMeter()` + `flashChips()`
-**once** on the way down — the same "plus once on the way down" trick `stopAudio` uses to
-clear the inline lit styles back to the CSS default, and necessary because `frame()` stops
-refreshing them the moment `audioLive()` goes false. `stopAudio` clears `muted`, so the next
-Capture/Mic can't start silently muted. `audio.muted` is **transient** — deliberately absent
-from `fullSnapshot`, same class as pause and fullscreen; a reload that came back muted would
-read as broken beat detection.
+`audioTick` runs on a **fixed `setInterval(HOP_MS)` (100Hz), not rAF** — beat timing must not
+jitter with framerate. Beats are **latched** in `beatNow[]`; `frame()` calls `updateAnims()` then
+`clearBeats()`. `audioTick(t)` takes an optional timestamp so tests can drive a fake clock.
 
-The button is `.off` (inert) while no source is running, and the glyph is the **same `♪` in
-both states** with `.muted` adding `line-through` — so it never changes width or baseline as
-you toggle it, and it stays monochrome beside its two neighbours instead of swapping in a
-colour emoji.
+**Beat tuning** lives in its own `<details class="box" id="beatDetails">` beside the other scene
+controls, because it is per-preset scene data that must autosave:
+- Its CSS is scoped to `#beatDetails`.
+- `beatChanged` must **not** `persist()` itself (the delegated `onEdit` already does, so it would
+  double-write). `beatReset` is a click, so `onEdit` never sees it — it persists + autosaves by hand.
+- `RNG_ORIG` and `refreshRangeUI` skip `#beatDetails` explicitly: the generated beat sliders have
+  **no `id`**, so letting them into the ranges scan writes an `RNG_ORIG[undefined]` entry and
+  `collectRanges` then emits a junk `undefined` key into every saved and shared blob.
+- `beatUi` is a **`var`** (like `card`): `installBeatTune` runs during startup long before the
+  declaration and reads `beatUi && beatUi.wired`. With `let` that read is a TDZ crash.
+- `applyPreset` rebuilds the sliders (`beatBuild`), so any reference held across a preset switch is
+  a **detached node** — its listeners fire but nothing bubbles to `onEdit`.
 
-**Testing it needs `AudioContext` stubbed, not just `getUserMedia`.** A real one hangs
-headless — `await audio.ctx.resume()` never settles with no audio device, which wedges
-`startAudio` and then the whole run (this cost two killed browsers). The detector's contract
-with it is small — `sampleRate`, `resume`, `createAnalyser`, `createMediaStreamSource`, and
-an analyser with `fftSize`/`frequencyBinCount`/`getFloatFrequencyData`/`min|maxDecibels` —
-so a fake covers the entire live path with `audio.on` genuinely true. Pair it with a no-op
-`requestAnimationFrame`: none of this is about pixels, and software rendering is what makes
-these runs take minutes.
+### Dev tools
+There is **no Diagnostics section** any more. The **beat-detection trace** (`?debug=1` or the
+checkbox in Beat tuning; a floating canvas built by `dbgInit` showing scrolling flux + threshold +
+beat ticks per band, lane labels read from `beatCfg.bands` live) moved into the Beat tuning box.
+The frame + FPS counter lost its toggle entirely — `H` governs it via `body.ui-hidden`, and
+`#frames.hidden` survives in the CSS as the mechanism `?hideui`/`H` drive.
 
-**The detector (`audioTick`) is an onset detector, not an energy detector** — don't
-"simplify" it back. Per band it computes **spectral flux**: the sum of the positive
-bin-to-bin changes since the previous tick. Four properties are load-bearing:
-- **Float, linear magnitudes.** `getFloatFrequencyData` → `10^(dB/20)`. The *byte*
-  spectrum is dB-compressed, so "energy > average × 1.4" there is a ratio in log
-  space and a real 6dB hit barely moves it — that was the main source of misses.
-- **`smoothingTimeConstant = 0`.** The analyser's smoothing is a low-pass *across
-  frames*: it smears the transients and adds ~2 frames of lag.
-- **Adaptive threshold + peak picking.** A beat is a *local maximum* of flux above
-  `median(last ~1s of flux) × beatCfg.fluxK[b]` and above `beatCfg.floor × recent peak
-  flux`, with a per-band refractory (`beatCfg.refract[b]`). The median tracks the
-  band's noise floor (beats are sparse), so the bar follows the mix. Peak-picking is
-  causal and inspects the *previous* tick, so detection costs one hop (10ms) of latency.
-- **Bands are narrow on purpose** (`beatCfg.bands`, default 30–150 / 150–2500 /
-  2500–12000 Hz; `computeBins` maps them to FFT bins) — a wide low band dilutes the
-  kick, and 2k–16k averaged over ~680 near-empty bins is too quiet to ever clear a floor.
-- **The thresholds are live-tunable, not consts.** `beatCfg` (defaults in
-  `BEAT_DEFAULTS`, both in the detector constants block) holds per-band `fluxK`, global
-  `floor`, per-band `refract`, and per-band `bands`; `audioTick`/`computeBins` read it
-  live. It is **per-preset scene data** — `snapshotScene` stores it, `applyPreset`
-  installs it, and it rides in `localStorage`, the Backup file *and* Share links, so a
-  scene reacts to music the same way wherever it is opened. `mergeBeatTune(saved)` has
-  **replace semantics** (start from `BEAT_DEFAULTS`, overlay only valid supplied fields),
-  which is the whole point: merging into the live `beatCfg` instead would leak the
-  previously selected preset's tuning into any preset that omits a field — and a preset
-  saved before the feature omits all of them. `installBeatTune` writes the fields into
-  `beatCfg` **in place**, never replacing the object: `audioTick` closes over it and
-  `beatprobe` slices it straight out of the constants block, so it must stay there and
-  stay the same object. It also re-runs `beatBuild()` (the sliders never refresh
-  themselves) and `computeBins()` — the latter only when `audio.on`, since it throws
-  before audio has started. `presetprobe` locks the merge semantics down.
-
-`audioTick` runs on a **fixed `setInterval(HOP_MS)` (100Hz), not on rAF** — beat
-timing must not jitter with framerate, and two beats inside one slow frame would
-otherwise collapse into one. Beats found between frames are **latched** in
-`beatNow[]`; `frame()` calls `updateAnims()` (the only consumer) and then
-`clearBeats()`. `audioTick(t)` takes an optional timestamp so tests can drive it on
-a fake clock.
-
-### Dev tools (not user settings)
-**There is no Diagnostics section any more.** It held exactly two toggles and both found
-better homes: the **beat-detection trace** moved into the **Beat tuning** box, beside the
-thresholds it exists to help you set; and the **frame + FPS counter lost its toggle entirely**,
-because `H` (hide all chrome) already governs it via `body.ui-hidden` and a second control for
-the same thing was only a way for the two to disagree. `#frames.hidden` survives in the CSS as
-the mechanism `?hideui`/`H` drive.
-
-**The opt-out from persistence is now `data-nopersist`, not `#diag`.** It used to be enough for
-`onEdit` to skip anything inside `#diag`, because every dev tool lived there. The trace now
-sits *inside* `#beatDetails` — a box that deliberately does **not** escape `onEdit`, since beat
-tuning is per-preset scene data that must autosave — so the toggle carries `data-nopersist` and
-`onEdit` early-returns on `closest("[data-nopersist]")`. That is strictly more general: a future
-dev control can live anywhere and still opt out. `RNG_ORIG` and `refreshRangeUI` use the same
-marker alongside their `#beatDetails` skip. A probe asserts the pair that matters — toggling the
-trace writes **nothing** to storage, while a beat-tuning slider in the *same box* still persists.
-
-### Older notes on the Diagnostics section (now removed)
-The dev tools live in a `<details id="diag">` **Diagnostics** section at the bottom
-of the System box (there are no dev keys — the whole UI opens via ☰ or **m**). They're
-off by default, never enter presets, and their open/closed state is never saved. Because
-they sit *inside* `#panel`, the panel-wide scans guard against them: `onEdit` (the
-delegated persist listener) and the `RNG_ORIG` capture early-return on
-`e.target.closest("#diag")` / `inp.closest("#diag")`, so a dev-tool edit never autosaves
-into a preset. (The slider-range editor used to be a tool here; it now lives per-slider
-in the pop-out boxes. Beat tuning used to be one too — see below.)
-- **`dbg` — beat trace** (`#diagTrace` checkbox / `?debug=1`): a floating
-  `position:fixed` canvas (built by `dbgInit`), toggled from the checkbox:
-  scrolling flux + adaptive threshold + beat ticks per band. The tool for diagnosing a
-  missed beat. Persists nothing. Its lane labels read `beatCfg.bands` live, so they
-  track band edits from the Beat tuning box.
-
-**Beat tuning is NOT one of these** — it moved out of `#diag` into its own
-`<details class="box" id="beatDetails">` beside the other scene controls, because it
-became per-preset scene data and therefore has to autosave like every other control.
-That move is more than markup, and each part is load-bearing:
-- Its CSS was entirely `#diag`-prefixed and is now scoped to `#beatDetails`. The
-  `.rng-btns` button rule is still `#diag`-scoped, so the box carries its own copy.
-- Escaping `onEdit`'s `#diag` early-return is the *point* — edits now persist and fold
-  into the selected preset. `beatChanged` therefore must **not** `persist()` itself, or
-  every drag double-writes. `beatReset` is a click, not an `input`, so `onEdit` never
-  sees it and it persists + autosaves by hand.
-- `RNG_ORIG` and `refreshRangeUI` skip `#beatDetails` explicitly as well as `#diag`:
-  the generated beat sliders have **no `id`**, so letting them into the ranges scan
-  writes an `RNG_ORIG[undefined]` entry and `collectRanges` then emits a junk
-  `undefined` key into every saved and shared blob.
-- `beatUi` is a **`var`**, like `card`: `installBeatTune` runs during startup
-  (restore/share → `applyBlob`) long before the declaration, and reads
-  `beatUi && beatUi.wired`. With `let` that read is a TDZ crash rather than a falsy skip.
-- `applyPreset` rebuilds the sliders (`beatBuild`), so any reference held across a preset
-  switch is a **detached node** — its listeners still fire but nothing bubbles to
-  `onEdit`. That bit a test before it bit a user.
-`beatUi` is separate from the many `beat*`/`BEAT_*` scene-audio names.
-Because slider bounds are editable at runtime (the per-box range editor), `bindRange`'s
-`ui()` reads `lo.min`/`lo.max` **live** rather than closing over them.
+**The opt-out from persistence is `data-nopersist`**, not `#diag`: `onEdit` early-returns on
+`closest("[data-nopersist]")`, and `RNG_ORIG`/`refreshRangeUI` use the same marker. That is
+strictly more general — a dev control can live anywhere and still opt out.
 
 ### "Sync with your music" nudge + analytics
-`#syncpop` is shown to users who haven't successfully started audio, at growing
-gaps of active (tab-visible) time (`SYNC_DELAYS` = 30s, 5min, 1h), capped at 3
-showings ever; state in `localStorage["burnTheWeb.sync.v1"]`, satisfied for good
-once any source goes live. `track(name, params)` is a provider-agnostic event
-hook; the GA4 gtag scaffold is **live** — `GA_MEASUREMENT_ID` is set to the real
-`G-…` id, so `initAnalytics()` loads gtag.js and page views + `track()` events
-flow. Clearing `GA_MEASUREMENT_ID` back to `""` makes it **completely inert**
-again (no script, no requests).
+`#syncpop` shows to users who haven't started audio, at growing gaps of active (tab-visible) time
+(`SYNC_DELAYS` = 30s, 5min, 1h), capped at 3 showings ever; state in
+`localStorage["burnTheWeb.sync.v1"]`, satisfied for good once any source goes live. `track(name,
+params)` is a provider-agnostic hook; the GA4 gtag scaffold is **live** (`GA_MEASUREMENT_ID` is a
+real `G-…` id). Clearing it back to `""` makes it completely inert.
 
-### Timing model (important)
-`frame()` runs every `requestAnimationFrame`. The **fire sim is decoupled** from
-render: it advances on a fixed accumulator tick (`cfg.burn` ticks/sec, capped 4
-ticks/frame) while render/morph/beat run every frame. Julia recomputes fully each
-frame. Phase clocks (`simT`, `spinAngle`) accumulate per tick from the live speed
-rather than reading the wall clock, so animating the speed never teleports the
-phase. Clicking the canvas toggles `paused`.
+### Timing model
+`frame()` runs every rAF. The **fire sim is decoupled** from render: a fixed accumulator tick
+(`cfg.burn` ticks/sec, capped 4/frame) while render/morph/beat run every frame. Phase clocks
+accumulate per tick from the live speed rather than reading the wall clock, so animating the speed
+never teleports the phase. Clicking the canvas toggles `paused`.
 
 ### Determinism
-The chaos game uses a **mulberry32 PRNG re-seeded to `SEED` every frame**, so the
-point *sequence* is identical each frame — only the moving geometry reshapes the
-fractal (no random shimmer). Auto-morph uses `Math.random()`, kept separate so it
-never perturbs the fractal.
-
-**AnimeJulia random start.** The Julia orbit accumulators `juliaOuter/juliaInner`
-default to a fixed 0 and are set by `reseedJulia()`: a random lap (`Math.random()`,
-clear of the chaos PRNG) when the per-effect **Random seed** toggle (`randSeed`, an
-`extras` field, default on) is on, else 0 (reproducible). `setEffect(2)` calls it on
-every entry to AnimeJulia — first load, effect switch, and preset apply — so it opens
-somewhere new each reload; toggling the checkbox re-rolls immediately.
-
-**Attractor point jitter.** The de Jong map is *exact* — same coefficients, same figure,
-no randomness anywhere on its path (it is a point effect but not a chaos game). **Point
-jitter** (`atjit`) scatters each stamped point by up to ±jit heat pixels to dither the
-hard threads. It draws from `Math.random()`, deliberately clear of the chaos PRNG (same
-reasoning as auto-morph) so it can never perturb the other point effects. The `jit > 0`
-guard keeps jitter 0 byte-identical to the un-jittered map.
-
-**Don't add a fixed-seed toggle for it** — it was built, shipped and reverted. Pinning the
-scatter to a repeating sequence is invisible in practice: the heat grid accumulates over
-many ticks, so a repeating scatter and a free one both fill the same ±jit neighbourhood
-within a few frames, and glow + decay erase what little difference remains. The probe
-could prove the buffers differed frame to frame; a human watching the screen could not.
-A distinction only a pixel diff can see is not a user-facing control.
+The chaos game uses a **mulberry32 PRNG re-seeded to `SEED` every frame**, so the point *sequence*
+is identical each frame — only the moving geometry reshapes the fractal. Auto-morph uses
+`Math.random()`, kept separate so it never perturbs the fractal.
+- **AnimeJulia random start.** `juliaOuter/juliaInner` default to 0 and are set by `reseedJulia()`:
+  a random lap when the per-effect **Random seed** toggle (`randSeed`, an `extras` field, default
+  on) is on, else 0. `setEffect` calls it on every entry to AnimeJulia.
+- **Attractor point jitter.** The de Jong map is exact; `atjit` scatters each stamped point by ±jit
+  heat pixels to dither the hard threads, drawing from `Math.random()` (clear of the chaos PRNG).
+  The `jit > 0` guard keeps jitter 0 byte-identical.
+- **Don't add a fixed-seed toggle for the jitter** — it was built, shipped and reverted. The heat
+  grid accumulates over many ticks, so a repeating scatter and a free one fill the same
+  neighbourhood within a few frames. A distinction only a pixel diff can see is not a control.
 
 ## Config & control gotchas
 
-`cfg = { points, speed, decay, scale, burn }` holds live fire state. Sliders are
-wired via `bindRange(id, valId, fmt, apply, durScale, beat)` and registered in
-`anims`; `updateAnims()` drives their erratic drift between the two thumbs. Non-obvious mappings:
-- **Flame rise** is linear in flame *height*: `decay = 128 * R / (R - 1)` (setting
-  `decay` directly is a brutal `1/(decay-128)` hyperbola near 128).
+`cfg = { points, speed, decay, scale, burn }` holds live fire state. Sliders are wired via
+`bindRange(id, valId, fmt, apply, durScale, beat)` and registered in `anims`; `updateAnims()`
+drives their drift between the two thumbs. `bindRange`'s `ui()` reads `lo.min`/`lo.max` **live**
+rather than closing over them, because bounds are editable at runtime. Non-obvious mappings:
+- **Flame rise** is linear in flame *height*: `decay = 128 * R / (R - 1)`.
 - **Drift speed** slider value is divided by 100 → `cfg.speed`.
-- **Rotation** slider is degrees/second → converted to rad/s (`rotSpeed`),
-  accumulated into `spinAngle` per tick (independent of drift speed & burn rate).
-- **Tetrafyer's view has two rotations**, and only one used to be controllable.
-  `Rotation` yaws (`spinAngle`); the **pitch** was a hardcoded `0.30·sin(simT·0.12)` —
-  the ±17°, minutes-long nod that reads as "the box is slowly rotating by itself".
-  It is now `nodAmp·sin(nodPhase)` behind the **Box nod** (degrees) and **Nod speed**
-  (×) sliders. `nodPhase` is **accumulated per tick** (`NOD_RATE · nodSpd · cfg.speed /
-  cfg.burn`), not derived as `0.12·simT`: now that the rate is a slider it can be
-  animated or beat-armed, and reading it off `simT` would teleport the nod mid-swing —
-  the same reason `simT` and `spinAngle` accumulate. At `nodSpd` 1 the phase tracks
-  `0.12·simT` exactly, so the shipped default reproduces the old motion (the probe pins
-  this to 1e-9). Still multiplied by `cfg.speed`, so Drift speed drives it as before.
-- **Palette** is baked into a `Uint32Array` in **little-endian ABGR** for direct
-  pixel writes; index 0 is forced opaque black. **Banding** (AnimeJulia-only) is a
-  *filter* over the active palette, not a palette of its own.
-- **A preset switch always blends the palette in from whatever was on screen** (no snap),
-  but **where it blends to depends on the palette cycle**. Cycling on ⇒ a fresh random
-  palette, and it keeps cycling. Cycling pinned (`palcycle` band tops out at 0) ⇒ the
-  palette the preset actually **stored**. It used to be random either way, which meant a
-  preset could never show its own colours — invisible while presets were browser-local,
-  and the single biggest "why doesn't this look like yours" the moment they became
-  something you hand to someone else. `applyPreset` snapshots the live `paletteBase`
-  *before* `setEffect`/`loadExtra` can overwrite it, then calls **`beginMorph(fromRamp,
-  morphing ? pickOther(...) : +paletteSel.value)`** — `startMorph(i)` is just
-  `beginMorph(paletteRGB(i), pickOther(i))`, the discrete-source case. `beginMorph` paints `fromRamp` into `paletteBase` immediately
-  (so an auto-cycle switch made mid-`frame()` doesn't flash the target for one frame) and
-  arms the blend; `morphOnce = !morphing` makes it a one-shot when auto-morph is off (which
-  `morphStep` settles via `setPalette(morphTargetIndex)`) and a continuing cycle when on.
-  The frame loop runs `morphStep` when `morphing || morphOnce`; a manual palette pick or a
-  plain scene load clears `morphOnce`.
-- The Sierpiński chaos game is stamped inside a **safe box** — the whole heat grid
-  less a 1px margin on every side — via `plot()`; Size/Rotation scale & spin the
-  corners about the box centre and can push points past those bounds. The box is
-  shared by all three point effects (Sierpiński, Tetrafyer, Attractor).
+- **Rotation** slider is degrees/second → rad/s (`rotSpeed`), accumulated into `spinAngle` per tick
+  (independent of drift speed & burn rate).
+- **Tetrafyer has two rotations.** `Rotation` yaws (`spinAngle`); the **pitch** is
+  `nodAmp·sin(nodPhase)` behind the **Box nod** (degrees) and **Nod speed** (×) sliders.
+  `nodPhase` is **accumulated per tick** (`NOD_RATE · nodSpd · cfg.speed / cfg.burn`), not derived
+  as `0.12·simT` — reading it off `simT` would teleport the nod mid-swing once the rate is
+  animatable. At `nodSpd` 1 it tracks `0.12·simT` exactly.
+- **Palette** is baked into a `Uint32Array` in **little-endian ABGR** for direct pixel writes.
+  **Banding** is a *filter* over the active palette, not a palette of its own.
+- **A preset switch always blends the palette in from whatever was on screen** (no snap), but
+  **where it blends to depends on the palette cycle**: cycling on ⇒ a fresh random palette;
+  cycling pinned ⇒ the palette the preset actually **stored** (it used to be random either way,
+  so a preset could never show its own colours). `applyPreset` snapshots the live `paletteBase`
+  *before* `setEffect`/`loadExtra` can overwrite it, then calls `beginMorph(fromRamp, morphing ?
+  pickOther(...) : +paletteSel.value)`. `beginMorph` paints `fromRamp` into `paletteBase`
+  immediately (so a mid-`frame()` switch doesn't flash the target) and arms the blend;
+  `morphOnce = !morphing` makes it a one-shot. A manual pick or a plain scene load clears
+  `morphOnce`.
 - `cfg.scale` changes need a `resize()` to reallocate buffers.
-- **Reset** restores the current effect's `state`/`beat`/`pulse`/`plen`/`extra` **and the
-  shipped slider bounds** (`RNG_ORIG`, over every key in `presetState(effect)` — filter
-  params included — before `loadState`, so values validate against the restored bounds,
-  then `rngSyncAll()` so the in-box min/max fields follow). It used to reset every value
-  and leave a widened slider still widened, which made "reset" measurably untrue; the
-  per-slider ↺ (`resetControl`) had always done bounds, so the two now agree. It touches
-  only the current effect;
-  other effects and the shared controls are untouched.
+- **Reset** restores the current effect's `state`/`beat`/`pulse`/`plen`/`extra` **and the shipped
+  slider bounds** (`RNG_ORIG`, over every key in `presetState(effect)`, before `loadState` so
+  values validate against the restored bounds, then `rngSyncAll()`). It touches only the current
+  effect.
 
 ## Testing (no framework — headless verification)
 
 Changes are verified by driving the page in headless Edge and reading a screenshot:
 - **Syntax check** each `<script>`: `node -e "...new Function(scriptText)..."`.
-- **Assertion probe**: generate a temp copy of `index.html` with an injected
-  `<script>` that manipulates the DOM, asserts, and appends a green/red result
-  `<div>`; screenshot it with
+- **Assertion probe**: generate a temp copy with an injected `<script>` that manipulates the DOM,
+  asserts, and appends a green/red result `<div>`; screenshot with
   `msedge --headless=new --disable-gpu --screenshot=out.png --virtual-time-budget=N file:///…`,
   then Read the PNG.
-- Use `{bubbles:true}` on synthetic events (the delegated persist/onEdit listener
-  needs bubbling). Seed `localStorage` in a `<script>` placed **before** the app to
-  test restore/nudge paths. Set auto-morph off before asserting palette (morph
-  makes the dropdown show its target). `setInterval` advances under
-  `--virtual-time-budget`; `document.hidden` may read true in headless (override
-  `Document.prototype.hidden` if a timer gates on visibility). GoatCounter/GA stay
-  inert on `file://`/`localhost`, so tests never emit analytics.
+- Use `{bubbles:true}` on synthetic events. Seed `localStorage` in a `<script>` placed **before**
+  the app. Set auto-morph off before asserting palette. `setInterval` advances under
+  `--virtual-time-budget`; `document.hidden` may read true in headless. Analytics stay inert on
+  `file://`/`localhost`.
 
-**Testing the share buttons** needs three stubs, because both paths are async and both
-end in something the page can't observe: define `navigator.clipboard` with capturing
-`writeText`/`write` (the `write` stub must resolve the ClipboardItem's promise and read
-the Blob back), and stub `fetch` so Short link resolves without TinyURL. Run it **twice** —
-once as-is, once with `ClipboardItem` hidden — since the two clipboard paths are different
-code and only the fallback runs on older Safari/Firefox.
+**Headless CAN run WebGL2 — via SwiftShader.** Launch Edge with `--enable-unsafe-swiftshader
+--use-gl=angle --use-angle=swiftshader` and `initGL()` succeeds, so shaders actually compile and
+link. Assert `gl.getError() === 0` and a console-error count of 0 (a failed link is silent
+otherwise — `useProgram(null)` just draws nothing, reading as a dark scene). Expect ~8–15 fps, so
+give `--virtual-time-budget` several seconds for anything needing the fire to build up.
 
-**Testing the credits overlay.** It is a separate canvas, so read *it* rather than the
-composited frame: `getImageData` on `#creditcv` and count pixels with alpha > 8. That
-gives a clean "is it painting / is it fading / has it stopped" signal with no risk of
-confusing glyphs for the effect's own structure. Assert the layer properties too — its own
-canvas, `pointer-events: none`, z-index above `#fire` but under the menu — since those are
-what actually make it immune to the filters.
+**The app is one IIFE, so an injected `<script>` cannot call into it.** UI-level assertions (DOM,
+menus, `localStorage`) work from the page; anything needing an internal function has to be a Node
+probe that slices the source, which is what every `tools/*probe.js` does.
 
-**The claim to nail is that credits no longer touch heat**: fill `fire` with zeros, put
-the credits up, call `creditDraw()`, and assert the buffer still sums to zero. Do *not*
-try to prove it by running `simulate()` with credits up and down and diffing the heat —
-`simT` advances between the two runs, so the geometry moves and the buffers differ for
-reasons that have nothing to do with credits. (That exact mistake cost a red assertion
-here; the direct test is both simpler and actually about the thing.)
+**Four traps when the thing you screenshot is ONE effect** (all four produced confident, wrong
+readings):
+- **Turn auto-cycle off first** (`#cycle`) — the TTL swaps the preset every few seconds, so the
+  assertions pass on the effect you set and the exit screenshot is a different effect. Assert the
+  effect is *still* the one under test at screenshot time.
+- **`gl.getError()` must be sampled inside a real frame** — read afterwards it returns a spurious
+  `0x502` from the probe's own `readPixels`. For the same reason pixel evidence must be the
+  screenshot, not `readPixels` (the drawing buffer is cleared on composite).
+- **`?stack=<id>` does not survive a fresh profile** — the first-visit branch installs
+  `DEFAULT_SCENE` over it. Drive the layer-row UI, or seed `localStorage` first.
+- **Keep the run under 30s of active time**, or `SYNC_DELAYS[0]` opens the sync nudge over the
+  canvas. Note `?credits=0` doesn't clear credits in a slow run — `creditLeft` counts *rendered*
+  time.
 
-**A standing lesson from the version that stamped into the buffer.** Its zoom-cancellation
-probe passed cleanly — one stamp into a *cleared* buffer really did land where the maths
-said — while the bug only existed across *accumulated* ticks with a *drifting* zoom, which
-the probe never exercised. For anything that writes the retained heat buffer, a green logic
-probe is necessary and not sufficient: drive a few hundred real frames and **look at the
-screenshot** as well.
+**The pixel gate is BISTABLE — treat a single mismatch as inconclusive.** A no-filter Plasma scene
+returns the same hash ~9 times in 10; Plasma + Fire only ~3 in 4. The alternates are *stable
+values*, pointing at a startup race, and both files under test show it — a property of the harness.
+**Always re-run a mismatch 2–3 times.** A *repeated* mismatch is a real signal.
 
-**Headless CAN run WebGL2 — via SwiftShader.** Launch Edge with
-`--enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader` and `initGL()`
-succeeds, so the **GL path is testable after all**: shaders actually compile and link, and
-the screenshot shows the GPU pipeline rather than the Canvas2D mirror. This is how the 12
-shaders of the filter expansion were verified — tick every checkbox, then assert
-`gl.getError() === 0` and a console-error count of 0 (a failed link is silent otherwise:
-`useProgram(null)` just draws nothing, which reads as a dark scene). Expect ~8–15 fps
-software-rendered, so give `--virtual-time-budget` several seconds for anything that needs
-the fire to build up. `tools/heatprobe.js` still earns its keep — it pins ping-pong
-*parity*, which a screenshot cannot see — but "a headless browser has no usable WebGL" is
-no longer a reason to skip driving the real renderer.
+**Pixel-level regression gates: shader effects only.** With a stubbed rAF (own the callback queue,
+fixed 1/60 step), shader effects are bit-reproducible. **Point effects are not** — Sierpiński/
+Tetrafyer hash differently between two runs of the *same* file. Gate those on logic instead.
+Harness requirements:
+- **Inject before the app**, into `<head>` — stubbing rAF after init lets real frames advance
+  `simT` and the morph for however long startup took.
+- **Do not clear the rAF queue** — `frame()` re-arms itself, so clearing leaves nothing to call and
+  every configuration hashes to the untouched startup frame.
+- Stub `Math.random` too, and read pixels with `readPixels` in the **same task** as the last frame.
 
-**Four traps when the thing you screenshot is ONE effect.** All four produced a confident,
-completely wrong reading while Bouncing solids was being verified, and none of them looks
-like a harness failure — the screenshot is always of *something* plausible:
-- **Turn auto-cycle off first** (`#cycle`). It is on by default, so the TTL swaps the preset
-  every few seconds: the assertions pass on the effect you set, and Edge's exit screenshot
-  is a different effect entirely. (First symptom: a rainbow checkerboard where a raymarched
-  scene should be.) Assert the effect is *still* the one under test at screenshot time.
-- **`gl.getError()` must be sampled inside a real frame**, not after the page composites.
-  Read afterwards it returns a spurious `0x502` from the probe's own `readPixels`, which
-  reads exactly like a shader failure. For the same reason the pixel evidence has to be the
-  screenshot, not `readPixels` — the drawing buffer is cleared on composite.
-- **`?stack=<id>` does not survive a fresh profile.** It seeds the stack at startup and the
-  first-visit branch (`presets.length === 0` → `applyPreset(0)`) then installs
-  `DEFAULT_SCENE` over it. Drive the layer-row UI instead, or seed `localStorage` first.
-- **Keep the run under 30s of active time**, or `SYNC_DELAYS[0]` opens the "Sync with your
-  music" nudge over the canvas and the screenshot is a screenful of that panel. Note also
-  that `?credits=0` does not clear the credits in a slow run: `creditLeft` counts **rendered**
-  time, so at 7 fps they are still fading after ten seconds of wall clock.
+**A green logic probe is necessary and not sufficient** for anything that writes the retained heat
+buffer — the credit-stamping zoom bug passed its probe cleanly because the bug only existed across
+*accumulated* ticks with a *drifting* zoom. Drive a few hundred real frames and look at the
+screenshot too.
 
-**The app is one IIFE, so an injected `<script>` cannot call into it.** UI-level assertions
-(DOM, menus, persistence via `localStorage`) work fine from the page; anything that needs an
-internal function — `solidsSeed`, `installSolids` — has to be a Node probe that slices the
-source, which is what every `tools/*probe.js` does.
+**Testing the credits overlay**: read `#creditcv` itself (`getImageData`, count pixels with
+alpha > 8) rather than the composited frame. Assert the layer properties too (own canvas,
+`pointer-events: none`, z-index above `#fire` but under the menu). **The claim to nail is that
+credits no longer touch heat**: zero `fire`, put credits up, call `creditDraw()`, assert the buffer
+still sums to zero. Do *not* diff heat with credits up vs down — `simT` advances between runs.
 
-**The pixel gate is BISTABLE — treat a single mismatch as inconclusive.** Measured over
-~25 runs while building the effect stack: a Plasma scene with no filters returns the same
-hash roughly 9 times in 10, and a Plasma + Fire scene only about 3 times in 4. The
-alternates are *stable values*, not noise (the same second hash keeps recurring), which
-points at a startup race rather than floating-point drift, and both files under test show
-it — so it is a property of the harness, not of any change. **Always re-run a mismatch
-2–3 times before believing it.** A false "regression" here cost real time twice, and once
-sent a correct change looking for a bug that was not there. What the gate is genuinely
-good for is a *repeated* mismatch, which is a real signal: that is how the preset-apply
-phase rewind was caught.
+**Testing audio needs `AudioContext` stubbed**, not just `getUserMedia` — a real one hangs headless
+(`await audio.ctx.resume()` never settles with no audio device). The detector's contract is small
+(`sampleRate`, `resume`, `createAnalyser`, `createMediaStreamSource`, and an analyser with
+`fftSize`/`frequencyBinCount`/`getFloatFrequencyData`/`min|maxDecibels`). Pair it with a no-op rAF.
 
-Harness requirements, both learned by getting them wrong:
-- **Inject before the app**, into `<head>`. Stubbing rAF after the app has initialised
-  lets real frames advance `simT` and the palette morph for however long startup took,
-  and two runs of the same file then differ every time.
-- **Do not clear the rAF queue** before driving. `frame()` re-arms itself, so clearing
-  leaves nothing to call and *every* configuration hashes to the untouched startup
-  frame — which looks like a stable, meaningful result and is not one.
-- Stub `Math.random` too (`updateAnims` draws drift targets from it), and read pixels
-  with `readPixels` in the **same task** as the last frame — WebGL clears the drawing
-  buffer once the page composites.
+**Testing share paths** needs three stubs: `navigator.clipboard` with capturing `writeText`/`write`
+(the `write` stub must resolve the ClipboardItem's promise and read the Blob back), and a stubbed
+`fetch` for Short link. Run it **twice** — once as-is, once with `ClipboardItem` hidden.
 
-**Pixel-level regression gates: shader effects only.** Driving the page with a stubbed
-`requestAnimationFrame` (own the callback queue, feed a fixed 1/60 timestamp step) makes
-*shader* effects bit-reproducible — Plasma hashes identically across runs and builds, so
-it works as a before/after gate. The **point effects do not**: Sierpiński/Tetrafyer hash
-differently between two runs of the *same* file, so a fire-path pixel diff is noise. Gate
-those on logic instead (e.g. compare tick sequences in Node) rather than pixels. Also note
-`--virtual-time-budget` stops the page after a dozen-odd frames, so any timing comparison
-must drive its own clock rather than let the animation run.
+### Node probes (`tools/*probe.js`)
+All slice real source out of the built file by **markers — keep them**.
 
-**The filter registry** has `tools/filterprobe.js` (`node tools/filterprobe.js index.html`,
-37 assertions): it slices the real `FILTERS` block and the extras helpers out of
-`index.html` and runs them against stub effects. It pins the invariants that are easy to
-break silently — every filter's params have defaults (else `presetState` can't seed
-them), the three stages appear in pipeline order (feedback → post → screen) with Bloom
-last **among the post ones** (it is the composite the screen stage sits on top of), every
-screen filter is `cpuOk: false`, a
-stored list always applies in **registry** order, `filtersOk` drops unknown/duplicate/
-non-string ids, the point-vs-shader defaults (an effect with `stamp` but no `draw` counts
-as a point effect), and `presetState`'s seeded arrays are per-effect **copies**.
-One behaviour it deliberately locks: an **empty** stored list is honoured (turning every
-filter off is a real choice that must survive a round trip) and a list naming only retired
-filters ends up empty — only a *missing* `filters` key falls back to the descriptor
-default. It slices by markers: `// ---- FILTERS: stackable post-FX` … `function
-initStates(`, and `function presetExtra(` … `function initExtras(`.
-
-**Preset completeness** has `tools/presetprobe.js` (`node tools/presetprobe.js
-index.html`, 44 assertions). Three parts — it also pins `safeFileName` (the Windows
-filename traps: reserved device names, trailing dots, path separators in a free-text
-preset name) and `normalizeBackup` (every backup shape we have ever written still
-restores). Two halves for the preset itself. The **structural** half reads the real
-`snapshotScene`, `applyPreset` and the import mapping out of the source and asserts every
-`p.<field>` `applyPreset` restores is a field `snapshotScene` captures *and* one the
-import mapping rebuilds — so adding a field to one and forgetting the other two fails by
-construction rather than when someone notices their camera is wrong. That is not
-hypothetical: the import mapping dropped `cam` for a long time, and because the failure
-mode is "you silently get the recipient's camera", nothing local ever surfaced it. The
-**behavioural** half slices `mergeBeatTune` and pins its replace semantics — that a
-partial or empty tuning defaults the rest instead of inheriting the previously applied
-preset's, that results are deep copies, and that junk (wrong types, inverted bands, bands
-above Nyquist, a sparse `bands` array) is rejected without throwing. It slices by markers:
-`const BEAT_DEFAULTS` … `const beatCfg`, `function mergeBeatTune(` … `function
-installBeatTune(`, `function snapshotScene()` … `function defaultPresets(`, `function
-applyPreset(` … `function createPreset(`, and `function validatePresetList(` …
-`el("importpresets")` (the per-preset validate/normalize block, now shared by file import
-and preset-bundle links).
-
-**The GL heat-tick feedback chain** has `tools/heatprobe.js` (`node tools/heatprobe.js
-index.html`, 50 assertions): it slices the real `glBeginHeat` and runs it against a
-recording stub `gl`. It exists because ping-pong **parity is invisible to a screenshot** —
-a chain that lands in the wrong buffer still renders a plausible frame — so even now that
-SwiftShader lets the harness drive the real GL path (see above), this is the only thing
-checking it. It asserts, for chains of 0–4 passes from either starting buffer, that
-`pendingDst` names the buffer the *last* pass wrote, that no pass samples its own render
-target (undefined behaviour in WebGL), and that the final FBO is still bound on exit. The
-two-pass case (Fire + Fade, the only one a user can hit today) is the one that
-distinguishes `pendingDst = src` from the `1 - curHeat` bug — flipping that one token
-turns 12 of these red. It also pins **`glLayerBeginHeat`**, the per-layer twin the
-multi-layer colour path uses (same parity, but a pure function that *returns* the last-
-written buffer rather than setting `pendingDst`) — a copy that could silently drift from
-`glBeginHeat`. It slices by markers: `function glBeginHeat(` … `function glBlitPoints(`,
-and `function glLayerBeginHeat(` … `function renderLayerHeat(`.
-
-**The cardioid seed orbit** has its own probe, `tools/juliaprobe.js` (`node
-tools/juliaprobe.js index.html`): it slices the *real* seed source out of
-`index.html` (the constants block through `juliaSeedAt`/`juliaSeed`) and drives it
-on a fake clock, asserting the geometry the three Mandelbrot-seeded effects depend
-on — the rim point matches the cardioid formula, the seed sits exactly `juliaInnerR`
-off that rim (an `innerR` of 0 collapses it onto the rim), the inner phase advances
-at `ratio ×` the outer one and yields `ratio` epicycles per lap, and `juliaOffX`
-shifts only the real axis. It also greps the three descriptors to assert each
-advances the orbit **once** per frame. It slices by source markers, so keep them:
-`const RPM` … `function julia(`.
-
-**The Bouncing solids rigid bodies** have `tools/solidsprobe.js` (`node tools/solidsprobe.js
-dev-index.html`, 39 assertions): it slices the real physics block (`const SOLID_SHAPES` …
-`// ---- CPU mirror of FS_SOLIDS`) and drives it on a fake clock against stub globals — `v3`
-is copied verbatim from `tetrahedron-physics.js`, since stubbing it wrong would silently
-invalidate everything. It exists because **every failure mode here is invisible to a
-screenshot**: a body that tunnels through a wall is simply off-screen (the frame looks
-emptier), a quaternion that stops being unit length shears the primitive slowly enough to
-read as art, two layers sharing one body list render as one brighter layer, and a
-correlated start seed reads as "slow to get going". So it pins containment (6000 steps,
-plus a 9.5s frame, plus every slider at its extreme), quaternion normality, `Shape mix`
-never naming a primitive the shader lacks, `Count` clamped to the shader's array size,
-per-layer body ownership, determinism, and the per-axis start spread against the room
-actually available. **Two tolerance traps, both learned by going red on correct code:**
-assert double-exactness on the BODIES (`S.Q`) and only float32 tolerance on the staged
-uniform arrays, which are `Float32Array`; and strip comments before grepping for
-`Math.random`, because the file's own comment says there is none.
-
-**Beat detection** can't be tested that way — a headless browser has no audio. It
-has its own probe, `tools/beatprobe.js` (`node tools/beatprobe.js index.html`):
-it slices the *real* detector source out of `index.html` (the constants block, the
-`audio` object, `median`, `audioTick`), runs it with a stub analyser fed synthetic
-dB spectra on a fake clock, and asserts against scenes that matter — a kick riding
-a loud sustained bass, hi-hats on 8ths (and no leak into the low band), a 20dB
-quiet verse, silence and a sustained tone (no false positives), and a double-time
-fill (refractory holds). It slices by source markers, so keep them: `const HOP_MS`
-… `const meterBars`, `const medBuf` … `function audioMsg`, `function audioTick` …
-`function clearBeats`.
-
-**Share-preset parity** has `tools/shareparity.js` (`node tools/shareparity.js
-dev-index.html`) — an *end-to-end* test, so it drives **headless Edge** rather than
-slicing source (needs `msedge`; `EDGE=<path>` overrides). It builds a rich four-layer
-scene in browser A (distinctive per-layer blend, gain, mute, palette / reverse /
-background, a custom per-layer slider range on `rpm`, a per-layer effect param, a
-per-layer filter param, per-layer camera, a pulse shape + length; plus scene-globals:
-all five Scene filters on with values, Preset TTL, Transition, a scene-wide custom range,
-the auto-cycle toggle, and the selected preset), **shares it as a `#zp=` bundle**, opens
-that link in a fresh browser B, lets it **auto-land on the sender's selected preset**, and
-**deep-compares every value read from A against B** — so any
-field dropped or changed in flight fails by name. It also spot-checks that A itself
-applied the intended values, so a bug can't slip through by both sides being wrong
-together. It runs with `requestAnimationFrame` no-op'd and no GL (the picker / restore /
-apply paths need no frames), reading state via `--dump-dom`. This is the guard that a new
-per-layer or scene field actually travels with a shared bundle; `presetprobe` still pins
-the cheaper structural invariant (every `snapshotScene` field is one `applyPreset` restores
-and one the import mapping carries), which is what caught the missing `ttl`/`tdur` wiring.
+- **`filterprobe.js`** (37 assertions) — every filter's params have defaults, the three stages
+  appear in pipeline order with Bloom last **among the post ones**, every screen filter is
+  `cpuOk: false`, a stored list applies in **registry** order, `filtersOk` drops
+  unknown/duplicate/non-string ids, the point-vs-shader defaults, and `presetState`'s seeded arrays
+  are per-effect **copies**. It also locks that an **empty** stored list is honoured (only a
+  *missing* `filters` key falls back to the descriptor default).
+  Markers: `// ---- FILTERS: stackable post-FX` … `function initStates(`, and
+  `function presetExtra(` … `function initExtras(`.
+- **`presetprobe.js`** (44 assertions) — the **structural** half asserts every `p.<field>`
+  `applyPreset` restores is one `snapshotScene` captures *and* one the import mapping rebuilds (the
+  mapping silently dropped `cam` for a long time). The **behavioural** half pins `mergeBeatTune`'s
+  replace semantics and junk rejection. Also pins `safeFileName` and `normalizeBackup`.
+  Markers: `const BEAT_DEFAULTS` … `const beatCfg`; `function mergeBeatTune(` …
+  `function installBeatTune(`; `function snapshotScene()` … `function defaultPresets(`;
+  `function applyPreset(` … `function createPreset(`; `function validatePresetList(` … the comment
+  that replaced the old import button.
+- **`heatprobe.js`** (50 assertions) — ping-pong **parity is invisible to a screenshot**. For
+  chains of 0–4 passes from either starting buffer: `pendingDst` names the buffer the *last* pass
+  wrote, no pass samples its own render target, the final FBO is still bound on exit. Also pins
+  **`glLayerBeginHeat`** (same parity, but returns the last-written buffer instead of setting
+  `pendingDst`). Markers: `function glBeginHeat(` … `function glBlitPoints(`, and
+  `function glLayerBeginHeat(` … `function renderLayerHeat(`.
+- **`juliaprobe.js`** — the rim point matches the cardioid formula, the seed sits exactly
+  `juliaInnerR` off that rim, the inner phase advances at `ratio ×` the outer and yields `ratio`
+  epicycles per lap, `juliaOffX` shifts only the real axis, and each of the three descriptors
+  advances the orbit **once** per frame. Markers: `const RPM` … `function julia(`.
+- **`solidsprobe.js`** (39 assertions) — every failure mode here is invisible to a screenshot. Pins
+  containment (6000 steps, a 9.5s frame, every slider extreme), quaternion normality, `Shape mix`
+  never naming a primitive the shader lacks, `Count` clamped to the shader's array size, per-layer
+  body ownership, determinism, and per-axis start spread. **Two tolerance traps:** assert
+  double-exactness on the BODIES (`S.Q`) and only float32 tolerance on the staged uniform arrays;
+  and strip comments before grepping for `Math.random`. Markers: `const SOLID_SHAPES` …
+  `// ---- CPU mirror of FS_SOLIDS`.
+- **`beatprobe.js`** — a headless browser has no audio, so this runs the real detector with a stub
+  analyser fed synthetic dB spectra on a fake clock: a kick riding loud sustained bass, hi-hats on
+  8ths (no leak into the low band), a 20dB quiet verse, silence and a sustained tone (no false
+  positives), a double-time fill (refractory holds). Markers: `const HOP_MS` … `const meterBars`;
+  `const medBuf` … `function audioMsg`; `function audioTick` … `function clearBeats`.
+- **`shareprobe.js`** — the share codec round trip.
+- **`cloudprobe.js`** — asserts the cloud path structurally shares `serializeBlob` + the codec with
+  `#zp=` bundles, and that an empty `CONFIG.cloud.apiKey` makes zero network requests at startup.

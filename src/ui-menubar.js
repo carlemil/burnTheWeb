@@ -5,8 +5,8 @@
   // the ☰ no longer toggles the panel itself, so this is where that lives (the "m" key still
   // does it directly, which is the fast route).
   //
-  // THE LEAF PANELS ADOPT THE EXISTING NODES rather than rebuilding them. `#sysbox`,
-  // `#cloudbox` and `#creditbox` are authored in the panel markup and simply moved in here,
+  // THE LEAF PANELS ADOPT THE EXISTING NODES rather than rebuilding them. `#audiobox`,
+  // `#resbox`, `#cloudbox` and `#creditbox` are authored in the panel markup and moved in here,
   // which is the same trick buildFilterUI uses to pull `#ctl-<key>` into a filter body. That
   // is not laziness — it is what keeps every listener, every `el(id)` lookup and every sync
   // path (setAudioUI, cloudSync, the Google sign-in button rendered into #cloud-signin)
@@ -165,9 +165,17 @@
         run: () => document.body.classList.add("ui-hidden") },
       { sep: true },
       { label: "System", sub: [
-        { label: "Audio & resolution", sub: [{ adopt: "sysbox" }] },
+        { label: "Audio", sub: [{ adopt: "audiobox" }] },
+        { label: "Resolution", sub: [{ adopt: "resbox" }] },
       ] },
       { label: "Cloud profile", sub: [{ adopt: "cloudbox" }] },
+      // A ROOT item, not a row inside Cloud profile: the gallery is readable signed out (the
+      // rules allow an unauthenticated `pub == true` query), so filing it under a sign-in box
+      // implied an account was needed. Gated on cloudOn() for the same reason #cloudrow is —
+      // with no apiKey there is nothing to browse. Calls galOpen directly; the app is one
+      // IIFE and this slice runs last, so the function is simply in scope.
+      ...(cloudOn() ? [{ label: "Public scenes", title: "Browse the scenes other people have published, and load them",
+        run: () => galOpen(true) }] : []),
       { label: "Credits", sub: [{ adopt: "creditbox" }] },
       { sep: true },
       { label: "What the controls do…", title: "Open the help panel", run: () => openHelp() },

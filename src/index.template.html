@@ -39,8 +39,11 @@
        hidden and emptied by the move. Do not "tidy" them into the menubar markup: the audio
        buttons, the resolution select, #cloudrow (which Google renders its sign-in button
        into) and the credits list are all wired by id from other slices. -->
-  <div id="sysbox" hidden>
-  <!-- Sound &amp; quality: music reactivity and the global render resolution -->
+  <!-- System is TWO adopt hosts, not one: the menubar opens Audio and Resolution as separate
+       submenus, so each needs its own home element for returnAdopted to put its children back
+       into. They were one #sysbox ("Audio & resolution") until the split. -->
+  <div id="audiobox" hidden>
+  <!-- Music reactivity: pick a source, watch the three-band meter -->
   <label>React to music <span class="val" id="vAudio">off</span></label>
   <div class="audiorow">
     <button id="audCapture" class="audbtn" type="button" title="Capture system / tab audio (e.g. Spotify)">Capture</button>
@@ -49,7 +52,10 @@
     <div class="meter" title="low · mid · high"><i></i><i></i><i></i></div>
   </div>
   <p id="audMsg" class="hint"></p>
+  </div>
 
+  <div id="resbox" hidden>
+  <!-- The global render resolution — a device setting, deliberately not part of a scene -->
   <label>Resolution</label>
   <select id="res" title="Render resolution — lower it if the frame rate is low">
     <option value="1">Full</option>
@@ -102,11 +108,11 @@
         <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>
       </div>
     </div>
-    <!-- Outside #cloud-authed on purpose: the gallery is readable by signed-out visitors
-         (the rules allow a `pub == true` query unauthenticated), so browsing needs no account. -->
-    <div class="presetrow">
-      <button id="cloud-browse" class="audbtn" type="button" title="Browse the scenes other people have published, and load them">Browse published scenes…</button>
-    </div>
+    <!-- "Browse published scenes…" used to live here, outside #cloud-authed because the
+         gallery is readable by signed-out visitors (the rules allow a `pub == true` query
+         unauthenticated). It is now the ROOT ☰ item "Public scenes" instead — browsing other
+         people's scenes needs no account, so burying it inside "Cloud profile" implied it did.
+         The menubar calls galOpen(true) directly rather than adopting a button. -->
     <p id="cloud-msg" class="hint"></p>
     <p class="hint">Stored against your account: the profile name you choose and your scenes — nothing else. Not your email, name or picture.</p>
   </div>
@@ -241,7 +247,7 @@
 <button id="toggle" type="button" aria-label="Open the menu" aria-haspopup="true" aria-expanded="false">☰</button>
 <!-- The fold-out application menu the ☰ opens: a traditional multi-level menubar. Its
      structure is built in JS (buildMenubar) and its leaf panels are filled by MOVING the
-     #sysbox / #cloudbox / #creditbox contents in, so nothing has to be re-wired. -->
+     #audiobox / #resbox / #cloudbox / #creditbox contents in, so nothing has to be re-wired. -->
 <div id="menubar" class="hidden" role="menu" aria-label="Main menu"></div>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
 <!-- Mute the music reaction. It does NOT stop the stream (see setMuted) — a browser cannot
@@ -271,7 +277,7 @@
 <div id="galdlg" class="hidden">
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
-    <h2>Published scenes</h2>
+    <h2>Public scenes</h2>
     <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>

@@ -612,7 +612,8 @@
       else if (e.key === "Escape") { e.preventDefault(); cloudNameCommit(); }
     });
   }
-  if (el("cloud-browse")) el("cloud-browse").addEventListener("click", () => galOpen(true));
+  // No #cloud-browse listener: the gallery is opened from the ☰ root item "Public scenes",
+  // which calls galOpen(true) directly (see ui-menubar.js).
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
   if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
