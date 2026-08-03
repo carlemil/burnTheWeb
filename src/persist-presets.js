@@ -63,6 +63,127 @@
     presetSel.appendChild(new Option("— unsaved scene —", "-1"));
     presets.forEach((p, i) => presetSel.appendChild(new Option(p.name, String(i))));
     presetSel.value = curPreset < 0 ? "-1" : String(curPreset);
+    buildPresetList();
+  }
+
+  // ---- Scene collections -------------------------------------------------------------
+  // A preset carries an optional `collection`: the name of the published profile it came
+  // from. Absent (or empty) means it is one of YOURS — which is what every scene saved
+  // before this existed has, so an old library opens as a single collection of your own
+  // with nothing to migrate.
+  //
+  // Loading someone's published scenes installs them UNDER THEIR NAME instead of merging
+  // into your library, so the two never mix, a name collision between your "Sunset" and
+  // theirs is not a collision at all, and re-loading the same profile replaces just their
+  // set (see applyRestore's collection branch).
+  //
+  // The field is deliberately NOT part of snapshotScene: it labels where a scene came from,
+  // not what it renders, so it rides beside `name` and applyPreset never reads it.
+  const collectionOf = p => (p && typeof p.collection === "string" && p.collection.trim()) || "";
+  // Your own group is labelled with your cloud profile name once you have one, so the list
+  // reads "Erbsman / dyze" rather than "My scenes / dyze". #cloud-name is that value's store.
+  function myCollectionLabel() {
+    const n = el("cloud-name");
+    return (n && (n.value || "").trim()) || "My scenes";
+  }
+  // Groups in a stable order: yours always first (and always present, even while empty, so
+  // there is somewhere obvious for New to land), then each collection by first appearance.
+  function presetGroups() {
+    const groups = [], byKey = new Map();
+    const add = key => {
+      let g = byKey.get(key);
+      if (!g) { g = { key, label: key || myCollectionLabel(), items: [] }; byKey.set(key, g); groups.push(g); }
+      return g;
+    };
+    add("");
+    presets.forEach((p, i) => add(collectionOf(p)).items.push({ p, i }));
+    return groups;
+  }
+  // Which groups are expanded. Transient and starting EMPTY, so every collection is folded
+  // on load and the list opens as a short stack of names — the requested default. Surviving
+  // rebuilds is what stops a pick from folding the group you are working in.
+  const openCollections = new Set();
+  function buildPresetList() {
+    const host = el("presetlist");
+    if (!host) return;
+    presetSel.style.display = "none";       // the <select> is the value store, not the control
+    host.textContent = "";
+    // "— unsaved scene —" sits OUTSIDE every group: it is a mode, not a saved scene.
+    const un = document.createElement("button");
+    un.type = "button";
+    un.className = "pl-scene pl-unsaved" + (curPreset < 0 ? " on" : "");
+    un.textContent = "— unsaved scene —";
+    un.title = "Tweak without touching a saved scene — nothing is written while this is selected";
+    un.addEventListener("click", () => pickPreset(-1));
+    host.appendChild(un);
+
+    for (const g of presetGroups()) {
+      const sec = document.createElement("div");
+      sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");
+      const head = document.createElement("button");
+      head.type = "button";
+      head.className = "pl-head";
+      head.title = (openCollections.has(g.key) ? "Collapse" : "Expand") + " “" + g.label + "”";
+      const nm = document.createElement("span");
+      nm.className = "pl-nm"; nm.textContent = g.label;
+      const ct = document.createElement("span");
+      ct.className = "pl-ct"; ct.textContent = String(g.items.length);
+      head.appendChild(nm); head.appendChild(ct);
+      head.addEventListener("click", () => {
+        if (openCollections.has(g.key)) openCollections.delete(g.key); else openCollections.add(g.key);
+        buildPresetList();
+      });
+      sec.appendChild(head);
+      // Someone else's collection can be dropped whole. Without this the only way to undo a
+      // gallery load would be deleting their scenes one at a time; your own group has no ✕
+      // because it is not a thing you loaded.
+      if (g.key) {
+        const rm = document.createElement("button");
+        rm.type = "button"; rm.className = "pl-drop"; rm.textContent = "✕";
+        rm.title = "Remove the “" + g.label + "” collection — your own scenes are untouched";
+        rm.addEventListener("click", e => { e.stopPropagation(); dropCollection(g.key, g.label); });
+        sec.appendChild(rm);
+      }
+      const body = document.createElement("div");
+      body.className = "pl-body";
+      if (!g.items.length) {
+        const e = document.createElement("div");
+        e.className = "pl-empty"; e.textContent = "no scenes yet — New saves one here";
+        body.appendChild(e);
+      }
+      for (const { p, i } of g.items) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "pl-scene" + (i === curPreset ? " on" : "");
+        b.textContent = p.name;
+        b.title = g.key ? p.name + " — from " + g.label : p.name;
+        b.addEventListener("click", () => pickPreset(i));
+        body.appendChild(b);
+      }
+      sec.appendChild(body);
+      host.appendChild(sec);
+    }
+  }
+  // Every pick routes through the <select>'s change event, so applyPreset, dockAll, the
+  // autosave and persist all run exactly as a native dropdown pick did. The swatch picker
+  // does the same thing for palettes, and for the same reason: no second code path.
+  function pickPreset(i) {
+    presetSel.value = String(i);
+    presetSel.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  function dropCollection(key, label) {
+    const n = presets.filter(p => collectionOf(p) === key).length;
+    if (!confirm("Remove the “" + label + "” collection?\n\n" + n + " scene" + (n === 1 ? "" : "s")
+      + " will be deleted. Your own scenes are not touched.")) return;
+    // Re-find the selection by IDENTITY afterwards: every index above the removed run
+    // shifts, so keeping the old number would silently select someone else's scene.
+    const cur = curPreset >= 0 ? presets[curPreset] : null;
+    presets = presets.filter(p => collectionOf(p) !== key);
+    curPreset = cur ? presets.indexOf(cur) : -1;      // −1 if the scene we were on just went
+    openCollections.delete(key);
+    dockAll();
+    rebuildPresetOptions();
+    persist();
   }
   // Normalize a saved state to the current slider set: keep only keys that still
   // exist (drops retired ones like `radius`) and default any newly-added keys.
@@ -248,7 +369,8 @@
     morphOnce = !morphing;
     beginMorph(fromRamp, morphing ? pickOther(+paletteSel.value) : +paletteSel.value);
     curPreset = i; presetSel.value = String(i);
-    applyingPreset = false;
+    buildPresetList();                 // move the highlight — covers the auto-cycle too,
+    applyingPreset = false;            // which sets the value without firing `change`
     persist();
   }
   function createPreset() {           // save the current scene as a new preset
@@ -319,6 +441,9 @@
   // this quietly depend on where setEffect happens to call dockAll.
   presetSel.addEventListener("change", () => {
     dockAll();
-    const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1;
+    const i = +presetSel.value;
+    // applyPreset repaints the list itself; "— unsaved scene —" never reaches it, so it has
+    // to move the highlight by hand (the same asymmetry dockAll is called up front for).
+    if (i >= 0) applyPreset(i); else { curPreset = -1; buildPresetList(); }
   });
 

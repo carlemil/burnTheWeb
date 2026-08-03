@@ -1078,6 +1078,48 @@ later TDZ on `nextSwitch` inside `frame()`. Same shape as `card` and `beatUi`.
 `?stack=plasma,tunnel` builds a stack at startup by effect id — a dev hook in the spirit
 of `?debug=1`, never persisted.
 
+### Scene collections (the grouped chooser)
+A preset carries an optional **`collection`**: the name of the published profile it came
+from. Absent ⇒ one of yours, which is what every preset saved before the field existed has,
+so an old library opens as one collection with nothing to migrate. It rides **beside `name`**
+and is deliberately *not* part of `snapshotScene` — it says where a scene came from, not what
+it renders, and `applyPreset` never reads it (`presetprobe` would flag it if it did).
+
+**It must be listed explicitly in `validatePresetList`.** That mapping rebuilds each preset
+from an object literal, so a field missing from it is silently dropped on every cloud load
+and gallery install — the same trap the probe pins for the scene fields. `serializeBlob` /
+`deserializeBlob` spread, so they need no change.
+
+**The gallery installs a collection instead of merging.** `applySharedLibrary(raw, replace,
+collection)` puts the name into `pendingRestore`, and `applyRestore` gains a third branch
+ahead of merge/replace: drop every preset already carrying that collection, then append the
+incoming ones stamped with it. So your library is untouched, their "Sunset" and yours are not
+a collision, and re-loading the same profile refreshes their set rather than duplicating it.
+`out.curPreset` matches the sender's selection **within that collection** — by name alone it
+could land on a same-named scene of your own, which is the collision the feature exists to
+prevent. The gallery row is consequently ONE button (`Load scenes`): merge-vs-replace is no
+longer a question anyone needs to answer.
+
+**`#preset` is hidden and stays the value store**, exactly the arrangement `#palette` has
+behind its swatches — `applyPreset` writes `.value`, `applyBlob` validates against its
+options, and every click in the visible list dispatches its `change`, so there is no second
+apply path. The visible control is `#presetlist`, built by `buildPresetList()`. It exists
+because **a `<select>` cannot collapse an `<optgroup>`**, and collapsing is the point.
+`buildPresetList` is called from `rebuildPresetOptions` (create/rename/delete/restore), from
+`applyPreset` (which covers the **auto-cycle**, since that sets `.value` without firing
+`change`) and from the `change` handler's `-1` branch (which never reaches `applyPreset`) —
+miss any one and the highlight goes stale.
+
+**`openCollections` is a transient Set that starts empty**, so every group is folded on load
+— the requested default — while surviving rebuilds, which is what stops picking a scene from
+folding the group you are working in. Your own group is always emitted even when empty, so
+`New` has somewhere visible to land, and it is labelled from `#cloud-name` (your profile
+name) falling back to "My scenes".
+
+`dropCollection` re-finds the selection **by identity** after filtering: every index above
+the removed run shifts, so keeping the old `curPreset` would silently select someone else's
+scene.
+
 ### Presets & persistence
 
 **The user-facing word is "scene", the code word is "preset", and that split is deliberate.**

@@ -118,6 +118,48 @@
   }
   .palsw.active { border-color: #ffcf87; box-shadow: 0 0 0 1px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.55); }
   .palsw:focus-visible { outline: 2px solid #ffb15a; outline-offset: 1px; }
+  /* ---- Scenes list: collections, foldable, collapsed by default ------------------
+     Replaces the <select> as the visible control (#preset stays as the value store).
+     A collection is a <div class="pl-grp">: a header button that folds it, an optional ✕
+     to drop the whole set, and a body of scene buttons shown only while .open. */
+  #presetlist { margin: 0 0 6px; }
+  .pl-grp { position: relative; margin-top: 3px; }
+  .pl-head {
+    width: 100%; display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px 5px 20px; text-align: left; cursor: pointer;
+    background: rgba(255, 140, 40, 0.09); border: 1px solid rgba(255, 140, 40, 0.28);
+    border-radius: 5px; color: #ffcf87; font: 12px/1.25 inherit; letter-spacing: .2px;
+  }
+  .pl-head:hover { background: rgba(255, 122, 26, 0.2); }
+  /* Chevron, rotated when open — same idiom as the .box-t sections above. */
+  .pl-head::before {
+    content: "▸"; position: absolute; left: 7px; font-size: 10px; color: #ffb15a;
+    transition: transform .12s;
+  }
+  .pl-grp.open > .pl-head::before { transform: rotate(90deg); }
+  .pl-nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-ct { flex: 0 0 auto; opacity: .6; font-variant-numeric: tabular-nums; }
+  .pl-drop {
+    position: absolute; right: 4px; top: 3px; width: 20px; height: 20px; padding: 0;
+    background: none; border: 0; color: #ffb15a; opacity: .45; cursor: pointer; font-size: 12px;
+  }
+  .pl-drop:hover { opacity: 1; color: #ff9a4a; }
+  .pl-grp .pl-head { padding-right: 46px; }         /* room for the count + ✕ */
+  .pl-body { display: none; padding: 3px 0 2px 10px; }
+  .pl-grp.open > .pl-body { display: block; }
+  .pl-empty { padding: 4px 8px; font-size: 11px; opacity: .45; }
+  .pl-scene {
+    display: block; width: 100%; text-align: left; margin: 2px 0; padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid transparent; border-radius: 5px;
+    color: #ffdcb0; font: 12px/1.25 inherit; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pl-scene:hover { background: rgba(255, 122, 26, 0.22); }
+  .pl-scene.on { border-color: #ffcf87; background: rgba(255, 122, 26, 0.28); color: #fff; }
+  .pl-unsaved { font-style: italic; opacity: .85; }
+  .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible {
+    outline: 2px solid #ffb15a; outline-offset: 1px;
+  }
   #panel .check {
     display: flex;
     align-items: center;
@@ -992,7 +1034,14 @@
        say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
        and link keeps loading. Only the wording the user reads is "scene". -->
   <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
+  <!-- #preset is HIDDEN and remains the VALUE STORE, exactly the arrangement #palette has
+       behind its swatches: applyPreset writes .value, applyBlob validates against it, and
+       every pick in the list below dispatches its `change`. The visible control is
+       #presetlist, a foldable list grouped by COLLECTION — a <select> cannot collapse an
+       <optgroup>, which is the whole point of the grouping. Keep the select in the DOM: a
+       JS failure leaves the native dropdown usable. -->
   <select id="preset"></select>
+  <div id="presetlist"><!-- collapsible per-collection scene list, built in JS --></div>
   <div class="presetrow">
     <button id="newpreset" class="audbtn" type="button" title="Save what is on screen as a new scene">New</button>
     <button id="renamepreset" class="audbtn" type="button" title="Rename the selected scene">Rename</button>
@@ -1133,7 +1182,7 @@
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
     <h2>Published scenes</h2>
-    <p class="pal-hint gal-help"><b>Load and merge</b> adds these scenes to your own, overwriting any of yours that share a name and keeping the rest. <b>Load and replace</b> throws your scenes away and keeps only these. Either way the page reloads onto what you loaded.</p>
+    <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
     <div class="presetrow">
@@ -9263,6 +9312,127 @@
     presetSel.appendChild(new Option("— unsaved scene —", "-1"));
     presets.forEach((p, i) => presetSel.appendChild(new Option(p.name, String(i))));
     presetSel.value = curPreset < 0 ? "-1" : String(curPreset);
+    buildPresetList();
+  }
+
+  // ---- Scene collections -------------------------------------------------------------
+  // A preset carries an optional `collection`: the name of the published profile it came
+  // from. Absent (or empty) means it is one of YOURS — which is what every scene saved
+  // before this existed has, so an old library opens as a single collection of your own
+  // with nothing to migrate.
+  //
+  // Loading someone's published scenes installs them UNDER THEIR NAME instead of merging
+  // into your library, so the two never mix, a name collision between your "Sunset" and
+  // theirs is not a collision at all, and re-loading the same profile replaces just their
+  // set (see applyRestore's collection branch).
+  //
+  // The field is deliberately NOT part of snapshotScene: it labels where a scene came from,
+  // not what it renders, so it rides beside `name` and applyPreset never reads it.
+  const collectionOf = p => (p && typeof p.collection === "string" && p.collection.trim()) || "";
+  // Your own group is labelled with your cloud profile name once you have one, so the list
+  // reads "Erbsman / dyze" rather than "My scenes / dyze". #cloud-name is that value's store.
+  function myCollectionLabel() {
+    const n = el("cloud-name");
+    return (n && (n.value || "").trim()) || "My scenes";
+  }
+  // Groups in a stable order: yours always first (and always present, even while empty, so
+  // there is somewhere obvious for New to land), then each collection by first appearance.
+  function presetGroups() {
+    const groups = [], byKey = new Map();
+    const add = key => {
+      let g = byKey.get(key);
+      if (!g) { g = { key, label: key || myCollectionLabel(), items: [] }; byKey.set(key, g); groups.push(g); }
+      return g;
+    };
+    add("");
+    presets.forEach((p, i) => add(collectionOf(p)).items.push({ p, i }));
+    return groups;
+  }
+  // Which groups are expanded. Transient and starting EMPTY, so every collection is folded
+  // on load and the list opens as a short stack of names — the requested default. Surviving
+  // rebuilds is what stops a pick from folding the group you are working in.
+  const openCollections = new Set();
+  function buildPresetList() {
+    const host = el("presetlist");
+    if (!host) return;
+    presetSel.style.display = "none";       // the <select> is the value store, not the control
+    host.textContent = "";
+    // "— unsaved scene —" sits OUTSIDE every group: it is a mode, not a saved scene.
+    const un = document.createElement("button");
+    un.type = "button";
+    un.className = "pl-scene pl-unsaved" + (curPreset < 0 ? " on" : "");
+    un.textContent = "— unsaved scene —";
+    un.title = "Tweak without touching a saved scene — nothing is written while this is selected";
+    un.addEventListener("click", () => pickPreset(-1));
+    host.appendChild(un);
+
+    for (const g of presetGroups()) {
+      const sec = document.createElement("div");
+      sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");
+      const head = document.createElement("button");
+      head.type = "button";
+      head.className = "pl-head";
+      head.title = (openCollections.has(g.key) ? "Collapse" : "Expand") + " “" + g.label + "”";
+      const nm = document.createElement("span");
+      nm.className = "pl-nm"; nm.textContent = g.label;
+      const ct = document.createElement("span");
+      ct.className = "pl-ct"; ct.textContent = String(g.items.length);
+      head.appendChild(nm); head.appendChild(ct);
+      head.addEventListener("click", () => {
+        if (openCollections.has(g.key)) openCollections.delete(g.key); else openCollections.add(g.key);
+        buildPresetList();
+      });
+      sec.appendChild(head);
+      // Someone else's collection can be dropped whole. Without this the only way to undo a
+      // gallery load would be deleting their scenes one at a time; your own group has no ✕
+      // because it is not a thing you loaded.
+      if (g.key) {
+        const rm = document.createElement("button");
+        rm.type = "button"; rm.className = "pl-drop"; rm.textContent = "✕";
+        rm.title = "Remove the “" + g.label + "” collection — your own scenes are untouched";
+        rm.addEventListener("click", e => { e.stopPropagation(); dropCollection(g.key, g.label); });
+        sec.appendChild(rm);
+      }
+      const body = document.createElement("div");
+      body.className = "pl-body";
+      if (!g.items.length) {
+        const e = document.createElement("div");
+        e.className = "pl-empty"; e.textContent = "no scenes yet — New saves one here";
+        body.appendChild(e);
+      }
+      for (const { p, i } of g.items) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "pl-scene" + (i === curPreset ? " on" : "");
+        b.textContent = p.name;
+        b.title = g.key ? p.name + " — from " + g.label : p.name;
+        b.addEventListener("click", () => pickPreset(i));
+        body.appendChild(b);
+      }
+      sec.appendChild(body);
+      host.appendChild(sec);
+    }
+  }
+  // Every pick routes through the <select>'s change event, so applyPreset, dockAll, the
+  // autosave and persist all run exactly as a native dropdown pick did. The swatch picker
+  // does the same thing for palettes, and for the same reason: no second code path.
+  function pickPreset(i) {
+    presetSel.value = String(i);
+    presetSel.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  function dropCollection(key, label) {
+    const n = presets.filter(p => collectionOf(p) === key).length;
+    if (!confirm("Remove the “" + label + "” collection?\n\n" + n + " scene" + (n === 1 ? "" : "s")
+      + " will be deleted. Your own scenes are not touched.")) return;
+    // Re-find the selection by IDENTITY afterwards: every index above the removed run
+    // shifts, so keeping the old number would silently select someone else's scene.
+    const cur = curPreset >= 0 ? presets[curPreset] : null;
+    presets = presets.filter(p => collectionOf(p) !== key);
+    curPreset = cur ? presets.indexOf(cur) : -1;      // −1 if the scene we were on just went
+    openCollections.delete(key);
+    dockAll();
+    rebuildPresetOptions();
+    persist();
   }
   // Normalize a saved state to the current slider set: keep only keys that still
   // exist (drops retired ones like `radius`) and default any newly-added keys.
@@ -9448,7 +9618,8 @@
     morphOnce = !morphing;
     beginMorph(fromRamp, morphing ? pickOther(+paletteSel.value) : +paletteSel.value);
     curPreset = i; presetSel.value = String(i);
-    applyingPreset = false;
+    buildPresetList();                 // move the highlight — covers the auto-cycle too,
+    applyingPreset = false;            // which sets the value without firing `change`
     persist();
   }
   function createPreset() {           // save the current scene as a new preset
@@ -9519,7 +9690,10 @@
   // this quietly depend on where setEffect happens to call dockAll.
   presetSel.addEventListener("change", () => {
     dockAll();
-    const i = +presetSel.value; if (i >= 0) applyPreset(i); else curPreset = -1;
+    const i = +presetSel.value;
+    // applyPreset repaints the list itself; "— unsaved scene —" never reaches it, so it has
+    // to move the highlight by hand (the same asymmetry dockAll is called up front for).
+    if (i >= 0) applyPreset(i); else { curPreset = -1; buildPresetList(); }
   });
 
   // ---- Backup: ONE FILE PER PRESET, so a single scene can be sent to someone ----
@@ -9698,7 +9872,11 @@
   function validatePresetList(arr) {
     return (Array.isArray(arr) ? arr : [])
       .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-      .map(p => ({ name: String(p.name || "Scene"), effect: p.effect,
+      // `collection` rides beside `name`: which published profile a scene came from, or
+      // absent for one of yours. It must be listed here explicitly — this mapping rebuilds
+      // each preset from a literal, so a field left out of it is silently dropped on every
+      // cloud load and gallery install (the trap presetprobe pins for the scene fields).
+      .map(p => ({ name: String(p.name || "Scene"), collection: p.collection, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    ttl: p.ttl, tdur: p.tdur,
@@ -9740,8 +9918,16 @@
     autosavePreset();                          // fold pending live edits before snapshotting
     const out = fullSnapshot();                // current everything is the base; override chosen parts
     if (el("rst-presets").checked) {
+      const coll = p.collection || "";
       let lib;
-      if (el("rst-replace").checked) {
+      if (coll) {
+        // COLLECTION install (a gallery load). Someone else's scenes are kept as their own
+        // set under their name rather than merged into yours: your library is untouched,
+        // their "Sunset" and your "Sunset" are not a collision, and loading the same
+        // profile again replaces just their set instead of piling up duplicates.
+        lib = out.presets.filter(x => (x.collection || "") !== coll);
+        for (const q of p.valid) lib.push({ ...q, collection: coll });
+      } else if (el("rst-replace").checked) {
         lib = p.valid.slice();                 // Replace: only the backup's presets
       } else {                                 // Merge: overwrite same-named, keep the rest, append new
         lib = out.presets.slice();
@@ -9750,7 +9936,12 @@
       out.presets = lib;
       const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
         ? p.parsed.presets[p.parsed.curPreset].name : null;
-      out.curPreset = sel ? lib.findIndex(x => x.name === sel) : -1;
+      // Match the sender's selection INSIDE the collection it was installed into — by name
+      // alone it could land on a same-named scene of your own, which is exactly the
+      // collision collections exist to stop.
+      out.curPreset = sel
+        ? lib.findIndex(x => x.name === sel && (x.collection || "") === coll)
+        : -1;
       // A shared bundle records which preset the sender had open; land the receiver on it
       // (its scene, not just the dropdown) after the reload — a one-shot marker the startup
       // reads. Cleared on use, so ordinary reloads keep the persisted scene. Backups don't
@@ -9829,10 +10020,13 @@
   // then calls applyRestore, rather than reimplementing the merge / curPreset / write /
   // reload sequence — one copy of that logic is the point. The checkboxes are ordinary DOM
   // nodes whether or not #restoredlg is visible, so this needs no special case in there.
-  function applySharedLibrary(raw, replace) {
+  // `collection` set ⇒ install as that profile's own set (the gallery path) and merge/replace
+  // no longer applies; unset ⇒ the old merge-vs-replace over your own library.
+  function applySharedLibrary(raw, replace, collection) {
     const parsed = sharedLibrary(raw);
     if (!parsed) return;
-    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false };
+    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false,
+      collection: (collection || "").trim() };
     el("rst-presets").checked = true;                 // a bundle carries scenes and nothing else
     el("rst-merge").checked = !replace;
     el("rst-replace").checked = !!replace;
@@ -10265,23 +10459,21 @@
       meta.className = "gal-meta";
       meta.textContent = p.count + " scene" + (p.count === 1 ? "" : "s")
         + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
-      // Two buttons rather than one, because the answer to merge-vs-replace is the whole
-      // content of the dialog this used to open: asking it here makes the click decisive.
+      // ONE button now, because there is no longer a merge-vs-replace question to answer:
+      // someone else's scenes are installed as their own collection under their name, so
+      // they cannot overwrite yours and re-loading simply refreshes their set.
       const btns = document.createElement("div");
       btns.className = "gal-btns";
-      const mk = (label, title, replace) => {
-        const b = document.createElement("button");
-        b.type = "button"; b.className = "audbtn"; b.textContent = label; b.title = title;
-        b.addEventListener("click", () => galLoad(p, replace));
-        return b;
-      };
-      btns.appendChild(mk("Load and merge", "Add these scenes to yours, overwriting any of yours with the same name", false));
-      btns.appendChild(mk("Load and replace", "Delete your own scenes and keep only these", true));
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "audbtn"; b.textContent = "Load scenes";
+      b.title = "Add these as a “" + p.name + "” collection in your scene list — your own scenes are untouched";
+      b.addEventListener("click", () => galLoad(p));
+      btns.appendChild(b);
       row.appendChild(nm); row.appendChild(meta); row.appendChild(btns);
       host.appendChild(row);
     });
   }
-  function galLoad(p, replace) {
+  function galLoad(p) {
     el("gal-hint").textContent = "Fetching “" + p.name + "”…";
     galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -10295,11 +10487,12 @@
       let raw;
       try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
       galOpen(false);
-      // Straight in, no Restore dialog — the button that was clicked already said merge or
-      // replace. Same validation and the same write/reload underneath (applySharedLibrary
-      // drives applyRestore), so nothing about the load path itself changes.
-      applySharedLibrary(raw, replace);
-      track("cloud_gallery_load", { replace: !!replace });
+      // Straight in, no Restore dialog: there is nothing left to ask, since the scenes go
+      // into their own collection rather than over yours. Same validation and the same
+      // write/reload underneath (applySharedLibrary drives applyRestore), so nothing about
+      // the load path itself changes — only where the scenes land.
+      applySharedLibrary(raw, false, p.name);
+      track("cloud_gallery_load", { collection: p.name });
     }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
   }
   function galOpen(show, force) {

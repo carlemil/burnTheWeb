@@ -174,7 +174,11 @@
   function validatePresetList(arr) {
     return (Array.isArray(arr) ? arr : [])
       .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-      .map(p => ({ name: String(p.name || "Scene"), effect: p.effect,
+      // `collection` rides beside `name`: which published profile a scene came from, or
+      // absent for one of yours. It must be listed here explicitly — this mapping rebuilds
+      // each preset from a literal, so a field left out of it is silently dropped on every
+      // cloud load and gallery install (the trap presetprobe pins for the scene fields).
+      .map(p => ({ name: String(p.name || "Scene"), collection: p.collection, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    ttl: p.ttl, tdur: p.tdur,
@@ -216,8 +220,16 @@
     autosavePreset();                          // fold pending live edits before snapshotting
     const out = fullSnapshot();                // current everything is the base; override chosen parts
     if (el("rst-presets").checked) {
+      const coll = p.collection || "";
       let lib;
-      if (el("rst-replace").checked) {
+      if (coll) {
+        // COLLECTION install (a gallery load). Someone else's scenes are kept as their own
+        // set under their name rather than merged into yours: your library is untouched,
+        // their "Sunset" and your "Sunset" are not a collision, and loading the same
+        // profile again replaces just their set instead of piling up duplicates.
+        lib = out.presets.filter(x => (x.collection || "") !== coll);
+        for (const q of p.valid) lib.push({ ...q, collection: coll });
+      } else if (el("rst-replace").checked) {
         lib = p.valid.slice();                 // Replace: only the backup's presets
       } else {                                 // Merge: overwrite same-named, keep the rest, append new
         lib = out.presets.slice();
@@ -226,7 +238,12 @@
       out.presets = lib;
       const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
         ? p.parsed.presets[p.parsed.curPreset].name : null;
-      out.curPreset = sel ? lib.findIndex(x => x.name === sel) : -1;
+      // Match the sender's selection INSIDE the collection it was installed into — by name
+      // alone it could land on a same-named scene of your own, which is exactly the
+      // collision collections exist to stop.
+      out.curPreset = sel
+        ? lib.findIndex(x => x.name === sel && (x.collection || "") === coll)
+        : -1;
       // A shared bundle records which preset the sender had open; land the receiver on it
       // (its scene, not just the dropdown) after the reload — a one-shot marker the startup
       // reads. Cleared on use, so ordinary reloads keep the persisted scene. Backups don't
@@ -305,10 +322,13 @@
   // then calls applyRestore, rather than reimplementing the merge / curPreset / write /
   // reload sequence — one copy of that logic is the point. The checkboxes are ordinary DOM
   // nodes whether or not #restoredlg is visible, so this needs no special case in there.
-  function applySharedLibrary(raw, replace) {
+  // `collection` set ⇒ install as that profile's own set (the gallery path) and merge/replace
+  // no longer applies; unset ⇒ the old merge-vs-replace over your own library.
+  function applySharedLibrary(raw, replace, collection) {
     const parsed = sharedLibrary(raw);
     if (!parsed) return;
-    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false };
+    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false,
+      collection: (collection || "").trim() };
     el("rst-presets").checked = true;                 // a bundle carries scenes and nothing else
     el("rst-merge").checked = !replace;
     el("rst-replace").checked = !!replace;

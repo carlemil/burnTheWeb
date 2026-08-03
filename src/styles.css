@@ -100,6 +100,48 @@
   }
   .palsw.active { border-color: #ffcf87; box-shadow: 0 0 0 1px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.55); }
   .palsw:focus-visible { outline: 2px solid #ffb15a; outline-offset: 1px; }
+  /* ---- Scenes list: collections, foldable, collapsed by default ------------------
+     Replaces the <select> as the visible control (#preset stays as the value store).
+     A collection is a <div class="pl-grp">: a header button that folds it, an optional ✕
+     to drop the whole set, and a body of scene buttons shown only while .open. */
+  #presetlist { margin: 0 0 6px; }
+  .pl-grp { position: relative; margin-top: 3px; }
+  .pl-head {
+    width: 100%; display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px 5px 20px; text-align: left; cursor: pointer;
+    background: rgba(255, 140, 40, 0.09); border: 1px solid rgba(255, 140, 40, 0.28);
+    border-radius: 5px; color: #ffcf87; font: 12px/1.25 inherit; letter-spacing: .2px;
+  }
+  .pl-head:hover { background: rgba(255, 122, 26, 0.2); }
+  /* Chevron, rotated when open — same idiom as the .box-t sections above. */
+  .pl-head::before {
+    content: "▸"; position: absolute; left: 7px; font-size: 10px; color: #ffb15a;
+    transition: transform .12s;
+  }
+  .pl-grp.open > .pl-head::before { transform: rotate(90deg); }
+  .pl-nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-ct { flex: 0 0 auto; opacity: .6; font-variant-numeric: tabular-nums; }
+  .pl-drop {
+    position: absolute; right: 4px; top: 3px; width: 20px; height: 20px; padding: 0;
+    background: none; border: 0; color: #ffb15a; opacity: .45; cursor: pointer; font-size: 12px;
+  }
+  .pl-drop:hover { opacity: 1; color: #ff9a4a; }
+  .pl-grp .pl-head { padding-right: 46px; }         /* room for the count + ✕ */
+  .pl-body { display: none; padding: 3px 0 2px 10px; }
+  .pl-grp.open > .pl-body { display: block; }
+  .pl-empty { padding: 4px 8px; font-size: 11px; opacity: .45; }
+  .pl-scene {
+    display: block; width: 100%; text-align: left; margin: 2px 0; padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid transparent; border-radius: 5px;
+    color: #ffdcb0; font: 12px/1.25 inherit; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pl-scene:hover { background: rgba(255, 122, 26, 0.22); }
+  .pl-scene.on { border-color: #ffcf87; background: rgba(255, 122, 26, 0.28); color: #fff; }
+  .pl-unsaved { font-style: italic; opacity: .85; }
+  .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible {
+    outline: 2px solid #ffb15a; outline-offset: 1px;
+  }
   #panel .check {
     display: flex;
     align-items: center;

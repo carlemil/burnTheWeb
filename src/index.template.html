@@ -111,7 +111,14 @@
        say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
        and link keeps loading. Only the wording the user reads is "scene". -->
   <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
+  <!-- #preset is HIDDEN and remains the VALUE STORE, exactly the arrangement #palette has
+       behind its swatches: applyPreset writes .value, applyBlob validates against it, and
+       every pick in the list below dispatches its `change`. The visible control is
+       #presetlist, a foldable list grouped by COLLECTION — a <select> cannot collapse an
+       <optgroup>, which is the whole point of the grouping. Keep the select in the DOM: a
+       JS failure leaves the native dropdown usable. -->
   <select id="preset"></select>
+  <div id="presetlist"><!-- collapsible per-collection scene list, built in JS --></div>
   <div class="presetrow">
     <button id="newpreset" class="audbtn" type="button" title="Save what is on screen as a new scene">New</button>
     <button id="renamepreset" class="audbtn" type="button" title="Rename the selected scene">Rename</button>
@@ -252,7 +259,7 @@
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
     <h2>Published scenes</h2>
-    <p class="pal-hint gal-help"><b>Load and merge</b> adds these scenes to your own, overwriting any of yours that share a name and keeping the rest. <b>Load and replace</b> throws your scenes away and keeps only these. Either way the page reloads onto what you loaded.</p>
+    <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
     <div class="presetrow">

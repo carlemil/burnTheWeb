@@ -356,23 +356,21 @@
       meta.className = "gal-meta";
       meta.textContent = p.count + " scene" + (p.count === 1 ? "" : "s")
         + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
-      // Two buttons rather than one, because the answer to merge-vs-replace is the whole
-      // content of the dialog this used to open: asking it here makes the click decisive.
+      // ONE button now, because there is no longer a merge-vs-replace question to answer:
+      // someone else's scenes are installed as their own collection under their name, so
+      // they cannot overwrite yours and re-loading simply refreshes their set.
       const btns = document.createElement("div");
       btns.className = "gal-btns";
-      const mk = (label, title, replace) => {
-        const b = document.createElement("button");
-        b.type = "button"; b.className = "audbtn"; b.textContent = label; b.title = title;
-        b.addEventListener("click", () => galLoad(p, replace));
-        return b;
-      };
-      btns.appendChild(mk("Load and merge", "Add these scenes to yours, overwriting any of yours with the same name", false));
-      btns.appendChild(mk("Load and replace", "Delete your own scenes and keep only these", true));
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "audbtn"; b.textContent = "Load scenes";
+      b.title = "Add these as a “" + p.name + "” collection in your scene list — your own scenes are untouched";
+      b.addEventListener("click", () => galLoad(p));
+      btns.appendChild(b);
       row.appendChild(nm); row.appendChild(meta); row.appendChild(btns);
       host.appendChild(row);
     });
   }
-  function galLoad(p, replace) {
+  function galLoad(p) {
     el("gal-hint").textContent = "Fetching “" + p.name + "”…";
     galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -386,11 +384,12 @@
       let raw;
       try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
       galOpen(false);
-      // Straight in, no Restore dialog — the button that was clicked already said merge or
-      // replace. Same validation and the same write/reload underneath (applySharedLibrary
-      // drives applyRestore), so nothing about the load path itself changes.
-      applySharedLibrary(raw, replace);
-      track("cloud_gallery_load", { replace: !!replace });
+      // Straight in, no Restore dialog: there is nothing left to ask, since the scenes go
+      // into their own collection rather than over yours. Same validation and the same
+      // write/reload underneath (applySharedLibrary drives applyRestore), so nothing about
+      // the load path itself changes — only where the scenes land.
+      applySharedLibrary(raw, false, p.name);
+      track("cloud_gallery_load", { collection: p.name });
     }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
   }
   function galOpen(show, force) {
