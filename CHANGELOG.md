@@ -14,6 +14,66 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.4.0] — 2026-08-03
+
+### Added
+
+- **A mute button** — the **♪** beside ☰ and ⛶, or the **S** key. It stops the music driving
+  the visual and armed sliders go back to drifting on their own, as if no audio were running.
+  It is deliberately *not* Stop: the source stays open, so unmuting is instant. A browser
+  cannot silently re-grab tab or screen audio, so actually stopping would make you pick the
+  tab again to come back — this is for calming the scene down for a moment without losing the
+  capture. Inert until a source is running, and not remembered across reloads.
+- **New scenes are named after the one you copied.** Pressing **New** now proposes the
+  selected scene's name with its version bumped — "Sunset" → "Sunset 2" → "Sunset 3" — since
+  a new scene is nearly always a variation on the one you were just editing. A trailing
+  number *is* the version and is incremented rather than appended to, and the suggestion
+  skips names already in your library, so pressing New repeatedly walks up instead of
+  offering the same name twice. It is only the default text; type over it as you like.
+
+### Changed
+
+- **Moving scenes in and out is now the cloud profile's job**, and the box says so. The
+  **Backup**, **Restore**, **Share this scene** and **Share presets…** buttons are gone from
+  the menu. Nothing that *receives* has changed: every share link, preset bundle and cloud
+  link ever generated still opens, and still lands in the merge-or-replace dialog, so nothing
+  of yours is ever quietly overwritten.
+- **"Presets" are called "Scenes" everywhere in the app** — the box, the TTL, the auto-cycle
+  toggle, every prompt and every help blurb. Saved scenes, links and backups are untouched;
+  only the wording changed.
+- **Published scenes load in one click.** A gallery row now carries **Load and merge** and
+  **Load and replace** and applies straight away, instead of opening a dialog to ask the
+  question you just answered by clicking.
+- **The feedback filters' "Keep" slider is now "Lifetime"** — five filters (Fade pixel,
+  Diffuse, Echo, Zoom feedback, Swirl) all had a slider called Keep, so a column of pop-out
+  boxes read the same word five times. Your saved values are unaffected.
+- **The "Effect & Filters" box is now "Layer effect & filters"**, since everything in it
+  edits the one selected layer.
+- **Beat detection: the mid band now starts at 250 Hz** instead of 150. That leaves 150–250 Hz
+  in neither band on purpose — it is bass-guitar and low-synth territory, sustained pitched
+  material that is neither a kick nor a snare, and feeding it to either band only diluted that
+  band with notes. Scenes that saved their own band edges keep them.
+- The empty sign-in box no longer shows once you are signed in.
+
+### Fixed
+
+- **Zooming a point effect is sharp again.** Sierpiński, Tetrahedron and Attractor went
+  blocky as you zoomed, because zoom magnified the finished picture — so detail fell away the
+  further in you went. They now re-draw themselves at the zoomed scale like every other
+  effect does, and stamp more points to match, so zooming gains detail instead of blur. Two
+  knock-ons: flames and glow keep their real size rather than being magnified with the
+  geometry, and a stacked scene mixing a point effect with a shader effect no longer leaves
+  the point effect un-zoomed.
+
+### Internal
+
+- `README.md` brought up to date after several releases of drift — twenty effects rather than
+  fifteen, the current eight menu boxes, the cloud profile, twenty layer blend modes, and the
+  per-layer vs whole-scene filter split.
+- The zoom change is verified by measurement rather than by eye: the bounding box of lit
+  pixels grows and then clips as zoom rises, which distinguishes "the geometry is scaling"
+  from "more points are being drawn in the same place".
+
 ## [1.3.0] — 2026-07-30
 
 ### Added

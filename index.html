@@ -128,7 +128,7 @@
   }
   #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
-  #toggle, #fs {
+  #toggle, #fs, #mute {
     position: fixed;
     top: 14px;
     left: 14px;
@@ -148,11 +148,18 @@
     transition: background .15s;
   }
   #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
-  #toggle:hover, #fs:hover { background: rgba(255, 122, 26, 0.3); }
+  #mute { left: 94px; font-size: 18px; }  /* mute the music reaction, right of fullscreen */
+  /* Muted reads as a struck-through note — same glyph, so the button never changes width or
+     baseline as you toggle it, and it stays monochrome with its two neighbours. */
+  #mute.muted { color: #8a6a52; text-decoration: line-through; }
+  /* No source running: nothing to mute, so the button is visibly inert (a click only
+     surfaces the hint in the menu's audio line — see toggleMute). */
+  #mute.off { opacity: .38; cursor: default; }
+  #toggle:hover, #fs:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
   /* keyboard focus rings (a11y) */
-  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible,
+  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute { transition: none !important; } }
   #frames {
     position: fixed;
     top: 14px;
@@ -173,7 +180,7 @@
   #frames.hidden { display: none; }
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
-  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #frames,
+  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
   #paused {
@@ -227,6 +234,12 @@
     overflow: hidden;
   }
   #panel #cloudrow #cloud-signin > * { max-width: 100%; }
+  /* Signed in there is nothing to sign in with, so the box must not be there at all — border,
+     padding and background included. `!important` on purpose: this has to beat any inline
+     display Google's own script might set on or inside the host, which is markup we do not
+     control. cloudSyncUI also empties the container; this is the half that cannot be undone
+     by a stray style. */
+  #panel #cloudrow.signed-in #cloud-signin { display: none !important; }
   /* NB there is deliberately no `:empty { display: none }` here, tempting as it is to hide
      the bare box before the button arrives. It deadlocks: display:none gives the element no
      box, so its clientWidth is 0, so gsiRender never fires and the box never stops being
@@ -251,23 +264,31 @@
   #galdlg.hidden { display: none; }
   #galdlg .gal-box {
     position: relative; pointer-events: auto;
-    width: min(90vw, 460px); max-height: 86vh; overflow-y: auto;
+    width: min(90vw, 480px); max-height: 86vh; overflow-y: auto;
     background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
-    border-radius: 12px; padding: 18px 20px;
+    border-radius: 12px; padding: 24px 26px 22px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #galdlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
-  /* name grows, meta sits right of it, Load pinned to the end */
+  #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* Name grows and meta sits right of it on the top line; the two Load buttons span the full
+     width underneath, right-aligned — "Load and replace" is far too wide to sit inline. */
   #galdlg .gal-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center;
-    padding: 7px 8px; margin-bottom: 5px;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+    padding: 11px 12px; margin-bottom: 9px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
   }
+  #galdlg .gal-row:last-child { margin-bottom: 0; }
   #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #galdlg .gal-meta { color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap; }
-  #galdlg .gal-row .audbtn { padding: 4px 10px; }
-  #galdlg .pal-hint { margin: 10px 0 0; opacity: .6; font-size: 10.5px; }
+  #galdlg .gal-btns { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 3px; }
+  #galdlg .gal-row .audbtn { padding: 5px 12px; }
+  #galdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
+  /* The merge-vs-replace explainer sits above the list, so the two buttons on every row need
+     no caption of their own. It carries .pal-hint too, so these rules must come AFTER that
+     one — same specificity, and it needs the opposite margin (space below, not above). */
+  #galdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
+  #galdlg .gal-help b { color: #ffcf87; font-weight: 600; }
   body.ui-hidden #galdlg { display: none !important; }
   #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn { flex: 1; text-align: center; }
@@ -845,45 +866,37 @@
   #carddlg #cardNums { margin: 8px 0 0; font-size: 11px; opacity: .7; }
 
   /* Restore-from-backup dialog */
-  #restoredlg, #sharepredlg {
+  #restoredlg {
     position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
-  #restoredlg.hidden, #sharepredlg.hidden { display: none; }
-  #restoredlg .rst-box, #sharepredlg .rst-box {
+  #restoredlg.hidden { display: none; }
+  #restoredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
     border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     color: #ffdcb0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #restoredlg h2, #sharepredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
-  #restoredlg .rst-sub, #sharepredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
-  #restoredlg .rst-grp, #sharepredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; display: flex; align-items: center; gap: 10px; }
+  #restoredlg h2 { margin: 0 0 4px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  #restoredlg .rst-sub { opacity: .6; font-size: 11.5px; margin: 0 0 10px; }
+  #restoredlg .rst-grp { color: #ffcf87; margin: 12px 0 4px; display: flex; align-items: center; gap: 10px; }
   #restoredlg label.rst-opt { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; cursor: pointer; }
   #restoredlg label.rst-opt.disabled { opacity: .35; cursor: default; }
   #restoredlg .rst-opt input { margin-top: 2px; flex: none; }
   #restoredlg .rst-opt small { display: block; opacity: .6; font-size: 10.5px; }
   #restoredlg .rst-mode { margin: 2px 0 4px 26px; }
   #restoredlg .rst-mode.disabled { opacity: .35; }
-  #restoredlg .rst-actions, #sharepredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
-  #restoredlg .rst-actions button, #sharepredlg .rst-actions button {
+  #restoredlg .rst-actions { display: flex; gap: 8px; margin-top: 16px; }
+  #restoredlg .rst-actions button {
     flex: 1; padding: 9px 12px; background: rgba(255, 110, 30, 0.16);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
     font: 12px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #restoredlg .rst-actions button:hover, #sharepredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
-  #restoredlg .rst-actions #rst-go, #sharepredlg .rst-actions #sharepre-copy { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
-  /* preset picker: a small "select all/none" toggle + a scrollable checklist of preset names */
-  #sharepredlg .sharepre-toggle {
-    padding: 2px 8px; background: rgba(255, 110, 30, 0.14); border: 1px solid rgba(255, 140, 40, 0.4);
-    border-radius: 6px; color: #ffce9a; font: 10.5px/1 ui-monospace, monospace; cursor: pointer;
-  }
-  #sharepredlg .sharepre-toggle:hover { background: rgba(255, 122, 26, 0.28); }
-  #sharepredlg .sharepre-list { max-height: 46vh; overflow-y: auto; margin: 2px 0 4px; padding-right: 2px; }
-  #sharepredlg label.sharepre-opt { display: flex; align-items: center; gap: 8px; margin: 5px 0; cursor: pointer; }
-  #sharepredlg .sharepre-opt input { flex: none; accent-color: #ff7a1a; }
-  #sharepredlg .sharepre-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #restoredlg .rst-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  /* The preset-picker styles went with the "Share presets…" dialog. #restoredlg keeps the
+     .rst-* rules above, which it no longer shares with anything. */
 </style>
 </head>
 <body>
@@ -924,27 +937,20 @@
        just another place for the two to disagree. -->
   </details>
 
-  <!-- Box — Backup/share. Boxed like the rest so the panel is one consistent
-       stack of foldable sections. -->
+  <!-- Box — Cloud profile: the ONE way in and out of the app now.
+       The Backup / Restore / Share this scene / Share scenes buttons were removed from the
+       menu deliberately — moving scenes around is a cloud-profile job from here on. What is
+       NOT removed is the receiving half: every `?z=`, `#zp=` and `#c=` link ever generated
+       still decodes (the standing rule), and the Restore dialog they land in is the same one
+       "Load from cloud" and the gallery open. Only the controls that CREATE files and links
+       are gone. -->
   <details class="box">
-  <summary class="box-t">Backup, restore &amp; share</summary>
-  <div class="presetrow grid2">
-    <button id="exportpresets" class="audbtn" type="button" title="Save a backup: one .json per preset (named after it, so you can send a friend just that one) plus a _settings.json with everything else the app remembers. The folder is asked for once and remembered — shift-click to choose a different one.">Backup</button>
-    <button id="importpresets" class="audbtn" type="button" title="Restore from backup files — pick one preset or the whole folder; choose what to bring back, and merge or replace">Restore</button>
-  </div>
-  <div class="presetrow grid2">
-    <button id="sharescene" class="audbtn" type="button" title="Copy a link to the scene running right now. Signed in, it is stored in the cloud and the link is tiny; otherwise the whole scene rides in the link itself.">Share this scene</button>
-    <button id="sharepresets" class="audbtn" type="button" title="Bundle a chosen set of your presets into one link to send someone — they pick merge or replace when they open it">Share presets…</button>
-  </div>
-  <!-- multiple: a backup is now a folder of files, so Restore has to take the lot. -->
-  <input type="file" id="presetsfile" accept="application/json,.json" multiple style="display:none">
+  <summary class="box-t">Cloud profile</summary>
 
-  <!-- Cloud profile. Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as
-       analytics), so an unconfigured build shows no trace of it. Lives in this box because
-       this is already the "move my scenes in and out" box. -->
+  <!-- Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as analytics), so
+       an unconfigured build shows an empty box rather than a broken one. -->
   <div id="cloudrow" class="hidden">
-    <hr class="sep">
-    <label>Cloud profile <span id="cloud-who" class="cloud-who"></span></label>
+    <p class="hint" id="cloud-who"></p>
     <!-- Google renders its own sign-in button into this node (Identity Services). -->
     <div id="cloud-signin"></div>
     <div id="cloud-authed" style="display:none">
@@ -956,13 +962,13 @@
         <input type="text" id="cloud-name" maxlength="40" placeholder="Profile name" style="display:none" title="The name shown on your profile — this is yours to choose, not your Google name">
       </div>
       <div class="presetrow grid2">
-        <button id="cloud-save" class="audbtn" type="button" title="Upload your preset library to your profile, replacing what is there">Save to cloud</button>
-        <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your presets or replace them">Load from cloud</button>
+        <button id="cloud-save" class="audbtn" type="button" title="Upload your scene library to your profile, replacing what is there">Save to cloud</button>
+        <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your scenes or replace them">Load from cloud</button>
       </div>
       <!-- Opt-in, and off by default: publishing is a deliberate act, not a side effect of
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
-      <label class="check" title="List your profile in the public gallery so anyone can load your presets. Your name and preset count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
+      <label class="check" title="List your profile in the public gallery so anyone can load your scenes. Your name and scene count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
       <div class="presetrow grid2">
         <button id="cloud-signout" class="audbtn" type="button" title="Sign out on this device. Your profile stays in the cloud.">Sign out</button>
         <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>
@@ -971,10 +977,10 @@
     <!-- Outside #cloud-authed on purpose: the gallery is readable by signed-out visitors
          (the rules allow a `pub == true` query unauthenticated), so browsing needs no account. -->
     <div class="presetrow">
-      <button id="cloud-browse" class="audbtn" type="button" title="Browse profiles other people have published, and load their presets">Browse profiles…</button>
+      <button id="cloud-browse" class="audbtn" type="button" title="Browse the scenes other people have published, and load them">Browse published scenes…</button>
     </div>
     <p id="cloud-msg" class="hint"></p>
-    <p class="hint">Stored against your account: the profile name you choose and your presets — nothing else. Not your email, name or picture.</p>
+    <p class="hint">Stored against your account: the profile name you choose and your scenes — nothing else. Not your email, name or picture.</p>
   </div>
   </details>
 
@@ -982,24 +988,26 @@
        live here too; it moved down to Effects, next to the sliders it drives. -->
   <details class="box" open>
   <summary class="box-t">Scene</summary>
-  <!-- Presets: choose / manage saved scenes, and auto-cycle between them -->
-  <label>Presets <button type="button" id="preset-help-btn" class="lbl-help" title="What a preset saves — its data structure" aria-label="What a preset saves — its data structure">?</button></label>
+  <!-- Scenes: choose / manage saved scenes, and auto-cycle between them. The ids below still
+       say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
+       and link keeps loading. Only the wording the user reads is "scene". -->
+  <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
   <select id="preset"></select>
   <div class="presetrow">
-    <button id="newpreset" class="audbtn" type="button" title="Save the current scene as a new preset">New</button>
-    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected preset">Rename</button>
-    <button id="delpreset" class="audbtn" type="button" title="Delete the selected preset">Delete</button>
+    <button id="newpreset" class="audbtn" type="button" title="Save what is on screen as a new scene">New</button>
+    <button id="renamepreset" class="audbtn" type="button" title="Rename the selected scene">Rename</button>
+    <button id="delpreset" class="audbtn" type="button" title="Delete the selected scene">Delete</button>
   </div>
-  <!-- Auto-cycle / Preset TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
+  <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle presets</label>
+  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
   <div id="grp-ttl">
-    <label>Preset TTL <span class="val" id="vTtl"></span></label>
+    <label>Scene TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="ttl-lo" min="0" max="180" step="any">
       <input type="range" id="ttl-hi" min="0" max="180" step="any"></div>
   </div>
-  <!-- How long a preset change takes to blend. Both thumbs at 0 = cut straight over. -->
+  <!-- How long a scene change takes to blend. Both thumbs at 0 = cut straight over. -->
   <div id="grp-tdur">
     <label>Transition <span class="val" id="vTdur"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -1019,7 +1027,7 @@
   </details>
 
   <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting; it is
-       per-preset scene data now, so it belongs beside the other scene controls and autosaves
+       per-scene data now, so it belongs beside the other scene controls and autosaves
        like them. The beat-trace toggle below is the one thing in here that must NOT autosave,
        which is what data-nopersist marks. -->
   <details class="box" id="beatDetails">
@@ -1027,11 +1035,11 @@
   <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
   <!-- The trace lives here, beside the thresholds it exists to help you set, rather than in a
        separate Diagnostics section. data-nopersist is load-bearing: everything else in this
-       box is per-preset scene data that onEdit deliberately DOES autosave, so without an
-       explicit opt-out this dev-tool toggle would be folded into the selected preset too. -->
+       box is per-scene data that onEdit deliberately DOES autosave, so without an
+       explicit opt-out this dev-tool toggle would be folded into the selected scene too. -->
   <label class="check" data-nopersist title="Show the scrolling flux + threshold graph per band — the tool for diagnosing a missed beat"><input type="checkbox" id="diagTrace" data-nopersist> Beat-detection trace</label>
   <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
-  <p id="beatMsg">Saved with this preset, so each scene can react its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
+  <p id="beatMsg">Saved with this scene, so each one can react to music its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
   </details>
 
   <!-- Box — Layers: the effect stack (up to 4 effects composited into one scene, in
@@ -1043,11 +1051,11 @@
   <button id="addlayer" type="button" title="Add another effect on top of this one (up to 4)">+ Add layer</button>
   </details>
 
-  <!-- Box — Effect & Filters: pick the selected layer's visual, its sliders, its
+  <!-- Box — Layer effect & filters: pick the selected layer's visual, its sliders, its
        per-layer filters, and its palette. Everything here edits the SELECTED layer
-       (hence the singular "Effect"); whole-scene FX live in the Scene filters box above. -->
+       (hence the singular "effect"); whole-scene FX live in the Scene filters box above. -->
   <details class="box" open>
-  <summary class="box-t">Effect &amp; Filters</summary>
+  <summary class="box-t">Layer effect &amp; filters</summary>
   <!-- The Effect chooser is HIDDEN here, not deleted: every layer row in the Layers box now
        carries its own, so a second visible copy of the same control was redundant. The
        element stays because it is the effect VALUE STORE — setEffect writes effectSel.value,
@@ -1071,7 +1079,9 @@
   <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
-    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="black">Black</option><option value="white">White</option><option value="palette">Palette</option></select>
+    <!-- Palette first: it is the default, so the markup's own initial selection matches the
+         live global before any JS runs (applyLayerExtras sets .value on every layer switch). -->
+    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
   <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
@@ -1085,7 +1095,7 @@
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
   </details>
 
-  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b> or <b>M</b>/<b>F</b> toggle panel/fullscreen · <b>H</b> hides all UI</p>
+  <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>
   <!-- Version + release notes, the conventional place for an "about" line: the very foot of
        the panel, below every box. The text is filled in from CONFIG.version at startup so the
        version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
@@ -1095,6 +1105,12 @@
 </div>
 <button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
+<!-- Mute the music reaction. It does NOT stop the stream (see setMuted) — a browser cannot
+     silently re-grab tab/screen audio, so stopping would cost a fresh picker dialog to come
+     back, which is not what a mute button means. The glyph is the same ♪ either way; the
+     .muted class strikes it through, so this stays monochrome beside ☰ and ⛶ instead of
+     swapping in a colour emoji. -->
+<button id="mute" type="button" aria-label="Mute the music reaction (S)" aria-pressed="false">♪</button>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
 <div id="help" class="hidden"></div>
@@ -1109,12 +1125,15 @@
   </div>
 </div>
 
-<!-- Public profile gallery. Readable without signing in, so it is available to any visitor.
-     Loading one routes through the same Restore dialog a shared link uses. -->
+<!-- Public scene gallery. Readable without signing in, so it is available to any visitor.
+     Each row applies STRAIGHT AWAY on its own two buttons — the Restore dialog would only
+     ask merge-vs-replace a second time, having already been asked here. (That dialog is
+     still live for `#zp=` links and Load from cloud, where the answer isn't in the click.) -->
 <div id="galdlg" class="hidden">
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
-    <h2>Published profiles</h2>
+    <h2>Published scenes</h2>
+    <p class="pal-hint gal-help"><b>Load and merge</b> adds these scenes to your own, overwriting any of yours that share a name and keeping the rest. <b>Load and replace</b> throws your scenes away and keeps only these. Either way the page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
     <div class="presetrow">
@@ -1194,10 +1213,10 @@
     <h2>Restore from backup</h2>
     <p class="rst-sub" id="rst-sub"></p>
     <div class="rst-grp">What to restore</div>
-    <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Presets <small id="rst-presets-n"></small></span></label>
+    <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Scenes <small id="rst-presets-n"></small></span></label>
     <div class="rst-mode" id="rst-mode">
       <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-merge" checked><span>Merge — add new &amp; overwrite same-named, keep the rest</span></label>
-      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-replace"><span>Replace — delete my presets, use only the backup's</span></label>
+      <label class="rst-opt"><input type="radio" name="rst-mode" id="rst-replace"><span>Replace — delete my scenes, use only the backup's</span></label>
     </div>
     <label class="rst-opt" id="rst-opt-settings"><input type="checkbox" id="rst-settings" checked><span>Effect settings <small>each effect's sliders, beats &amp; palette; active effect, resolution, auto-cycle</small></span></label>
     <label class="rst-opt" id="rst-opt-ranges"><input type="checkbox" id="rst-ranges" checked><span>Custom slider ranges</span></label>
@@ -1210,20 +1229,9 @@
   </div>
 </div>
 
-<div id="sharepredlg" class="hidden">
-  <div class="rst-box">
-    <h2>Share presets</h2>
-    <p class="rst-sub">Pick the presets to bundle into a link. The recipient chooses merge or replace when they open it.</p>
-    <div class="rst-grp">Presets <button type="button" id="sharepre-all" class="sharepre-toggle">Select none</button></div>
-    <div class="sharepre-list" id="sharepre-list"></div>
-    <p class="rst-sub" id="sharepre-hint"></p>
-    <div class="rst-actions">
-      <button type="button" id="sharepre-copy">Copy link</button>
-      <button type="button" id="sharepre-short" title="Shorten via tinyurl.com — needs the internet, and sends the presets to TinyURL">Copy short link</button>
-      <button type="button" id="sharepre-close">Close</button>
-    </div>
-  </div>
-</div>
+<!-- The "Share scenes" curation dialog is gone with the button that opened it. The Restore
+     dialog above is NOT: it is where "Load from cloud", the gallery, and every previously
+     generated #zp= / ?z= / #c= link still land. -->
 
 <div id="syncpop" class="hidden">
   <div class="sync-box">
@@ -1270,7 +1278,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.3.0",
+    version: "1.4.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -1294,8 +1302,16 @@
     pulse: { drop: 0.2, min: 0.02, max: 1 },   // default fall time (s); per-slider length slider bounds (s) = 20–1000 ms
 
     // --- audio beat detector: the SHIPPED tuning (a preset's beatTune overrides per-scene) ---
+    // The mid band starts at 250, not 150, which leaves 150–250 Hz in NEITHER band on
+    // purpose. That octave is bass-guitar and low-synth territory — sustained pitched
+    // material that is not a kick and not a snare, so feeding it to either band only
+    // dilutes that band's flux with notes. Low keeps 30–150 (the kick fundamental) and mid
+    // starts above the muddle. Bands never had to be contiguous; they are narrow by design
+    // (see the detector notes in CLAUDE.md), and the gap is the same idea taken one step.
+    // Per-SCENE data, so this is the default a scene starts from: a preset that stored its
+    // own `bands` keeps them, and only one saved without them picks this up.
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
-      refract: [110, 100, 70], bands: [[30, 150], [150, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
+      refract: [110, 100, 70], bands: [[30, 150], [250, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
 
     // --- "Sync with your music" nudge + analytics ---
     sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
@@ -1343,6 +1359,36 @@
       cardPowQ: 0.05,     // Multibrot locus quantisation = the Power slider's step  (CARD_POW_Q)
       juliaMargin: 0.06,  // push the seed's big loop this far outside the cardioid  (JULIA_MARGIN)
       juliaEaseA: 0.5,    // cardioid lap-speed easing amplitude; EASE_K is derived  (JULIA_EASE_A)
+      // Heat every chaos-game / attractor point stamps, 0..255.                    (POINT_HEAT)
+      // NOT 255, and that is the whole point. Measured over the catalog: 14 of 19 palettes
+      // are near-white at index 255 (Fire, Grayscale, C64, CGA and Chrome are literally
+      // [255,255,255]) — the hot core a fire ramp is meant to have. Every point stamped at
+      // exactly 255 therefore drew the fractal in that white whatever palette was selected,
+      // and since point effects now ship with NO filters, the raw stamps ARE the picture:
+      // the palette looked like it did nothing at all.
+      //
+      // 209 (0.82) sits below the white tip and inside the saturated band — 17 of 19 palettes
+      // now draw in colour (Matrix green, Ice cyan, Copper copper). The two that don't are
+      // Fire and Grayscale, which are achromatic at the top BY DESIGN and stay white/grey at
+      // any value down to ~150; lowering further would only dim the rest for no gain. With
+      // the Fire filter ticked on, the flame runs the ramp downward from here exactly as
+      // before, just starting a hair lower.
+      pointHeat: 209,
+      // Ceiling on the zoom density compensation (see zoomPoints). Zooming the point
+      // GEOMETRY rather than the picture spreads the stamps over zoom² the area, so the
+      // count follows zoom² to hold stamps-per-screen-area steady — but that is unbounded,
+      // and the slider's max is only a default the per-slider range editor can raise.
+      //
+      // 8, not the 16 that zoom 4 would ask for, and the reason is measured rather than
+      // cautious. zoom² is the AREA rule, but a Sierpiński triangle has dimension ~1.585,
+      // so it over-fills by zoom^0.415 — at full compensation zoom 4 came out at 41% of
+      // the frame lit against 11.7% at zoom 1, i.e. 3.5× denser than the thing it was
+      // meant to match. Halving it still lands comfortably above zoom 1 (measured 25%),
+      // so nothing thins out, and it halves the worst case: the chaos game stays on the
+      // CPU even on the GPU path, and at 1920×1080 one default Sierpiński layer costs
+      // 0.2 ms/frame at zoom 1, 4.4 ms at zoom 4 uncapped — which four stacked point
+      // layers at max Points would have turned into a dropped frame all on its own.
+      zoomPointCap: 8,
     },
   };
   // ==== end CONFIG ==== (probes slice `const CONFIG =` … this line; keep it)
@@ -1398,10 +1444,19 @@
   let cycleOn = CONFIG.scene.autoCycle;   // auto-cycle saved presets on the TTL timer (toggle); default from config
   let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
 
-  // Zoom factor shared by both effects (1 = default). AnimeJulia zooms optically
-  // by shrinking the complex-plane span (revealing real fractal detail); the fire
-  // has no sub-pixel detail, so it zooms by scaling the rendered image.
+  // Zoom factor, per LAYER (1 = default; installStackItem installs the drawing layer's).
+  // EVERY effect now zooms by re-evaluating its content at the zoomed coordinates rather
+  // than by magnifying the finished picture: the shader effects divide their coordinates
+  // by it, and the point effects scale the stamp in plot(). So the whole registry carries
+  // `bakesOwnZoom` and the display-zoom pass is never asked for anything but 1 — see
+  // stackZoom. (The point effects used to magnify the raster, which is exactly why they
+  // went blocky as you zoomed while the shaders stayed sharp.)
   let zoom = 1;
+  // How many more points to stamp to hold the on-screen density steady while the geometry
+  // is zoomed: the stamps spread over zoom² the area, so the count follows zoom². Capped,
+  // because the zoom slider's max is only a default the range editor can raise, and the
+  // stacking multiplies it — up to 4 layers × ~2× for the Objects copies on top of this.
+  const zoomPoints = () => zoom <= 1 ? 1 : Math.min(zoom * zoom, CONFIG.tuning.zoomPointCap);
   // Additive glow strength. Was a hardcoded 0.35 in FS_COMP and its CPU twin;
   // hoisted so the Bloom filter can drive it (0 = no glow). BLOOM_DEFAULT is what
   // every scene was authored under, so it stays the default everywhere.
@@ -1508,9 +1563,16 @@
   // so unlit areas stay dark. The active one is baked into `palette` (ABGR).
   const palette = new Uint32Array(256);       // final ABGR pixels the render reads
   let paletteReverse = false;                 // reverse colour order (per-layer; the selected layer's live value)
-  let paletteBg = "black";                    // background (heat 0): "black" | "white" | "palette" (per-layer)
+  // Background (heat 0): "black" | "white" | "palette", per layer. The default is
+  // **palette** — heat 0 shows whatever colour 0 the ramp itself defines, rather than a
+  // forced black. Every built-in ramp starts at [0,0,0] anyway, so the shipped look is
+  // unchanged; what it fixes is a CUSTOM ramp whose colour 0 is not black, which used to
+  // be silently overridden. `bgOk` is also the validator for loaded scenes, so a scene that
+  // stored a background explicitly keeps it — only one that never had the field (saved
+  // before this control existed) now opens on "palette" instead of "black".
+  let paletteBg = "palette";
   const BG_MODES = { black: 1, white: 1, palette: 1 };
-  const bgOk = v => BG_MODES[v] ? v : "black";
+  const bgOk = v => BG_MODES[v] ? v : "palette";
   const paletteBase = new Float32Array(256 * 3);   // the smooth, unbanded RGB ramp
   const clamp = v => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
   // Ease the lowest few colours (1..PAL_FADE_N−1) into the background so lit areas
@@ -3646,14 +3708,32 @@
     if (i + 3 > glPts.length) { const n = new Float32Array(glPts.length * 2); n.set(glPts); glPts = n; }
     glPts[i] = x; glPts[i + 1] = y; glPts[i + 2] = v; glPtCount++;
   }
+  // The heat every point-accumulation effect stamps. Deliberately below 255 — see
+  // CONFIG.tuning.pointHeat for why (255 is the white tip of every palette, so it made
+  // the palette look inert on the point effects, which now ship with no filters).
+  const POINT_HEAT = CONFIG.tuning.pointHeat;
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
   // (It briefly took a `raw` flag to let the credits skip the camera; they render on
   // their own layer now, so every caller wants the camera and the flag is gone.)
   function plot(x, y, v) {
-    if (camOn()) {                      // camera: rotate the stamped point about the grid centre
-      const dx = x - fw * 0.5, dy = y - fh * 0.5;
-      x = camM[0] * dx + camM[1] * dy + fw * 0.5;
-      y = camM[2] * dx + camM[3] * dy + fh * 0.5;
+    // Zoom is applied HERE, to the point, not to the finished picture. FS_ZOOM magnifies
+    // an fw×fh raster, so detail falls off as 1/zoom and the point effects went visibly
+    // blocky — the 17 shader effects never had that because they divide their coordinates
+    // by zoom and re-evaluate per pixel (`bakesOwnZoom`). A stamped point is mathematical
+    // in exactly the same way, so scaling it before it lands is the same fix: the fractal
+    // is rasterised ONCE, at full grid resolution, whatever the zoom. Points pushed off
+    // the grid are dropped by the bounds test below, which is the crop a zoom should do.
+    // Uniform scale commutes with the camera's 2×2, so the two compose in either order.
+    const z = zoom;                     // this LAYER's zoom (installStackItem installed it)
+    if (z !== 1 || camOn()) {
+      let dx = (x - fw * 0.5) * z, dy = (y - fh * 0.5) * z;
+      if (camOn()) {                    // camera: rotate the stamped point about the grid centre
+        const rx = camM[0] * dx + camM[1] * dy;
+        dy = camM[2] * dx + camM[3] * dy;
+        dx = rx;
+      }
+      x = dx + fw * 0.5;
+      y = dy + fh * 0.5;
     }
     const xi = x | 0, yi = y | 0;
     if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
@@ -3875,7 +3955,15 @@
     // random shimmer.
     const xL = 1, xR = fw - 1;
     const yT = 1, yB = fh - 1;
-    const n = cfg.points;
+    // Zoom now scales the point coordinates in plot() instead of magnifying the finished
+    // raster, which is what keeps the fractal sharp — but it also spreads the stamps over
+    // zoom² the area, so the same count would read as a thinner picture the further you
+    // zoom in. Scaling the count by zoom² holds stamps-per-screen-area constant, so the
+    // zoom gains detail without losing weight. The old magnification faked that density by
+    // blurring; this fills it in for real.
+    // One choke point for all three point effects on purpose — the `stamp` hook, the 2D
+    // chaos game and the tetrahedron branch all take `n` from here.
+    const n = Math.round(cfg.points * zoomPoints());
     // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
     if (EFFECTS[L.fx].stamp) {
@@ -3904,7 +3992,7 @@
           const c = corners[(rnd() * 3) | 0];
           px = (px + c[0]) * 0.5;
           py = (py + c[1]) * 0.5;
-          if (i > 15) plot(px, py, 255);
+          if (i > 15) plot(px, py, POINT_HEAT);
         }
       }
     } else {
@@ -4001,7 +4089,7 @@
           cur[0] = (cur[0] + wv[kk][0]) * 0.5;
           cur[1] = (cur[1] + wv[kk][1]) * 0.5;
           cur[2] = (cur[2] + wv[kk][2]) * 0.5;
-          if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], 255); }
+          if (i > 15) { const pr = project(cur); stamp(pr[0], pr[1], POINT_HEAT); }
         }
       }
     }
@@ -4626,7 +4714,7 @@
       let px = cx + x * sx, py = cy + y * sy;
       // Guarded so jit === 0 stays byte-identical to the un-jittered map.
       if (jit > 0) { px += (Math.random() - 0.5) * 2 * jit; py += (Math.random() - 0.5) * 2 * jit; }
-      plot(px, py, 255);
+      plot(px, py, POINT_HEAT);
     }
   }
 
@@ -4950,9 +5038,12 @@
     cyclePresets(now);                // auto-switch presets on the Preset TTL timer
     // Beats are detected off-thread of the render loop (audioTick, every HOP_MS);
     // here we only consume the latch and refresh the audio UI at frame rate.
-    if (audio.on) { updateMeter(); flashChips(); }
+    // audioLive(), not audio.on: while muted the meter and chips are already zeroed and
+    // audioTick refills nothing, so refreshing them every frame would only redraw the same
+    // empty bars — and there is no latch left to clear.
+    if (audioLive()) { updateMeter(); flashChips(); }
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
-    if (audio.on) clearBeats();
+    if (audioLive()) clearBeats();
     if (dbg.on) dbgDraw();
 
     postTime += dt;                         // clock for the self-animating post/screen passes
@@ -5160,6 +5251,11 @@
   const audio = {
     ctx: null, analyser: null, db: null, mag: null, prev: null, stream: null,
     on: false, src: "off", timer: 0, tPrev: 0, warm: 0,
+    // Muted: the stream and the analyser stay exactly as they are and we simply stop
+    // looking at them (see setMuted for why this is not stopAudio). TRANSIENT — the same
+    // class as pause and fullscreen, deliberately absent from fullSnapshot: a reload that
+    // silently came back muted would read as "the beat detection is broken".
+    muted: false,
     bins: [[1, 7], [7, 116], [116, 557]],   // [start,end] FFT bin per band; set from sampleRate
     energy: [0, 0, 0], pulse: [0, 0, 0],
     flux: [0, 0, 0], thr: [0, 0, 0], peak: [0, 0, 0],
@@ -5167,6 +5263,12 @@
     hist: [null, null, null], hi: 0,        // ring buffer of flux per band
     beatNow: [false, false, false], lastBeat: [0, 0, 0], bpm: [0, 0, 0],
   };
+  // "A source is running AND it is reaching the visual" — the predicate every REACTION site
+  // wants, as opposed to `audio.on`, which means only "a stream is open". The two differ
+  // exactly while muted. Kept separate rather than clearing `audio.on`, because `audio.on`
+  // is what the Capture/Mic buttons, the resume-on-gesture path and fullSnapshot's
+  // last-live-source all read, and none of those should think the source went away.
+  const audioLive = () => audio.on && !audio.muted;
   const meterBars = panel.querySelectorAll(".meter i");
   function computeBins() {
     const hz = audio.ctx.sampleRate / audio.analyser.fftSize;   // Hz per bin
@@ -5184,17 +5286,54 @@
   function median(a) { medBuf.set(a); medBuf.sort(); return medBuf[FLUX_HIST >> 1]; }
   function audioMsg(m) { const e = el("audMsg"); e.textContent = m || ""; e.style.display = m ? "block" : "none"; }
   function setAudioUI() {
-    el("vAudio").textContent = audio.on ? audio.src : "off";
+    el("vAudio").textContent = audio.on ? (audio.muted ? audio.src + " · muted" : audio.src) : "off";
+    // Capture/Mic stay LIT while muted — the source really is still running, and dimming
+    // them would invite a click that tears the stream down and re-opens the picker.
     el("audCapture").classList.toggle("on", audio.on && audio.src === "capture");
     el("audMic").classList.toggle("on", audio.on && audio.src === "mic");
-    panel.classList.toggle("audio-off", !audio.on);
-    el("breakout").classList.toggle("audio-off", !audio.on);   // dim popped-out chips too
+    // The chips dim on audioLive(), not audio.on: while muted they genuinely cannot fire,
+    // so showing them armed-and-ready would be a lie.
+    panel.classList.toggle("audio-off", !audioLive());
+    el("breakout").classList.toggle("audio-off", !audioLive());   // dim popped-out chips too
+    const mb = el("mute");
+    if (mb) {
+      mb.classList.toggle("muted", audio.muted);
+      mb.classList.toggle("off", !audio.on);          // nothing to mute
+      mb.setAttribute("aria-pressed", audio.muted ? "true" : "false");
+      mb.setAttribute("aria-label", audio.muted ? "Unmute the music reaction (S)" : "Mute the music reaction (S)");
+      mb.title = !audio.on ? "No audio source — start Capture or Mic in the menu"
+        : audio.muted ? "Muted — the source is still running (S)"
+        : "Mute the music reaction, keeping the source running (S)";
+    }
+  }
+  // Mute WITHOUT touching the stream. stopAudio() would be wrong here: a browser cannot
+  // silently re-grab tab/screen audio, so coming back would cost a fresh picker dialog —
+  // that is a Stop button, not a mute button. Everything downstream reads audioLive(), so
+  // muting looks exactly like "audio off" to the visual: armed sliders resume their free
+  // drift between the thumbs rather than freezing at the low one, which is what merely
+  // starving them of beats would have looked like.
+  function setMuted(m) {
+    audio.muted = !!m;
+    if (audio.muted) {
+      // Zero what the visual is still holding. audioTick early-returns from here on, so
+      // nothing refills these; flashChips() once on the way down clears the inline lit
+      // styles back to the CSS default, exactly as stopAudio does.
+      for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
+      updateMeter(); flashChips();
+    }
+    setAudioUI();
+  }
+  function toggleMute() {
+    if (!audio.on) { audioMsg("Nothing to mute yet — start Capture or Mic above."); return; }
+    setMuted(!audio.muted);
+    audioMsg("");
   }
   function stopStream() { if (audio.stream) { audio.stream.getTracks().forEach(t => t.stop()); audio.stream = null; } }
   function stopAudio() {
     stopStream();
     if (audio.timer) { clearInterval(audio.timer); audio.timer = 0; }
     audio.on = false; audio.src = "off";
+    audio.muted = false;          // don't leave the next Capture/Mic silently muted
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
       audio.flux[b] = audio.thr[b] = audio.peak[b] = audio.f1[b] = audio.f2[b] = audio.bpm[b] = 0;
@@ -5253,6 +5392,11 @@
   // `t` is only passed by the headless tests, which drive the detector with
   // synthetic spectra on a fake clock; the live timer calls audioTick() bare.
   function audioTick(t) {
+    // Muted: stop analysing entirely rather than analysing and discarding. The interval
+    // keeps running so unmuting is instant, and `tPrev` is deliberately left stale — the
+    // next live tick sees one long dt, which only widens that tick's flux window; the
+    // adaptive median re-settles within its own ~1s history either way.
+    if (audio.muted) return;
     const now = t === undefined ? performance.now() : t;
     const dt = audio.tPrev ? (now - audio.tPrev) / 1000 : HOP_MS / 1000;
     audio.tPrev = now;
@@ -5321,7 +5465,7 @@
     for (const id in chipEls) {
       for (const k in chipEls[id]) {
         const el = chipEls[id][k];
-        const lit = audio.on && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
+        const lit = audioLive() && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
         if (lit > 0.05) {
           // punchy flash: a bright halo that snaps on the beat and a quick scale pop,
           // both riding the band's decaying pulse.
@@ -5454,6 +5598,10 @@
     document.addEventListener("keydown", resume, true);
   }
   el("audStop").addEventListener("click", stopAudio);
+  // The floating ♪ beside ☰ and ⛶. Wired here rather than with the other chrome buttons so
+  // it sits next to the state it owns; the S key in the keydown handler calls the same fn.
+  el("mute").addEventListener("click", toggleMute);
+  setAudioUI();                 // paint the button's initial (no source ⇒ inert) state
   setAudioUI();
 
   // ---- per-effect controls, generated from the CONTROLS schema ----
@@ -5580,16 +5728,16 @@
     // they render in the Filters box; shown only while their filter is ticked. ----
     { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
     { key: "burn", host: "filter", group: "f_fire", type: "dual", label: "Burn rate", valId: "vBurn", min: 20, max: 240, step: 1, lo: 120, hi: 120, fmt: v => sig3(v) + "/s", apply: v => cfg.burn = Math.max(1, v), durScale: 10 },
-    { key: "fade", host: "filter", group: "f_fade", type: "dual", label: "Keep", valId: "vFade", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => fadeKeep = v, durScale: 10 },
+    { key: "fade", host: "filter", group: "f_fade", type: "dual", label: "Lifetime", valId: "vFade", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => fadeKeep = v, durScale: 10 },
     { key: "diffuse", host: "filter", group: "f_diffuse", type: "dual", label: "Spread", valId: "vDiffuse", min: 0.5, max: 6, step: 0.1, lo: 1, hi: 1, fmt: v => sig3(v) + "px", apply: v => diffRad = v, durScale: 10 },
-    { key: "diffkeep", host: "filter", group: "f_diffuse", type: "dual", label: "Keep", valId: "vDiffKeep", min: 0.5, max: 1, step: 0.001, lo: 0.97, hi: 0.97, fmt: v => sig3(v * 100) + "%", apply: v => diffKeep = v, durScale: 10 },
+    { key: "diffkeep", host: "filter", group: "f_diffuse", type: "dual", label: "Lifetime", valId: "vDiffKeep", min: 0.5, max: 1, step: 0.001, lo: 0.97, hi: 0.97, fmt: v => sig3(v * 100) + "%", apply: v => diffKeep = v, durScale: 10 },
     { key: "echo", host: "filter", group: "f_echo", type: "dual", label: "Distance", valId: "vEcho", min: 0, max: 8, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v) + "px", apply: v => echoDist = v, durScale: 10 },
     { key: "echoang", host: "filter", group: "f_echo", type: "dual", label: "Angle", valId: "vEchoAng", min: 0, max: 360, step: 1, lo: 90, hi: 90, fmt: v => sig3(v) + "°", apply: v => echoAng = v, durScale: 10 },
-    { key: "echokeep", host: "filter", group: "f_echo", type: "dual", label: "Keep", valId: "vEchoKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => echoKeep = v, durScale: 10 },
+    { key: "echokeep", host: "filter", group: "f_echo", type: "dual", label: "Lifetime", valId: "vEchoKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => echoKeep = v, durScale: 10 },
     { key: "zfb", host: "filter", group: "f_zoomfb", type: "dual", label: "Scale", valId: "vZfb", min: 0.9, max: 1.1, step: 0.001, lo: 1.02, hi: 1.02, fmt: v => sig3(v) + "×", apply: v => zfbScale = v, durScale: 10 },
-    { key: "zfbkeep", host: "filter", group: "f_zoomfb", type: "dual", label: "Keep", valId: "vZfbKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => zfbKeep = v, durScale: 10 },
+    { key: "zfbkeep", host: "filter", group: "f_zoomfb", type: "dual", label: "Lifetime", valId: "vZfbKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => zfbKeep = v, durScale: 10 },
     { key: "swirl", host: "filter", group: "f_swirl", type: "dual", label: "Spin", valId: "vSwirl", min: -15, max: 15, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v) + "°", apply: v => swirlSpin = v, durScale: 10 },
-    { key: "swirlkeep", host: "filter", group: "f_swirl", type: "dual", label: "Keep", valId: "vSwirlKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => swirlKeep = v, durScale: 10 },
+    { key: "swirlkeep", host: "filter", group: "f_swirl", type: "dual", label: "Lifetime", valId: "vSwirlKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => swirlKeep = v, durScale: 10 },
     { key: "twist", host: "filter", group: "f_twist", type: "dual", label: "Amount", valId: "vTwist", min: -4, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v), apply: v => twistAmt = v, durScale: 10 },
     { key: "wedgeseg", host: "filter", group: "f_wedge", type: "dual", label: "Segments", valId: "vWedgeSeg", min: 2, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => wedgeSeg = v, durScale: 10 },
     { key: "wedgerot", host: "filter", group: "f_wedge", type: "dual", label: "Spin", valId: "vWedgeRot", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => wedgeRot = v, durScale: 10 },
@@ -5661,7 +5809,7 @@
     FILTERS.forEach(f => {
       const g = filterGroup(f);
       // The "Whole scene · final image" group lives in the Scene filters box; the
-      // per-effect groups stay in the Effect & Filters box. The box title already says
+      // per-effect groups stay in the Layer effect & filters box. The box title already says
       // "Scene filters", so the scene group needs no in-box caption of its own.
       const dest = g.key === "scene" ? screenHost : host;
       if (g.key !== openKey) {
@@ -5967,6 +6115,14 @@
   // than a doubly-zoomed fractal. A one-item stack reduces to the original rule exactly.
   // Visible consequence, and intended: adding a shader item to a point scene un-zooms
   // the point item.
+  // Display zoom for the composite. EVERY effect in the registry now bakes its own zoom —
+  // the shaders divide their coordinates by it, the point effects scale the stamp in
+  // plot() — so in practice this always returns 1 and the FS_ZOOM pass is an identity.
+  // Kept as-is rather than ripped out: it is the one place that would have to come back if
+  // an effect ever zoomed by magnification again, the CPU path reads it too, and at z == 1
+  // the pass samples exact texel centres, so it costs a blit and changes nothing.
+  // Its old job — one un-baked point layer beside a baking shader layer un-zoomed the point
+  // layer — is gone with it: every layer zooms itself now, so a mixed stack is correct.
   const stackZoom = () => stack.some(L => !L.mute && EFFECTS[L.fx].bakesOwnZoom) ? 1 : zoom;
   // The four accessors that make the "DOM is the selected item's store" rule work.
   // With a one-item stack they all short-circuit to today's singletons on every call,
@@ -6169,10 +6325,12 @@
     return q < mn ? mn : q > mx ? mx : q;
   }
   function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply) {
-    // Armed: audio on and at least one L/M/H chip selected. Armed sliders stop
-    // drifting and only move on a beat — snap to the high thumb, drop back to
+    // Armed: audio reaching the visual and at least one L/M/H chip selected. Armed sliders
+    // stop drifting and only move on a beat — snap to the high thumb, drop back to
     // the low thumb over this slider's own pulse length (default PULSE_DROP).
-    const armed = audio.on && br && (br.low || br.mid || br.high);
+    // audioLive(), not audio.on, so muting drops straight through to the wander below
+    // instead of leaving every armed slider parked at its low thumb with no beats coming.
+    const armed = audioLive() && br && (br.low || br.mid || br.high);
 
     if (armed) {
       const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
@@ -6720,12 +6878,12 @@
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sierpiński", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
-      params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire"], fractal2d: true,
+      params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire"], fractal2d: true, bakesOwnZoom: true,
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [22, 22], rise: [52, 52], zoom: [1, 1], size: [1, 1], rot: [0, 0], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [3850, 3850] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrahedron", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron, a rigid body under real physics whose four tumbling corners seed the same fire. With Show box on it bounces inside an invisible box, bursting a sphere of sparks on each wall hit; with the box off there are no walls, so it orbits the centre of the screen instead. Objects stacks more tetrahedra, each smaller and moving on its own. Two rotations turn the view: Rotation yaws it (0 by default — spread the thumbs to drift) and Box nod pitches it up and down in a slow sine (Nod speed sets how fast).",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "sway", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"],
+      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "sway", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"], bakesOwnZoom: true,
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], sway: [0.5, 0.5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [1500, 1500] },
       beat: {}, extras: { palette: "1", morph: false, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", subtitle: "Julia set · animated seed",
@@ -6805,7 +6963,7 @@
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", subtitle: "Strange attractor · de Jong",
       help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow. The map is exact, so Point jitter scatters each point a little to soften the threads — set it to 0 for the bare, hard-edged curves.",
-      params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "attractor"],
+      params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "attractor"], bakesOwnZoom: true,
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
@@ -7080,7 +7238,8 @@
   // pipeline the filter writes — and they must be listed in that order (filterprobe):
   //   feedback — mutates heat that survives to the next frame (Fire, Fade, Diffuse,
   //              Echo, Zoom feedback, Swirl). Runs inside glBeginHeat, before the
-  //              effect's output is MAX-injected. Each carries its own Keep: a pure
+  //              effect's output is MAX-injected. Each carries its own Lifetime (the
+  //              `*Keep` globals — the label was renamed, the state names were not): a pure
   //              displacement conserves heat, so a warp with nothing decaying it
   //              saturates to white on its own.
   //   post     — reads the palette-mapped image; Bloom is the existing glow composite,
@@ -7662,7 +7821,7 @@
       });
       row.appendChild(grab);
 
-      // The effect chooser sits ON the row, not only in the Effect & Filters box below —
+      // The effect chooser sits ON the row, not only in the Layer effect & filters box below —
       // re-pointing a layer is the single most common thing you do to one, and it used to
       // mean select the row, scroll down, then use the other chooser. Both drive the same
       // path: changing a row that is NOT selected selects it FIRST, because setEffect edits
@@ -9293,7 +9452,14 @@
     persist();
   }
   function createPreset() {           // save the current scene as a new preset
-    const name = (prompt("Preset name:", "Preset " + (presets.length + 1)) || "").trim();
+    // New nearly always means "a variation on the one I am editing", so it proposes that
+    // scene's name with its version bumped. With nothing selected ("— unsaved scene —")
+    // there is no name to vary, so fall back to the plain "Scene N" — routed through the
+    // same bump so it can't land on a number already used either.
+    const suggest = curPreset >= 0 && curPreset < presets.length
+      ? bumpName(presets[curPreset].name)
+      : bumpName("Scene " + presets.length);
+    const name = (prompt("Scene name:", suggest) || "").trim();
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
     curPreset = presets.length - 1;
@@ -9301,6 +9467,28 @@
     dockAll();                        // back to just the menu (see Break-out boxes)
     rebuildPresetOptions();
     persist();
+  }
+  // Bump a trailing version number: "Sunset" → "Sunset 2" → "Sunset 3". A trailing integer
+  // IS the version, so it is incremented rather than appended to; anything else keeps its
+  // text and gains a 2. A name that is nothing BUT digits ("2001") bumps as the number it
+  // is, with no stem bolted on.
+  // It also skips past names already in the library, so pressing New repeatedly from one
+  // scene walks up instead of proposing the same name twice. That matters beyond tidiness:
+  // a cloud/link merge resolves scenes BY NAME and overwrites the same-named one, so two
+  // scenes called "Sunset 2" silently become one on the way back in.
+  //
+  // It sits BELOW createPreset (hoisted, so the call above still resolves) on purpose:
+  // presetprobe slices `function applyPreset(` … `function createPreset(` as applyPreset's
+  // body and greps it for `p.<field>` reads off a stored preset. Declared above, this
+  // function's `p.name` lands in that slice and reads as applyPreset restoring a field
+  // snapshotScene never captures — which is exactly what the probe went red on.
+  function bumpName(name) {
+    const m = /^(.*?)\s*(\d+)$/.exec(name);
+    const stem = (m ? m[1] : name).trim();
+    const make = k => stem ? stem + " " + k : String(k);
+    let n = (m ? +m[2] : 1) + 1;
+    while (presets.some(p => p.name === make(n))) n++;
+    return make(n);
   }
   el("newpreset").addEventListener("click", createPreset);
   // When a preset is selected, edits flow straight back into it (auto-save); this
@@ -9311,7 +9499,7 @@
   }
   el("renamepreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
-    const name = (prompt("Rename preset:", presets[curPreset].name) || "").trim();
+    const name = (prompt("Rename scene:", presets[curPreset].name) || "").trim();
     if (!name) return;
     presets[curPreset].name = name;
     rebuildPresetOptions();
@@ -9358,7 +9546,7 @@
       .replace(/\s+/g, " ")
       .trim()
       .replace(/[. ]+$/, "");             // Windows silently drops trailing dots/spaces
-    if (!s) s = "Preset";
+    if (!s) s = "Scene";
     if (WIN_RESERVED.test(s)) s = "_" + s;
     return s.slice(0, 80);
   }
@@ -9482,11 +9670,13 @@
     say("Saving " + files.length + " files…", 400 + files.length * 150);
     track("backup_files", { files: files.length });
   }
-  el("exportpresets").addEventListener("click", e => {
-    const btn = el("exportpresets");
-    btn.textContent = "Saving…";
-    runBackup(btn, e.shiftKey);      // shift ⇒ re-pick the folder (see the button's title)
-  });
+  // NB `backupFiles`/`runBackup`/`safeFileName`/`bkStore` above are no longer reachable from
+  // the UI — the Backup button is gone and moving scenes around is a cloud-profile job now.
+  // They are kept rather than deleted for two reasons: they are pure data/IO helpers with no
+  // DOM dependency (so they cost nothing sitting here), and `presetprobe` pins safeFileName's
+  // Windows filename traps, which are exactly the kind of thing that is painful to re-derive
+  // if a local export ever comes back. Same treatment `shareUrl` already gets.
+  //
   // Fold every shape we have ever written into the one the restore path understands:
   // a single-preset file, a _settings.json, a whole-library snapshot (the old Backup),
   // a legacy { presets, ranges }, or the oldest bare array. Run BEFORE deserializeBlob,
@@ -9508,42 +9698,15 @@
   function validatePresetList(arr) {
     return (Array.isArray(arr) ? arr : [])
       .filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra)
-      .map(p => ({ name: String(p.name || "Preset"), effect: p.effect,
+      .map(p => ({ name: String(p.name || "Scene"), effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    ttl: p.ttl, tdur: p.tdur,
                    layers: Array.isArray(p.layers) ? p.layers : undefined }));
   }
-  el("importpresets").addEventListener("click", () => el("presetsfile").click());
-  el("presetsfile").addEventListener("change", async ev => {
-    const files = [...(ev.target.files || [])];
-    ev.target.value = "";             // allow re-picking the same files later
-    if (!files.length) return;
-    try {
-      const texts = await Promise.all(files.map(f => f.text()));
-      const parts = texts.map((t, i) => {
-        const n = normalizeBackup(JSON.parse(t));
-        if (!n) throw new Error(files[i].name + " isn't a burnTheWeb backup");
-        return deserializeBlob(n);
-      });
-      // Presets accumulate across every file selected; the settings come from whichever
-      // file actually carries them (a folder holds one _settings.json among N presets).
-      const arr = parts.flatMap(p => (Array.isArray(p) ? p : (p && p.presets) || []));
-      const parsed = Object.assign({}, parts.find(p => p && !Array.isArray(p) && p.states) || {});
-      for (const p of parts) {        // a legacy { presets, ranges } carries these without states
-        if (!p || Array.isArray(p)) continue;
-        if (!parsed.ranges && p.ranges) parsed.ranges = p.ranges;
-        if (!parsed.beatTune && p.beatTune) parsed.beatTune = p.beatTune;
-      }
-      parsed.presets = arr;
-      delete parsed.curPreset;        // meaningless once presets arrive as separate files
-      if (!arr.length && !parsed.states) throw new Error("no presets or settings found");
-      const valid = validatePresetList(arr);
-      if (!valid.length && !parsed.states) throw new Error("no valid presets in the selection");
-      const label = files.length === 1 ? files[0].name : files.length + " files";
-      openRestore(parsed, valid, label);   // let the user pick what to restore + how
-    } catch (err) { alert("Couldn't read backup: " + err.message); }
-  });
+  // `validatePresetList` and `normalizeBackup` above are very much still live: the cloud
+  // load path and the gallery both run a fetched profile through them before it reaches the
+  // Restore dialog. Only the FILE import that used to call them here is gone.
 
   // ---- Restore dialog: choose which parts to bring back, and merge vs replace ----
   let pendingRestore = null;
@@ -9553,7 +9716,7 @@
     const hasBeat = !Array.isArray(parsed) && parsed.beatTune && typeof parsed.beatTune === "object";
     pendingRestore = { parsed, valid, hasSettings, hasRanges, hasBeat };
     const bits = [];
-    if (valid.length) bits.push(valid.length + " preset" + (valid.length === 1 ? "" : "s"));
+    if (valid.length) bits.push(valid.length + " scene" + (valid.length === 1 ? "" : "s"));
     if (hasSettings) bits.push("settings"); if (hasRanges) bits.push("ranges"); if (hasBeat) bits.push("beat tuning");
     el("rst-sub").textContent = (fileName || "backup") + " — " + (bits.join(", ") || "nothing usable");
     el("rst-presets-n").textContent = "(" + valid.length + ")";
@@ -9626,83 +9789,54 @@
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
 
-  // ---- Share a curated bundle of presets as one link -------------------------
-  // The dialog only CURATES which presets go in — it copies a link (libraryUrl →
-  // serializeBlob({presets}) → deflate, in persist-share.js), never touching the local
-  // library. The recipient's #zp=/#sp= decode lands in openSharedLibrary below, which routes
-  // into the SAME Restore dialog a file import uses, so they pick merge vs replace.
-  let sharePreBoxes = [];
-  const chosenPresets = () => sharePreBoxes.filter(cb => cb.checked).map(cb => presets[+cb.dataset.i]);
-  function syncSharePreHint() {
-    const n = chosenPresets().length, anyOn = sharePreBoxes.some(cb => cb.checked);
-    el("sharepre-hint").textContent = n
-      ? n + " preset" + (n === 1 ? "" : "s") + " selected — a bundle link can get long, so use Copy short link if it won't paste."
-      : "No presets selected.";
-    el("sharepre-all").textContent = anyOn ? "Select none" : "Select all";
-    el("sharepre-copy").disabled = el("sharepre-short").disabled = !n;
-  }
-  function openSharePresets() {
-    autosavePreset();                 // fold live edits into the selected preset before bundling
-    const list = el("sharepre-list"); list.textContent = "";
-    sharePreBoxes = presets.map((p, i) => {
-      const lab = document.createElement("label"); lab.className = "sharepre-opt";
-      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = true; cb.dataset.i = String(i);
-      cb.addEventListener("change", syncSharePreHint);
-      const span = document.createElement("span"); span.textContent = p.name; span.title = p.name;
-      lab.appendChild(cb); lab.appendChild(span); list.appendChild(lab);
-      return cb;
-    });
-    syncSharePreHint();
-    el("sharepredlg").classList.remove("hidden");
-  }
-  const closeSharePresets = () => el("sharepredlg").classList.add("hidden");
-  // "Share this scene": one link to what is running. copyText takes the Promise directly so
-  // the clipboard write stays inside the user gesture (a plain writeText after an await is
-  // rejected by Safari) — the same reason libraryUrl is passed unresolved below.
-  el("sharescene").addEventListener("click", () => {
-    copyText(cloudShareScene(), el("sharescene"), "Link copied!", "Share this scene");
-    track("share_scene", {});
-  });
-  el("sharepresets").addEventListener("click", openSharePresets);
-  el("sharepre-close").addEventListener("click", closeSharePresets);
-  el("sharepredlg").addEventListener("click", e => { if (e.target === el("sharepredlg")) closeSharePresets(); });   // backdrop
-  el("sharepre-all").addEventListener("click", () => {
-    const anyOn = sharePreBoxes.some(cb => cb.checked);
-    sharePreBoxes.forEach(cb => { cb.checked = !anyOn; });   // all/some on → none; none on → all
-    syncSharePreHint();
-  });
-  el("sharepre-copy").addEventListener("click", () => {
-    const chosen = chosenPresets(); if (!chosen.length) return;
-    copyText(libraryUrl(chosen), el("sharepre-copy"), "Link copied!", "Copy link");   // copyText takes the Promise
-    track("share_presets", { n: chosen.length });
-  });
-  el("sharepre-short").addEventListener("click", async () => {
-    const chosen = chosenPresets(); if (!chosen.length) return;
-    const btn = el("sharepre-short");
-    btn.disabled = true; btn.textContent = "Shortening…";
-    try {
-      const short = await shortenUrl(await libraryUrl(chosen));
-      btn.disabled = false;
-      copyText(short, btn, "Short link copied!", "Copy short link");
-      track("share_presets_short", { n: chosen.length });
-    } catch (e) {
-      btn.textContent = "Shorten failed";
-      setTimeout(() => { btn.textContent = "Copy short link"; syncSharePreHint(); }, 1800);
-    }
-  });
+  // ---- Sending is gone; RECEIVING is not ------------------------------------------
+  // The "Share this scene" and "Share presets…" buttons, and the curation dialog behind the
+  // second one, were removed: sharing is a cloud-profile job now. Nothing that DECODES was
+  // touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=` link ever
+  // generated still opens, and still lands in the Restore dialog below.
+  //
+  // `libraryUrl`, `shareUrl`, `cloudShareScene` and `shortenUrl` are consequently unreachable
+  // from the UI. They are kept, like `shareUrl` already was before this: they are pure
+  // builders with no DOM dependency, `shareUrl` is the documented partner of the still-live
+  // `?z=` decode, and re-attaching a button to any of them is a one-line change.
+  //
   // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
   // beatTune), so openRestore lights up just the Presets option with merge/replace.
   function openSharedLibrary(raw) {
+    const parsed = sharedLibrary(raw);
+    if (!parsed) return;
+    openRestore(parsed.parsed, parsed.valid, "shared link");
+  }
+  // Decode + validate a shared/fetched library into the pair openRestore takes. Shared by the
+  // dialog route above and the dialogless one below, so both see identical validation.
+  // Carries the sender's auto-cycle toggle + selected-scene index; __link marks it a shared
+  // bundle (backups force cycle off, links honour it).
+  function sharedLibrary(raw) {
     const norm = normalizeBackup(raw);
-    if (!norm) return;
+    if (!norm) return null;
     const parts = deserializeBlob(norm);
     const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
     const valid = validatePresetList(arr);
-    if (!valid.length) { alert("This link has no usable presets."); return; }
-    // Carry the sender's auto-cycle toggle + selected-preset index through to applyRestore;
-    // __link marks this as a shared bundle (backups force cycle off, links honour it).
-    openRestore({ presets: arr, curPreset: parts.curPreset, cycle: parts.cycle, __link: true }, valid, "shared link");
+    if (!valid.length) { alert("This link has no usable scenes."); return null; }
+    return { parsed: { presets: arr, curPreset: parts.curPreset, cycle: parts.cycle, __link: true }, valid };
+  }
+  // Apply a shared library with NO dialog, for the gallery — whose per-row "Load and merge" /
+  // "Load and replace" buttons have already asked the only question the dialog asks, so
+  // opening it would be a second prompt for an answer it already has.
+  //
+  // It stages the SAME pendingRestore + checkbox state the dialog would have produced and
+  // then calls applyRestore, rather than reimplementing the merge / curPreset / write /
+  // reload sequence — one copy of that logic is the point. The checkboxes are ordinary DOM
+  // nodes whether or not #restoredlg is visible, so this needs no special case in there.
+  function applySharedLibrary(raw, replace) {
+    const parsed = sharedLibrary(raw);
+    if (!parsed) return;
+    pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false };
+    el("rst-presets").checked = true;                 // a bundle carries scenes and nothing else
+    el("rst-merge").checked = !replace;
+    el("rst-replace").checked = !!replace;
+    applyRestore();                                   // writes localStorage + reloads
   }
 
   // Initial paint: setEffect loads the restored effect's per-effect extras (show-box,
@@ -9935,7 +10069,7 @@
     if (!cloudSess) return;
     const blob = cloudBlob();
     const n = (blob.presets || []).length;
-    if (!n) { cloudMsg("Nothing to save — you have no presets yet.", true); return; }
+    if (!n) { cloudMsg("Nothing to save — you have no scenes yet.", true); return; }
     cloudMsg("Saving…");
     zipToB64(JSON.stringify(blob)).then(payload => {
       if (payload == null) throw new Error("this browser cannot compress the payload");
@@ -9957,7 +10091,7 @@
       return cloudFetch(docUrl(cloudSess.uid) + "?" + mask, { method: "PATCH", body: JSON.stringify(body) });
     }).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      cloudMsg("Saved " + n + " preset" + (n === 1 ? "" : "s") + " to your profile.");
+      cloudMsg("Saved " + n + " scene" + (n === 1 ? "" : "s") + " to your profile.");
       track("cloud_save", { count: n });
     }).catch(e => cloudMsg("Could not save: " + e.message, true));
   }
@@ -9987,7 +10121,7 @@
 
   function cloudDelete() {
     if (!cloudSess) return;
-    if (!confirm("Delete your cloud profile permanently? Your presets in this browser are not touched.")) return;
+    if (!confirm("Delete your cloud profile permanently? Your scenes in this browser are not touched.")) return;
     cloudMsg("Deleting…");
     cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }).then(r => {
       if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -10007,7 +10141,7 @@
         if (d.name && el("cloud-name")) { el("cloud-name").value = d.name; cloudNameShow(); }
         if (cloudSess) { cloudSess.pub = !!d.pub; cloudSaveSess(); }
         if (el("cloud-pub")) el("cloud-pub").checked = !!d.pub;
-        if (d.count != null) cloudMsg("Profile has " + d.count + " preset" + (d.count === 1 ? "" : "s") + " stored.");
+        if (d.count != null) cloudMsg("Profile has " + d.count + " scene" + (d.count === 1 ? "" : "s") + " stored.");
       }).catch(() => { /* no profile yet — nothing to show */ });
   }
 
@@ -10117,10 +10251,10 @@
     const host = el("gal-list");
     host.textContent = "";
     if (!items.length) {
-      el("gal-hint").textContent = "No one has published a profile yet. Tick “Publish to gallery” to be the first.";
+      el("gal-hint").textContent = "No one has published any scenes yet. Tick “Publish to gallery” to be the first.";
       return;
     }
-    el("gal-hint").textContent = "Loading a profile opens the usual restore dialog, so you choose merge or replace — nothing is overwritten without asking.";
+    el("gal-hint").textContent = "";
     items.forEach(p => {
       const row = document.createElement("div");
       row.className = "gal-row";
@@ -10129,17 +10263,25 @@
       nm.textContent = p.name;
       const meta = document.createElement("div");
       meta.className = "gal-meta";
-      meta.textContent = p.count + " preset" + (p.count === 1 ? "" : "s")
+      meta.textContent = p.count + " scene" + (p.count === 1 ? "" : "s")
         + (p.updated ? " · " + String(p.updated).slice(0, 10) : "");
-      const btn = document.createElement("button");
-      btn.type = "button"; btn.className = "audbtn"; btn.textContent = "Load";
-      btn.title = "Fetch this profile's presets";
-      btn.addEventListener("click", () => galLoad(p));
-      row.appendChild(nm); row.appendChild(meta); row.appendChild(btn);
+      // Two buttons rather than one, because the answer to merge-vs-replace is the whole
+      // content of the dialog this used to open: asking it here makes the click decisive.
+      const btns = document.createElement("div");
+      btns.className = "gal-btns";
+      const mk = (label, title, replace) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "audbtn"; b.textContent = label; b.title = title;
+        b.addEventListener("click", () => galLoad(p, replace));
+        return b;
+      };
+      btns.appendChild(mk("Load and merge", "Add these scenes to yours, overwriting any of yours with the same name", false));
+      btns.appendChild(mk("Load and replace", "Delete your own scenes and keep only these", true));
+      row.appendChild(nm); row.appendChild(meta); row.appendChild(btns);
       host.appendChild(row);
     });
   }
-  function galLoad(p) {
+  function galLoad(p, replace) {
     el("gal-hint").textContent = "Fetching “" + p.name + "”…";
     galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -10153,8 +10295,11 @@
       let raw;
       try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
       galOpen(false);
-      openSharedLibrary(raw);           // same path as a shared link: validate + merge/replace
-      track("cloud_gallery_load", {});
+      // Straight in, no Restore dialog — the button that was clicked already said merge or
+      // replace. Same validation and the same write/reload underneath (applySharedLibrary
+      // drives applyRestore), so nothing about the load path itself changes.
+      applySharedLibrary(raw, replace);
+      track("cloud_gallery_load", { replace: !!replace });
     }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
   }
   function galOpen(show, force) {
@@ -10263,8 +10408,29 @@
     const inS = !!cloudSess;
     const authed = el("cloud-authed"), signin = el("cloud-signin"), who = el("cloud-who");
     if (authed) authed.style.display = inS ? "" : "none";
-    if (signin) signin.style.display = inS ? "none" : "";
-    if (who) who.textContent = inS ? "· signed in" : "";
+    // Signed in, the sign-in box is hidden AND EMPTIED. Hiding alone left an empty bordered
+    // box on screen for at least one real user — Google's button is an iframe in markup that
+    // is theirs, not ours, so what survives a `display:none` on the container is not something
+    // to reason about from here. Removing the children removes the question, and also stops a
+    // third-party iframe sitting in the page for a signed-in session that has no use for it.
+    // The `.signed-in` class is what actually hides it, so no inline style (ours or Google's)
+    // can win; gsiWidth resets so sign-out re-renders it at the right width.
+    const row = el("cloudrow");
+    if (row) row.classList.toggle("signed-in", inS);
+    if (signin) {
+      signin.style.display = inS ? "none" : "";
+      if (inS && signin.children.length) { signin.textContent = ""; gsiWidth = 0; }
+      // Signed out, draw the button back straight away. Leaving this to the ResizeObserver
+      // looked equivalent and was not: it left an empty bordered box after sign-out — the
+      // mirror image of the bug being fixed. gsiRender self-guards on GIS being loaded and on
+      // the box having a width, so calling it here is safe even during startup.
+      if (!inS) gsiRender();
+    }
+    // Its own line now, not a suffix to a "Cloud profile" label — the box title says that.
+    // So it has to state both halves rather than only marking the signed-in one.
+    if (who) who.textContent = inS
+      ? "Signed in — your scenes can be saved here and picked up on another machine."
+      : "Sign in to keep your scenes online and pick them up on another machine.";
     const pubBox = el("cloud-pub");
     if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
     cloudNameShow();                     // signing in/out always lands back on the label
@@ -10812,6 +10978,8 @@
     // editor and the Palette inspector — along with it, so M gives a clean view.
     if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
+    // S for sound — M would be the video-player convention, but it is the menu here.
+    else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
     else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); cardWanted = false; cardOpen(false); }
   });
@@ -10824,20 +10992,20 @@
     // (see the EFFECTS registry). "all" shows on every effect; "band" on every
     // shader effect with a Banding slider; the rest are per-effect tags.
     sliders: [
-      { n: "Presets", w: "all", t: "A preset is a named full scene — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves the current scene as a fresh preset, selects it and turns auto-cycle off so it stays up; Rename renames the selected one; Delete removes it. The first entry, “— unsaved scene —”, is not a preset but a mode: while it is selected nothing is auto-saved, so you can tweak freely without altering anything you have stored. You also land there whenever the live scene is not one of your presets — after deleting a preset, when opening a shared link, or after switching to an effect you have no preset for. At the top, Backup writes one file per preset (plus a settings file), so sending someone a single scene means sending one file; Restore takes as many of those files as you select, letting you choose which parts to bring in and whether to merge or replace. At the bottom, Share makes a link that opens with the current settings." },
-      { n: "Auto-cycle presets", w: "all", t: "When on, a random saved preset is applied every so often (see Preset TTL) — it cycles whole presets, not effects, though a preset switch can change the effect too. Turn off to stay put. Needs at least two saved presets. Creating a preset or restoring a backup switches it off, so the scene you just chose stays on screen." },
-      { n: "Preset TTL", w: "all", t: "How long auto-cycle holds each preset: a random time in this range (seconds) before applying a random other one." },
-      { n: "Transition", w: "all", t: "How long a preset change takes to blend, as a range in seconds — each switch draws a length from it. A suitable transition is chosen automatically for the two scenes involved: a crossfade between two full-screen effects, something that breaks the picture up (pixelate, blur, wipe) when a sparse point cloud meets a dense field, a dip or flash when the palettes jump, and often nothing at all when the scenes already dissolve on their own through Fire or Fade pixel. Collapse both thumbs to 0 to cut straight over instead." },
-      { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching keeps the preset you have selected and folds the change into it, like any other edit — so you carry on working on your scene. The preset keeps its name, so rename it if it no longer suits. Part of a preset, so auto-cycle can switch it for you." },
+      { n: "Scenes", w: "all", t: "A saved scene is a named full snapshot — the effect plus every setting. Pick one to load it; from then on any change you make is auto-saved straight back into it. New saves what is on screen as a fresh scene, selects it and turns auto-cycle off so it stays up; Rename renames the selected one; Delete removes it. The first entry, “— unsaved scene —”, is not a saved scene but a mode: while it is selected nothing is auto-saved, so you can tweak freely without altering anything you have stored. You also land there whenever what is on screen is not one of your saved scenes — after deleting one, when opening a shared link, or after switching to an effect you have no scene for. Your whole library can be kept against a Google account in the Cloud profile box, and published there for other people to load." },
+      { n: "Auto-cycle scenes", w: "all", t: "When on, a random saved scene is applied every so often (see Scene TTL) — it cycles whole scenes, not effects, though a scene switch can change the effect too. Turn off to stay put. Needs at least two saved scenes. Creating a scene or restoring a backup switches it off, so the one you just chose stays on screen." },
+      { n: "Scene TTL", w: "all", t: "How long auto-cycle holds each scene: a random time in this range (seconds) before applying a random other one." },
+      { n: "Transition", w: "all", t: "How long a scene change takes to blend, as a range in seconds — each switch draws a length from it. A suitable transition is chosen automatically for the two scenes involved: a crossfade between two full-screen effects, something that breaks the picture up (pixelate, blur, wipe) when a sparse point cloud meets a dense field, a dip or flash when the palettes jump, and often nothing at all when the scenes already dissolve on their own through Fire or Fade pixel. Collapse both thumbs to 0 to cut straight over instead." },
+      { n: "Effect", w: "all", t: "Which visual is running — the chooser at the top of the Effects section, directly above that effect's own sliders. Switching keeps the scene you have selected and folds the change into it, like any other edit — so you carry on working on your scene. The scene keeps its name, so rename it if it no longer suits. Part of a saved scene, so auto-cycle can switch it for you." },
       { n: "Palette", w: "all", t: "The colour ramp this layer's heat is mapped through — click a swatch to pick it. Per-layer, so stacked effects can each carry their own colours (blended together in perceptual OKLab space when they overlap)." },
       { n: "Reverse colours", w: "all", t: "Runs this layer's palette the other way round — the dark (background) end stays black, so only the lit ramp is flipped. Per-layer." },
       { n: "Background", w: "all", t: "What this layer's unlit pixels (heat 0) show: Black (default), White, or the palette's own colour 0. In a multi-layer scene it's per-layer, so a background layer can wash the scene while the ones above keep a black backdrop." },
-      { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every preset switch also blends the palette rather than snapping to it." },
+      { n: "Palette cycle", w: "all", t: "How long one cross-fade to a random new palette takes, as a range in seconds — each cycle draws a fresh duration from it. Pinch both thumbs to 0 to hold the chosen palette still. Every scene switch also blends the palette rather than snapping to it." },
       { n: "Palette hold", w: "all", t: "How long to rest on each palette before starting the next cross-fade, as a range in seconds — a fresh dwell is drawn each time. At 0 (the default) the colours cross-fade continuously with no pause; raise it to sit on each palette for a while between changes. Only matters while Palette cycle is running." },
-      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them, and each menu row shows a small dot per armed band in the same colour — dim at rest, lit on the beat — so you can see what a preset has wired to the music without opening a single box." },
+      { n: "React to music", w: "all", t: "Capture system/tab audio (e.g. Spotify) or the microphone, split into low/mid/high bands. Arm a slider with its L/M/H chips: while audio is on it stops drifting and instead sits at its low end, snapping to its high end on each beat in that band and dropping back over its Pulse time. Chips glow on the beats that drive them, and each menu row shows a small dot per armed band in the same colour — dim at rest, lit on the beat — so you can see what a scene has wired to the music without opening a single box." },
       { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
-      { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or preset." },
+      { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or scene." },
       { n: "Slider range (min / max / step)", w: "all", t: "The row at the foot of a slider's pop-out box retunes that slider's own bounds live, so you can push a control past its shipped limits (or make it finer). ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
       { n: "Show box", w: "tetra", t: "Tetrahedron only — ON draws the wireframe box the tetrahedron bounces inside (with a burst of sparks on each wall hit). OFF hides the box and, with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead." },
       { n: "Box size", w: "tetra", t: "Tetrahedron only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
@@ -10856,7 +11024,7 @@
       { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin this layer in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. Per-layer, like Zoom — each stacked effect keeps its own camera, applied to that layer before the layers are blended (in a one-layer scene it's simply the camera over what's running). The startup credits deliberately ignore it and stay level." },
       { n: "Filters", w: "all", t: "A stack of post-effects, all OFF by default — tick the ones you want. Most are PER-LAYER (in the Effects &amp; Filters box): each stacked effect is filtered on its own, in the order listed. The whole-scene ones — Bloom and the screen FX (Barrel, Scanlines, Vignette, Film grain) — live in the separate Scene filters box and apply once to the finished, blended picture. Fire and Fade pixel feed back into the layer, building up over successive frames; the rest are single passes. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
       { n: "Fire", w: "all", t: "The classic rising-fire feedback: heat drifts upward and cools each frame, so whatever the effect draws sprouts flames. Flame rise sets how tall they climb before fading (linear in height); Burn rate how many simulation steps run per second — faster is livelier and flickerier." },
-      { n: "Fade pixel", w: "all", t: "Keeps a fraction of the previous frame instead of clearing it, leaving motion trails. Keep near 1 smears almost forever; lower values fade quickly. Stacks with Fire." },
+      { n: "Fade pixel", w: "all", t: "Keeps a fraction of the previous frame instead of clearing it, leaving motion trails. Lifetime near 100% smears almost forever; lower values fade quickly. Stacks with Fire." },
       { n: "Pixelate", w: "all", t: "Chunks the image into blocks. Block sets the size — a direct route to a lo-fi console look." },
       { n: "Blur / sharpen", w: "all", t: "One kernel doing both: negative Amount blurs, positive sharpens, 0 is off. Radius sets how far it reaches, so a wide soft blur and a tight crisp edge come from the same pass." },
       { n: "Edge", w: "all", t: "Edge detection over the finished image — Amount fades between the original and the outlines it finds." },
@@ -10952,12 +11120,12 @@
     helpEl.classList.remove("hidden");
   }
   el("help-btn").addEventListener("click", openHelp);
-  // The Presets ? — what a preset actually stores. A preset is a COMPLETE scene snapshot
+  // The Scenes ? — what a saved scene actually stores. It is a COMPLETE snapshot
   // (snapshotScene / stackItemOut) nesting three scopes: scene-wide, the per-layer stack,
   // and a selected-effect copy that also serves single-layer scenes. Reuses the help modal.
   function openPresetHelp() {
     const tree =
-      "<b>preset</b>                    <i>a complete scene — snapshotScene()</i>\n" +
+      "<b>scene</b>                     <i>everything on screen — snapshotScene()</i>\n" +
       "├─ name\n" +
       "├─ effect                  <i>the SELECTED layer's effect (a stable name)</i>\n" +
       "├─ state·beat·pulse·plen   <i>selected effect's copy (single-layer fallback)</i>\n" +
@@ -10972,15 +11140,15 @@
       "               seedPath, seedRide, seedPts,\n" +
       "               ranges, filters, blend, gain, mute }";
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>What a preset saves</h2>";
-    html += "<p>A preset is a <b>complete snapshot of one scene</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
+    html += "<h2>What a scene saves</h2>";
+    html += "<p>A saved scene is a <b>complete snapshot of what is on screen</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
     html += '<pre class="help-tree">' + tree + "</pre>";
     html += "<dl>";
-    html += "<dt>Scene-wide — one per preset</dt><dd>The Scene filters (Bloom + the screen FX), the beat-detector tuning, and the scene-wide slider bounds.</dd>";
+    html += "<dt>Scene-wide — one per scene</dt><dd>The Scene filters (Bloom + the screen FX), the beat-detector tuning, and the scene-wide slider bounds.</dd>";
     html += "<dt>Per-layer — the stack</dt><dd>Each layer keeps its own effect, slider values, beat wiring, <b>camera</b> (zoom + X/Y/Z, in its own <code>cam</code>), palette, cardioid orbit, its <em>own</em> slider bounds, filters, and how it blends into the stack (blend / gain / mute).</dd>";
-    html += "<dt>Selected-effect copy</dt><dd>The top-level effect and its values describe the selected layer — the whole story for a one-layer scene (its camera rides inside that <code>state</code>), and a fallback for a stack (which a one-layer preset omits entirely, so it stays byte-identical to how presets looked before stacking).</dd>";
+    html += "<dt>Selected-effect copy</dt><dd>The top-level effect and its values describe the selected layer — the whole story for a one-layer scene (its camera rides inside that <code>state</code>), and a fallback for a stack (which a one-layer scene omits entirely, so it stays byte-identical to how scenes were stored before stacking).</dd>";
     html += "</dl>";
-    html += '<p class="help-intro">Effects are stored as stable names, not positions, so reordering or removing one never corrupts a saved scene. Deliberately <b>not</b> saved: the render resolution, audio on/off, and the running animation phase — a preset is the same <em>configuration</em>, not the same <em>frame</em>. Backup writes one such file per preset; Share packs the current scene into a link.</p>';
+    html += '<p class="help-intro">Effects are stored as stable names, not positions, so reordering or removing one never corrupts a saved scene. Deliberately <b>not</b> saved: the render resolution, audio on/off, and the running animation phase — a saved scene is the same <em>configuration</em>, not the same <em>frame</em>. Your cloud profile carries the whole library of them; a share link carries just the one.</p>';
     html += "</div>";
     helpEl.innerHTML = html;
     helpEl.classList.remove("hidden");

@@ -17,7 +17,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.3.0",
+    version: "1.4.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -41,8 +41,16 @@
     pulse: { drop: 0.2, min: 0.02, max: 1 },   // default fall time (s); per-slider length slider bounds (s) = 20–1000 ms
 
     // --- audio beat detector: the SHIPPED tuning (a preset's beatTune overrides per-scene) ---
+    // The mid band starts at 250, not 150, which leaves 150–250 Hz in NEITHER band on
+    // purpose. That octave is bass-guitar and low-synth territory — sustained pitched
+    // material that is not a kick and not a snare, so feeding it to either band only
+    // dilutes that band's flux with notes. Low keeps 30–150 (the kick fundamental) and mid
+    // starts above the muddle. Bands never had to be contiguous; they are narrow by design
+    // (see the detector notes in CLAUDE.md), and the gap is the same idea taken one step.
+    // Per-SCENE data, so this is the default a scene starts from: a preset that stored its
+    // own `bands` keeps them, and only one saved without them picks this up.
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
-      refract: [110, 100, 70], bands: [[30, 150], [150, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
+      refract: [110, 100, 70], bands: [[30, 150], [250, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
 
     // --- "Sync with your music" nudge + analytics ---
     sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
