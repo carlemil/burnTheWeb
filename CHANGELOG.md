@@ -14,6 +14,24 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.9.0] — 2026-08-03
+
+### Added
+
+- **The selected scene's name now shows in the panel**, as a heading just under the Scene box.
+  The Scene box folds and its list scrolls, so the name could easily be off screen while every
+  box below it was editing that scene. Reads *— unsaved scene —* when nothing is selected, and
+  hovering it tells you whose collection a scene came from.
+
+### Changed
+
+- **The pop-out slider boxes read top-down now.** The slider sits directly under its own name
+  and readout — it used to be below the beat buttons, which put three lettered chips between a
+  control's label and the control itself.
+- **The beat buttons have a title, "Triggers"**, instead of being three unlabelled letters.
+- **"Pulse" is now "Trigger duration"**, with its title above its slider rather than beside it.
+  Only the wording and the layout changed: every saved scene keeps its values untouched.
+
 ## [1.8.1] — 2026-08-03
 
 ### Changed
