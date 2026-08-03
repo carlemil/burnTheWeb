@@ -14,6 +14,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.11.1] — 2026-08-03
+
+### Changed
+
+- **The layer fold chevron moved to the top-left**, beside the effect chooser — where the
+  layer's headline is, rather than down in the mute/strength row.
+- **Every chevron in the app is twice the size**: the panel sections, the scene collections,
+  the filter rows, the ☰ submenus and the layer fold. They were small enough to be easy to
+  miss and fiddly to hit.
+
 ## [1.11.0] — 2026-08-03
 
 ### Changed
