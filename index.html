@@ -536,7 +536,14 @@
      edge — so no float, no order/flex-basis (they are no longer a flex child of the label). */
   #breakout .bandchips { float: none; display: flex; gap: 4px; margin: 3px 0 0; align-items: center; }
   #breakout .bandchips button { width: 22px; height: 18px; font-size: 10px; line-height: 16px; }
-  #breakout .bandchips select { height: 18px; margin-left: auto; padding: 0 2px; font-size: 10px; }
+  /* The shape picker is its own titled row now, not a float at the right of the chips —
+     so it is no longer a .bandchips child and needs its own sizing. Full width, because a
+     dropdown that names a curve ("Sustain", "Bounce") reads better than one clipped to a
+     corner. The .bandchips select rule stays for the menu-row copy. */
+  #breakout .pulsesel {
+    display: block; width: 100%; height: 20px; margin: 3px 0 0; padding: 0 3px;
+    font-size: 10px;
+  }
   #breakout .dual { margin: 2px 0 4px; }
   #breakout .ctl > input[type=range] { margin: 4px 0; }
   /* Per-slider beat-pulse length: how long this slider's beat kick takes to fall
@@ -1645,7 +1652,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.9.1",
+    version: "1.9.2",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -6967,7 +6974,6 @@
     PULSE_SHAPES.forEach(s => psel.appendChild(new Option(s.name, s.key)));
     psel.value = PULSE_DEFAULT;
     psel.addEventListener("change", () => { pulseShape[id] = psel.value; });
-    wrap.appendChild(psel);
     pulseEls[id] = psel;
     pulseShape[id] = PULSE_DEFAULT;
     // ---- pop-out box layout: value on top, then the SLIDER, then the beat controls ----
@@ -6983,8 +6989,15 @@
     const host = label.parentNode;
     const trigT = document.createElement("div");
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
-    trigT.title = "Which beat bands make this slider jump, and how it falls back";
+    trigT.title = "Which beat bands make this slider jump";
     host.append(trigT, wrap);
+    // The fall-back CURVE, titled like everything else here rather than left as an unlabelled
+    // dropdown floated to the right of the chips. Named "Trigger shape" to match "Trigger
+    // duration" — the two describe the same fall together, one its curve and one its length.
+    const shapeT = document.createElement("div");
+    shapeT.className = "trig-t"; shapeT.textContent = "Trigger shape";
+    shapeT.title = "The curve this slider follows on its way back down after a trigger";
+    host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
     pulseLen[id] = PULSE_DROP;

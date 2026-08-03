@@ -14,6 +14,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.9.2] — 2026-08-03
+
+### Changed
+
+- **The trigger shape picker has a title now.** It was an unlabelled dropdown tucked to the
+  right of the L/M/H buttons — the only control in a slider box you had to hover to identify.
+  It sits on its own row as **Trigger shape**, between **Triggers** and **Trigger duration**,
+  which is where it belongs: shape and duration describe the same fall, one its curve and one
+  its length.
+
 ## [1.9.1] — 2026-08-03
 
 ### Changed
