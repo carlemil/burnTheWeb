@@ -20,10 +20,6 @@
     for (const id in animPhase) L.anim[id] = Object.assign({}, animPhase[id]);
     capturePhase(L);
     captureLayerExtras(L);            // this layer's palette + filters, from the live globals
-    // Remember this layer's open slider pop-out boxes, so re-selecting it restores them
-    // (restoreLayerUi). Transient, like `popped` itself: not serialized, shared or backed up.
-    // (The Orbit editor is scene-wide sticky, not per layer — see setEffect / cardWanted.)
-    L.popped = [...popped];
     L.ranges = collectLayerRanges();  // this layer's custom slider bounds (applied by setEffect on select)
   }
   function thawItem(L) {
@@ -96,12 +92,11 @@
     freezeItem(stack[stackSel]);
     stackSel = j;
     pointMaps(j);
-    const pops = stack[j].popped;    // read BEFORE setEffect's persist re-freezes and wipes it
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
     setEffect(stack[j].fx, false, false);   // reloads the maps for editing; enter=false ⇒ no reseed, the layer keeps running
     applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
-    restoreLayerUi(stack[j], pops);  // ...and re-open the pop-out boxes it had open
+    restoreLayerUi(stack[j]);
     paintBlock(prev, stack[prev]);   // the block that just lost selection, from its frozen record
     syncStackUI();
   }
@@ -139,12 +134,11 @@
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
     pointMaps(stackSel);
-    const pops = stack[stackSel].popped;   // before setEffect's persist wipes it
     thawItem(stack[stackSel]);
     stageLayerExtras(stack[stackSel]);
     setEffect(stack[stackSel].fx, false, false);   // re-selecting a surviving layer ⇒ no reseed
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
-    restoreLayerUi(stack[stackSel], pops);   // ...and its remembered pop-out boxes
+    restoreLayerUi(stack[stackSel]);
     repaintAllBlocks();              // the splice moved every later layer down a slot
     syncStackUI();
   }
@@ -304,7 +298,7 @@
             moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
           }
           const at = stack.indexOf(dragged);
-          if (moved) repaintAllBlocks();                     // slots now hold different layers
+          if (moved) { repaintAllBlocks(); syncPopOwners(); }   // slots now hold different layers
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row
           if (moved) { persist(); autosavePreset(); }

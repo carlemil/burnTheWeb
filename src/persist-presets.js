@@ -291,7 +291,6 @@
     presets = presets.filter(p => collectionOf(p) !== key);
     curPreset = cur ? presets.indexOf(cur) : -1;      // −1 if the scene we were on just went
     openCollections.delete(key);
-    dockAll();
     rebuildPresetOptions();
     persist();
   }
@@ -503,7 +502,6 @@
     presets.push({ name, ...snapshotScene() });
     curPreset = presets.length - 1;
     stopCycling();                    // ...and keep it on screen (see stopCycling)
-    dockAll();                        // back to just the menu (see Break-out boxes)
     rebuildPresetOptions();
     persist();
   }
@@ -557,16 +555,17 @@
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
     presets.splice(curPreset, 1);
     curPreset = -1;
-    dockAll();
     rebuildPresetOptions();
     persist();
   });
-  // dockAll() up front covers BOTH branches — picking a preset and dropping to
-  // "— unsaved scene —". Selecting a preset would dock anyway via applyPreset → setEffect,
-  // but "— unsaved scene —" never reaches setEffect, and relying on that chain would make
-  // this quietly depend on where setEffect happens to call dockAll.
+  // The pop-out column is deliberately NOT emptied here, nor anywhere else. It used to be
+  // docked on every scene change, on Delete, and on setEffect, on the reasoning that a new
+  // scene swaps every slider out from under you so a leftover column is stale furniture.
+  // That reasoning does not survive per-layer boxes: the moment two layers' boxes can sit
+  // side by side, anything that empties the column takes away the comparison you opened it
+  // for. A box whose control the new scene does not use hides itself (refreshBreakout) and
+  // comes back if you return to an effect that has it, so nothing stale is ever shown.
   presetSel.addEventListener("change", () => {
-    dockAll();
     const i = +presetSel.value;
     // applyPreset repaints the list itself; "— unsaved scene —" never reaches it, so it has
     // to move the highlight by hand (the same asymmetry dockAll is called up front for).

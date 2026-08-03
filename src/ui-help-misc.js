@@ -118,7 +118,9 @@
     const tags = (EFFECTS[effect] && EFFECTS[effect].helpTags) || [];
     const cands = HELP.sliders.filter(s => s.n === label || s.n.split(" / ")[0] === label);
     const s = cands.find(x => tags.includes(x.w)) || cands[0];
-    return { owner: ctlOwner(key), body: s ? s.t : "" };
+    // -1: the help dialog describes the CONTROL, not one layer's copy of it, so it takes the
+    // owner line without the "L2 ·" prefix the pop-out boxes carry.
+    return { owner: ctlOwner(-1, key), body: s ? s.t : "" };
   }
   const RANGE_BLURB = () => (HELP.sliders.find(s => s.n === "Slider range (min / max / step)") || {}).t || "";
   function openCtlHelp(key) {

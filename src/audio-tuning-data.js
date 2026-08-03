@@ -341,7 +341,6 @@
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
     juliaPower = 2;                   // Multibrot's draw overrides this every frame
-    dockAll();                        // new scene ⇒ empty pop-out column (see Break-out boxes)
     // show only the controls this effect declares (rendered from the CONTROLS schema)
     refreshControlVisibility();       // effect params + the ticked filters' params
     // The Orbit editor only means anything for a Mandelbrot-seeded (cardioid) effect. It is a

@@ -10,14 +10,19 @@
   // (anims/loadState) are location-independent, its styling is scoped to #breakout
   // too (CSS), and onEdit + the range editor scan #breakout as well (see below).
   const breakout = el("breakout");
+  // Keyed "<slot>/<key>", not by key alone, so layer 1's Speed box and layer 3's Speed box
+  // are two different things and can be open at the same time. A SCENE control has one box
+  // for the whole page and is keyed "s/<key>".
   const popped = new Set();
+  const popKey = (slot, key) => (slot < 0 ? "s" : slot) + "/" + key;
+  const isPopped = (slot, key) => popped.has(popKey(slot, key));
   const rows = {};                   // key -> menu row element (name + +/- button)
   const POPPABLE = CONTROLS.filter(c => c.type === "dual" || c.type === "plain").map(c => c.key);
   const ctlLabel = key => { const c = CONTROLS.find(x => x.key === key); return c ? c.label : key; };
-  function makePopBtn(key) {
+  function makePopBtn(slot, key) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "ctl-pop";
-    b.addEventListener("click", () => togglePop(key));
+    b.addEventListener("click", () => togglePop(slot, key));
     return b;
   }
   // ---- per-slider range editor (lives at the foot of the slider's pop-out box) --
@@ -96,11 +101,22 @@
   // name of every family — effects ("Plasma", "Cardioid seed"), the shared ones
   // ("Camera", "Shape & motion") and the filters. Filters get an explicit prefix so
   // "Fire" the filter can't be read as Fire the effect family.
-  function ctlOwner(key) {
+  // ...and WHICH LAYER'S, since two layers running the same effect would otherwise give two
+  // boxes with identical titles sitting side by side in the column.
+  function ctlOwner(slot, key) {
     const c = CONTROLS.find(x => x.key === key);
     const g = c && c.group;
-    if (!g || !CTL_GROUPS[g]) return "";
-    return (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
+    const own = (!g || !CTL_GROUPS[g]) ? "" : (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
+    return slot < 0 ? own : "L" + (slot + 1) + (own ? " · " + own : "");
+  }
+  // The layer number is the one part of a box title that changes while the box is open — a
+  // reorder moves the layer it belongs to — so it is re-stamped rather than baked in.
+  function syncPopOwners() {
+    for (let slot = 0; slot < STACK_MAX; slot++) for (const key of POPPABLE) {
+      const box = ctlIn(slot, "ctl-" + key);
+      const t = box && box.querySelector(".ctl-owner .own-txt");
+      if (t) t.textContent = ctlOwner(slot, key);
+    }
   }
   // Once PER BLOCK. Each block's .ctl boxes get their own owner line, bounds editor, pop
   // button and launcher row, and each is exported into the one #breakout column;
@@ -113,7 +129,7 @@
     // Title line, first child so it sits above the label. Only ever visible in
     // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
     // Always built (even with no owner group) so it can carry the per-box help ?.
-    const own = ctlOwner(key);
+    const own = ctlOwner(slot, key);
     const t = document.createElement("div");
     t.className = "ctl-owner";
     const ownTxt = document.createElement("span");
@@ -145,7 +161,7 @@
         box.insertBefore(hr, anchor);
       }
     }
-    box.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
+    box.appendChild(makePopBtn(slot, key));      // the box's own dock button (left gutter in #breakout)
     const row = document.createElement("div");   // the launcher that stays in the menu slot
     row.className = "ctl-row";
     const name = document.createElement("span");
@@ -167,7 +183,7 @@
       }
       row.appendChild(dots);
     }
-    row.appendChild(makePopBtn(key));            // +/- button, right of the name
+    row.appendChild(makePopBtn(slot, key));      // +/- button, right of the name
     box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
     breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
     if (w) w.row = row;
@@ -177,13 +193,14 @@
   // The launcher rows and beat dots are the last per-block pieces to exist, so install
   // slot 0 into the singleton maps now that its record is complete.
   pointMaps(0);
-  POPPABLE.forEach(syncPopBtns);
+  for (let slot = 0; slot < STACK_MAX; slot++) POPPABLE.forEach(k => syncPopBtns(slot, k));
 
-  function syncPopBtns(key) {         // keep both the menu-row and the box's button in sync
-    const docked = !popped.has(key);
-    // Every block's launcher row, not just the selected one: a scene control such as `bloom`
-    // has ONE box and STACK_MAX rows, and rows left unwritten desync from `popped`.
-    for (const host of ctlEach("row-" + key).concat(ctlEach("ctl-" + key), [rows[key]])) {
+  function syncPopBtns(slot, key) {   // keep both the menu-row and the box's button in sync
+    const docked = !isPopped(slot, key);
+    const hosts = slot < 0
+      ? ctlEach("row-" + key).concat([rows[key], el("ctl-" + key)])   // a scene control: one box, N rows
+      : [ctlIn(slot, "row-" + key), ctlIn(slot, "ctl-" + key)];
+    for (const host of hosts) {
       if (!host) continue;
       const b = host.querySelector(".ctl-pop");
       if (!b) continue;
@@ -192,58 +209,72 @@
       b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
     }
   }
-  function popCtl(key) {
-    if (popped.has(key)) return;
-    popped.add(key);
-    const b = ctl("ctl-" + key);
+  function popCtl(slot, key) {
+    if (isPopped(slot, key)) return;
+    popped.add(popKey(slot, key));
+    const b = slot < 0 ? el("ctl-" + key) : ctlIn(slot, "ctl-" + key);
     if (b) breakout.appendChild(b);              // append ⇒ boxes stack top→down in click order
-    syncPopBtns(key);
+    syncPopBtns(slot, key);
     refreshBreakout();
   }
-  function dockCtl(key) {
-    if (!popped.has(key)) return;
-    popped.delete(key);                          // box stays a child of #breakout, just hidden below
-    syncPopBtns(key);
+  function dockCtl(slot, key) {
+    if (!isPopped(slot, key)) return;
+    popped.delete(popKey(slot, key));            // box stays a child of #breakout, just hidden below
+    syncPopBtns(slot, key);
     refreshBreakout();
   }
-  function togglePop(key) { popped.has(key) ? dockCtl(key) : popCtl(key); }
-  // Dock everything. setEffect calls this: a switch is a whole new scene (every
-  // slider, chip and palette is swapped out from under you), so a column left over
-  // from the last one is stale furniture — start clean and let the user re-pop.
+  function togglePop(slot, key) { isPopped(slot, key) ? dockCtl(slot, key) : popCtl(slot, key); }
+  // Dock everything. NOTHING CALLS THIS AUTOMATICALLY any more, and that is the point of
+  // per-slot boxes: setEffect, createPreset, Delete and the preset picker all used to empty
+  // the column, which is exactly what would stop two layers' boxes sitting side by side —
+  // the moment you clicked the other layer to compare, both would close. The column is
+  // yours to curate now; a box whose control the layer no longer uses simply hides itself
+  // (refreshBreakout), and re-appears if you come back to an effect that has it.
+  // Kept because it is one line to call and the obvious thing to want from a keyboard.
   function dockAll() {
     if (!popped.size) return;
-    const keys = [...popped];                    // snapshot: dockCtl mutates the set
-    for (const key of keys) dockCtl(key);
+    for (const pk of [...popped]) {              // snapshot: dockCtl mutates the set
+      const i = pk.indexOf("/");
+      dockCtl(pk[0] === "s" ? -1 : +pk.slice(0, i), pk.slice(i + 1));
+    }
   }
-  // #breakout holds one .ctl per POPPABLE key PER BLOCK. Only the selected layer's are ever
-  // shown: without the slot test all four would stack up, identical and indistinguishable.
+  // #breakout holds one .ctl per POPPABLE key PER BLOCK. A box shows when ITS OWN slot/key
+  // has been popped and the layer that owns it still uses that control — so boxes from
+  // different layers coexist, and one whose layer changed to an effect without that slider
+  // hides itself rather than lying.
   function refreshBreakout() {
-    const shown = shownKeys();
     let anyVisible = false;
-    for (const key of POPPABLE) {
-      for (const box of ctlEach("ctl-" + key).concat(el("ctl-" + key) ? [el("ctl-" + key)] : [])) {
-        const mine = !box.dataset.slot || +box.dataset.slot === stackSel;
-        const vis = mine && popped.has(key) && shown.has(key);   // popped AND used by this effect AND this layer's
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const shown = shownKeysFor(slot);
+      for (const key of POPPABLE) {
+        const box = ctlIn(slot, "ctl-" + key);
+        if (!box) continue;
+        const vis = isPopped(slot, key) && shown.has(key) && !!stack[slot];
         box.style.display = vis ? "" : "none";
         if (vis) anyVisible = true;
       }
     }
+    // ...and the scene controls, which have one box outside every block.
+    const sceneShown = shownKeysFor(stackSel);
+    for (const key of POPPABLE) {
+      const box = el("ctl-" + key);
+      if (!box) continue;
+      const vis = isPopped(-1, key) && sceneShown.has(key);
+      box.style.display = vis ? "" : "none";
+      if (vis) anyVisible = true;
+    }
     breakout.classList.toggle("empty", !anyVisible);
   }
-  // Re-open the pop-out boxes + Orbit editor a layer had open when last selected. Called
-  // AFTER setEffect, which dockAll()s the column and — for a non-cardioid effect — closes the
-  // Orbit editor, so this rebuilds that layer's surface on a clean slate. Keys the layer no
-  // longer uses stay in `popped` but are hidden by refreshBreakout, like the global set.
-  // `pops` is passed EXPLICITLY, captured before setEffect ran: setEffect ends in
-  // persist() → stackOut() → freezeItem(selected), which re-captures L.popped from the
-  // now-empty live `popped` (dockAll just cleared it) and would wipe the stored value before
-  // we read it — the same freeze-during-persist trap the layer-extras code documents.
-  // (The Orbit editor is NOT restored here — it is a single, scene-wide sticky panel that
-  // setEffect shows/hides per `cardWanted` + whether the selected effect is cardioid, so it
-  // stays open as you jump between cardioid layers to compare their orbits.)
+  // Nothing to restore any more: a box belongs to its SLOT and stays open until you close
+  // it, so switching layers no longer takes any boxes away and there is nothing to put back.
+  // This used to exist because setEffect emptied the column on every switch, and it had to
+  // be handed the layer's list explicitly, captured before setEffect ran — setEffect ends in
+  // persist() → stackOut() → freezeItem(selected), which would re-capture L.popped from the
+  // just-cleared live set and wipe the stored value before it could be read. Both the field
+  // and that trap are gone with the auto-clear.
   function restoreLayerUi(L, pops) {
     if (!L) return;
-    if (pops) for (const key of pops) if (ctl("ctl-" + key)) popCtl(key);
+
   }
 
   // A preset is a named full scene (effect + all its settings). Auto-cycle holds
