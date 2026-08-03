@@ -281,7 +281,8 @@
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
-  body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg { display: none !important; }
+  body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg,
+  body.ui-hidden #transpickdlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -761,12 +762,12 @@
   }
   #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
   /* ---- the "Add filter" / "Palettes in use" pickers ---- */
-  #fltdlg, #palpickdlg {
+  #fltdlg, #palpickdlg, #transpickdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
-  #fltdlg.hidden, #palpickdlg.hidden { display: none; }
-  #fltdlg .flt-box, #palpickdlg .flt-box {
+  #fltdlg.hidden, #palpickdlg.hidden, #transpickdlg.hidden { display: none; }
+  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 430px); max-height: 86vh; overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
@@ -775,24 +776,24 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
-  #fltdlg h2, #palpickdlg h2 {
+  #fltdlg h2, #palpickdlg h2, #transpickdlg h2 {
     margin: 0 30px 8px 0; color: #ffb15a; font-size: 15px;
     text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
   }
-  #fltdlg .pal-hint, #palpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
+  #fltdlg .pal-hint, #palpickdlg .pal-hint, #transpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
   #fltdlg .flt-stage {
     margin: 12px 0 4px; padding-top: 7px; border-top: 1px solid rgba(255, 140, 40, 0.16);
     color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   }
   #fltdlg .flt-stage:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-  #fltdlg .flt-opt {
+  #fltdlg .flt-opt, #transpickdlg .flt-opt {
     display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline;
     padding: 4px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
   }
-  #fltdlg .flt-opt:hover { background: rgba(255, 122, 26, 0.14); }
-  #fltdlg .flt-opt input { margin: 0; }
-  #fltdlg .flt-opt-n { color: #ffdcb0; }
-  #fltdlg .flt-opt-d { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.45; }
+  #fltdlg .flt-opt:hover, #transpickdlg .flt-opt:hover { background: rgba(255, 122, 26, 0.14); }
+  #fltdlg .flt-opt input, #transpickdlg .flt-opt input { margin: 0; }
+  #fltdlg .flt-opt-n, #transpickdlg .flt-opt-n { color: #ffdcb0; }
+  #fltdlg .flt-opt-d, #transpickdlg .flt-opt-d { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.45; }
   #fltdlg .flt-opt:has(input:disabled) { opacity: .4; cursor: default; }
   #palpickdlg .palpick-row {
     display: flex; align-items: center; gap: 8px;
@@ -1250,6 +1251,10 @@
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="tdur-lo" min="0" max="3" step="any">
       <input type="range" id="tdur-hi" min="0" max="3" step="any"></div>
+    <!-- Which transitions the auto-pick may draw from — same idea as the palette strip's +
+         tile and the tick beside each scene: the catalogue lives in a dialog, and what you
+         tick is what the show uses. -->
+    <button id="transpick-open" type="button" class="filter-add">+ Choose transitions</button>
   </div>
 
   </details>
@@ -1401,6 +1406,20 @@
     <h2 id="flt-title">Filters</h2>
     <p class="pal-hint" id="flt-hint"></p>
     <div id="flt-pick"></div>
+  </div>
+</div>
+
+<!-- Which transitions the auto-pick may use. Same shape as the filter and palette pickers. -->
+<div id="transpickdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="transpick-close" aria-label="Close">×</button>
+    <h2>Transitions in use</h2>
+    <p class="pal-hint">Ticked transitions are the ones a scene change picks from. Each still only turns up where it suits the two scenes — a crossfade between a sparse point cloud and a full-screen shader just reads as a double exposure, so the pick is weighted rather than uniform. Untick everything and scene changes cut straight over.</p>
+    <div id="transpick-list"></div>
+    <div class="presetrow grid2">
+      <button id="transpick-all" class="audbtn" type="button">Select all</button>
+      <button id="transpick-none" class="audbtn" type="button">Select none</button>
+    </div>
   </div>
 </div>
 
@@ -3134,6 +3153,13 @@
     precision highp float;
     uniform sampler2D uNew, uPrev; uniform float uT; uniform int uMode; uniform vec2 uSize;
     in vec2 vUv; out vec4 o;
+    // Cheap deterministic noise for the checker jitter and the dissolve threshold. No time
+    // term: a transition that re-randomised per frame would boil rather than dissolve.
+    float hash21(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
     vec3 boxBlur(sampler2D t, vec2 uv, float r) {
       if (r < 0.6) return texture(t, uv).rgb;
       vec2 px = r / uSize;
@@ -3165,9 +3191,47 @@
       } else if (uMode == 5) {                    // wipe, soft edge
         float e = smoothstep(vUv.x - 0.14, vUv.x + 0.14, t * 1.28 - 0.14);
         c = mix(a, b, e);
-      } else {                                    // iris
+      } else if (uMode == 6) {                    // iris
         float d = length((vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0)) / 0.75;
         c = mix(a, b, smoothstep(d - 0.2, d + 0.2, t * 1.4 - 0.2));
+      }
+      // ---- the staggered-reveal family --------------------------------------------
+      // All of these are one idea: give every part of the frame its OWN delay in 0..1 and
+      // reveal it with the same soft step. Only the delay field differs, which is why they
+      // are cheap to add and why they read as a set rather than as seven unrelated effects.
+      else if (uMode == 7) {                      // checkerboard
+        vec2 cells = vec2(14.0, 9.0);
+        vec2 id = floor(vUv * cells);
+        float d = mod(id.x + id.y, 2.0) * 0.34 + hash21(id) * 0.14;
+        c = mix(a, b, smoothstep(d, d + 0.5, t * 1.5));
+      } else if (uMode == 8) {                    // vertical bars, alternate ones rising
+        float n = 15.0;
+        float id = floor(vUv.x * n);
+        float y = mod(id, 2.0) < 0.5 ? vUv.y : 1.0 - vUv.y;
+        c = mix(a, b, smoothstep(y - 0.12, y + 0.12, t * 1.24 - 0.12));
+      } else if (uMode == 9) {                    // shutter — slats opening from their centres
+        float n = 11.0;
+        float d = abs(fract(vUv.y * n) - 0.5) * 2.0;
+        c = mix(a, b, smoothstep(d - 0.18, d + 0.18, t * 1.36 - 0.18));
+      } else if (uMode == 10) {                   // slide — the new scene pushes the old out
+        c = vUv.x < 1.0 - t ? texture(uPrev, vUv + vec2(t, 0.0)).rgb
+                            : texture(uNew, vUv - vec2(1.0 - t, 0.0)).rgb;
+      } else if (uMode == 11) {                   // clock wipe
+        vec2 p = (vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0);
+        float ang = atan(p.x, p.y);
+        float f = (ang < 0.0 ? ang + 6.2831853 : ang) / 6.2831853;
+        c = mix(a, b, smoothstep(f - 0.04, f + 0.04, t * 1.08 - 0.04));
+      } else if (uMode == 12) {                   // dissolve — per-block random threshold
+        float d = hash21(floor(vUv * uSize / 3.0));
+        c = mix(a, b, smoothstep(d - 0.16, d + 0.16, t * 1.32 - 0.16));
+      } else {                                    // ripple — an expanding ring carries the change
+        vec2 p = (vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0);
+        float d = length(p) / 0.75;
+        float w = t * 1.5 - 0.25;
+        float ring = exp(-pow((d - w) * 6.0, 2.0));
+        vec2 sh = normalize(p + 1e-6) * ring * 0.05;
+        c = mix(texture(uPrev, vUv + sh).rgb, texture(uNew, vUv + sh).rgb,
+                smoothstep(d - 0.25, d + 0.25, w));
       }
       o = vec4(c, 1.0);
     }`;
@@ -5288,12 +5352,44 @@
             g.imageSmoothingEnabled = true;
           }
         } else if (k > 0.02) { g.filter = "blur(" + (7 * k * k).toFixed(1) + "px)"; g.drawImage(off, 0, 0); g.filter = "none"; }
-      } else if (m === 5 || m === 6) {                 // wipe / iris: reveal the new scene
+      } else if (m === 10) {                           // slide: a push, so translate both frames
+        const dx = Math.round(W * t);
+        g.clearRect(0, 0, W, H);
+        g.drawImage(off, W - dx, 0);                   // the incoming scene, entering from the right
+        g.drawImage(transOff, -dx, 0);                 // the outgoing one, leaving to the left
+      } else if (m === 5 || m === 6 || (m >= 7 && m <= 11)) {
+        // Every reveal mode is the same two steps: paint a WHITE MASK of the parts that have
+        // already changed (destination-in keeps the new scene only there), then put the old
+        // frame back underneath. wipe/iris were always this; the staggered family just draws
+        // a different mask. Modes 12/13 (dissolve, ripple) are per-pixel and fall through to
+        // the crossfade below — mirroring them with canvas ops would cost more than the
+        // Canvas2D fallback is worth, and a crossfade is a truthful stand-in for both.
         g.globalCompositeOperation = "destination-in";
-        if (m === 5) { g.fillStyle = "#fff"; g.fillRect(0, 0, W * Math.min(1, t * 1.28), H); }
-        else { g.fillStyle = "#fff"; g.beginPath(); g.arc(W / 2, H / 2, Math.hypot(W, H) * t * 0.72, 0, Math.PI * 2); g.fill(); }
+        g.fillStyle = "#fff";
+        if (m === 5) g.fillRect(0, 0, W * Math.min(1, t * 1.28), H);
+        else if (m === 6) { g.beginPath(); g.arc(W / 2, H / 2, Math.hypot(W, H) * t * 0.72, 0, Math.PI * 2); g.fill(); }
+        else if (m === 7) {                            // checkerboard
+          const cx = 14, cy = 9, cw = W / cx, ch = H / cy;
+          for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) {
+            const d = ((i + j) % 2) * 0.34;
+            if (t * 1.5 >= d + 0.25) g.fillRect(i * cw, j * ch, cw + 1, ch + 1);
+          }
+        } else if (m === 8) {                          // bars, alternate ones rising
+          const n = 15, bw = W / n, h = Math.min(1, t * 1.24) * H;
+          for (let i = 0; i < n; i++)
+            g.fillRect(i * bw, i % 2 ? 0 : H - h, bw + 1, h);
+        } else if (m === 9) {                          // shutter, slats opening from their centres
+          const n = 11, sh = H / n, o2 = Math.min(1, t * 1.36) * sh / 2;
+          for (let i = 0; i < n; i++) g.fillRect(0, (i + 0.5) * sh - o2, W, o2 * 2);
+        } else {                                       // clock wipe
+          g.beginPath(); g.moveTo(W / 2, H / 2);
+          g.arc(W / 2, H / 2, Math.hypot(W, H), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, t * 1.08));
+          g.closePath(); g.fill();
+        }
         g.globalCompositeOperation = "destination-over";
         g.drawImage(transOff, 0, 0);
+      } else if (m === 12 || m === 13) {               // dissolve / ripple ⇒ crossfade on CPU
+        g.globalAlpha = 1 - t; g.drawImage(transOff, 0, 0);
       } else {                                         // dip / flash: hold the old half, then veil
         g.globalAlpha = 1;
         if (t < 0.5) g.drawImage(transOff, 0, 0);
@@ -8214,31 +8310,128 @@
   const TRANSITIONS = [
     // Nothing at all. Only sensible when the buffers already blend for us.
     { id: "cut", name: "Cut", mode: -1, dur: 0,
+      tip: "No blend at all. Instant, and the right answer when a scene already carries its own trails.",
       fits: (a, b) => (a.retains || b.retains) ? 3 : 0.2 },
     // Retention borrowed for the length of the transition: the incoming scene
     // MAX-blends over decaying old heat, exactly like the scenes that already work.
     { id: "burnoff", name: "Burn off", mode: -1, dur: TRANS_DUR.slow, burn: true,
+      tip: "Lends the incoming scene some retention, so the old picture decays underneath it like embers.",
       fits: (a, b) => b.retains ? 0 : 2.5 },
     { id: "crossfade", name: "Crossfade", mode: 0, dur: TRANS_DUR.slow,
       // Two full-screen fields blend beautifully; a sparse point cloud crossfaded
       // against a dense field just looks like a double exposure.
+      tip: "A straight dissolve. Best when both scenes fill the frame.",
       fits: (a, b) => (a.dense && b.dense) ? 3 : (a.dense !== b.dense ? 0.3 : 1) },
     { id: "dip", name: "Dip to black", mode: 1, dur: TRANS_DUR.mid,
       // Always defensible; earns its keep most when the palettes jump.
+      tip: "Falls to black through the middle and comes back up. Always defensible; earns its keep when the palettes jump.",
       fits: (a, b) => 1 + 2 * palDist(a.palette, b.palette) },
     { id: "flash", name: "Flash", mode: 2, dur: TRANS_DUR.fast,
+      tip: "Blows out to white on the change. Short and percussive.",
       fits: (a, b) => 0.8 + 1.6 * palDist(a.palette, b.palette) },
     // The structure-destroying pair: they wreck the image exactly when it changes,
     // which is what rescues switches a crossfade would ghost through.
     { id: "pixelate", name: "Pixelate through", mode: 3, dur: TRANS_DUR.slow,
+      tip: "Both scenes break down into blocks and reassemble. Destroys the structure exactly when it changes.",
       fits: (a, b) => a.dense !== b.dense ? 3 : 1.2 },
     { id: "blur", name: "Blur through", mode: 4, dur: TRANS_DUR.slow,
+      tip: "Defocuses through the swap and pulls back into focus.",
       fits: (a, b) => a.dense !== b.dense ? 2 : 1.2 },
     { id: "wipe", name: "Wipe", mode: 5, dur: TRANS_DUR.mid,
+      tip: "A soft-edged edge travelling left to right.",
       fits: (a, b) => a.dense !== b.dense ? 2 : 1 },
     { id: "iris", name: "Iris", mode: 6, dur: TRANS_DUR.mid,
+      tip: "A circle opening from the centre.",
       fits: (a, b) => a.dense !== b.dense ? 1.6 : 0.9 },
+    // ---- the staggered-reveal family -------------------------------------------------
+    // One idea, seven delay fields: every part of the frame gets its own moment to change.
+    // They suit a switch between two scenes that would otherwise ghost through each other,
+    // because the edge between old and new is a hard one wherever it happens to be — so
+    // they lean the same way as wipe/iris in `fits` rather than competing with crossfade.
+    { id: "checker", name: "Checkerboard", mode: 7, dur: TRANS_DUR.mid,
+      tip: "Tiles flip in a checkerboard, staggered so the change ripples across the grid.",
+      fits: (a, b) => a.dense !== b.dense ? 1.8 : 1.1 },
+    { id: "bars", name: "Bars", mode: 8, dur: TRANS_DUR.mid,
+      tip: "Vertical bars, alternate ones rising and falling.",
+      fits: (a, b) => a.dense !== b.dense ? 1.6 : 1 },
+    { id: "shutter", name: "Shutter", mode: 9, dur: TRANS_DUR.mid,
+      tip: "Horizontal slats opening from their centres, like a venetian blind.",
+      fits: (a, b) => a.dense !== b.dense ? 1.6 : 1 },
+    // A push needs something to push: against a sparse point cloud there is little to read
+    // as movement, so it earns its weight when both sides fill the frame.
+    { id: "slide", name: "Slide", mode: 10, dur: TRANS_DUR.mid,
+      tip: "The new scene pushes the old one out sideways.",
+      fits: (a, b) => (a.dense && b.dense) ? 2 : 0.6 },
+    { id: "clock", name: "Clock wipe", mode: 11, dur: TRANS_DUR.mid,
+      tip: "A hand sweeps round from twelve, revealing as it goes.",
+      fits: (a, b) => a.dense !== b.dense ? 1.4 : 1 },
+    // Dissolve is the gentlest of the family and the one that suits a palette jump, since
+    // the two ramps interleave pixel by pixel instead of meeting along an edge.
+    { id: "dissolve", name: "Dissolve", mode: 12, dur: TRANS_DUR.slow,
+      tip: "Grain-by-grain, in a random order. The gentlest of the family, and good for a palette jump.",
+      fits: (a, b) => 1 + 1.4 * palDist(a.palette, b.palette) },
+    { id: "ripple", name: "Ripple", mode: 13, dur: TRANS_DUR.slow,
+      tip: "A ring expands from the centre, carrying the change and bending the image as it passes.",
+      fits: (a, b) => (a.dense && b.dense) ? 1.8 : 0.7 },
   ];
+  const TRANS_BY_ID = {};
+  TRANSITIONS.forEach(t => TRANS_BY_ID[t.id] = t);
+  // ---- which transitions the auto-pick may use --------------------------------------
+  // Same shape as `palUse`: `null` means all of them, which is the shipped state and what
+  // every blob saved before this decodes to. Stored by stable id (not index, unlike the
+  // palettes) because the registry is a fixed list of named modes, so an id survives
+  // reordering it. Global, like auto-cycle and Preset TTL — a shared scene does not carry it.
+  let transUse = null;
+  const transInUse = id => !transUse || transUse.has(id);
+  function transUseOk(v) {
+    if (!Array.isArray(v)) return null;
+    const s = new Set();
+    for (const id of v) if (typeof id === "string" && TRANS_BY_ID[id]) s.add(id);
+    return s.size ? s : null;                // empty ⇒ "all", never "none"
+  }
+  // The picker. Floating, translucent, non-modal like the palette and filter ones, and hidden
+  // on m/Esc with them. Function declarations, because ui-diagnostics.js wires those keys.
+  function openTransPick() { buildTransPick(); el("transpickdlg").classList.remove("hidden"); }
+  function closeTransPick() { const d = el("transpickdlg"); if (d) d.classList.add("hidden"); }
+  function transPickOpen() { const d = el("transpickdlg"); return !!d && !d.classList.contains("hidden"); }
+  function buildTransPick() {
+    const host = el("transpick-list");
+    if (!host) return;
+    host.textContent = "";
+    TRANSITIONS.forEach(t => {
+      const lab = document.createElement("label");
+      lab.className = "flt-opt";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = transInUse(t.id);
+      cb.addEventListener("change", () => setTransUse(t.id, cb.checked));
+      const nm = document.createElement("span");
+      nm.className = "flt-opt-n"; nm.textContent = t.name;
+      const d = document.createElement("span");
+      d.className = "flt-opt-d"; d.textContent = t.tip;
+      lab.appendChild(cb); lab.appendChild(nm); lab.appendChild(d);
+      host.appendChild(lab);
+    });
+  }
+  // `transUse` is null while everything is in use, so the first untick has to materialise the
+  // full set before removing from it — and a set that ends up full or empty collapses back to
+  // null, which is also how it is stored.
+  function setTransUse(id, on) {
+    if (!transUse) transUse = new Set(TRANSITIONS.map(t => t.id));
+    if (on) transUse.add(id); else transUse.delete(id);
+    if (!transUse.size || transUse.size === TRANSITIONS.length) transUse = null;
+    buildTransPick();
+    persist();
+  }
+  function setTransUseAll(on) {
+    transUse = on ? null : new Set(["cut"]);   // "none" still leaves the hard cut available
+    buildTransPick();
+    persist();
+  }
+  if (el("transpick-open")) el("transpick-open").addEventListener("click", openTransPick);
+  if (el("transpick-close")) el("transpick-close").addEventListener("click", closeTransPick);
+  if (el("transpickdlg")) el("transpickdlg").addEventListener("click", e => { if (e.target === el("transpickdlg")) closeTransPick(); });
+  if (el("transpick-all")) el("transpick-all").addEventListener("click", () => setTransUseAll(true));
+  if (el("transpick-none")) el("transpick-none").addEventListener("click", () => setTransUseAll(false));
   // 0 = same palette, 1 = maximally different. Cheap: the ramps are already in memory.
   function palDist(i, j) {
     if (i === j) return 0;
@@ -8265,14 +8458,18 @@
       palette: +palette || 0,
     };
   }
-  // Weighted pick among the transitions that fit this pair at all.
+  // Weighted pick among the transitions that fit this pair at all AND are ticked in the
+  // picker. Unticking everything falls back to Cut rather than to the whole list: "none of
+  // these, thanks" is a real choice, and a hard cut is the honest way to honour it.
   function pickTransition(a, b) {
-    const w = TRANSITIONS.map(t => Math.max(0, t.fits(a, b)));
+    const pool = TRANSITIONS.filter(t => transInUse(t.id));
+    if (!pool.length) return TRANS_BY_ID.cut;
+    const w = pool.map(t => Math.max(0, t.fits(a, b)));
     const total = w.reduce((x, y) => x + y, 0);
-    if (total <= 0) return TRANSITIONS[0];
+    if (total <= 0) return pool[0];
     let r = Math.random() * total;
-    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return TRANSITIONS[i]; }
-    return TRANSITIONS[0];
+    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return pool[i]; }
+    return pool[0];
   }
   // Live transition state. `t` counts 0→1 in RENDERED time, like the credits, so a
   // backgrounded tab doesn't burn through it unseen.
@@ -9099,6 +9296,7 @@
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
+      transUse: transUse ? [...transUse] : null,     // which transitions a scene change picks from (null ⇒ all)
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -9137,6 +9335,9 @@
     // Skipped while `sharing`: which ramps you keep in your strip is your own preference,
     // the same class as auto-cycle and the TTL, not part of the scene you were sent.
     if (!sharing && saved.palUse !== undefined) { palUse = palUseOk(saved.palUse); buildPalSwatches(); }
+    // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
+    // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
+    if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
@@ -12101,12 +12302,12 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
-    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); setPanel(!panel.classList.contains("hidden")); }
+    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----

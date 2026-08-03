@@ -224,6 +224,13 @@
     precision highp float;
     uniform sampler2D uNew, uPrev; uniform float uT; uniform int uMode; uniform vec2 uSize;
     in vec2 vUv; out vec4 o;
+    // Cheap deterministic noise for the checker jitter and the dissolve threshold. No time
+    // term: a transition that re-randomised per frame would boil rather than dissolve.
+    float hash21(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
     vec3 boxBlur(sampler2D t, vec2 uv, float r) {
       if (r < 0.6) return texture(t, uv).rgb;
       vec2 px = r / uSize;
@@ -255,9 +262,47 @@
       } else if (uMode == 5) {                    // wipe, soft edge
         float e = smoothstep(vUv.x - 0.14, vUv.x + 0.14, t * 1.28 - 0.14);
         c = mix(a, b, e);
-      } else {                                    // iris
+      } else if (uMode == 6) {                    // iris
         float d = length((vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0)) / 0.75;
         c = mix(a, b, smoothstep(d - 0.2, d + 0.2, t * 1.4 - 0.2));
+      }
+      // ---- the staggered-reveal family --------------------------------------------
+      // All of these are one idea: give every part of the frame its OWN delay in 0..1 and
+      // reveal it with the same soft step. Only the delay field differs, which is why they
+      // are cheap to add and why they read as a set rather than as seven unrelated effects.
+      else if (uMode == 7) {                      // checkerboard
+        vec2 cells = vec2(14.0, 9.0);
+        vec2 id = floor(vUv * cells);
+        float d = mod(id.x + id.y, 2.0) * 0.34 + hash21(id) * 0.14;
+        c = mix(a, b, smoothstep(d, d + 0.5, t * 1.5));
+      } else if (uMode == 8) {                    // vertical bars, alternate ones rising
+        float n = 15.0;
+        float id = floor(vUv.x * n);
+        float y = mod(id, 2.0) < 0.5 ? vUv.y : 1.0 - vUv.y;
+        c = mix(a, b, smoothstep(y - 0.12, y + 0.12, t * 1.24 - 0.12));
+      } else if (uMode == 9) {                    // shutter — slats opening from their centres
+        float n = 11.0;
+        float d = abs(fract(vUv.y * n) - 0.5) * 2.0;
+        c = mix(a, b, smoothstep(d - 0.18, d + 0.18, t * 1.36 - 0.18));
+      } else if (uMode == 10) {                   // slide — the new scene pushes the old out
+        c = vUv.x < 1.0 - t ? texture(uPrev, vUv + vec2(t, 0.0)).rgb
+                            : texture(uNew, vUv - vec2(1.0 - t, 0.0)).rgb;
+      } else if (uMode == 11) {                   // clock wipe
+        vec2 p = (vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0);
+        float ang = atan(p.x, p.y);
+        float f = (ang < 0.0 ? ang + 6.2831853 : ang) / 6.2831853;
+        c = mix(a, b, smoothstep(f - 0.04, f + 0.04, t * 1.08 - 0.04));
+      } else if (uMode == 12) {                   // dissolve — per-block random threshold
+        float d = hash21(floor(vUv * uSize / 3.0));
+        c = mix(a, b, smoothstep(d - 0.16, d + 0.16, t * 1.32 - 0.16));
+      } else {                                    // ripple — an expanding ring carries the change
+        vec2 p = (vUv - 0.5) * vec2(uSize.x / uSize.y, 1.0);
+        float d = length(p) / 0.75;
+        float w = t * 1.5 - 0.25;
+        float ring = exp(-pow((d - w) * 6.0, 2.0));
+        vec2 sh = normalize(p + 1e-6) * ring * 0.05;
+        c = mix(texture(uPrev, vUv + sh).rgb, texture(uNew, vUv + sh).rgb,
+                smoothstep(d - 0.25, d + 0.25, w));
       }
       o = vec4(c, 1.0);
     }`;

@@ -186,9 +186,33 @@ the old body, extracted.
 dissolve from `setEffect` only works when something **retains** the buffer; with no feedback
 filter, `glBeginHeat`/`applyFilters` rewrite the buffer on frame one by design.
 
-Nine entries, each a `mode` of the single **`FS_TRANS`** pass: `cut`, `burnoff`, `crossfade`,
-`dip`, `flash`, `pixelate`, `blur`, `wipe`, `iris`. Two need no pass — `cut` does nothing, and
-**`burnoff` lends retention** (`hasFeedback()` returns true while `transBurning()`).
+Sixteen entries, each a `mode` of the single **`FS_TRANS`** pass: `cut`, `burnoff`, `crossfade`,
+`dip`, `flash`, `pixelate`, `blur`, `wipe`, `iris`, then the **staggered-reveal family** —
+`checker`, `bars`, `shutter`, `slide`, `clock`, `dissolve`, `ripple`. Two need no pass — `cut`
+does nothing, and **`burnoff` lends retention** (`hasFeedback()` returns true while
+`transBurning()`).
+
+**The staggered family is one idea with seven delay fields.** Each gives every part of the frame
+its own moment in 0..1 and reveals it with the same soft step; only the field differs (cell
+parity, bar index, distance from a slat centre, angle, hash, ring radius). That is why they are
+cheap to add and why they read as a set. `slide` is the exception — a translation of both frames
+rather than a reveal. `hash21` has no time term on purpose: a dissolve that re-randomised per
+frame would boil rather than dissolve.
+
+**The CPU mirror covers the mask-based ones and honestly degrades the rest.** wipe, iris,
+checker, bars, shutter and clock are all "paint a white mask of what has changed, `destination-in`,
+then put the old frame back underneath" — the shape wipe/iris always used. `slide` is two
+`drawImage` calls at an offset. `dissolve` and `ripple` are per-pixel and fall through to a
+crossfade, which is a truthful stand-in and cheaper than mirroring them on a path that only runs
+where there is no GPU at all.
+
+**Which transitions the auto-pick may use** — `transUse`, `#transpickdlg`, opened from
+`+ Choose transitions` under the Transition slider. Same shape as `palUse`: `null` means all,
+which is the shipped state and what every blob predating it decodes to; `setTransUse` collapses a
+full or empty set back to `null`. Stored **by stable id**, not index like the palettes, because
+the registry is a fixed list of named modes and an id survives reordering it. A global blob
+field, skipped while `sharing` — the recipient's own preference, like auto-cycle. Untick
+everything and `pickTransition` returns `cut` rather than falling back to the whole list.
 - **Where the pass runs matters**: `glRender` sends the zoom output to `glFbo.post[0]` instead of
   `glFbo.scene` while a transition is live, so the blend happens *before* the glow. Zero cost when
   idle. `render()` mirrors all seven visible modes with canvas ops.

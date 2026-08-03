@@ -33,12 +33,44 @@
             g.imageSmoothingEnabled = true;
           }
         } else if (k > 0.02) { g.filter = "blur(" + (7 * k * k).toFixed(1) + "px)"; g.drawImage(off, 0, 0); g.filter = "none"; }
-      } else if (m === 5 || m === 6) {                 // wipe / iris: reveal the new scene
+      } else if (m === 10) {                           // slide: a push, so translate both frames
+        const dx = Math.round(W * t);
+        g.clearRect(0, 0, W, H);
+        g.drawImage(off, W - dx, 0);                   // the incoming scene, entering from the right
+        g.drawImage(transOff, -dx, 0);                 // the outgoing one, leaving to the left
+      } else if (m === 5 || m === 6 || (m >= 7 && m <= 11)) {
+        // Every reveal mode is the same two steps: paint a WHITE MASK of the parts that have
+        // already changed (destination-in keeps the new scene only there), then put the old
+        // frame back underneath. wipe/iris were always this; the staggered family just draws
+        // a different mask. Modes 12/13 (dissolve, ripple) are per-pixel and fall through to
+        // the crossfade below — mirroring them with canvas ops would cost more than the
+        // Canvas2D fallback is worth, and a crossfade is a truthful stand-in for both.
         g.globalCompositeOperation = "destination-in";
-        if (m === 5) { g.fillStyle = "#fff"; g.fillRect(0, 0, W * Math.min(1, t * 1.28), H); }
-        else { g.fillStyle = "#fff"; g.beginPath(); g.arc(W / 2, H / 2, Math.hypot(W, H) * t * 0.72, 0, Math.PI * 2); g.fill(); }
+        g.fillStyle = "#fff";
+        if (m === 5) g.fillRect(0, 0, W * Math.min(1, t * 1.28), H);
+        else if (m === 6) { g.beginPath(); g.arc(W / 2, H / 2, Math.hypot(W, H) * t * 0.72, 0, Math.PI * 2); g.fill(); }
+        else if (m === 7) {                            // checkerboard
+          const cx = 14, cy = 9, cw = W / cx, ch = H / cy;
+          for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) {
+            const d = ((i + j) % 2) * 0.34;
+            if (t * 1.5 >= d + 0.25) g.fillRect(i * cw, j * ch, cw + 1, ch + 1);
+          }
+        } else if (m === 8) {                          // bars, alternate ones rising
+          const n = 15, bw = W / n, h = Math.min(1, t * 1.24) * H;
+          for (let i = 0; i < n; i++)
+            g.fillRect(i * bw, i % 2 ? 0 : H - h, bw + 1, h);
+        } else if (m === 9) {                          // shutter, slats opening from their centres
+          const n = 11, sh = H / n, o2 = Math.min(1, t * 1.36) * sh / 2;
+          for (let i = 0; i < n; i++) g.fillRect(0, (i + 0.5) * sh - o2, W, o2 * 2);
+        } else {                                       // clock wipe
+          g.beginPath(); g.moveTo(W / 2, H / 2);
+          g.arc(W / 2, H / 2, Math.hypot(W, H), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, t * 1.08));
+          g.closePath(); g.fill();
+        }
         g.globalCompositeOperation = "destination-over";
         g.drawImage(transOff, 0, 0);
+      } else if (m === 12 || m === 13) {               // dissolve / ripple ⇒ crossfade on CPU
+        g.globalAlpha = 1 - t; g.drawImage(transOff, 0, 0);
       } else {                                         // dip / flash: hold the old half, then veil
         g.globalAlpha = 1;
         if (t < 0.5) g.drawImage(transOff, 0, 0);

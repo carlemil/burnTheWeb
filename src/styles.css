@@ -263,7 +263,8 @@
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
-  body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg { display: none !important; }
+  body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg,
+  body.ui-hidden #transpickdlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -743,12 +744,12 @@
   }
   #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
   /* ---- the "Add filter" / "Palettes in use" pickers ---- */
-  #fltdlg, #palpickdlg {
+  #fltdlg, #palpickdlg, #transpickdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
-  #fltdlg.hidden, #palpickdlg.hidden { display: none; }
-  #fltdlg .flt-box, #palpickdlg .flt-box {
+  #fltdlg.hidden, #palpickdlg.hidden, #transpickdlg.hidden { display: none; }
+  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 430px); max-height: 86vh; overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
@@ -757,24 +758,24 @@
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
-  #fltdlg h2, #palpickdlg h2 {
+  #fltdlg h2, #palpickdlg h2, #transpickdlg h2 {
     margin: 0 30px 8px 0; color: #ffb15a; font-size: 15px;
     text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
   }
-  #fltdlg .pal-hint, #palpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
+  #fltdlg .pal-hint, #palpickdlg .pal-hint, #transpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
   #fltdlg .flt-stage {
     margin: 12px 0 4px; padding-top: 7px; border-top: 1px solid rgba(255, 140, 40, 0.16);
     color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   }
   #fltdlg .flt-stage:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-  #fltdlg .flt-opt {
+  #fltdlg .flt-opt, #transpickdlg .flt-opt {
     display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline;
     padding: 4px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
   }
-  #fltdlg .flt-opt:hover { background: rgba(255, 122, 26, 0.14); }
-  #fltdlg .flt-opt input { margin: 0; }
-  #fltdlg .flt-opt-n { color: #ffdcb0; }
-  #fltdlg .flt-opt-d { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.45; }
+  #fltdlg .flt-opt:hover, #transpickdlg .flt-opt:hover { background: rgba(255, 122, 26, 0.14); }
+  #fltdlg .flt-opt input, #transpickdlg .flt-opt input { margin: 0; }
+  #fltdlg .flt-opt-n, #transpickdlg .flt-opt-n { color: #ffdcb0; }
+  #fltdlg .flt-opt-d, #transpickdlg .flt-opt-d { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.45; }
   #fltdlg .flt-opt:has(input:disabled) { opacity: .4; cursor: default; }
   #palpickdlg .palpick-row {
     display: flex; align-items: center; gap: 8px;

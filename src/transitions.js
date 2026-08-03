@@ -16,31 +16,128 @@
   const TRANSITIONS = [
     // Nothing at all. Only sensible when the buffers already blend for us.
     { id: "cut", name: "Cut", mode: -1, dur: 0,
+      tip: "No blend at all. Instant, and the right answer when a scene already carries its own trails.",
       fits: (a, b) => (a.retains || b.retains) ? 3 : 0.2 },
     // Retention borrowed for the length of the transition: the incoming scene
     // MAX-blends over decaying old heat, exactly like the scenes that already work.
     { id: "burnoff", name: "Burn off", mode: -1, dur: TRANS_DUR.slow, burn: true,
+      tip: "Lends the incoming scene some retention, so the old picture decays underneath it like embers.",
       fits: (a, b) => b.retains ? 0 : 2.5 },
     { id: "crossfade", name: "Crossfade", mode: 0, dur: TRANS_DUR.slow,
       // Two full-screen fields blend beautifully; a sparse point cloud crossfaded
       // against a dense field just looks like a double exposure.
+      tip: "A straight dissolve. Best when both scenes fill the frame.",
       fits: (a, b) => (a.dense && b.dense) ? 3 : (a.dense !== b.dense ? 0.3 : 1) },
     { id: "dip", name: "Dip to black", mode: 1, dur: TRANS_DUR.mid,
       // Always defensible; earns its keep most when the palettes jump.
+      tip: "Falls to black through the middle and comes back up. Always defensible; earns its keep when the palettes jump.",
       fits: (a, b) => 1 + 2 * palDist(a.palette, b.palette) },
     { id: "flash", name: "Flash", mode: 2, dur: TRANS_DUR.fast,
+      tip: "Blows out to white on the change. Short and percussive.",
       fits: (a, b) => 0.8 + 1.6 * palDist(a.palette, b.palette) },
     // The structure-destroying pair: they wreck the image exactly when it changes,
     // which is what rescues switches a crossfade would ghost through.
     { id: "pixelate", name: "Pixelate through", mode: 3, dur: TRANS_DUR.slow,
+      tip: "Both scenes break down into blocks and reassemble. Destroys the structure exactly when it changes.",
       fits: (a, b) => a.dense !== b.dense ? 3 : 1.2 },
     { id: "blur", name: "Blur through", mode: 4, dur: TRANS_DUR.slow,
+      tip: "Defocuses through the swap and pulls back into focus.",
       fits: (a, b) => a.dense !== b.dense ? 2 : 1.2 },
     { id: "wipe", name: "Wipe", mode: 5, dur: TRANS_DUR.mid,
+      tip: "A soft-edged edge travelling left to right.",
       fits: (a, b) => a.dense !== b.dense ? 2 : 1 },
     { id: "iris", name: "Iris", mode: 6, dur: TRANS_DUR.mid,
+      tip: "A circle opening from the centre.",
       fits: (a, b) => a.dense !== b.dense ? 1.6 : 0.9 },
+    // ---- the staggered-reveal family -------------------------------------------------
+    // One idea, seven delay fields: every part of the frame gets its own moment to change.
+    // They suit a switch between two scenes that would otherwise ghost through each other,
+    // because the edge between old and new is a hard one wherever it happens to be — so
+    // they lean the same way as wipe/iris in `fits` rather than competing with crossfade.
+    { id: "checker", name: "Checkerboard", mode: 7, dur: TRANS_DUR.mid,
+      tip: "Tiles flip in a checkerboard, staggered so the change ripples across the grid.",
+      fits: (a, b) => a.dense !== b.dense ? 1.8 : 1.1 },
+    { id: "bars", name: "Bars", mode: 8, dur: TRANS_DUR.mid,
+      tip: "Vertical bars, alternate ones rising and falling.",
+      fits: (a, b) => a.dense !== b.dense ? 1.6 : 1 },
+    { id: "shutter", name: "Shutter", mode: 9, dur: TRANS_DUR.mid,
+      tip: "Horizontal slats opening from their centres, like a venetian blind.",
+      fits: (a, b) => a.dense !== b.dense ? 1.6 : 1 },
+    // A push needs something to push: against a sparse point cloud there is little to read
+    // as movement, so it earns its weight when both sides fill the frame.
+    { id: "slide", name: "Slide", mode: 10, dur: TRANS_DUR.mid,
+      tip: "The new scene pushes the old one out sideways.",
+      fits: (a, b) => (a.dense && b.dense) ? 2 : 0.6 },
+    { id: "clock", name: "Clock wipe", mode: 11, dur: TRANS_DUR.mid,
+      tip: "A hand sweeps round from twelve, revealing as it goes.",
+      fits: (a, b) => a.dense !== b.dense ? 1.4 : 1 },
+    // Dissolve is the gentlest of the family and the one that suits a palette jump, since
+    // the two ramps interleave pixel by pixel instead of meeting along an edge.
+    { id: "dissolve", name: "Dissolve", mode: 12, dur: TRANS_DUR.slow,
+      tip: "Grain-by-grain, in a random order. The gentlest of the family, and good for a palette jump.",
+      fits: (a, b) => 1 + 1.4 * palDist(a.palette, b.palette) },
+    { id: "ripple", name: "Ripple", mode: 13, dur: TRANS_DUR.slow,
+      tip: "A ring expands from the centre, carrying the change and bending the image as it passes.",
+      fits: (a, b) => (a.dense && b.dense) ? 1.8 : 0.7 },
   ];
+  const TRANS_BY_ID = {};
+  TRANSITIONS.forEach(t => TRANS_BY_ID[t.id] = t);
+  // ---- which transitions the auto-pick may use --------------------------------------
+  // Same shape as `palUse`: `null` means all of them, which is the shipped state and what
+  // every blob saved before this decodes to. Stored by stable id (not index, unlike the
+  // palettes) because the registry is a fixed list of named modes, so an id survives
+  // reordering it. Global, like auto-cycle and Preset TTL — a shared scene does not carry it.
+  let transUse = null;
+  const transInUse = id => !transUse || transUse.has(id);
+  function transUseOk(v) {
+    if (!Array.isArray(v)) return null;
+    const s = new Set();
+    for (const id of v) if (typeof id === "string" && TRANS_BY_ID[id]) s.add(id);
+    return s.size ? s : null;                // empty ⇒ "all", never "none"
+  }
+  // The picker. Floating, translucent, non-modal like the palette and filter ones, and hidden
+  // on m/Esc with them. Function declarations, because ui-diagnostics.js wires those keys.
+  function openTransPick() { buildTransPick(); el("transpickdlg").classList.remove("hidden"); }
+  function closeTransPick() { const d = el("transpickdlg"); if (d) d.classList.add("hidden"); }
+  function transPickOpen() { const d = el("transpickdlg"); return !!d && !d.classList.contains("hidden"); }
+  function buildTransPick() {
+    const host = el("transpick-list");
+    if (!host) return;
+    host.textContent = "";
+    TRANSITIONS.forEach(t => {
+      const lab = document.createElement("label");
+      lab.className = "flt-opt";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = transInUse(t.id);
+      cb.addEventListener("change", () => setTransUse(t.id, cb.checked));
+      const nm = document.createElement("span");
+      nm.className = "flt-opt-n"; nm.textContent = t.name;
+      const d = document.createElement("span");
+      d.className = "flt-opt-d"; d.textContent = t.tip;
+      lab.appendChild(cb); lab.appendChild(nm); lab.appendChild(d);
+      host.appendChild(lab);
+    });
+  }
+  // `transUse` is null while everything is in use, so the first untick has to materialise the
+  // full set before removing from it — and a set that ends up full or empty collapses back to
+  // null, which is also how it is stored.
+  function setTransUse(id, on) {
+    if (!transUse) transUse = new Set(TRANSITIONS.map(t => t.id));
+    if (on) transUse.add(id); else transUse.delete(id);
+    if (!transUse.size || transUse.size === TRANSITIONS.length) transUse = null;
+    buildTransPick();
+    persist();
+  }
+  function setTransUseAll(on) {
+    transUse = on ? null : new Set(["cut"]);   // "none" still leaves the hard cut available
+    buildTransPick();
+    persist();
+  }
+  if (el("transpick-open")) el("transpick-open").addEventListener("click", openTransPick);
+  if (el("transpick-close")) el("transpick-close").addEventListener("click", closeTransPick);
+  if (el("transpickdlg")) el("transpickdlg").addEventListener("click", e => { if (e.target === el("transpickdlg")) closeTransPick(); });
+  if (el("transpick-all")) el("transpick-all").addEventListener("click", () => setTransUseAll(true));
+  if (el("transpick-none")) el("transpick-none").addEventListener("click", () => setTransUseAll(false));
   // 0 = same palette, 1 = maximally different. Cheap: the ramps are already in memory.
   function palDist(i, j) {
     if (i === j) return 0;
@@ -67,14 +164,18 @@
       palette: +palette || 0,
     };
   }
-  // Weighted pick among the transitions that fit this pair at all.
+  // Weighted pick among the transitions that fit this pair at all AND are ticked in the
+  // picker. Unticking everything falls back to Cut rather than to the whole list: "none of
+  // these, thanks" is a real choice, and a hard cut is the honest way to honour it.
   function pickTransition(a, b) {
-    const w = TRANSITIONS.map(t => Math.max(0, t.fits(a, b)));
+    const pool = TRANSITIONS.filter(t => transInUse(t.id));
+    if (!pool.length) return TRANS_BY_ID.cut;
+    const w = pool.map(t => Math.max(0, t.fits(a, b)));
     const total = w.reduce((x, y) => x + y, 0);
-    if (total <= 0) return TRANSITIONS[0];
+    if (total <= 0) return pool[0];
     let r = Math.random() * total;
-    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return TRANSITIONS[i]; }
-    return TRANSITIONS[0];
+    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return pool[i]; }
+    return pool[0];
   }
   // Live transition state. `t` counts 0→1 in RENDERED time, like the credits, so a
   // backgrounded tab doesn't burn through it unseen.

@@ -295,6 +295,13 @@ A transition is now chosen automatically for each switch, from nine:
 | **Blur through** | The same shape, with blur instead of blocks. |
 | **Wipe** | A soft edge travels across. |
 | **Iris** | The new scene opens out from the centre. |
+| **Checkerboard** | Tiles flip in a checkerboard, staggered so the change ripples across the grid. |
+| **Bars** | Vertical bars, alternate ones rising and falling. |
+| **Shutter** | Horizontal slats opening from their centres, like a venetian blind. |
+| **Slide** | The new scene pushes the old one out sideways. |
+| **Clock wipe** | A hand sweeps round from twelve, revealing as it goes. |
+| **Dissolve** | Grain by grain, in a random order — the gentlest of the set, and good for a palette jump. |
+| **Ripple** | A ring expands from the centre, carrying the change and bending the image as it passes. |
 
 The choice isn't random for its own sake — each one knows which switches it flatters.
 A crossfade between two full-screen fields looks lovely, but crossfading a sparse
@@ -307,6 +314,13 @@ and flash. Scenes that already dissolve on their own mostly get left alone.
 min–max range in seconds — each switch draws a length from it. Collapse both thumbs to
 **0** for a hard cut, which is exactly how the app behaved before. Like Scene TTL, each
 saved scene remembers its own, so a scene plays the way it was authored.
+
+**+ Choose transitions**, just under that slider, opens the full list with a tick beside
+each one. Only the ticked ones are ever picked — so if you want nothing but shutters and
+dissolves, say so. They still only turn up where they suit the two scenes, since the pick
+stays weighted; unticking narrows the pool rather than overriding the taste. Untick
+everything and scene changes cut straight over. *(Remembered per browser, like auto-cycle;
+not part of a scene you share.)*
 
 One thing to know: during a transition the outgoing scene is a frozen frame, not still
 running. Two effects can't be rendered at once here. At well under a second it reads

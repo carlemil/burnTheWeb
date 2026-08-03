@@ -163,6 +163,10 @@
     <div class="dual"><div class="track"></div><div class="fill"></div>
       <input type="range" id="tdur-lo" min="0" max="3" step="any">
       <input type="range" id="tdur-hi" min="0" max="3" step="any"></div>
+    <!-- Which transitions the auto-pick may draw from — same idea as the palette strip's +
+         tile and the tick beside each scene: the catalogue lives in a dialog, and what you
+         tick is what the show uses. -->
+    <button id="transpick-open" type="button" class="filter-add">+ Choose transitions</button>
   </div>
 
   </details>
@@ -314,6 +318,20 @@
     <h2 id="flt-title">Filters</h2>
     <p class="pal-hint" id="flt-hint"></p>
     <div id="flt-pick"></div>
+  </div>
+</div>
+
+<!-- Which transitions the auto-pick may use. Same shape as the filter and palette pickers. -->
+<div id="transpickdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="transpick-close" aria-label="Close">×</button>
+    <h2>Transitions in use</h2>
+    <p class="pal-hint">Ticked transitions are the ones a scene change picks from. Each still only turns up where it suits the two scenes — a crossfade between a sparse point cloud and a full-screen shader just reads as a double exposure, so the pick is weighted rather than uniform. Untick everything and scene changes cut straight over.</p>
+    <div id="transpick-list"></div>
+    <div class="presetrow grid2">
+      <button id="transpick-all" class="audbtn" type="button">Select all</button>
+      <button id="transpick-none" class="audbtn" type="button">Select none</button>
+    </div>
   </div>
 </div>
 

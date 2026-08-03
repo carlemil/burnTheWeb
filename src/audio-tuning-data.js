@@ -63,6 +63,7 @@
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
+      transUse: transUse ? [...transUse] : null,     // which transitions a scene change picks from (null ⇒ all)
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -101,6 +102,9 @@
     // Skipped while `sharing`: which ramps you keep in your strip is your own preference,
     // the same class as auto-cycle and the TTL, not part of the scene you were sent.
     if (!sharing && saved.palUse !== undefined) { palUse = palUseOk(saved.palUse); buildPalSwatches(); }
+    // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
+    // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
+    if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
