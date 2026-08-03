@@ -101,8 +101,14 @@
   // top-level `sceneFx` blob field — modelled on the camera. The per-layer L.filters/states[e]
   // may still carry these ids/keys but they are INERT: filterOn and the checkbox route scene
   // filters through sceneOn, and the per-layer render chains exclude them by stage anyway.
-  const SCENE_FILTER_IDS = new Set(["bloom", "barrel", "scanlines", "vignette", "grain"]);
-  const SCENE_FILTER_KEYS = ["bloom", "barrel", "scan", "scancount", "vignette", "grain"];   // their dual-slider param keys
+  // EMPTY, deliberately. Every filter is per-layer now — Bloom became a real chain pass
+  // (glBloomPass) instead of the whole-scene composite, and the four ex-screen filters became
+  // ordinary image passes. Both sets are kept as the empty seams rather than being deleted:
+  // isSceneFilter/filterOn/saveState/loadState/readSceneFx still route through them, so an
+  // empty set is what makes "nothing is scene-global" true in one place instead of twenty.
+  // Add an id here and it goes back to being one shared setting across every layer.
+  const SCENE_FILTER_IDS = new Set();
+  const SCENE_FILTER_KEYS = [];   // their dual-slider param keys — see above
   const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
   let sceneOn = new Set();                     // scene-global filter on/off — none on by default (all filters off)
   // `activeIds` is the SELECTED layer's live filter set (the "DOM is the store for the

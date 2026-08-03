@@ -256,13 +256,34 @@ and the registry must list them in that order (`filterprobe` asserts it):
   ping-pongs through `glTex.post[0]/[1]` between FS_PAL and FS_ZOOM and **returns `glTex.native`
   untouched when the chain is empty** — no pass-through copy (an extra RGBA8 sample can shift a
   value by an LSB). Bloom has no pass of its own: it's the glow composite under `bloomAmt`/`uBloom`.
-- **screen** (Barrel distortion, Scanlines, Vignette, Film grain) — run **after** the composite in
-  `glRender` step F, at **display resolution**. Both halves are the reason the stage exists: a
-  vignette under an additive glow gets lit back up, and a scanline count means nothing against
-  `fw×fh`. `glTex.screen[0..1]` are the only buffers sized to `canvas.width/height` (resized in
-  `glResize`, safe because `resize()` sets canvas dimensions first). The chain's **last** pass
-  binds the default framebuffer, so an empty chain still composites straight to screen. All are
-  `cpuOk: false`. `screenPass` mirrors `postPass` but feeds `uSize` the display size.
+- **screen — THIS STAGE IS EMPTY.** Barrel, Scanlines, Vignette and Film grain used to run
+  after the composite at display resolution, and **Bloom used to BE the composite** (blur the
+  finished frame twice, add it back, strength as a uniform) — which is exactly why it had no
+  `gl` hook and could never be per-layer. All five are ordinary **per-layer `post` passes**
+  now: `glBloomPass` turns the glow into a chain entry, and the other four call `postPass`
+  (fw×fh) instead of `screenPass`. Nothing acts on the whole screen.
+  - `glRender` lost the two blur passes and the screen chain with them. Its final step is
+    still `FS_COMP` with **`uBloom` pinned to 0** — the same single pass that always carried
+    the frame to the default framebuffer, so the output is byte-identical to a bloom-off scene
+    and the blurs can be skipped rather than run to fill a buffer nothing reads.
+  - `glBloomPass` borrows `glFbo.blur1/blur2` mid-chain and must put the caller's target back,
+    which is why `bindFbo`/`bindDefault` track `curFbo/curW/curH`. Those are **`var`, not
+    `let`**: `bindFbo` is hoisted and is called during startup before the declaration line
+    runs, so a `let` throws "Cannot access 'curFbo' before initialization" and takes the whole
+    IIFE with it. Same class as `card` and `beatUi`, and it happened here too.
+  - Consequences to know: `uSize` is the render buffer, so a Scanline count means lines across
+    `fh` (identical at Full resolution, coarser below); two layers with scanlines can moiré;
+    and the old fixed order that kept a vignette out of the glow is now yours to choose — put
+    Vignette after Bloom to darken the glow too.
+  - **`SCENE_FILTER_IDS`/`SCENE_FILTER_KEYS` are the empty seams.** `isSceneFilter`, `filterOn`,
+    `saveState`/`loadState` and `readSceneFx` all still route through them; empty is what makes
+    "nothing is scene-global" true in one place instead of twenty, and putting an id back
+    restores the old behaviour. `filterGroup` likewise returns one group for everything, and
+    `#screenfilterlist` + its Add button stay in the DOM, simply empty.
+  - **`migrateSceneFx`** folds a stored `sceneFx` onto the layers on load (ids appended to each
+    chain — they ran last, so last is the matching position; values overwrite, since `sceneFx`
+    was the authoritative copy while they were global). It runs beside `migrateCam` in both
+    load paths and deletes the field, so it is idempotent.
 
 **Two filters animate on their own** (Slice glitch, Film grain) and read **`postTime`**,
 accumulated from the frame loop's `dt` — not `performance.now()` (breaks the stubbed-rAF pixel
@@ -538,9 +559,14 @@ adopt trick the ☰ menubar uses on `#sysbox`.
   so interacting with a control inside the selected row cannot rebuild the rows underneath it.
 - `#fxbox` keeps its `.hidden` toggled from whether `#lyrctl` is currently parked there, so the
   heading never shows over nothing. It stays in the DOM as the home.
-- Consequence worth knowing: the unselected rows sit *below* the selected layer's whole control
-  block, so reaching layer 3 means scrolling past layer 1's sliders. That is inherent to the
-  requested shape (one complete box per layer), not an oversight.
+- The open layer's block folds away behind a **chevron** in its `.lyr-ctl` row (`lyrFolded`,
+  `.lyr.folded > #lyrctl { display: none }`) — the unselected rows sit *below* the whole control
+  block, so reaching layer 3 otherwise means scrolling past layer 1's sliders. It only HIDES:
+  `#lyrctl` stays in the row and in the document either way, so every id lookup keeps working.
+  Transient and per-session, like the panel's own box folds.
+- **The chevron goes in `.lyr-ctl`, not as the row's first child.** The row is a two-column
+  grid; prepending a cell shifts every later child into the wrong column and the effect chooser
+  and blend row visibly collapse.
 - **`#effect` is hidden in this box, not deleted** — every layer row has its own chooser, but the
   `<select>` remains the effect **value store** (`setEffect` writes `.value`, `applyBlob` validates
   against its options, its `change` is what everything dispatches through). Same arrangement

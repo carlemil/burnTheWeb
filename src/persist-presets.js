@@ -452,6 +452,7 @@
     // Scene TTL and Transition are deliberately NOT installed from the preset — they are
     // global, so picking a scene must not retune the show's pacing under you. Presets saved
     // while they were per-scene still carry `ttl`/`tdur`; ignoring them is the whole change.
+    migrateSceneFx(p);   // pre-per-layer-filter preset: fold its whole-scene FX onto the layers
     migrateCam(p);                                // pre-per-layer preset: fold its one `cam` into p.state / p.layers before they merge
     installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);

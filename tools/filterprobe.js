@@ -28,7 +28,10 @@ const stubs = `
   // selected one; activeFilters() reads it, so it has to exist here.
   let renderFilters = null;
   let sceneOn = new Set();
-  const SCENE_FILTER_IDS = new Set(["bloom", "barrel", "scanlines", "vignette", "grain"]);
+  // EMPTY, mirroring the app: nothing is scene-global any more. Left as a stub rather than
+  // deleted because filterOn still routes through it, and an empty set is what makes that
+  // route a no-op — testing the old contents here would test a fiction.
+  const SCENE_FILTER_IDS = new Set();
   const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
   function filterOn(id) { return (isSceneFilter(id) ? sceneOn : (renderFilters || activeIds)).has(id); }
   const SEED_MODES = { cardioid: 1, circle: 1, freehand: 1 };   // seed-path validation, defined in another slice
@@ -87,9 +90,14 @@ ok(F.FILTERS.filter(f => f.stage === "post" && f.id !== "bloom").every(f => type
    "post filters (bar Bloom) have a gl pass");
 ok(F.FILTERS.filter(f => f.stage === "screen").every(f => typeof f.gl === "function"),
    "screen filters have a gl pass");
-// A screen pass runs after the composite, which the Canvas2D path never performs.
-ok(F.FILTERS.filter(f => f.stage === "screen").every(f => f.cpuOk === false),
-   "screen filters are all marked GPU-only");
+// The ex-screen filters are ordinary image passes now, and still GPU-only — the Canvas2D
+// fallback runs no post chain at all.
+ok(["barrel", "scanlines", "vignette", "grain"].every(id => F.FILTER_BY_ID[id].stage === "post"),
+   "the four ex-screen filters are per-layer image passes");
+ok(["barrel", "scanlines", "vignette", "grain"].every(id => F.FILTER_BY_ID[id].cpuOk === false),
+   "...and still marked GPU-only");
+// Bloom stays available on the Canvas2D path: render() glows from bloomAmt directly.
+ok(F.FILTER_BY_ID.bloom.cpuOk !== false, "bloom is still available on the Canvas2D fallback");
 ok(F.FILTERS.filter(f => f.stage === "feedback").every(f => typeof f.glFeedback === "function"),
    "feedback filters have a glFeedback pass");
 
@@ -130,16 +138,24 @@ ok(F.FILTERS.filter(f => f.stage === "feedback").every(f => typeof f.glFeedback 
   ok(s4.heat.length === 0 && JSON.stringify(idsOf(s4.image)) === '["mirror","twist"]',
      "no feedback filter ⇒ nothing retains heat, so the whole chain repaints the picture",
      idsOf(s4.heat) + " | " + idsOf(s4.image));
-  ok(JSON.stringify(idsOf(F.splitChain(["fire", "mirror"]).image)) === '["mirror"]' &&
-     JSON.stringify(idsOf(F.splitChain(["fire", "bloom", "mirror"]).image)) === '["mirror"]',
-     "bloom has no gl pass of its own, so it never enters either chain");
+  // Bloom is a REAL PASS now (glBloomPass), not the whole-scene composite, so it belongs in
+  // the chain like anything else — that is what lets a layer glow on its own.
+  ok(JSON.stringify(idsOf(F.splitChain(["fire", "bloom", "mirror"]).image)) === '["bloom","mirror"]',
+     "bloom is an ordinary chain entry now, in the position it was placed",
+     idsOf(F.splitChain(["fire", "bloom", "mirror"]).image).join(","));
+  ok(typeof F.FILTER_BY_ID.bloom.gl === "function", "...because it has a gl pass of its own");
   const all = F.splitChain(ids);
-  ok(all.heat.concat(all.image).length ===
-     ids.filter(id => F.FILTER_BY_ID[id].stage !== "screen" && F.FILTER_BY_ID[id].id !== "bloom").length,
+  ok(all.heat.concat(all.image).length === ids.length,
      "nothing is added or dropped by the split",
-     all.heat.length + "+" + all.image.length);
-  // The three stages must appear in pipeline order: feedback writes the heat the next
-  // frame starts from, post repaints the image, screen sits on the finished composite.
+     all.heat.length + "+" + all.image.length + " of " + ids.length);
+  // Feedback still precedes post in the registry (the fallback order for a scene with no
+  // stored chain). The `screen` stage is GONE — every filter is per-layer now, so there is
+  // nothing left that acts on the finished composite.
+  ok(F.FILTERS.every(f => f.stage !== "screen"),
+     "no filter is scene-global any more (the screen stage is empty)",
+     F.FILTERS.filter(f => f.stage === "screen").map(f => f.id).join(",") || "none");
+  ok(F.FILTERS.filter(f => f.stage === "post").every(f => typeof f.gl === "function"),
+     "every post filter has a gl pass, bloom included");
   const stages = F.FILTERS.map(f => f.stage);
   const firstPost = stages.indexOf("post"), lastFeedback = stages.lastIndexOf("feedback");
   const firstScreen = stages.indexOf("screen"), lastPost = stages.lastIndexOf("post");
@@ -147,9 +163,9 @@ ok(F.FILTERS.filter(f => f.stage === "feedback").every(f => typeof f.glFeedback 
      "lastFeedback " + lastFeedback + " < firstPost " + firstPost);
   ok(firstScreen < 0 || lastPost < firstScreen, "all post filters precede all screen filters",
      "lastPost " + lastPost + " < firstScreen " + firstScreen);
-  // Bloom is the composite, so it closes the post stage — the screen filters that
-  // follow it in the registry run after that composite, not inside the chain.
-  ok(ids[lastPost] === "bloom", "Bloom is the last post filter (it is the composite)");
+  // Bloom no longer has to close the post stage: it was the composite, and the screen
+  // filters had to follow it. They are all ordinary passes now, so registry order here is
+  // only the fallback for a scene that has never been reordered.
 }
 
 // --- 3. filtersOk tolerates junk ---------------------------------------------

@@ -84,6 +84,7 @@
   function applyBlob(saved, sharing) {
     if (!saved) return;
     saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
+    migrateSceneFx(saved);   // ...and its whole-scene filters onto the layers/effects
     migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
     if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)

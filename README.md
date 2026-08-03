@@ -414,13 +414,13 @@ symmetry is gone. Same two filters, completely different picture. Trail filters 
 Echo, Swirl…) only make sense on the heat, so they stay above the line; everything else goes
 wherever you put it.
 
-They live in two places, which mirrors what they actually do: the first two
-groups below are **per layer** and sit in **Layer effect & filters**, while the last
-group acts on the finished picture and has its own **Scene filters** box (with its own
-**+ Add filter**; those run in a fixed order, so they have no handles). Within
-that, the three stages of the pipeline are the one thing worth understanding:
-**feedback** filters change what the *next* frame starts from, **post** filters
-repaint the image, and **screen** filters sit on the finished frame.
+**Every filter belongs to a layer.** There used to be a second group that acted once on
+the finished picture — Bloom, Barrel, Scanlines, Vignette and Film grain. They are all
+per-layer passes now, so each layer glows, curves and gets its raster on its own before
+the layers blend. Two things follow from that: a bright layer no longer smears the ones
+above it, and if two layers both carry Scanlines the two rasters can interfere — put it
+on one layer for a clean result. Bloom's place in the chain is yours to choose too: a
+Vignette after it darkens the glow, a Vignette before it does not.
 
 **Feedback (heat)** *— per layer* — these run on the retained heat, before the effect's fresh
 output is mixed in, so they're what trails and long exposures are made of. Each

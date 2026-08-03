@@ -256,6 +256,36 @@
     if (cam && typeof cam === "object") for (const k of CAM_KEYS) if (Array.isArray(cam[k])) out[k] = cam[k];
     return out;
   }
+  // Every filter is per-layer now, so a scene that stored WHOLE-SCENE filters (Bloom + the
+  // four screen ones, in `sceneFx`) has to have them folded onto its layers or it would open
+  // with its glow, vignette and scanlines silently gone. Runs from both load paths, beside
+  // migrateCam, and for the same reason: fix the shape once, before anything merges it.
+  //
+  // The ids are APPENDED to each layer's chain, not prepended — they used to run last, on the
+  // finished picture, so last in the chain is the position that matches. The values overwrite
+  // whatever the per-effect state carries, because sceneFx was the authoritative copy while
+  // they were global (saveState/loadState skipped those keys on purpose).
+  //
+  // `sceneFx` is deleted afterwards so the migration is idempotent and the field stops
+  // travelling; readSceneFx now returns an empty pair, so nothing rewrites it.
+  function migrateSceneFx(p) {
+    const sf = p && p.sceneFx;
+    if (!sf || typeof sf !== "object") return;
+    const on = (Array.isArray(sf.on) ? sf.on : []).filter(id => FILTER_BY_ID[id]);
+    const vals = (sf.vals && typeof sf.vals === "object") ? sf.vals : {};
+    const fold = (state, holder) => {
+      if (state) for (const k in vals) if (Array.isArray(vals[k])) state[k] = vals[k].slice();
+      if (holder) {
+        const cur = Array.isArray(holder.filters) ? holder.filters.slice() : [];
+        for (const id of on) if (cur.indexOf(id) < 0) cur.push(id);
+        holder.filters = cur;
+      }
+    };
+    fold(p.state, p.extra);                            // the single/selected effect
+    if (p.states) for (const k in p.states) fold(p.states[k], p.extras && p.extras[k]);
+    (Array.isArray(p.layers) ? p.layers : []).forEach(L => { if (L) fold(L.state, L); });
+    delete p.sceneFx;
+  }
   function migrateCam(p) {
     // A scene saved before the camera was per-layer stored one scene-wide `cam`. Fold its
     // camrx/camry/camrz onto every effect's / layer's state that doesn't already carry them, so

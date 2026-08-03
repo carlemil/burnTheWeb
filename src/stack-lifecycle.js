@@ -104,6 +104,9 @@
   // with it. That would not "reset" the panel, it would DELETE every slider, filter and
   // palette control from the document, and nothing that looks them up by id would work
   // again. Same failure the menubar's returnAdopted exists to prevent.
+  // Is the open layer's control block folded away? Transient and per-session, like the
+  // panel's own box folds — deliberately not persisted and not part of a scene.
+  let lyrFolded = false;
   function parkLayerCtl() {
     const ctl = el("lyrctl"), home = el("fxbox");
     if (ctl && home && ctl.parentNode !== home) home.appendChild(ctl);
@@ -298,7 +301,33 @@
       // The selected layer's row carries the controls, so the header you just built and the
       // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
       // the row's own markup; everything below is #lyrctl, moved in.
-      if (j === stackSel) adoptLayerCtl(row);
+      if (j === stackSel) {
+        adoptLayerCtl(row);
+        // A chevron to fold the open layer shut without deselecting it. With the controls
+        // inline, an open layer is several hundred pixels tall and the layers below it are a
+        // long scroll away — this collapses that without changing which layer you are editing.
+        //
+        // It only HIDES the block (a class on the row); #lyrctl stays in the row and stays in
+        // the document either way, so every id lookup keeps working. Collapsing is transient
+        // and per-session, like the panel's own fold states, so it is a plain variable rather
+        // than anything persisted.
+        row.classList.toggle("folded", lyrFolded);
+        const chev = document.createElement("b");
+        chev.className = "lyr-chev";
+        chev.textContent = lyrFolded ? "▸" : "▾";
+        chev.title = lyrFolded ? "Show this layer's settings" : "Hide this layer's settings";
+        chev.setAttribute("aria-label", chev.title);
+        chev.setAttribute("aria-expanded", String(!lyrFolded));
+        // stopPropagation, or the row's capture-phase pointerdown would also select — which
+        // is harmless here (it is already selected) but would re-run syncStackUI mid-click.
+        chev.addEventListener("pointerdown", e => e.stopPropagation());
+        chev.addEventListener("click", e => { e.stopPropagation(); lyrFolded = !lyrFolded; syncStackUI(); });
+        // Into the existing .lyr-ctl flex row (mute · gain · ✕), NOT as the row's first grid
+        // child: the row is a two-column grid and prepending a cell shifts every later child
+        // into the wrong column — the effect chooser ends up squeezed and the blend row wraps.
+        const ctlRow = row.querySelector(".lyr-ctl");
+        if (ctlRow) ctlRow.insertBefore(chev, ctlRow.firstChild); else row.appendChild(chev);
+      }
     });
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);

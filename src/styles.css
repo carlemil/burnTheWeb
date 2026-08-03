@@ -726,6 +726,16 @@
      #lyrctl (effect sliders → filters → palette) is moved into the selected row by
      syncStackUI, so a layer is one complete object: what it draws, what filters it, how it
      is coloured. It spans both grid columns and sits under the header it belongs to. */
+  /* Fold the open layer shut without deselecting it — with the controls inline, an open
+     layer is tall and the rows below it are a long scroll away. The block is HIDDEN, never
+     removed: #lyrctl stays in the row and in the document, so every id lookup keeps working. */
+  #panel .lyr-chev {
+    flex: 0 0 auto; width: 14px; cursor: pointer; color: #ffb15a; opacity: .75;
+    font-size: 10px; line-height: 1; text-align: center; user-select: none;
+  }
+  #panel .lyr-chev:hover { opacity: 1; }
+  #panel .lyr.folded > #lyrctl { display: none; }
+  #panel .lyr.folded { padding-bottom: 6px; }
   #panel .lyr > #lyrctl {
     grid-column: 1 / -1;
     margin: 6px -7px -6px;                    /* out to the row's padding edges */

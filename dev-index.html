@@ -744,6 +744,16 @@
      #lyrctl (effect sliders → filters → palette) is moved into the selected row by
      syncStackUI, so a layer is one complete object: what it draws, what filters it, how it
      is coloured. It spans both grid columns and sits under the header it belongs to. */
+  /* Fold the open layer shut without deselecting it — with the controls inline, an open
+     layer is tall and the rows below it are a long scroll away. The block is HIDDEN, never
+     removed: #lyrctl stays in the row and in the document, so every id lookup keeps working. */
+  #panel .lyr-chev {
+    flex: 0 0 auto; width: 14px; cursor: pointer; color: #ffb15a; opacity: .75;
+    font-size: 10px; line-height: 1; text-align: center; user-select: none;
+  }
+  #panel .lyr-chev:hover { opacity: 1; }
+  #panel .lyr.folded > #lyrctl { display: none; }
+  #panel .lyr.folded { padding-bottom: 6px; }
   #panel .lyr > #lyrctl {
     grid-column: 1 / -1;
     margin: 6px -7px -6px;                    /* out to the row's padding edges */
@@ -1896,8 +1906,14 @@
   // top-level `sceneFx` blob field — modelled on the camera. The per-layer L.filters/states[e]
   // may still carry these ids/keys but they are INERT: filterOn and the checkbox route scene
   // filters through sceneOn, and the per-layer render chains exclude them by stage anyway.
-  const SCENE_FILTER_IDS = new Set(["bloom", "barrel", "scanlines", "vignette", "grain"]);
-  const SCENE_FILTER_KEYS = ["bloom", "barrel", "scan", "scancount", "vignette", "grain"];   // their dual-slider param keys
+  // EMPTY, deliberately. Every filter is per-layer now — Bloom became a real chain pass
+  // (glBloomPass) instead of the whole-scene composite, and the four ex-screen filters became
+  // ordinary image passes. Both sets are kept as the empty seams rather than being deleted:
+  // isSceneFilter/filterOn/saveState/loadState/readSceneFx still route through them, so an
+  // empty set is what makes "nothing is scene-global" true in one place instead of twenty.
+  // Add an id here and it goes back to being one shared setting across every layer.
+  const SCENE_FILTER_IDS = new Set();
+  const SCENE_FILTER_KEYS = [];   // their dual-slider param keys — see above
   const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
   let sceneOn = new Set();                     // scene-global filter on/off — none on by default (all filters off)
   // `activeIds` is the SELECTED layer's live filter set (the "DOM is the store for the
@@ -2452,8 +2468,19 @@
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     return f;
   }
-  function bindFbo(f, w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.viewport(0, 0, w, h); }
-  function bindDefault(w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); }
+  // The current render target, tracked so a pass that needs to borrow a buffer can put the
+  // caller's back. Only glBloomPass needs it — it runs two blur passes into its own FBOs in
+  // the middle of a chain and must return to whatever the chain had bound — but tracking it
+  // here is the only place that cannot go stale.
+  // `var`, not `let` — the same reason `card` and `beatUi` are vars. bindFbo is a hoisted
+  // function declaration and is CALLED during startup from code that runs before this line,
+  // so a `let` here is in the temporal dead zone at that moment and the assignment throws
+  // "Cannot access 'curFbo' before initialization", taking the whole IIFE with it. `var`
+  // hoists to undefined, which the only reader (glBloomPass) treats as "no target" anyway.
+  var curFbo = null, curW = 0, curH = 0;
+  function bindFbo(f, w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.viewport(0, 0, w, h); curFbo = f; curW = w; curH = h; }
+  function bindDefault(w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); curFbo = null; curW = w; curH = h; }
+  function rebindCur() { if (curFbo) bindFbo(curFbo, curW, curH); else bindDefault(curW, curH); }
   function bindTexUnit(unit, tex) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); }
   function drawQuad() { gl.bindVertexArray(quadVao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 
@@ -4073,6 +4100,33 @@
     return src;
   }
   // One post pass: bind the program, feed it the source texture, draw.
+  // Bloom as an ordinary chain pass. It WAS the whole-scene composite — blur the finished
+  // frame twice, add the blur back over it — with its strength as a uniform, which is exactly
+  // why it had no `gl` hook and could not be per-layer. Now it is a pass like any other: it
+  // sits in a layer's chain, it can be dragged, and each layer glows on its own before the
+  // layers blend. For a single layer that is the same image the composite made; for a stack it
+  // is better, since a bright layer no longer smears the ones above it.
+  //
+  // It borrows glFbo.blur1/blur2 — free now that nothing composites a scene-wide glow — and
+  // rebinds the caller's target before the final draw, since the two blurs bind their own.
+  function glBloomPass(src) {
+    const dst = curFbo, dw = curW, dh = curH;    // the chain's target, to come back to
+    bindFbo(glFbo.blur1, fw, fh);
+    gl.useProgram(glProg.blur.p);
+    bindTexUnit(0, src); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 1 / fw, 0);
+    drawQuad();
+    bindFbo(glFbo.blur2, fw, fh);
+    bindTexUnit(0, glTex.blur1); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 0, 1 / fh);
+    drawQuad();
+    if (dst) bindFbo(dst, dw, dh); else bindDefault(dw, dh);
+    gl.useProgram(glProg.comp.p);
+    bindTexUnit(0, src); gl.uniform1i(glProg.comp.u.uScene, 0);
+    bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
+    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    drawQuad();
+  }
   function postPass(name, src, setU) {
     const P = glProg[name];
     gl.useProgram(P.p);
@@ -4124,38 +4178,22 @@
       gl.uniform2f(glProg.trans.u.uSize, fw, fh);
       drawQuad();
     }
-    // C) horizontal blur
-    bindFbo(glFbo.blur1, fw, fh);
-    gl.useProgram(glProg.blur.p);
-    bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.blur.u.uSrc, 0);
-    gl.uniform2f(glProg.blur.u.uDir, 1 / fw, 0);
-    drawQuad();
-    // D) vertical blur
-    bindFbo(glFbo.blur2, fw, fh);
-    bindTexUnit(0, glTex.blur1); gl.uniform1i(glProg.blur.u.uSrc, 0);
-    gl.uniform2f(glProg.blur.u.uDir, 0, 1 / fh);
-    drawQuad();
-    // E) composite — to the screen, or into the screen-stage chain if one is ticked
-    const scr = activeFilters().filter(f => f.stage === "screen" && f.gl);
-    const sw = canvas.width, sh = canvas.height;
-    if (scr.length) bindFbo(glFbo.screen[0], sw, sh); else bindDefault(sw, sh);
+    // C) to the screen. The whole-scene glow and the display-resolution screen chain that
+    // used to live here are gone: Bloom is a per-layer chain pass now (glBloomPass) and the
+    // four screen filters are ordinary per-layer image passes, so by this point every filter
+    // has already run on the layer it belongs to.
+    //
+    // This is still FS_COMP rather than a plain blit, with uBloom pinned to 0 — it is the
+    // same single pass that has always carried the frame to the default framebuffer, so the
+    // output is byte-identical to what a bloom-off scene produced before. The glow texture is
+    // bound but multiplied by 0, which is why the two blur passes can be skipped outright
+    // instead of being run to fill a buffer nothing reads.
+    bindDefault(canvas.width, canvas.height);
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
-    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    gl.uniform1f(glProg.comp.u.uBloom, 0);
     drawQuad();
-    // F) the screen chain, ping-ponging at display resolution; the LAST pass is the
-    // one that reaches the default framebuffer, so an empty chain (above) still
-    // composites straight to it and costs nothing.
-    if (scr.length) {
-      let src = glTex.screen[0], slot = 1;
-      scr.forEach((f, i) => {
-        const last = i === scr.length - 1;
-        if (last) bindDefault(sw, sh); else bindFbo(glFbo.screen[slot], sw, sh);
-        f.gl(src, sw, sh);
-        if (!last) { src = glTex.screen[slot]; slot = 1 - slot; }
-      });
-    }
   }
   // One screen pass. Same shape as postPass, but uSize is the DISPLAY size rather
   // than the fire grid — a scanline count means nothing against fw/fh.
@@ -6316,11 +6354,14 @@
   // two captions saying so in different words only made the list longer. The single heading
   // still works out of the registry order (all feedback, then all post-but-Bloom, then the
   // whole-scene set), so the run stays contiguous and one caption is emitted for it.
+  // ONE group: every filter belongs to a layer. There was a "Whole scene · final image" group
+  // for Bloom and the four screen filters; they are per-layer passes now, so the group has
+  // nothing to hold. FILTER_LISTS still has the scene entry and #screenfilterlist still
+  // exists — both simply stay empty, which is what keeps the Scene filters box and its Add
+  // button from needing special-casing if anything ever goes back.
   function filterGroup(f) {
-    if (f.stage === "feedback" || (f.stage === "post" && f.id !== "bloom"))
-      return { key: "layer", title: "Per-effect · heat, trails & image",
-               desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
-    return { key: "scene", title: "Whole scene · final image", desc: "applied once to the finished, blended picture" };
+    return { key: "layer", title: "Per-effect · heat, trails & image",
+             desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
   }
   // One <details> per filter: a grab handle + name in the summary, that filter's own params
   // in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's .ctl-row
@@ -8287,28 +8328,43 @@
       help: "Fold the image about its centre — X, Y or both.",
       defaults: { mirror: [1, 1] },
       gl: src => postPass("mirror", src, u => gl.uniform1f(u.uMode, mirrorMode)) },
+    // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
+    // strength as a uniform, which is exactly why it had no `gl` hook and could never be
+    // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own
+    // before the layers blend. (The Canvas2D path still glows via bloomAmt in render(), so it
+    // stays available there — hence no cpuOk: false.)
     { id: "bloom", name: "Bloom", stage: "post", params: ["bloom"],
-      help: "Additive glow: a blurred copy of the scene added back over it.",
-      defaults: { bloom: [0.35, 0.35] } },
-    // ---- screen stage: on top of the composite, at display resolution ----
-    // Bloom is still the last *post* entry — these run after it, which is the whole
-    // reason the stage exists (a vignette under an additive glow gets lit back up).
-    { id: "barrel", cpuOk: false, name: "Barrel distortion", stage: "screen", params: ["barrel"],
+      help: "Additive glow: a blurred copy added back over this layer.",
+      defaults: { bloom: [0.35, 0.35] },
+      gl: src => glBloomPass(src) },
+    // ---- the ex-"screen" filters, now ordinary PER-LAYER image passes ----------------
+    // They ran once on the finished composite, at display resolution. Every filter belongs to
+    // a layer now and nothing acts on the whole screen. Two consequences worth knowing rather
+    // than discovering:
+    //   * uSize is the render buffer (fw x fh), not the canvas, so Scanline count means lines
+    //     across the render buffer. At Full resolution that is the number it always was; at
+    //     lower resolutions the same count is a coarser raster.
+    //   * On a stack each layer carries its own and the results blend, so two layers with
+    //     scanlines can moire against each other. Put it on ONE layer for a clean raster.
+    //   * The old stage existed partly because a vignette UNDER an additive glow gets lit back
+    //     up. That is now yours to order: put Vignette after Bloom in the chain and it darkens
+    //     the glow too, which is what the old fixed order did.
+    { id: "barrel", cpuOk: false, name: "Barrel distortion", stage: "post", params: ["barrel"],
       help: "Bulge the image as if it were painted on the front of a CRT.",
       defaults: { barrel: [0.15, 0.15] },
-      gl: (src, w, h) => screenPass("barrel", src, w, h, u => gl.uniform1f(u.uAmount, barrelAmt)) },
-    { id: "scanlines", cpuOk: false, name: "Scanlines", stage: "screen", params: ["scan", "scancount"],
+      gl: src => postPass("barrel", src, u => gl.uniform1f(u.uAmount, barrelAmt)) },
+    { id: "scanlines", cpuOk: false, name: "Scanlines", stage: "post", params: ["scan", "scancount"],
       help: "Darken alternating rows — the raster you are pretending to be.",
       defaults: { scan: [0.35, 0.35], scancount: [240, 240] },
-      gl: (src, w, h) => screenPass("scan", src, w, h, u => { gl.uniform1f(u.uAmount, scanAmt); gl.uniform1f(u.uCount, scanCount); }) },
-    { id: "vignette", cpuOk: false, name: "Vignette", stage: "screen", params: ["vignette"],
+      gl: src => postPass("scan", src, u => { gl.uniform1f(u.uAmount, scanAmt); gl.uniform1f(u.uCount, scanCount); }) },
+    { id: "vignette", cpuOk: false, name: "Vignette", stage: "post", params: ["vignette"],
       help: "Fall off toward the corners.",
       defaults: { vignette: [0.4, 0.4] },
-      gl: (src, w, h) => screenPass("vignette", src, w, h, u => gl.uniform1f(u.uAmount, vigAmt)) },
-    { id: "grain", cpuOk: false, name: "Film grain", stage: "screen", params: ["grain"],
+      gl: src => postPass("vignette", src, u => gl.uniform1f(u.uAmount, vigAmt)) },
+    { id: "grain", cpuOk: false, name: "Film grain", stage: "post", params: ["grain"],
       help: "Animated noise over the finished frame.",
       defaults: { grain: [0.08, 0.08] },
-      gl: (src, w, h) => screenPass("grain", src, w, h, u => { gl.uniform1f(u.uAmount, grainAmt); gl.uniform1f(u.uTime, postTime); }) },
+      gl: src => postPass("grain", src, u => { gl.uniform1f(u.uAmount, grainAmt); gl.uniform1f(u.uTime, postTime); }) },
   ];
   const FILTER_BY_ID = {};
   FILTERS.forEach(f => FILTER_BY_ID[f.id] = f);
@@ -8671,6 +8727,36 @@
     if (cam && typeof cam === "object") for (const k of CAM_KEYS) if (Array.isArray(cam[k])) out[k] = cam[k];
     return out;
   }
+  // Every filter is per-layer now, so a scene that stored WHOLE-SCENE filters (Bloom + the
+  // four screen ones, in `sceneFx`) has to have them folded onto its layers or it would open
+  // with its glow, vignette and scanlines silently gone. Runs from both load paths, beside
+  // migrateCam, and for the same reason: fix the shape once, before anything merges it.
+  //
+  // The ids are APPENDED to each layer's chain, not prepended — they used to run last, on the
+  // finished picture, so last in the chain is the position that matches. The values overwrite
+  // whatever the per-effect state carries, because sceneFx was the authoritative copy while
+  // they were global (saveState/loadState skipped those keys on purpose).
+  //
+  // `sceneFx` is deleted afterwards so the migration is idempotent and the field stops
+  // travelling; readSceneFx now returns an empty pair, so nothing rewrites it.
+  function migrateSceneFx(p) {
+    const sf = p && p.sceneFx;
+    if (!sf || typeof sf !== "object") return;
+    const on = (Array.isArray(sf.on) ? sf.on : []).filter(id => FILTER_BY_ID[id]);
+    const vals = (sf.vals && typeof sf.vals === "object") ? sf.vals : {};
+    const fold = (state, holder) => {
+      if (state) for (const k in vals) if (Array.isArray(vals[k])) state[k] = vals[k].slice();
+      if (holder) {
+        const cur = Array.isArray(holder.filters) ? holder.filters.slice() : [];
+        for (const id of on) if (cur.indexOf(id) < 0) cur.push(id);
+        holder.filters = cur;
+      }
+    };
+    fold(p.state, p.extra);                            // the single/selected effect
+    if (p.states) for (const k in p.states) fold(p.states[k], p.extras && p.extras[k]);
+    (Array.isArray(p.layers) ? p.layers : []).forEach(L => { if (L) fold(L.state, L); });
+    delete p.sceneFx;
+  }
   function migrateCam(p) {
     // A scene saved before the camera was per-layer stored one scene-wide `cam`. Fold its
     // camrx/camry/camrz onto every effect's / layer's state that doesn't already carry them, so
@@ -8845,6 +8931,9 @@
   // with it. That would not "reset" the panel, it would DELETE every slider, filter and
   // palette control from the document, and nothing that looks them up by id would work
   // again. Same failure the menubar's returnAdopted exists to prevent.
+  // Is the open layer's control block folded away? Transient and per-session, like the
+  // panel's own box folds — deliberately not persisted and not part of a scene.
+  let lyrFolded = false;
   function parkLayerCtl() {
     const ctl = el("lyrctl"), home = el("fxbox");
     if (ctl && home && ctl.parentNode !== home) home.appendChild(ctl);
@@ -9039,7 +9128,33 @@
       // The selected layer's row carries the controls, so the header you just built and the
       // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
       // the row's own markup; everything below is #lyrctl, moved in.
-      if (j === stackSel) adoptLayerCtl(row);
+      if (j === stackSel) {
+        adoptLayerCtl(row);
+        // A chevron to fold the open layer shut without deselecting it. With the controls
+        // inline, an open layer is several hundred pixels tall and the layers below it are a
+        // long scroll away — this collapses that without changing which layer you are editing.
+        //
+        // It only HIDES the block (a class on the row); #lyrctl stays in the row and stays in
+        // the document either way, so every id lookup keeps working. Collapsing is transient
+        // and per-session, like the panel's own fold states, so it is a plain variable rather
+        // than anything persisted.
+        row.classList.toggle("folded", lyrFolded);
+        const chev = document.createElement("b");
+        chev.className = "lyr-chev";
+        chev.textContent = lyrFolded ? "▸" : "▾";
+        chev.title = lyrFolded ? "Show this layer's settings" : "Hide this layer's settings";
+        chev.setAttribute("aria-label", chev.title);
+        chev.setAttribute("aria-expanded", String(!lyrFolded));
+        // stopPropagation, or the row's capture-phase pointerdown would also select — which
+        // is harmless here (it is already selected) but would re-run syncStackUI mid-click.
+        chev.addEventListener("pointerdown", e => e.stopPropagation());
+        chev.addEventListener("click", e => { e.stopPropagation(); lyrFolded = !lyrFolded; syncStackUI(); });
+        // Into the existing .lyr-ctl flex row (mute · gain · ✕), NOT as the row's first grid
+        // child: the row is a two-column grid and prepending a cell shifts every later child
+        // into the wrong column — the effect chooser ends up squeezed and the blend row wraps.
+        const ctlRow = row.querySelector(".lyr-ctl");
+        if (ctlRow) ctlRow.insertBefore(chev, ctlRow.firstChild); else row.appendChild(chev);
+      }
     });
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
@@ -9466,6 +9581,7 @@
   function applyBlob(saved, sharing) {
     if (!saved) return;
     saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
+    migrateSceneFx(saved);   // ...and its whole-scene filters onto the layers/effects
     migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
     if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
@@ -10861,6 +10977,7 @@
     // Scene TTL and Transition are deliberately NOT installed from the preset — they are
     // global, so picking a scene must not retune the show's pacing under you. Presets saved
     // while they were per-scene still carry `ttl`/`tdur`; ignoring them is the whole change.
+    migrateSceneFx(p);   // pre-per-layer-filter preset: fold its whole-scene FX onto the layers
     migrateCam(p);                                // pre-per-layer preset: fold its one `cam` into p.state / p.layers before they merge
     installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);

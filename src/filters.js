@@ -117,28 +117,43 @@
       help: "Fold the image about its centre — X, Y or both.",
       defaults: { mirror: [1, 1] },
       gl: src => postPass("mirror", src, u => gl.uniform1f(u.uMode, mirrorMode)) },
+    // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
+    // strength as a uniform, which is exactly why it had no `gl` hook and could never be
+    // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own
+    // before the layers blend. (The Canvas2D path still glows via bloomAmt in render(), so it
+    // stays available there — hence no cpuOk: false.)
     { id: "bloom", name: "Bloom", stage: "post", params: ["bloom"],
-      help: "Additive glow: a blurred copy of the scene added back over it.",
-      defaults: { bloom: [0.35, 0.35] } },
-    // ---- screen stage: on top of the composite, at display resolution ----
-    // Bloom is still the last *post* entry — these run after it, which is the whole
-    // reason the stage exists (a vignette under an additive glow gets lit back up).
-    { id: "barrel", cpuOk: false, name: "Barrel distortion", stage: "screen", params: ["barrel"],
+      help: "Additive glow: a blurred copy added back over this layer.",
+      defaults: { bloom: [0.35, 0.35] },
+      gl: src => glBloomPass(src) },
+    // ---- the ex-"screen" filters, now ordinary PER-LAYER image passes ----------------
+    // They ran once on the finished composite, at display resolution. Every filter belongs to
+    // a layer now and nothing acts on the whole screen. Two consequences worth knowing rather
+    // than discovering:
+    //   * uSize is the render buffer (fw x fh), not the canvas, so Scanline count means lines
+    //     across the render buffer. At Full resolution that is the number it always was; at
+    //     lower resolutions the same count is a coarser raster.
+    //   * On a stack each layer carries its own and the results blend, so two layers with
+    //     scanlines can moire against each other. Put it on ONE layer for a clean raster.
+    //   * The old stage existed partly because a vignette UNDER an additive glow gets lit back
+    //     up. That is now yours to order: put Vignette after Bloom in the chain and it darkens
+    //     the glow too, which is what the old fixed order did.
+    { id: "barrel", cpuOk: false, name: "Barrel distortion", stage: "post", params: ["barrel"],
       help: "Bulge the image as if it were painted on the front of a CRT.",
       defaults: { barrel: [0.15, 0.15] },
-      gl: (src, w, h) => screenPass("barrel", src, w, h, u => gl.uniform1f(u.uAmount, barrelAmt)) },
-    { id: "scanlines", cpuOk: false, name: "Scanlines", stage: "screen", params: ["scan", "scancount"],
+      gl: src => postPass("barrel", src, u => gl.uniform1f(u.uAmount, barrelAmt)) },
+    { id: "scanlines", cpuOk: false, name: "Scanlines", stage: "post", params: ["scan", "scancount"],
       help: "Darken alternating rows — the raster you are pretending to be.",
       defaults: { scan: [0.35, 0.35], scancount: [240, 240] },
-      gl: (src, w, h) => screenPass("scan", src, w, h, u => { gl.uniform1f(u.uAmount, scanAmt); gl.uniform1f(u.uCount, scanCount); }) },
-    { id: "vignette", cpuOk: false, name: "Vignette", stage: "screen", params: ["vignette"],
+      gl: src => postPass("scan", src, u => { gl.uniform1f(u.uAmount, scanAmt); gl.uniform1f(u.uCount, scanCount); }) },
+    { id: "vignette", cpuOk: false, name: "Vignette", stage: "post", params: ["vignette"],
       help: "Fall off toward the corners.",
       defaults: { vignette: [0.4, 0.4] },
-      gl: (src, w, h) => screenPass("vignette", src, w, h, u => gl.uniform1f(u.uAmount, vigAmt)) },
-    { id: "grain", cpuOk: false, name: "Film grain", stage: "screen", params: ["grain"],
+      gl: src => postPass("vignette", src, u => gl.uniform1f(u.uAmount, vigAmt)) },
+    { id: "grain", cpuOk: false, name: "Film grain", stage: "post", params: ["grain"],
       help: "Animated noise over the finished frame.",
       defaults: { grain: [0.08, 0.08] },
-      gl: (src, w, h) => screenPass("grain", src, w, h, u => { gl.uniform1f(u.uAmount, grainAmt); gl.uniform1f(u.uTime, postTime); }) },
+      gl: src => postPass("grain", src, u => { gl.uniform1f(u.uAmount, grainAmt); gl.uniform1f(u.uTime, postTime); }) },
   ];
   const FILTER_BY_ID = {};
   FILTERS.forEach(f => FILTER_BY_ID[f.id] = f);

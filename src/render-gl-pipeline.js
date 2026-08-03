@@ -1042,6 +1042,33 @@
     return src;
   }
   // One post pass: bind the program, feed it the source texture, draw.
+  // Bloom as an ordinary chain pass. It WAS the whole-scene composite — blur the finished
+  // frame twice, add the blur back over it — with its strength as a uniform, which is exactly
+  // why it had no `gl` hook and could not be per-layer. Now it is a pass like any other: it
+  // sits in a layer's chain, it can be dragged, and each layer glows on its own before the
+  // layers blend. For a single layer that is the same image the composite made; for a stack it
+  // is better, since a bright layer no longer smears the ones above it.
+  //
+  // It borrows glFbo.blur1/blur2 — free now that nothing composites a scene-wide glow — and
+  // rebinds the caller's target before the final draw, since the two blurs bind their own.
+  function glBloomPass(src) {
+    const dst = curFbo, dw = curW, dh = curH;    // the chain's target, to come back to
+    bindFbo(glFbo.blur1, fw, fh);
+    gl.useProgram(glProg.blur.p);
+    bindTexUnit(0, src); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 1 / fw, 0);
+    drawQuad();
+    bindFbo(glFbo.blur2, fw, fh);
+    bindTexUnit(0, glTex.blur1); gl.uniform1i(glProg.blur.u.uSrc, 0);
+    gl.uniform2f(glProg.blur.u.uDir, 0, 1 / fh);
+    drawQuad();
+    if (dst) bindFbo(dst, dw, dh); else bindDefault(dw, dh);
+    gl.useProgram(glProg.comp.p);
+    bindTexUnit(0, src); gl.uniform1i(glProg.comp.u.uScene, 0);
+    bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
+    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    drawQuad();
+  }
   function postPass(name, src, setU) {
     const P = glProg[name];
     gl.useProgram(P.p);
@@ -1093,38 +1120,22 @@
       gl.uniform2f(glProg.trans.u.uSize, fw, fh);
       drawQuad();
     }
-    // C) horizontal blur
-    bindFbo(glFbo.blur1, fw, fh);
-    gl.useProgram(glProg.blur.p);
-    bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.blur.u.uSrc, 0);
-    gl.uniform2f(glProg.blur.u.uDir, 1 / fw, 0);
-    drawQuad();
-    // D) vertical blur
-    bindFbo(glFbo.blur2, fw, fh);
-    bindTexUnit(0, glTex.blur1); gl.uniform1i(glProg.blur.u.uSrc, 0);
-    gl.uniform2f(glProg.blur.u.uDir, 0, 1 / fh);
-    drawQuad();
-    // E) composite — to the screen, or into the screen-stage chain if one is ticked
-    const scr = activeFilters().filter(f => f.stage === "screen" && f.gl);
-    const sw = canvas.width, sh = canvas.height;
-    if (scr.length) bindFbo(glFbo.screen[0], sw, sh); else bindDefault(sw, sh);
+    // C) to the screen. The whole-scene glow and the display-resolution screen chain that
+    // used to live here are gone: Bloom is a per-layer chain pass now (glBloomPass) and the
+    // four screen filters are ordinary per-layer image passes, so by this point every filter
+    // has already run on the layer it belongs to.
+    //
+    // This is still FS_COMP rather than a plain blit, with uBloom pinned to 0 — it is the
+    // same single pass that has always carried the frame to the default framebuffer, so the
+    // output is byte-identical to what a bloom-off scene produced before. The glow texture is
+    // bound but multiplied by 0, which is why the two blur passes can be skipped outright
+    // instead of being run to fill a buffer nothing reads.
+    bindDefault(canvas.width, canvas.height);
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
-    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    gl.uniform1f(glProg.comp.u.uBloom, 0);
     drawQuad();
-    // F) the screen chain, ping-ponging at display resolution; the LAST pass is the
-    // one that reaches the default framebuffer, so an empty chain (above) still
-    // composites straight to it and costs nothing.
-    if (scr.length) {
-      let src = glTex.screen[0], slot = 1;
-      scr.forEach((f, i) => {
-        const last = i === scr.length - 1;
-        if (last) bindDefault(sw, sh); else bindFbo(glFbo.screen[slot], sw, sh);
-        f.gl(src, sw, sh);
-        if (!last) { src = glTex.screen[slot]; slot = 1 - slot; }
-      });
-    }
   }
   // One screen pass. Same shape as postPass, but uSize is the DISPLAY size rather
   // than the fire grid — a scanline count means nothing against fw/fh.

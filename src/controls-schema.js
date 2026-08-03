@@ -192,11 +192,14 @@
   // two captions saying so in different words only made the list longer. The single heading
   // still works out of the registry order (all feedback, then all post-but-Bloom, then the
   // whole-scene set), so the run stays contiguous and one caption is emitted for it.
+  // ONE group: every filter belongs to a layer. There was a "Whole scene · final image" group
+  // for Bloom and the four screen filters; they are per-layer passes now, so the group has
+  // nothing to hold. FILTER_LISTS still has the scene entry and #screenfilterlist still
+  // exists — both simply stay empty, which is what keeps the Scene filters box and its Add
+  // button from needing special-casing if anything ever goes back.
   function filterGroup(f) {
-    if (f.stage === "feedback" || (f.stage === "post" && f.id !== "bloom"))
-      return { key: "layer", title: "Per-effect · heat, trails & image",
-               desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
-    return { key: "scene", title: "Whole scene · final image", desc: "applied once to the finished, blended picture" };
+    return { key: "layer", title: "Per-effect · heat, trails & image",
+             desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
   }
   // One <details> per filter: a grab handle + name in the summary, that filter's own params
   // in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's .ctl-row

@@ -75,8 +75,19 @@
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     return f;
   }
-  function bindFbo(f, w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.viewport(0, 0, w, h); }
-  function bindDefault(w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); }
+  // The current render target, tracked so a pass that needs to borrow a buffer can put the
+  // caller's back. Only glBloomPass needs it — it runs two blur passes into its own FBOs in
+  // the middle of a chain and must return to whatever the chain had bound — but tracking it
+  // here is the only place that cannot go stale.
+  // `var`, not `let` — the same reason `card` and `beatUi` are vars. bindFbo is a hoisted
+  // function declaration and is CALLED during startup from code that runs before this line,
+  // so a `let` here is in the temporal dead zone at that moment and the assignment throws
+  // "Cannot access 'curFbo' before initialization", taking the whole IIFE with it. `var`
+  // hoists to undefined, which the only reader (glBloomPass) treats as "no target" anyway.
+  var curFbo = null, curW = 0, curH = 0;
+  function bindFbo(f, w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.viewport(0, 0, w, h); curFbo = f; curW = w; curH = h; }
+  function bindDefault(w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); curFbo = null; curW = w; curH = h; }
+  function rebindCur() { if (curFbo) bindFbo(curFbo, curW, curH); else bindDefault(curW, curH); }
   function bindTexUnit(unit, tex) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); }
   function drawQuad() { gl.bindVertexArray(quadVao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 
