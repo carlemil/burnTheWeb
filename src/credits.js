@@ -46,7 +46,14 @@
   const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
   const CREDIT_KEY = "burnTheWeb.credits.v1";
+  // The scene title shares this canvas, this countdown style and this drawing treatment —
+  // it IS the credits' typography, saying the name of the scene you just switched to and
+  // who made it. Its own hold/fade because it fires on every scene change (see CONFIG).
+  const TITLE_HOLD = CONFIG.credits.titleHold;
+  const TITLE_FADE = CONFIG.credits.titleFade;
+  const TITLE_KEY = "burnTheWeb.scenetitle.v1";
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
+  let titleLeft = 0, titleName = "", titleAuthor = "";
   // The credits render on their OWN canvas above the effect, not stamped into the heat
   // grid. They used to be stamped — which gave them the palette and let them burn away
   // with the fire, but also fed them through the post-filter chain, so Pixelate blocked
@@ -63,20 +70,28 @@
     if (!creditCv) { creditCv = el("creditcv"); creditCtx = creditCv.getContext("2d"); }
     return creditCtx;
   }
-  // Paint the credits at the current fade. Called from frame() AFTER the render, so it
+  // Paint the overlay at the current fade. Called from frame() AFTER the render, so it
   // lands over the finished image — filters included.
+  //
+  // ONE canvas, two tenants, and they never overlap: the credits own it until they expire,
+  // then the scene title does. That ordering is not a rule enforced here — frame() simply
+  // does not decrement titleLeft while credits are up (see the tick), so a scene applied
+  // during the credits waits its turn instead of fighting them.
   function creditDraw() {
     const g = creditLayer();
     if (!g) return;
     const w = window.innerWidth, h = window.innerHeight;
     if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
     g.clearRect(0, 0, w, h);
-    if (creditLeft <= 0) {                 // done: clear once, then get out of the way
+    if (creditLeft <= 0 && titleLeft <= 0) {   // done: clear once, then get out of the way
       if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
       return;
     }
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
-    const a = creditAlpha();
+    if (creditLeft > 0) drawCredits(g, w, h, creditAlpha());
+    else drawSceneTitle(g, w, h, titleAlpha());
+  }
+  function drawCredits(g, w, h, a) {
     g.textAlign = "left"; g.textBaseline = "middle";
     const MONO = "px ui-monospace, Consolas, monospace";
     const roleSize = q => Math.max(9, Math.round(q * 0.8));   // panel: 10px role vs 11px name
@@ -135,10 +150,67 @@
       y += nameLh / 2 + gap + roleLh / 2;
     }
   }
+  // The scene title: "<scene name> — <who made it>", one centred line in the credits'
+  // own typography — bold white for the name, the credits' dim grey for the dash, and the
+  // handle amber for the author, so it reads as the same piece of chrome rather than a
+  // caption bolted on. Two draws again (dark halo, then warm glow) for legibility over a
+  // bright frame.
+  function drawSceneTitle(g, w, h, a) {
+    g.textAlign = "left"; g.textBaseline = "middle";
+    const MONO = "px ui-monospace, Consolas, monospace";
+    // The author half is dropped entirely when there is none — a trailing dash pointing at
+    // nothing reads as a bug, and an unclaimed scene is the common case.
+    const segs = [[titleName, CR_COL.name + a + ")", true]];
+    if (titleAuthor) {
+      segs.push([" — ", CR_COL.aka + (CR_AKA * a) + ")", false]);
+      segs.push([titleAuthor, CR_COL.handle, true]);
+    }
+    const lineW = px => segs.reduce((acc, sg) => {
+      g.font = (sg[2] ? "bold " : "") + px + MONO;
+      return acc + g.measureText(sg[0]).width;
+    }, 0);
+    // Same shrink-to-fit as the credits: start from a size proportional to the viewport and
+    // step down until the whole line clears the margins. A scene name is free text, so this
+    // is the only thing standing between a long one and the edge of the screen.
+    let px = Math.max(11, Math.floor(w / 26));
+    for (let i = 0; i < 80 && px > 10; i++) { if (lineW(px) <= w * 0.88) break; px--; }
+    const y = h * 0.5;
+    let x = (w - lineW(px)) / 2;              // lineW sets g.font as it measures — reset in the loop
+    for (const [txt, col, bold] of segs) {
+      g.font = (bold ? "bold " : "") + px + MONO;
+      g.shadowColor = "rgba(0,0,0," + (0.85 * a) + ")"; g.shadowBlur = Math.round(px * 0.7);
+      g.fillStyle = col; g.globalAlpha = bold ? a : 1;   // the bold runs carry their alpha here
+      g.fillText(txt, x, y);
+      g.shadowColor = "rgba(255,180,90," + (0.6 * a) + ")"; g.shadowBlur = Math.round(px * 0.45);
+      g.fillText(txt, x, y);
+      g.globalAlpha = 1;
+      x += g.measureText(txt).width;
+    }
+    g.shadowBlur = 0; g.shadowColor = "transparent";
+  }
   // The last CREDIT_FADE seconds ramp the whole layer down to nothing rather than
   // cutting out.
   function creditAlpha() {
     return creditLeft >= CREDIT_FADE ? 1 : Math.max(0, creditLeft / CREDIT_FADE);
+  }
+  function titleAlpha() {
+    return titleLeft >= TITLE_FADE ? 1 : Math.max(0, titleLeft / TITLE_FADE);
+  }
+  function sceneTitleEnabled() {
+    // Its own key, like the credits': a per-browser preference, never part of a scene blob.
+    try { const v = localStorage.getItem(TITLE_KEY); return v === null ? CONFIG.credits.titleOn : v !== "off"; }
+    catch (e) { return CONFIG.credits.titleOn; }
+  }
+  // Arm the title. Called on every scene change (applyPreset → sceneTitleFor), so it must be
+  // cheap and must simply RESTART when it is already up — switching twice quickly shows the
+  // second name, not a queue of them. It does not wait for the credits here; frame() holds
+  // the countdown instead, which is what makes "after the credits" free.
+  function showSceneTitle(name, author) {
+    name = (name || "").trim();
+    if (!sceneTitleEnabled() || !name) { titleLeft = 0; return; }
+    titleName = name;
+    titleAuthor = (author || "").trim();
+    titleLeft = TITLE_HOLD + TITLE_FADE;
   }
   function creditsEnabled() {
     // Per-browser preference in its own key; the DEFAULT (no key stored yet) is CONFIG.credits.on.

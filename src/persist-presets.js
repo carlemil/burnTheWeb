@@ -86,6 +86,24 @@
     const n = el("cloud-name");
     return (n && (n.value || "").trim()) || "My scenes";
   }
+  // Arm the on-screen scene title for preset `i`: its name, and the account that made it.
+  //
+  // The author is `collection` — the published profile a scene came from, stamped on by the
+  // gallery install. Absent means it is one of YOURS, so it falls back to your cloud profile
+  // name; with no profile there is no account to name and the title shows the scene name
+  // alone. Deliberately NOT myCollectionLabel(), whose "My scenes" fallback is a list heading
+  // and would read as an author here.
+  //
+  // Declared here rather than inline in applyPreset ON PURPOSE: presetprobe slices
+  // `function applyPreset(` … `function createPreset(` and greps that body for `p.<field>`
+  // reads, asserting each is a field snapshotScene captures. `name` and `collection` are not
+  // (a preset's label and its provenance are not what it renders), so reading them in there
+  // would go red — correctly. Taking the INDEX keeps applyPreset's body clean.
+  function sceneTitleFor(i) {
+    const p = presets[i]; if (!p) return;
+    const n = el("cloud-name");
+    showSceneTitle(p.name, collectionOf(p) || (n && (n.value || "").trim()) || "");
+  }
   // Groups in a stable order: yours always first (and always present, even while empty, so
   // there is somewhere obvious for New to land), then each collection by first appearance.
   function presetGroups() {
@@ -371,6 +389,7 @@
     curPreset = i; presetSel.value = String(i);
     buildPresetList();                 // move the highlight — covers the auto-cycle too,
     applyingPreset = false;            // which sets the value without firing `change`
+    sceneTitleFor(i);                  // name the scene on screen (queues behind the credits)
     persist();
   }
   function createPreset() {           // save the current scene as a new preset

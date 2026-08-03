@@ -148,6 +148,33 @@ camera, display zoom and accumulation smear, plus the panel's real colours.
 - `CREDITS` drives **both** the overlay and the panel's Credits box (`buildCreditList()`).
 - The on/off preference lives in its own `localStorage` key, **not** in the scene blob.
 
+**The scene title is the credits' second tenant.** On every scene change it names what you
+switched to — `"<scene name> — <account>"`, one centred line in the credits' own typography
+(bold white name, dim dash, handle-amber author, same dark-halo-then-warm-glow double draw).
+`showSceneTitle(name, author)` arms `titleLeft` from `CONFIG.credits.titleHold`/`titleFade`
+(2.5s + 1.5s — shorter than the credits because it fires on every auto-cycle tick too), and
+`creditDraw` picks a tenant: credits while `creditLeft > 0`, else the title. `drawCredits` is
+the old body, extracted.
+- **"After the credits" is enforced by the TICK, not the draw.** `frame()` decrements
+  `titleLeft` only in the `else` of `creditLeft > 0`, so a scene applied during the opening
+  credits (the first visit applies one) starts its title when they finish instead of being
+  drawn over or silently expiring underneath them. Re-arming just restarts the countdown, so
+  switching twice quickly shows the second name rather than queueing.
+- **`applyPreset` must not read `p.name`/`p.collection`.** `presetprobe` slices
+  `function applyPreset(` … `function createPreset(` and asserts every `p.<field>` in there is
+  one `snapshotScene` captures — and neither is (a preset's label and provenance are not what
+  it renders). So `applyPreset` calls **`sceneTitleFor(i)`**, declared up beside `collectionOf`,
+  which does the reads.
+- The author is `collection` — the published profile a gallery install stamped on. Absent ⇒
+  yours ⇒ the `#cloud-name` value, and with no profile the title is the name alone (the dash is
+  dropped with it). Deliberately **not** `myCollectionLabel()`, whose `"My scenes"` fallback is
+  a list heading and would read as an author.
+- Its own `localStorage` key + `#sceneTitleOn` checkbox, beside the credits' — same per-browser
+  class, never in a scene blob. Two prefs because turning the opening credits off is about the
+  first five seconds, and this fires forever after.
+- **`createPreset` does not arm it**: saving the scene you are already on changes its label, not
+  the picture. (Cost one red probe assertion before the reasoning was written down.)
+
 ### Preset transitions
 `TRANSITIONS` is a third registry beside `EFFECTS` and `FILTERS`. It exists because the free
 dissolve from `setEffect` only works when something **retains** the buffer; with no feedback
@@ -1028,6 +1055,19 @@ alpha > 8) rather than the composited frame. Assert the layer properties too (ow
 `pointer-events: none`, z-index above `#fire` but under the menu). **The claim to nail is that
 credits no longer touch heat**: zero `fire`, put credits up, call `creditDraw()`, assert the buffer
 still sums to zero. Do *not* diff heat with credits up vs down — `simT` advances between runs.
+
+**Testing the credits/scene-title overlay, three traps** (each produced a red assertion on
+correct code):
+- **Contiguous inked-row runs are NOT a stable identity for the credits.** They read as 2 bands
+  at full alpha (each role touches its name) and 4 mid-fade, when the faint joining rows drop
+  under the threshold. Use the ink **bounding-box height** to tell the credits block from a
+  one-line title; a `bands === 1` check is only safe for the title.
+- **`frame()` clamps `dt` to 0.25s**, so pumping a stubbed rAF at 500ms steps accounts for half
+  the rendered time it looks like and the credits never expire. Step **under** 250ms.
+- **Compare pixel COUNTS only between identical strings** — across two different names it
+  measures text length, not alpha. To prove a re-arm restores full alpha, re-select the *same*
+  scene. To prove the name is really drawn, compare bounding-box **width** across names of very
+  different lengths (`prompt` is stubbable, so the probe can author them).
 
 **Testing audio needs `AudioContext` stubbed**, not just `getUserMedia` — a real one hangs headless
 (`await audio.ctx.resume()` never settles with no audio device). The detector's contract is small

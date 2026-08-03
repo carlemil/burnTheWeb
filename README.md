@@ -161,12 +161,13 @@ wired to the music without opening a single box.
 
 **☰ opens the application menu** — a fold-out, multi-level menu for everything that is
 *not* part of a scene. Items with a **▸** open a submenu beside them, which can open
-another: **System ▸ Audio & resolution** gets you the Capture/Mic buttons and the render
-resolution; **Cloud profile ▸** the whole sign-in, save, publish and gallery block;
-**Credits ▸** the credit list and whether they play on startup. At the top sit
-**Controls panel**, **Fullscreen** and **Hide all UI** (the same things **M**, **F** and
-**H** do), and at the bottom a link to the help panel. Click away or press **Esc** to
-close it.
+another: **System ▸ Audio** gets you the Capture/Mic buttons and the level meter, and
+**System ▸ Resolution** the render resolution; **Cloud profile ▸** the whole sign-in, save
+and publish block; **Credits ▸** the credit list and the two overlay switches.
+**Public scenes** sits at the root, because browsing what other people have published needs
+no account. At the top sit **Controls panel**, **Fullscreen** and **Hide all UI** (the same
+things **M**, **F** and **H** do), and at the bottom a link to the help panel. Click away or
+press **Esc** to close it.
 
 **The controls panel is everything that edits the scene** — five foldable sections, click
 a heading's chevron to collapse one: **Scene** (which scene, how long each is held and how
@@ -511,8 +512,8 @@ Stored against your account: the profile name you choose and your scenes. Nothin
 not your email, name or picture.
 
 **Publish to gallery** is opt-in and off by default. Tick it and your profile is listed
-publicly, with your chosen name and how many scenes it holds. **Browse published
-scenes…** opens that list — and it needs no account, so anyone can look. **Load scenes**
+publicly, with your chosen name and how many scenes it holds. **Public scenes** on the ☰
+menu opens that list — and it needs no account, so anyone can look. **Load scenes**
 adds someone's scenes to your list as **their own collection**, named after them, so your
 library is never touched and nothing of yours can be overwritten. Load the same person
 again and their set is simply refreshed.
@@ -550,6 +551,14 @@ That menu box also has a checkbox to stop them appearing on future visits
 (remembered in this browser only, and kept out of scenes and share links
 since it's a per-browser preference). `?credits=<seconds>` overrides the **hold**
 if you want a longer look; the three-second fade is always added on top.
+
+**The scene title** uses the same layer and the same lettering. Every time you switch
+scene — by hand, or on the auto-cycle — it names what you just landed on: the scene's
+name, then a dash, then the account that made it. Scenes loaded from someone's published
+profile are credited to them; your own show your cloud profile name, or just the scene
+name if you haven't got one. It holds for two and a half seconds and fades over one and a
+half, and on startup it waits politely for the credits to finish rather than talking over
+them. Its own checkbox, beside the credits' one, turns it off — also per-browser.
 
 ## Running locally
 

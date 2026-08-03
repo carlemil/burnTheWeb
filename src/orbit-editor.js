@@ -221,6 +221,14 @@
   creditsChk.addEventListener("change", () => {
     try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
   });
+  // Scene title — same deal, its own key (see sceneTitleEnabled).
+  const titleChk = el("sceneTitleOn");
+  if (titleChk) {
+    titleChk.checked = sceneTitleEnabled();
+    titleChk.addEventListener("change", () => {
+      try { localStorage.setItem(TITLE_KEY, titleChk.checked ? "on" : "off"); } catch (e) {}
+    });
+  }
 
   el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
   el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });

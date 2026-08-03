@@ -1197,6 +1197,10 @@
   <div id="creditbox" hidden>
   <div id="creditlist"></div>
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
+  <!-- The scene title uses the credits' canvas and typography, so its switch lives beside
+       theirs. Separate preference, separate key: turning the opening credits off is about
+       the first five seconds, and this fires on every scene change. -->
+  <label class="check" title="Name each scene on screen as you switch to it, after the credits"><input type="checkbox" id="sceneTitleOn" checked> Show scene title on change</label>
   </div>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>
@@ -1399,8 +1403,12 @@
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
     scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
 
-    // --- startup credits overlay ---
-    credits: { hold: 5, fade: 3, on: true },   // seconds at full / fade seconds / shown on first visit
+    // --- startup credits overlay, and the per-scene title that follows it ---
+    // The scene title rides the SAME canvas and the same rendered-time countdown, so it is
+    // configured here beside them. Shorter than the credits on purpose: it fires on every
+    // scene change, including each auto-cycle tick, so it has to read and get out of the way.
+    credits: { hold: 5, fade: 3, on: true,          // seconds at full / fade seconds / shown on first visit
+               titleHold: 2.5, titleFade: 1.5, titleOn: true },   // ...same three for the scene title
 
     // --- palette ---
     paletteMorphMs: 8000, // fallback auto-morph duration; live value comes from the slider (MORPH_MS)
@@ -5156,6 +5164,11 @@
 
     postTime += dt;                         // clock for the self-animating post/screen passes
     if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
+    // The scene title queues BEHIND the credits and shares their canvas: holding its
+    // countdown here is the whole mechanism, so a scene applied during the opening credits
+    // (the first visit applies one) starts its title the moment they finish rather than
+    // being drawn over or silently expiring underneath them.
+    else if (titleLeft > 0) titleLeft -= dt;
     transStep(dt);                          // ...and so does the preset transition
 
     // WHICH LAYER THE RENDER FOLLOWS. `activeIds`, the palette globals and `zoom` are the
@@ -7231,7 +7244,14 @@
   const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
   const CREDIT_KEY = "burnTheWeb.credits.v1";
+  // The scene title shares this canvas, this countdown style and this drawing treatment —
+  // it IS the credits' typography, saying the name of the scene you just switched to and
+  // who made it. Its own hold/fade because it fires on every scene change (see CONFIG).
+  const TITLE_HOLD = CONFIG.credits.titleHold;
+  const TITLE_FADE = CONFIG.credits.titleFade;
+  const TITLE_KEY = "burnTheWeb.scenetitle.v1";
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
+  let titleLeft = 0, titleName = "", titleAuthor = "";
   // The credits render on their OWN canvas above the effect, not stamped into the heat
   // grid. They used to be stamped — which gave them the palette and let them burn away
   // with the fire, but also fed them through the post-filter chain, so Pixelate blocked
@@ -7248,20 +7268,28 @@
     if (!creditCv) { creditCv = el("creditcv"); creditCtx = creditCv.getContext("2d"); }
     return creditCtx;
   }
-  // Paint the credits at the current fade. Called from frame() AFTER the render, so it
+  // Paint the overlay at the current fade. Called from frame() AFTER the render, so it
   // lands over the finished image — filters included.
+  //
+  // ONE canvas, two tenants, and they never overlap: the credits own it until they expire,
+  // then the scene title does. That ordering is not a rule enforced here — frame() simply
+  // does not decrement titleLeft while credits are up (see the tick), so a scene applied
+  // during the credits waits its turn instead of fighting them.
   function creditDraw() {
     const g = creditLayer();
     if (!g) return;
     const w = window.innerWidth, h = window.innerHeight;
     if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
     g.clearRect(0, 0, w, h);
-    if (creditLeft <= 0) {                 // done: clear once, then get out of the way
+    if (creditLeft <= 0 && titleLeft <= 0) {   // done: clear once, then get out of the way
       if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
       return;
     }
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
-    const a = creditAlpha();
+    if (creditLeft > 0) drawCredits(g, w, h, creditAlpha());
+    else drawSceneTitle(g, w, h, titleAlpha());
+  }
+  function drawCredits(g, w, h, a) {
     g.textAlign = "left"; g.textBaseline = "middle";
     const MONO = "px ui-monospace, Consolas, monospace";
     const roleSize = q => Math.max(9, Math.round(q * 0.8));   // panel: 10px role vs 11px name
@@ -7320,10 +7348,67 @@
       y += nameLh / 2 + gap + roleLh / 2;
     }
   }
+  // The scene title: "<scene name> — <who made it>", one centred line in the credits'
+  // own typography — bold white for the name, the credits' dim grey for the dash, and the
+  // handle amber for the author, so it reads as the same piece of chrome rather than a
+  // caption bolted on. Two draws again (dark halo, then warm glow) for legibility over a
+  // bright frame.
+  function drawSceneTitle(g, w, h, a) {
+    g.textAlign = "left"; g.textBaseline = "middle";
+    const MONO = "px ui-monospace, Consolas, monospace";
+    // The author half is dropped entirely when there is none — a trailing dash pointing at
+    // nothing reads as a bug, and an unclaimed scene is the common case.
+    const segs = [[titleName, CR_COL.name + a + ")", true]];
+    if (titleAuthor) {
+      segs.push([" — ", CR_COL.aka + (CR_AKA * a) + ")", false]);
+      segs.push([titleAuthor, CR_COL.handle, true]);
+    }
+    const lineW = px => segs.reduce((acc, sg) => {
+      g.font = (sg[2] ? "bold " : "") + px + MONO;
+      return acc + g.measureText(sg[0]).width;
+    }, 0);
+    // Same shrink-to-fit as the credits: start from a size proportional to the viewport and
+    // step down until the whole line clears the margins. A scene name is free text, so this
+    // is the only thing standing between a long one and the edge of the screen.
+    let px = Math.max(11, Math.floor(w / 26));
+    for (let i = 0; i < 80 && px > 10; i++) { if (lineW(px) <= w * 0.88) break; px--; }
+    const y = h * 0.5;
+    let x = (w - lineW(px)) / 2;              // lineW sets g.font as it measures — reset in the loop
+    for (const [txt, col, bold] of segs) {
+      g.font = (bold ? "bold " : "") + px + MONO;
+      g.shadowColor = "rgba(0,0,0," + (0.85 * a) + ")"; g.shadowBlur = Math.round(px * 0.7);
+      g.fillStyle = col; g.globalAlpha = bold ? a : 1;   // the bold runs carry their alpha here
+      g.fillText(txt, x, y);
+      g.shadowColor = "rgba(255,180,90," + (0.6 * a) + ")"; g.shadowBlur = Math.round(px * 0.45);
+      g.fillText(txt, x, y);
+      g.globalAlpha = 1;
+      x += g.measureText(txt).width;
+    }
+    g.shadowBlur = 0; g.shadowColor = "transparent";
+  }
   // The last CREDIT_FADE seconds ramp the whole layer down to nothing rather than
   // cutting out.
   function creditAlpha() {
     return creditLeft >= CREDIT_FADE ? 1 : Math.max(0, creditLeft / CREDIT_FADE);
+  }
+  function titleAlpha() {
+    return titleLeft >= TITLE_FADE ? 1 : Math.max(0, titleLeft / TITLE_FADE);
+  }
+  function sceneTitleEnabled() {
+    // Its own key, like the credits': a per-browser preference, never part of a scene blob.
+    try { const v = localStorage.getItem(TITLE_KEY); return v === null ? CONFIG.credits.titleOn : v !== "off"; }
+    catch (e) { return CONFIG.credits.titleOn; }
+  }
+  // Arm the title. Called on every scene change (applyPreset → sceneTitleFor), so it must be
+  // cheap and must simply RESTART when it is already up — switching twice quickly shows the
+  // second name, not a queue of them. It does not wait for the credits here; frame() holds
+  // the countdown instead, which is what makes "after the credits" free.
+  function showSceneTitle(name, author) {
+    name = (name || "").trim();
+    if (!sceneTitleEnabled() || !name) { titleLeft = 0; return; }
+    titleName = name;
+    titleAuthor = (author || "").trim();
+    titleLeft = TITLE_HOLD + TITLE_FADE;
   }
   function creditsEnabled() {
     // Per-browser preference in its own key; the DEFAULT (no key stored yet) is CONFIG.credits.on.
@@ -9418,6 +9503,24 @@
     const n = el("cloud-name");
     return (n && (n.value || "").trim()) || "My scenes";
   }
+  // Arm the on-screen scene title for preset `i`: its name, and the account that made it.
+  //
+  // The author is `collection` — the published profile a scene came from, stamped on by the
+  // gallery install. Absent means it is one of YOURS, so it falls back to your cloud profile
+  // name; with no profile there is no account to name and the title shows the scene name
+  // alone. Deliberately NOT myCollectionLabel(), whose "My scenes" fallback is a list heading
+  // and would read as an author here.
+  //
+  // Declared here rather than inline in applyPreset ON PURPOSE: presetprobe slices
+  // `function applyPreset(` … `function createPreset(` and greps that body for `p.<field>`
+  // reads, asserting each is a field snapshotScene captures. `name` and `collection` are not
+  // (a preset's label and its provenance are not what it renders), so reading them in there
+  // would go red — correctly. Taking the INDEX keeps applyPreset's body clean.
+  function sceneTitleFor(i) {
+    const p = presets[i]; if (!p) return;
+    const n = el("cloud-name");
+    showSceneTitle(p.name, collectionOf(p) || (n && (n.value || "").trim()) || "");
+  }
   // Groups in a stable order: yours always first (and always present, even while empty, so
   // there is somewhere obvious for New to land), then each collection by first appearance.
   function presetGroups() {
@@ -9703,6 +9806,7 @@
     curPreset = i; presetSel.value = String(i);
     buildPresetList();                 // move the highlight — covers the auto-cycle too,
     applyingPreset = false;            // which sets the value without firing `change`
+    sceneTitleFor(i);                  // name the scene on screen (queues behind the credits)
     persist();
   }
   function createPreset() {           // save the current scene as a new preset
@@ -11030,6 +11134,14 @@
   creditsChk.addEventListener("change", () => {
     try { localStorage.setItem(CREDIT_KEY, creditsChk.checked ? "on" : "off"); } catch (e) {}
   });
+  // Scene title — same deal, its own key (see sceneTitleEnabled).
+  const titleChk = el("sceneTitleOn");
+  if (titleChk) {
+    titleChk.checked = sceneTitleEnabled();
+    titleChk.addEventListener("change", () => {
+      try { localStorage.setItem(TITLE_KEY, titleChk.checked ? "on" : "off"); } catch (e) {}
+    });
+  }
 
   el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
   el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });

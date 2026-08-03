@@ -102,6 +102,11 @@
 
     postTime += dt;                         // clock for the self-animating post/screen passes
     if (creditLeft > 0) creditLeft -= dt;   // credits run on rendered time (see startCredits)
+    // The scene title queues BEHIND the credits and shares their canvas: holding its
+    // countdown here is the whole mechanism, so a scene applied during the opening credits
+    // (the first visit applies one) starts its title the moment they finish rather than
+    // being drawn over or silently expiring underneath them.
+    else if (titleLeft > 0) titleLeft -= dt;
     transStep(dt);                          // ...and so does the preset transition
 
     // WHICH LAYER THE RENDER FOLLOWS. `activeIds`, the palette globals and `zoom` are the

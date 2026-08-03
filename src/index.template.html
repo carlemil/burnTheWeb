@@ -234,6 +234,10 @@
   <div id="creditbox" hidden>
   <div id="creditlist"></div>
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
+  <!-- The scene title uses the credits' canvas and typography, so its switch lives beside
+       theirs. Separate preference, separate key: turning the opening credits off is about
+       the first five seconds, and this fires on every scene change. -->
+  <label class="check" title="Name each scene on screen as you switch to it, after the credits"><input type="checkbox" id="sceneTitleOn" checked> Show scene title on change</label>
   </div>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>

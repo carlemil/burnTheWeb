@@ -30,8 +30,12 @@
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
     scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
 
-    // --- startup credits overlay ---
-    credits: { hold: 5, fade: 3, on: true },   // seconds at full / fade seconds / shown on first visit
+    // --- startup credits overlay, and the per-scene title that follows it ---
+    // The scene title rides the SAME canvas and the same rendered-time countdown, so it is
+    // configured here beside them. Shorter than the credits on purpose: it fires on every
+    // scene change, including each auto-cycle tick, so it has to read and get out of the way.
+    credits: { hold: 5, fade: 3, on: true,          // seconds at full / fade seconds / shown on first visit
+               titleHold: 2.5, titleFade: 1.5, titleOn: true },   // ...same three for the scene title
 
     // --- palette ---
     paletteMorphMs: 8000, // fallback auto-morph duration; live value comes from the slider (MORPH_MS)
