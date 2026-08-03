@@ -331,6 +331,13 @@ the way a video mixer's dissolve does.
 A scene can stack **up to four effects at once**, composited into one picture. The
 **Layers** box holds one row per layer, and they combine in list order.
 
+**Each layer is one complete box.** Click a layer and it opens out in place: its header
+across the top — which effect it runs, its on/off dot, its strength slider, its blend mode —
+and directly underneath, everything that shapes it. That effect's own sliders first, then its
+filter chain, then its palette. So a layer is one object you scroll through rather than a row
+here and a separate settings box somewhere else. The layers you are not editing stay as
+single compact rows, so the list still reads as a stack.
+
 Press anywhere on a row to select it — the sliders in **Layer effect & filters** below
 then edit *that* layer, so each one keeps its own settings, its own drifting sliders and
 its own beat reactions. **+ Add layer** adds another (it starts as a copy of the selected

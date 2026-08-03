@@ -663,6 +663,27 @@
      and a longer, more usable gain slider than the old fixed 38px. */
   #panel .lyr-ctl { display: flex; align-items: center; gap: 7px; padding-top: 1px; }
   #panel .lyr-ctl .sp { flex: 1; }
+  /* ---- the selected layer's controls, INSIDE its row -------------------------------
+     #lyrctl (effect sliders → filters → palette) is moved into the selected row by
+     syncStackUI, so a layer is one complete object: what it draws, what filters it, how it
+     is coloured. It spans both grid columns and sits under the header it belongs to. */
+  #panel .lyr > #lyrctl {
+    grid-column: 1 / -1;
+    margin: 6px -7px -6px;                    /* out to the row's padding edges */
+    padding: 8px 8px 7px;
+    border-top: 1px solid rgba(255, 140, 40, 0.28);
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 0 0 6px 6px;
+    cursor: default;                          /* the ROW is clickable; its contents are not */
+  }
+  /* The selected row is a container now, not a line — give it room and let it stand out
+     from the compact rows around it. */
+  #panel .lyr.sel { padding-bottom: 0; }
+  #panel .lyr > #lyrctl > label:first-child,
+  #panel .lyr > #lyrctl > .ctl-grp:first-child { margin-top: 0; }
+  /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in
+     the DOM as #lyrctl's home — see parkLayerCtl. */
+  #panel #fxbox.hidden { display: none; }
   #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
   #panel .lyr b {
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);

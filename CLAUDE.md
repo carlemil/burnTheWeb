@@ -492,6 +492,26 @@ which lives on `#panel` rather than `body`.
 (chooser, auto-cycle, TTL, transition), *Scene filters*, *Beat tuning*, *Layers*, and *Layer effect
 & filters* (`#effect`, `#fxctl`, Orbit editor, Reset, per-layer filters, palette). `buildControls`
 routes by `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
+
+**The last box is normally EMPTY and hidden: its body is moved into the selected layer's row.**
+`#lyrctl` wraps everything after that box's summary, and `syncStackUI` appends it to the selected
+`.lyr` — so a layer reads as one complete object: header (effect chooser, mute, gain, ✕, blend),
+then its effect's sliders, then its filters, then its palette. These are singleton controls (the
+DOM is the store for the selected layer), so the block is **moved**, never duplicated — the same
+adopt trick the ☰ menubar uses on `#sysbox`.
+- **`parkLayerCtl()` must run BEFORE `host.textContent = ""`, and its absence is destructive.**
+  `syncStackUI` wipes `#stacklist` on every call — selecting a layer, muting, a gain drag, a
+  blend pick, add/remove — and anything adopted into a row goes with it. That would not reset
+  the panel, it would **delete every slider, filter and palette control from the document**, and
+  `el()` is `getElementById`, so nothing would find them again. Identical to the menubar's
+  `returnAdopted`.
+- Safe against re-entry because **`selectStack` early-returns when the row is already selected**,
+  so interacting with a control inside the selected row cannot rebuild the rows underneath it.
+- `#fxbox` keeps its `.hidden` toggled from whether `#lyrctl` is currently parked there, so the
+  heading never shows over nothing. It stays in the DOM as the home.
+- Consequence worth knowing: the unselected rows sit *below* the selected layer's whole control
+  block, so reaching layer 3 means scrolling past layer 1's sliders. That is inherent to the
+  requested shape (one complete box per layer), not an oversight.
 - **`#effect` is hidden in this box, not deleted** — every layer row has its own chooser, but the
   `<select>` remains the effect **value store** (`setEffect` writes `.value`, `applyBlob` validates
   against its options, its `change` is what everything dispatches through). Same arrangement

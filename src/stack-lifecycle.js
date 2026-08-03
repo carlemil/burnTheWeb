@@ -93,9 +93,29 @@
   // these are per item — so they are plain DOM whose change bubbles to the delegated
   // onEdit for persist + autosave, the same route the palette <select> takes. They are
   // also deliberately not animatable or beat-armable.
+  // The selected layer's controls (#lyrctl — effect sliders, filters, palette) live INSIDE
+  // that layer's row, so a layer reads as one complete unit: header, then what it draws,
+  // then what filters it, then how it is coloured. There is only ever one copy of those
+  // controls (the DOM is the store for the selected layer), so the block is MOVED rather
+  // than rebuilt, exactly like the ☰ menubar adopting #sysbox.
+  //
+  // parkLayerCtl MUST run before the rows are cleared. syncStackUI wipes #stacklist on every
+  // call — a selection change, a mute, a gain drag — and anything adopted into a row goes
+  // with it. That would not "reset" the panel, it would DELETE every slider, filter and
+  // palette control from the document, and nothing that looks them up by id would work
+  // again. Same failure the menubar's returnAdopted exists to prevent.
+  function parkLayerCtl() {
+    const ctl = el("lyrctl"), home = el("fxbox");
+    if (ctl && home && ctl.parentNode !== home) home.appendChild(ctl);
+  }
+  function adoptLayerCtl(row) {
+    const ctl = el("lyrctl");
+    if (ctl && row) row.appendChild(ctl);
+  }
   function syncStackUI() {
     const host = el("stacklist");
     if (!host) return;
+    parkLayerCtl();                 // ...before the wipe below, or the controls go with it
     host.textContent = "";
     stack.forEach((L, j) => {
       const row = document.createElement("div");
@@ -275,9 +295,17 @@
       row.appendChild(blendRow);
 
       host.appendChild(row);
+      // The selected layer's row carries the controls, so the header you just built and the
+      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
+      // the row's own markup; everything below is #lyrctl, moved in.
+      if (j === stackSel) adoptLayerCtl(row);
     });
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
+    // The old box is empty now — hide the chrome rather than showing a stray heading over
+    // nothing. Kept in the DOM: it is #lyrctl's home (see parkLayerCtl).
+    const fxbox = el("fxbox");
+    if (fxbox) fxbox.classList.toggle("hidden", !!el("lyrctl") && el("lyrctl").parentNode !== fxbox);
   }
 
   // Per-effect beat-toggle state, parallel to `states`. beatStates[effect][id] =

@@ -205,11 +205,18 @@
   <button id="addlayer" type="button" title="Add another effect on top of this one (up to 4)">+ Add layer</button>
   </details>
 
-  <!-- Box — Layer effect & filters: pick the selected layer's visual, its sliders, its
-       per-layer filters, and its palette. Everything here edits the SELECTED layer
-       (hence the singular "effect"); whole-scene FX live in the Scene filters box above. -->
-  <details class="box" open>
+  <!-- Box — Layer effect & filters. THIS BOX IS NORMALLY EMPTY AND HIDDEN: its body
+       (#lyrctl) is MOVED into the selected layer's row in the Layers box above, so each
+       layer reads as one complete unit — header, then its effect's sliders, then its
+       filters, then its palette. Same adopt trick the ☰ menubar uses on #sysbox, and for
+       the same reason: these are singleton controls (the DOM is the store for the selected
+       layer), so there is exactly one copy and it moves rather than being rebuilt.
+       The box stays in the markup because it is #lyrctl's HOME — syncStackUI moves the
+       block back here before it rebuilds the rows, or rebuilding would delete every
+       control in the app. -->
+  <details class="box" id="fxbox" open>
   <summary class="box-t">Layer effect &amp; filters</summary>
+  <div id="lyrctl">
   <!-- The Effect chooser is HIDDEN here, not deleted: every layer row in the Layers box now
        carries its own, so a second visible copy of the same control was redundant. The
        element stays because it is the effect VALUE STORE — setEffect writes effectSel.value,
@@ -239,6 +246,7 @@
   </label>
   <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  </div><!-- /#lyrctl -->
   </details>
 
   <!-- Credits. Generated from CREDITS in the script — the same array the startup burn-in
