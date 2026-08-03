@@ -14,6 +14,32 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.11.0] — 2026-08-03
+
+### Changed
+
+- **Every filter belongs to a layer now.** Bloom, Barrel distortion, Scanlines, Vignette and
+  Film grain used to act once on the finished picture; they are per-layer passes like all the
+  others, so the **Scene filters** box is empty and every filter lives in the layer you put it
+  on.
+
+  Bloom is the interesting one — it was never really a filter, it *was* the glow the whole
+  picture got, which is why it could not be per-layer before. Now each layer glows on its own
+  before the layers blend, so a bright layer no longer smears the ones above it, and its place
+  in the chain matters: a Vignette after Bloom darkens the glow, a Vignette before it does not.
+
+  Two things to expect on a stack. If two layers both carry Scanlines the two rasters can
+  interfere — put it on one layer for a clean result. And a scanline count is now lines across
+  the render buffer, so at lower resolutions the same number gives a coarser raster.
+
+  Scenes saved before this keep their look: whatever they had switched on whole-scene is folded
+  onto their layers when they load.
+
+### Added
+
+- **A chevron folds the open layer's settings away** without deselecting it — with the controls
+  inline, the other layers sit below the whole block, and this brings them back into view.
+
 ## [1.10.0] — 2026-08-03
 
 ### Changed
