@@ -381,15 +381,17 @@ running. The menu lists only the ones you've **added**, in the order they run: p
 handle to move it up or down the chain, and press **✕** to drop it. Each row folds open
 to show its own settings, and the whole chain — order included — is saved into the scene.
 
-One thing the list will do that looks odd until you know why: **heat filters always sit
-above image filters, and a drag that would cross that line stops at it.** A dashed
-divider marks where the two runs meet, and a row that won't cross tells you so. That's
-the pipeline, not the menu being stubborn — a heat filter changes what the *next* frame
-starts from, before the effect has drawn, while an image filter repaints the picture
-afterwards. There is no moment at which Mirror could run before Swirl, so rather than
-let the list claim an order it can't honour, it shows you where the drop really landed.
-Reordering within a run does exactly what you'd expect: put **Mirror** above **Twist**
-and you mirror the untwisted picture, swap them and you twist the mirrored one.
+There is one line in the list worth understanding: **the effect draws here.** Filters above
+it shape the *heat* before the effect has drawn into it; filters below repaint the finished
+*picture*. Dragging a filter across that line doesn't just change when it runs, it changes
+what it does — and the list says so when you do it.
+
+That makes ordering genuinely expressive. Put **Mirror** below **Swirl** and the swirl
+churns the heat while the mirror lands last, so the frame comes out perfectly symmetric.
+Drag Mirror *above* Swirl and it mirrors the heat first, which the swirl then twists — the
+symmetry is gone. Same two filters, completely different picture. Trail filters (Fire, Fade,
+Echo, Swirl…) only make sense on the heat, so they stay above the line; everything else goes
+wherever you put it.
 
 They live in two places, which mirrors what they actually do: the first two
 groups below are **per layer** and sit in **Layer effect & filters**, while the last

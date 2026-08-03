@@ -300,28 +300,36 @@ the drag order, and every chain walks it via **`orderFilters(ids)`** — never `
 order, so the stored order survives it. Ids are still matched by name, so reordering `FILTERS`
 itself still cannot remap a saved scene, and a list stored before this (registry order) behaves
 exactly as it did.
-- **Stage outranks the user's order, and must.** A `feedback` filter mutates retained heat *before*
-  the effect draws, a `post` filter runs on the palette-mapped image *after*, a `screen` filter
-  after the composite — there is no pipeline position where Pixelate could precede Fire. So
-  `orderFilters` stage-partitions (stably, via `Array#sort`) and the MENU renders from that same
-  normalized order. That is what keeps "applied in the order shown" literally true: drag an image
-  filter above a heat one and it visibly lands at the boundary instead of pretending to move.
-- **That boundary MUST be drawn, not merely enforced** (`stageDivider`, `.filter-div`, plus
-  `flashStageBlock` on a clamped drop). Shipped without it once and it was immediately reported as
-  "reordering does nothing": the pair under test was **Swirl (feedback) and Mirror (post)**, which
-  can never swap, so the row slid back in a single undivided list with nothing to explain it.
-  Reordering was in fact working in both render paths. If someone reports this again, ask which
-  two filters — a cross-stage pair is the likely answer, and same-stage pairs (Twist+Mirror,
-  Swirl+Echo) are the ones to demo with.
+- **The chain is a SEQUENCE and is split, not sorted — `splitChain(ids)`.** The pipeline has one
+  fixed point (the effect drawing into the heat buffer). Everything at or above the **last
+  feedback filter** runs in the heat phase; everything below runs on the palette-mapped picture.
+  A `feedback` filter reads and writes retained heat with a keep factor, so it is only meaningful
+  in the heat phase — but a `post` filter is just a pass that samples a texture and draws a quad,
+  so it runs in **either**: dragged above a feedback filter it warps the heat (heat textures are
+  `R8`, the shader writes `.r` back), dragged below it repaints the image. `runHeatPass(f, tex)`
+  dispatches per filter — `glFeedback` if it has one, else `gl`.
+- **This replaced a stage sort, after the same complaint twice.** `orderFilters` used to
+  stage-partition, so **Swirl (feedback) + Mirror (post)** could never swap; the row snapped back
+  and it read as "reordering does nothing". Drawing the boundary and explaining the clamp was
+  answering the wrong question — the fix is that the position is now real. Measured on a static
+  single-layer scene: swapping that exact pair changes **48% of pixels** against a 6.6% noise
+  floor (`swirl→mirror` is mirror-symmetric because the mirror runs last on the finished picture;
+  `mirror→swirl` mirrors the heat and then swirls it, destroying the symmetry).
+- **The divider now marks where the EFFECT draws**, not a barrier — `stageDivider()` is emitted
+  once, after `splitChain(...).heat.length` rows, and `flashStageMove` says what a filter now
+  *does* when a drag moves it across. With no feedback filter in the chain the heat is cleared
+  every frame, so `splitChain` puts everything in the image phase and no divider is drawn.
 - **Both render paths must be checked**, and they are different code: the single-layer path runs
   `activeFilters()` off `activeIds`, while a stacked scene runs `renderStackColor` →
   `layerFeedbackChain`/`glLayerPostChain` off **`L.filters`**. `L.filters` stays current for the
   selected layer only because `applyFilters()` → `persist()` → `stackOut()` freezes it. The
   shipped `DEFAULT_SCENE` is a four-layer stack, so the multi-layer path is what a user hits first.
-- **Four sites must use it**, and each would be a silent bug otherwise: `activeFilters()`,
-  `layerFeedbackChain`, `glLayerPostChain`, and — the easiest to miss — **`mergeExtra`**, the gate
-  every loaded scene passes through, which re-sorted to registry order and so threw the chain away
-  on reload. `activeFilterIds()` is the write side (`saveExtra`, `captureLayerExtras`).
+- **Four sites must respect it**, and each would be a silent bug otherwise: the two chain builders
+  in each render path (`glBeginHeat` + `glPostChain` for a single layer, `layerFeedbackChain` +
+  `glLayerPostChain` for a stack) all go through `splitChain`, and — the easiest to miss —
+  **`mergeExtra`**, the gate every loaded scene passes through, which re-sorted to registry order
+  and so threw the chain away on reload. `activeFilterIds()` is the write side (`saveExtra`,
+  `captureLayerExtras`).
 - **`orderFilters` is a function declaration but `FILTER_STAGE_RANK` is a const it closes over**,
   so `buildFilterUI()` must be called **after** that block. Called before it, the const is in the
   TDZ, `renderFilterLists` throws, and the symptom is every filter showing at once — because

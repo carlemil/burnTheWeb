@@ -523,7 +523,10 @@
   // up back in the buffer it started in. Getting this backwards only misbehaves when two
   // feedback filters are ticked at once, so it is easy to ship broken.
   function glBeginHeat() {
-    const chain = activeFilters().filter(f => f.stage === "feedback" && f.glFeedback);
+    // The heat phase of the user's chain: every filter at or above the last feedback one,
+    // image filters included (splitChain). Not a stage filter — dragging Mirror above Swirl
+    // is meant to mirror the HEAT, and that is what makes the order visible.
+    const chain = splitChain(activeFilters().map(f => f.id)).heat;
     let src = curHeat, dst = 1 - curHeat;
     gl.disable(gl.BLEND);
     // No feedback filter ⇒ nothing carries over, so start from black. Clearing is
@@ -536,7 +539,7 @@
     }
     for (const f of chain) {
       bindFbo(glFbo.heat[dst], fw, fh);   // bind before sampling: src is never the target
-      f.glFeedback(glTex.heat[src]);
+      runHeatPass(f, glTex.heat[src]);
       src = dst; dst = 1 - dst;
     }
     pendingDst = src;             // FBO stays bound; the effect draws into it next
@@ -818,10 +821,10 @@
     // back to it made every not-yet-captured same-effect layer mirror the last one edited — the
     // "all layers share one filter set" bug (identical in shape to the seedPts one, see
     // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
-    // orderFilters, not FILTERS.filter: the stored list is the user's drag order (see the
-    // ORDER block in filters.js), and this chain must run in it.
+    // splitChain, not a stage filter: the heat phase is everything the user put at or above
+    // the last feedback filter, INCLUDING image filters they dragged up there (see splitChain).
     const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
-    return orderFilters(ids).filter(f => f.stage === "feedback" && f.glFeedback);
+    return splitChain(ids).heat;
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
   // wrote (the buffer left bound), so the caller can stamp/inject into it. Deliberately
@@ -837,7 +840,7 @@
     }
     for (const f of chain) {
       bindFbo(glFbo.heatL[slot][d], fw, fh);
-      f.glFeedback(glTex.heatL[slot][s]);
+      runHeatPass(f, glTex.heatL[slot][s]);   // feedback hook, or an image filter dragged up here
       s = d; d = 1 - d;
     }
     return s;
@@ -899,7 +902,7 @@
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
     const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
-    const chain = orderFilters(set).filter(f => f.stage === "post" && f.gl);   // the user's drag order
+    const chain = splitChain(set).image;    // only what the user placed BELOW the last feedback filter
     if (!chain.length) return src;
     let s = src, slot = 0;
     for (const f of chain) {
@@ -982,7 +985,7 @@
   // nominally identity pass can shift values by a LSB and show as a brightness change.
   function glPostChain(src0) {
     const start = src0 || glTex.native;
-    const chain = activeFilters().filter(f => f.stage === "post" && f.gl);
+    const chain = splitChain(activeFilters().map(f => f.id)).image;
     if (!chain.length) return start;
     let src = start, slot = 0;
     for (const f of chain) {

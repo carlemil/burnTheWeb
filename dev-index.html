@@ -3433,7 +3433,10 @@
   // up back in the buffer it started in. Getting this backwards only misbehaves when two
   // feedback filters are ticked at once, so it is easy to ship broken.
   function glBeginHeat() {
-    const chain = activeFilters().filter(f => f.stage === "feedback" && f.glFeedback);
+    // The heat phase of the user's chain: every filter at or above the last feedback one,
+    // image filters included (splitChain). Not a stage filter — dragging Mirror above Swirl
+    // is meant to mirror the HEAT, and that is what makes the order visible.
+    const chain = splitChain(activeFilters().map(f => f.id)).heat;
     let src = curHeat, dst = 1 - curHeat;
     gl.disable(gl.BLEND);
     // No feedback filter ⇒ nothing carries over, so start from black. Clearing is
@@ -3446,7 +3449,7 @@
     }
     for (const f of chain) {
       bindFbo(glFbo.heat[dst], fw, fh);   // bind before sampling: src is never the target
-      f.glFeedback(glTex.heat[src]);
+      runHeatPass(f, glTex.heat[src]);
       src = dst; dst = 1 - dst;
     }
     pendingDst = src;             // FBO stays bound; the effect draws into it next
@@ -3728,10 +3731,10 @@
     // back to it made every not-yet-captured same-effect layer mirror the last one edited — the
     // "all layers share one filter set" bug (identical in shape to the seedPts one, see
     // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
-    // orderFilters, not FILTERS.filter: the stored list is the user's drag order (see the
-    // ORDER block in filters.js), and this chain must run in it.
+    // splitChain, not a stage filter: the heat phase is everything the user put at or above
+    // the last feedback filter, INCLUDING image filters they dragged up there (see splitChain).
     const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
-    return orderFilters(ids).filter(f => f.stage === "feedback" && f.glFeedback);
+    return splitChain(ids).heat;
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
   // wrote (the buffer left bound), so the caller can stamp/inject into it. Deliberately
@@ -3747,7 +3750,7 @@
     }
     for (const f of chain) {
       bindFbo(glFbo.heatL[slot][d], fw, fh);
-      f.glFeedback(glTex.heatL[slot][s]);
+      runHeatPass(f, glTex.heatL[slot][s]);   // feedback hook, or an image filter dragged up here
       s = d; d = 1 - d;
     }
     return s;
@@ -3809,7 +3812,7 @@
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
     const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
-    const chain = orderFilters(set).filter(f => f.stage === "post" && f.gl);   // the user's drag order
+    const chain = splitChain(set).image;    // only what the user placed BELOW the last feedback filter
     if (!chain.length) return src;
     let s = src, slot = 0;
     for (const f of chain) {
@@ -3892,7 +3895,7 @@
   // nominally identity pass can shift values by a LSB and show as a brightness change.
   function glPostChain(src0) {
     const start = src0 || glTex.native;
-    const chain = activeFilters().filter(f => f.stage === "post" && f.gl);
+    const chain = splitChain(activeFilters().map(f => f.id)).image;
     if (!chain.length) return start;
     let src = start, slot = 0;
     for (const f of chain) {
@@ -6228,12 +6231,12 @@
   // each render and stamped with the pass id, so the sweep at the end of renderFilterLists can
   // drop the ones left over from the previous layout.
   let renderPass = "0";
-  const STAGE_LABEL = { feedback: "heat · before the effect draws", post: "image · after the effect draws" };
-  function stageDivider(stage) {
+  function stageDivider() {
     const d = document.createElement("div");
     d.className = "filter-div";
     d.dataset.live = renderPass;
-    d.textContent = STAGE_LABEL[stage] || stage;
+    d.textContent = "▲ shapes the heat   ·   the effect draws here   ·   ▼ repaints the picture";
+    d.title = "Filters above this line run on the heat before the effect draws; filters below run on the finished picture. Drag one across to change which it does.";
     return d;
   }
   function renderFilterLists() {
@@ -6244,23 +6247,18 @@
       const ids = listIds(L.key), added = new Set(ids);
       const cap = host.querySelector(".filter-grp");
       if (cap) host.appendChild(cap);                       // caption stays on top
-      // THE STAGE BOUNDARY IS DRAWN, not just enforced. Heat filters run before the effect
-      // draws and image filters after it, so a drag can only move a row within its own run —
-      // and in one undivided list that reads as "the drag did nothing" rather than as a rule.
-      // (Reported exactly that way: Swirl is heat, Mirror is image, so dragging one past the
-      // other snapped back with nothing to show for it.) One hairline with a two-word label
-      // is enough; it is far lighter than the two full captions this list used to carry.
-      let prevStage = null;
-      ids.forEach(id => {
+      // Rows go wherever you put them — the chain is a sequence, not two sorted groups. The
+      // one line that still means something is where the EFFECT DRAWS: everything above it
+      // reshapes the heat, everything below repaints the finished picture, and moving a row
+      // across it genuinely changes what that filter does. splitChain puts that line straight
+      // after the last feedback filter, so the marker is drawn there and nowhere else.
+      const cut = splitChain(ids).heat.length;
+      ids.forEach((id, i) => {
         const sec = filterSecs[id];
         if (!sec) return;
-        const st = FILTER_BY_ID[id].stage;
-        if (L.reorder && prevStage && st !== prevStage) host.appendChild(stageDivider(st));
-        prevStage = st;
+        if (L.reorder && cut > 0 && i === cut) host.appendChild(stageDivider());
         sec.style.display = "";
-        // "solo" greys the handle when there is nothing to reorder against — which now means
-        // nothing else IN THE SAME STAGE, since that is as far as a row can travel.
-        sec.classList.toggle("solo", ids.filter(o => FILTER_BY_ID[o].stage === st).length < 2);
+        sec.classList.toggle("solo", ids.length < 2);
         host.appendChild(sec);
       });
       // Stale dividers from the previous render, now that the runs have moved.
@@ -6341,11 +6339,13 @@
         const from = ids.indexOf(f.id);
         if (from < 0 || to === from) { renderFilterLists(); return; }
         ids.splice(to, 0, ids.splice(from, 1)[0]);
-        // Did the pipeline overrule the drop? orderFilters re-partitions by stage, so a row
-        // dragged past the boundary comes back to it. Say so, rather than letting the row
-        // slide back with no explanation — which is precisely what read as "reordering is
-        // broken" when the two filters under test were Swirl (heat) and Mirror (image).
-        if (orderFilters(ids).map(x => x.id).join() !== ids.join()) flashStageBlock(f);
+        // Nothing is overruled any more: every position in the list is a position the
+        // pipeline can actually run (see splitChain). The only thing worth saying is when a
+        // move changed WHICH SIDE of the effect a filter is on, because that is a change of
+        // meaning rather than of order.
+        const wasHeat = splitChain(listIds(filterListOf(f).key)).heat.some(x => x.id === f.id);
+        const nowHeat = splitChain(ids).heat.some(x => x.id === f.id);
+        if (wasHeat !== nowHeat) flashStageMove(f, nowHeat);
         if (key === "scene") { sceneOn = new Set(ids); }
         else {
           // Keep any id the list does not own (scene ids never live here, but a stale one
@@ -6362,10 +6362,10 @@
     });
     return grab;
   }
-  // A drop the pipeline cannot honour: pulse the row and put the reason under the caption for
-  // a few seconds. Not an alert and not a permanent line — you learn it once.
+  // A move that crossed the effect: say what the filter now does, since it is doing a
+  // different job rather than the same job in a different order. A few seconds, then gone.
   let stageBlockT = 0;
-  function flashStageBlock(f) {
+  function flashStageMove(f, nowHeat) {
     const host = el(FILTER_LISTS[0].hostId);
     if (!host) return;
     let note = host.querySelector(".filter-note");
@@ -6375,9 +6375,9 @@
       const cap = host.querySelector(".filter-grp");
       if (cap) cap.appendChild(note); else host.prepend(note);
     }
-    note.textContent = f.stage === "feedback"
-      ? f.name + " works on the heat, so it always runs before the image filters."
-      : f.name + " works on the finished picture, so it always runs after the heat filters.";
+    note.textContent = nowHeat
+      ? f.name + " now shapes the heat, before the effect draws into it."
+      : f.name + " now repaints the finished picture, after the effect has drawn.";
     note.classList.remove("on"); void note.offsetWidth; note.classList.add("on");
     clearTimeout(stageBlockT);
     stageBlockT = setTimeout(() => note.classList.remove("on"), 5200);
@@ -8125,9 +8125,40 @@
       const f = FILTER_BY_ID[id];
       if (f && !seen.has(id)) { seen.add(id); out.push(f); }
     }
-    // Array#sort has been stable since ES2019, so filters within one stage keep the
-    // user's order and only the stage boundary moves anything.
-    return out.sort((a, b) => FILTER_STAGE_RANK[a.stage] - FILTER_STAGE_RANK[b.stage]);
+    // NO stage sort for the per-layer chain — see splitChain. `screen` filters belong to the
+    // scene list, which is not reorderable, so they are pushed last purely for tidiness.
+    return out.sort((a, b) => (a.stage === "screen" ? 1 : 0) - (b.stage === "screen" ? 1 : 0));
+  }
+  // ---- WHERE EACH FILTER RUNS: split the chain, do not sort it ------------------------
+  // The chain is a sequence and it is honoured as one. The pipeline has exactly one fixed
+  // point — the effect draws its fresh output into the heat buffer — and everything the user
+  // puts ABOVE that runs on the heat, everything below runs on the palette-mapped picture.
+  //
+  // A `feedback` filter (Fire, Fade, Diffuse, Echo, Zoom feedback, Swirl) reads and writes
+  // retained heat with a keep factor; it is only meaningful in the heat phase, so the LAST
+  // feedback filter in the chain marks the boundary. A `post` filter is just a pass that
+  // samples a texture and draws a quad, so it runs happily in EITHER phase: placed above a
+  // feedback filter it warps the heat (heat textures are R8, the shader writes .r back);
+  // placed below, it repaints the finished image as before.
+  //
+  // This is what makes "Mirror above Swirl" a real, visible thing rather than a drag that
+  // snaps back — reported twice, and the previous answer (partition by stage, draw the
+  // boundary, explain the clamp) was solving the wrong problem. With no feedback filter at
+  // all the heat is cleared every frame, so there is nothing to warp and the whole chain runs
+  // in the image phase.
+  function splitChain(ids) {
+    const list = orderFilters(ids).filter(f => f.stage !== "screen");
+    let last = -1;
+    list.forEach((f, i) => { if (f.stage === "feedback") last = i; });
+    return {
+      heat: list.slice(0, last + 1).filter(f => f.glFeedback || f.gl),
+      image: list.slice(last + 1).filter(f => f.gl),
+    };
+  }
+  // Run one entry of a heat-phase chain: a feedback filter through its own hook, a post
+  // filter through the ordinary pass it already has. Both draw into the bound FBO.
+  function runHeatPass(f, srcTex) {
+    if (f.glFeedback) f.glFeedback(srcTex); else f.gl(srcTex);
   }
   // Which filters are on for the live effect, in the order they will be applied: the
   // selected layer's own ordered set, plus the scene-global ones (which are not per-layer

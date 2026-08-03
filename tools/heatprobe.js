@@ -33,13 +33,22 @@ const stubs = `
   function bindFbo(f) { bound = f.fbo; log.push("bind:" + f.fbo); }
   const gl = { BLEND: 1, COLOR_BUFFER_BIT: 2, disable() {}, clearColor() {},
                clear() { log.push("clear:" + bound); } };
-  // Each stub filter records (source texture -> currently bound FBO).
+  // Each stub filter records (source texture -> currently bound FBO). glBeginHeat now takes
+  // its chain from splitChain(activeFilters().map(id)) rather than filtering on stage, so
+  // both have to exist here — and splitChain is stubbed to return the whole list as the heat
+  // phase, which is what a chain of feedback filters produces in the real one.
+  const STUB = {};
   function activeFilters() {
-    return chainIds.map(id => ({
-      id, stage: "feedback",
-      glFeedback: srcTex => log.push(id + ":" + srcTex.tex + "->" + bound),
-    }));
+    return chainIds.map(id => {
+      STUB[id] = STUB[id] || {
+        id, stage: "feedback",
+        glFeedback: srcTex => log.push(id + ":" + srcTex.tex + "->" + bound),
+      };
+      return STUB[id];
+    });
   }
+  function splitChain(ids) { return { heat: ids.map(id => STUB[id]), image: [] }; }
+  function runHeatPass(f, srcTex) { if (f.glFeedback) f.glFeedback(srcTex); else f.gl(srcTex); }
 `;
 const code = stubs + cut("  function glBeginHeat(", "  function glBlitPoints(") +
   "\nreturn { run(ids, start) { chainIds = ids; curHeat = start; log.length = 0;" +
@@ -104,14 +113,19 @@ for (const n of [0, 1, 2, 3]) {
      "bound " + r.bound + " vs pendingDst " + r.pendingDst);
 }
 
-// --- 6. only feedback filters with a glFeedback pass are run -------------------
-// (glBeginHeat filters the list itself; a post filter must never reach the heat tick.)
+// --- 6. the heat chain comes from splitChain, and dispatches per filter --------
+// It used to select `stage === "feedback"`. It no longer can: an IMAGE filter dragged above
+// a feedback one is meant to warp the heat (that is the whole point of the chain being a
+// sequence), so the phase split is splitChain's job and the per-pass dispatch is
+// runHeatPass's — a feedback hook for feedback filters, the ordinary pass for the rest.
 {
-  const marker = "stage === \"feedback\"";
-  ok(cut("  function glBeginHeat(", "  function glBlitPoints(").includes(marker),
-     "glBeginHeat selects on stage === feedback, not on a hardcoded filter id");
-  ok(cut("  function glBeginHeat(", "  function glBlitPoints(").includes("f.glFeedback"),
-     "...and dispatches through the filter's own glFeedback hook");
+  const body = cut("  function glBeginHeat(", "  function glBlitPoints(");
+  ok(body.includes("splitChain("),
+     "glBeginHeat takes its chain from splitChain, not from a stage test");
+  ok(!body.includes('stage === "feedback"'),
+     "...and no longer filters on stage, which would drop image filters placed above");
+  ok(body.includes("runHeatPass("),
+     "...dispatching each pass through runHeatPass");
 }
 
 // --- 7. glLayerBeginHeat: the per-LAYER twin, same parity on a private pair ----
@@ -130,6 +144,7 @@ const layerStubs = `
   function bindFbo(f) { bound = f.fbo; log.push("bind:" + f.fbo); }
   const gl = { BLEND: 1, COLOR_BUFFER_BIT: 2, disable() {}, clearColor() {},
                clear() { log.push("clear:" + bound); } };
+  function runHeatPass(f, srcTex) { if (f.glFeedback) f.glFeedback(srcTex); else f.gl(srcTex); }
 `;
 const layerCode = layerStubs + cut("  function glLayerBeginHeat(", "  function renderLayerHeat(") +
   "\nreturn { run(n, start) { log.length = 0;" +

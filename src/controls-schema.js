@@ -311,12 +311,12 @@
   // each render and stamped with the pass id, so the sweep at the end of renderFilterLists can
   // drop the ones left over from the previous layout.
   let renderPass = "0";
-  const STAGE_LABEL = { feedback: "heat · before the effect draws", post: "image · after the effect draws" };
-  function stageDivider(stage) {
+  function stageDivider() {
     const d = document.createElement("div");
     d.className = "filter-div";
     d.dataset.live = renderPass;
-    d.textContent = STAGE_LABEL[stage] || stage;
+    d.textContent = "▲ shapes the heat   ·   the effect draws here   ·   ▼ repaints the picture";
+    d.title = "Filters above this line run on the heat before the effect draws; filters below run on the finished picture. Drag one across to change which it does.";
     return d;
   }
   function renderFilterLists() {
@@ -327,23 +327,18 @@
       const ids = listIds(L.key), added = new Set(ids);
       const cap = host.querySelector(".filter-grp");
       if (cap) host.appendChild(cap);                       // caption stays on top
-      // THE STAGE BOUNDARY IS DRAWN, not just enforced. Heat filters run before the effect
-      // draws and image filters after it, so a drag can only move a row within its own run —
-      // and in one undivided list that reads as "the drag did nothing" rather than as a rule.
-      // (Reported exactly that way: Swirl is heat, Mirror is image, so dragging one past the
-      // other snapped back with nothing to show for it.) One hairline with a two-word label
-      // is enough; it is far lighter than the two full captions this list used to carry.
-      let prevStage = null;
-      ids.forEach(id => {
+      // Rows go wherever you put them — the chain is a sequence, not two sorted groups. The
+      // one line that still means something is where the EFFECT DRAWS: everything above it
+      // reshapes the heat, everything below repaints the finished picture, and moving a row
+      // across it genuinely changes what that filter does. splitChain puts that line straight
+      // after the last feedback filter, so the marker is drawn there and nowhere else.
+      const cut = splitChain(ids).heat.length;
+      ids.forEach((id, i) => {
         const sec = filterSecs[id];
         if (!sec) return;
-        const st = FILTER_BY_ID[id].stage;
-        if (L.reorder && prevStage && st !== prevStage) host.appendChild(stageDivider(st));
-        prevStage = st;
+        if (L.reorder && cut > 0 && i === cut) host.appendChild(stageDivider());
         sec.style.display = "";
-        // "solo" greys the handle when there is nothing to reorder against — which now means
-        // nothing else IN THE SAME STAGE, since that is as far as a row can travel.
-        sec.classList.toggle("solo", ids.filter(o => FILTER_BY_ID[o].stage === st).length < 2);
+        sec.classList.toggle("solo", ids.length < 2);
         host.appendChild(sec);
       });
       // Stale dividers from the previous render, now that the runs have moved.
@@ -424,11 +419,13 @@
         const from = ids.indexOf(f.id);
         if (from < 0 || to === from) { renderFilterLists(); return; }
         ids.splice(to, 0, ids.splice(from, 1)[0]);
-        // Did the pipeline overrule the drop? orderFilters re-partitions by stage, so a row
-        // dragged past the boundary comes back to it. Say so, rather than letting the row
-        // slide back with no explanation — which is precisely what read as "reordering is
-        // broken" when the two filters under test were Swirl (heat) and Mirror (image).
-        if (orderFilters(ids).map(x => x.id).join() !== ids.join()) flashStageBlock(f);
+        // Nothing is overruled any more: every position in the list is a position the
+        // pipeline can actually run (see splitChain). The only thing worth saying is when a
+        // move changed WHICH SIDE of the effect a filter is on, because that is a change of
+        // meaning rather than of order.
+        const wasHeat = splitChain(listIds(filterListOf(f).key)).heat.some(x => x.id === f.id);
+        const nowHeat = splitChain(ids).heat.some(x => x.id === f.id);
+        if (wasHeat !== nowHeat) flashStageMove(f, nowHeat);
         if (key === "scene") { sceneOn = new Set(ids); }
         else {
           // Keep any id the list does not own (scene ids never live here, but a stale one
@@ -445,10 +442,10 @@
     });
     return grab;
   }
-  // A drop the pipeline cannot honour: pulse the row and put the reason under the caption for
-  // a few seconds. Not an alert and not a permanent line — you learn it once.
+  // A move that crossed the effect: say what the filter now does, since it is doing a
+  // different job rather than the same job in a different order. A few seconds, then gone.
   let stageBlockT = 0;
-  function flashStageBlock(f) {
+  function flashStageMove(f, nowHeat) {
     const host = el(FILTER_LISTS[0].hostId);
     if (!host) return;
     let note = host.querySelector(".filter-note");
@@ -458,9 +455,9 @@
       const cap = host.querySelector(".filter-grp");
       if (cap) cap.appendChild(note); else host.prepend(note);
     }
-    note.textContent = f.stage === "feedback"
-      ? f.name + " works on the heat, so it always runs before the image filters."
-      : f.name + " works on the finished picture, so it always runs after the heat filters.";
+    note.textContent = nowHeat
+      ? f.name + " now shapes the heat, before the effect draws into it."
+      : f.name + " now repaints the finished picture, after the effect has drawn.";
     note.classList.remove("on"); void note.offsetWidth; note.classList.add("on");
     clearTimeout(stageBlockT);
     stageBlockT = setTimeout(() => note.classList.remove("on"), 5200);

@@ -172,9 +172,40 @@
       const f = FILTER_BY_ID[id];
       if (f && !seen.has(id)) { seen.add(id); out.push(f); }
     }
-    // Array#sort has been stable since ES2019, so filters within one stage keep the
-    // user's order and only the stage boundary moves anything.
-    return out.sort((a, b) => FILTER_STAGE_RANK[a.stage] - FILTER_STAGE_RANK[b.stage]);
+    // NO stage sort for the per-layer chain — see splitChain. `screen` filters belong to the
+    // scene list, which is not reorderable, so they are pushed last purely for tidiness.
+    return out.sort((a, b) => (a.stage === "screen" ? 1 : 0) - (b.stage === "screen" ? 1 : 0));
+  }
+  // ---- WHERE EACH FILTER RUNS: split the chain, do not sort it ------------------------
+  // The chain is a sequence and it is honoured as one. The pipeline has exactly one fixed
+  // point — the effect draws its fresh output into the heat buffer — and everything the user
+  // puts ABOVE that runs on the heat, everything below runs on the palette-mapped picture.
+  //
+  // A `feedback` filter (Fire, Fade, Diffuse, Echo, Zoom feedback, Swirl) reads and writes
+  // retained heat with a keep factor; it is only meaningful in the heat phase, so the LAST
+  // feedback filter in the chain marks the boundary. A `post` filter is just a pass that
+  // samples a texture and draws a quad, so it runs happily in EITHER phase: placed above a
+  // feedback filter it warps the heat (heat textures are R8, the shader writes .r back);
+  // placed below, it repaints the finished image as before.
+  //
+  // This is what makes "Mirror above Swirl" a real, visible thing rather than a drag that
+  // snaps back — reported twice, and the previous answer (partition by stage, draw the
+  // boundary, explain the clamp) was solving the wrong problem. With no feedback filter at
+  // all the heat is cleared every frame, so there is nothing to warp and the whole chain runs
+  // in the image phase.
+  function splitChain(ids) {
+    const list = orderFilters(ids).filter(f => f.stage !== "screen");
+    let last = -1;
+    list.forEach((f, i) => { if (f.stage === "feedback") last = i; });
+    return {
+      heat: list.slice(0, last + 1).filter(f => f.glFeedback || f.gl),
+      image: list.slice(last + 1).filter(f => f.gl),
+    };
+  }
+  // Run one entry of a heat-phase chain: a feedback filter through its own hook, a post
+  // filter through the ordinary pass it already has. Both draw into the bound FBO.
+  function runHeatPass(f, srcTex) {
+    if (f.glFeedback) f.glFeedback(srcTex); else f.gl(srcTex);
   }
   // Which filters are on for the live effect, in the order they will be applied: the
   // selected layer's own ordered set, plus the scene-global ones (which are not per-layer

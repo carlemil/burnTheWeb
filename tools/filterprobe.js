@@ -57,7 +57,7 @@ const code = stubs +
   cut("  // ---- FILTERS: stackable post-FX applied after the effect renders", "  function presetState(") +
   cut("  function presetState(", "  function initStates(") +
   cut("  function presetExtra(", "  function initExtras(") +
-  "\nreturn { FILTERS, FILTER_BY_ID, FILTER_DEFAULTS, filtersOk, orderFilters, activeFilters, activeFilterIds, hasFeedback," +
+  "\nreturn { FILTERS, FILTER_BY_ID, FILTER_DEFAULTS, filtersOk, orderFilters, splitChain, activeFilters, activeFilterIds, hasFeedback," +
   "  presetState, presetFilters, mergeExtra, presetExtra," +
   // setActive splits the ids the way the app does: the whole-scene ones live in `sceneOn`
   // (one global setting), the per-layer ones in `activeIds`. activeFilters() reads both.
@@ -93,29 +93,51 @@ ok(F.FILTERS.filter(f => f.stage === "screen").every(f => f.cpuOk === false),
 ok(F.FILTERS.filter(f => f.stage === "feedback").every(f => typeof f.glFeedback === "function"),
    "feedback filters have a glFeedback pass");
 
-// --- 2. order is the STORED (user) order, normalized by stage ------------------
-// Each per-effect filter carries a drag handle now, so the stored list is the chain the
-// user built and orderFilters must preserve it. Stage still wins — a feedback filter
-// mutates retained heat before the effect draws and a post filter repaints the image
-// after, so there is no pipeline position where Pixelate could precede Fire.
+// --- 2. the chain is a SEQUENCE, split at the effect — not sorted by stage ------
+// Every per-effect filter carries a drag handle, and every position in the list is a
+// position the pipeline can run. splitChain finds the one fixed point — the effect drawing
+// into the heat buffer — and puts everything at or above the LAST feedback filter in the
+// heat phase, the rest in the image phase. A `post` filter is just a pass over a texture,
+// so dragged above a feedback filter it warps the heat instead of the picture. That is what
+// makes "Mirror above Swirl" a real, visible change rather than a drag that snaps back.
 {
   const back = ids.slice().reverse();
   const set = F.filtersOk(back);
   ok(JSON.stringify([...set]) === JSON.stringify(back),
      "filtersOk preserves the stored order (a Set iterates in insertion order)");
-  const applied = F.orderFilters(set).map(f => f.id);
-  // Within one stage the reversal must survive; across stages it must be re-partitioned.
-  const stageOf = id => F.FILTER_BY_ID[id].stage;
-  const rank = { feedback: 0, post: 1, screen: 2 };
-  ok(applied.every((id, i) => i === 0 || rank[stageOf(applied[i - 1])] <= rank[stageOf(id)]),
-     "orderFilters partitions the chain by stage", applied.join(","));
-  const backFb = back.filter(id => stageOf(id) === "feedback");
-  ok(JSON.stringify(applied.filter(id => stageOf(id) === "feedback")) === JSON.stringify(backFb),
-     "...and keeps the user's order WITHIN a stage (a stable sort)");
-  ok(JSON.stringify(applied.slice().sort()) === JSON.stringify(ids.slice().sort()),
-     "...without adding or dropping anything");
+  const layerIds = ids.filter(id => F.FILTER_BY_ID[id].stage !== "screen");
+  const revLayer = layerIds.slice().reverse();
+  ok(JSON.stringify(F.orderFilters(revLayer).map(f => f.id)) === JSON.stringify(revLayer),
+     "orderFilters keeps the user's order EXACTLY — no stage sort", F.orderFilters(revLayer).map(f => f.id).join(","));
   ok(JSON.stringify(F.orderFilters(["fire", "fire", "nope", "bloom"]).map(f => f.id)) === '["fire","bloom"]',
      "orderFilters drops duplicates and unknown ids");
+
+  // The split itself. `fire` and `swirl` are feedback; `mirror` and `twist` are post.
+  const idsOf = a => a.map(f => f.id);
+  const s1 = F.splitChain(["swirl", "mirror"]);
+  ok(JSON.stringify(idsOf(s1.heat)) === '["swirl"]' && JSON.stringify(idsOf(s1.image)) === '["mirror"]',
+     "swirl→mirror: swirl warps the heat, mirror repaints the picture",
+     idsOf(s1.heat) + " | " + idsOf(s1.image));
+  const s2 = F.splitChain(["mirror", "swirl"]);
+  ok(JSON.stringify(idsOf(s2.heat)) === '["mirror","swirl"]' && s2.image.length === 0,
+     "mirror→swirl: BOTH run on the heat, mirror first — the reported case",
+     idsOf(s2.heat) + " | " + idsOf(s2.image));
+  const s3 = F.splitChain(["twist", "fire", "mirror"]);
+  ok(JSON.stringify(idsOf(s3.heat)) === '["twist","fire"]' && JSON.stringify(idsOf(s3.image)) === '["mirror"]',
+     "the boundary is the LAST feedback filter, wherever it sits",
+     idsOf(s3.heat) + " | " + idsOf(s3.image));
+  const s4 = F.splitChain(["mirror", "twist"]);
+  ok(s4.heat.length === 0 && JSON.stringify(idsOf(s4.image)) === '["mirror","twist"]',
+     "no feedback filter ⇒ nothing retains heat, so the whole chain repaints the picture",
+     idsOf(s4.heat) + " | " + idsOf(s4.image));
+  ok(JSON.stringify(idsOf(F.splitChain(["fire", "mirror"]).image)) === '["mirror"]' &&
+     JSON.stringify(idsOf(F.splitChain(["fire", "bloom", "mirror"]).image)) === '["mirror"]',
+     "bloom has no gl pass of its own, so it never enters either chain");
+  const all = F.splitChain(ids);
+  ok(all.heat.concat(all.image).length ===
+     ids.filter(id => F.FILTER_BY_ID[id].stage !== "screen" && F.FILTER_BY_ID[id].id !== "bloom").length,
+     "nothing is added or dropped by the split",
+     all.heat.length + "+" + all.image.length);
   // The three stages must appear in pipeline order: feedback writes the heat the next
   // frame starts from, post repaints the image, screen sits on the finished composite.
   const stages = F.FILTERS.map(f => f.stage);
@@ -157,11 +179,11 @@ ok(F.FILTERS.every(f => F.presetFilters(2).indexOf(f.id) < 0),
   // mergeExtra is the gate EVERY loaded scene passes through, so it must keep the user's
   // chain. It only normalizes by stage (fire is feedback, bloom is post) and drops junk —
   // re-sorting to registry order here would silently throw away every saved reorder.
-  const m2 = F.mergeExtra(2, { filters: ["bloom", "fire"] });
-  ok(JSON.stringify(m2.filters) === '["fire","bloom"]', "a stored list is stage-normalized on load");
-  const mOrd = F.mergeExtra(2, { filters: ["fade", "fire"] });
-  ok(JSON.stringify(mOrd.filters) === '["fade","fire"]',
-     "...but a same-stage order is preserved exactly (the drag order survives a reload)",
+  // mergeExtra is the gate EVERY loaded scene passes through, so it must return the chain
+  // exactly as stored — re-sorting here would throw away the drag order on reload.
+  const mOrd = F.mergeExtra(2, { filters: ["mirror", "swirl"] });
+  ok(JSON.stringify(mOrd.filters) === '["mirror","swirl"]',
+     "a stored chain reloads in the stored order, across stages included",
      JSON.stringify(mOrd.filters));
   // Only a MISSING key falls back to the descriptor. An empty list is a real
   // choice — "I turned everything off" — and must survive a save/load round trip,
