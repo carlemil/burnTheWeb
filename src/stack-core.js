@@ -132,25 +132,38 @@
     wrap.appendChild(psel);
     pulseEls[id] = psel;
     pulseShape[id] = PULSE_DEFAULT;
-    label.insertBefore(wrap, label.querySelector(".val"));   // right-edge column (before the value)
-    // How long that pulse lasts, for this slider. Sits under the chips in the
-    // pop-out box (there's no room for it in a menu row, and only a popped-out
-    // slider is being tuned). Its `input` bubbles to onEdit → persist + autosave.
+    // ---- pop-out box layout: value on top, then the SLIDER, then the beat controls ----
+    // The chips used to be tucked into the label's right edge, above the slider. They are
+    // their own titled block under it now, because the slider is the thing you are actually
+    // tuning and it should sit directly under its own name and readout; the beat wiring is
+    // a second subject and reads better labelled than inferred from three lettered buttons.
+    //
+    // Appended to the .ctl (label.parentNode), which at this point holds only [label,
+    // slider] — so appending lands everything after the slider, in the order added. The
+    // owner line is prepended and the range editor appended later, so both still bracket
+    // this correctly.
+    const host = label.parentNode;
+    const trigT = document.createElement("div");
+    trigT.className = "trig-t"; trigT.textContent = "Triggers";
+    trigT.title = "Which beat bands make this slider jump, and how it falls back";
+    host.append(trigT, wrap);
+    // How long that jump takes to fall back, for THIS slider. Title above its own slider
+    // rather than inline, to match the control it belongs to.
     pulseLen[id] = PULSE_DROP;
+    const durT = document.createElement("div");
+    durT.className = "plen-name"; durT.textContent = "Trigger duration";
     const row = document.createElement("div");
     row.className = "plen";
-    const nm = document.createElement("span");
-    nm.className = "plen-name"; nm.textContent = "Pulse";
     const sl = document.createElement("input");
     sl.type = "range"; sl.id = "plen-" + id; sl.min = PLEN_MIN; sl.max = PLEN_MAX; sl.step = 0.01; sl.value = PULSE_DROP;
-    sl.title = "How long a beat pulse takes to fall back";
-    sl.setAttribute("aria-label", "Beat pulse length");
+    sl.title = "How long a trigger takes to fall back";
+    sl.setAttribute("aria-label", "Trigger duration");
     const out = document.createElement("span");
     out.className = "plen-val"; out.textContent = plenFmt(PULSE_DROP);
     sl.addEventListener("input", () => { pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
-    row.append(nm, sl, out);
+    row.append(sl, out);
     plenEls[id] = { inp: sl, out };
-    label.parentNode.appendChild(row);   // foot of the control block (above the range editor)
+    host.append(durT, row);              // foot of the control block (above the range editor)
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   function bindRange(id, valId, fmt, apply, durScale, beat, scene) {

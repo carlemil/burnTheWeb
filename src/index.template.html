@@ -171,6 +171,12 @@
 
   </details>
 
+  <!-- Which scene you are actually editing. The Scene box folds and its list scrolls, so the
+       selected name could easily be off screen while every box below it edits that scene.
+       This is a heading, not a control — filled by syncSceneTitle() from the same #preset
+       value store the list drives, so it cannot drift from the selection. -->
+  <div id="scenenow" class="sec-t"></div>
+
   <!-- Box — Scene filters: whole-scene FX applied once to the finished, blended picture
        (Bloom + the screen-stage filters). SCENE-GLOBAL — one on/off + value shared across
        every layer (sceneOn / sceneFx), routed here by buildFilterUI (the "Whole scene" group). -->

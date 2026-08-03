@@ -514,7 +514,9 @@
     margin: 0 0 6px; opacity: .85;
   }
   #breakout .val { float: none; order: 1; margin-left: auto; }
-  #breakout .bandchips { float: none; order: 2; flex-basis: 100%; gap: 4px; margin: 2px 0 0; }
+  /* The chips are their own row UNDER the slider now, not a float in the label's right
+     edge — so no float, no order/flex-basis (they are no longer a flex child of the label). */
+  #breakout .bandchips { float: none; display: flex; gap: 4px; margin: 3px 0 0; align-items: center; }
   #breakout .bandchips button { width: 22px; height: 18px; font-size: 10px; line-height: 16px; }
   #breakout .bandchips select { height: 18px; margin-left: auto; padding: 0 2px; font-size: 10px; }
   #breakout .dual { margin: 2px 0 4px; }
@@ -522,12 +524,19 @@
   /* Per-slider beat-pulse length: how long this slider's beat kick takes to fall
      back. Only meaningful in a box (it's a per-slider knob), so it's hidden in the
      menu and laid out as name · slider · readout here. */
+  /* Section titles inside a pop-out box. "Triggers" heads the beat chips, "Trigger duration"
+     heads its own slider — both above what they label, so each block names itself instead of
+     being inferred from three lettered buttons and an unlabelled second slider. */
+  #panel .trig-t, #panel .plen-name { display: none; }     /* boxes only — see #panel .plen */
+  #breakout .trig-t, #breakout .plen-name {
+    margin: 9px 0 1px; color: #ffb15a; opacity: .7;
+    font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  }
   #panel .plen { display: none; }
   #breakout .plen {
     display: flex; align-items: center; gap: 7px;
-    margin: 8px 0 0; font-size: 10px; opacity: .8;
+    margin: 0; font-size: 10px; opacity: .8;      /* its title carries the gap above now */
   }
-  #breakout .plen-name { flex: none; letter-spacing: .04em; }
   #breakout .plen input[type=range] { flex: 1; min-width: 0; height: 12px; }
   #breakout .plen-val { flex: none; min-width: 40px; text-align: right; color: #ffcf87; }
   /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
@@ -668,10 +677,20 @@
      said "these are layers" twice. The heading matches the in-panel group headings
      (.ctl-grp) so it reads as a section marker rather than a container that vanished. */
   #panel #lyrsec { margin: 12px 0 0; }
-  #panel #lyrsec > .sec-t {
-    margin: 0 0 5px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.22);
+  #panel #lyrsec > .sec-t,
+  #panel #scenenow {
+    margin: 12px 0 5px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.22);
     color: #ffb15a; opacity: .95; font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
   }
+  #panel #lyrsec > .sec-t { margin-top: 0; }
+  /* The selected scene's name, so you can tell at a glance what every box below is editing.
+     Brighter than a plain section marker because it is an answer, not a label — and it is
+     free text, so it has to be able to run out of room without pushing the panel wide. */
+  #panel #scenenow {
+    color: #ffcf87; opacity: 1; font-size: 12px; letter-spacing: .03em; text-transform: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #panel #scenenow.unsaved { font-style: italic; opacity: .6; }
   /* ---- the selected layer's controls, INSIDE its row -------------------------------
      #lyrctl (effect sliders → filters → palette) is moved into the selected row by
      syncStackUI, so a layer is one complete object: what it draws, what filters it, how it

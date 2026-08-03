@@ -174,7 +174,24 @@
   // on load and the list opens as a short stack of names — the requested default. Surviving
   // rebuilds is what stops a pick from folding the group you are working in.
   const openCollections = new Set();
+  // The heading under the Scene box that names what you are editing. Called from
+  // buildPresetList rather than from each selection path, because that function is already
+  // the one choke point every path goes through to move the highlight (create, rename,
+  // delete, restore, a manual pick, and the auto-cycle via applyPreset) — so the title
+  // cannot drift from the selection without the highlight drifting too.
+  function syncSceneTitle() {
+    const h = el("scenenow");
+    if (!h) return;
+    const p = curPreset >= 0 ? presets[curPreset] : null;
+    h.textContent = p ? p.name : "— unsaved scene —";
+    h.classList.toggle("unsaved", !p);
+    // Whose scene it is, when it came from someone else's collection — the same fact the
+    // on-screen banner gives you, kept visible while you work rather than for four seconds.
+    const from = p ? collectionOf(p) : "";
+    h.title = from ? p.name + " — from " + from : (p ? p.name : "Nothing saved is selected — edits are not written to any scene");
+  }
   function buildPresetList() {
+    syncSceneTitle();
     const host = el("presetlist");
     if (!host) return;
     presetSel.style.display = "none";       // the <select> is the value store, not the control

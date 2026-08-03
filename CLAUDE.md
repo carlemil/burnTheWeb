@@ -400,9 +400,14 @@ keys; `refreshBreakout()` (called by `setEffect`) shows a box iff
 - Because `#breakout` sits **outside** `#panel` (the panel's `backdrop-filter` + `overflow` would
   clip a fixed child), three things reach it: the control CSS is scoped `#panel …, #breakout …`;
   the delegated `onEdit` is attached to `#breakout` too; `sceneRangeInputs()` scans both.
-- A box holds top→bottom: the **owner line** (`.ctl-owner`), label + value, beat chips + pulse
-  picker, the slider, its **pulse-length** knob (`.plen`), and its **range editor** (`.rng-edit`).
-  The last three exist only in a box.
+- A box holds top→bottom: the **owner line** (`.ctl-owner`), label + value, **the slider**, a
+  **Triggers** title (`.trig-t`) over the beat chips + pulse picker, a **Trigger duration**
+  title (`.plen-name`) over its length slider (`.plen`), and the **range editor** (`.rng-edit`).
+  The slider sits directly under its own name and readout because that is what you are tuning;
+  the beat wiring is a second subject below it, titled rather than inferred from three lettered
+  buttons. `makeChips` **appends** all of it to the `.ctl`, which holds only `[label, slider]`
+  at that point — so append order is display order, and the chips are no longer inserted into
+  the label (they were a `float: right` in its right edge). The last four exist only in a box.
 - The **owner line** (`ctlOwner(key)` → `CTL_GROUPS[control.group]`, with a `"Filter · "` prefix
   for `f_*` groups) exists because controls are singletons reused across effects — a stack of
   boxes labelled "Speed", "Strength", "Size" is unreadable. Added in `POPPABLE.forEach`, not
@@ -496,6 +501,13 @@ so a fourth border around the lot said "these are layers" twice. Its `.sec-t` he
 in-panel group headings. The hidden box still holds `#effect`, `#fxctl`, the Orbit editor, Reset,
 the per-layer filters and the palette. `buildControls`
 routes by `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
+
+**`#scenenow` names the selected scene**, a heading between the Scene box and Scene filters, so
+you can tell at a glance what every box below is editing. Filled by `syncSceneTitle()` from
+**`buildPresetList()`** — deliberately not from each selection path, because that function is
+already the single choke point every path goes through to move the list highlight (create,
+rename, delete, restore, a manual pick, and the auto-cycle via `applyPreset`). Hang it there and
+the title cannot drift from the selection without the highlight drifting too.
 
 **The last box is normally EMPTY and hidden: its body is moved into the selected layer's row.**
 `#lyrctl` wraps everything after that box's summary, and `syncStackUI` appends it to the selected

@@ -532,7 +532,9 @@
     margin: 0 0 6px; opacity: .85;
   }
   #breakout .val { float: none; order: 1; margin-left: auto; }
-  #breakout .bandchips { float: none; order: 2; flex-basis: 100%; gap: 4px; margin: 2px 0 0; }
+  /* The chips are their own row UNDER the slider now, not a float in the label's right
+     edge — so no float, no order/flex-basis (they are no longer a flex child of the label). */
+  #breakout .bandchips { float: none; display: flex; gap: 4px; margin: 3px 0 0; align-items: center; }
   #breakout .bandchips button { width: 22px; height: 18px; font-size: 10px; line-height: 16px; }
   #breakout .bandchips select { height: 18px; margin-left: auto; padding: 0 2px; font-size: 10px; }
   #breakout .dual { margin: 2px 0 4px; }
@@ -540,12 +542,19 @@
   /* Per-slider beat-pulse length: how long this slider's beat kick takes to fall
      back. Only meaningful in a box (it's a per-slider knob), so it's hidden in the
      menu and laid out as name · slider · readout here. */
+  /* Section titles inside a pop-out box. "Triggers" heads the beat chips, "Trigger duration"
+     heads its own slider — both above what they label, so each block names itself instead of
+     being inferred from three lettered buttons and an unlabelled second slider. */
+  #panel .trig-t, #panel .plen-name { display: none; }     /* boxes only — see #panel .plen */
+  #breakout .trig-t, #breakout .plen-name {
+    margin: 9px 0 1px; color: #ffb15a; opacity: .7;
+    font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  }
   #panel .plen { display: none; }
   #breakout .plen {
     display: flex; align-items: center; gap: 7px;
-    margin: 8px 0 0; font-size: 10px; opacity: .8;
+    margin: 0; font-size: 10px; opacity: .8;      /* its title carries the gap above now */
   }
-  #breakout .plen-name { flex: none; letter-spacing: .04em; }
   #breakout .plen input[type=range] { flex: 1; min-width: 0; height: 12px; }
   #breakout .plen-val { flex: none; min-width: 40px; text-align: right; color: #ffcf87; }
   /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
@@ -686,10 +695,20 @@
      said "these are layers" twice. The heading matches the in-panel group headings
      (.ctl-grp) so it reads as a section marker rather than a container that vanished. */
   #panel #lyrsec { margin: 12px 0 0; }
-  #panel #lyrsec > .sec-t {
-    margin: 0 0 5px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.22);
+  #panel #lyrsec > .sec-t,
+  #panel #scenenow {
+    margin: 12px 0 5px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.22);
     color: #ffb15a; opacity: .95; font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
   }
+  #panel #lyrsec > .sec-t { margin-top: 0; }
+  /* The selected scene's name, so you can tell at a glance what every box below is editing.
+     Brighter than a plain section marker because it is an answer, not a label — and it is
+     free text, so it has to be able to run out of room without pushing the panel wide. */
+  #panel #scenenow {
+    color: #ffcf87; opacity: 1; font-size: 12px; letter-spacing: .03em; text-transform: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #panel #scenenow.unsaved { font-style: italic; opacity: .6; }
   /* ---- the selected layer's controls, INSIDE its row -------------------------------
      #lyrctl (effect sliders → filters → palette) is moved into the selected row by
      syncStackUI, so a layer is one complete object: what it draws, what filters it, how it
@@ -1288,6 +1307,12 @@
   </div>
 
   </details>
+
+  <!-- Which scene you are actually editing. The Scene box folds and its list scrolls, so the
+       selected name could easily be off screen while every box below it edits that scene.
+       This is a heading, not a control — filled by syncSceneTitle() from the same #preset
+       value store the list drives, so it cannot drift from the selection. -->
+  <div id="scenenow" class="sec-t"></div>
 
   <!-- Box — Scene filters: whole-scene FX applied once to the finished, blended picture
        (Bloom + the screen-stage filters). SCENE-GLOBAL — one on/off + value shared across
@@ -6937,25 +6962,38 @@
     wrap.appendChild(psel);
     pulseEls[id] = psel;
     pulseShape[id] = PULSE_DEFAULT;
-    label.insertBefore(wrap, label.querySelector(".val"));   // right-edge column (before the value)
-    // How long that pulse lasts, for this slider. Sits under the chips in the
-    // pop-out box (there's no room for it in a menu row, and only a popped-out
-    // slider is being tuned). Its `input` bubbles to onEdit → persist + autosave.
+    // ---- pop-out box layout: value on top, then the SLIDER, then the beat controls ----
+    // The chips used to be tucked into the label's right edge, above the slider. They are
+    // their own titled block under it now, because the slider is the thing you are actually
+    // tuning and it should sit directly under its own name and readout; the beat wiring is
+    // a second subject and reads better labelled than inferred from three lettered buttons.
+    //
+    // Appended to the .ctl (label.parentNode), which at this point holds only [label,
+    // slider] — so appending lands everything after the slider, in the order added. The
+    // owner line is prepended and the range editor appended later, so both still bracket
+    // this correctly.
+    const host = label.parentNode;
+    const trigT = document.createElement("div");
+    trigT.className = "trig-t"; trigT.textContent = "Triggers";
+    trigT.title = "Which beat bands make this slider jump, and how it falls back";
+    host.append(trigT, wrap);
+    // How long that jump takes to fall back, for THIS slider. Title above its own slider
+    // rather than inline, to match the control it belongs to.
     pulseLen[id] = PULSE_DROP;
+    const durT = document.createElement("div");
+    durT.className = "plen-name"; durT.textContent = "Trigger duration";
     const row = document.createElement("div");
     row.className = "plen";
-    const nm = document.createElement("span");
-    nm.className = "plen-name"; nm.textContent = "Pulse";
     const sl = document.createElement("input");
     sl.type = "range"; sl.id = "plen-" + id; sl.min = PLEN_MIN; sl.max = PLEN_MAX; sl.step = 0.01; sl.value = PULSE_DROP;
-    sl.title = "How long a beat pulse takes to fall back";
-    sl.setAttribute("aria-label", "Beat pulse length");
+    sl.title = "How long a trigger takes to fall back";
+    sl.setAttribute("aria-label", "Trigger duration");
     const out = document.createElement("span");
     out.className = "plen-val"; out.textContent = plenFmt(PULSE_DROP);
     sl.addEventListener("input", () => { pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
-    row.append(nm, sl, out);
+    row.append(sl, out);
     plenEls[id] = { inp: sl, out };
-    label.parentNode.appendChild(row);   // foot of the control block (above the range editor)
+    host.append(durT, row);              // foot of the control block (above the range editor)
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
@@ -10486,7 +10524,24 @@
   // on load and the list opens as a short stack of names — the requested default. Surviving
   // rebuilds is what stops a pick from folding the group you are working in.
   const openCollections = new Set();
+  // The heading under the Scene box that names what you are editing. Called from
+  // buildPresetList rather than from each selection path, because that function is already
+  // the one choke point every path goes through to move the highlight (create, rename,
+  // delete, restore, a manual pick, and the auto-cycle via applyPreset) — so the title
+  // cannot drift from the selection without the highlight drifting too.
+  function syncSceneTitle() {
+    const h = el("scenenow");
+    if (!h) return;
+    const p = curPreset >= 0 ? presets[curPreset] : null;
+    h.textContent = p ? p.name : "— unsaved scene —";
+    h.classList.toggle("unsaved", !p);
+    // Whose scene it is, when it came from someone else's collection — the same fact the
+    // on-screen banner gives you, kept visible while you work rather than for four seconds.
+    const from = p ? collectionOf(p) : "";
+    h.title = from ? p.name + " — from " + from : (p ? p.name : "Nothing saved is selected — edits are not written to any scene");
+  }
   function buildPresetList() {
+    syncSceneTitle();
     const host = el("presetlist");
     if (!host) return;
     presetSel.style.display = "none";       // the <select> is the value store, not the control
