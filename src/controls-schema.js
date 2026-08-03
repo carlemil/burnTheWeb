@@ -307,20 +307,47 @@
   // Put one list in order: the added sections first, in chain order, then the rest hidden,
   // then the Add button. Everything stays a child of the host — see the note above on why a
   // section must never leave the document.
+  // A labelled hairline marking where one pipeline stage ends and the next begins. Made fresh
+  // each render and stamped with the pass id, so the sweep at the end of renderFilterLists can
+  // drop the ones left over from the previous layout.
+  let renderPass = "0";
+  const STAGE_LABEL = { feedback: "heat · before the effect draws", post: "image · after the effect draws" };
+  function stageDivider(stage) {
+    const d = document.createElement("div");
+    d.className = "filter-div";
+    d.dataset.live = renderPass;
+    d.textContent = STAGE_LABEL[stage] || stage;
+    return d;
+  }
   function renderFilterLists() {
+    renderPass = String(+renderPass + 1);
     FILTER_LISTS.forEach(L => {
       const host = el(L.hostId);
       if (!host) return;
       const ids = listIds(L.key), added = new Set(ids);
       const cap = host.querySelector(".filter-grp");
       if (cap) host.appendChild(cap);                       // caption stays on top
+      // THE STAGE BOUNDARY IS DRAWN, not just enforced. Heat filters run before the effect
+      // draws and image filters after it, so a drag can only move a row within its own run —
+      // and in one undivided list that reads as "the drag did nothing" rather than as a rule.
+      // (Reported exactly that way: Swirl is heat, Mirror is image, so dragging one past the
+      // other snapped back with nothing to show for it.) One hairline with a two-word label
+      // is enough; it is far lighter than the two full captions this list used to carry.
+      let prevStage = null;
       ids.forEach(id => {
         const sec = filterSecs[id];
         if (!sec) return;
+        const st = FILTER_BY_ID[id].stage;
+        if (L.reorder && prevStage && st !== prevStage) host.appendChild(stageDivider(st));
+        prevStage = st;
         sec.style.display = "";
-        sec.classList.toggle("solo", ids.length < 2);       // nothing to reorder against
+        // "solo" greys the handle when there is nothing to reorder against — which now means
+        // nothing else IN THE SAME STAGE, since that is as far as a row can travel.
+        sec.classList.toggle("solo", ids.filter(o => FILTER_BY_ID[o].stage === st).length < 2);
         host.appendChild(sec);
       });
+      // Stale dividers from the previous render, now that the runs have moved.
+      [...host.querySelectorAll(".filter-div")].forEach(d => { if (d.dataset.live !== renderPass) d.remove(); });
       FILTERS.forEach(f => {
         const sec = filterSecs[f.id];
         if (!sec || added.has(f.id) || filterListOf(f).key !== L.key) return;
@@ -397,6 +424,11 @@
         const from = ids.indexOf(f.id);
         if (from < 0 || to === from) { renderFilterLists(); return; }
         ids.splice(to, 0, ids.splice(from, 1)[0]);
+        // Did the pipeline overrule the drop? orderFilters re-partitions by stage, so a row
+        // dragged past the boundary comes back to it. Say so, rather than letting the row
+        // slide back with no explanation — which is precisely what read as "reordering is
+        // broken" when the two filters under test were Swirl (heat) and Mirror (image).
+        if (orderFilters(ids).map(x => x.id).join() !== ids.join()) flashStageBlock(f);
         if (key === "scene") { sceneOn = new Set(ids); }
         else {
           // Keep any id the list does not own (scene ids never live here, but a stale one
@@ -412,6 +444,28 @@
       grab.addEventListener("pointercancel", onUp);
     });
     return grab;
+  }
+  // A drop the pipeline cannot honour: pulse the row and put the reason under the caption for
+  // a few seconds. Not an alert and not a permanent line — you learn it once.
+  let stageBlockT = 0;
+  function flashStageBlock(f) {
+    const host = el(FILTER_LISTS[0].hostId);
+    if (!host) return;
+    let note = host.querySelector(".filter-note");
+    if (!note) {
+      note = document.createElement("div");
+      note.className = "filter-note";
+      const cap = host.querySelector(".filter-grp");
+      if (cap) cap.appendChild(note); else host.prepend(note);
+    }
+    note.textContent = f.stage === "feedback"
+      ? f.name + " works on the heat, so it always runs before the image filters."
+      : f.name + " works on the finished picture, so it always runs after the heat filters.";
+    note.classList.remove("on"); void note.offsetWidth; note.classList.add("on");
+    clearTimeout(stageBlockT);
+    stageBlockT = setTimeout(() => note.classList.remove("on"), 5200);
+    const sec = filterSecs[f.id];
+    if (sec) { sec.classList.remove("bump"); void sec.offsetWidth; sec.classList.add("bump"); }
   }
   // ---- "Add filter" picker ----------------------------------------------------------
   // A floating, translucent, non-modal panel like the palette editor and the Orbit editor,

@@ -382,11 +382,14 @@ handle to move it up or down the chain, and press **✕** to drop it. Each row f
 to show its own settings, and the whole chain — order included — is saved into the scene.
 
 One thing the list will do that looks odd until you know why: **heat filters always sit
-above image filters, and a drag that would cross that line stops at it.** That's the
-pipeline, not the menu being stubborn — a heat filter changes what the *next* frame
+above image filters, and a drag that would cross that line stops at it.** A dashed
+divider marks where the two runs meet, and a row that won't cross tells you so. That's
+the pipeline, not the menu being stubborn — a heat filter changes what the *next* frame
 starts from, before the effect has drawn, while an image filter repaints the picture
-afterwards. There is no moment at which Pixelate could run before Fire, so rather than
+afterwards. There is no moment at which Mirror could run before Swirl, so rather than
 let the list claim an order it can't honour, it shows you where the drop really landed.
+Reordering within a run does exactly what you'd expect: put **Mirror** above **Twist**
+and you mirror the untwisted picture, swap them and you twist the mirrored one.
 
 They live in two places, which mirrors what they actually do: the first two
 groups below are **per layer** and sit in **Layer effect & filters**, while the last

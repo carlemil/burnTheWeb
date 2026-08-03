@@ -306,6 +306,18 @@ exactly as it did.
   `orderFilters` stage-partitions (stably, via `Array#sort`) and the MENU renders from that same
   normalized order. That is what keeps "applied in the order shown" literally true: drag an image
   filter above a heat one and it visibly lands at the boundary instead of pretending to move.
+- **That boundary MUST be drawn, not merely enforced** (`stageDivider`, `.filter-div`, plus
+  `flashStageBlock` on a clamped drop). Shipped without it once and it was immediately reported as
+  "reordering does nothing": the pair under test was **Swirl (feedback) and Mirror (post)**, which
+  can never swap, so the row slid back in a single undivided list with nothing to explain it.
+  Reordering was in fact working in both render paths. If someone reports this again, ask which
+  two filters — a cross-stage pair is the likely answer, and same-stage pairs (Twist+Mirror,
+  Swirl+Echo) are the ones to demo with.
+- **Both render paths must be checked**, and they are different code: the single-layer path runs
+  `activeFilters()` off `activeIds`, while a stacked scene runs `renderStackColor` →
+  `layerFeedbackChain`/`glLayerPostChain` off **`L.filters`**. `L.filters` stays current for the
+  selected layer only because `applyFilters()` → `persist()` → `stackOut()` freezes it. The
+  shipped `DEFAULT_SCENE` is a four-layer stack, so the multi-layer path is what a user hits first.
 - **Four sites must use it**, and each would be a silent bug otherwise: `activeFilters()`,
   `layerFeedbackChain`, `glLayerPostChain`, and — the easiest to miss — **`mergeExtra`**, the gate
   every loaded scene passes through, which re-sorted to registry order and so threw the chain away

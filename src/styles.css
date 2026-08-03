@@ -713,6 +713,24 @@
     background: rgba(255, 122, 26, 0.12); border-radius: 5px;
   }
   #panel .filter-drop { height: 2px; margin: 2px 0; background: #ff8c28; border-radius: 1px; }
+  /* Where one pipeline stage ends and the next begins. A row can only be dragged within its
+     own run, so the line has to be visible or the constraint reads as a broken drag. */
+  #panel .filter-div {
+    margin: 6px 0 3px; padding-top: 5px; border-top: 1px dashed rgba(255, 140, 40, 0.28);
+    color: #ffb15a; opacity: .5; font-size: 9px; letter-spacing: .04em;
+  }
+  /* Why a drop snapped back. Shown for a few seconds after the drag, then faded out. */
+  #panel .filter-note {
+    max-height: 0; overflow: hidden; opacity: 0;
+    text-transform: none; letter-spacing: 0; font-size: 9.5px; line-height: 1.45;
+    color: #ffcf87; transition: max-height .18s, opacity .18s, margin-top .18s;
+  }
+  #panel .filter-note.on { max-height: 4em; opacity: .95; margin-top: 4px; }
+  @keyframes fltbump {
+    0% { transform: translateX(0); } 25% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); } 100% { transform: translateX(0); }
+  }
+  #panel .filter-sec.bump { animation: fltbump .32s ease-out; }
   #panel .filter-rm {
     flex: 0 0 auto; width: 16px; height: 16px; padding: 0; background: none; border: 0;
     color: #ffb15a; opacity: .4; cursor: pointer; font-size: 11px; line-height: 1;
