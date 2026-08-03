@@ -106,7 +106,7 @@
   #panel select option, #menubar select option { background: #1a0f08; color: #ffcf87; }
   /* Palette preview picker: a gradient swatch per palette, replacing the plain
      dropdown (the <select> stays as the value store, hidden once JS builds these). */
-  #palswatches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
+  [data-k="palswatches"] { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
   .palsw {
     position: relative; height: 24px; padding: 0; border-radius: 5px;
     border: 1px solid rgba(255, 140, 40, 0.35); cursor: pointer; overflow: hidden;
@@ -315,7 +315,7 @@
   #panel .verline { margin-top: 7px; opacity: .38; }
   #panel .verline a { color: #ffcf87; text-decoration: none; border-bottom: 1px dotted rgba(255, 207, 135, 0.45); }
   #panel .verline:hover { opacity: .8; }
-  #reset, #cardbtn, #addlayer {
+  [data-k="reset"], [data-k="cardbtn"], #addlayer {
     margin-top: 8px;
     width: 100%;
     padding: 7px 0;
@@ -328,8 +328,8 @@
     cursor: pointer;
     transition: background .15s;
   }
-  #reset:hover, #cardbtn:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
-  #cardbtn, #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
+  [data-k="reset"]:hover, [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
+  [data-k="cardbtn"], #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
   /* Cloud profile row. Hidden wholesale when CONFIG.cloud.apiKey is "" — an unconfigured
      build shows no trace of the feature rather than a dead button. */
   #panel #cloudrow.hidden { display: none; }
@@ -694,6 +694,10 @@
     padding: 6px 7px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
     background: rgba(255, 140, 40, 0.05); cursor: pointer;
   }
+  /* The rows are a fixed pool of STACK_MAX, built once; the spares are hidden rather than
+     removed, so nothing is ever destroyed under a pointer. `display: grid` above outranks
+     the UA's [hidden] rule, so hiding needs saying explicitly. */
+  #panel .lyr[hidden] { display: none; }
   /* The selected layer is the one the Effect chooser and every slider below edit, so it
      has to be unmistakable — everything else in the box refers to it. */
   #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
@@ -745,13 +749,16 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #panel #scenenow.unsaved { font-style: italic; opacity: .6; }
-  /* ---- the selected layer's controls, INSIDE its row -------------------------------
-     #lyrctl (effect sliders → filters → palette) is moved into the selected row by
-     syncStackUI, so a layer is one complete object: what it draws, what filters it, how it
-     is coloured. It spans both grid columns and sits under the header it belongs to. */
-  /* Fold the open layer shut without deselecting it — with the controls inline, an open
-     layer is tall and the rows below it are a long scroll away. The block is HIDDEN, never
-     removed: #lyrctl stays in the row and in the document, so every id lookup keeps working. */
+  /* ---- each layer's own controls, INSIDE its row -----------------------------------
+     A .lyrblock (effect sliders → filters → palette) per stack slot, cloned from the
+     <template> and living permanently in its layer's row, so a layer is one complete object:
+     what it draws, what filters it, how it is coloured. It spans both grid columns and sits
+     under the header it belongs to.
+     Keyed on the CLASS, not an id: there are STACK_MAX of them. Nothing inside carries an id
+     either — see the template. */
+  /* Fold a layer shut without deselecting it — with the controls inline, an open layer is
+     tall and the rows below it are a long scroll away. The block is HIDDEN, never removed: it
+     stays in the row and in the document, so every ctl() lookup keeps working. */
   /* The fold control, in the row's UPPER-LEFT CORNER, on EVERY row — clicking an unselected
      layer's chevron selects it and opens it, so the same control both opens and closes.
      Explicitly placed at column 1 / row 1, and that placement is what lets it be a grid child
@@ -770,9 +777,9 @@
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
-  #panel .lyr.folded > #lyrctl { display: none; }
+  #panel .lyr.folded > .lyrblock { display: none; }
   #panel .lyr.folded { padding-bottom: 6px; }
-  #panel .lyr > #lyrctl {
+  #panel .lyr > .lyrblock {
     grid-column: 1 / -1;
     margin: 6px -7px -6px;                    /* out to the row's padding edges */
     padding: 8px 8px 7px;
@@ -784,10 +791,11 @@
   /* The selected row is a container now, not a line — give it room and let it stand out
      from the compact rows around it. */
   #panel .lyr.sel { padding-bottom: 0; }
-  #panel .lyr > #lyrctl > label:first-child,
-  #panel .lyr > #lyrctl > .ctl-grp:first-child { margin-top: 0; }
-  /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in
-     the DOM as #lyrctl's home — see parkLayerCtl. */
+  #panel .lyr > .lyrblock > label:first-child,
+  #panel .lyr > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
+  /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in the
+     DOM because it is where the blocks are parked between being built and being adopted into
+     their rows, and it holds the two value-store <select>s. */
   #panel #fxbox.hidden { display: none; }
   #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
   #panel .lyr b {
@@ -807,7 +815,7 @@
   #panel #addlayer.off { opacity: .4; pointer-events: none; }
   /* One column. Two columns fitted the checkboxes but not their names, and once each
      filter grew a foldable body there was nowhere sensible for it to open into. */
-  #panel #filterlist { margin: 2px 0 4px; }
+  #panel .lyrblock [data-k="filterlist"] { margin: 2px 0 4px; }
   /* One filter: a <details> whose summary carries the chevron, the tick and the name,
      and whose body holds that filter's own params — so they fold away with it instead
      of stacking up in one long list below. */
@@ -939,7 +947,7 @@
      `.grp-first` is set by markFirstGroup() per visibility pass, NOT :first-child: every group
      is in the DOM and only some are shown, so the first *child* is whichever comes first in
      the CONTROLS schema while the first *visible* one depends on the effect. */
-  #panel #fxctl > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
+  #panel [data-k="fxctl"] > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
   /* the "what this group of filters does" caption under a filter-group heading */
   #panel .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;
@@ -1460,37 +1468,43 @@
        control in the app. -->
   <details class="box" id="fxbox" open>
   <summary class="box-t">Layer effect &amp; filters</summary>
-  <div id="lyrctl">
-  <!-- The Effect chooser is HIDDEN here, not deleted: every layer row in the Layers box now
-       carries its own, so a second visible copy of the same control was redundant. The
-       element stays because it is the effect VALUE STORE — setEffect writes effectSel.value,
-       applyBlob validates against its <option> list, and its `change` event is the handler
-       every other path dispatches through (exactly the arrangement the palette <select> has).
-       Its <option>s are still generated from the EFFECTS registry. -->
+  <!-- The two VALUE STORES sit outside the block, and stay singletons. Every layer row has its
+       own effect chooser and its own palette swatch strip; these two <select>s are what those
+       pickers write into. setEffect writes effectSel.value, applyBlob validates against the
+       <option> lists, layerPalIndex reads paletteSel for the selected layer, and their `change`
+       events are what every other path dispatches through. Four copies of either would mean
+       setEffect writing one, applyBlob validating another and the render reading a third. -->
   <select id="effect" style="display:none"><!-- options generated from the EFFECTS registry --></select>
-  <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
+  <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
+  <select id="palette" style="display:none"></select>
+  <!-- ONE control block PER STACK SLOT, cloned from here at startup, so several layers can be
+       open and editable at once. Nothing inside carries an `id`: four copies of #speed-lo
+       would be invalid and getElementById would hand every edit to layer 1. They carry the
+       same string on `data-k` and resolve through ctl()/ctlIn() instead. A <template> is
+       inert — getElementById cannot see into it — so the authored copy can never be mistaken
+       for a live one. -->
+  <template id="lyrblock"><div class="lyrblock">
+  <div data-k="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
-  <button id="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
-  <button id="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
-  <!-- Per-layer filters (feedback + post, minus the whole-scene ones hoisted above). -->
-  <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
-  <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
-  <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
+  <button data-k="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
+  <button data-k="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
+  <!-- This layer's filters (feedback + post). -->
+  <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
+  <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
+  <!-- This layer's palette: ramp, cycle, reverse, background, banding. -->
   <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
        swatches) rather than what the button does, and read as a stop/fill icon. -->
-  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
-  <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
-  <select id="palette"></select>
-  <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
-  <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
+  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
+  <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
+  <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
     <!-- Palette first: it is the default, so the markup's own initial selection matches the
          live global before any JS runs (applyLayerExtras sets .value on every layer switch). -->
-    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
+    <select data-k="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
-  <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
-  <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
-  </div><!-- /#lyrctl -->
+  <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
+  <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  </div></template>
   </details>
 
   <!-- Credits. Generated from CREDITS in the script — the same array the startup burn-in
@@ -1740,7 +1754,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.11.2",
+    version: "1.12.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -1867,6 +1881,50 @@
   // STACK_MAX per-layer heat/palette buffers; a `const` down by newStackItem would be
   // in the temporal dead zone at that call. Same hoisting reason as `card`/`beatUi`.
   const STACK_MAX = CONFIG.stackMax;
+
+  // ---- per-layer control blocks -----------------------------------------------------
+  // Up to STACK_MAX copies of the layer control block, one per stack slot, so more than one
+  // layer can be open and editable at a time. Everything that used to look a per-layer
+  // control up by id goes through ctl()/ctlIn() instead, because four copies of a slider
+  // cannot all carry id="speed-lo" — inside a block the id string lives on `data-k`.
+  //
+  // `var`, not let/const, and declared here rather than beside the control code: these are
+  // read by function declarations, which hoist to the top of the IIFE and are called from
+  // slices far above the one that owns them (palCycleBand in palette.js, layerPalIndex in
+  // render-gl-pipeline.js). Same class as card / beatUi / curFbo / blendOk — a `const` here
+  // throws "Cannot access before initialization" and takes the whole IIFE with it.
+  var blocks = [];        // slot -> that stack slot's control block element
+  var keyMap = [];        // slot -> { "<the string that used to be the id>": node }
+  var W = [];             // slot -> { key: wiring record } — see wireRange
+  var secs = [];          // slot -> { filterId: that block's <details> } — see buildFilterUI
+  // A HASH of node references, not a subtree query. The POPPABLE pass moves every .ctl out
+  // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —
+  // whereas a registered reference keeps working wherever the node ends up. Exactly the
+  // property `anims` already relies on.
+  // Registering also STAMPS the key onto the node. The map is what lookups use, but keeping
+  // data-k on the element as well means the DOM says which control it is — CSS can select it,
+  // and a probe reading the page sees the same names the code does. Without it, the nodes
+  // created in JS (the filter checkboxes, the Add buttons) were findable only through the map.
+  function ctlReg(slot, k, node) {
+    (keyMap[slot] || (keyMap[slot] = {}))[k] = node;
+    if (node && node.dataset && node.dataset.k !== k) node.dataset.k = k;
+  }
+  function ctlIn(slot, k) { const m = keyMap[slot]; return (m && m[k]) || null; }
+  // The SELECTED layer's node — the drop-in for el() at every control site, because
+  // `stackSel` is what el() implicitly meant there. It falls through to getElementById, so
+  // scene controls (ttl, tdur, burn, bloom, the screen filters) and every non-control id
+  // keep resolving untouched.
+  //
+  // `keyMap.length &&` guards the read of `stackSel`, which is declared in stack-core.js far
+  // below: nothing registers a block until after that runs, so until then the && short-
+  // circuits and stackSel is never evaluated. Without it, any call during startup TDZs.
+  function ctl(k) { return (keyMap.length && ctlIn(stackSel, k)) || document.getElementById(k); }
+  // Every slot's node for one key, for the passes that must touch all N.
+  function ctlEach(k) {
+    const out = [];
+    for (let s = 0; s < keyMap.length; s++) { const n = ctlIn(s, k); if (n) out.push(n); }
+    return out;
+  }
 
   // Prefer a WebGL2 renderer (the whole fire/Julia/palette/glow pipeline runs on
   // the GPU); fall back to the original Canvas2D path when WebGL2 is missing. A
@@ -2295,7 +2353,7 @@
   // morphMs() draws each cycle's duration from the thumbs, like ttlMs().
   let palCycleLive = 8, palHoldLive = 0;
   function palCycleBand() {
-    const lo = el("palcycle-lo"), hi = el("palcycle-hi");
+    const lo = ctl("palcycle-lo"), hi = ctl("palcycle-hi");
     if (!lo || !hi) return [8, 8];
     return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
   }
@@ -2309,7 +2367,7 @@
   // seconds range, a fresh draw per hold. Both thumbs at 0 (the shipped default, so
   // every existing scene keeps its old continuous morph) means no hold at all.
   function palHoldBand() {
-    const lo = el("palhold-lo"), hi = el("palhold-hi");
+    const lo = ctl("palhold-lo"), hi = ctl("palhold-hi");
     if (!lo || !hi) return [0, 0];
     return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
   }
@@ -6377,22 +6435,53 @@
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
     { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
   ];
+  // A control belongs to the SCENE rather than to one effect when it is not an effect
+  // control (palette, banding) or the shared camera/display zoom. Everything else — every
+  // effect param, AND now most filter params — is owned per stacked LAYER, so each effect
+  // in a stack carries its own filter settings (each layer runs its own filter chain, see
+  // renderStackColor). The exceptions stay scene-wide because they act on the ONE finished
+  // image, not a layer: the sim tick-rate `burn` (a shared clock), the glow `bloom`, and
+  // the four "screen" filters (Scanlines / Vignette / Film grain / Barrel).
+  const SHARED_FILTER_KEYS = new Set(["burn", "bloom", "barrel", "scan", "scancount", "vignette", "grain"]);
+  // Hosts whose sliders are PER-LAYER. "fx" is every effect slider, including the whole camera
+  // group (zoom AND camera X/Y/Z) — each stacked effect samples its own space, so it holds its
+  // own camera, pushed into camRX/RY/RZ by installStackItem before that layer draws.
+  // "band" (banding) and "pal" (palette cycle/hold) are here because their values ALREADY live
+  // per-effect in states[e], so loadState rewrote these supposedly scene-wide globals on every
+  // layer selection — selecting a layer visibly re-banded the scene and changed its cycle timing.
+  // They are per-layer in the render too: bakeLayerBytes bands each layer's own ramp and
+  // stepLayerPal runs each layer's own clock, so nothing had to change downstream.
+  const LAYER_HOSTS = new Set(["fx", "band", "pal"]);
+  const isSceneCtl = c => c.host === "filter"
+    ? SHARED_FILTER_KEYS.has(c.key)                       // filter params: per-layer unless shared
+    : !LAYER_HOSTS.has(c.host);                           // TTL / transition / the scene filters stay scene-wide
+  // A control's identifying attribute. A LAYER control exists once per stack slot, so it
+  // cannot carry an id: duplicate ids are invalid and getElementById returns whichever comes
+  // first, which would quietly route every edit to layer 1. It carries the same string on
+  // `data-k` instead and is looked up through ctl()/ctlIn(). A SCENE control (ttl, tdur, burn,
+  // bloom, the screen filters) exists once in the whole page and keeps its id, which is what
+  // lets ctl() fall through to getElementById for it and leaves those sites untouched.
+  //
+  // The STRING never changes either way: "speed-lo" is a wire key (a stored `ranges` map is
+  // keyed by it), so nothing on the wire moves.
+  const kAttr = c => (isSceneCtl(c) ? ' id="' : ' data-k="');
   function ctlHTML(c) {
-    const open = '<div class="ctl" id="ctl-' + c.key + '">';
+    const K = kAttr(c);
+    const open = '<div class="ctl"' + K + 'ctl-' + c.key + '">';
     if (c.type === "check")
-      return open + '<label class="check"><input type="checkbox" id="' + c.key + '" checked> ' + c.label + "</label></div>";
+      return open + '<label class="check"><input type="checkbox"' + K + c.key + '" checked> ' + c.label + "</label></div>";
     if (c.type === "layers")
-      return open + '<label>' + c.label + ' <span class="val" id="vLayers"></span></label>' +
-        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
-        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
-        '<input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
-    const lbl = "<label>" + c.label + ' <span class="val" id="' + c.valId + '"></span></label>';
+      return open + '<label>' + c.label + ' <span class="val"' + K + 'vLayers"></span></label>' +
+        '<div class="presetrow"><button' + K + 'layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
+        '<button' + K + 'layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
+        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
+    const lbl = "<label>" + c.label + ' <span class="val"' + K + c.valId + '"></span></label>';
     if (c.type === "plain")
-      return open + lbl + '<input id="' + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
+      return open + lbl + '<input' + K + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
     // step="any": sliders are continuous. A quantised step made the readout lie
     // (a 0.001-step control formatted to 2dp looked like it jumped 0.01 -> 0.02),
     // and every value is shown to 3 significant digits by sig3() instead.
-    const inp = t => '<input type="range" id="' + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
+    const inp = t => '<input type="range"' + K + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
     return open + lbl + '<div class="dual"><div class="track"></div><div class="fill"></div>' + inp("lo") + inp("hi") + "</div></div>";
   }
   // The Filters checkbox list. Ticking one reveals its parameter group (see the
@@ -6441,7 +6530,10 @@
   // `#flt-<id>` survives as a hidden checkbox inside each section: it is still the on/off
   // VALUE STORE that syncFilterUI writes and the picker reads, exactly as `#preset` and
   // `#palette` sit behind their visible pickers. Deleting it would mean rewriting all of them.
-  const filterSecs = {};
+  // Per slot in `secs`; `filterSecs` is the SELECTED block's, installed by pointMaps. `let`,
+  // not const, precisely so pointMaps can re-point it — setFilterOn, syncFilterSec and
+  // flashStageMove all read it and must act on the layer you are editing.
+  let filterSecs = {};
   // The two lists, and whether their order is the user's to choose. Only the per-effect
   // group is reorderable: the whole-scene filters are one fixed post-composite pass each,
   // and there is nothing meaningful to permute.
@@ -6452,17 +6544,32 @@
   function filterListOf(f) { return filterGroup(f).key === "scene" ? FILTER_LISTS[1] : FILTER_LISTS[0]; }
   const filterSetOf = id => (isSceneFilter(id) ? sceneOn : activeIds);
   // The ids currently in one list, in the order they will be applied.
-  function listIds(key) {
-    return orderFilters(key === "scene" ? [...sceneOn] : [...activeIds])
-      .filter(f => filterListOf(f).key === key).map(f => f.id);
+  function listIds(key) { return listIdsFor(stackSel, key); }
+  // One slot's chain. The selected layer's live set is `activeIds`; any other layer reads its
+  // own record, falling back to its effect's shipped list — the same fallback stageLayerExtras
+  // uses, and deliberately NOT `extras[L.fx]`, which is the per-effect last-used value and
+  // would make every same-effect layer mirror the last one edited.
+  function listIdsFor(slot, key) {
+    if (key === "scene") return orderFilters([...sceneOn]).filter(f => filterListOf(f).key === key).map(f => f.id);
+    const L = stack[slot];
+    const src = slot === stackSel ? [...activeIds]
+      : (L ? (filtersOk(L.filters) || presetFilters(L.fx)) : []);
+    return orderFilters(src).filter(f => filterListOf(f).key === key).map(f => f.id);
   }
+  // Built once PER BLOCK. The call site stays literally `buildFilterUI();` (filterprobe stubs
+  // it by name) with the slot loop INSIDE, so the probe's slice is unaffected.
   function buildFilterUI() {
-    const ctlHost = el("filterctl");
+    for (let slot = 0; slot < STACK_MAX; slot++) buildFilterUIFor(slot);
+    pointMaps(0);
+  }
+  function buildFilterUIFor(slot) {
+    secs[slot] = {};
+    const ctlHost = ctlIn(slot, "filterctl");
     // One caption over the per-effect chain. The Scene filters box's own title already says
     // what that list is, so only this one gets a heading — and it earns it twice over now:
     // it distinguishes per-layer from whole-scene, and it is where "top to bottom is the
     // order they run" is stated.
-    const lay = el(FILTER_LISTS[0].hostId);
+    const lay = ctlIn(slot, FILTER_LISTS[0].hostId);
     if (lay) {
       const g = filterGroup(FILTERS.find(f => f.stage === "feedback"));
       const h = document.createElement("div");
@@ -6475,7 +6582,7 @@
       lay.appendChild(h);
     }
     FILTERS.forEach(f => {
-      const L = filterListOf(f), dest = el(L.hostId);
+      const L = filterListOf(f), dest = ctlIn(slot, L.hostId);
       if (!dest) return;
       const sec = document.createElement("details");
       sec.className = "filter-sec";
@@ -6483,9 +6590,9 @@
       const sum = document.createElement("summary");
       // Hidden value store — the picker dialog ticks it, syncFilterUI reads it.
       const cb = document.createElement("input");
-      cb.type = "checkbox"; cb.id = "flt-" + f.id;
+      cb.type = "checkbox"; ctlReg(slot, "flt-" + f.id, cb);
       cb.style.display = "none";
-      if (L.reorder) sum.appendChild(makeFilterGrab(f, sec));
+      if (L.reorder) sum.appendChild(makeFilterGrab(f, sec, slot));
       const nm = document.createElement("span");
       nm.className = "filter-name"; nm.textContent = f.name;
       // Remove from the chain without opening the picker — the commonest edit by far.
@@ -6500,7 +6607,7 @@
       const body = document.createElement("div");
       body.className = "filter-body";
       // Adopt this filter's controls out of the flat #filterctl list.
-      (f.params || []).forEach(k => { const n = el("ctl-" + k); if (n) body.appendChild(n); });
+      (f.params || []).forEach(k => { const n = ctlIn(slot, "ctl-" + k); if (n) body.appendChild(n); });
       sec.appendChild(body);
       // A GPU-only filter on the Canvas2D fallback: say so rather than leaving a row that
       // silently does nothing. (It stays in the list — see cpuBlocked: never removed.)
@@ -6509,22 +6616,22 @@
         sec.classList.add("off");
         sum.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
       }
-      filterSecs[f.id] = sec;
+      secs[slot][f.id] = sec;
       dest.appendChild(sec);
     });
     // "+ Add filter" per list, plus the caption that used to head the group.
     FILTER_LISTS.forEach(L => {
-      const dest = el(L.hostId);
+      const dest = ctlIn(slot, L.hostId);
       if (!dest) return;
       const b = document.createElement("button");
-      b.type = "button"; b.id = L.addId; b.className = "filter-add";
+      b.type = "button"; b.className = "filter-add";
+      ctlReg(slot, L.addId, b);
       b.textContent = "+ Add filter";
       b.title = "Choose which filters this list runs";
       b.addEventListener("click", () => openFilterPicker(L.key));
       dest.appendChild(b);
     });
     if (ctlHost) ctlHost.style.display = "none";   // now empty; keep the node for scans
-    renderFilterLists();
   }
   // Put one list in order: the added sections first, in chain order, then the rest hidden,
   // then the Add button. Everything stays a child of the host — see the note above on why a
@@ -6541,12 +6648,19 @@
     d.title = "Filters above this line run on the heat before the effect draws; filters below run on the finished picture. Drag one across to change which it does.";
     return d;
   }
+  // Every block, each ordered by ITS OWN layer's chain. Reading `activeIds` for all of them
+  // would render four copies of the selected layer's order, with the divider in the wrong
+  // place — the kind of wrong that looks like the feature half-works.
   function renderFilterLists() {
+    for (let slot = 0; slot < STACK_MAX; slot++) renderFilterListsFor(slot);
+  }
+  function renderFilterListsFor(slot) {
     renderPass = String(+renderPass + 1);
+    const mySecs = secs[slot] || {};
     FILTER_LISTS.forEach(L => {
-      const host = el(L.hostId);
+      const host = ctlIn(slot, L.hostId);
       if (!host) return;
-      const ids = listIds(L.key), added = new Set(ids);
+      const ids = listIdsFor(slot, L.key), added = new Set(ids);
       const cap = host.querySelector(".filter-grp");
       if (cap) host.appendChild(cap);                       // caption stays on top
       // Rows go wherever you put them — the chain is a sequence, not two sorted groups. The
@@ -6556,7 +6670,7 @@
       // after the last feedback filter, so the marker is drawn there and nowhere else.
       const cut = splitChain(ids).heat.length;
       ids.forEach((id, i) => {
-        const sec = filterSecs[id];
+        const sec = mySecs[id];
         if (!sec) return;
         if (L.reorder && cut > 0 && i === cut) host.appendChild(stageDivider());
         sec.style.display = "";
@@ -6566,13 +6680,13 @@
       // Stale dividers from the previous render, now that the runs have moved.
       [...host.querySelectorAll(".filter-div")].forEach(d => { if (d.dataset.live !== renderPass) d.remove(); });
       FILTERS.forEach(f => {
-        const sec = filterSecs[f.id];
+        const sec = mySecs[f.id];
         if (!sec || added.has(f.id) || filterListOf(f).key !== L.key) return;
         sec.style.display = "none";
         sec.open = false;
         host.appendChild(sec);
       });
-      const btn = el(L.addId);
+      const btn = ctlIn(slot, L.addId);
       if (btn) host.appendChild(btn);
       host.classList.toggle("empty", ids.length === 0);
     });
@@ -6594,7 +6708,7 @@
   // on reparent, which kills the drag after the first pixel.
   //
   // The handle also swallows the summary's click, or every drag would toggle the fold open.
-  function makeFilterGrab(f, sec) {
+  function makeFilterGrab(f, sec, slot) {
     const grab = document.createElement("span");
     grab.className = "filter-grab";
     grab.textContent = "⠿";
@@ -6602,6 +6716,11 @@
     grab.setAttribute("aria-label", "Drag to reorder " + f.name);
     grab.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
     grab.addEventListener("pointerdown", e => {
+      // The reorder below rewrites `activeIds`, which is the SELECTED layer's set — so a drag
+      // that starts in another layer's list has to select it first, or it would silently
+      // reorder the wrong chain. The row's own capture-phase handler is bypassed here because
+      // the grab stops propagation (it must: a rebuild mid-drag drops the pointer capture).
+      if (slot !== stackSel) selectStack(slot);
       const host = sec.parentNode;
       const rows = () => [...host.querySelectorAll(".filter-sec")].filter(s => s.style.display !== "none");
       if (rows().length < 2) return;
@@ -6623,7 +6742,7 @@
           if (ev.clientY < b.top + b.height / 2) break;
           to++;
         }
-        host.insertBefore(marker, others[to] || el(filterListOf(f).addId) || null);
+        host.insertBefore(marker, others[to] || ctlIn(slot, filterListOf(f).addId) || null);
       };
       const onUp = () => {
         grab.releasePointerCapture(e.pointerId);
@@ -6744,8 +6863,9 @@
   if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
   if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
   // Kept for the callers that only want the fold state refreshed.
-  function syncFilterSec(id) {
-    const sec = filterSecs[id], cb = el("flt-" + id);
+  function syncFilterSec(id) { syncFilterSecIn(stackSel, id); }
+  function syncFilterSecIn(slot, id) {
+    const sec = (secs[slot] || {})[id], cb = ctlIn(slot, "flt-" + id);
     if (!sec || !cb) return;
     sec.classList.toggle("idle", !cb.checked);
     if (!cb.checked) sec.open = false;
@@ -6753,9 +6873,17 @@
   // A control is visible when the current effect declares it OR it belongs to a
   // ticked filter — so filter params appear and vanish with their checkbox without
   // any effect needing to list them.
-  function shownKeys() {
-    const shown = new Set(EFFECTS[effect].params);
-    for (const f of activeFilters()) for (const k of f.params) shown.add(k);
+  function shownKeys() { return shownKeysFor(stackSel); }
+  // What ONE slot's block shows: its own effect's params plus its own ticked filters'. For the
+  // selected layer that is the live `effect` + activeFilters(); for any other it is read off
+  // the record, so four open blocks each show their own controls instead of four copies of
+  // whichever layer happens to be selected.
+  function shownKeysFor(slot) {
+    const L = stack[slot];
+    const sel = slot === stackSel || !L;
+    const shown = new Set(EFFECTS[sel ? effect : L.fx].params);
+    const fs = sel ? activeFilters() : orderFilters(filtersOk(L.filters) || presetFilters(L.fx));
+    for (const f of fs) for (const k of f.params) shown.add(k);
     shown.add("heatboost");           // a palette-box control that applies to every effect (like palcycle/palhold)
     return shown;
   }
@@ -6766,8 +6894,8 @@
   // group comes first in the schema — "Shape & motion" — while the first *visible* one depends
   // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
   // re-marked on every visibility pass.
-  function markFirstGroup() {
-    const host = el("fxctl");
+  function markFirstGroup(slot) {
+    const host = ctlIn(slot, "fxctl");
     if (!host) return;
     let seen = false;
     host.querySelectorAll(".ctl-grp").forEach(h => {
@@ -6777,44 +6905,55 @@
     });
   }
   function refreshControlVisibility() {
-    const shown = shownKeys();
+    for (let slot = 0; slot < STACK_MAX; slot++) refreshBlockVisibility(slot);
+    refreshBreakout();                // show/hide the pop-out boxes to match
+  }
+  // One block, against its own layer's effect and filters.
+  function refreshBlockVisibility(slot) {
+    const shown = shownKeysFor(slot);
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
       const vis = shown.has(c.key) ? "" : "none";
-      if (rows[c.key]) rows[c.key].style.display = vis;
-      else el("ctl-" + c.key).style.display = vis;
+      const row = ctlIn(slot, "row-" + c.key), box = ctlIn(slot, "ctl-" + c.key);
+      if (row) row.style.display = vis;
+      else if (box) box.style.display = vis;
+      // A scene control has one row and one box, both outside every block; slot 0 owns them.
+      else if (slot === 0 && rows[c.key]) rows[c.key].style.display = vis;
+      else if (slot === 0 && el("ctl-" + c.key)) el("ctl-" + c.key).style.display = vis;
     });
     for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
-      const hdr = el("grp-" + g);
+      const hdr = ctlIn(slot, "grp-" + g);
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
-    markFirstGroup();                  // ...and the topmost visible one loses its divider
-    refreshBreakout();                // show/hide the pop-out boxes to match
-    refreshBlocked(shown);            // grey any control another setting has neutralised
-    refreshChanged(shown);            // mark any slider moved off its shipped default
+    markFirstGroup(slot);              // ...and the topmost visible one loses its divider
+    refreshBlocked(slot, shown);      // grey any control another setting has neutralised
+    refreshChanged(slot, shown);      // mark any slider moved off its shipped default
   }
   // Mark a slider's menu row (and its pop-out box) when its live value differs from the
   // current effect's SHIPPED default — a modified-from-default dot, so you can see at a
   // glance what you've customised. Reads the DOM thumbs (stable; the drift lives elsewhere),
   // so it must run on every edit too. Dual → compare [lo,hi]; plain → the single value.
-  function refreshChanged(shown) {
-    shown = shown || shownKeys();
-    const def = presetState(effect);
+  function refreshChanged(slot, shown) {
+    if (slot === undefined) slot = stackSel;
+    shown = shown || shownKeysFor(slot);
+    const L = stack[slot];
+    const def = presetState(slot === stackSel || !L ? effect : L.fx);
+    const g = k => ctlIn(slot, k) || (slot === 0 ? el(k) : null);
     for (const c of CONTROLS) {
-      const row = rows[c.key];
+      const row = ctlIn(slot, "row-" + c.key) || (slot === 0 ? rows[c.key] : null);
       if (!row) continue;             // only poppable sliders carry a launcher row
       let changed = false;
       if (shown.has(c.key)) {
         const d = def[c.key];
         if (Array.isArray(d)) {
-          const lo = el(c.key + "-lo"), hi = el(c.key + "-hi");
+          const lo = g(c.key + "-lo"), hi = g(c.key + "-hi");
           if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
         } else if (d != null) {
-          const e = el(c.key);
+          const e = g(c.key);
           if (e) changed = Math.abs(+e.value - d) > 1e-9;
         }
       }
       row.classList.toggle("ctl-changed", changed);
-      const box = el("ctl-" + c.key);
+      const box = g("ctl-" + c.key);
       if (box) box.classList.toggle("ctl-changed", changed);
     }
   }
@@ -6822,15 +6961,23 @@
   // whose HIGH thumb is 0 — i.e. turned fully off, so the drift can never leave 0). Keyed
   // blocked-control → the blocker it depends on. Extend by adding an entry.
   const CTL_BLOCKED = { bandsize: "band", banddim: "band", nodspd: "nod" };
-  function ctlHi(key) { const a = anims[key]; return a ? (a.hi ? +a.hi.value : +a.lo.value) : 1; }
+  function ctlHi(key) { return ctlHiIn(stackSel, key); }
+  // A control is "off" when its dual's HIGH thumb is 0 — read off that block's own thumb, so a
+  // blocked control is greyed per layer rather than from whichever one is selected.
+  function ctlHiIn(slot, key) {
+    const n = ctlIn(slot, key + "-hi") || ctlIn(slot, key) || el(key + "-hi") || el(key);
+    return n ? +n.value : 1;
+  }
   // Grey the blocked control's menu row + box, kill its +/- button, and stash the blocker
   // on the row so a click can flash it. Reads live thumb values, so it must run on edits too.
-  function refreshBlocked(shown) {
-    shown = shown || shownKeys();
+  function refreshBlocked(slot, shown) {
+    if (slot === undefined) slot = stackSel;
+    shown = shown || shownKeysFor(slot);
     for (const key in CTL_BLOCKED) {
       const by = CTL_BLOCKED[key];
-      const blocked = shown.has(key) && ctlHi(by) === 0;
-      const row = rows[key], box = el("ctl-" + key);
+      const blocked = shown.has(key) && ctlHiIn(slot, by) === 0;
+      const row = ctlIn(slot, "row-" + key) || (slot === 0 ? rows[key] : null);
+      const box = ctlIn(slot, "ctl-" + key) || (slot === 0 ? el("ctl-" + key) : null);
       if (row) {
         row.classList.toggle("ctl-blocked", blocked);
         row.dataset.blocker = blocked ? by : "";
@@ -6847,8 +6994,18 @@
     row.classList.remove("ctl-flash"); void row.offsetWidth; row.classList.add("ctl-flash");
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
+  // Every block's checkboxes, each from ITS OWN layer's set — the hidden #flt-<id> store is
+  // per block, so writing only the selected one would leave the other three showing whatever
+  // they were built with.
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const own = new Set(listIdsFor(slot, "layer").concat(listIdsFor(slot, "scene")));
+      FILTERS.forEach(f => {
+        const cb = ctlIn(slot, "flt-" + f.id);
+        if (cb) cb.checked = slot === stackSel ? filterSetOf(f.id).has(f.id) : own.has(f.id);
+        syncFilterSecIn(slot, f.id);
+      });
+    }
     renderFilterLists();     // membership AND order both come from the sets, so re-render
     syncFilterPicker();
   }
@@ -6883,21 +7040,47 @@
     f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
     palette: "Palette", banding: "Banding",
   };
-  function buildControls() {
-    const fxHost = el("fxctl"), bandHost = el("bandctl"), palHost = el("palctl"), filterHost = el("filterctl");
+  // Render the schema into ONE block, then index everything it made under `slot`. Group
+  // headings carry data-k too: a heading belongs to the block it titles, and each block shows
+  // the headings of ITS OWN effect.
+  function buildControls(slot) {
+    const root = blocks[slot];
+    const q = k => root.querySelector('[data-k="' + k + '"]');
+    const fxHost = q("fxctl"), bandHost = q("bandctl"), palHost = q("palctl"), filterHost = q("filterctl");
+    // A SCENE control exists ONCE in the whole page and keeps its id — so it is generated in
+    // slot 0 only. Generating it per block would put four elements carrying id="bloom-lo" in
+    // the document, and getElementById would hand every one of its sites the first.
+    // Filtered before the loop rather than skipped inside it, so a group whose members are
+    // all scene controls never opens an empty heading in the other blocks.
     let open = null;
-    CONTROLS.forEach(c => {
+    CONTROLS.filter(c => slot === 0 || !isSceneCtl(c)).forEach(c => {
       const host = c.host === "band" ? bandHost : c.host === "pal" ? palHost
         : c.host === "filter" ? filterHost : fxHost;
       if (c.group !== open) {
         open = c.group;
         if (c.group) host.insertAdjacentHTML("beforeend",
-          '<div class="ctl-grp" id="grp-' + c.group + '">' + CTL_GROUPS[c.group] + "</div>");
+          '<div class="ctl-grp" data-k="grp-' + c.group + '">' + CTL_GROUPS[c.group] + "</div>");
       }
       host.insertAdjacentHTML("beforeend", ctlHTML(c));
     });
+    // Index every [data-k] the block now holds: the ones authored in the template (the four
+    // hosts, the palette strip, Reset, Orbit) and the ones just generated. Registered by
+    // REFERENCE, so a node keeps resolving after buildFilterUI adopts it into a filter body or
+    // the POPPABLE pass exports it to #breakout.
+    for (const n of root.querySelectorAll("[data-k]")) ctlReg(slot, n.dataset.k, n);
   }
-  buildControls();   // render the control DOM before the bind() / bindRange() wiring below reads it
+  // One block per stack slot, cloned from the authored <template>. Each is built by the same
+  // passes rather than copied from the finished first one: cloneNode copies nodes, not
+  // listeners, so a clone of a wired block would look right and do nothing.
+  const blockTpl = el("lyrblock");
+  for (let slot = 0; slot < STACK_MAX; slot++) {
+    blocks[slot] = blockTpl.content.firstElementChild.cloneNode(true);
+    blocks[slot].dataset.slot = String(slot);
+    buildControls(slot);
+  }
+  // All four go into the document now (the wiring passes below read them); syncStackUI moves
+  // each into its layer's row on the first paint.
+  for (const b of blocks) el("fxbox").appendChild(b);
 
   function bind(id, valId, fmt, onChange) {
     const input = el(id), out = el(valId);
@@ -6912,15 +7095,19 @@
   // per-effect state/persist/preset machinery); each layer adds a smaller,
   // fewer-point, differently-seeded copy of the fractal.
   const LAYER_MAX = CONFIG.layerMax;
-  function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); el("vLayers").textContent = layerCount; }
-  el("layers").addEventListener("input", () => applyLayers(+el("layers").value));
+  function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); ctl("vLayers").textContent = layerCount; }
   function stepLayers(d) {
-    const v = Math.max(1, Math.min(LAYER_MAX, (+el("layers").value | 0) + d));
-    el("layers").value = v;
-    el("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
+    const v = Math.max(1, Math.min(LAYER_MAX, (+ctl("layers").value | 0) + d));
+    ctl("layers").value = v;
+    ctl("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
   }
-  el("layer-plus").addEventListener("click", () => stepLayers(1));
-  el("layer-minus").addEventListener("click", () => stepLayers(-1));
+  // Wired per block. The handlers read back through ctl(), i.e. the SELECTED layer's nodes,
+  // which is right because touching a block selects it first.
+  for (let slot = 0; slot < STACK_MAX; slot++) {
+    ctlIn(slot, "layers").addEventListener("input", () => applyLayers(+ctl("layers").value));
+    ctlIn(slot, "layer-plus").addEventListener("click", () => stepLayers(1));
+    ctlIn(slot, "layer-minus").addEventListener("click", () => stepLayers(-1));
+  }
 
   // Ranged (dual-thumb) sliders: the two thumbs set a [lo,hi] band and the live
   // value wanders erratically inside it — a random target reached over a random
@@ -7067,9 +7254,23 @@
   const pulseLen = {};         // id -> seconds : live per-effect value (drives updateAnims)
   const plenEls = {};          // id -> {inp,out} : the length slider + readout (never persisted)
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
-  function makeChips(id, label) {
-    beatReact[id] = { low: false, mid: false, high: false };
-    chipEls[id] = {};
+  //
+  // Built once PER BLOCK, so it hangs its nodes on that block's wiring record `w` rather
+  // than writing chipEls/pulseEls/plenEls directly — pointMaps installs whichever block is
+  // selected into those singletons. The three LIVE maps it seeds (beatReact, pulseShape,
+  // pulseLen) belong to the selected layer and must be seeded exactly ONCE: seeding them
+  // per block would have slot 3's build reset whatever slot 0 already held.
+  //
+  // The handlers still write those singletons directly, and that is correct rather than
+  // sloppy: a block can only be reached by touching it, and touching a row selects it first
+  // (the capture-phase pointerdown). Each guards on being the LIVE block — the one pointMaps
+  // has installed — rather than on `slot === stackSel`, and the difference matters: while
+  // there is a single block it serves whichever layer is selected, so a slot test would
+  // deaden every chip the moment you selected layer 2. Identity is true in both worlds, and
+  // it also stops a synthetic dispatch writing across layers.
+  function makeChips(id, label, w) {
+    if (!(id in beatReact)) beatReact[id] = { low: false, mid: false, high: false };
+    const chips = w.chips = {};
     const wrap = document.createElement("span");
     wrap.className = "bandchips";
     for (const k of ["low", "mid", "high"]) {
@@ -7078,6 +7279,7 @@
       btn.textContent = k[0].toUpperCase();
       btn.title = k + " beat";
       btn.addEventListener("click", () => {
+        if (chipEls[id] !== chips) return;      // not the live block
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
         syncDots();              // the menu row shows the same armed state
@@ -7088,7 +7290,7 @@
         chipEdited();
       });
       wrap.appendChild(btn);
-      chipEls[id][k] = btn;
+      chips[k] = btn;
     }
     // Shape picker: how this slider's value animates back down after a beat. Its
     // `change` bubbles to the panel's delegated onEdit, which persists + autosaves,
@@ -7098,9 +7300,9 @@
     psel.title = "Beat pulse shape";
     PULSE_SHAPES.forEach(s => psel.appendChild(new Option(s.name, s.key)));
     psel.value = PULSE_DEFAULT;
-    psel.addEventListener("change", () => { pulseShape[id] = psel.value; });
-    pulseEls[id] = psel;
-    pulseShape[id] = PULSE_DEFAULT;
+    psel.addEventListener("change", () => { if (pulseEls[id] === psel) pulseShape[id] = psel.value; });
+    w.psel = psel;
+    if (!(id in pulseShape)) pulseShape[id] = PULSE_DEFAULT;
     // ---- pop-out box layout: value on top, then the SLIDER, then the beat controls ----
     // The chips used to be tucked into the label's right edge, above the slider. They are
     // their own titled block under it now, because the slider is the thing you are actually
@@ -7125,43 +7327,48 @@
     host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
-    pulseLen[id] = PULSE_DROP;
+    if (!(id in pulseLen)) pulseLen[id] = PULSE_DROP;
     const durT = document.createElement("div");
     durT.className = "plen-name"; durT.textContent = "Trigger duration";
     const row = document.createElement("div");
     row.className = "plen";
     const sl = document.createElement("input");
-    sl.type = "range"; sl.id = "plen-" + id; sl.min = PLEN_MIN; sl.max = PLEN_MAX; sl.step = 0.01; sl.value = PULSE_DROP;
+    // No id: it carried "plen-<id>" and nothing ever looked it up (the RNG_ORIG scan excludes
+    // these by their .plen wrapper, not by id), so with a copy per block it would only have
+    // been a set of duplicate ids waiting to shadow each other.
+    sl.type = "range"; sl.min = PLEN_MIN; sl.max = PLEN_MAX; sl.step = 0.01; sl.value = PULSE_DROP;
     sl.title = "How long a trigger takes to fall back";
     sl.setAttribute("aria-label", "Trigger duration");
     const out = document.createElement("span");
     out.className = "plen-val"; out.textContent = plenFmt(PULSE_DROP);
-    sl.addEventListener("input", () => { pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
+    sl.addEventListener("input", () => { if (plenEls[id] && plenEls[id].inp === sl) pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
     row.append(sl, out);
-    plenEls[id] = { inp: sl, out };
+    w.plen = { inp: sl, out };
     host.append(durT, row);              // foot of the control block (above the range editor)
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
-  function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
-    const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
+  // Wiring a control splits in two, because several open layers need one set of DOM nodes
+  // EACH against one shared definition.
+  //
+  //   wireRange(slot, …)  per block: the nodes, the fill/readout ui() closure, the two
+  //       cross-clamp listeners, the beat block. Registers nothing global, and — load-bearing
+  //       — does NOT call apply(). Building slot 1's `bloom` must not write bloomAmt.
+  //   registerAnim(…)  once per key, from slot 0: anims[id], animPhase[id] and the single
+  //       startup apply().
+  //   pointMaps(slot)  on every layer selection: re-points the singleton maps at another
+  //       block's nodes. It must never re-create animPhase — that would teleport every
+  //       drifting slider on every layer click — and must never call apply(), which would
+  //       rewrite the render globals out of turn.
+  function wireRange(slot, id, valId, fmt, beat) {
+    const lo = ctlIn(slot, id + "-lo") || ctl(id + "-lo");
+    const hi = ctlIn(slot, id + "-hi") || ctl(id + "-hi");
+    const out = ctlIn(slot, valId) || ctl(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     // a11y: each dual slider is two anonymous inputs — name the low/high thumbs.
     const lbl = lo.closest(".dual").previousElementSibling;
     const nm = (lbl && lbl.childNodes[0] ? lbl.childNodes[0].nodeValue : id).trim();
     lo.setAttribute("aria-label", nm + " (low)");
     hi.setAttribute("aria-label", nm + " (high)");
-    // The DEFINITION lives here; the mutable animation PHASE lives in animPhase[id]
-    // (see newPhase). They are split because a stack of effects needs one phase record
-    // per layer per key while sharing one definition, one pair of DOM thumbs and one
-    // apply closure. With a single layer there is exactly one phase record and the
-    // behaviour is identical.
-    // `scene` marks a control that belongs to the whole scene rather than to one
-    // effect — the palette, banding, the camera, display zoom and every filter param.
-    // Those animate once per frame no matter how many effects are stacked. Derived
-    // from CONTROLS (host/group), NOT from the FILTERS registry, which is defined
-    // further down the file and does not exist yet when this wiring runs.
-    const a = anims[id] = { lo, hi, apply, name: nm, durScale: durScale || 1, scene: scene !== false };
-    animPhase[id] = newPhase(+lo.value);
     function ui() {
       // min/max are read live, not closed over: each box's range editor
       // rewrites them at runtime and the fill must follow.
@@ -7178,34 +7385,62 @@
       const show = v => fmt(mx - mn > 1 ? Math.round(v * 10) / 10 : v);
       out.textContent = A === B ? show(A) : show(A) + "–" + show(B);
     }
-    a.ui = ui;
     lo.addEventListener("input", () => { if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
     hi.addEventListener("input", () => { if (+hi.value < +lo.value) lo.value = hi.value; ui(); });
-    if (beat !== false) makeChips(id, lo.closest(".dual").previousElementSibling);
-    ui(); apply(animPhase[id].val);
+    const w = { lo, hi, out, ui, name: nm, chips: null, dots: null, psel: null, plen: null, row: null };
+    (W[slot] || (W[slot] = {}))[id] = w;
+    if (beat !== false) makeChips(id, lbl, w);
+    ui();                                // ...and no apply(): see the note above
+    return w;
   }
-  // A control belongs to the SCENE rather than to one effect when it is not an effect
-  // control (palette, banding) or the shared camera/display zoom. Everything else — every
-  // effect param, AND now most filter params — is owned per stacked LAYER, so each effect
-  // in a stack carries its own filter settings (each layer runs its own filter chain, see
-  // renderStackColor). The exceptions stay scene-wide because they act on the ONE finished
-  // image, not a layer: the sim tick-rate `burn` (a shared clock), the glow `bloom`, and
-  // the four "screen" filters (Scanlines / Vignette / Film grain / Barrel).
-  const SHARED_FILTER_KEYS = new Set(["burn", "bloom", "barrel", "scan", "scancount", "vignette", "grain"]);
-  // Hosts whose sliders are PER-LAYER. "fx" is every effect slider, including the whole camera
-  // group (zoom AND camera X/Y/Z) — each stacked effect samples its own space, so it holds its
-  // own camera, pushed into camRX/RY/RZ by installStackItem before that layer draws.
-  // "band" (banding) and "pal" (palette cycle/hold) are here because their values ALREADY live
-  // per-effect in states[e], so loadState rewrote these supposedly scene-wide globals on every
-  // layer selection — selecting a layer visibly re-banded the scene and changed its cycle timing.
-  // They are per-layer in the render too: bakeLayerBytes bands each layer's own ramp and
-  // stepLayerPal runs each layer's own clock, so nothing had to change downstream.
-  const LAYER_HOSTS = new Set(["fx", "band", "pal"]);
-  const isSceneCtl = c => c.host === "filter"
-    ? SHARED_FILTER_KEYS.has(c.key)                       // filter params: per-layer unless shared
-    : !LAYER_HOSTS.has(c.host);                           // TTL / transition / the scene filters stay scene-wide
+  // The DEFINITION, created once. The mutable animation PHASE lives in animPhase[id] (see
+  // newPhase); they are split because a stack of effects needs one phase record per layer
+  // per key while sharing one definition and one apply closure. The DOM refs on it name
+  // the SELECTED block and are re-pointed by pointMaps; everything else is immutable.
+  // `scene` marks a control belonging to the whole scene rather than to one effect — the
+  // palette, banding, the camera, display zoom and the shared filter params. Those animate
+  // once per frame no matter how many effects are stacked, and their nodes are singletons
+  // outside every block, so pointMaps never touches them. Derived from CONTROLS
+  // (host/group), NOT from the FILTERS registry, which does not exist yet when this runs.
+  function registerAnim(id, apply, durScale, scene, w) {
+    const a = anims[id] = { lo: w.lo, hi: w.hi, apply, name: w.name, durScale: durScale || 1, scene: scene !== false };
+    animPhase[id] = newPhase(+w.lo.value);
+    a.ui = w.ui;
+    apply(animPhase[id].val);
+  }
+  function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
+    registerAnim(id, apply, durScale, scene, wireRange(0, id, valId, fmt, beat));
+  }
+  // Point the singleton wiring maps at one block's nodes — the whole of what "selecting a
+  // layer" means to the control machinery. Nothing is created, moved or applied; a node the
+  // user has a pointer down on is untouched, which is what lets a drag that started on a
+  // non-selected layer's slider carry straight on once the row selects it.
+  //
+  // Only keys this block actually holds are re-pointed. A scene control has no entry in any
+  // block's W, so `anims.bloom.lo` keeps naming its one true node forever.
+  function pointMaps(slot) {
+    const w = W[slot];
+    if (!w) return;
+    for (const id in w) {
+      const e = w[id], a = anims[id];
+      if (a) { a.lo = e.lo; a.hi = e.hi; a.ui = e.ui; }   // NOT a.apply, and NOT animPhase
+      if (e.chips) chipEls[id] = e.chips;
+      if (e.dots) dotEls[id] = e.dots;
+      if (e.psel) pulseEls[id] = e.psel;
+      if (e.plen) plenEls[id] = e.plen;
+      if (e.row) rows[id] = e.row;
+    }
+  }
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
-  CONTROLS.filter(c => c.type === "dual").forEach(c => bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c)));
+  // Wire every generated dual slider in EVERY block, then register the definition once from
+  // slot 0. The order matters: registerAnim seeds animPhase from slot 0's thumbs and runs the
+  // one startup apply(), so wiring the other blocks first would be harmless but wiring them
+  // through bindRange would re-seed the phase three more times.
+  CONTROLS.filter(c => c.type === "dual").forEach(c => {
+    bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c));   // slot 0 + the definition
+    // A scene control exists only in slot 0, so there is nothing to wire in the others.
+    if (!isSceneCtl(c)) for (let slot = 1; slot < STACK_MAX; slot++) wireRange(slot, c.key, c.valId, c.fmt, c.beat);
+  });
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.
@@ -7314,7 +7549,7 @@
     // the SELECTED layer's value. With two point layers that meant the visible layer's object
     // count jumped to whatever layer you selected. Install it per item: the selected item's
     // store is the DOM (#layers), a frozen item's is L.state.layers.
-    const lv = (L === stack[stackSel]) ? +el("layers").value : (L.state ? L.state.layers : layerCount);
+    const lv = (L === stack[stackSel]) ? +ctl("layers").value : (L.state ? L.state.layers : layerCount);
     layerCount = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
     camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
@@ -7392,18 +7627,27 @@
     }
     return "linear-gradient(to right, " + stops.join(",") + ")";
   }
+  // Highlight the selected layer's strip from the live <select>, and every other block's from
+  // that layer's own stored palette — read through the same fallback layerPalIndex uses.
   function syncPalSwatches() {
-    const host = el("palswatches");
-    if (!host) return;
-    const cur = paletteSel.value;
-    host.querySelectorAll(".palsw").forEach(b => b.classList.toggle("active", b.dataset.pal === cur));
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const host = ctlIn(slot, "palswatches");
+      if (!host) continue;
+      const L = stack[slot];
+      const cur = slot === stackSel || !L ? paletteSel.value
+        : String(L.palette != null ? L.palette : presetExtra(L.fx).palette);
+      host.querySelectorAll(".palsw").forEach(b => b.classList.toggle("active", b.dataset.pal === cur));
+    }
   }
+  // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
+  // (the single source — names live there) rather than hand-written in the HTML, so adding a
+  // palette needs only a PALETTES entry. The option value is still the index, read for
+  // validation. There is ONE store for every block, so this half runs once.
+  //
+  // Every caller must go through here rather than rebuilding a single strip — setPalUse,
+  // setPalUseAll, applyBlob's custom install and palRemapDeleted all shift what the indices
+  // mean, and a block left with stale data-pal would pick a different ramp than it shows.
   function buildPalSwatches() {
-    const host = el("palswatches");
-    if (!host) return;
-    // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
-    // (the single source — names live there) rather than hand-written in the HTML, so adding a
-    // palette needs only a PALETTES entry. The option value is still the index, read for validation.
     const cur = paletteSel.value;
     paletteSel.innerHTML = "";
     PALETTES.forEach((p, i) => {
@@ -7412,6 +7656,12 @@
       paletteSel.appendChild(o);
     });
     if (cur) paletteSel.value = cur;
+    for (let slot = 0; slot < STACK_MAX; slot++) buildPalStrip(slot);
+    syncPalSwatches();
+  }
+  function buildPalStrip(slot) {
+    const host = ctlIn(slot, "palswatches");
+    if (!host) return;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
       // Only the palettes in use — plus whichever is selected, always, or picking a scene
@@ -7429,6 +7679,10 @@
       n.className = "palsw-n"; n.textContent = p.name;
       b.appendChild(n);
       b.addEventListener("click", () => {
+        // paletteSel is the SELECTED layer's store, so a pick in another layer's strip has to
+        // select it first. The row's capture-phase pointerdown already did that for a real
+        // click; this makes it true for a synthetic one too, and costs nothing when it did.
+        if (slot !== stackSel && stack[slot]) selectStack(slot);
         paletteSel.value = String(i);
         paletteSel.dispatchEvent(new Event("change", { bubbles: true }));   // morph/setPalette + persist
         syncPalSwatches();
@@ -7440,7 +7694,11 @@
       // and every existing scene keep meaning what they meant); a custom opens for editing.
       e.title = p.custom ? "Edit this palette" : "Make an editable copy of " + p.name;
       e.setAttribute("aria-label", e.title);
-      e.addEventListener("click", ev => { ev.stopPropagation(); openPalEditor(i); });
+      e.addEventListener("click", ev => {
+        ev.stopPropagation();
+        if (slot !== stackSel && stack[slot]) selectStack(slot);
+        openPalEditor(i);
+      });
       w.appendChild(e);
       host.appendChild(w);
     });
@@ -7521,14 +7779,21 @@
     el("paldlg").classList.remove("hidden");
   }
   const closePalDetail = () => el("paldlg").classList.add("hidden");
-  el("pal-detail-btn").addEventListener("click", openPalDetail);
   el("pal-close").addEventListener("click", closePalDetail);
   el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
-  const showBoxChk = el("showbox");
-  showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
-  const randSeedChk = el("randseed");
-  // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
-  randSeedChk.addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
+  // These four are per-block controls whose one live value belongs to the selected layer, so
+  // each is an accessor over ctl() rather than a captured node. Every read and write site —
+  // including the render path's showBoxChk.checked — stays written exactly as it was.
+  const showBoxChk = { get checked() { const n = ctl("showbox"); return !!n && n.checked; },
+                       set checked(v) { for (const n of ctlEach("showbox")) n.checked = v; } };
+  const randSeedChk = { get checked() { const n = ctl("randseed"); return !!n && n.checked; },
+                        set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
+  for (let slot = 0; slot < STACK_MAX; slot++) {
+    ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
+    // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
+    ctlIn(slot, "randseed").addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
+    ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
+  }
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");
@@ -7578,7 +7843,7 @@
     PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
     if (full) buildPalSwatches();
     else {
-      const sw = el("palswatches") && el("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
+      const sw = ctl("palswatches") && ctl("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
       if (sw) sw.style.background = paleGradCss(st);
       const opt = paletteSel.querySelector('option[value="' + paleIdx + '"]');
       if (opt) opt.textContent = PALETTES[paleIdx].name;
@@ -8863,8 +9128,8 @@
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global (sceneFx), not per-effect
       st[id] = Array.isArray(st[id])
-        ? [+el(id + "-lo").value, +el(id + "-hi").value]
-        : +el(id).value;
+        ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
+        : +ctl(id).value;
     }
   }
   function loadState(e) {
@@ -8874,10 +9139,10 @@
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // don't reload scene-filter values on a switch — they're scene-global
       const v = st[id];
       if (Array.isArray(v)) {
-        el(id + "-lo").value = v[0]; el(id + "-hi").value = v[1];
-        el(id + "-lo").dispatchEvent(new Event("input"));
-        el(id + "-hi").dispatchEvent(new Event("input"));
-      } else { el(id).value = v; el(id).dispatchEvent(new Event("input")); }
+        ctl(id + "-lo").value = v[0]; ctl(id + "-hi").value = v[1];
+        ctl(id + "-lo").dispatchEvent(new Event("input"));
+        ctl(id + "-hi").dispatchEvent(new Event("input"));
+      } else { ctl(id).value = v; ctl(id).dispatchEvent(new Event("input")); }
     }
     suppressPersist = false;
   }
@@ -8894,8 +9159,8 @@
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global, not per-layer
       L.state[id] = Array.isArray(st[id])
-        ? [+el(id + "-lo").value, +el(id + "-hi").value]
-        : +el(id).value;
+        ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
+        : +ctl(id).value;
     }
     for (const id in beatReact) L.beat[id] = Object.assign({}, beatReact[id]);
     for (const id in pulseShape) L.pulse[id] = pulseShape[id];
@@ -8904,10 +9169,6 @@
     for (const id in animPhase) L.anim[id] = Object.assign({}, animPhase[id]);
     capturePhase(L);
     captureLayerExtras(L);            // this layer's palette + filters, from the live globals
-    // Remember this layer's open slider pop-out boxes, so re-selecting it restores them
-    // (restoreLayerUi). Transient, like `popped` itself: not serialized, shared or backed up.
-    // (The Orbit editor is scene-wide sticky, not per layer — see setEffect / cardWanted.)
-    L.popped = [...popped];
     L.ranges = collectLayerRanges();  // this layer's custom slider bounds (applied by setEffect on select)
   }
   function thawItem(L) {
@@ -8921,16 +9182,71 @@
     L.state = L.beat = L.pulse = L.plen = null;
     L.anim = {};
   }
+  // The ORDER here is load-bearing and any other one loses the user's last edit in silence:
+  // freezeItem reads the OUTGOING block, so it must run while the maps still point at it;
+  // pointMaps then installs the incoming block, so the loadState inside setEffect writes
+  // there. freeze -> stackSel -> pointMaps -> everything else.
+  // Paint a NON-selected block from its layer's frozen record. The selected block is skipped
+  // because it IS the store — overwriting it would throw away whatever is being edited.
+  //
+  // It sets values and calls that slider's own ui() DIRECTLY; it must never dispatch `input`.
+  // A dispatch would reach the delegated onEdit, which persists and autosaves the live scene,
+  // so painting three blocks would write the scene three times per selection for no reason.
+  function paintBlock(slot, L) {
+    if (!L || slot === stackSel || !W[slot]) return;
+    // Bounds BEFORE values: paint a value into a slider still carrying the shipped bounds and
+    // the browser silently clamps it, and the next freezeItem writes the clamped number back.
+    applyLayerRangesTo(slot, L.ranges);
+    const st = L.state || {};
+    for (const id in W[slot]) {
+      const w = W[slot][id], v = st[id];
+      if (Array.isArray(v)) { w.lo.value = String(v[0]); w.hi.value = String(v[1]); }
+      else if (v !== undefined && v !== null) { w.lo.value = String(v); w.hi.value = String(v); }
+      w.ui();
+      // The beat wiring: which bands arm it, the fall curve, how long the fall takes.
+      const b = L.beat && L.beat[id];
+      if (w.chips) for (const k in w.chips) w.chips[k].classList.toggle("on", !!(b && b[k]));
+      if (w.dots) for (const k in w.dots) w.dots[k].classList.toggle("armed", !!(b && b[k]));
+      if (w.psel) w.psel.value = (L.pulse && L.pulse[id]) || PULSE_DEFAULT;
+      if (w.plen) {
+        const p = (L.plen && L.plen[id]) != null ? L.plen[id] : PULSE_DROP;
+        w.plen.inp.value = String(p);
+        w.plen.out.textContent = plenFmt(+p);
+      }
+    }
+    // The non-slider per-layer controls.
+    const lv = st.layers;
+    if (ctlIn(slot, "layers") && lv != null) {
+      ctlIn(slot, "layers").value = String(lv);
+      ctlIn(slot, "vLayers").textContent = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
+    }
+    const px = presetExtra(L.fx);
+    if (ctlIn(slot, "palrev")) ctlIn(slot, "palrev").checked = !!(L.paletteRev != null ? L.paletteRev : px.paletteRev);
+    if (ctlIn(slot, "palbg")) ctlIn(slot, "palbg").value = bgOk(L.paletteBg != null ? L.paletteBg : px.paletteBg);
+    if (ctlIn(slot, "showbox")) ctlIn(slot, "showbox").checked = !!(L.showBox != null ? L.showBox : px.showBox);
+    if (ctlIn(slot, "cardbtn")) ctlIn(slot, "cardbtn").style.display = EFFECTS[L.fx].cardioid ? "" : "none";
+    // This layer's filter chain — membership, order and the stage divider.
+    const own = new Set(filtersOk(L.filters) || presetFilters(L.fx));
+    FILTERS.forEach(f => { const cb = ctlIn(slot, "flt-" + f.id); if (cb) cb.checked = own.has(f.id); });
+    renderFilterListsFor(slot);
+    refreshBlockVisibility(slot);      // ...against ITS effect and ITS filters
+  }
+  // A reorder, an add, a remove and a scene load all change WHICH LAYER a slot holds, so
+  // every block has to be repainted. Missing one is silent: the records are still right, so
+  // the render is still right and only the panel lies.
+  function repaintAllBlocks() { stack.forEach((L, s) => paintBlock(s, L)); }
   function selectStack(j) {
     if (j === stackSel || !stack[j]) return;
+    const prev = stackSel;
     freezeItem(stack[stackSel]);
     stackSel = j;
-    const pops = stack[j].popped;    // read BEFORE setEffect's persist re-freezes and wipes it
+    pointMaps(j);
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
     setEffect(stack[j].fx, false, false);   // reloads the maps for editing; enter=false ⇒ no reseed, the layer keeps running
     applyLayerExtras(stack[j]);      // ...and the full palette + filter UI/morph
-    restoreLayerUi(stack[j], pops);  // ...and re-open the pop-out boxes it had open
+    restoreLayerUi(stack[j]);
+    paintBlock(prev, stack[prev]);   // the block that just lost selection, from its frozen record
     syncStackUI();
   }
   function addStackItem(fx) {
@@ -8951,24 +9267,28 @@
     L.filters = presetFilters(L.fx);
     stack.push(L);
     stackSel = stack.length - 1;
+    pointMaps(stackSel);
     thawItem(L);
     stageLayerExtras(L);
     setEffect(L.fx, false);
     applyLayerExtras(L);
     restoreLayerUi(L, null);         // a fresh layer has no pop-out boxes ⇒ clean editing surface
+    repaintAllBlocks();
     syncStackUI();
   }
   function removeStackItem(j) {
     if (stack.length <= 1 || !stack[j]) return;
     stack.splice(j, 1);
+    dropOpen(j);                     // the fold state follows the surviving layers, not the slots
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
-    const pops = stack[stackSel].popped;   // before setEffect's persist wipes it
+    pointMaps(stackSel);
     thawItem(stack[stackSel]);
     stageLayerExtras(stack[stackSel]);
     setEffect(stack[stackSel].fx, false, false);   // re-selecting a surviving layer ⇒ no reseed
     applyLayerExtras(stack[stackSel]);   // the newly-selected layer's palette + filters
-    restoreLayerUi(stack[stackSel], pops);   // ...and its remembered pop-out boxes
+    restoreLayerUi(stack[stackSel]);
+    repaintAllBlocks();              // the splice moved every later layer down a slot
     syncStackUI();
   }
   // ---- the layer list ----
@@ -8983,31 +9303,66 @@
   // controls (the DOM is the store for the selected layer), so the block is MOVED rather
   // than rebuilt, exactly like the ☰ menubar adopting #sysbox.
   //
-  // parkLayerCtl MUST run before the rows are cleared. syncStackUI wipes #stacklist on every
-  // call — a selection change, a mute, a gain drag — and anything adopted into a row goes
-  // with it. That would not "reset" the panel, it would DELETE every slider, filter and
-  // palette control from the document, and nothing that looks them up by id would work
-  // again. Same failure the menubar's returnAdopted exists to prevent.
-  // Is the open layer's control block folded away? Transient and per-session, like the
-  // panel's own box folds — deliberately not persisted and not part of a scene.
-  let lyrFolded = false;
-  function parkLayerCtl() {
-    const ctl = el("lyrctl"), home = el("fxbox");
-    if (ctl && home && ctl.parentNode !== home) home.appendChild(ctl);
+  // Which layers are UNFOLDED, by slot index. A Set of open slots rather than a single
+  // "is the open one folded" flag, because any number of layers can be open at once now.
+  // It starts EMPTY — every layer loads folded and you unfold the ones you want to work
+  // on; they stay unfolded as you move between them, since selecting is no longer what
+  // opens a layer. An open-set rather than a folded-set so the default needs no seeding
+  // and adding a layer can't accidentally open it. Transient and per-session, like the
+  // panel's own box folds — deliberately not persisted and not part of a scene, and
+  // deliberately not a field on the stack item, which would risk reaching stackItemOut.
+  const openSlots = new Set();
+  // Keep the open set pointing at the same ITEMS when the array is spliced.
+  function dropOpen(j) {                       // ...after removeStackItem's splice(j, 1)
+    const o = [...openSlots];
+    openSlots.clear();
+    for (const s of o) { if (s !== j) openSlots.add(s > j ? s - 1 : s); }
   }
-  function adoptLayerCtl(row) {
-    const ctl = el("lyrctl");
-    if (ctl && row) row.appendChild(ctl);
+  function moveOpen(from, to) {                // ...mirroring splice(to, 0, splice(from, 1)[0])
+    const o = [...openSlots], was = openSlots.has(from);
+    openSlots.clear();
+    for (const s of o) {
+      if (s === from) continue;
+      let n = s > from ? s - 1 : s;
+      if (n >= to) n++;
+      openSlots.add(n);
+    }
+    if (was) openSlots.add(to);
   }
-  function syncStackUI() {
+  // There is no parkLayerCtl any more, and its absence is the point. syncStackUI used to
+  // wipe #stacklist on every call, so the one control block had to be rescued to #fxbox first
+  // or it was DELETED from the document along with the rows. Nothing is wiped now, so there
+  // is nothing to rescue — and the hazard it guarded cannot recur, because both the rows and
+  // the blocks outlive every call. Each block belongs to its own row permanently; this only
+  // has to install it the first time.
+  function adoptLayerCtl(slot, row) {
+    const block = blocks[slot];
+    if (block && row && block.parentNode !== row) row.appendChild(block);
+  }
+  // The rows are a FIXED POOL of STACK_MAX, keyed by slot, built exactly once and never
+  // destroyed — `lyrRows[slot] = {row, …}` holding each row's own widgets. syncStackUI
+  // used to wipe #stacklist and rebuild every row on every call (a selection, a mute, a
+  // gain drag, a blend pick), which is why parkLayerCtl had to rescue the control block
+  // first. Rebuilding is no longer survivable at all: once each row owns its layer's
+  // controls, a wipe deletes them from the document, and — sooner — it destroys the very
+  // node the user has a pointer down on, killing any drag that started inside a row.
+  //
+  // Keyed by SLOT, not by item identity: installStack replaces the whole array with fresh
+  // objects on every scene load, i.e. every auto-cycle tick, so an identity key would
+  // rebuild every row every few seconds. The cost of a slot key is that a reorder changes
+  // which item a row shows, so syncStackUI must repaint all of them — which it does.
+  //
+  // Every handler closes over `slot` and reads stack[slot] LIVE. Closing over the item
+  // would strand each row on whatever occupied its slot when the pool was built.
+  const lyrRows = [];
+  function buildStackRows() {
     const host = el("stacklist");
-    if (!host) return;
-    parkLayerCtl();                 // ...before the wipe below, or the controls go with it
-    host.textContent = "";
-    stack.forEach((L, j) => {
+    if (!host || lyrRows.length) return;
+    for (let slot = 0; slot < STACK_MAX; slot++) {
       const row = document.createElement("div");
-      row.className = "lyr" + (j === stackSel ? " sel" : "") + (L.mute ? " muted" : "");
+      row.className = "lyr";
       row.title = "Click to edit this layer";
+      const j = slot;
       // Selecting is what every slider in the box below follows, so pressing ANYWHERE in the
       // row selects it — including on the mute dot, the gain slider, the blend dropdown and
       // the effect chooser. Those all stopPropagation on `click` (so their own action doesn't
@@ -9016,12 +9371,21 @@
       // or a blend pick applies to a layer that is already selected rather than selecting
       // afterwards off a stale index.
       //
-      // The grab handle is excluded HERE only, for a mechanical reason rather than a taste
-      // one: selectStack re-runs syncStackUI, which rebuilds every row — that would detach
-      // the handle holding the pointer capture mid-drag, and Chromium drops capture on
-      // reparent, killing the drag after the first pixel (the trap documented on the drag
-      // code below). The handle still selects, just on pointerUP — see its onUp.
+      // The grab handle is excluded HERE only: dragging is not selecting, and the handle
+      // still selects on pointerUP (see its onUp). It used to be excluded for a mechanical
+      // reason too — syncStackUI rebuilt every row, so selecting mid-drag detached the
+      // handle holding the pointer capture and Chromium drops capture on reparent. The row
+      // pool means nothing is rebuilt any more, so only the taste reason is left.
       row.addEventListener("pointerdown", e => {
+        if (!e.target.closest(".lyr-grab")) selectStack(j);
+      }, true);
+      // ...and the same on FOCUS, which covers what a pointer cannot: tab into another
+      // layer's slider and press an arrow key and `input` fires with no pointerdown at all.
+      // The value would land on a node that is not in `anims`, so nothing would render, the
+      // edit would persist against the wrong layer, and the next paintBlock would quietly
+      // revert it — a slider that "won't stick". Also what makes the panel work with
+      // assistive tech, where every edit arrives this way.
+      row.addEventListener("focusin", e => {
         if (!e.target.closest(".lyr-grab")) selectStack(j);
       }, true);
       // Kept as well: a synthetic click (tests, assistive tech) never emits pointerdown, and
@@ -9036,9 +9400,13 @@
       // pointer capture, and Chromium drops capture on reparent — which killed the drag
       // after the first pixel. The actual reorder happens once, on release. Selection is
       // left untouched — you drag to reorder, click the row body to select.
+      //
+      // `from` is the row's SLOT, and a row's slot never changes — the pool is slot-keyed
+      // and a reorder moves the items under it, not the rows. So this is a live index into
+      // `stack`, not a snapshot that a rebuild could stale.
       const from = j;
       const grab = document.createElement("div");
-      grab.className = "lyr-grab" + (stack.length < 2 ? " off" : "");
+      grab.className = "lyr-grab";
       grab.textContent = "⠿";
       grab.title = "Drag to reorder — layers higher in the list draw first (underneath)";
       grab.setAttribute("aria-label", "Drag to reorder layer");
@@ -9056,7 +9424,9 @@
           row.style.transform = "translateY(" + (ev.clientY - startY) + "px)";
           // Scan only the other rows: their rects are stable (untransformed), whereas the
           // dragged row's rect rides the pointer. `to` = how many of them sit above it.
-          const others = [...host.querySelectorAll(".lyr")].filter(r => r !== row);
+          // ...and only the rows actually in use: the pool keeps STACK_MAX rows in the DOM
+          // and hides the spares, which would otherwise count as drop targets below the list.
+          const others = [...host.querySelectorAll(".lyr")].filter(r => r !== row && !r.hidden);
           to = 0;
           for (const r of others) {
             const b = r.getBoundingClientRect();     // DOMRect: .height, NOT .offsetHeight
@@ -9073,12 +9443,8 @@
           marker.remove();
           row.style.transform = "";
           row.classList.remove("dragging");
-          // Using the handle selects that layer too — but ON RELEASE, never on press. The
-          // rest of the row selects from a capture-phase pointerdown; doing that here would
-          // rebuild the rows mid-gesture, and since selectStack → syncStackUI reparents the
-          // handle that holds the pointer capture, Chromium drops the capture and the drag
-          // dies after the first pixel. Deferring to pointerup gets the selection without
-          // touching the DOM while the pointer is down.
+          // Using the handle selects that layer too — but ON RELEASE, never on press, so the
+          // selection can't run under a pointer that is still down.
           //
           // Held by IDENTITY, not by index: a reorder moves it, so `from` no longer names it.
           const dragged = stack[from];
@@ -9087,8 +9453,10 @@
             // `to` indexes the array with the dragged item already removed, so splice-out
             // then splice-in at `to` directly (no gap adjustment needed).
             stack.splice(to, 0, stack.splice(from, 1)[0]);
+            moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
           }
           const at = stack.indexOf(dragged);
+          if (moved) { repaintAllBlocks(); syncPopOwners(); }   // slots now hold different layers
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row
           if (moved) { persist(); autosavePreset(); }
@@ -9106,8 +9474,10 @@
       // whatever `stackSel` names, and routing through selectStack is what keeps the
       // freeze/stageLayerExtras ordering honest (writing L.fx directly here would strand the
       // layer's palette + filters on the outgoing effect — the load-order trap in CLAUDE.md).
-      // `fx` is read off the <select> BEFORE either call: both re-run syncStackUI, which
-      // rebuilds these rows, so `nm` is a detached node by the time they return.
+      // `fx` is still read off the <select> BEFORE either call. The row survives them now,
+      // so `nm` is no longer detached by the time they return — but both re-run syncStackUI,
+      // which repaints `nm.value` from stack[slot], so reading after would see the new value
+      // rather than the pick that caused it.
       const nm = document.createElement("select");
       nm.className = "lyr-name";
       EFFECTS.forEach((f, i) => {
@@ -9115,8 +9485,6 @@
         o.value = String(i); o.textContent = f.name; o.title = f.subtitle;
         nm.appendChild(o);
       });
-      nm.value = String(L.fx);
-      nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
       nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row
       nm.addEventListener("change", e => {
         e.stopPropagation();
@@ -9129,33 +9497,31 @@
       });
       row.appendChild(nm);
 
-      const ctl = document.createElement("div");
-      ctl.className = "lyr-ctl";
-      row.appendChild(ctl);
+      const lyrctl = document.createElement("div");
+      lyrctl.className = "lyr-ctl";
+      row.appendChild(lyrctl);
 
       const mute = document.createElement("b");
-      mute.textContent = L.mute ? "○" : "●";
-      mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
       mute.addEventListener("click", e => {
         e.stopPropagation();
+        const L = stack[j]; if (!L) return;
         L.mute = !L.mute;
         syncStackUI(); persist(); autosavePreset();
       });
-      ctl.appendChild(mute);
+      lyrctl.appendChild(mute);
 
       const gn = document.createElement("input");
-      gn.type = "range"; gn.min = 0; gn.max = 1; gn.step = 0.01; gn.value = L.gain;
+      gn.type = "range"; gn.min = 0; gn.max = 1; gn.step = 0.01;
       gn.title = "Layer strength";
       gn.addEventListener("click", e => e.stopPropagation());
-      gn.addEventListener("input", e => { e.stopPropagation(); L.gain = gainOk(+gn.value); });
+      gn.addEventListener("input", e => { e.stopPropagation(); const L = stack[j]; if (L) L.gain = gainOk(+gn.value); });
       gn.addEventListener("change", () => { persist(); autosavePreset(); });
-      ctl.appendChild(gn);
+      lyrctl.appendChild(gn);
 
       const rm = document.createElement("b");
       rm.textContent = "✕"; rm.title = "Remove this layer";
-      if (stack.length <= 1) rm.classList.add("off");
       rm.addEventListener("click", e => { e.stopPropagation(); removeStackItem(j); persist(); autosavePreset(); });
-      ctl.appendChild(rm);
+      lyrctl.appendChild(rm);
 
       // Blend mode on its own row: a <select> (with the mode's tip as its title) flanked by
       // ▲/▼ steppers that cycle through BLEND_MODES, so you can either pick directly or nudge.
@@ -9164,14 +9530,22 @@
       const blbl = document.createElement("span");
       blbl.className = "lyr-blend-lbl"; blbl.textContent = "Blend";
       blendRow.appendChild(blbl);
-      const bcur = () => BLEND_BY_ID[L.blend] || BLEND_MODES[0];
+      const bcur = () => BLEND_BY_ID[stack[j] && stack[j].blend] || BLEND_MODES[0];
       const sel = document.createElement("select");
       BLEND_MODES.forEach(m => { const o = document.createElement("option"); o.value = m.id; o.textContent = m.label; o.title = m.tip; sel.appendChild(o); });
-      sel.value = bcur().id; sel.title = bcur().tip;
       sel.addEventListener("click", e => e.stopPropagation());
-      sel.addEventListener("change", e => { e.stopPropagation(); L.blend = blendOk(sel.value); syncStackUI(); persist(); autosavePreset(); });
+      sel.addEventListener("change", e => {
+        e.stopPropagation();
+        const L = stack[j]; if (!L) return;
+        L.blend = blendOk(sel.value); syncStackUI(); persist(); autosavePreset();
+      });
       blendRow.appendChild(sel);
-      const cycleBlend = dir => { const i = BLEND_MODES.indexOf(bcur()); L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id; syncStackUI(); persist(); autosavePreset(); };
+      const cycleBlend = dir => {
+        const L = stack[j]; if (!L) return;
+        const i = BLEND_MODES.indexOf(bcur());
+        L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id;
+        syncStackUI(); persist(); autosavePreset();
+      };
       const up = document.createElement("b");
       up.className = "lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
       up.addEventListener("click", e => { e.stopPropagation(); cycleBlend(-1); });
@@ -9181,49 +9555,75 @@
       blendRow.appendChild(up); blendRow.appendChild(dn);
       row.appendChild(blendRow);
 
-      host.appendChild(row);
-      // The selected layer's row carries the controls, so the header you just built and the
-      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
-      // the row's own markup; everything below is #lyrctl, moved in.
       // EVERY row gets a chevron, not just the open one — the same control opens a collapsed
       // layer and closes the open one, so there is one obvious way to fold and unfold rather
       // than a control that only appears once you are already there.
       //
-      // Open means "selected and not folded". So on an unselected row the chevron reads ▸ and
-      // clicking it selects that layer AND clears the fold; on the selected row it toggles.
-      const isOpen = j === stackSel && !lyrFolded;
+      // It is the ONLY thing that unfolds: selecting a layer no longer opens it, because any
+      // number can be open at once and a click meant to reach one layer's controls should not
+      // rearrange the others. Unfolding does still select, so the layer you just opened to
+      // look at is the one you are editing.
       const chev = document.createElement("b");
       chev.className = "lyr-chev";
-      chev.textContent = isOpen ? "▾" : "▸";
-      chev.title = isOpen ? "Hide this layer's settings" : "Show this layer's settings";
-      chev.setAttribute("aria-label", chev.title);
-      chev.setAttribute("aria-expanded", String(isOpen));
       // stopPropagation on pointerdown, or the row's capture-phase handler would select first
       // and re-run syncStackUI underneath this click.
       chev.addEventListener("pointerdown", e => e.stopPropagation());
       chev.addEventListener("click", e => {
         e.stopPropagation();
-        if (j !== stackSel) { lyrFolded = false; selectStack(j); }   // ...which re-runs syncStackUI
-        else { lyrFolded = !lyrFolded; syncStackUI(); }
+        if (!stack[j]) return;
+        if (openSlots.has(j)) { openSlots.delete(j); syncStackUI(); }
+        else { openSlots.add(j); selectStack(j); syncStackUI(); }   // selectStack no-ops if already selected
       });
       // A grid child, but an EXPLICITLY PLACED one (column 1 / row 1 — see .lyr-chev). Appended
       // without placement it takes the next auto cell and shifts the chooser, the mute row and
       // the blend row each one along, which visibly collapses the row.
       row.appendChild(chev);
-      // The selected layer's row carries the controls, so the header you just built and the
-      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is the
-      // row's own markup; everything below is #lyrctl, moved in.
-      if (j === stackSel) {
-        adoptLayerCtl(row);
-        row.classList.toggle("folded", lyrFolded);
-      }
-    });
+
+      lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev };
+      host.appendChild(row);
+    }
+  }
+  // Paint the pool. Creates nothing, moves nothing out, destroys nothing — so a pointer held
+  // down inside a row survives every call, and (from M4a) each row can own its layer's
+  // controls without them being swept away by a mute or a blend pick.
+  function syncStackUI() {
+    const host = el("stacklist");
+    if (!host) return;
+    buildStackRows();
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const r = lyrRows[slot], L = stack[slot];
+      if (!r) continue;
+      if (!L) { r.row.hidden = true; continue; }   // a spare row: kept in the DOM, hidden
+      r.row.hidden = false;
+      const open = openSlots.has(slot);
+      r.row.classList.toggle("sel", slot === stackSel);
+      r.row.classList.toggle("muted", !!L.mute);
+      r.row.classList.toggle("folded", !open);
+      r.grab.classList.toggle("off", stack.length < 2);
+      r.nm.value = String(L.fx);
+      r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
+      r.mute.textContent = L.mute ? "○" : "●";
+      r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
+      r.gn.value = L.gain;
+      r.rm.classList.toggle("off", stack.length <= 1);
+      const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
+      r.sel.value = bm.id; r.sel.title = bm.tip;
+      r.chev.textContent = open ? "▾" : "▸";
+      r.chev.title = open ? "Hide this layer's settings" : "Show this layer's settings";
+      r.chev.setAttribute("aria-label", r.chev.title);
+      r.chev.setAttribute("aria-expanded", String(open));
+      // Each layer's row carries ITS OWN controls, so a row reads as one complete object:
+      // header (effect, mute, gain, blend), then what it draws, then what filters it, then how
+      // it is coloured. The block lives here permanently.
+      adoptLayerCtl(slot, r.row);
+    }
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
     // The old box is empty now — hide the chrome rather than showing a stray heading over
-    // nothing. Kept in the DOM: it is #lyrctl's home (see parkLayerCtl).
+    // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
+    // first syncStackUI moves it into a row.
     const fxbox = el("fxbox");
-    if (fxbox) fxbox.classList.toggle("hidden", !!el("lyrctl") && el("lyrctl").parentNode !== fxbox);
+    if (fxbox) fxbox.classList.toggle("hidden", !!blocks[0] && blocks[0].parentNode !== fxbox);
   }
 
   // Per-effect beat-toggle state, parallel to `states`. beatStates[effect][id] =
@@ -9405,8 +9805,8 @@
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
-    if (el("palrev")) el("palrev").checked = paletteReverse;
-    if (el("palbg")) el("palbg").value = paletteBg;
+    palrevChk.checked = paletteReverse;
+    palbgSel.value = paletteBg;
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;   // per-layer, not per-effect
     showBoxChk.checked = showBox;
     installSeedPath(L);              // seed globals = this layer's orbit path
@@ -9424,11 +9824,24 @@
   // can store only the ones the user actually retunes (and let a changed shipped
   // default flow through to sliders they never touched). This must run before the
   // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
-  const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
-  panel.querySelectorAll("input[type=range]").forEach(inp => {
-    if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;   // beat tuning / dev tools aren't scene ranges
-    if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
-    RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
+  // Keyed by the WIRE key ("speed-lo"), which is what a stored `ranges` map names.
+  //
+  // Built from the CONTROLS schema rather than by scanning the panel, for two reasons and the
+  // second is the silent one. A layer control exists once per stack slot and carries no id, so
+  // a scan would key every one of them `undefined`; and by the time this runs the layer rows
+  // exist, so the scan would also swallow the four gain sliders — type=range, no id — into
+  // that same junk key, which rangesDiffering would then skip without ever complaining.
+  // ctlHTML emits step="any" and min/max straight from the schema, so this reproduces exactly
+  // what the scan used to find.
+  const RNG_ORIG = {};
+  CONTROLS.forEach(c => {
+    if (c.type === "dual") { for (const t of ["lo", "hi"]) RNG_ORIG[c.key + "-" + t] = { min: String(c.min), max: String(c.max), step: "any" }; }
+    else if (c.type === "plain") RNG_ORIG[c.key] = { min: String(c.min), max: String(c.max), step: "any" };
+  });
+  // ...plus the two scene ranges authored in the markup rather than generated (TTL, transition).
+  ["ttl-lo", "ttl-hi", "tdur-lo", "tdur-hi"].forEach(id => {
+    const i = el(id);
+    if (i) RNG_ORIG[id] = { min: i.min, max: i.max, step: i.step };
   });
   // A slider's BOUNDS are per-LAYER exactly when the slider itself is (effect params, incl.
   // zoom) and scene-wide otherwise (camera rotation, palette cycle, banding, TTL, scene
@@ -9442,7 +9855,7 @@
     const out = {};
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id];
+      const inp = ctl(id), o = RNG_ORIG[id];
       if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
         out[id] = { min: inp.min, max: inp.max, step: inp.step };
     }
@@ -9495,10 +9908,10 @@
     const st = presetState(effect);
     const v = st[key] !== undefined ? st[key] : ctlDefault(key);
     if (Array.isArray(v)) {
-      const lo = el(key + "-lo"), hi = el(key + "-hi");
+      const lo = ctl(key + "-lo"), hi = ctl(key + "-hi");
       if (lo && hi) { lo.value = v[0]; hi.value = v[1]; }
-    } else if (v !== undefined && el(key)) {
-      el(key).value = v;
+    } else if (v !== undefined && ctl(key)) {
+      ctl(key).value = v;
     }
     const b = presetBeat(effect)[key];
     if (b && beatReact[key]) {
@@ -9518,15 +9931,16 @@
   // shipped bounds first, so this is a REPLACE, not a merge: `r` is always the complete
   // set of non-default bounds (collectRanges only stores what differs), and switching to
   // a preset that widened nothing must narrow the previous preset's widening back.
-  function applyRangesFor(r, want) {      // reset the wanted sliders to shipped, then apply r's bounds for them
+  function applyRangesFor(r, want, slot) {      // reset the wanted sliders to shipped, then apply r's bounds for them
+    const g = id => (slot === undefined ? ctl(id) : (ctlIn(slot, id) || (slot === 0 ? el(id) : null)));
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id];
+      const inp = g(id), o = RNG_ORIG[id];
       if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
     if (r && typeof r === "object") for (const id in r) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
+      const inp = g(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
       inp.min = String(mn); inp.max = String(mx);
@@ -9539,23 +9953,18 @@
   }
   function applyRanges(r) { applyRangesFor(r, id => !rangeIsLayer(id)); }   // scene-wide bounds (a REPLACE — see the old note)
   function applyLayerRanges(r) { applyRangesFor(r, rangeIsLayer); }         // one layer's per-layer-slider bounds
-  // After bounds change mid-session, re-clamp stray values and re-run each slider's
-  // fill/readout by re-dispatching input (bindRange's ui() reads min/max live).
-  // Every scene range slider, whether docked in the menu or popped into #breakout.
-  function sceneRangeInputs() {
-    const b = document.getElementById("breakout");
-    return [...panel.querySelectorAll("input[type=range]"), ...(b ? b.querySelectorAll("input[type=range]") : [])];
-  }
-  function refreshRangeUI() {
-    sceneRangeInputs().forEach(inp => {
-      // The beat-tuning sliders have no ids and fixed bounds — re-dispatching on them
-      // would fire their handlers (and another persist) for no gain.
-      if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;
-      const c = Math.min(+inp.max, Math.max(+inp.min, +inp.value));
-      if (c !== +inp.value) inp.value = String(c);
-      inp.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  }
+  // ...and the same for a block that is not the selected one. paintBlock MUST call this
+  // BEFORE it writes that block's values: a value painted into a slider whose bounds are
+  // still the shipped ones is silently clamped by the browser, and the next freezeItem then
+  // writes the clamped number back. That is data loss, not cosmetics, and it only shows on
+  // scenes with widened sliders.
+  function applyLayerRangesTo(slot, r) { applyRangesFor(r, rangeIsLayer, slot); }
+  // sceneRangeInputs() and refreshRangeUI() used to live here and are GONE. They had no
+  // callers, and with one control block per stack slot they had become a landmine for
+  // whoever re-attached them: the scan walked the whole panel, so it would have found
+  // every layer's copy of every slider and re-dispatched `input` on all of them — one
+  // delegated onEdit, one persist and one autosave per slider per block. Re-clamping
+  // after a bounds change is done per slider by rngApply and per block by paintBlock.
 
   // ---- beat-detection tuning — per-preset scene data (localStorage, Backup, Share
   // and every preset). A snapshot of the live beatCfg, validated field by field.
@@ -9665,7 +10074,7 @@
     // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
     // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
     if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
-    const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
+    const ok = (id, x) => { const n = ctl(id); if (!n) return false; const mn = +n.min, mx = +n.max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
         const ss = saved.states[k]; if (!ss) continue;
@@ -9900,7 +10309,6 @@
     const fx = EFFECTS[i];
     sub.textContent = fx.subtitle;
     juliaPower = 2;                   // Multibrot's draw overrides this every frame
-    dockAll();                        // new scene ⇒ empty pop-out column (see Break-out boxes)
     // show only the controls this effect declares (rendered from the CONTROLS schema)
     refreshControlVisibility();       // effect params + the ticked filters' params
     // The Orbit editor only means anything for a Mandelbrot-seeded (cardioid) effect. It is a
@@ -9908,7 +10316,10 @@
     // Esc close it), and every setEffect shows it iff the selected effect is cardioid AND wanted.
     // So it stays open as you jump between cardioid layers (showing each layer's orbit) and
     // auto-hides on a non-cardioid layer, re-appearing when you return to a cardioid one.
-    el("cardbtn").style.display = fx.cardioid ? "" : "none";
+    for (let s = 0; s < STACK_MAX; s++) {
+      const b = ctlIn(s, "cardbtn"), L = stack[s];
+      if (b) b.style.display = (s === stackSel ? fx.cardioid : L && EFFECTS[L.fx].cardioid) ? "" : "none";
+    }
     cardOpen(!!fx.cardioid && cardWanted);
     applyLayerRanges(stack[stackSel].ranges);   // this layer's custom slider bounds — BEFORE loadState, so its values validate against them
     loadState(i);                     // restore this effect's remembered sliders
@@ -9942,14 +10353,19 @@
   // (anims/loadState) are location-independent, its styling is scoped to #breakout
   // too (CSS), and onEdit + the range editor scan #breakout as well (see below).
   const breakout = el("breakout");
+  // Keyed "<slot>/<key>", not by key alone, so layer 1's Speed box and layer 3's Speed box
+  // are two different things and can be open at the same time. A SCENE control has one box
+  // for the whole page and is keyed "s/<key>".
   const popped = new Set();
+  const popKey = (slot, key) => (slot < 0 ? "s" : slot) + "/" + key;
+  const isPopped = (slot, key) => popped.has(popKey(slot, key));
   const rows = {};                   // key -> menu row element (name + +/- button)
   const POPPABLE = CONTROLS.filter(c => c.type === "dual" || c.type === "plain").map(c => c.key);
   const ctlLabel = key => { const c = CONTROLS.find(x => x.key === key); return c ? c.label : key; };
-  function makePopBtn(key) {
+  function makePopBtn(slot, key) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "ctl-pop";
-    b.addEventListener("click", () => togglePop(key));
+    b.addEventListener("click", () => togglePop(slot, key));
     return b;
   }
   // ---- per-slider range editor (lives at the foot of the slider's pop-out box) --
@@ -9961,10 +10377,12 @@
   // backups (see collectRanges/applyRanges); ↺ restores the shipped ones. The
   // fields don't persist themselves — rngApply dispatches `input` on the real
   // slider, and the delegated onEdit turns that into a persist + autosave.
-  function ctlRangeInputs(key) {   // a dual's two thumbs share one set of bounds
-    const lo = el(key + "-lo"), hi = el(key + "-hi");
+  function ctlRangeInputs(key) { return ctlRangeInputsIn(stackSel, key); }
+  function ctlRangeInputsIn(slot, key) {   // a dual's two thumbs share one set of bounds
+    const g = k => ctlIn(slot, k) || el(k);      // el() covers the scene controls, which have ids
+    const lo = g(key + "-lo"), hi = g(key + "-hi");
     if (lo && hi) return [lo, hi];
-    const p = el(key);
+    const p = g(key);
     return p && p.type === "range" ? [p] : [];
   }
   // A slider's `step` attribute as a NUMBER for the editor field: "any" (continuous) and
@@ -9987,8 +10405,8 @@
       inp.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
-  function makeRangeEditor(key) {
-    const els = ctlRangeInputs(key);
+  function makeRangeEditor(slot, key) {
+    const els = ctlRangeInputsIn(slot, key);
     if (!els.length) return null;
     const box = document.createElement("div");
     box.className = "rng-edit";
@@ -10026,19 +10444,35 @@
   // name of every family — effects ("Plasma", "Cardioid seed"), the shared ones
   // ("Camera", "Shape & motion") and the filters. Filters get an explicit prefix so
   // "Fire" the filter can't be read as Fire the effect family.
-  function ctlOwner(key) {
+  // ...and WHICH LAYER'S, since two layers running the same effect would otherwise give two
+  // boxes with identical titles sitting side by side in the column.
+  function ctlOwner(slot, key) {
     const c = CONTROLS.find(x => x.key === key);
     const g = c && c.group;
-    if (!g || !CTL_GROUPS[g]) return "";
-    return (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
+    const own = (!g || !CTL_GROUPS[g]) ? "" : (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
+    return slot < 0 ? own : "L" + (slot + 1) + (own ? " · " + own : "");
   }
-  POPPABLE.forEach(key => {
-    const ctl = el("ctl-" + key);
-    ctl.classList.add("poppable");
+  // The layer number is the one part of a box title that changes while the box is open — a
+  // reorder moves the layer it belongs to — so it is re-stamped rather than baked in.
+  function syncPopOwners() {
+    for (let slot = 0; slot < STACK_MAX; slot++) for (const key of POPPABLE) {
+      const box = ctlIn(slot, "ctl-" + key);
+      const t = box && box.querySelector(".ctl-owner .own-txt");
+      if (t) t.textContent = ctlOwner(slot, key);
+    }
+  }
+  // Once PER BLOCK. Each block's .ctl boxes get their own owner line, bounds editor, pop
+  // button and launcher row, and each is exported into the one #breakout column;
+  // refreshBreakout is what keeps only the selected layer's boxes visible.
+  for (let slot = 0; slot < STACK_MAX; slot++) POPPABLE.forEach(key => {
+    const box = ctlIn(slot, "ctl-" + key);
+    if (!box) return;                            // a scene control exists in slot 0 only
+    box.dataset.slot = String(slot);
+    box.classList.add("poppable");
     // Title line, first child so it sits above the label. Only ever visible in
     // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
     // Always built (even with no owner group) so it can carry the per-box help ?.
-    const own = ctlOwner(key);
+    const own = ctlOwner(slot, key);
     const t = document.createElement("div");
     t.className = "ctl-owner";
     const ownTxt = document.createElement("span");
@@ -10050,7 +10484,7 @@
     hb.setAttribute("aria-label", ctlLabel(key) + " — help");
     hb.addEventListener("click", e => { e.stopPropagation(); openCtlHelp(key); });
     t.appendChild(hb);
-    ctl.insertBefore(t, ctl.firstChild);
+    box.insertBefore(t, box.firstChild);
     // Bounds editor goes directly UNDER THE SLIDER, not at the foot of the box: min/max/step
     // describe that slider, so they belong with it rather than below the beat controls, which
     // are a different subject. A divider closes the block off from the Triggers section.
@@ -10060,17 +10494,17 @@
     // everything lands in front of that. `.trig-t` is that anchor; with no chips (a `plain`
     // control that can't be beat-armed) there is nothing to insert before and appending is
     // right, which insertBefore(…, null) does for free.
-    const rngEd = makeRangeEditor(key);
+    const rngEd = makeRangeEditor(slot, key);
     if (rngEd) {
-      const anchor = ctl.querySelector(".trig-t");
-      ctl.insertBefore(rngEd, anchor);
+      const anchor = box.querySelector(".trig-t");
+      box.insertBefore(rngEd, anchor);
       if (anchor) {
         const hr = document.createElement("div");
         hr.className = "ctl-div";
-        ctl.insertBefore(hr, anchor);
+        box.insertBefore(hr, anchor);
       }
     }
-    ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
+    box.appendChild(makePopBtn(slot, key));      // the box's own dock button (left gutter in #breakout)
     const row = document.createElement("div");   // the launcher that stays in the menu slot
     row.className = "ctl-row";
     const name = document.createElement("span");
@@ -10078,28 +10512,39 @@
     row.appendChild(name);
     // Beat dots, left of the +/- button. Only for sliders that have chips at all —
     // `plain` controls are poppable but never armed, so they get no dots.
-    if (chipEls[key]) {
+    const w = W[slot] && W[slot][key];
+    if (w && w.chips) {
       const dots = document.createElement("span");
       dots.className = "ctl-dots";
-      dotEls[key] = {};
+      const dm = w.dots = {};
       for (const b of ["low", "mid", "high"]) {
         const d = document.createElement("i");
         d.className = "ctl-dot d-" + b;
         d.title = b + " beat";
         dots.appendChild(d);
-        dotEls[key][b] = d;
+        dm[b] = d;
       }
       row.appendChild(dots);
     }
-    row.appendChild(makePopBtn(key));            // +/- button, right of the name
-    ctl.parentNode.insertBefore(row, ctl);       // row takes the control's menu slot
-    breakout.appendChild(ctl);                   // full control lives in the column (hidden until popped)
-    rows[key] = row;
-    syncPopBtns(key);
+    row.appendChild(makePopBtn(slot, key));      // +/- button, right of the name
+    box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
+    breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
+    if (w) w.row = row;
+    else rows[key] = row;                        // a scene control has no wiring record to hang it on
+    ctlReg(slot, "row-" + key, row);
   });
-  function syncPopBtns(key) {         // keep both the menu-row and the box's button in sync
-    const docked = !popped.has(key);
-    for (const host of [rows[key], el("ctl-" + key)]) {
+  // The launcher rows and beat dots are the last per-block pieces to exist, so install
+  // slot 0 into the singleton maps now that its record is complete.
+  pointMaps(0);
+  for (let slot = 0; slot < STACK_MAX; slot++) POPPABLE.forEach(k => syncPopBtns(slot, k));
+
+  function syncPopBtns(slot, key) {   // keep both the menu-row and the box's button in sync
+    const docked = !isPopped(slot, key);
+    const hosts = slot < 0
+      ? ctlEach("row-" + key).concat([rows[key], el("ctl-" + key)])   // a scene control: one box, N rows
+      : [ctlIn(slot, "row-" + key), ctlIn(slot, "ctl-" + key)];
+    for (const host of hosts) {
+      if (!host) continue;
       const b = host.querySelector(".ctl-pop");
       if (!b) continue;
       b.textContent = docked ? "+" : "−";
@@ -10107,52 +10552,82 @@
       b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
     }
   }
-  function popCtl(key) {
-    if (popped.has(key)) return;
-    popped.add(key);
-    breakout.appendChild(el("ctl-" + key));      // append ⇒ boxes stack top→down in click order
-    syncPopBtns(key);
+  function popCtl(slot, key) {
+    if (isPopped(slot, key)) return;
+    popped.add(popKey(slot, key));
+    const b = slot < 0 ? el("ctl-" + key) : ctlIn(slot, "ctl-" + key);
+    if (b) breakout.appendChild(b);              // append ⇒ boxes stack top→down in click order
+    syncPopBtns(slot, key);
     refreshBreakout();
   }
-  function dockCtl(key) {
-    if (!popped.has(key)) return;
-    popped.delete(key);                          // box stays a child of #breakout, just hidden below
-    syncPopBtns(key);
+  function dockCtl(slot, key) {
+    if (!isPopped(slot, key)) return;
+    popped.delete(popKey(slot, key));            // box stays a child of #breakout, just hidden below
+    syncPopBtns(slot, key);
     refreshBreakout();
   }
-  function togglePop(key) { popped.has(key) ? dockCtl(key) : popCtl(key); }
-  // Dock everything. setEffect calls this: a switch is a whole new scene (every
-  // slider, chip and palette is swapped out from under you), so a column left over
-  // from the last one is stale furniture — start clean and let the user re-pop.
+  function togglePop(slot, key) { isPopped(slot, key) ? dockCtl(slot, key) : popCtl(slot, key); }
+  // Dock everything. NOTHING CALLS THIS AUTOMATICALLY any more, and that is the point of
+  // per-slot boxes: setEffect, createPreset, Delete and the preset picker all used to empty
+  // the column, which is exactly what would stop two layers' boxes sitting side by side —
+  // the moment you clicked the other layer to compare, both would close. The column is
+  // yours to curate now; a box whose control the layer no longer uses simply hides itself
+  // (refreshBreakout), and re-appears if you come back to an effect that has it.
+  // Kept because it is one line to call and the obvious thing to want from a keyboard.
   function dockAll() {
     if (!popped.size) return;
-    const keys = [...popped];                    // snapshot: dockCtl mutates the set
-    for (const key of keys) dockCtl(key);
+    for (const pk of [...popped]) {              // snapshot: dockCtl mutates the set
+      const i = pk.indexOf("/");
+      dockCtl(pk[0] === "s" ? -1 : +pk.slice(0, i), pk.slice(i + 1));
+    }
   }
+  // #breakout holds one .ctl per POPPABLE key PER BLOCK. A box shows when ITS OWN slot/key
+  // has been popped and the layer that owns it still uses that control — so boxes from
+  // different layers coexist, and one whose layer changed to an effect without that slider
+  // hides itself rather than lying.
+  // #breakout is outside #stacklist, so a box there gets no selection from its layer's row.
+  // Each box is stamped with its slot; touching or focusing one selects that layer, exactly
+  // as pressing anywhere in the row does. Capture phase, so it runs before the control acts
+  // and a drag started in another layer's box applies to an already-selected layer.
+  for (const ev of ["pointerdown", "focusin"]) breakout.addEventListener(ev, e => {
+    const box = e.target.closest(".ctl[data-slot]");
+    if (!box) return;                             // a scene control's box belongs to no layer
+    const slot = +box.dataset.slot;
+    if (slot !== stackSel && stack[slot]) selectStack(slot);
+  }, true);
   function refreshBreakout() {
-    const shown = shownKeys();
     let anyVisible = false;
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const shown = shownKeysFor(slot);
+      for (const key of POPPABLE) {
+        const box = ctlIn(slot, "ctl-" + key);
+        if (!box) continue;
+        const vis = isPopped(slot, key) && shown.has(key) && !!stack[slot];
+        box.style.display = vis ? "" : "none";
+        if (vis) anyVisible = true;
+      }
+    }
+    // ...and the scene controls, which have one box outside every block.
+    const sceneShown = shownKeysFor(stackSel);
     for (const key of POPPABLE) {
-      const vis = popped.has(key) && shown.has(key);   // shown only when popped AND used by this effect
-      el("ctl-" + key).style.display = vis ? "" : "none";
+      const box = el("ctl-" + key);
+      if (!box) continue;
+      const vis = isPopped(-1, key) && sceneShown.has(key);
+      box.style.display = vis ? "" : "none";
       if (vis) anyVisible = true;
     }
     breakout.classList.toggle("empty", !anyVisible);
   }
-  // Re-open the pop-out boxes + Orbit editor a layer had open when last selected. Called
-  // AFTER setEffect, which dockAll()s the column and — for a non-cardioid effect — closes the
-  // Orbit editor, so this rebuilds that layer's surface on a clean slate. Keys the layer no
-  // longer uses stay in `popped` but are hidden by refreshBreakout, like the global set.
-  // `pops` is passed EXPLICITLY, captured before setEffect ran: setEffect ends in
-  // persist() → stackOut() → freezeItem(selected), which re-captures L.popped from the
-  // now-empty live `popped` (dockAll just cleared it) and would wipe the stored value before
-  // we read it — the same freeze-during-persist trap the layer-extras code documents.
-  // (The Orbit editor is NOT restored here — it is a single, scene-wide sticky panel that
-  // setEffect shows/hides per `cardWanted` + whether the selected effect is cardioid, so it
-  // stays open as you jump between cardioid layers to compare their orbits.)
+  // Nothing to restore any more: a box belongs to its SLOT and stays open until you close
+  // it, so switching layers no longer takes any boxes away and there is nothing to put back.
+  // This used to exist because setEffect emptied the column on every switch, and it had to
+  // be handed the layer's list explicitly, captured before setEffect ran — setEffect ends in
+  // persist() → stackOut() → freezeItem(selected), which would re-capture L.popped from the
+  // just-cleared live set and wipe the stored value before it could be read. Both the field
+  // and that trap are gone with the auto-clear.
   function restoreLayerUi(L, pops) {
     if (!L) return;
-    if (pops) for (const key of pops) if (el("ctl-" + key)) popCtl(key);
+
   }
 
   // A preset is a named full scene (effect + all its settings). Auto-cycle holds
@@ -10242,16 +10717,20 @@
   });
   // Reverse the colour order for the selected layer. Re-bakes the LUT immediately (the
   // multi-layer path re-bakes per frame via bakeLayerBytes); onEdit persists + autosaves it.
-  const palrevChk = el("palrev");
-  palrevChk.addEventListener("change", () => {
+  // Accessors over ctl(), not captured nodes: there is one of these per block and the live
+  // value belongs to the selected layer. Reading and writing sites stay written as they were.
+  const palrevChk = { get checked() { const n = ctl("palrev"); return !!n && n.checked; },
+                      set checked(v) { for (const n of ctlEach("palrev")) n.checked = v; } };
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "palrev").addEventListener("change", () => {
     paletteReverse = palrevChk.checked;
     composePalette(0);
     paletteDirty = true;
     captureLayerExtras(stack[stackSel]);   // so the selected layer owns the new value at once
   });
   // Background (heat 0): black / white / palette. Same re-bake + capture path as reverse.
-  const palbgSel = el("palbg");
-  palbgSel.addEventListener("change", () => {
+  const palbgSel = { get value() { const n = ctl("palbg"); return n ? n.value : "palette"; },
+                     set value(v) { for (const n of ctlEach("palbg")) n.value = v; } };
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "palbg").addEventListener("change", () => {
     paletteBg = bgOk(palbgSel.value);
     composePalette(0);
     paletteDirty = true;
@@ -10267,13 +10746,15 @@
     else { morphOnce = false; setPalette(+paletteSel.value); }   // pinned: settle on the shown palette
   }
   function setPalCycle(lo, hi) {
-    const a = el("palcycle-lo"), b = el("palcycle-hi");
+    const a = ctl("palcycle-lo"), b = ctl("palcycle-hi");
     if (!a || !b) return;
     a.value = lo; b.value = hi;
     a.dispatchEvent(new Event("input")); b.dispatchEvent(new Event("input"));
   }
-  for (const id of ["palcycle-lo", "palcycle-hi"])
-    el(id).addEventListener("input", syncMorphFromSlider);
+  // Per block: palcycle is a layer control, so there is one pair of thumbs per stack slot.
+  for (let slot = 0; slot < STACK_MAX; slot++)
+    for (const id of ["palcycle-lo", "palcycle-hi"])
+      ctlIn(slot, id).addEventListener("input", syncMorphFromSlider);
   // Persist any control change (slider drag, select, checkbox) — one delegated
   // listener over the whole panel covers them all. When a preset is selected the
   // edit is auto-saved into it; in "— unsaved scene —" it just updates the working scene.
@@ -10311,7 +10792,7 @@
   // Reset: restore *only the current effect's* settings (sliders, beat chips,
   // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
   // change the effect, other effects, or the shared controls (auto-cycle, panel).
-  el("reset").addEventListener("click", () => {
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "reset").addEventListener("click", () => {
     // Confirm first — this throws away every change to the effect (values, ranges, beat
     // wiring, palette) and is not undoable.
     if (!confirm("Reset " + EFFECTS[effect].name + " to its shipped defaults?\nYour changes to this effect (sliders, ranges, beats, palette) will be lost.")) return;
@@ -10439,7 +10920,7 @@
     // and applyBlob applies them first, so these are the bounds it will validate
     // against — and its ok() is a hard reject, so an out-of-range value would be
     // silently dropped back to the seeded default (fade's max of 0.995 is the case).
-    const ref = el(id + "-lo") || el(id);
+    const ref = ctl(id + "-lo") || ctl(id);
     if (ref) {
       const mn = +ref.min, mx = +ref.max;
       if (isFinite(mn) && r < mn) r = mn;
@@ -10878,7 +11359,6 @@
     presets = presets.filter(p => collectionOf(p) !== key);
     curPreset = cur ? presets.indexOf(cur) : -1;      // −1 if the scene we were on just went
     openCollections.delete(key);
-    dockAll();
     rebuildPresetOptions();
     persist();
   }
@@ -11022,7 +11502,13 @@
     for (const L of items) L.phase = Object.assign({}, now);
     stack = items;
     stackSel = 0;
+    pointMaps(0);
     thawItem(stack[0]);
+    // Every slot holds a DIFFERENT layer now, so every block has to be repainted. Missing
+    // this is silent: the records are right, so the render is right and only the panel lies.
+    // It lives here rather than in applyPreset so presetprobe's structural check — that
+    // applyPreset reads no field snapshotScene does not capture — still holds by construction.
+    repaintAllBlocks();
   }
   function applyPreset(i) {
     const p = presets[i]; if (!p) return;
@@ -11084,7 +11570,6 @@
     presets.push({ name, ...snapshotScene() });
     curPreset = presets.length - 1;
     stopCycling();                    // ...and keep it on screen (see stopCycling)
-    dockAll();                        // back to just the menu (see Break-out boxes)
     rebuildPresetOptions();
     persist();
   }
@@ -11138,16 +11623,17 @@
     if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
     presets.splice(curPreset, 1);
     curPreset = -1;
-    dockAll();
     rebuildPresetOptions();
     persist();
   });
-  // dockAll() up front covers BOTH branches — picking a preset and dropping to
-  // "— unsaved scene —". Selecting a preset would dock anyway via applyPreset → setEffect,
-  // but "— unsaved scene —" never reaches setEffect, and relying on that chain would make
-  // this quietly depend on where setEffect happens to call dockAll.
+  // The pop-out column is deliberately NOT emptied here, nor anywhere else. It used to be
+  // docked on every scene change, on Delete, and on setEffect, on the reasoning that a new
+  // scene swaps every slider out from under you so a leftover column is stale furniture.
+  // That reasoning does not survive per-layer boxes: the moment two layers' boxes can sit
+  // side by side, anything that empties the column takes away the comparison you opened it
+  // for. A box whose control the new scene does not use hides itself (refreshBreakout) and
+  // comes back if you return to an effect that has it, so nothing stale is ever shown.
   presetSel.addEventListener("change", () => {
-    dockAll();
     const i = +presetSel.value;
     // applyPreset repaints the list itself; "— unsaved scene —" never reaches it, so it has
     // to move the highlight by hand (the same asymmetry dockAll is called up front for).
@@ -12426,7 +12912,10 @@
     });
   }
 
-  el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "cardbtn").addEventListener("click", () => {
+    if (slot !== stackSel && stack[slot]) selectStack(slot);
+    cardWanted = true; cardOpen(true);
+  });
   el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });
   el("cardPause").addEventListener("click", () => setOrbitPaused(!orbitPaused));
 
@@ -12779,7 +13268,9 @@
     const tags = (EFFECTS[effect] && EFFECTS[effect].helpTags) || [];
     const cands = HELP.sliders.filter(s => s.n === label || s.n.split(" / ")[0] === label);
     const s = cands.find(x => tags.includes(x.w)) || cands[0];
-    return { owner: ctlOwner(key), body: s ? s.t : "" };
+    // -1: the help dialog describes the CONTROL, not one layer's copy of it, so it takes the
+    // owner line without the "L2 ·" prefix the pop-out boxes carry.
+    return { owner: ctlOwner(-1, key), body: s ? s.t : "" };
   }
   const RANGE_BLURB = () => (HELP.sliders.find(s => s.n === "Slider range (min / max / step)") || {}).t || "";
   function openCtlHelp(key) {

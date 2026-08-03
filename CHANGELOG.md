@@ -14,6 +14,29 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.12.0] — 2026-08-03
+
+### Added
+
+- **Any number of layers can be open at once.** Unfold layer 1 and layer 3 and both stay open,
+  each showing its own effect's controls, its own filter chain and its own palette. Opening one
+  no longer collapses another.
+- **Pop-out slider boxes belong to a layer.** Layer 1's Speed and layer 3's Speed can sit open
+  side by side, each titled with its layer, so two layers running the same effect are still
+  tellable apart.
+
+### Changed
+
+- **Every layer starts folded**, and the chevron is the only thing that unfolds one — selecting a
+  layer no longer opens it, since a click meant to reach one layer's controls should not
+  rearrange the others. Unfolding still selects.
+- **The pop-out column never empties itself.** Switching layers, changing an effect and loading a
+  scene all leave it alone; a box whose control the layer no longer uses just hides itself. It
+  used to clear on every one of those, which would have closed the very comparison you opened it
+  for.
+- Keyboard and assistive-tech edits now reach the right layer: focusing a control selects the
+  layer that owns it, so a value typed or arrowed into a layer you had not clicked first sticks.
+
 ## [1.11.2] — 2026-08-03
 
 ### Changed
