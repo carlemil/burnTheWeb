@@ -12,6 +12,12 @@
   // that same junk key, which rangesDiffering would then skip without ever complaining.
   // ctlHTML emits step="any" and min/max straight from the schema, so this reproduces exactly
   // what the scan used to find.
+  // A slider's key in RNG_ORIG (and in a stored `ranges` map). Scene sliders carry it as
+  // their `id`; a per-layer slider exists once per stack slot and carries it on `data-k`.
+  // Reading `inp.id` alone silently returns "" for every layer slider, so every bounds
+  // RESTORE became a no-op — ↺ and "Reset this effect" reset the value and left the widened
+  // range. Nothing warned, because RNG_ORIG[""] is just undefined and the loops skip it.
+  const rngKeyOf = inp => inp.id || (inp.dataset && inp.dataset.k) || "";
   const RNG_ORIG = {};
   CONTROLS.forEach(c => {
     if (c.type === "dual") { for (const t of ["lo", "hi"]) RNG_ORIG[c.key + "-" + t] = { min: String(c.min), max: String(c.max), step: "any" }; }
@@ -74,7 +80,7 @@
   function resetControl(key) {
     const els = ctlRangeInputs(key);
     for (const inp of els) {
-      const o = RNG_ORIG[inp.id]; if (!o) continue;
+      const o = RNG_ORIG[rngKeyOf(inp)]; if (!o) continue;
       inp.min = o.min; inp.max = o.max; inp.step = o.step;
     }
     // presetState merges the filter + camera defaults, so their params reset too — but it

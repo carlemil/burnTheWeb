@@ -1754,7 +1754,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.12.0",
+    version: "1.12.1",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -9280,6 +9280,7 @@
     if (stack.length <= 1 || !stack[j]) return;
     stack.splice(j, 1);
     dropOpen(j);                     // the fold state follows the surviving layers, not the slots
+    dropPopped(j);                   // ...and so do the open pop-out boxes
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
     pointMaps(stackSel);
@@ -9450,13 +9451,26 @@
           const dragged = stack[from];
           const moved = to !== from;
           if (moved) {
+            // The SELECTED layer, held by identity. `stackSel` is a slot index, and a reorder
+            // moves layers between slots — so unless it is remapped to follow the item, the
+            // very next freezeItem(stack[stackSel]) writes the selected layer's live DOM into
+            // whichever layer slid into that slot, destroying one layer's settings and leaving
+            // two identical. Dragging a layer past the selected one was enough to do it.
+            const sel = stack[stackSel];
+            freezeItem(sel);         // its live block into its record, while the maps still point there
             // `to` indexes the array with the dragged item already removed, so splice-out
             // then splice-in at `to` directly (no gap adjustment needed).
             stack.splice(to, 0, stack.splice(from, 1)[0]);
             moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
+            movePopped(from, to);    // ...and so do its open pop-out boxes
+            stackSel = stack.indexOf(sel);
+            pointMaps(stackSel);     // the wiring follows it to its new block
+            thawItem(sel);
+            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx);   // ...and that block's DOM
+            repaintAllBlocks();      // every other slot holds a different layer now
+            syncPopOwners();
           }
           const at = stack.indexOf(dragged);
-          if (moved) { repaintAllBlocks(); syncPopOwners(); }   // slots now hold different layers
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row
           if (moved) { persist(); autosavePreset(); }
@@ -9833,6 +9847,12 @@
   // that same junk key, which rangesDiffering would then skip without ever complaining.
   // ctlHTML emits step="any" and min/max straight from the schema, so this reproduces exactly
   // what the scan used to find.
+  // A slider's key in RNG_ORIG (and in a stored `ranges` map). Scene sliders carry it as
+  // their `id`; a per-layer slider exists once per stack slot and carries it on `data-k`.
+  // Reading `inp.id` alone silently returns "" for every layer slider, so every bounds
+  // RESTORE became a no-op — ↺ and "Reset this effect" reset the value and left the widened
+  // range. Nothing warned, because RNG_ORIG[""] is just undefined and the loops skip it.
+  const rngKeyOf = inp => inp.id || (inp.dataset && inp.dataset.k) || "";
   const RNG_ORIG = {};
   CONTROLS.forEach(c => {
     if (c.type === "dual") { for (const t of ["lo", "hi"]) RNG_ORIG[c.key + "-" + t] = { min: String(c.min), max: String(c.max), step: "any" }; }
@@ -9895,7 +9915,7 @@
   function resetControl(key) {
     const els = ctlRangeInputs(key);
     for (const inp of els) {
-      const o = RNG_ORIG[inp.id]; if (!o) continue;
+      const o = RNG_ORIG[rngKeyOf(inp)]; if (!o) continue;
       inp.min = o.min; inp.max = o.max; inp.step = o.step;
     }
     // presetState merges the filter + camera defaults, so their params reset too — but it
@@ -10054,7 +10074,14 @@
     saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
     migrateSceneFx(saved);   // ...and its whole-scene filters onto the layers/effects
     migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
-    if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
+    // Custom bounds FIRST, so the state validation below measures against them rather than
+    // against the shipped ones. BOTH halves: the scene-wide sliders, and the per-layer ones,
+    // which for a single-layer scene ride in this same map (sceneRanges folds them in when the
+    // stack holds one item). A multi-layer blob carries its per-layer bounds on each item, so
+    // layerRangesOf finds nothing here and setEffect applies the selected layer's instead.
+    // Without the second half a widened slider came back shipped AND the value it allowed was
+    // then rejected by the validator below and reset to its default.
+    if (saved.ranges) { applyRanges(saved.ranges); applyLayerRanges(layerRangesOf(saved.ranges)); }
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
     // Custom palettes BEFORE anything that reads a palette value. They are referenced by
     // index (PAL_BUILTIN and up), so a scene naming custom #21 needs #21 to exist by the time
@@ -10180,10 +10207,17 @@
       // restored `activeIds` is simply overwritten by applyLayerExtras a moment later.
       // Nothing clobbers `L.filters` for a one-item stack, for exactly the same reason.
       const e = Number.isInteger(saved.effect) && EFFECTS[saved.effect] ? saved.effect : 0;
+      // The sole layer's custom slider BOUNDS, for the same reason its filters are seeded
+      // here: with one item sceneRanges() folds the per-layer bounds into the scene-wide
+      // `ranges`, and nothing was reading them back — so a widened slider came back shipped,
+      // and any value the widening had allowed was then rejected by the validator below and
+      // reset to its default. They are APPLIED at the top of applyBlob, before that validator.
+      stack[0].ranges = layerRangesOf(saved.ranges);
       const fset = filtersOk(extras[e] && extras[e].filters);
-      // Written in registry order, like every other stored list, so reordering FILTERS
-      // cannot remap a saved scene.
-      if (fset && stack.length === 1) stack[0].filters = FILTERS.filter(f => fset.has(f.id)).map(f => f.id);
+      // In the USER'S order, not the registry's: the chain is a sequence and its positions
+      // are meaningful (splitChain), so re-sorting here would change what the scene renders.
+      // Ids are still matched by name, so reordering FILTERS cannot remap a saved scene.
+      if (fset && stack.length === 1) stack[0].filters = orderFilters([...fset]).map(f => f.id);
     }
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);
@@ -10567,6 +10601,30 @@
     refreshBreakout();
   }
   function togglePop(slot, key) { isPopped(slot, key) ? dockCtl(slot, key) : popCtl(slot, key); }
+  // `popped` is keyed by SLOT, so a reorder has to move its entries the way moveOpen moves the
+  // fold set — you popped a LAYER's slider, not a position's. Without this the open box stayed
+  // where it was and silently started showing (and editing) whichever layer slid into that slot,
+  // while its "L3" title stayed right for the slot and wrong for the layer.
+  function remapPopped(fn) {
+    const was = [...popped];
+    popped.clear();
+    for (const pk of was) {
+      const i = pk.indexOf("/"), s = pk.slice(0, i), key = pk.slice(i + 1);
+      if (s === "s") { popped.add(pk); continue; }        // a scene control belongs to no layer
+      const n = fn(+s);
+      if (n >= 0) popped.add(popKey(n, key));
+    }
+    // Re-derive what is on screen. Remapping the SET is not enough on its own: which box is
+    // visible is decided by refreshBreakout, and the +/- glyphs by syncPopBtns, so without
+    // this the entries moved and the column did not — the box stayed on its old slot and
+    // carried on showing whichever layer had just slid into it.
+    for (let slot = 0; slot < STACK_MAX; slot++) for (const k of POPPABLE) syncPopBtns(slot, k);
+    refreshBreakout();
+  }
+  function movePopped(from, to) {
+    remapPopped(s => { if (s === from) return to; let n = s > from ? s - 1 : s; return n >= to ? n + 1 : n; });
+  }
+  function dropPopped(j) { remapPopped(s => (s === j ? -1 : s > j ? s - 1 : s)); }
   // Dock everything. NOTHING CALLS THIS AUTOMATICALLY any more, and that is the point of
   // per-slot boxes: setEffect, createPreset, Delete and the preset picker all used to empty
   // the column, which is exactly what would stop two layers' boxes sitting side by side —
@@ -10808,7 +10866,7 @@
     // values validate against them rather than the custom ones.
     for (const key in states[effect])
       for (const inp of ctlRangeInputs(key)) {
-        const o = RNG_ORIG[inp.id];
+        const o = RNG_ORIG[rngKeyOf(inp)];
         if (o) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
       }
     loadState(effect);                // apply to the live sliders
@@ -11462,7 +11520,13 @@
       L.seedPts = r.seedPts != null ? seedPtsOk(r.seedPts) : (tex.seedPts != null ? seedPtsOk(tex.seedPts) : null);
       L.showBox = r.showBox != null ? !!r.showBox : (tex.showBox != null ? !!tex.showBox : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
-      L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
+      // orderFilters, NOT FILTERS.filter: the stored list is the USER'S drag order and the
+      // chain is a sequence, not a sorted set — re-sorting it here threw the order away on
+      // every reload, and since the heat/image split is positional that changed what the
+      // scene RENDERED, not just how the list looked. Exactly the bug mergeExtra was fixed
+      // for; filtersOk already dropped unknowns and duplicates, and a Set iterates in
+      // insertion order, so this preserves what was saved.
+      L.filters = fset ? orderFilters([...fset]).map(f => f.id) : null;
       // Per-layer slider bounds. Absent (a scene saved before this) ⇒ migrate the scene's
       // global ranges' per-layer entries onto every layer, so an old stacked scene keeps its
       // widened sliders (all layers share them until you retune one per-layer).
@@ -11486,7 +11550,7 @@
       L.seedPts = tex.seedPts != null ? seedPtsOk(tex.seedPts) : null;
       L.showBox = tex.showBox != null ? !!tex.showBox : null;
       const fset = filtersOk(tex.filters);
-      L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
+      L.filters = fset ? orderFilters([...fset]).map(f => f.id) : null;   // the user's order — see above
       L.ranges = layerRangesOf(p.ranges);        // the single layer takes the scene's per-layer bounds
       out.push(L);
     }

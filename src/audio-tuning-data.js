@@ -86,7 +86,14 @@
     saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
     migrateSceneFx(saved);   // ...and its whole-scene filters onto the layers/effects
     migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
-    if (saved.ranges) applyRanges(saved.ranges);   // custom bounds first, so states below validate against them
+    // Custom bounds FIRST, so the state validation below measures against them rather than
+    // against the shipped ones. BOTH halves: the scene-wide sliders, and the per-layer ones,
+    // which for a single-layer scene ride in this same map (sceneRanges folds them in when the
+    // stack holds one item). A multi-layer blob carries its per-layer bounds on each item, so
+    // layerRangesOf finds nothing here and setEffect applies the selected layer's instead.
+    // Without the second half a widened slider came back shipped AND the value it allowed was
+    // then rejected by the validator below and reset to its default.
+    if (saved.ranges) { applyRanges(saved.ranges); applyLayerRanges(layerRangesOf(saved.ranges)); }
     if (saved.beatTune) applyBeatTune(saved.beatTune);   // detector thresholds (localStorage/Backup; absent in Share links)
     // Custom palettes BEFORE anything that reads a palette value. They are referenced by
     // index (PAL_BUILTIN and up), so a scene naming custom #21 needs #21 to exist by the time
@@ -212,10 +219,17 @@
       // restored `activeIds` is simply overwritten by applyLayerExtras a moment later.
       // Nothing clobbers `L.filters` for a one-item stack, for exactly the same reason.
       const e = Number.isInteger(saved.effect) && EFFECTS[saved.effect] ? saved.effect : 0;
+      // The sole layer's custom slider BOUNDS, for the same reason its filters are seeded
+      // here: with one item sceneRanges() folds the per-layer bounds into the scene-wide
+      // `ranges`, and nothing was reading them back — so a widened slider came back shipped,
+      // and any value the widening had allowed was then rejected by the validator below and
+      // reset to its default. They are APPLIED at the top of applyBlob, before that validator.
+      stack[0].ranges = layerRangesOf(saved.ranges);
       const fset = filtersOk(extras[e] && extras[e].filters);
-      // Written in registry order, like every other stored list, so reordering FILTERS
-      // cannot remap a saved scene.
-      if (fset && stack.length === 1) stack[0].filters = FILTERS.filter(f => fset.has(f.id)).map(f => f.id);
+      // In the USER'S order, not the registry's: the chain is a sequence and its positions
+      // are meaningful (splitChain), so re-sorting here would change what the scene renders.
+      // Ids are still matched by name, so reordering FILTERS cannot remap a saved scene.
+      if (fset && stack.length === 1) stack[0].filters = orderFilters([...fset]).map(f => f.id);
     }
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);

@@ -14,6 +14,23 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.12.1] — 2026-08-03
+
+### Fixed
+
+- **↺ and "Reset this effect" restore a slider's shipped range again.** Widening a slider and
+  then resetting it put the value back but left the range widened. (Introduced in 1.12.0.)
+- **Dragging a layer past the selected one no longer corrupts a layer.** The selected layer's
+  settings were written onto whichever layer slid into its place, destroying one layer's
+  settings and leaving two identical. This one predates 1.12.0.
+- **An open slider box follows its layer when you reorder.** It stayed on the position and
+  quietly started showing — and editing — whichever layer moved into it.
+- **A layer's filter order survives a reload.** The chain came back in the app's own order
+  rather than the one you dragged, which changes what the scene renders, not just how the list
+  looks, because a filter above the effect shapes the heat and one below repaints the picture.
+- **A single-layer scene keeps a widened slider range, and the value that needed it.** Both came
+  back at their defaults after a reload.
+
 ## [1.12.0] — 2026-08-03
 
 ### Added

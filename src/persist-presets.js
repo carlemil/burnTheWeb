@@ -394,7 +394,13 @@
       L.seedPts = r.seedPts != null ? seedPtsOk(r.seedPts) : (tex.seedPts != null ? seedPtsOk(tex.seedPts) : null);
       L.showBox = r.showBox != null ? !!r.showBox : (tex.showBox != null ? !!tex.showBox : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
-      L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
+      // orderFilters, NOT FILTERS.filter: the stored list is the USER'S drag order and the
+      // chain is a sequence, not a sorted set — re-sorting it here threw the order away on
+      // every reload, and since the heat/image split is positional that changed what the
+      // scene RENDERED, not just how the list looked. Exactly the bug mergeExtra was fixed
+      // for; filtersOk already dropped unknowns and duplicates, and a Set iterates in
+      // insertion order, so this preserves what was saved.
+      L.filters = fset ? orderFilters([...fset]).map(f => f.id) : null;
       // Per-layer slider bounds. Absent (a scene saved before this) ⇒ migrate the scene's
       // global ranges' per-layer entries onto every layer, so an old stacked scene keeps its
       // widened sliders (all layers share them until you retune one per-layer).
@@ -418,7 +424,7 @@
       L.seedPts = tex.seedPts != null ? seedPtsOk(tex.seedPts) : null;
       L.showBox = tex.showBox != null ? !!tex.showBox : null;
       const fset = filtersOk(tex.filters);
-      L.filters = fset ? FILTERS.filter(f => fset.has(f.id)).map(f => f.id) : null;
+      L.filters = fset ? orderFilters([...fset]).map(f => f.id) : null;   // the user's order — see above
       L.ranges = layerRangesOf(p.ranges);        // the single layer takes the scene's per-layer bounds
       out.push(L);
     }

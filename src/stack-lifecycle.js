@@ -131,6 +131,7 @@
     if (stack.length <= 1 || !stack[j]) return;
     stack.splice(j, 1);
     dropOpen(j);                     // the fold state follows the surviving layers, not the slots
+    dropPopped(j);                   // ...and so do the open pop-out boxes
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
     pointMaps(stackSel);
@@ -301,13 +302,26 @@
           const dragged = stack[from];
           const moved = to !== from;
           if (moved) {
+            // The SELECTED layer, held by identity. `stackSel` is a slot index, and a reorder
+            // moves layers between slots — so unless it is remapped to follow the item, the
+            // very next freezeItem(stack[stackSel]) writes the selected layer's live DOM into
+            // whichever layer slid into that slot, destroying one layer's settings and leaving
+            // two identical. Dragging a layer past the selected one was enough to do it.
+            const sel = stack[stackSel];
+            freezeItem(sel);         // its live block into its record, while the maps still point there
             // `to` indexes the array with the dragged item already removed, so splice-out
             // then splice-in at `to` directly (no gap adjustment needed).
             stack.splice(to, 0, stack.splice(from, 1)[0]);
             moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
+            movePopped(from, to);    // ...and so do its open pop-out boxes
+            stackSel = stack.indexOf(sel);
+            pointMaps(stackSel);     // the wiring follows it to its new block
+            thawItem(sel);
+            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx);   // ...and that block's DOM
+            repaintAllBlocks();      // every other slot holds a different layer now
+            syncPopOwners();
           }
           const at = stack.indexOf(dragged);
-          if (moved) { repaintAllBlocks(); syncPopOwners(); }   // slots now hold different layers
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row
           if (moved) { persist(); autosavePreset(); }

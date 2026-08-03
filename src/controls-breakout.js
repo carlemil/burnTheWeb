@@ -224,6 +224,30 @@
     refreshBreakout();
   }
   function togglePop(slot, key) { isPopped(slot, key) ? dockCtl(slot, key) : popCtl(slot, key); }
+  // `popped` is keyed by SLOT, so a reorder has to move its entries the way moveOpen moves the
+  // fold set — you popped a LAYER's slider, not a position's. Without this the open box stayed
+  // where it was and silently started showing (and editing) whichever layer slid into that slot,
+  // while its "L3" title stayed right for the slot and wrong for the layer.
+  function remapPopped(fn) {
+    const was = [...popped];
+    popped.clear();
+    for (const pk of was) {
+      const i = pk.indexOf("/"), s = pk.slice(0, i), key = pk.slice(i + 1);
+      if (s === "s") { popped.add(pk); continue; }        // a scene control belongs to no layer
+      const n = fn(+s);
+      if (n >= 0) popped.add(popKey(n, key));
+    }
+    // Re-derive what is on screen. Remapping the SET is not enough on its own: which box is
+    // visible is decided by refreshBreakout, and the +/- glyphs by syncPopBtns, so without
+    // this the entries moved and the column did not — the box stayed on its old slot and
+    // carried on showing whichever layer had just slid into it.
+    for (let slot = 0; slot < STACK_MAX; slot++) for (const k of POPPABLE) syncPopBtns(slot, k);
+    refreshBreakout();
+  }
+  function movePopped(from, to) {
+    remapPopped(s => { if (s === from) return to; let n = s > from ? s - 1 : s; return n >= to ? n + 1 : n; });
+  }
+  function dropPopped(j) { remapPopped(s => (s === j ? -1 : s > j ? s - 1 : s)); }
   // Dock everything. NOTHING CALLS THIS AUTOMATICALLY any more, and that is the point of
   // per-slot boxes: setEffect, createPreset, Delete and the preset picker all used to empty
   // the column, which is exactly what would stop two layers' boxes sitting side by side —
@@ -465,7 +489,7 @@
     // values validate against them rather than the custom ones.
     for (const key in states[effect])
       for (const inp of ctlRangeInputs(key)) {
-        const o = RNG_ORIG[inp.id];
+        const o = RNG_ORIG[rngKeyOf(inp)];
         if (o) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
       }
     loadState(effect);                // apply to the live sliders
