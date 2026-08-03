@@ -14,6 +14,45 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.6.0] — 2026-08-03
+
+### Changed
+
+- **Filters now run where you put them, on whichever buffer sits above them.** Reordering a
+  filter chain in 1.5.0 could look like it did nothing, and dragging one filter past another
+  would snap it back with a message saying it "always runs after the heat filters". That was
+  the wrong answer: if the list lets you drag a row, the position should be real.
+
+  There is one line in the list now — **the effect draws here**. Filters above it shape the
+  *heat* before the effect has drawn into it; filters below repaint the finished *picture*.
+  Dragging a filter across that line does not just change when it runs, it changes what it
+  works on, and the list tells you so.
+
+  So the ordering is genuinely expressive. Put **Mirror** below **Swirl** and the swirl churns
+  the heat while the mirror lands last, giving a perfectly symmetric frame. Drag Mirror *above*
+  Swirl and it mirrors the heat first, which the swirl then twists — the symmetry is gone.
+  Same two filters, completely different picture. Measured on a static scene, swapping that
+  pair changes **48% of the pixels**.
+
+  Trail filters (Fire, Fade pixel, Diffuse, Echo, Zoom feedback, Swirl) read and write the
+  heat that carries over between frames, so they only make sense above the line and stay
+  there. Every other filter goes wherever you put it. Existing scenes are unaffected: a chain
+  saved before this loads and runs exactly as it did.
+
+### Internal
+
+- `splitChain()` replaces the stage sort as the single definition of where each filter runs —
+  the heat phase is everything at or above the last feedback filter, the image phase is the
+  rest — and `runHeatPass()` dispatches each pass through the right hook. Both render paths
+  (single-layer and stacked) go through it, as does `mergeExtra`, the gate every loaded scene
+  passes through.
+- Four broken pixel-capture techniques are documented in CLAUDE.md after they each produced a
+  confident wrong reading: reading pixels twice in one task (the second read is cleared), the
+  headless exit screenshot (the WebGL canvas does not preserve its buffer), comparing captures
+  across runs (the chaos seed differs), and measuring an animating scene at all. The working
+  method — one capture per frame in the same task, on a scene reduced to one layer with its
+  motion pinned, checking A-against-A-again first — is written down with them.
+
 ## [1.5.0] — 2026-08-03
 
 ### Added
