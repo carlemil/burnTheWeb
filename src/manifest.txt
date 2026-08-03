@@ -37,3 +37,4 @@ orbit-editor.js
 audio-tuning-ui.js
 ui-diagnostics.js
 ui-help-misc.js
+ui-menubar.js

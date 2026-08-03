@@ -157,14 +157,23 @@ armed band, in the band's colour (L blue, M green, H red). They sit dim and ligh
 on the beat that drives them, so you can see at a glance which sliders a scene has
 wired to the music without opening a single box.
 
-**The menu is eight foldable sections** — click a heading's chevron to collapse it:
-**System** (audio input and render resolution; folded by default), **Cloud profile**
-(sign in to keep your scenes online, and browse what other people have published),
-**Scene** (which scene, how long each is held and how long the change takes),
-**Scene filters** (the effects that act once on the finished picture), **Beat tuning**
-(how beats are detected), **Layers** (the effect stack), **Layer effect & filters**
-(the selected layer's visual, its sliders, its own filters and its palette) and
-**Credits**.
+**There are two menus, and they hold different kinds of thing.**
+
+**☰ opens the application menu** — a fold-out, multi-level menu for everything that is
+*not* part of a scene. Items with a **▸** open a submenu beside them, which can open
+another: **System ▸ Audio & resolution** gets you the Capture/Mic buttons and the render
+resolution; **Cloud profile ▸** the whole sign-in, save, publish and gallery block;
+**Credits ▸** the credit list and whether they play on startup. At the top sit
+**Controls panel**, **Fullscreen** and **Hide all UI** (the same things **M**, **F** and
+**H** do), and at the bottom a link to the help panel. Click away or press **Esc** to
+close it.
+
+**The controls panel is everything that edits the scene** — five foldable sections, click
+a heading's chevron to collapse one: **Scene** (which scene, how long each is held and how
+long the change takes), **Scene filters** (the effects that act once on the finished
+picture), **Beat tuning** (how beats are detected), **Layers** (the effect stack) and
+**Layer effect & filters** (the selected layer's visual, its sliders, its own filters and
+its palette). Press **M** to show or hide it.
 
 **React to music** — click **Capture** to tap system/tab audio (so it reacts to
 whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
@@ -249,10 +258,11 @@ except the shared few listed above.
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
 | **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
 
-Press **M** or **☰** to toggle the menu, **F** or **⛶** for fullscreen (works on
-mobile too), **S** or **♪** to mute the music reaction, **H** to hide all the UI (buttons,
-FPS counter and menu — press again to bring it back), **Esc** to close whatever popup is
-open, and click the canvas to pause. Add **`?hideui`** to the URL to open with the UI already hidden — handy for a
+**☰** opens the application menu (System, Cloud profile, Credits — see above); **M**
+shows or hides the controls panel. **F** or **⛶** is fullscreen (works on
+mobile too), **S** or **♪** mutes the music reaction, **H** hides all the UI (buttons,
+FPS counter and both menus — press again to bring it back), **Esc** closes whatever popup is
+open, and clicking the canvas pauses. Add **`?hideui`** to the URL to open with the UI already hidden — handy for a
 clean screen recording or a kiosk. **M** also tucks away the floating tool panels
 (the Orbit editor, the palette inspector and the palette editor) so you get a clean
 view. A **Resolution** control in **System** drops the render

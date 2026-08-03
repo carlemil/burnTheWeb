@@ -42,10 +42,10 @@
     text-shadow: 0 0 12px rgba(255, 120, 20, .8);
   }
   #panel .sub { margin: 0 0 12px; opacity: .6; font-size: 11px; }
-  #panel label { display: block; margin: 10px 0 3px; opacity: .85; }
+  #panel label, #menubar label { display: block; margin: 10px 0 3px; opacity: .85; }
   /* Control appearance is scoped to both the menu and the pop-out column so a
      control keeps its styling after it moves into a break-out box (#breakout). */
-  #panel .val, #breakout .val { float: right; color: #ffcf87; opacity: 1; }
+  #panel .val, #breakout .val, #menubar .val { float: right; color: #ffcf87; opacity: 1; }
   #panel input[type=range], #breakout input[type=range] { width: 100%; accent-color: #ff7a1a; margin: 0; }
   /* dual-thumb range: two overlaid sliders set a [lo,hi] band */
   #panel .dual, #breakout .dual { position: relative; height: 22px; }
@@ -74,7 +74,7 @@
     pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
     background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
   }
-  #panel select {
+  #panel select, #menubar select {
     width: 100%;
     margin: 0;
     padding: 5px 7px;
@@ -85,7 +85,7 @@
     font: 12px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     cursor: pointer;
   }
-  #panel select option { background: #1a0f08; color: #ffcf87; }
+  #panel select option, #menubar select option { background: #1a0f08; color: #ffcf87; }
   /* Palette preview picker: a gradient swatch per palette, replacing the plain
      dropdown (the <select> stays as the value store, hidden once JS builds these). */
   #palswatches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
@@ -100,6 +100,48 @@
   }
   .palsw.active { border-color: #ffcf87; box-shadow: 0 0 0 1px #ffcf87, 0 0 7px rgba(255, 207, 135, 0.55); }
   .palsw:focus-visible { outline: 2px solid #ffb15a; outline-offset: 1px; }
+  /* ---- ☰ fold-out menubar --------------------------------------------------------
+     Panels are position:fixed children of #menubar and are positioned in JS (measured
+     after insertion so a submenu can flip left rather than run off the edge). Above the
+     panel (z 10) but below the modal-ish dialogs. */
+  /* The overlay deliberately CATCHES pointer events while open: it is the click-outside
+     closer, and without it a click meant to dismiss the menu would fall through to the
+     canvas and pause the animation. Hidden ⇒ display:none, so it never interferes closed. */
+  /* The font lives on #panel, not on body, so an adopted block dropped in here would fall
+     back to the browser's serif default — set the same face on the menubar. */
+  #menubar {
+    position: fixed; inset: 0; z-index: 12;
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    user-select: none;
+  }
+  #menubar.hidden { display: none; }
+  .mb-panel {
+    position: fixed; min-width: 190px; max-width: 320px;
+    padding: 5px; border-radius: 9px;
+    background: rgba(10, 6, 4, 0.92);
+    border: 1px solid rgba(255, 140, 40, 0.4);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+    max-height: calc(100vh - 24px); overflow-y: auto;
+  }
+  .mb-item {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 7px 9px; text-align: left; cursor: pointer;
+    background: none; border: 0; border-radius: 6px;
+    color: #ffdcb0; font: 13px/1.2 inherit;
+  }
+  .mb-item:hover, .mb-item.open { background: rgba(255, 122, 26, 0.26); color: #fff; }
+  .mb-lab { flex: 1 1 auto; }
+  .mb-chev { flex: 0 0 auto; opacity: .7; font-size: 11px; }
+  .mb-tick { flex: 0 0 auto; width: 12px; color: #ffcf87; }
+  .mb-sep { height: 1px; margin: 4px 6px; background: rgba(255, 140, 40, 0.28); }
+  .mb-item:focus-visible { outline: 2px solid #ffb15a; outline-offset: -2px; }
+  /* An adopted block keeps the panel's own control styling — the CSS for those controls is
+     scoped to "#panel …, #breakout …", so the menubar is added as a third home rather than
+     the styles being duplicated (see the scoped rules above). */
+  .mb-adopt { padding: 4px 6px 2px; min-width: 240px; }
+  .mb-adopt > label:first-child { margin-top: 0; }
+
   /* ---- Scenes list: collections, foldable, collapsed by default ------------------
      Replaces the <select> as the visible control (#preset stays as the value store).
      A collection is a <div class="pl-grp">: a header button that folds it, an optional ✕
@@ -142,7 +184,7 @@
   .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible {
     outline: 2px solid #ffb15a; outline-offset: 1px;
   }
-  #panel .check {
+  #panel .check, #menubar .check {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -150,7 +192,7 @@
     cursor: pointer;
     opacity: .9;
   }
-  #panel .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
+  #panel .check input, #menubar .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
   #toggle, #fs, #mute {
     position: fixed;
@@ -181,8 +223,8 @@
   #mute.off { opacity: .38; cursor: default; }
   #toggle:hover, #fs:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
   /* keyboard focus rings (a11y) */
-  #panel button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
-  #panel select:focus-visible, #panel input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
+  #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
+  #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute { transition: none !important; } }
   #frames {
     position: fixed;
@@ -205,6 +247,7 @@
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
      clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
+  body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
   #paused {
@@ -314,10 +357,10 @@
   #galdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
   #galdlg .gal-help b { color: #ffcf87; font-weight: 600; }
   body.ui-hidden #galdlg { display: none !important; }
-  #panel .presetrow { display: flex; gap: 6px; margin-top: 6px; }
-  #panel .presetrow .audbtn { flex: 1; text-align: center; }
+  #panel .presetrow, #menubar .presetrow { display: flex; gap: 6px; margin-top: 6px; }
+  #panel .presetrow .audbtn, #menubar .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
-  #panel .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
+  #panel .presetrow.grid2, #menubar .presetrow.grid2 { display: grid; grid-template-columns: 1fr 1fr; }
   #panel .sep { border: none; border-top: 1px solid rgba(255, 140, 40, 0.22); margin: 14px 0 2px; }
   /* The menu is grouped boxes — the app-wide stuff (audio, resolution,
      diagnostics), backup/share, what the scene IS (presets/effect/palette) and
@@ -366,16 +409,16 @@
     border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
   }
   /* ---- music beat reactivity ---- */
-  #panel .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-  #panel .audbtn {
+  #panel .audiorow, #menubar .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  #panel .audbtn, #menubar .audbtn {
     padding: 4px 8px; background: rgba(255, 122, 26, 0.15);
     border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 6px;
     color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
-  #panel .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
-  #panel .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
-  #panel .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
-  #panel .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
+  #panel .audbtn:hover, #menubar .audbtn:hover { background: rgba(255, 122, 26, 0.3); }
+  #panel .audbtn.on, #menubar .audbtn.on { background: #ff7a1a; color: #1a0f08; border-color: #ff7a1a; }
+  #panel .meter, #menubar .meter { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
+  #panel .meter i, #menubar .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
   .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
   /* Unarmed chips are deliberately colourless and dim: the band colours below
@@ -537,15 +580,15 @@
     border-radius: 1px;
     background: linear-gradient(180deg, #ffb15a, rgba(255, 140, 40, 0));
   }
-  #panel .credit-role {
+  #panel .credit-role, #menubar .credit-role {
     color: #ffb15a; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
     text-shadow: 0 0 10px rgba(255, 120, 20, .75);
   }
-  #panel .credit-name { opacity: .8; font-size: 11px; line-height: 1.5; }
+  #panel .credit-name, #menubar .credit-name { opacity: .8; font-size: 11px; line-height: 1.5; }
   /* keep "aka <handle>" together so a long name wraps as name / alias, never
      stranding the "aka" at the end of a line */
-  #panel .credit-alias { white-space: nowrap; }
-  #panel .credit-aka { opacity: .45; }
+  #panel .credit-alias, #menubar .credit-alias { white-space: nowrap; }
+  #panel .credit-aka, #menubar .credit-aka { opacity: .45; }
   #panel .credit-handle { color: #ffcf87; font-weight: bold; }
   #panel .credit + label.check { margin-top: 12px; }
   /* Filters: the stackable post-FX checkboxes */

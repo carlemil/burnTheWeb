@@ -639,13 +639,44 @@ inner loop is only valid while the camera is upright. **Copper Bars** keeps its
 row-constant fast path but gates it on `camOn()` — its bars really are constant across a
 row until you rotate, and then they aren't.
 
-**Menu layout.** The panel is a header (title + subtitle) followed by **five `.box`
+**Two menus, split by what the thing IS.** The ☰ opens the **menubar** (`src/ui-menubar.js`,
+`#menubar`) — a traditional multi-level fold-out for everything that is *not* scene data:
+System (audio + resolution), Cloud profile, Credits, plus Controls panel / Fullscreen /
+Hide all UI and the help link. The **panel** (`#panel`) is now only the scene editor. The ☰
+therefore **no longer toggles the panel** — `menubarToggle()` does the menu, and the `m` key
+still toggles the panel directly, which keeps the fast route to the sliders.
+
+**The menubar ADOPTS the existing nodes, it does not rebuild them.** `#sysbox`, `#cloudbox`
+and `#creditbox` are authored in the panel markup (hidden), and a `{adopt: "id"}` menu item
+*moves their children* into its panel — the same trick `buildFilterUI` uses to pull
+`#ctl-<key>` into a filter body. That is what keeps every listener, every `el(id)` lookup and
+every sync path (`setAudioUI`, the cloud module, the Google button rendered into
+`#cloud-signin`) working with no changes: rebuilding this markup in the menubar would mean
+re-wiring the whole cloud module. `ui-menubar.js` is **last in the manifest** so every other
+slice has already found its elements — moving a node never detaches a listener, so order only
+matters for startup lookups.
+
+**`returnAdopted()` is load-bearing and its absence is destructive.** Panels are rebuilt on
+every open and destroyed on close, so an adopted block must be moved back to its home box
+*before* its panel is removed — otherwise closing the menu **deletes the real audio buttons,
+the resolution select, `#cloudrow` and the credits list from the document**, and nothing that
+looks them up by id works again. It shipped broken exactly once; the probe caught it by
+reopening the menu and finding an empty panel. `box.dataset.adopt` is how each block knows
+where home is.
+
+Two smaller consequences. `#menubar` is a full-screen overlay that **catches** pointer
+events while open, because it is the click-outside closer and without that a dismissing click
+falls through to the canvas and pauses the animation. And the control CSS is scoped
+`#panel …`, so every rule an adopted block needs names `#menubar` too — including the *font*,
+which lives on `#panel` rather than `body`, so an adopted block would otherwise render in the
+browser's serif default.
+
+**Panel layout.** A header (title + subtitle) followed by **five `.box`
 sections**, each a `<details>` so it folds (chevron from `.box-t::before`; open/closed is
-**transient**, like Diagnostics): *System* (audio, resolution, Diagnostics — collapsed by
-default), *Backup, restore & share* (the 2×2 `.presetrow.grid2`), *Scene* (the preset
-chooser, auto-cycle and TTL), ***Layer effect & filters*** (`#effect`, `#fxctl`, Orbit editor,
-Reset) and
-*Palette settings* (`#palette`, `#palctl`, `#bandctl`). `buildControls` routes a control by
+**transient**): *Scene* (the scene chooser, auto-cycle, TTL and transition),
+*Scene filters*, *Beat tuning*, *Layers*, and ***Layer effect & filters*** (`#effect`,
+`#fxctl`, Orbit editor, Reset, the per-layer filters and the palette).
+`buildControls` routes a control by
 `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
 The box title is **singular in the effect** and names the layer — everything in it edits the
 ONE selected layer, and a plural "Effects" read as "all of the effects".

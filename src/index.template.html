@@ -26,10 +26,15 @@
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
-  <!-- Box — System: app-wide, never part of a scene — audio input, render
-       resolution and the dev tools. -->
-  <details class="box">
-  <summary class="box-t">System</summary>
+  <!-- System / Cloud profile / Credits are NOT boxes any more: their contents are ADOPTED
+       into the ☰ fold-out menubar at startup (buildMenubar), which moves these very nodes
+       rather than rebuilding them — so every listener, id and sync path already wired to
+       them keeps working untouched. They stay here in the markup because this is where they
+       are authored and where the wiring code looks them up by id; the wrappers below are
+       hidden and emptied by the move. Do not "tidy" them into the menubar markup: the audio
+       buttons, the resolution select, #cloudrow (which Google renders its sign-in button
+       into) and the credits list are all wired by id from other slices. -->
+  <div id="sysbox" hidden>
   <!-- Sound &amp; quality: music reactivity and the global render resolution -->
   <label>React to music <span class="val" id="vAudio">off</span></label>
   <div class="audiorow">
@@ -54,7 +59,7 @@
        exists to help you set; the frame + FPS counter no longer has a toggle at all, because
        H (hide all chrome) already governs it and a second control for the same thing was
        just another place for the two to disagree. -->
-  </details>
+  </div>
 
   <!-- Box — Cloud profile: the ONE way in and out of the app now.
        The Backup / Restore / Share this scene / Share scenes buttons were removed from the
@@ -63,8 +68,7 @@
        still decodes (the standing rule), and the Restore dialog they land in is the same one
        "Load from cloud" and the gallery open. Only the controls that CREATE files and links
        are gone. -->
-  <details class="box">
-  <summary class="box-t">Cloud profile</summary>
+  <div id="cloudbox" hidden>
 
   <!-- Hidden entirely unless CONFIG.cloud.apiKey is set (same kill switch as analytics), so
        an unconfigured build shows an empty box rather than a broken one. -->
@@ -101,7 +105,7 @@
     <p id="cloud-msg" class="hint"></p>
     <p class="hint">Stored against your account: the profile name you choose and your scenes — nothing else. Not your email, name or picture.</p>
   </div>
-  </details>
+  </div>
 
   <!-- Box — Scene: saved scenes and how long each is held. The Effect chooser used to
        live here too; it moved down to Effects, next to the sliders it drives. -->
@@ -213,13 +217,13 @@
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </details>
 
-  <!-- Box — Credits. Generated from CREDITS in the script — the same array the
-       startup burn-in rasterises, so the two can no longer drift apart. -->
-  <details class="box">
-  <summary class="box-t">Credits</summary>
+  <!-- Credits. Generated from CREDITS in the script — the same array the startup burn-in
+       rasterises, so the two can no longer drift apart. Adopted into the ☰ menubar, like
+       System and Cloud profile above. -->
+  <div id="creditbox" hidden>
   <div id="creditlist"></div>
   <label class="check"><input type="checkbox" id="creditsOn" checked> Show credits on startup</label>
-  </details>
+  </div>
 
   <p class="hint">Click canvas to pause · <b>☰</b>/<b>⛶</b>/<b>♪</b> or <b>M</b>/<b>F</b>/<b>S</b> toggle panel/fullscreen/mute · <b>H</b> hides all UI</p>
   <!-- Version + release notes, the conventional place for an "about" line: the very foot of
@@ -229,7 +233,11 @@
   <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
      title="What changed in this and previous releases">burnTheWeb <span id="vernum">·</span> — release notes ↗</a></p>
 </div>
-<button id="toggle" type="button" aria-label="Toggle controls (M)">☰</button>
+<button id="toggle" type="button" aria-label="Open the menu" aria-haspopup="true" aria-expanded="false">☰</button>
+<!-- The fold-out application menu the ☰ opens: a traditional multi-level menubar. Its
+     structure is built in JS (buildMenubar) and its leaf panels are filled by MOVING the
+     #sysbox / #cloudbox / #creditbox contents in, so nothing has to be re-wired. -->
+<div id="menubar" class="hidden" role="menu" aria-label="Main menu"></div>
 <button id="fs" type="button" aria-label="Toggle fullscreen">⛶</button>
 <!-- Mute the music reaction. It does NOT stop the stream (see setMuted) — a browser cannot
      silently re-grab tab/screen audio, so stopping would cost a fresh picker dialog to come

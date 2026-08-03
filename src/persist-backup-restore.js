@@ -385,9 +385,12 @@
     panel.classList.toggle("hidden", hidden);
     persist();                          // remember panel open/closed across reloads
   }
-  // The ☰ hamburger (and the "m" key) toggle the one menu — the dev tools now live
-  // inside it as the Diagnostics section, so there's nothing else to collapse.
-  toggle.addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
+  // The ☰ hamburger opens the fold-out MENUBAR (ui-menubar.js), not the controls panel —
+  // it is the app's application menu now, holding System / Cloud profile / Credits and a
+  // Controls panel toggle. The "m" key still toggles the panel directly, so the fastest
+  // route to the sliders is unchanged. `menubarToggle` is a function declaration in a later
+  // slice, hence safe to reference here (it only runs on click).
+  toggle.addEventListener("click", e => { e.stopPropagation(); menubarToggle(); });
   // Fullscreen toggle (works on mobile too, where F11 doesn't exist; also the "f" key).
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
