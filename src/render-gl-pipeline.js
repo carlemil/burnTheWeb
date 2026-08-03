@@ -818,8 +818,10 @@
     // back to it made every not-yet-captured same-effect layer mirror the last one edited — the
     // "all layers share one filter set" bug (identical in shape to the seedPts one, see
     // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
+    // orderFilters, not FILTERS.filter: the stored list is the user's drag order (see the
+    // ORDER block in filters.js), and this chain must run in it.
     const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
-    return FILTERS.filter(f => f.stage === "feedback" && f.glFeedback && ids.has(f.id));
+    return orderFilters(ids).filter(f => f.stage === "feedback" && f.glFeedback);
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
   // wrote (the buffer left bound), so the caller can stamp/inject into it. Deliberately
@@ -897,7 +899,7 @@
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
     const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
-    const chain = FILTERS.filter(f => f.stage === "post" && f.gl && set.has(f.id));
+    const chain = orderFilters(set).filter(f => f.stage === "post" && f.gl);   // the user's drag order
     if (!chain.length) return src;
     let s = src, slot = 0;
     for (const f of chain) {

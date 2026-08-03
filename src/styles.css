@@ -24,7 +24,10 @@
     max-height: calc(100vh - 72px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: rgba(10, 6, 4, 0.55);
+    /* 0.8, not the old 0.55: every panel and dialog floats over the visual, and at 55% a
+       bright frame (a white-hot fire tip, a full-screen plasma) read straight through the
+       text. Raised on all seven translucent surfaces at once so they stay a matched set. */
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px;
     backdrop-filter: blur(6px);
@@ -213,7 +216,7 @@
     padding: 0; appearance: none; -webkit-appearance: none;
     display: flex;
     align-items: center; justify-content: center;
-    background: rgba(10, 6, 4, 0.55);
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 8px;
     color: #ffb15a;
@@ -242,7 +245,7 @@
     right: 14px;
     z-index: 10;
     padding: 6px 10px;
-    background: rgba(10, 6, 4, 0.55);
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 8px;
     color: #ffcf87;
@@ -259,7 +262,8 @@
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
-  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
+  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
+  body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -342,7 +346,7 @@
   #galdlg .gal-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 480px); max-height: 86vh; overflow-y: auto;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 24px 26px 22px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -695,6 +699,85 @@
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
   #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
+  /* ---- the chain: drag handle, remove, and the Add button --------------------------
+     The list shows only the filters you have added, in the order they run. The handle is
+     the same ⠿ the layer rows use, and the drag is the same gesture (see makeFilterGrab). */
+  #panel .filter-grab {
+    flex: 0 0 auto; width: 13px; cursor: grab; color: #ffb15a; opacity: .5;
+    font-size: 11px; line-height: 1; text-align: center; touch-action: none;
+  }
+  #panel .filter-grab:hover { opacity: 1; }
+  #panel .filter-sec.solo .filter-grab { opacity: .18; cursor: default; }   /* nothing to reorder against */
+  #panel .filter-sec.dragging {
+    position: relative; z-index: 3; opacity: .92;
+    background: rgba(255, 122, 26, 0.12); border-radius: 5px;
+  }
+  #panel .filter-drop { height: 2px; margin: 2px 0; background: #ff8c28; border-radius: 1px; }
+  #panel .filter-rm {
+    flex: 0 0 auto; width: 16px; height: 16px; padding: 0; background: none; border: 0;
+    color: #ffb15a; opacity: .4; cursor: pointer; font-size: 11px; line-height: 1;
+  }
+  #panel .filter-rm:hover { opacity: 1; color: #ff9a4a; }
+  #panel .filter-add {
+    display: block; width: 100%; margin: 6px 0 2px; padding: 4px 8px;
+    background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
+    border-radius: 6px; color: #ffcf87; font: 11px/1.3 inherit; cursor: pointer; text-align: center;
+  }
+  #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
+  /* ---- the "Add filter" / "Palettes in use" pickers ---- */
+  #fltdlg, #palpickdlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;   /* only the box itself is interactive */
+  }
+  #fltdlg.hidden, #palpickdlg.hidden { display: none; }
+  #fltdlg .flt-box, #palpickdlg .flt-box {
+    position: relative; pointer-events: auto;
+    width: min(90vw, 430px); max-height: 86vh; overflow-y: auto;
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 20px 22px 18px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #fltdlg h2, #palpickdlg h2 {
+    margin: 0 30px 8px 0; color: #ffb15a; font-size: 15px;
+    text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
+  }
+  #fltdlg .pal-hint, #palpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
+  #fltdlg .flt-stage {
+    margin: 12px 0 4px; padding-top: 7px; border-top: 1px solid rgba(255, 140, 40, 0.16);
+    color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  #fltdlg .flt-stage:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  #fltdlg .flt-opt {
+    display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline;
+    padding: 4px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
+  }
+  #fltdlg .flt-opt:hover { background: rgba(255, 122, 26, 0.14); }
+  #fltdlg .flt-opt input { margin: 0; }
+  #fltdlg .flt-opt-n { color: #ffdcb0; }
+  #fltdlg .flt-opt-d { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.45; }
+  #fltdlg .flt-opt:has(input:disabled) { opacity: .4; cursor: default; }
+  #palpickdlg .palpick-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
+  }
+  #palpickdlg .palpick-row:hover { background: rgba(255, 122, 26, 0.14); }
+  #palpickdlg .palpick-row input { margin: 0; flex: 0 0 auto; }
+  #palpickdlg .palpick-sw {
+    flex: 0 0 auto; width: 84px; height: 14px; border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  #palpickdlg .palpick-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #palpickdlg .presetrow { margin-top: 14px; }
+  /* The "+" tile that ends the swatch strip — same size and rhythm as a ramp, so the strip
+     reads as one object with an empty slot rather than a control bolted underneath. */
+  .palsw-add {
+    display: block; width: 100%; height: 22px; padding: 0;
+    background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
+    border-radius: 4px; color: #ffcf87; font: 13px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
   #panel .filter-chk { margin: 4px 0 0; }
   #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
@@ -761,7 +844,7 @@
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
-    position: relative; background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -802,7 +885,7 @@
   #paledlg .pale-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -921,7 +1004,7 @@
     position: fixed; right: 16px; bottom: 16px; z-index: 5;
     max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
     padding: 16px 18px 14px;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);

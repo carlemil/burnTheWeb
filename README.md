@@ -223,6 +223,7 @@ except the shared few listed above.
 | **Tick beside each scene** | Whether that scene is part of the show. Ticked scenes are the ones auto-cycle picks from; unticked ones dim slightly and are skipped — but they are still there and still selectable by hand, so this is a way to build a set out of part of your library rather than a way to hide scenes. Everything starts ticked, and untick them all and auto-cycle simply sits still rather than falling back to the whole list. The ticks travel with your scenes into backups, cloud profiles and published collections. |
 | **Show author** | The banner naming each scene as you land on it — its name, a dash, and who made it. Off to keep the screen clean. *(Remembered in this browser, like the credits switch; never part of a scene.)* |
 | **Scene TTL** *(ranged, seconds)* | How long auto-cycle holds each scene before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. Each saved scene remembers the TTL it was authored with, so selecting one sets this to that scene's own pacing. |
+| **Palettes in use** | The **+** tile at the end of the swatch strip opens a list of every ramp with a tick beside it. Only the ticked ones show in the strip, and only they are picked when the palette cycle runs — so a big catalogue can still cycle inside the four that suit a set. Nothing is deleted by unticking: a scene that stores an unticked ramp still loads and still renders it, and the one you are on always stays visible in the strip. *(Remembered per browser, like auto-cycle; not part of a scene you share.)* |
 | **Palette** | Pick one of nineteen colour ramps — each is shown as a gradient swatch, so you preview the colours instead of reading a name. Click one to select it; the active ramp is highlighted. The **👁** button beside the label opens the inspector: the whole 0–255 ramp as a grid, hover any cell for its index and hex. |
 | **Palette editor** | Hover a swatch and click **+** to make an editable copy of it, or **✎** on one of your own to edit it in place — the nineteen built-in ramps are never changed. The ramp is edited as **colour stops** on a gradient bar: click the bar to add a stop where you clicked, drag a handle to move it, and use the colour box to recolour the selected one. **Everything previews live on the scene as you edit**, so there is nothing to apply. Your palettes join the swatch list (and the palette-cycle rotation) and are saved with your settings. A copy you open and close without changing anything is discarded, so looking costs nothing — use **Save & close** if you wanted the duplicate anyway. **Delete palette** removes one of yours; any layer using it falls back to the ramp it was copied from. |
 | **Palette cycle** | How long one blend to a random palette takes, as a min–max range in seconds — each cycle picks a time inside it. Collapse both thumbs to **0** for a fixed palette that never cycles. (This replaced the old Auto-morph checkbox.) |
@@ -375,11 +376,22 @@ stacking is a GPU feature, and each extra layer there would be a full software r
 ## Filters
 
 There are twenty-two post-processing effects you can stack on top of whatever is
-running — tick as many as you like and they apply in order. Each one folds open to
-show its own settings while it's ticked, and the whole selection is saved into the
-scene. They live in two places, which mirrors what they actually do: the first two
+running. The menu lists only the ones you've **added**, in the order they run: press
+**+ Add filter** to open the full catalogue and tick what you want, drag a row's **⠿**
+handle to move it up or down the chain, and press **✕** to drop it. Each row folds open
+to show its own settings, and the whole chain — order included — is saved into the scene.
+
+One thing the list will do that looks odd until you know why: **heat filters always sit
+above image filters, and a drag that would cross that line stops at it.** That's the
+pipeline, not the menu being stubborn — a heat filter changes what the *next* frame
+starts from, before the effect has drawn, while an image filter repaints the picture
+afterwards. There is no moment at which Pixelate could run before Fire, so rather than
+let the list claim an order it can't honour, it shows you where the drop really landed.
+
+They live in two places, which mirrors what they actually do: the first two
 groups below are **per layer** and sit in **Layer effect & filters**, while the last
-group acts on the finished picture and has its own **Scene filters** box. Within
+group acts on the finished picture and has its own **Scene filters** box (with its own
+**+ Add filter**; those run in a fixed order, so they have no handles). Within
 that, the three stages of the pipeline are the one thing worth understanding:
 **feedback** filters change what the *next* frame starts from, **post** filters
 repaint the image, and **screen** filters sit on the finished frame.

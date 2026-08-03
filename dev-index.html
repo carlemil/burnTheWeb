@@ -42,7 +42,10 @@
     max-height: calc(100vh - 72px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: rgba(10, 6, 4, 0.55);
+    /* 0.8, not the old 0.55: every panel and dialog floats over the visual, and at 55% a
+       bright frame (a white-hot fire tip, a full-screen plasma) read straight through the
+       text. Raised on all seven translucent surfaces at once so they stay a matched set. */
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px;
     backdrop-filter: blur(6px);
@@ -231,7 +234,7 @@
     padding: 0; appearance: none; -webkit-appearance: none;
     display: flex;
     align-items: center; justify-content: center;
-    background: rgba(10, 6, 4, 0.55);
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 8px;
     color: #ffb15a;
@@ -260,7 +263,7 @@
     right: 14px;
     z-index: 10;
     padding: 6px 10px;
-    background: rgba(10, 6, 4, 0.55);
+    background: rgba(10, 6, 4, 0.8);
     border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 8px;
     color: #ffcf87;
@@ -277,7 +280,8 @@
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
-  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg { display: none !important; }
+  body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
+  body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -360,7 +364,7 @@
   #galdlg .gal-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 480px); max-height: 86vh; overflow-y: auto;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 24px 26px 22px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -713,6 +717,85 @@
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
   #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
+  /* ---- the chain: drag handle, remove, and the Add button --------------------------
+     The list shows only the filters you have added, in the order they run. The handle is
+     the same ⠿ the layer rows use, and the drag is the same gesture (see makeFilterGrab). */
+  #panel .filter-grab {
+    flex: 0 0 auto; width: 13px; cursor: grab; color: #ffb15a; opacity: .5;
+    font-size: 11px; line-height: 1; text-align: center; touch-action: none;
+  }
+  #panel .filter-grab:hover { opacity: 1; }
+  #panel .filter-sec.solo .filter-grab { opacity: .18; cursor: default; }   /* nothing to reorder against */
+  #panel .filter-sec.dragging {
+    position: relative; z-index: 3; opacity: .92;
+    background: rgba(255, 122, 26, 0.12); border-radius: 5px;
+  }
+  #panel .filter-drop { height: 2px; margin: 2px 0; background: #ff8c28; border-radius: 1px; }
+  #panel .filter-rm {
+    flex: 0 0 auto; width: 16px; height: 16px; padding: 0; background: none; border: 0;
+    color: #ffb15a; opacity: .4; cursor: pointer; font-size: 11px; line-height: 1;
+  }
+  #panel .filter-rm:hover { opacity: 1; color: #ff9a4a; }
+  #panel .filter-add {
+    display: block; width: 100%; margin: 6px 0 2px; padding: 4px 8px;
+    background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
+    border-radius: 6px; color: #ffcf87; font: 11px/1.3 inherit; cursor: pointer; text-align: center;
+  }
+  #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
+  /* ---- the "Add filter" / "Palettes in use" pickers ---- */
+  #fltdlg, #palpickdlg {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;   /* only the box itself is interactive */
+  }
+  #fltdlg.hidden, #palpickdlg.hidden { display: none; }
+  #fltdlg .flt-box, #palpickdlg .flt-box {
+    position: relative; pointer-events: auto;
+    width: min(90vw, 430px); max-height: 86vh; overflow-y: auto;
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 20px 22px 18px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  #fltdlg h2, #palpickdlg h2 {
+    margin: 0 30px 8px 0; color: #ffb15a; font-size: 15px;
+    text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
+  }
+  #fltdlg .pal-hint, #palpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
+  #fltdlg .flt-stage {
+    margin: 12px 0 4px; padding-top: 7px; border-top: 1px solid rgba(255, 140, 40, 0.16);
+    color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  #fltdlg .flt-stage:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  #fltdlg .flt-opt {
+    display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline;
+    padding: 4px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
+  }
+  #fltdlg .flt-opt:hover { background: rgba(255, 122, 26, 0.14); }
+  #fltdlg .flt-opt input { margin: 0; }
+  #fltdlg .flt-opt-n { color: #ffdcb0; }
+  #fltdlg .flt-opt-d { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.45; }
+  #fltdlg .flt-opt:has(input:disabled) { opacity: .4; cursor: default; }
+  #palpickdlg .palpick-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 6px; margin: 1px 0; border-radius: 5px; cursor: pointer;
+  }
+  #palpickdlg .palpick-row:hover { background: rgba(255, 122, 26, 0.14); }
+  #palpickdlg .palpick-row input { margin: 0; flex: 0 0 auto; }
+  #palpickdlg .palpick-sw {
+    flex: 0 0 auto; width: 84px; height: 14px; border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  #palpickdlg .palpick-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #palpickdlg .presetrow { margin-top: 14px; }
+  /* The "+" tile that ends the swatch strip — same size and rhythm as a ramp, so the strip
+     reads as one object with an empty slot rather than a control bolted underneath. */
+  .palsw-add {
+    display: block; width: 100%; height: 22px; padding: 0;
+    background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
+    border-radius: 4px; color: #ffcf87; font: 13px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
   #panel .filter-chk { margin: 4px 0 0; }
   #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
@@ -779,7 +862,7 @@
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
-    position: relative; background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -820,7 +903,7 @@
   #paledlg .pale-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.4);
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -939,7 +1022,7 @@
     position: fixed; right: 16px; bottom: 16px; z-index: 5;
     max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
     padding: 16px 18px 14px;
-    background: rgba(10, 6, 4, 0.55); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
@@ -1290,6 +1373,34 @@
 <!-- Palette editor: edit a ramp as colour stops on a gradient bar. Opened by the + on any
      palette swatch. Floating and non-modal like the inspector and the Orbit editor, so you
      can watch the scene change while you drag — every edit previews live. -->
+<!-- "+ Add filter" picker. The menu lists only the filters you have added, in the order they
+     run; this is the only place the full catalogue appears. Floating, translucent and
+     non-modal like the palette editor — you tick a filter and watch it land. Serves BOTH
+     lists (per-layer and whole-scene); openFilterPicker(key) sets which. -->
+<div id="fltdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="flt-close" aria-label="Close">×</button>
+    <h2 id="flt-title">Filters</h2>
+    <p class="pal-hint" id="flt-hint"></p>
+    <div id="flt-pick"></div>
+  </div>
+</div>
+
+<!-- Which palettes are in play: the swatch strip shows only these, and the palette cycle
+     draws only from them. Same shape as the filter picker. -->
+<div id="palpickdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="palpick-close" aria-label="Close">×</button>
+    <h2>Palettes in use</h2>
+    <p class="pal-hint">Ticked palettes show in the strip and are the ones the palette cycle picks from. Untick the ones you never reach for — nothing is deleted, and the palette a scene stores always still loads.</p>
+    <div id="palpick-list"></div>
+    <div class="presetrow grid2">
+      <button id="palpick-all" class="audbtn" type="button">Select all</button>
+      <button id="palpick-none" class="audbtn" type="button">Select none</button>
+    </div>
+  </div>
+</div>
+
 <div id="paledlg" class="hidden">
   <div class="pale-box">
     <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>
@@ -1797,12 +1908,14 @@
     { name: "CGA", fn: grad([[0, [0, 0, 0]], [0.35, [0, 0, 170]], [0.55, [0, 170, 170]], [0.75, [255, 85, 255]], [1, [255, 255, 255]]]) },
     { name: "Blood", fn: grad([[0, [0, 0, 0]], [0.35, [50, 0, 0]], [0.6, [150, 0, 10]], [0.8, [225, 40, 30]], [0.92, [255, 140, 110]], [1, [255, 230, 215]]]) },
     { name: "Chrome", fn: grad([[0, [0, 0, 0]], [0.25, [20, 30, 55]], [0.45, [90, 110, 140]], [0.62, [200, 215, 235]], [0.75, [70, 90, 120]], [0.9, [180, 200, 225]], [1, [255, 255, 255]]]) },
-    // Rastafari palettes — green / gold / red. "One love" runs the full tricolor;
-    // the other three each lean on one of the three colours.
-    { name: "One love", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
-    { name: "Rasta Red", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
-    { name: "Rasta Green", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
-    { name: "Rasta Yellow", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
+    // A green / gold / red family. "Tricolor" runs all three in sequence; the other three
+    // each lean on one of them. Renaming these is SAFE: a palette is referenced everywhere
+    // by INDEX (see palRemapDeleted), never by name, so no saved scene, share link, backup
+    // or cloud profile is affected — keep the ORDER, though.
+    { name: "Tricolor", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
+    { name: "Ember", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
+    { name: "Verdant", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
+    { name: "Sunburst", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
   ];
 
   // ---- custom palettes (the palette editor) ---------------------------------
@@ -2005,10 +2118,34 @@
     arr[0] = arr[1] = arr[2] = 0; // index 0 black
     return arr;
   }
-  function pickOther(cur) {                 // random palette index != cur
-    let n;
-    do { n = (Math.random() * PALETTES.length) | 0; } while (n === cur);
-    return n;
+  // ---- which palettes are IN USE ---------------------------------------------------
+  // The swatch strip shows only these, and the palette cycle picks only from them — so you
+  // can keep a catalogue of 20+ ramps and still have the cycle stay inside the four that
+  // suit a set. NOTHING is deleted by unticking: a scene that stores an untick-ed palette
+  // still loads it and still renders it, because this gates the STRIP and the CYCLE, not
+  // `paletteRGB`. (The strip therefore also shows the current palette whether or not it is
+  // ticked, or selecting a scene would blank the highlight.)
+  //
+  // `null` means "all of them", which is the shipped state and what every blob saved before
+  // this existed decodes to — so there is nothing to migrate and no key is written until you
+  // actually narrow the set. Indices, like every other palette reference here, which is why
+  // palRemapDeleted has to remap this too.
+  //
+  // Global, not per-scene: the same class as auto-cycle and Preset TTL. A shared scene
+  // deliberately does not carry it — it is the recipient's own library preference.
+  let palUse = null;
+  const palInUse = i => !palUse || palUse.has(i);
+  function palUseOk(v) {                    // validate a stored list
+    if (!Array.isArray(v)) return null;
+    const s = new Set();
+    for (const n of v) if (Number.isInteger(n) && n >= 0 && n < PALETTES.length) s.add(n);
+    return s.size ? s : null;               // empty ⇒ treat as "all", never as "none"
+  }
+  function pickOther(cur) {                 // random IN-USE palette index != cur
+    const pool = [];
+    for (let i = 0; i < PALETTES.length; i++) if (i !== cur && palInUse(i)) pool.push(i);
+    if (!pool.length) return cur;           // one palette in use ⇒ stay on it (a pinned cycle)
+    return pool[(Math.random() * pool.length) | 0];
   }
   // reflect the palette we're heading toward in the dropdown
   function showMorphTarget() { el("palette").value = morphTargetIndex; syncPalSwatches(); }
@@ -3573,8 +3710,10 @@
     // back to it made every not-yet-captured same-effect layer mirror the last one edited — the
     // "all layers share one filter set" bug (identical in shape to the seedPts one, see
     // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
+    // orderFilters, not FILTERS.filter: the stored list is the user's drag order (see the
+    // ORDER block in filters.js), and this chain must run in it.
     const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
-    return FILTERS.filter(f => f.stage === "feedback" && f.glFeedback && ids.has(f.id));
+    return orderFilters(ids).filter(f => f.stage === "feedback" && f.glFeedback);
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
   // wrote (the buffer left bound), so the caller can stamp/inject into it. Deliberately
@@ -3652,7 +3791,7 @@
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
     const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
-    const chain = FILTERS.filter(f => f.stage === "post" && f.gl && set.has(f.id));
+    const chain = orderFilters(set).filter(f => f.stage === "post" && f.gl);   // the user's drag order
     if (!chain.length) return src;
     let s = src, slot = 0;
     for (const f of chain) {
@@ -5958,50 +6097,81 @@
                desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
     return { key: "scene", title: "Whole scene · final image", desc: "applied once to the finished, blended picture" };
   }
-  // One <details> per filter: chevron + tick + name in the summary, that filter's own
-  // params in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's
-  // .ctl-row launcher next to its .ctl — moving the .ctl into a body afterwards would
-  // strand the row in #filterctl.
+  // One <details> per filter: a grab handle + name in the summary, that filter's own params
+  // in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's .ctl-row
+  // launcher next to its .ctl — moving the .ctl into a body afterwards would strand the row
+  // in #filterctl.
+  //
+  // THE LIST SHOWS ONLY THE FILTERS YOU HAVE ADDED. It used to show all 22 with a checkbox
+  // each, which is a wall of options you mostly are not using; now "+ Add filter" opens a
+  // picker and the menu is just your chain, in order. Two consequences worth knowing:
+  //
+  //  - **Every section is built once and stays in the DOM forever**, hidden rather than
+  //    removed. It holds this filter's `#ctl-<key>` param nodes, which were ADOPTED out of
+  //    #filterctl — and `el()` is getElementById, which cannot find a detached node. Drop a
+  //    section from the document and every lookup of its sliders (loadState, bindRange,
+  //    refreshControlVisibility, the pop-out boxes) silently stops finding them.
+  //  - **Order is expressed by re-appending**, since appendChild MOVES a node. renderFilterList
+  //    re-appends the added sections in chain order on every change, so DOM order is the
+  //    order, and a moved node keeps its children, listeners and adopted controls.
+  //
+  // `#flt-<id>` survives as a hidden checkbox inside each section: it is still the on/off
+  // VALUE STORE that syncFilterUI writes and the picker reads, exactly as `#preset` and
+  // `#palette` sit behind their visible pickers. Deleting it would mean rewriting all of them.
   const filterSecs = {};
+  // The two lists, and whether their order is the user's to choose. Only the per-effect
+  // group is reorderable: the whole-scene filters are one fixed post-composite pass each,
+  // and there is nothing meaningful to permute.
+  const FILTER_LISTS = [
+    { key: "layer", hostId: "filterlist", addId: "filter-add", reorder: true },
+    { key: "scene", hostId: "screenfilterlist", addId: "screenfilter-add", reorder: false },
+  ];
+  function filterListOf(f) { return filterGroup(f).key === "scene" ? FILTER_LISTS[1] : FILTER_LISTS[0]; }
+  const filterSetOf = id => (isSceneFilter(id) ? sceneOn : activeIds);
+  // The ids currently in one list, in the order they will be applied.
+  function listIds(key) {
+    return orderFilters(key === "scene" ? [...sceneOn] : [...activeIds])
+      .filter(f => filterListOf(f).key === key).map(f => f.id);
+  }
   function buildFilterUI() {
-    const host = el("filterlist"), ctlHost = el("filterctl");
-    const screenHost = el("screenfilterlist");   // whole-scene filters get their own box
-    let openKey = null;
+    const ctlHost = el("filterctl");
+    // One caption over the per-effect chain. The Scene filters box's own title already says
+    // what that list is, so only this one gets a heading — and it earns it twice over now:
+    // it distinguishes per-layer from whole-scene, and it is where "top to bottom is the
+    // order they run" is stated.
+    const lay = el(FILTER_LISTS[0].hostId);
+    if (lay) {
+      const g = filterGroup(FILTERS.find(f => f.stage === "feedback"));
+      const h = document.createElement("div");
+      h.className = "ctl-grp filter-grp";
+      h.textContent = g.title;
+      const d = document.createElement("div");
+      d.className = "filter-grp-d";
+      d.textContent = "runs top to bottom — drag ⠿ to reorder";
+      h.appendChild(d);
+      lay.appendChild(h);
+    }
     FILTERS.forEach(f => {
-      const g = filterGroup(f);
-      // The "Whole scene · final image" group lives in the Scene filters box; the
-      // per-effect groups stay in the Layer effect & filters box. The box title already says
-      // "Scene filters", so the scene group needs no in-box caption of its own.
-      const dest = g.key === "scene" ? screenHost : host;
-      if (g.key !== openKey) {
-        openKey = g.key;
-        if (g.key !== "scene") {
-          const h = document.createElement("div");
-          h.className = "ctl-grp filter-grp";
-          h.textContent = g.title;
-          const d = document.createElement("div");
-          d.className = "filter-grp-d"; d.textContent = g.desc;
-          h.appendChild(d);
-          dest.appendChild(h);
-        }
-      }
+      const L = filterListOf(f), dest = el(L.hostId);
+      if (!dest) return;
       const sec = document.createElement("details");
       sec.className = "filter-sec";
+      sec.dataset.fid = f.id;
       const sum = document.createElement("summary");
+      // Hidden value store — the picker dialog ticks it, syncFilterUI reads it.
       const cb = document.createElement("input");
       cb.type = "checkbox"; cb.id = "flt-" + f.id;
-      // The tick sits inside the summary, so its click must not also fold the section.
-      cb.addEventListener("click", e => e.stopPropagation());
-      cb.addEventListener("change", () => {
-        const set = isSceneFilter(f.id) ? sceneOn : activeIds;   // scene filters toggle the scene-global set
-        if (cb.checked) set.add(f.id); else set.delete(f.id);
-        syncFilterSec(f.id);
-        if (cb.checked && !sec.open) sec.open = true;   // reveal what you just enabled
-        applyFilters();
-      });
+      cb.style.display = "none";
+      if (L.reorder) sum.appendChild(makeFilterGrab(f, sec));
       const nm = document.createElement("span");
       nm.className = "filter-name"; nm.textContent = f.name;
-      sum.appendChild(cb); sum.appendChild(nm);
+      // Remove from the chain without opening the picker — the commonest edit by far.
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "filter-rm"; rm.textContent = "✕";
+      rm.title = "Remove " + f.name + " from this list";
+      rm.setAttribute("aria-label", "Remove " + f.name);
+      rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
+      sum.appendChild(cb); sum.appendChild(nm); sum.appendChild(rm);
       sum.title = f.help || f.name;
       sec.appendChild(sum);
       const body = document.createElement("div");
@@ -6009,8 +6179,8 @@
       // Adopt this filter's controls out of the flat #filterctl list.
       (f.params || []).forEach(k => { const n = el("ctl-" + k); if (n) body.appendChild(n); });
       sec.appendChild(body);
-      // A GPU-only filter on the Canvas2D fallback: disable it visibly rather than
-      // leaving a checkbox that silently does nothing.
+      // A GPU-only filter on the Canvas2D fallback: say so rather than leaving a row that
+      // silently does nothing. (It stays in the list — see cpuBlocked: never removed.)
       if (f.cpuOk === false && !useGL) {
         cb.disabled = true;
         sec.classList.add("off");
@@ -6019,9 +6189,187 @@
       filterSecs[f.id] = sec;
       dest.appendChild(sec);
     });
+    // "+ Add filter" per list, plus the caption that used to head the group.
+    FILTER_LISTS.forEach(L => {
+      const dest = el(L.hostId);
+      if (!dest) return;
+      const b = document.createElement("button");
+      b.type = "button"; b.id = L.addId; b.className = "filter-add";
+      b.textContent = "+ Add filter";
+      b.title = "Choose which filters this list runs";
+      b.addEventListener("click", () => openFilterPicker(L.key));
+      dest.appendChild(b);
+    });
     if (ctlHost) ctlHost.style.display = "none";   // now empty; keep the node for scans
+    renderFilterLists();
   }
-  // Unticked ⇒ the body has nothing in it worth opening, so fold it and say so.
+  // Put one list in order: the added sections first, in chain order, then the rest hidden,
+  // then the Add button. Everything stays a child of the host — see the note above on why a
+  // section must never leave the document.
+  function renderFilterLists() {
+    FILTER_LISTS.forEach(L => {
+      const host = el(L.hostId);
+      if (!host) return;
+      const ids = listIds(L.key), added = new Set(ids);
+      const cap = host.querySelector(".filter-grp");
+      if (cap) host.appendChild(cap);                       // caption stays on top
+      ids.forEach(id => {
+        const sec = filterSecs[id];
+        if (!sec) return;
+        sec.style.display = "";
+        sec.classList.toggle("solo", ids.length < 2);       // nothing to reorder against
+        host.appendChild(sec);
+      });
+      FILTERS.forEach(f => {
+        const sec = filterSecs[f.id];
+        if (!sec || added.has(f.id) || filterListOf(f).key !== L.key) return;
+        sec.style.display = "none";
+        sec.open = false;
+        host.appendChild(sec);
+      });
+      const btn = el(L.addId);
+      if (btn) host.appendChild(btn);
+      host.classList.toggle("empty", ids.length === 0);
+    });
+  }
+  // The one way a filter goes on or off, wherever it is toggled from (the picker, a row's ✕,
+  // or a programmatic load). Adding appends, so a new filter lands at the end of its stage.
+  function setFilterOn(id, on) {
+    const set = filterSetOf(id);
+    if (on) set.add(id); else set.delete(id);
+    const sec = filterSecs[id];
+    if (sec && on) sec.open = true;        // reveal what you just added
+    applyFilters();
+    syncFilterPicker();
+  }
+  // Drag to reorder, modelled directly on the layer rows' handle (see syncStackUI) — same
+  // gesture, same trick: the dragged section is TRANSFORMED and a marker shows where it will
+  // land, and the actual reorder happens once, on release. Moving the section's DOM node
+  // mid-drag would detach the handle holding the pointer capture, and Chromium drops capture
+  // on reparent, which kills the drag after the first pixel.
+  //
+  // The handle also swallows the summary's click, or every drag would toggle the fold open.
+  function makeFilterGrab(f, sec) {
+    const grab = document.createElement("span");
+    grab.className = "filter-grab";
+    grab.textContent = "⠿";
+    grab.title = "Drag to reorder — filters run top to bottom";
+    grab.setAttribute("aria-label", "Drag to reorder " + f.name);
+    grab.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
+    grab.addEventListener("pointerdown", e => {
+      const host = sec.parentNode;
+      const rows = () => [...host.querySelectorAll(".filter-sec")].filter(s => s.style.display !== "none");
+      if (rows().length < 2) return;
+      e.preventDefault(); e.stopPropagation();
+      grab.setPointerCapture(e.pointerId);
+      const startY = e.clientY;
+      sec.classList.add("dragging");
+      const marker = document.createElement("div");
+      marker.className = "filter-drop";
+      let to = rows().indexOf(sec);
+      const onMove = ev => {
+        sec.style.transform = "translateY(" + (ev.clientY - startY) + "px)";
+        // Scan only the OTHER rows: their rects are stable, while the dragged one's rides
+        // the pointer.
+        const others = rows().filter(s => s !== sec);
+        to = 0;
+        for (const s of others) {
+          const b = s.getBoundingClientRect();
+          if (ev.clientY < b.top + b.height / 2) break;
+          to++;
+        }
+        host.insertBefore(marker, others[to] || el(filterListOf(f).addId) || null);
+      };
+      const onUp = () => {
+        grab.releasePointerCapture(e.pointerId);
+        grab.removeEventListener("pointermove", onMove);
+        grab.removeEventListener("pointerup", onUp);
+        grab.removeEventListener("pointercancel", onUp);
+        marker.remove();
+        sec.style.transform = "";
+        sec.classList.remove("dragging");
+        // Rebuild the set in the new order. A Set iterates in INSERTION order, so the way
+        // to reorder one is to rebuild it — which is also why `activeIds` is re-assigned
+        // rather than mutated in place.
+        const key = filterListOf(f).key;
+        const ids = listIds(key);
+        const from = ids.indexOf(f.id);
+        if (from < 0 || to === from) { renderFilterLists(); return; }
+        ids.splice(to, 0, ids.splice(from, 1)[0]);
+        if (key === "scene") { sceneOn = new Set(ids); }
+        else {
+          // Keep any id the list does not own (scene ids never live here, but a stale one
+          // from an old blob might) rather than dropping it on a reorder.
+          const keep = [...activeIds].filter(id => !ids.includes(id));
+          activeIds = new Set(ids.concat(keep));
+        }
+        applyFilters();          // re-render, re-derive the chains, persist
+        autosavePreset();
+      };
+      grab.addEventListener("pointermove", onMove);
+      grab.addEventListener("pointerup", onUp);
+      grab.addEventListener("pointercancel", onUp);
+    });
+    return grab;
+  }
+  // ---- "Add filter" picker ----------------------------------------------------------
+  // A floating, translucent, non-modal panel like the palette editor and the Orbit editor,
+  // hidden on m/Esc with the rest. It is the ONLY place the full catalogue is listed now,
+  // which is the whole point: the menu shows your chain, this shows what you could add.
+  let filterPickKey = "layer";
+  function openFilterPicker(key) {
+    const dlg = el("fltdlg");
+    if (!dlg) return;
+    filterPickKey = key;
+    el("flt-title").textContent = key === "scene" ? "Scene filters" : "Filters for this layer";
+    el("flt-hint").textContent = key === "scene"
+      ? "Applied once to the finished, blended picture."
+      : "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
+    buildFilterPicker();
+    dlg.classList.remove("hidden");
+  }
+  function closeFilterPicker() { const d = el("fltdlg"); if (d) d.classList.add("hidden"); }
+  function filterPickerOpen() { const d = el("fltdlg"); return !!d && !d.classList.contains("hidden"); }
+  function buildFilterPicker() {
+    const host = el("flt-pick");
+    if (!host) return;
+    host.textContent = "";
+    let stage = null;
+    FILTERS.forEach(f => {
+      if (filterListOf(f).key !== filterPickKey) return;
+      // Sub-captions inside the picker only — the menu list itself is one flat chain.
+      const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
+      if (s !== stage) {
+        stage = s;
+        const h = document.createElement("div");
+        h.className = "flt-stage"; h.textContent = s;
+        host.appendChild(h);
+      }
+      const lab = document.createElement("label");
+      lab.className = "flt-opt";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = filterSetOf(f.id).has(f.id);
+      cb.disabled = f.cpuOk === false && !useGL;
+      cb.addEventListener("change", () => setFilterOn(f.id, cb.checked));
+      const nm = document.createElement("span");
+      nm.className = "flt-opt-n"; nm.textContent = f.name;
+      lab.appendChild(cb); lab.appendChild(nm);
+      if (f.help) {
+        const d = document.createElement("span");
+        d.className = "flt-opt-d"; d.textContent = f.help;
+        lab.appendChild(d);
+      }
+      if (cb.disabled) lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
+      host.appendChild(lab);
+    });
+  }
+  // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
+  // ✕, a scene load, an effect switch). Cheap enough to just rebuild.
+  function syncFilterPicker() { if (filterPickerOpen()) buildFilterPicker(); }
+  if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
+  if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
+  // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) {
     const sec = filterSecs[id], cb = el("flt-" + id);
     if (!sec || !cb) return;
@@ -6126,7 +6474,9 @@
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = (isSceneFilter(f.id) ? sceneOn : activeIds).has(f.id); syncFilterSec(f.id); });
+    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
+    renderFilterLists();     // membership AND order both come from the sets, so re-render
+    syncFilterPicker();
   }
   // Re-derive everything a filter change affects: which param groups are visible,
   // the bloom strength (off ⇒ 0), and the banked sim time (a fresh Fire shouldn't
@@ -6664,6 +7014,9 @@
     if (cur) paletteSel.value = cur;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
+      // Only the palettes in use — plus whichever is selected, always, or picking a scene
+      // that stores an unticked ramp would leave the strip with no highlight at all.
+      if (!palInUse(i) && String(i) !== paletteSel.value) return;
       // A wrapper, because the swatch is a <button> and HTML forbids nesting one inside it —
       // the edit + is a SIBLING positioned over the swatch's right edge.
       const w = document.createElement("div");
@@ -6691,11 +7044,65 @@
       w.appendChild(e);
       host.appendChild(w);
     });
+    // A swatch-shaped "+" at the end of the strip opens the in-use picker. Deliberately the
+    // same size and rhythm as the ramps rather than a button underneath: it reads as "one
+    // more slot" and keeps the strip a single object.
+    const add = document.createElement("button");
+    add.type = "button"; add.className = "palsw-add"; add.textContent = "+";
+    add.title = "Choose which palettes are in use";
+    add.setAttribute("aria-label", "Choose which palettes are in use");
+    add.addEventListener("click", openPalPick);
+    host.appendChild(add);
     paletteSel.classList.add("pal-hidden");   // the swatches are the control now; keep the select for its value
     paletteSel.style.display = "none";
     syncPalSwatches();
   }
+  // ---- "Palettes in use" picker -----------------------------------------------------
+  // Every ramp with a tick, so the strip can stay short. Floating, translucent and
+  // non-modal like the other popups; hides on m/Esc with them.
+  function openPalPick() { buildPalPick(); el("palpickdlg").classList.remove("hidden"); }
+  const closePalPick = () => el("palpickdlg").classList.add("hidden");
+  const palPickOpen = () => !el("palpickdlg").classList.contains("hidden");
+  function buildPalPick() {
+    const host = el("palpick-list");
+    if (!host) return;
+    host.textContent = "";
+    PALETTES.forEach((p, i) => {
+      const lab = document.createElement("label");
+      lab.className = "palpick-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = palInUse(i);
+      cb.addEventListener("change", () => setPalUse(i, cb.checked));
+      const sw = document.createElement("span");
+      sw.className = "palpick-sw"; sw.style.background = palGradientCss(i);
+      const nm = document.createElement("span");
+      nm.className = "palpick-n"; nm.textContent = p.name + (p.custom ? " (custom)" : "");
+      lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(nm);
+      host.appendChild(lab);
+    });
+  }
+  // Tick / untick one ramp. `palUse` is null while everything is in use, so the first
+  // untick has to materialise the full set before removing from it.
+  function setPalUse(i, on) {
+    if (!palUse) palUse = new Set(PALETTES.map((_, k) => k));
+    if (on) palUse.add(i); else palUse.delete(i);
+    // Never leave it empty: with nothing in use the strip would vanish and the cycle would
+    // have nowhere to go. Emptying it means "all", which is also how it is stored.
+    if (!palUse.size) palUse = null;
+    if (palUse && palUse.size === PALETTES.length) palUse = null;
+    buildPalSwatches();
+    buildPalPick();
+    persist();
+  }
+  function setPalUseAll(on) {
+    palUse = on ? null : new Set([+paletteSel.value]);   // "none" keeps the one on screen
+    buildPalSwatches(); buildPalPick(); persist();
+  }
   buildPalSwatches();
+  el("palpick-close").addEventListener("click", closePalPick);
+  el("palpickdlg").addEventListener("click", e => { if (e.target === el("palpickdlg")) closePalPick(); });
+  el("palpick-all").addEventListener("click", () => setPalUseAll(true));
+  el("palpick-none").addEventListener("click", () => setPalUseAll(false));
   // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
@@ -6944,6 +7351,13 @@
       (p.layers || []).forEach(L => { L.palette = palRemapOne(L.palette, gone, back); });
     });
     paletteSel.value = String(palRemapOne(+paletteSel.value, gone, back));
+    // The in-use set is indices too, so it shifts with everything else — without this,
+    // deleting the first of three customs silently drops a different ramp out of the cycle.
+    if (palUse) {
+      const next = new Set();
+      palUse.forEach(i => { const r = palRemapOne(i, gone, back); if (r >= 0 && r < PALETTES.length) next.add(r); });
+      palUse = next.size ? next : null;
+    }
   }
 
   // ---- wiring ----
@@ -7613,10 +8027,54 @@
   if (!useGL) FILTERS.forEach(f => { if (f.cpuOk === false) cpuBlocked.add(f.id); });
   const FILTER_DEFAULTS = {};                 // merged into every effect's state
   FILTERS.forEach(f => Object.assign(FILTER_DEFAULTS, f.defaults));
+  // ---- ORDER: the stored list is the USER's order, not the registry's ----------------
+  // Each per-effect filter carries a drag handle, so `L.filters` is an ORDERED list and
+  // everything that walks a chain iterates that order. (`filtersOk` builds its Set by
+  // inserting in array order and a JS Set iterates in insertion order, so the stored order
+  // survives it untouched.) Registry order is still the fallback for anything with no
+  // stored list, and ids are still matched by name, so reordering FILTERS itself cannot
+  // remap a saved scene.
+  //
+  // STAGE OUTRANKS THE USER'S ORDER, and it has to. A `feedback` filter mutates retained
+  // heat BEFORE the effect draws, a `post` filter runs on the palette-mapped image AFTER,
+  // and a `screen` filter after the composite — there is no pipeline position where
+  // Pixelate could run before Fire. So a chain is stage-partitioned, stably, and the MENU
+  // is rendered from this same normalized order. That is what keeps "applied in the order
+  // shown" literally true rather than approximately: drag an image filter above a heat one
+  // and it visibly lands at the boundary instead of pretending to move.
+  //
+  // A function declaration, not a const arrow: render-gl-pipeline.js is 5th in the manifest
+  // and calls this, while FILTERS lives here at 21st. Hoisting is what makes that legal —
+  // exactly the arrangement `filtersOk` already relies on.
+  const FILTER_STAGE_RANK = { feedback: 0, post: 1, screen: 2 };
+  function orderFilters(ids) {
+    const out = [], seen = new Set();
+    for (const id of ids || []) {
+      const f = FILTER_BY_ID[id];
+      if (f && !seen.has(id)) { seen.add(id); out.push(f); }
+    }
+    // Array#sort has been stable since ES2019, so filters within one stage keep the
+    // user's order and only the stage boundary moves anything.
+    return out.sort((a, b) => FILTER_STAGE_RANK[a.stage] - FILTER_STAGE_RANK[b.stage]);
+  }
+  // Which filters are on for the live effect, in the order they will be applied: the
+  // selected layer's own ordered set, plus the scene-global ones (which are not per-layer
+  // and so have no user order of their own).
+  function activeFilters() {
+    const ids = [...(renderFilters || activeIds)];
+    for (const f of FILTERS) if (isSceneFilter(f.id) && sceneOn.has(f.id)) ids.push(f.id);
+    return orderFilters(ids).filter(f => filterOn(f.id));
+  }
+  // The SELECTED layer's per-effect filter ids in the user's order — what saveExtra and
+  // captureLayerExtras write back. They used to write `FILTERS.filter(...)`, i.e. registry
+  // order, which silently discarded any reordering on the very next capture.
+  const activeFilterIds = () => orderFilters(activeIds).map(f => f.id);
+  // AFTER the ORDER block, not before it: buildFilterUI ends in renderFilterLists, which
+  // calls orderFilters, which reads the `const FILTER_STAGE_RANK` above. Called any earlier
+  // that const is in the temporal dead zone and the whole list silently fails to render —
+  // every filter showing at once, because nothing ever hid the ones you have not added.
+  // (`function orderFilters` itself hoists fine; it is the const it closes over that does not.)
   buildFilterUI();                           // must follow FILTERS, not buildControls
-  // Which filters are on for the live effect, in registry order (never in stored
-  // order — reordering FILTERS must not remap a saved scene).
-  const activeFilters = () => FILTERS.filter(f => filterOn(f.id));
   // transBurning(): a "burn off" transition lends retention to a scene that has none,
   // so the outgoing image decays under it instead of being wiped on the first frame.
   const hasFeedback = () => transBurning() || FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));
@@ -8232,8 +8690,12 @@
   function mergeExtra(e, saved) {
     const base = presetExtra(e);
     if (saved) for (const k in base) if (saved[k] !== undefined) base[k] = saved[k];
+    // orderFilters, NOT FILTERS.filter: the stored list is the user's drag order and this
+    // is the gate every loaded scene passes through, so re-sorting to registry order here
+    // would throw the chain away on load and leave the reorder feature working only until
+    // you reloaded. It still normalizes by stage and drops unknown/duplicate ids.
     const ok = filtersOk(saved && saved.filters);
-    base.filters = ok ? FILTERS.filter(f => ok.has(f.id)).map(f => f.id) : presetFilters(e);
+    base.filters = ok ? orderFilters(ok).map(f => f.id) : presetFilters(e);
     base.seedPath = seedModeOk(base.seedPath);       // sanitize the seed-path fields a
     base.seedRide = base.seedRide !== false;          // preset/blob may or may not carry
     base.seedPts = seedPtsOk(base.seedPts);
@@ -8245,7 +8707,7 @@
   initExtras();
   function saveExtra(e) {
     extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
-      filters: FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id),   // always registry order
+      filters: activeFilterIds(),        // the user's drag order, not registry order
       // Seed-path config for the selected effect. Points are rounded to trim share links.
       seedPath: seedPathMode, seedRide: seedRideOn, seedPts: seedPts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) };
   }
@@ -8278,7 +8740,7 @@
     L.paletteBg = paletteBg;
     captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
     L.showBox = showBoxChk.checked;   // the wireframe box is per-layer, not per-effect
-    L.filters = FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id);
+    L.filters = activeFilterIds();    // the user's drag order, not registry order
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
   // captureLayerExtras reads back — WITHOUT the UI/morph work. This must run before
@@ -8533,6 +8995,7 @@
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
+      palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -8566,6 +9029,11 @@
       installCustomPalettes(customPalettesOk(saved.palettes));
       buildPalSwatches();                          // regenerate the swatch grid + <select> options
     }
+    // ...and the in-use set AFTER them, since it validates indices against PALETTES.length.
+    // Absent (every blob predating the picker) ⇒ null ⇒ all in use, so nothing changes.
+    // Skipped while `sharing`: which ramps you keep in your strip is your own preference,
+    // the same class as auto-cycle and the TTL, not part of the scene you were sent.
+    if (!sharing && saved.palUse !== undefined) { palUse = palUseOk(saved.palUse); buildPalSwatches(); }
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
@@ -11530,12 +11998,12 @@
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
-    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); setPanel(!panel.classList.contains("hidden")); }
+    if (e.key === "m" || e.key === "M") { cardWanted = false; cardOpen(false); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); setPanel(!panel.classList.contains("hidden")); }
     else if (e.key === "f" || e.key === "F") toggleFullscreen();
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----

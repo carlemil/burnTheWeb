@@ -198,50 +198,81 @@
                desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
     return { key: "scene", title: "Whole scene · final image", desc: "applied once to the finished, blended picture" };
   }
-  // One <details> per filter: chevron + tick + name in the summary, that filter's own
-  // params in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's
-  // .ctl-row launcher next to its .ctl — moving the .ctl into a body afterwards would
-  // strand the row in #filterctl.
+  // One <details> per filter: a grab handle + name in the summary, that filter's own params
+  // in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's .ctl-row
+  // launcher next to its .ctl — moving the .ctl into a body afterwards would strand the row
+  // in #filterctl.
+  //
+  // THE LIST SHOWS ONLY THE FILTERS YOU HAVE ADDED. It used to show all 22 with a checkbox
+  // each, which is a wall of options you mostly are not using; now "+ Add filter" opens a
+  // picker and the menu is just your chain, in order. Two consequences worth knowing:
+  //
+  //  - **Every section is built once and stays in the DOM forever**, hidden rather than
+  //    removed. It holds this filter's `#ctl-<key>` param nodes, which were ADOPTED out of
+  //    #filterctl — and `el()` is getElementById, which cannot find a detached node. Drop a
+  //    section from the document and every lookup of its sliders (loadState, bindRange,
+  //    refreshControlVisibility, the pop-out boxes) silently stops finding them.
+  //  - **Order is expressed by re-appending**, since appendChild MOVES a node. renderFilterList
+  //    re-appends the added sections in chain order on every change, so DOM order is the
+  //    order, and a moved node keeps its children, listeners and adopted controls.
+  //
+  // `#flt-<id>` survives as a hidden checkbox inside each section: it is still the on/off
+  // VALUE STORE that syncFilterUI writes and the picker reads, exactly as `#preset` and
+  // `#palette` sit behind their visible pickers. Deleting it would mean rewriting all of them.
   const filterSecs = {};
+  // The two lists, and whether their order is the user's to choose. Only the per-effect
+  // group is reorderable: the whole-scene filters are one fixed post-composite pass each,
+  // and there is nothing meaningful to permute.
+  const FILTER_LISTS = [
+    { key: "layer", hostId: "filterlist", addId: "filter-add", reorder: true },
+    { key: "scene", hostId: "screenfilterlist", addId: "screenfilter-add", reorder: false },
+  ];
+  function filterListOf(f) { return filterGroup(f).key === "scene" ? FILTER_LISTS[1] : FILTER_LISTS[0]; }
+  const filterSetOf = id => (isSceneFilter(id) ? sceneOn : activeIds);
+  // The ids currently in one list, in the order they will be applied.
+  function listIds(key) {
+    return orderFilters(key === "scene" ? [...sceneOn] : [...activeIds])
+      .filter(f => filterListOf(f).key === key).map(f => f.id);
+  }
   function buildFilterUI() {
-    const host = el("filterlist"), ctlHost = el("filterctl");
-    const screenHost = el("screenfilterlist");   // whole-scene filters get their own box
-    let openKey = null;
+    const ctlHost = el("filterctl");
+    // One caption over the per-effect chain. The Scene filters box's own title already says
+    // what that list is, so only this one gets a heading — and it earns it twice over now:
+    // it distinguishes per-layer from whole-scene, and it is where "top to bottom is the
+    // order they run" is stated.
+    const lay = el(FILTER_LISTS[0].hostId);
+    if (lay) {
+      const g = filterGroup(FILTERS.find(f => f.stage === "feedback"));
+      const h = document.createElement("div");
+      h.className = "ctl-grp filter-grp";
+      h.textContent = g.title;
+      const d = document.createElement("div");
+      d.className = "filter-grp-d";
+      d.textContent = "runs top to bottom — drag ⠿ to reorder";
+      h.appendChild(d);
+      lay.appendChild(h);
+    }
     FILTERS.forEach(f => {
-      const g = filterGroup(f);
-      // The "Whole scene · final image" group lives in the Scene filters box; the
-      // per-effect groups stay in the Layer effect & filters box. The box title already says
-      // "Scene filters", so the scene group needs no in-box caption of its own.
-      const dest = g.key === "scene" ? screenHost : host;
-      if (g.key !== openKey) {
-        openKey = g.key;
-        if (g.key !== "scene") {
-          const h = document.createElement("div");
-          h.className = "ctl-grp filter-grp";
-          h.textContent = g.title;
-          const d = document.createElement("div");
-          d.className = "filter-grp-d"; d.textContent = g.desc;
-          h.appendChild(d);
-          dest.appendChild(h);
-        }
-      }
+      const L = filterListOf(f), dest = el(L.hostId);
+      if (!dest) return;
       const sec = document.createElement("details");
       sec.className = "filter-sec";
+      sec.dataset.fid = f.id;
       const sum = document.createElement("summary");
+      // Hidden value store — the picker dialog ticks it, syncFilterUI reads it.
       const cb = document.createElement("input");
       cb.type = "checkbox"; cb.id = "flt-" + f.id;
-      // The tick sits inside the summary, so its click must not also fold the section.
-      cb.addEventListener("click", e => e.stopPropagation());
-      cb.addEventListener("change", () => {
-        const set = isSceneFilter(f.id) ? sceneOn : activeIds;   // scene filters toggle the scene-global set
-        if (cb.checked) set.add(f.id); else set.delete(f.id);
-        syncFilterSec(f.id);
-        if (cb.checked && !sec.open) sec.open = true;   // reveal what you just enabled
-        applyFilters();
-      });
+      cb.style.display = "none";
+      if (L.reorder) sum.appendChild(makeFilterGrab(f, sec));
       const nm = document.createElement("span");
       nm.className = "filter-name"; nm.textContent = f.name;
-      sum.appendChild(cb); sum.appendChild(nm);
+      // Remove from the chain without opening the picker — the commonest edit by far.
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "filter-rm"; rm.textContent = "✕";
+      rm.title = "Remove " + f.name + " from this list";
+      rm.setAttribute("aria-label", "Remove " + f.name);
+      rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
+      sum.appendChild(cb); sum.appendChild(nm); sum.appendChild(rm);
       sum.title = f.help || f.name;
       sec.appendChild(sum);
       const body = document.createElement("div");
@@ -249,8 +280,8 @@
       // Adopt this filter's controls out of the flat #filterctl list.
       (f.params || []).forEach(k => { const n = el("ctl-" + k); if (n) body.appendChild(n); });
       sec.appendChild(body);
-      // A GPU-only filter on the Canvas2D fallback: disable it visibly rather than
-      // leaving a checkbox that silently does nothing.
+      // A GPU-only filter on the Canvas2D fallback: say so rather than leaving a row that
+      // silently does nothing. (It stays in the list — see cpuBlocked: never removed.)
       if (f.cpuOk === false && !useGL) {
         cb.disabled = true;
         sec.classList.add("off");
@@ -259,9 +290,187 @@
       filterSecs[f.id] = sec;
       dest.appendChild(sec);
     });
+    // "+ Add filter" per list, plus the caption that used to head the group.
+    FILTER_LISTS.forEach(L => {
+      const dest = el(L.hostId);
+      if (!dest) return;
+      const b = document.createElement("button");
+      b.type = "button"; b.id = L.addId; b.className = "filter-add";
+      b.textContent = "+ Add filter";
+      b.title = "Choose which filters this list runs";
+      b.addEventListener("click", () => openFilterPicker(L.key));
+      dest.appendChild(b);
+    });
     if (ctlHost) ctlHost.style.display = "none";   // now empty; keep the node for scans
+    renderFilterLists();
   }
-  // Unticked ⇒ the body has nothing in it worth opening, so fold it and say so.
+  // Put one list in order: the added sections first, in chain order, then the rest hidden,
+  // then the Add button. Everything stays a child of the host — see the note above on why a
+  // section must never leave the document.
+  function renderFilterLists() {
+    FILTER_LISTS.forEach(L => {
+      const host = el(L.hostId);
+      if (!host) return;
+      const ids = listIds(L.key), added = new Set(ids);
+      const cap = host.querySelector(".filter-grp");
+      if (cap) host.appendChild(cap);                       // caption stays on top
+      ids.forEach(id => {
+        const sec = filterSecs[id];
+        if (!sec) return;
+        sec.style.display = "";
+        sec.classList.toggle("solo", ids.length < 2);       // nothing to reorder against
+        host.appendChild(sec);
+      });
+      FILTERS.forEach(f => {
+        const sec = filterSecs[f.id];
+        if (!sec || added.has(f.id) || filterListOf(f).key !== L.key) return;
+        sec.style.display = "none";
+        sec.open = false;
+        host.appendChild(sec);
+      });
+      const btn = el(L.addId);
+      if (btn) host.appendChild(btn);
+      host.classList.toggle("empty", ids.length === 0);
+    });
+  }
+  // The one way a filter goes on or off, wherever it is toggled from (the picker, a row's ✕,
+  // or a programmatic load). Adding appends, so a new filter lands at the end of its stage.
+  function setFilterOn(id, on) {
+    const set = filterSetOf(id);
+    if (on) set.add(id); else set.delete(id);
+    const sec = filterSecs[id];
+    if (sec && on) sec.open = true;        // reveal what you just added
+    applyFilters();
+    syncFilterPicker();
+  }
+  // Drag to reorder, modelled directly on the layer rows' handle (see syncStackUI) — same
+  // gesture, same trick: the dragged section is TRANSFORMED and a marker shows where it will
+  // land, and the actual reorder happens once, on release. Moving the section's DOM node
+  // mid-drag would detach the handle holding the pointer capture, and Chromium drops capture
+  // on reparent, which kills the drag after the first pixel.
+  //
+  // The handle also swallows the summary's click, or every drag would toggle the fold open.
+  function makeFilterGrab(f, sec) {
+    const grab = document.createElement("span");
+    grab.className = "filter-grab";
+    grab.textContent = "⠿";
+    grab.title = "Drag to reorder — filters run top to bottom";
+    grab.setAttribute("aria-label", "Drag to reorder " + f.name);
+    grab.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
+    grab.addEventListener("pointerdown", e => {
+      const host = sec.parentNode;
+      const rows = () => [...host.querySelectorAll(".filter-sec")].filter(s => s.style.display !== "none");
+      if (rows().length < 2) return;
+      e.preventDefault(); e.stopPropagation();
+      grab.setPointerCapture(e.pointerId);
+      const startY = e.clientY;
+      sec.classList.add("dragging");
+      const marker = document.createElement("div");
+      marker.className = "filter-drop";
+      let to = rows().indexOf(sec);
+      const onMove = ev => {
+        sec.style.transform = "translateY(" + (ev.clientY - startY) + "px)";
+        // Scan only the OTHER rows: their rects are stable, while the dragged one's rides
+        // the pointer.
+        const others = rows().filter(s => s !== sec);
+        to = 0;
+        for (const s of others) {
+          const b = s.getBoundingClientRect();
+          if (ev.clientY < b.top + b.height / 2) break;
+          to++;
+        }
+        host.insertBefore(marker, others[to] || el(filterListOf(f).addId) || null);
+      };
+      const onUp = () => {
+        grab.releasePointerCapture(e.pointerId);
+        grab.removeEventListener("pointermove", onMove);
+        grab.removeEventListener("pointerup", onUp);
+        grab.removeEventListener("pointercancel", onUp);
+        marker.remove();
+        sec.style.transform = "";
+        sec.classList.remove("dragging");
+        // Rebuild the set in the new order. A Set iterates in INSERTION order, so the way
+        // to reorder one is to rebuild it — which is also why `activeIds` is re-assigned
+        // rather than mutated in place.
+        const key = filterListOf(f).key;
+        const ids = listIds(key);
+        const from = ids.indexOf(f.id);
+        if (from < 0 || to === from) { renderFilterLists(); return; }
+        ids.splice(to, 0, ids.splice(from, 1)[0]);
+        if (key === "scene") { sceneOn = new Set(ids); }
+        else {
+          // Keep any id the list does not own (scene ids never live here, but a stale one
+          // from an old blob might) rather than dropping it on a reorder.
+          const keep = [...activeIds].filter(id => !ids.includes(id));
+          activeIds = new Set(ids.concat(keep));
+        }
+        applyFilters();          // re-render, re-derive the chains, persist
+        autosavePreset();
+      };
+      grab.addEventListener("pointermove", onMove);
+      grab.addEventListener("pointerup", onUp);
+      grab.addEventListener("pointercancel", onUp);
+    });
+    return grab;
+  }
+  // ---- "Add filter" picker ----------------------------------------------------------
+  // A floating, translucent, non-modal panel like the palette editor and the Orbit editor,
+  // hidden on m/Esc with the rest. It is the ONLY place the full catalogue is listed now,
+  // which is the whole point: the menu shows your chain, this shows what you could add.
+  let filterPickKey = "layer";
+  function openFilterPicker(key) {
+    const dlg = el("fltdlg");
+    if (!dlg) return;
+    filterPickKey = key;
+    el("flt-title").textContent = key === "scene" ? "Scene filters" : "Filters for this layer";
+    el("flt-hint").textContent = key === "scene"
+      ? "Applied once to the finished, blended picture."
+      : "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
+    buildFilterPicker();
+    dlg.classList.remove("hidden");
+  }
+  function closeFilterPicker() { const d = el("fltdlg"); if (d) d.classList.add("hidden"); }
+  function filterPickerOpen() { const d = el("fltdlg"); return !!d && !d.classList.contains("hidden"); }
+  function buildFilterPicker() {
+    const host = el("flt-pick");
+    if (!host) return;
+    host.textContent = "";
+    let stage = null;
+    FILTERS.forEach(f => {
+      if (filterListOf(f).key !== filterPickKey) return;
+      // Sub-captions inside the picker only — the menu list itself is one flat chain.
+      const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
+      if (s !== stage) {
+        stage = s;
+        const h = document.createElement("div");
+        h.className = "flt-stage"; h.textContent = s;
+        host.appendChild(h);
+      }
+      const lab = document.createElement("label");
+      lab.className = "flt-opt";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = filterSetOf(f.id).has(f.id);
+      cb.disabled = f.cpuOk === false && !useGL;
+      cb.addEventListener("change", () => setFilterOn(f.id, cb.checked));
+      const nm = document.createElement("span");
+      nm.className = "flt-opt-n"; nm.textContent = f.name;
+      lab.appendChild(cb); lab.appendChild(nm);
+      if (f.help) {
+        const d = document.createElement("span");
+        d.className = "flt-opt-d"; d.textContent = f.help;
+        lab.appendChild(d);
+      }
+      if (cb.disabled) lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
+      host.appendChild(lab);
+    });
+  }
+  // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
+  // ✕, a scene load, an effect switch). Cheap enough to just rebuild.
+  function syncFilterPicker() { if (filterPickerOpen()) buildFilterPicker(); }
+  if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
+  if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
+  // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) {
     const sec = filterSecs[id], cb = el("flt-" + id);
     if (!sec || !cb) return;
@@ -366,7 +575,9 @@
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = (isSceneFilter(f.id) ? sceneOn : activeIds).has(f.id); syncFilterSec(f.id); });
+    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
+    renderFilterLists();     // membership AND order both come from the sets, so re-render
+    syncFilterPicker();
   }
   // Re-derive everything a filter change affects: which param groups are visible,
   // the bloom strength (off ⇒ 0), and the banked sim time (a fresh Fire shouldn't

@@ -62,6 +62,7 @@
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
+      palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -95,6 +96,11 @@
       installCustomPalettes(customPalettesOk(saved.palettes));
       buildPalSwatches();                          // regenerate the swatch grid + <select> options
     }
+    // ...and the in-use set AFTER them, since it validates indices against PALETTES.length.
+    // Absent (every blob predating the picker) ⇒ null ⇒ all in use, so nothing changes.
+    // Skipped while `sharing`: which ramps you keep in your strip is your own preference,
+    // the same class as auto-cycle and the TTL, not part of the scene you were sent.
+    if (!sharing && saved.palUse !== undefined) { palUse = palUseOk(saved.palUse); buildPalSwatches(); }
     const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {

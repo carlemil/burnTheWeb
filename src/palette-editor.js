@@ -214,6 +214,13 @@
       (p.layers || []).forEach(L => { L.palette = palRemapOne(L.palette, gone, back); });
     });
     paletteSel.value = String(palRemapOne(+paletteSel.value, gone, back));
+    // The in-use set is indices too, so it shifts with everything else — without this,
+    // deleting the first of three customs silently drops a different ramp out of the cycle.
+    if (palUse) {
+      const next = new Set();
+      palUse.forEach(i => { const r = palRemapOne(i, gone, back); if (r >= 0 && r < PALETTES.length) next.add(r); });
+      palUse = next.size ? next : null;
+    }
   }
 
   // ---- wiring ----

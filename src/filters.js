@@ -146,10 +146,54 @@
   if (!useGL) FILTERS.forEach(f => { if (f.cpuOk === false) cpuBlocked.add(f.id); });
   const FILTER_DEFAULTS = {};                 // merged into every effect's state
   FILTERS.forEach(f => Object.assign(FILTER_DEFAULTS, f.defaults));
+  // ---- ORDER: the stored list is the USER's order, not the registry's ----------------
+  // Each per-effect filter carries a drag handle, so `L.filters` is an ORDERED list and
+  // everything that walks a chain iterates that order. (`filtersOk` builds its Set by
+  // inserting in array order and a JS Set iterates in insertion order, so the stored order
+  // survives it untouched.) Registry order is still the fallback for anything with no
+  // stored list, and ids are still matched by name, so reordering FILTERS itself cannot
+  // remap a saved scene.
+  //
+  // STAGE OUTRANKS THE USER'S ORDER, and it has to. A `feedback` filter mutates retained
+  // heat BEFORE the effect draws, a `post` filter runs on the palette-mapped image AFTER,
+  // and a `screen` filter after the composite — there is no pipeline position where
+  // Pixelate could run before Fire. So a chain is stage-partitioned, stably, and the MENU
+  // is rendered from this same normalized order. That is what keeps "applied in the order
+  // shown" literally true rather than approximately: drag an image filter above a heat one
+  // and it visibly lands at the boundary instead of pretending to move.
+  //
+  // A function declaration, not a const arrow: render-gl-pipeline.js is 5th in the manifest
+  // and calls this, while FILTERS lives here at 21st. Hoisting is what makes that legal —
+  // exactly the arrangement `filtersOk` already relies on.
+  const FILTER_STAGE_RANK = { feedback: 0, post: 1, screen: 2 };
+  function orderFilters(ids) {
+    const out = [], seen = new Set();
+    for (const id of ids || []) {
+      const f = FILTER_BY_ID[id];
+      if (f && !seen.has(id)) { seen.add(id); out.push(f); }
+    }
+    // Array#sort has been stable since ES2019, so filters within one stage keep the
+    // user's order and only the stage boundary moves anything.
+    return out.sort((a, b) => FILTER_STAGE_RANK[a.stage] - FILTER_STAGE_RANK[b.stage]);
+  }
+  // Which filters are on for the live effect, in the order they will be applied: the
+  // selected layer's own ordered set, plus the scene-global ones (which are not per-layer
+  // and so have no user order of their own).
+  function activeFilters() {
+    const ids = [...(renderFilters || activeIds)];
+    for (const f of FILTERS) if (isSceneFilter(f.id) && sceneOn.has(f.id)) ids.push(f.id);
+    return orderFilters(ids).filter(f => filterOn(f.id));
+  }
+  // The SELECTED layer's per-effect filter ids in the user's order — what saveExtra and
+  // captureLayerExtras write back. They used to write `FILTERS.filter(...)`, i.e. registry
+  // order, which silently discarded any reordering on the very next capture.
+  const activeFilterIds = () => orderFilters(activeIds).map(f => f.id);
+  // AFTER the ORDER block, not before it: buildFilterUI ends in renderFilterLists, which
+  // calls orderFilters, which reads the `const FILTER_STAGE_RANK` above. Called any earlier
+  // that const is in the temporal dead zone and the whole list silently fails to render —
+  // every filter showing at once, because nothing ever hid the ones you have not added.
+  // (`function orderFilters` itself hoists fine; it is the const it closes over that does not.)
   buildFilterUI();                           // must follow FILTERS, not buildControls
-  // Which filters are on for the live effect, in registry order (never in stored
-  // order — reordering FILTERS must not remap a saved scene).
-  const activeFilters = () => FILTERS.filter(f => filterOn(f.id));
   // transBurning(): a "burn off" transition lends retention to a scene that has none,
   // so the outgoing image decays under it instead of being wiped on the first frame.
   const hasFeedback = () => transBurning() || FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));

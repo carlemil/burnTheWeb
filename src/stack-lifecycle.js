@@ -370,8 +370,12 @@
   function mergeExtra(e, saved) {
     const base = presetExtra(e);
     if (saved) for (const k in base) if (saved[k] !== undefined) base[k] = saved[k];
+    // orderFilters, NOT FILTERS.filter: the stored list is the user's drag order and this
+    // is the gate every loaded scene passes through, so re-sorting to registry order here
+    // would throw the chain away on load and leave the reorder feature working only until
+    // you reloaded. It still normalizes by stage and drops unknown/duplicate ids.
     const ok = filtersOk(saved && saved.filters);
-    base.filters = ok ? FILTERS.filter(f => ok.has(f.id)).map(f => f.id) : presetFilters(e);
+    base.filters = ok ? orderFilters(ok).map(f => f.id) : presetFilters(e);
     base.seedPath = seedModeOk(base.seedPath);       // sanitize the seed-path fields a
     base.seedRide = base.seedRide !== false;          // preset/blob may or may not carry
     base.seedPts = seedPtsOk(base.seedPts);
@@ -383,7 +387,7 @@
   initExtras();
   function saveExtra(e) {
     extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
-      filters: FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id),   // always registry order
+      filters: activeFilterIds(),        // the user's drag order, not registry order
       // Seed-path config for the selected effect. Points are rounded to trim share links.
       seedPath: seedPathMode, seedRide: seedRideOn, seedPts: seedPts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) };
   }
@@ -416,7 +420,7 @@
     L.paletteBg = paletteBg;
     captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
     L.showBox = showBoxChk.checked;   // the wireframe box is per-layer, not per-effect
-    L.filters = FILTERS.filter(f => activeIds.has(f.id)).map(f => f.id);
+    L.filters = activeFilterIds();    // the user's drag order, not registry order
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
   // captureLayerExtras reads back — WITHOUT the UI/morph work. This must run before

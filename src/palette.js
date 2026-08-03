@@ -88,12 +88,14 @@
     { name: "CGA", fn: grad([[0, [0, 0, 0]], [0.35, [0, 0, 170]], [0.55, [0, 170, 170]], [0.75, [255, 85, 255]], [1, [255, 255, 255]]]) },
     { name: "Blood", fn: grad([[0, [0, 0, 0]], [0.35, [50, 0, 0]], [0.6, [150, 0, 10]], [0.8, [225, 40, 30]], [0.92, [255, 140, 110]], [1, [255, 230, 215]]]) },
     { name: "Chrome", fn: grad([[0, [0, 0, 0]], [0.25, [20, 30, 55]], [0.45, [90, 110, 140]], [0.62, [200, 215, 235]], [0.75, [70, 90, 120]], [0.9, [180, 200, 225]], [1, [255, 255, 255]]]) },
-    // Rastafari palettes — green / gold / red. "One love" runs the full tricolor;
-    // the other three each lean on one of the three colours.
-    { name: "One love", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
-    { name: "Rasta Red", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
-    { name: "Rasta Green", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
-    { name: "Rasta Yellow", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
+    // A green / gold / red family. "Tricolor" runs all three in sequence; the other three
+    // each lean on one of them. Renaming these is SAFE: a palette is referenced everywhere
+    // by INDEX (see palRemapDeleted), never by name, so no saved scene, share link, backup
+    // or cloud profile is affected — keep the ORDER, though.
+    { name: "Tricolor", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
+    { name: "Ember", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
+    { name: "Verdant", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
+    { name: "Sunburst", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
   ];
 
   // ---- custom palettes (the palette editor) ---------------------------------
@@ -296,10 +298,34 @@
     arr[0] = arr[1] = arr[2] = 0; // index 0 black
     return arr;
   }
-  function pickOther(cur) {                 // random palette index != cur
-    let n;
-    do { n = (Math.random() * PALETTES.length) | 0; } while (n === cur);
-    return n;
+  // ---- which palettes are IN USE ---------------------------------------------------
+  // The swatch strip shows only these, and the palette cycle picks only from them — so you
+  // can keep a catalogue of 20+ ramps and still have the cycle stay inside the four that
+  // suit a set. NOTHING is deleted by unticking: a scene that stores an untick-ed palette
+  // still loads it and still renders it, because this gates the STRIP and the CYCLE, not
+  // `paletteRGB`. (The strip therefore also shows the current palette whether or not it is
+  // ticked, or selecting a scene would blank the highlight.)
+  //
+  // `null` means "all of them", which is the shipped state and what every blob saved before
+  // this existed decodes to — so there is nothing to migrate and no key is written until you
+  // actually narrow the set. Indices, like every other palette reference here, which is why
+  // palRemapDeleted has to remap this too.
+  //
+  // Global, not per-scene: the same class as auto-cycle and Preset TTL. A shared scene
+  // deliberately does not carry it — it is the recipient's own library preference.
+  let palUse = null;
+  const palInUse = i => !palUse || palUse.has(i);
+  function palUseOk(v) {                    // validate a stored list
+    if (!Array.isArray(v)) return null;
+    const s = new Set();
+    for (const n of v) if (Number.isInteger(n) && n >= 0 && n < PALETTES.length) s.add(n);
+    return s.size ? s : null;               // empty ⇒ treat as "all", never as "none"
+  }
+  function pickOther(cur) {                 // random IN-USE palette index != cur
+    const pool = [];
+    for (let i = 0; i < PALETTES.length; i++) if (i !== cur && palInUse(i)) pool.push(i);
+    if (!pool.length) return cur;           // one palette in use ⇒ stay on it (a pinned cycle)
+    return pool[(Math.random() * pool.length) | 0];
   }
   // reflect the palette we're heading toward in the dropdown
   function showMorphTarget() { el("palette").value = morphTargetIndex; syncPalSwatches(); }

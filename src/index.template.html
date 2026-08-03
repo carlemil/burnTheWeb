@@ -304,6 +304,34 @@
 <!-- Palette editor: edit a ramp as colour stops on a gradient bar. Opened by the + on any
      palette swatch. Floating and non-modal like the inspector and the Orbit editor, so you
      can watch the scene change while you drag — every edit previews live. -->
+<!-- "+ Add filter" picker. The menu lists only the filters you have added, in the order they
+     run; this is the only place the full catalogue appears. Floating, translucent and
+     non-modal like the palette editor — you tick a filter and watch it land. Serves BOTH
+     lists (per-layer and whole-scene); openFilterPicker(key) sets which. -->
+<div id="fltdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="flt-close" aria-label="Close">×</button>
+    <h2 id="flt-title">Filters</h2>
+    <p class="pal-hint" id="flt-hint"></p>
+    <div id="flt-pick"></div>
+  </div>
+</div>
+
+<!-- Which palettes are in play: the swatch strip shows only these, and the palette cycle
+     draws only from them. Same shape as the filter picker. -->
+<div id="palpickdlg" class="hidden">
+  <div class="flt-box">
+    <button type="button" class="pal-close" id="palpick-close" aria-label="Close">×</button>
+    <h2>Palettes in use</h2>
+    <p class="pal-hint">Ticked palettes show in the strip and are the ones the palette cycle picks from. Untick the ones you never reach for — nothing is deleted, and the palette a scene stores always still loads.</p>
+    <div id="palpick-list"></div>
+    <div class="presetrow grid2">
+      <button id="palpick-all" class="audbtn" type="button">Select all</button>
+      <button id="palpick-none" class="audbtn" type="button">Select none</button>
+    </div>
+  </div>
+</div>
+
 <div id="paledlg" class="hidden">
   <div class="pale-box">
     <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>

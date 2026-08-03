@@ -260,13 +260,27 @@ them on load permanently stripped filters from scenes opened on a fallback machi
 is filled by the FILTERS block but declared up with the render globals, which keeps `filterOn`
 safe to call during slider wiring.
 
-**The filter list is one column of foldable `<details>` sections** — summary carries chevron +
-checkbox + name; the body holds that filter's params, adopted out of the flat `#filterctl` list by
-`buildFilterUI`. Three load-bearing details: `buildFilterUI` must run **before** the `POPPABLE`
-pass (it moves `#ctl-<key>` into a body, and the pop-out pass inserts the `.ctl-row` launcher next
-to it); the checkbox is inside the summary so its handler calls `stopPropagation()`; and
-`syncFilterSec` (called per filter by `syncFilterUI`) keeps the fold honest for programmatic
-changes. `#filterctl` survives as an empty hidden node — the panel-wide scans still walk it.
+**The list shows only the filters you have ADDED, in the order they run.** `+ Add filter` opens
+`#fltdlg`, the only place the full catalogue appears; each row in the list carries a `⠿` drag
+handle and an `✕`. `buildFilterUI` builds one `<details>` per filter as before (summary = handle +
+name + ✕, body = that filter's params, adopted out of `#filterctl`), and `renderFilterLists()`
+re-appends the added ones in chain order.
+- **Every section stays in the DOM forever**, hidden rather than removed. It holds this filter's
+  adopted `#ctl-<key>` nodes and `el()` is `getElementById`, which cannot find a detached node —
+  drop a section from the document and every lookup of its sliders (`loadState`, `bindRange`,
+  `refreshControlVisibility`, the pop-out boxes) silently stops finding them.
+- **Order is expressed by re-appending**, since `appendChild` moves a node — so DOM order *is* the
+  order, and a moved node keeps its children, listeners and adopted controls.
+- **`#flt-<id>` survives as a hidden checkbox** inside each section: still the on/off value store
+  that `syncFilterUI` writes and the picker reads, exactly as `#preset`/`#palette` sit behind their
+  visible pickers.
+- `setFilterOn(id, on)` is the single toggle path (picker, a row's ✕, a programmatic load).
+- `buildFilterUI` must still run **before** the `POPPABLE` pass (it moves `#ctl-<key>` into a body,
+  and the pop-out pass inserts the `.ctl-row` launcher next to it). `#filterctl` survives as an
+  empty hidden node — the panel-wide scans still walk it.
+- `makeFilterGrab` is the layer-row drag, copied: transform the dragged section, show a
+  `.filter-drop` marker, reorder once on release. Moving the node mid-drag would detach the handle
+  holding the pointer capture, and Chromium drops capture on reparent.
 
 A filter's `params` are ordinary CONTROLS keys (host `"filter"`, one `group` per filter,
 contiguous). `refreshControlVisibility()` shows a control when the effect declares it **or** a
@@ -277,9 +291,29 @@ filter needs no descriptor edits (an effect naming the same key still wins).
 Point effects show raw stamped points until you enable **Fire**; nothing glows until **Bloom**.
 Bloom + screen FX are SCENE-global (`sceneOn`), also empty by default, so `DEFAULT_SCENE` carries
 an explicit `sceneFx:{on:["bloom"]}`. The per-effect list is `extras[e].filters` (stable string
-ids, always written in registry order). **`mergeExtra` is still mandatory.** Ordering trap:
-`setEffect` runs its visibility pass before `loadExtra` knows the new list, so `loadExtra` re-runs
-`refreshControlVisibility()`.
+ids). **`mergeExtra` is still mandatory.** Ordering trap: `setEffect` runs its visibility pass
+before `loadExtra` knows the new list, so `loadExtra` re-runs `refreshControlVisibility()`.
+
+**The stored list is the USER'S ORDER, not the registry's.** `L.filters` / `extras[e].filters` is
+the drag order, and every chain walks it via **`orderFilters(ids)`** — never `FILTERS.filter(...)`.
+`filtersOk` returns a Set built by inserting in array order and a JS Set iterates in insertion
+order, so the stored order survives it. Ids are still matched by name, so reordering `FILTERS`
+itself still cannot remap a saved scene, and a list stored before this (registry order) behaves
+exactly as it did.
+- **Stage outranks the user's order, and must.** A `feedback` filter mutates retained heat *before*
+  the effect draws, a `post` filter runs on the palette-mapped image *after*, a `screen` filter
+  after the composite — there is no pipeline position where Pixelate could precede Fire. So
+  `orderFilters` stage-partitions (stably, via `Array#sort`) and the MENU renders from that same
+  normalized order. That is what keeps "applied in the order shown" literally true: drag an image
+  filter above a heat one and it visibly lands at the boundary instead of pretending to move.
+- **Four sites must use it**, and each would be a silent bug otherwise: `activeFilters()`,
+  `layerFeedbackChain`, `glLayerPostChain`, and — the easiest to miss — **`mergeExtra`**, the gate
+  every loaded scene passes through, which re-sorted to registry order and so threw the chain away
+  on reload. `activeFilterIds()` is the write side (`saveExtra`, `captureLayerExtras`).
+- **`orderFilters` is a function declaration but `FILTER_STAGE_RANK` is a const it closes over**,
+  so `buildFilterUI()` must be called **after** that block. Called before it, the const is in the
+  TDZ, `renderFilterLists` throws, and the symptom is every filter showing at once — because
+  nothing ever hid the ones you had not added.
 
 **Effect `defaults` are NEUTRAL**: palette cycle off (`palcycle [0,0]`), banding off, no rotation,
 every dual slider collapsed to `[lo,lo]`. Only affects fresh effects / per-effect default presets.
@@ -456,8 +490,23 @@ hides on `m`/`Esc`.
   live stack, per-effect `extras`, and every preset. Already-generated share links aren't rewritten
   (a link naming a missing custom falls back like any out-of-range palette).
 
+**Which palettes are in use** (`palUse`, `#palpickdlg`, the `+` tile ending the swatch strip). The
+strip shows only the ticked ramps and **`pickOther` picks only from them**, so a big catalogue can
+still cycle inside the four that suit a set. It gates the STRIP and the CYCLE only — a scene that
+stores an unticked palette still loads and renders it, and the strip therefore always shows the
+current ramp whether ticked or not, or selecting such a scene would blank the highlight.
+`null` means *all*, which is the shipped state and what every blob predating it decodes to, so
+there is nothing to migrate; `setPalUse` collapses a full or empty set back to `null`. It is a
+**global** blob field, the same class as auto-cycle and Preset TTL, and `applyBlob` skips it while
+`sharing` — which ramps you keep is your own preference, not part of a scene you were sent.
+**Indices, so `palRemapDeleted` must remap it** along with everything else.
+
+**Palette names are free to change; the ORDER is not.** A palette is referenced everywhere by
+index, never by name, so renaming a ramp touches no saved scene, share link, backup or profile —
+but inserting or reordering one silently re-points every stored reference.
+
 **Palette preview picker.** `#palette <select>` is the value store but **hidden**; the visible
-control is `#palswatches` (one gradient per `PALETTES` entry from `palGradientCss(i)`). A swatch
+control is `#palswatches` (one gradient per in-use `PALETTES` entry from `palGradientCss(i)`). A swatch
 click sets `paletteSel.value` and dispatches a bubbling `change` — **no** extra state or
 persistence. `syncPalSwatches()` mirrors the highlight wherever the value changes programmatically
 (`showMorphTarget`, `applyLayerExtras`, the `change` handler). Keep the select in the DOM.

@@ -24,7 +24,13 @@ const stubs = `
   let bloomAmt = 0.35, fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
       edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1;
   let activeIds = new Set(["fire", "bloom"]);
-  function filterOn(id) { return activeIds.has(id); }
+  // The per-layer set can be overridden while the frame draws a layer that is not the
+  // selected one; activeFilters() reads it, so it has to exist here.
+  let renderFilters = null;
+  let sceneOn = new Set();
+  const SCENE_FILTER_IDS = new Set(["bloom", "barrel", "scanlines", "vignette", "grain"]);
+  const isSceneFilter = id => SCENE_FILTER_IDS.has(id);
+  function filterOn(id) { return (isSceneFilter(id) ? sceneOn : (renderFilters || activeIds)).has(id); }
   const SEED_MODES = { cardioid: 1, circle: 1, freehand: 1 };   // seed-path validation, defined in another slice
   const seedModeOk = m => SEED_MODES[m] ? m : "cardioid";
   const BG_MODES = { black: 1, white: 1, palette: 1 };          // background validation, another slice
@@ -51,9 +57,13 @@ const code = stubs +
   cut("  // ---- FILTERS: stackable post-FX applied after the effect renders", "  function presetState(") +
   cut("  function presetState(", "  function initStates(") +
   cut("  function presetExtra(", "  function initExtras(") +
-  "\nreturn { FILTERS, FILTER_BY_ID, FILTER_DEFAULTS, filtersOk, activeFilters, hasFeedback," +
+  "\nreturn { FILTERS, FILTER_BY_ID, FILTER_DEFAULTS, filtersOk, orderFilters, activeFilters, activeFilterIds, hasFeedback," +
   "  presetState, presetFilters, mergeExtra, presetExtra," +
-  "  setActive(ids) { activeIds = new Set(ids); }, getActive() { return activeIds; } };";
+  // setActive splits the ids the way the app does: the whole-scene ones live in `sceneOn`
+  // (one global setting), the per-layer ones in `activeIds`. activeFilters() reads both.
+  "  setActive(ids) { activeIds = new Set(ids.filter(i => !isSceneFilter(i)));" +
+  "                   sceneOn = new Set(ids.filter(isSceneFilter)); }," +
+  "  getActive() { return activeIds; } };";
 const F = new Function(code)();
 
 let pass = 0, fail = 0;
@@ -83,13 +93,29 @@ ok(F.FILTERS.filter(f => f.stage === "screen").every(f => f.cpuOk === false),
 ok(F.FILTERS.filter(f => f.stage === "feedback").every(f => typeof f.glFeedback === "function"),
    "feedback filters have a glFeedback pass");
 
-// --- 2. order is registry order, never stored order ---------------------------
+// --- 2. order is the STORED (user) order, normalized by stage ------------------
+// Each per-effect filter carries a drag handle now, so the stored list is the chain the
+// user built and orderFilters must preserve it. Stage still wins — a feedback filter
+// mutates retained heat before the effect draws and a post filter repaints the image
+// after, so there is no pipeline position where Pixelate could precede Fire.
 {
   const back = ids.slice().reverse();
   const set = F.filtersOk(back);
-  const applied = F.FILTERS.filter(f => set.has(f.id)).map(f => f.id);
-  ok(JSON.stringify(applied) === JSON.stringify(ids),
-     "a reversed stored list still applies in registry order");
+  ok(JSON.stringify([...set]) === JSON.stringify(back),
+     "filtersOk preserves the stored order (a Set iterates in insertion order)");
+  const applied = F.orderFilters(set).map(f => f.id);
+  // Within one stage the reversal must survive; across stages it must be re-partitioned.
+  const stageOf = id => F.FILTER_BY_ID[id].stage;
+  const rank = { feedback: 0, post: 1, screen: 2 };
+  ok(applied.every((id, i) => i === 0 || rank[stageOf(applied[i - 1])] <= rank[stageOf(id)]),
+     "orderFilters partitions the chain by stage", applied.join(","));
+  const backFb = back.filter(id => stageOf(id) === "feedback");
+  ok(JSON.stringify(applied.filter(id => stageOf(id) === "feedback")) === JSON.stringify(backFb),
+     "...and keeps the user's order WITHIN a stage (a stable sort)");
+  ok(JSON.stringify(applied.slice().sort()) === JSON.stringify(ids.slice().sort()),
+     "...without adding or dropping anything");
+  ok(JSON.stringify(F.orderFilters(["fire", "fire", "nope", "bloom"]).map(f => f.id)) === '["fire","bloom"]',
+     "orderFilters drops duplicates and unknown ids");
   // The three stages must appear in pipeline order: feedback writes the heat the next
   // frame starts from, post repaints the image, screen sits on the finished composite.
   const stages = F.FILTERS.map(f => f.stage);
@@ -128,8 +154,15 @@ ok(F.FILTERS.every(f => F.presetFilters(2).indexOf(f.id) < 0),
   ok(JSON.stringify(m.filters) === "[]",
      "a preset with no `filters` key gets the descriptor default (now empty)");
   ok(m.palette === "3" && m.randSeed === false, "...while its other extras survive");
+  // mergeExtra is the gate EVERY loaded scene passes through, so it must keep the user's
+  // chain. It only normalizes by stage (fire is feedback, bloom is post) and drops junk —
+  // re-sorting to registry order here would silently throw away every saved reorder.
   const m2 = F.mergeExtra(2, { filters: ["bloom", "fire"] });
-  ok(JSON.stringify(m2.filters) === '["fire","bloom"]', "a stored list is re-sorted into registry order");
+  ok(JSON.stringify(m2.filters) === '["fire","bloom"]', "a stored list is stage-normalized on load");
+  const mOrd = F.mergeExtra(2, { filters: ["fade", "fire"] });
+  ok(JSON.stringify(mOrd.filters) === '["fade","fire"]',
+     "...but a same-stage order is preserved exactly (the drag order survives a reload)",
+     JSON.stringify(mOrd.filters));
   // Only a MISSING key falls back to the descriptor. An empty list is a real
   // choice — "I turned everything off" — and must survive a save/load round trip,
   // or a no-filter scene would be impossible to keep.
