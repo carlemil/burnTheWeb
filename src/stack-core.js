@@ -173,7 +173,7 @@
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
-    const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
+    const lo = ctl(id + "-lo"), hi = ctl(id + "-hi"), out = ctl(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     // a11y: each dual slider is two anonymous inputs — name the low/high thumbs.
     const lbl = lo.closest(".dual").previousElementSibling;
@@ -344,7 +344,7 @@
     // the SELECTED layer's value. With two point layers that meant the visible layer's object
     // count jumped to whatever layer you selected. Install it per item: the selected item's
     // store is the DOM (#layers), a frozen item's is L.state.layers.
-    const lv = (L === stack[stackSel]) ? +el("layers").value : (L.state ? L.state.layers : layerCount);
+    const lv = (L === stack[stackSel]) ? +ctl("layers").value : (L.state ? L.state.layers : layerCount);
     layerCount = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
     camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera

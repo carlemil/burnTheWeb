@@ -6,6 +6,41 @@
   // in the temporal dead zone at that call. Same hoisting reason as `card`/`beatUi`.
   const STACK_MAX = CONFIG.stackMax;
 
+  // ---- per-layer control blocks -----------------------------------------------------
+  // Up to STACK_MAX copies of the layer control block, one per stack slot, so more than one
+  // layer can be open and editable at a time. Everything that used to look a per-layer
+  // control up by id goes through ctl()/ctlIn() instead, because four copies of a slider
+  // cannot all carry id="speed-lo" — inside a block the id string lives on `data-k`.
+  //
+  // `var`, not let/const, and declared here rather than beside the control code: these are
+  // read by function declarations, which hoist to the top of the IIFE and are called from
+  // slices far above the one that owns them (palCycleBand in palette.js, layerPalIndex in
+  // render-gl-pipeline.js). Same class as card / beatUi / curFbo / blendOk — a `const` here
+  // throws "Cannot access before initialization" and takes the whole IIFE with it.
+  var blocks = [];        // slot -> that stack slot's control block element
+  var keyMap = [];        // slot -> { "<the string that used to be the id>": node }
+  // A HASH of node references, not a subtree query. The POPPABLE pass moves every .ctl out
+  // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —
+  // whereas a registered reference keeps working wherever the node ends up. Exactly the
+  // property `anims` already relies on.
+  function ctlReg(slot, k, node) { (keyMap[slot] || (keyMap[slot] = {}))[k] = node; }
+  function ctlIn(slot, k) { const m = keyMap[slot]; return (m && m[k]) || null; }
+  // The SELECTED layer's node — the drop-in for el() at every control site, because
+  // `stackSel` is what el() implicitly meant there. It falls through to getElementById, so
+  // scene controls (ttl, tdur, burn, bloom, the screen filters) and every non-control id
+  // keep resolving untouched.
+  //
+  // `keyMap.length &&` guards the read of `stackSel`, which is declared in stack-core.js far
+  // below: nothing registers a block until after that runs, so until then the && short-
+  // circuits and stackSel is never evaluated. Without it, any call during startup TDZs.
+  function ctl(k) { return (keyMap.length && ctlIn(stackSel, k)) || document.getElementById(k); }
+  // Every slot's node for one key, for the passes that must touch all N.
+  function ctlEach(k) {
+    const out = [];
+    for (let s = 0; s < keyMap.length; s++) { const n = ctlIn(s, k); if (n) out.push(n); }
+    return out;
+  }
+
   // Prefer a WebGL2 renderer (the whole fire/Julia/palette/glow pipeline runs on
   // the GPU); fall back to the original Canvas2D path when WebGL2 is missing. A
   // canvas can only ever hold ONE context type, so we try webgl2 first and only

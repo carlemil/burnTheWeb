@@ -53,7 +53,7 @@
     // and applyBlob applies them first, so these are the bounds it will validate
     // against — and its ok() is a hard reject, so an out-of-range value would be
     // silently dropped back to the seeded default (fade's max of 0.995 is the case).
-    const ref = el(id + "-lo") || el(id);
+    const ref = ctl(id + "-lo") || ctl(id);
     if (ref) {
       const mn = +ref.min, mx = +ref.max;
       if (isFinite(mn) && r < mn) r = mn;

@@ -41,7 +41,7 @@
     PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
     if (full) buildPalSwatches();
     else {
-      const sw = el("palswatches") && el("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
+      const sw = ctl("palswatches") && ctl("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
       if (sw) sw.style.background = paleGradCss(st);
       const opt = paletteSel.querySelector('option[value="' + paleIdx + '"]');
       if (opt) opt.textContent = PALETTES[paleIdx].name;

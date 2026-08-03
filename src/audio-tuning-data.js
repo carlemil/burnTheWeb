@@ -106,7 +106,7 @@
     // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
     // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
     if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
-    const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
+    const ok = (id, x) => { const n = ctl(id); if (!n) return false; const mn = +n.min, mx = +n.max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
         const ss = saved.states[k]; if (!ss) continue;

@@ -335,8 +335,8 @@
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global (sceneFx), not per-effect
       st[id] = Array.isArray(st[id])
-        ? [+el(id + "-lo").value, +el(id + "-hi").value]
-        : +el(id).value;
+        ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
+        : +ctl(id).value;
     }
   }
   function loadState(e) {
@@ -346,10 +346,10 @@
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // don't reload scene-filter values on a switch — they're scene-global
       const v = st[id];
       if (Array.isArray(v)) {
-        el(id + "-lo").value = v[0]; el(id + "-hi").value = v[1];
-        el(id + "-lo").dispatchEvent(new Event("input"));
-        el(id + "-hi").dispatchEvent(new Event("input"));
-      } else { el(id).value = v; el(id).dispatchEvent(new Event("input")); }
+        ctl(id + "-lo").value = v[0]; ctl(id + "-hi").value = v[1];
+        ctl(id + "-lo").dispatchEvent(new Event("input"));
+        ctl(id + "-hi").dispatchEvent(new Event("input"));
+      } else { ctl(id).value = v; ctl(id).dispatchEvent(new Event("input")); }
     }
     suppressPersist = false;
   }

@@ -238,7 +238,7 @@
       .filter(f => filterListOf(f).key === key).map(f => f.id);
   }
   function buildFilterUI() {
-    const ctlHost = el("filterctl");
+    const ctlHost = ctl("filterctl");
     // One caption over the per-effect chain. The Scene filters box's own title already says
     // what that list is, so only this one gets a heading — and it earns it twice over now:
     // it distinguishes per-layer from whole-scene, and it is where "top to bottom is the
@@ -256,7 +256,7 @@
       lay.appendChild(h);
     }
     FILTERS.forEach(f => {
-      const L = filterListOf(f), dest = el(L.hostId);
+      const L = filterListOf(f), dest = ctl(L.hostId);
       if (!dest) return;
       const sec = document.createElement("details");
       sec.className = "filter-sec";
@@ -281,7 +281,7 @@
       const body = document.createElement("div");
       body.className = "filter-body";
       // Adopt this filter's controls out of the flat #filterctl list.
-      (f.params || []).forEach(k => { const n = el("ctl-" + k); if (n) body.appendChild(n); });
+      (f.params || []).forEach(k => { const n = ctl("ctl-" + k); if (n) body.appendChild(n); });
       sec.appendChild(body);
       // A GPU-only filter on the Canvas2D fallback: say so rather than leaving a row that
       // silently does nothing. (It stays in the list — see cpuBlocked: never removed.)
@@ -295,7 +295,7 @@
     });
     // "+ Add filter" per list, plus the caption that used to head the group.
     FILTER_LISTS.forEach(L => {
-      const dest = el(L.hostId);
+      const dest = ctl(L.hostId);
       if (!dest) return;
       const b = document.createElement("button");
       b.type = "button"; b.id = L.addId; b.className = "filter-add";
@@ -325,7 +325,7 @@
   function renderFilterLists() {
     renderPass = String(+renderPass + 1);
     FILTER_LISTS.forEach(L => {
-      const host = el(L.hostId);
+      const host = ctl(L.hostId);
       if (!host) return;
       const ids = listIds(L.key), added = new Set(ids);
       const cap = host.querySelector(".filter-grp");
@@ -353,7 +353,7 @@
         sec.open = false;
         host.appendChild(sec);
       });
-      const btn = el(L.addId);
+      const btn = ctl(L.addId);
       if (btn) host.appendChild(btn);
       host.classList.toggle("empty", ids.length === 0);
     });
@@ -404,7 +404,7 @@
           if (ev.clientY < b.top + b.height / 2) break;
           to++;
         }
-        host.insertBefore(marker, others[to] || el(filterListOf(f).addId) || null);
+        host.insertBefore(marker, others[to] || ctl(filterListOf(f).addId) || null);
       };
       const onUp = () => {
         grab.releasePointerCapture(e.pointerId);
@@ -526,7 +526,7 @@
   if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
   // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) {
-    const sec = filterSecs[id], cb = el("flt-" + id);
+    const sec = filterSecs[id], cb = ctl("flt-" + id);
     if (!sec || !cb) return;
     sec.classList.toggle("idle", !cb.checked);
     if (!cb.checked) sec.open = false;
@@ -548,7 +548,7 @@
   // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
   // re-marked on every visibility pass.
   function markFirstGroup() {
-    const host = el("fxctl");
+    const host = ctl("fxctl");
     if (!host) return;
     let seen = false;
     host.querySelectorAll(".ctl-grp").forEach(h => {
@@ -562,10 +562,10 @@
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
       const vis = shown.has(c.key) ? "" : "none";
       if (rows[c.key]) rows[c.key].style.display = vis;
-      else el("ctl-" + c.key).style.display = vis;
+      else ctl("ctl-" + c.key).style.display = vis;
     });
     for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
-      const hdr = el("grp-" + g);
+      const hdr = ctl("grp-" + g);
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
     markFirstGroup();                  // ...and the topmost visible one loses its divider
@@ -587,15 +587,15 @@
       if (shown.has(c.key)) {
         const d = def[c.key];
         if (Array.isArray(d)) {
-          const lo = el(c.key + "-lo"), hi = el(c.key + "-hi");
+          const lo = ctl(c.key + "-lo"), hi = ctl(c.key + "-hi");
           if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
         } else if (d != null) {
-          const e = el(c.key);
+          const e = ctl(c.key);
           if (e) changed = Math.abs(+e.value - d) > 1e-9;
         }
       }
       row.classList.toggle("ctl-changed", changed);
-      const box = el("ctl-" + c.key);
+      const box = ctl("ctl-" + c.key);
       if (box) box.classList.toggle("ctl-changed", changed);
     }
   }
@@ -611,7 +611,7 @@
     for (const key in CTL_BLOCKED) {
       const by = CTL_BLOCKED[key];
       const blocked = shown.has(key) && ctlHi(by) === 0;
-      const row = rows[key], box = el("ctl-" + key);
+      const row = rows[key], box = ctl("ctl-" + key);
       if (row) {
         row.classList.toggle("ctl-blocked", blocked);
         row.dataset.blocker = blocked ? by : "";
@@ -629,7 +629,7 @@
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
+    FILTERS.forEach(f => { const cb = ctl("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
     renderFilterLists();     // membership AND order both come from the sets, so re-render
     syncFilterPicker();
   }
@@ -665,7 +665,7 @@
     palette: "Palette", banding: "Banding",
   };
   function buildControls() {
-    const fxHost = el("fxctl"), bandHost = el("bandctl"), palHost = el("palctl"), filterHost = el("filterctl");
+    const fxHost = ctl("fxctl"), bandHost = ctl("bandctl"), palHost = ctl("palctl"), filterHost = ctl("filterctl");
     let open = null;
     CONTROLS.forEach(c => {
       const host = c.host === "band" ? bandHost : c.host === "pal" ? palHost
@@ -694,11 +694,11 @@
   // fewer-point, differently-seeded copy of the fractal.
   const LAYER_MAX = CONFIG.layerMax;
   function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); el("vLayers").textContent = layerCount; }
-  el("layers").addEventListener("input", () => applyLayers(+el("layers").value));
+  ctl("layers").addEventListener("input", () => applyLayers(+ctl("layers").value));
   function stepLayers(d) {
-    const v = Math.max(1, Math.min(LAYER_MAX, (+el("layers").value | 0) + d));
-    el("layers").value = v;
-    el("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
+    const v = Math.max(1, Math.min(LAYER_MAX, (+ctl("layers").value | 0) + d));
+    ctl("layers").value = v;
+    ctl("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
   }
   el("layer-plus").addEventListener("click", () => stepLayers(1));
   el("layer-minus").addEventListener("click", () => stepLayers(-1));

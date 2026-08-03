@@ -21,7 +21,7 @@
     const out = {};
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id];
+      const inp = ctl(id), o = RNG_ORIG[id];
       if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
         out[id] = { min: inp.min, max: inp.max, step: inp.step };
     }
@@ -74,10 +74,10 @@
     const st = presetState(effect);
     const v = st[key] !== undefined ? st[key] : ctlDefault(key);
     if (Array.isArray(v)) {
-      const lo = el(key + "-lo"), hi = el(key + "-hi");
+      const lo = ctl(key + "-lo"), hi = ctl(key + "-hi");
       if (lo && hi) { lo.value = v[0]; hi.value = v[1]; }
-    } else if (v !== undefined && el(key)) {
-      el(key).value = v;
+    } else if (v !== undefined && ctl(key)) {
+      ctl(key).value = v;
     }
     const b = presetBeat(effect)[key];
     if (b && beatReact[key]) {
@@ -100,12 +100,12 @@
   function applyRangesFor(r, want) {      // reset the wanted sliders to shipped, then apply r's bounds for them
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id];
+      const inp = ctl(id), o = RNG_ORIG[id];
       if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
     if (r && typeof r === "object") for (const id in r) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
+      const inp = ctl(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
       inp.min = String(mn); inp.max = String(mx);

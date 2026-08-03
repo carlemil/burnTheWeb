@@ -30,9 +30,9 @@
   // fields don't persist themselves — rngApply dispatches `input` on the real
   // slider, and the delegated onEdit turns that into a persist + autosave.
   function ctlRangeInputs(key) {   // a dual's two thumbs share one set of bounds
-    const lo = el(key + "-lo"), hi = el(key + "-hi");
+    const lo = ctl(key + "-lo"), hi = ctl(key + "-hi");
     if (lo && hi) return [lo, hi];
-    const p = el(key);
+    const p = ctl(key);
     return p && p.type === "range" ? [p] : [];
   }
   // A slider's `step` attribute as a NUMBER for the editor field: "any" (continuous) and
@@ -101,8 +101,8 @@
     return (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
   }
   POPPABLE.forEach(key => {
-    const ctl = el("ctl-" + key);
-    ctl.classList.add("poppable");
+    const box = ctl("ctl-" + key);
+    box.classList.add("poppable");
     // Title line, first child so it sits above the label. Only ever visible in
     // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
     // Always built (even with no owner group) so it can carry the per-box help ?.
@@ -118,7 +118,7 @@
     hb.setAttribute("aria-label", ctlLabel(key) + " — help");
     hb.addEventListener("click", e => { e.stopPropagation(); openCtlHelp(key); });
     t.appendChild(hb);
-    ctl.insertBefore(t, ctl.firstChild);
+    box.insertBefore(t, box.firstChild);
     // Bounds editor goes directly UNDER THE SLIDER, not at the foot of the box: min/max/step
     // describe that slider, so they belong with it rather than below the beat controls, which
     // are a different subject. A divider closes the block off from the Triggers section.
@@ -130,15 +130,15 @@
     // right, which insertBefore(…, null) does for free.
     const rngEd = makeRangeEditor(key);
     if (rngEd) {
-      const anchor = ctl.querySelector(".trig-t");
-      ctl.insertBefore(rngEd, anchor);
+      const anchor = box.querySelector(".trig-t");
+      box.insertBefore(rngEd, anchor);
       if (anchor) {
         const hr = document.createElement("div");
         hr.className = "ctl-div";
-        ctl.insertBefore(hr, anchor);
+        box.insertBefore(hr, anchor);
       }
     }
-    ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
+    box.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
     const row = document.createElement("div");   // the launcher that stays in the menu slot
     row.className = "ctl-row";
     const name = document.createElement("span");
@@ -160,14 +160,29 @@
       row.appendChild(dots);
     }
     row.appendChild(makePopBtn(key));            // +/- button, right of the name
-    ctl.parentNode.insertBefore(row, ctl);       // row takes the control's menu slot
-    breakout.appendChild(ctl);                   // full control lives in the column (hidden until popped)
+    box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
+    breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
     rows[key] = row;
     syncPopBtns(key);
   });
+  // Index the layer control block as slot 0. Every per-layer control node is registered
+  // under the string that is its id today, so ctl(k) resolves through keyMap instead of
+  // getElementById — the same node, by a route that can hold four of them. This runs LAST,
+  // after buildControls, buildFilterUI and the POPPABLE pass above, because it walks the
+  // finished DOM; from M4a each build pass registers its own nodes as it makes them and
+  // this whole-document sweep goes away.
+  //
+  // #breakout is walked too: the pass above just moved every .ctl out of the block into it,
+  // and those nodes are the ones the control sites look up.
+  blocks[0] = el("lyrctl");
+  for (const host of [el("lyrctl"), el("breakout")]) {
+    if (!host) continue;
+    if (host.id) ctlReg(0, host.id, host);
+    for (const n of host.querySelectorAll("[id]")) ctlReg(0, n.id, n);
+  }
   function syncPopBtns(key) {         // keep both the menu-row and the box's button in sync
     const docked = !popped.has(key);
-    for (const host of [rows[key], el("ctl-" + key)]) {
+    for (const host of [rows[key], ctl("ctl-" + key)]) {
       const b = host.querySelector(".ctl-pop");
       if (!b) continue;
       b.textContent = docked ? "+" : "−";
@@ -178,7 +193,7 @@
   function popCtl(key) {
     if (popped.has(key)) return;
     popped.add(key);
-    breakout.appendChild(el("ctl-" + key));      // append ⇒ boxes stack top→down in click order
+    breakout.appendChild(ctl("ctl-" + key));      // append ⇒ boxes stack top→down in click order
     syncPopBtns(key);
     refreshBreakout();
   }
@@ -202,7 +217,7 @@
     let anyVisible = false;
     for (const key of POPPABLE) {
       const vis = popped.has(key) && shown.has(key);   // shown only when popped AND used by this effect
-      el("ctl-" + key).style.display = vis ? "" : "none";
+      ctl("ctl-" + key).style.display = vis ? "" : "none";
       if (vis) anyVisible = true;
     }
     breakout.classList.toggle("empty", !anyVisible);
@@ -220,7 +235,7 @@
   // stays open as you jump between cardioid layers to compare their orbits.)
   function restoreLayerUi(L, pops) {
     if (!L) return;
-    if (pops) for (const key of pops) if (el("ctl-" + key)) popCtl(key);
+    if (pops) for (const key of pops) if (ctl("ctl-" + key)) popCtl(key);
   }
 
   // A preset is a named full scene (effect + all its settings). Auto-cycle holds
@@ -335,7 +350,7 @@
     else { morphOnce = false; setPalette(+paletteSel.value); }   // pinned: settle on the shown palette
   }
   function setPalCycle(lo, hi) {
-    const a = el("palcycle-lo"), b = el("palcycle-hi");
+    const a = ctl("palcycle-lo"), b = ctl("palcycle-hi");
     if (!a || !b) return;
     a.value = lo; b.value = hi;
     a.dispatchEvent(new Event("input")); b.dispatchEvent(new Event("input"));

@@ -27,6 +27,9 @@ for (const m of CONTROLS_SRC.matchAll(/\{ key: "([a-z]+)",[^}]*?min: (-?[\d.]+),
 
 const code =
   "const el = id => { const k = id.replace(/-(lo|hi)$/, ''); return BOUNDS[k] || null; };\n" +
+  // Per-layer controls resolve through ctl() — the selected layer's block — instead of el().
+  // For a bounds lookup the two name the same node, so alias it.
+  "const ctl = el;\n" +
   CONTROLS_SRC +                     // the slice already carries its closing `];`
   cut("  // ---- share payload codec", "  // Build the share URL for the current scene") +
   "\nreturn { zipToB64, unzipFromB64, b64urlIn, b64urlOut, roundShared, roundMap, CTL_STEP };";

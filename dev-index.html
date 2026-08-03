@@ -1872,6 +1872,41 @@
   // in the temporal dead zone at that call. Same hoisting reason as `card`/`beatUi`.
   const STACK_MAX = CONFIG.stackMax;
 
+  // ---- per-layer control blocks -----------------------------------------------------
+  // Up to STACK_MAX copies of the layer control block, one per stack slot, so more than one
+  // layer can be open and editable at a time. Everything that used to look a per-layer
+  // control up by id goes through ctl()/ctlIn() instead, because four copies of a slider
+  // cannot all carry id="speed-lo" — inside a block the id string lives on `data-k`.
+  //
+  // `var`, not let/const, and declared here rather than beside the control code: these are
+  // read by function declarations, which hoist to the top of the IIFE and are called from
+  // slices far above the one that owns them (palCycleBand in palette.js, layerPalIndex in
+  // render-gl-pipeline.js). Same class as card / beatUi / curFbo / blendOk — a `const` here
+  // throws "Cannot access before initialization" and takes the whole IIFE with it.
+  var blocks = [];        // slot -> that stack slot's control block element
+  var keyMap = [];        // slot -> { "<the string that used to be the id>": node }
+  // A HASH of node references, not a subtree query. The POPPABLE pass moves every .ctl out
+  // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —
+  // whereas a registered reference keeps working wherever the node ends up. Exactly the
+  // property `anims` already relies on.
+  function ctlReg(slot, k, node) { (keyMap[slot] || (keyMap[slot] = {}))[k] = node; }
+  function ctlIn(slot, k) { const m = keyMap[slot]; return (m && m[k]) || null; }
+  // The SELECTED layer's node — the drop-in for el() at every control site, because
+  // `stackSel` is what el() implicitly meant there. It falls through to getElementById, so
+  // scene controls (ttl, tdur, burn, bloom, the screen filters) and every non-control id
+  // keep resolving untouched.
+  //
+  // `keyMap.length &&` guards the read of `stackSel`, which is declared in stack-core.js far
+  // below: nothing registers a block until after that runs, so until then the && short-
+  // circuits and stackSel is never evaluated. Without it, any call during startup TDZs.
+  function ctl(k) { return (keyMap.length && ctlIn(stackSel, k)) || document.getElementById(k); }
+  // Every slot's node for one key, for the passes that must touch all N.
+  function ctlEach(k) {
+    const out = [];
+    for (let s = 0; s < keyMap.length; s++) { const n = ctlIn(s, k); if (n) out.push(n); }
+    return out;
+  }
+
   // Prefer a WebGL2 renderer (the whole fire/Julia/palette/glow pipeline runs on
   // the GPU); fall back to the original Canvas2D path when WebGL2 is missing. A
   // canvas can only ever hold ONE context type, so we try webgl2 first and only
@@ -2299,7 +2334,7 @@
   // morphMs() draws each cycle's duration from the thumbs, like ttlMs().
   let palCycleLive = 8, palHoldLive = 0;
   function palCycleBand() {
-    const lo = el("palcycle-lo"), hi = el("palcycle-hi");
+    const lo = ctl("palcycle-lo"), hi = ctl("palcycle-hi");
     if (!lo || !hi) return [8, 8];
     return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
   }
@@ -2313,7 +2348,7 @@
   // seconds range, a fresh draw per hold. Both thumbs at 0 (the shipped default, so
   // every existing scene keeps its old continuous morph) means no hold at all.
   function palHoldBand() {
-    const lo = el("palhold-lo"), hi = el("palhold-hi");
+    const lo = ctl("palhold-lo"), hi = ctl("palhold-hi");
     if (!lo || !hi) return [0, 0];
     return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
   }
@@ -6461,7 +6496,7 @@
       .filter(f => filterListOf(f).key === key).map(f => f.id);
   }
   function buildFilterUI() {
-    const ctlHost = el("filterctl");
+    const ctlHost = ctl("filterctl");
     // One caption over the per-effect chain. The Scene filters box's own title already says
     // what that list is, so only this one gets a heading — and it earns it twice over now:
     // it distinguishes per-layer from whole-scene, and it is where "top to bottom is the
@@ -6479,7 +6514,7 @@
       lay.appendChild(h);
     }
     FILTERS.forEach(f => {
-      const L = filterListOf(f), dest = el(L.hostId);
+      const L = filterListOf(f), dest = ctl(L.hostId);
       if (!dest) return;
       const sec = document.createElement("details");
       sec.className = "filter-sec";
@@ -6504,7 +6539,7 @@
       const body = document.createElement("div");
       body.className = "filter-body";
       // Adopt this filter's controls out of the flat #filterctl list.
-      (f.params || []).forEach(k => { const n = el("ctl-" + k); if (n) body.appendChild(n); });
+      (f.params || []).forEach(k => { const n = ctl("ctl-" + k); if (n) body.appendChild(n); });
       sec.appendChild(body);
       // A GPU-only filter on the Canvas2D fallback: say so rather than leaving a row that
       // silently does nothing. (It stays in the list — see cpuBlocked: never removed.)
@@ -6518,7 +6553,7 @@
     });
     // "+ Add filter" per list, plus the caption that used to head the group.
     FILTER_LISTS.forEach(L => {
-      const dest = el(L.hostId);
+      const dest = ctl(L.hostId);
       if (!dest) return;
       const b = document.createElement("button");
       b.type = "button"; b.id = L.addId; b.className = "filter-add";
@@ -6548,7 +6583,7 @@
   function renderFilterLists() {
     renderPass = String(+renderPass + 1);
     FILTER_LISTS.forEach(L => {
-      const host = el(L.hostId);
+      const host = ctl(L.hostId);
       if (!host) return;
       const ids = listIds(L.key), added = new Set(ids);
       const cap = host.querySelector(".filter-grp");
@@ -6576,7 +6611,7 @@
         sec.open = false;
         host.appendChild(sec);
       });
-      const btn = el(L.addId);
+      const btn = ctl(L.addId);
       if (btn) host.appendChild(btn);
       host.classList.toggle("empty", ids.length === 0);
     });
@@ -6627,7 +6662,7 @@
           if (ev.clientY < b.top + b.height / 2) break;
           to++;
         }
-        host.insertBefore(marker, others[to] || el(filterListOf(f).addId) || null);
+        host.insertBefore(marker, others[to] || ctl(filterListOf(f).addId) || null);
       };
       const onUp = () => {
         grab.releasePointerCapture(e.pointerId);
@@ -6749,7 +6784,7 @@
   if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
   // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) {
-    const sec = filterSecs[id], cb = el("flt-" + id);
+    const sec = filterSecs[id], cb = ctl("flt-" + id);
     if (!sec || !cb) return;
     sec.classList.toggle("idle", !cb.checked);
     if (!cb.checked) sec.open = false;
@@ -6771,7 +6806,7 @@
   // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
   // re-marked on every visibility pass.
   function markFirstGroup() {
-    const host = el("fxctl");
+    const host = ctl("fxctl");
     if (!host) return;
     let seen = false;
     host.querySelectorAll(".ctl-grp").forEach(h => {
@@ -6785,10 +6820,10 @@
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
       const vis = shown.has(c.key) ? "" : "none";
       if (rows[c.key]) rows[c.key].style.display = vis;
-      else el("ctl-" + c.key).style.display = vis;
+      else ctl("ctl-" + c.key).style.display = vis;
     });
     for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
-      const hdr = el("grp-" + g);
+      const hdr = ctl("grp-" + g);
       if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
     }
     markFirstGroup();                  // ...and the topmost visible one loses its divider
@@ -6810,15 +6845,15 @@
       if (shown.has(c.key)) {
         const d = def[c.key];
         if (Array.isArray(d)) {
-          const lo = el(c.key + "-lo"), hi = el(c.key + "-hi");
+          const lo = ctl(c.key + "-lo"), hi = ctl(c.key + "-hi");
           if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
         } else if (d != null) {
-          const e = el(c.key);
+          const e = ctl(c.key);
           if (e) changed = Math.abs(+e.value - d) > 1e-9;
         }
       }
       row.classList.toggle("ctl-changed", changed);
-      const box = el("ctl-" + c.key);
+      const box = ctl("ctl-" + c.key);
       if (box) box.classList.toggle("ctl-changed", changed);
     }
   }
@@ -6834,7 +6869,7 @@
     for (const key in CTL_BLOCKED) {
       const by = CTL_BLOCKED[key];
       const blocked = shown.has(key) && ctlHi(by) === 0;
-      const row = rows[key], box = el("ctl-" + key);
+      const row = rows[key], box = ctl("ctl-" + key);
       if (row) {
         row.classList.toggle("ctl-blocked", blocked);
         row.dataset.blocker = blocked ? by : "";
@@ -6852,7 +6887,7 @@
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = el("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
+    FILTERS.forEach(f => { const cb = ctl("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
     renderFilterLists();     // membership AND order both come from the sets, so re-render
     syncFilterPicker();
   }
@@ -6888,7 +6923,7 @@
     palette: "Palette", banding: "Banding",
   };
   function buildControls() {
-    const fxHost = el("fxctl"), bandHost = el("bandctl"), palHost = el("palctl"), filterHost = el("filterctl");
+    const fxHost = ctl("fxctl"), bandHost = ctl("bandctl"), palHost = ctl("palctl"), filterHost = ctl("filterctl");
     let open = null;
     CONTROLS.forEach(c => {
       const host = c.host === "band" ? bandHost : c.host === "pal" ? palHost
@@ -6917,11 +6952,11 @@
   // fewer-point, differently-seeded copy of the fractal.
   const LAYER_MAX = CONFIG.layerMax;
   function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); el("vLayers").textContent = layerCount; }
-  el("layers").addEventListener("input", () => applyLayers(+el("layers").value));
+  ctl("layers").addEventListener("input", () => applyLayers(+ctl("layers").value));
   function stepLayers(d) {
-    const v = Math.max(1, Math.min(LAYER_MAX, (+el("layers").value | 0) + d));
-    el("layers").value = v;
-    el("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
+    const v = Math.max(1, Math.min(LAYER_MAX, (+ctl("layers").value | 0) + d));
+    ctl("layers").value = v;
+    ctl("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
   }
   el("layer-plus").addEventListener("click", () => stepLayers(1));
   el("layer-minus").addEventListener("click", () => stepLayers(-1));
@@ -7147,7 +7182,7 @@
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
-    const lo = el(id + "-lo"), hi = el(id + "-hi"), out = el(valId);
+    const lo = ctl(id + "-lo"), hi = ctl(id + "-hi"), out = ctl(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     // a11y: each dual slider is two anonymous inputs — name the low/high thumbs.
     const lbl = lo.closest(".dual").previousElementSibling;
@@ -7318,7 +7353,7 @@
     // the SELECTED layer's value. With two point layers that meant the visible layer's object
     // count jumped to whatever layer you selected. Install it per item: the selected item's
     // store is the DOM (#layers), a frozen item's is L.state.layers.
-    const lv = (L === stack[stackSel]) ? +el("layers").value : (L.state ? L.state.layers : layerCount);
+    const lv = (L === stack[stackSel]) ? +ctl("layers").value : (L.state ? L.state.layers : layerCount);
     layerCount = Math.max(1, Math.min(LAYER_MAX, (lv | 0) || 1));
     camMat();       // camera X/Y/Z are per-layer now — refold camM for THIS layer's angles, so
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
@@ -7397,13 +7432,13 @@
     return "linear-gradient(to right, " + stops.join(",") + ")";
   }
   function syncPalSwatches() {
-    const host = el("palswatches");
+    const host = ctl("palswatches");
     if (!host) return;
     const cur = paletteSel.value;
     host.querySelectorAll(".palsw").forEach(b => b.classList.toggle("active", b.dataset.pal === cur));
   }
   function buildPalSwatches() {
-    const host = el("palswatches");
+    const host = ctl("palswatches");
     if (!host) return;
     // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
     // (the single source — names live there) rather than hand-written in the HTML, so adding a
@@ -7582,7 +7617,7 @@
     PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
     if (full) buildPalSwatches();
     else {
-      const sw = el("palswatches") && el("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
+      const sw = ctl("palswatches") && ctl("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
       if (sw) sw.style.background = paleGradCss(st);
       const opt = paletteSel.querySelector('option[value="' + paleIdx + '"]');
       if (opt) opt.textContent = PALETTES[paleIdx].name;
@@ -8867,8 +8902,8 @@
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global (sceneFx), not per-effect
       st[id] = Array.isArray(st[id])
-        ? [+el(id + "-lo").value, +el(id + "-hi").value]
-        : +el(id).value;
+        ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
+        : +ctl(id).value;
     }
   }
   function loadState(e) {
@@ -8878,10 +8913,10 @@
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // don't reload scene-filter values on a switch — they're scene-global
       const v = st[id];
       if (Array.isArray(v)) {
-        el(id + "-lo").value = v[0]; el(id + "-hi").value = v[1];
-        el(id + "-lo").dispatchEvent(new Event("input"));
-        el(id + "-hi").dispatchEvent(new Event("input"));
-      } else { el(id).value = v; el(id).dispatchEvent(new Event("input")); }
+        ctl(id + "-lo").value = v[0]; ctl(id + "-hi").value = v[1];
+        ctl(id + "-lo").dispatchEvent(new Event("input"));
+        ctl(id + "-hi").dispatchEvent(new Event("input"));
+      } else { ctl(id).value = v; ctl(id).dispatchEvent(new Event("input")); }
     }
     suppressPersist = false;
   }
@@ -8898,8 +8933,8 @@
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global, not per-layer
       L.state[id] = Array.isArray(st[id])
-        ? [+el(id + "-lo").value, +el(id + "-hi").value]
-        : +el(id).value;
+        ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
+        : +ctl(id).value;
     }
     for (const id in beatReact) L.beat[id] = Object.assign({}, beatReact[id]);
     for (const id in pulseShape) L.pulse[id] = pulseShape[id];
@@ -9020,8 +9055,8 @@
   // nothing to rescue — and the hazard it guarded cannot recur, because the rows outlive
   // every call.
   function adoptLayerCtl(row) {
-    const ctl = el("lyrctl");
-    if (ctl && row) row.appendChild(ctl);
+    const block = el("lyrctl");
+    if (block && row) row.appendChild(block);
   }
   // The rows are a FIXED POOL of STACK_MAX, keyed by slot, built exactly once and never
   // destroyed — `lyrRows[slot] = {row, …}` holding each row's own widgets. syncStackUI
@@ -9480,8 +9515,8 @@
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
-    if (el("palrev")) el("palrev").checked = paletteReverse;
-    if (el("palbg")) el("palbg").value = paletteBg;
+    if (ctl("palrev")) ctl("palrev").checked = paletteReverse;
+    if (ctl("palbg")) ctl("palbg").value = paletteBg;
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;   // per-layer, not per-effect
     showBoxChk.checked = showBox;
     installSeedPath(L);              // seed globals = this layer's orbit path
@@ -9517,7 +9552,7 @@
     const out = {};
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id];
+      const inp = ctl(id), o = RNG_ORIG[id];
       if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
         out[id] = { min: inp.min, max: inp.max, step: inp.step };
     }
@@ -9570,10 +9605,10 @@
     const st = presetState(effect);
     const v = st[key] !== undefined ? st[key] : ctlDefault(key);
     if (Array.isArray(v)) {
-      const lo = el(key + "-lo"), hi = el(key + "-hi");
+      const lo = ctl(key + "-lo"), hi = ctl(key + "-hi");
       if (lo && hi) { lo.value = v[0]; hi.value = v[1]; }
-    } else if (v !== undefined && el(key)) {
-      el(key).value = v;
+    } else if (v !== undefined && ctl(key)) {
+      ctl(key).value = v;
     }
     const b = presetBeat(effect)[key];
     if (b && beatReact[key]) {
@@ -9596,12 +9631,12 @@
   function applyRangesFor(r, want) {      // reset the wanted sliders to shipped, then apply r's bounds for them
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id];
+      const inp = ctl(id), o = RNG_ORIG[id];
       if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
     if (r && typeof r === "object") for (const id in r) {
       if (!want(id)) continue;
-      const inp = el(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
+      const inp = ctl(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
       inp.min = String(mn); inp.max = String(mx);
@@ -9740,7 +9775,7 @@
     // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
     // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
     if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
-    const ok = (id, x) => { const mn = +el(id).min, mx = +el(id).max; return typeof x === "number" && x >= mn && x <= mx; };
+    const ok = (id, x) => { const n = ctl(id); if (!n) return false; const mn = +n.min, mx = +n.max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {
         const ss = saved.states[k]; if (!ss) continue;
@@ -10037,9 +10072,9 @@
   // fields don't persist themselves — rngApply dispatches `input` on the real
   // slider, and the delegated onEdit turns that into a persist + autosave.
   function ctlRangeInputs(key) {   // a dual's two thumbs share one set of bounds
-    const lo = el(key + "-lo"), hi = el(key + "-hi");
+    const lo = ctl(key + "-lo"), hi = ctl(key + "-hi");
     if (lo && hi) return [lo, hi];
-    const p = el(key);
+    const p = ctl(key);
     return p && p.type === "range" ? [p] : [];
   }
   // A slider's `step` attribute as a NUMBER for the editor field: "any" (continuous) and
@@ -10108,8 +10143,8 @@
     return (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
   }
   POPPABLE.forEach(key => {
-    const ctl = el("ctl-" + key);
-    ctl.classList.add("poppable");
+    const box = ctl("ctl-" + key);
+    box.classList.add("poppable");
     // Title line, first child so it sits above the label. Only ever visible in
     // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
     // Always built (even with no owner group) so it can carry the per-box help ?.
@@ -10125,7 +10160,7 @@
     hb.setAttribute("aria-label", ctlLabel(key) + " — help");
     hb.addEventListener("click", e => { e.stopPropagation(); openCtlHelp(key); });
     t.appendChild(hb);
-    ctl.insertBefore(t, ctl.firstChild);
+    box.insertBefore(t, box.firstChild);
     // Bounds editor goes directly UNDER THE SLIDER, not at the foot of the box: min/max/step
     // describe that slider, so they belong with it rather than below the beat controls, which
     // are a different subject. A divider closes the block off from the Triggers section.
@@ -10137,15 +10172,15 @@
     // right, which insertBefore(…, null) does for free.
     const rngEd = makeRangeEditor(key);
     if (rngEd) {
-      const anchor = ctl.querySelector(".trig-t");
-      ctl.insertBefore(rngEd, anchor);
+      const anchor = box.querySelector(".trig-t");
+      box.insertBefore(rngEd, anchor);
       if (anchor) {
         const hr = document.createElement("div");
         hr.className = "ctl-div";
-        ctl.insertBefore(hr, anchor);
+        box.insertBefore(hr, anchor);
       }
     }
-    ctl.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
+    box.appendChild(makePopBtn(key));            // the box's own dock button (left gutter in #breakout)
     const row = document.createElement("div");   // the launcher that stays in the menu slot
     row.className = "ctl-row";
     const name = document.createElement("span");
@@ -10167,14 +10202,29 @@
       row.appendChild(dots);
     }
     row.appendChild(makePopBtn(key));            // +/- button, right of the name
-    ctl.parentNode.insertBefore(row, ctl);       // row takes the control's menu slot
-    breakout.appendChild(ctl);                   // full control lives in the column (hidden until popped)
+    box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
+    breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
     rows[key] = row;
     syncPopBtns(key);
   });
+  // Index the layer control block as slot 0. Every per-layer control node is registered
+  // under the string that is its id today, so ctl(k) resolves through keyMap instead of
+  // getElementById — the same node, by a route that can hold four of them. This runs LAST,
+  // after buildControls, buildFilterUI and the POPPABLE pass above, because it walks the
+  // finished DOM; from M4a each build pass registers its own nodes as it makes them and
+  // this whole-document sweep goes away.
+  //
+  // #breakout is walked too: the pass above just moved every .ctl out of the block into it,
+  // and those nodes are the ones the control sites look up.
+  blocks[0] = el("lyrctl");
+  for (const host of [el("lyrctl"), el("breakout")]) {
+    if (!host) continue;
+    if (host.id) ctlReg(0, host.id, host);
+    for (const n of host.querySelectorAll("[id]")) ctlReg(0, n.id, n);
+  }
   function syncPopBtns(key) {         // keep both the menu-row and the box's button in sync
     const docked = !popped.has(key);
-    for (const host of [rows[key], el("ctl-" + key)]) {
+    for (const host of [rows[key], ctl("ctl-" + key)]) {
       const b = host.querySelector(".ctl-pop");
       if (!b) continue;
       b.textContent = docked ? "+" : "−";
@@ -10185,7 +10235,7 @@
   function popCtl(key) {
     if (popped.has(key)) return;
     popped.add(key);
-    breakout.appendChild(el("ctl-" + key));      // append ⇒ boxes stack top→down in click order
+    breakout.appendChild(ctl("ctl-" + key));      // append ⇒ boxes stack top→down in click order
     syncPopBtns(key);
     refreshBreakout();
   }
@@ -10209,7 +10259,7 @@
     let anyVisible = false;
     for (const key of POPPABLE) {
       const vis = popped.has(key) && shown.has(key);   // shown only when popped AND used by this effect
-      el("ctl-" + key).style.display = vis ? "" : "none";
+      ctl("ctl-" + key).style.display = vis ? "" : "none";
       if (vis) anyVisible = true;
     }
     breakout.classList.toggle("empty", !anyVisible);
@@ -10227,7 +10277,7 @@
   // stays open as you jump between cardioid layers to compare their orbits.)
   function restoreLayerUi(L, pops) {
     if (!L) return;
-    if (pops) for (const key of pops) if (el("ctl-" + key)) popCtl(key);
+    if (pops) for (const key of pops) if (ctl("ctl-" + key)) popCtl(key);
   }
 
   // A preset is a named full scene (effect + all its settings). Auto-cycle holds
@@ -10342,7 +10392,7 @@
     else { morphOnce = false; setPalette(+paletteSel.value); }   // pinned: settle on the shown palette
   }
   function setPalCycle(lo, hi) {
-    const a = el("palcycle-lo"), b = el("palcycle-hi");
+    const a = ctl("palcycle-lo"), b = ctl("palcycle-hi");
     if (!a || !b) return;
     a.value = lo; b.value = hi;
     a.dispatchEvent(new Event("input")); b.dispatchEvent(new Event("input"));
@@ -10514,7 +10564,7 @@
     // and applyBlob applies them first, so these are the bounds it will validate
     // against — and its ok() is a hard reject, so an out-of-range value would be
     // silently dropped back to the seeded default (fade's max of 0.995 is the case).
-    const ref = el(id + "-lo") || el(id);
+    const ref = ctl(id + "-lo") || ctl(id);
     if (ref) {
       const mn = +ref.min, mx = +ref.max;
       if (isFinite(mn) && r < mn) r = mn;

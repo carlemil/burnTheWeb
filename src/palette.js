@@ -263,7 +263,7 @@
   // morphMs() draws each cycle's duration from the thumbs, like ttlMs().
   let palCycleLive = 8, palHoldLive = 0;
   function palCycleBand() {
-    const lo = el("palcycle-lo"), hi = el("palcycle-hi");
+    const lo = ctl("palcycle-lo"), hi = ctl("palcycle-hi");
     if (!lo || !hi) return [8, 8];
     return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
   }
@@ -277,7 +277,7 @@
   // seconds range, a fresh draw per hold. Both thumbs at 0 (the shipped default, so
   // every existing scene keeps its old continuous morph) means no hold at all.
   function palHoldBand() {
-    const lo = el("palhold-lo"), hi = el("palhold-hi");
+    const lo = ctl("palhold-lo"), hi = ctl("palhold-hi");
     if (!lo || !hi) return [0, 0];
     return [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)];
   }

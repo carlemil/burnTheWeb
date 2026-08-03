@@ -10,8 +10,8 @@
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global, not per-layer
       L.state[id] = Array.isArray(st[id])
-        ? [+el(id + "-lo").value, +el(id + "-hi").value]
-        : +el(id).value;
+        ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
+        : +ctl(id).value;
     }
     for (const id in beatReact) L.beat[id] = Object.assign({}, beatReact[id]);
     for (const id in pulseShape) L.pulse[id] = pulseShape[id];
@@ -132,8 +132,8 @@
   // nothing to rescue — and the hazard it guarded cannot recur, because the rows outlive
   // every call.
   function adoptLayerCtl(row) {
-    const ctl = el("lyrctl");
-    if (ctl && row) row.appendChild(ctl);
+    const block = el("lyrctl");
+    if (block && row) row.appendChild(block);
   }
   // The rows are a FIXED POOL of STACK_MAX, keyed by slot, built exactly once and never
   // destroyed — `lyrRows[slot] = {row, …}` holding each row's own widgets. syncStackUI
@@ -592,8 +592,8 @@
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
-    if (el("palrev")) el("palrev").checked = paletteReverse;
-    if (el("palbg")) el("palbg").value = paletteBg;
+    if (ctl("palrev")) ctl("palrev").checked = paletteReverse;
+    if (ctl("palbg")) ctl("palbg").value = paletteBg;
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;   // per-layer, not per-effect
     showBoxChk.checked = showBox;
     installSeedPath(L);              // seed globals = this layer's orbit path

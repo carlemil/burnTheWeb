@@ -15,13 +15,13 @@
     return "linear-gradient(to right, " + stops.join(",") + ")";
   }
   function syncPalSwatches() {
-    const host = el("palswatches");
+    const host = ctl("palswatches");
     if (!host) return;
     const cur = paletteSel.value;
     host.querySelectorAll(".palsw").forEach(b => b.classList.toggle("active", b.dataset.pal === cur));
   }
   function buildPalSwatches() {
-    const host = el("palswatches");
+    const host = ctl("palswatches");
     if (!host) return;
     // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
     // (the single source — names live there) rather than hand-written in the HTML, so adding a
