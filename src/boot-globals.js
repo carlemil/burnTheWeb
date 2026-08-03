@@ -19,6 +19,8 @@
   // throws "Cannot access before initialization" and takes the whole IIFE with it.
   var blocks = [];        // slot -> that stack slot's control block element
   var keyMap = [];        // slot -> { "<the string that used to be the id>": node }
+  var W = [];             // slot -> { key: wiring record } — see wireRange
+  var secs = [];          // slot -> { filterId: that block's <details> } — see buildFilterUI
   // A HASH of node references, not a subtree query. The POPPABLE pass moves every .ctl out
   // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —
   // whereas a registered reference keeps working wherever the node ends up. Exactly the

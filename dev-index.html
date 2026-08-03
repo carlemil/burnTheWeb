@@ -1885,6 +1885,8 @@
   // throws "Cannot access before initialization" and takes the whole IIFE with it.
   var blocks = [];        // slot -> that stack slot's control block element
   var keyMap = [];        // slot -> { "<the string that used to be the id>": node }
+  var W = [];             // slot -> { key: wiring record } — see wireRange
+  var secs = [];          // slot -> { filterId: that block's <details> } — see buildFilterUI
   // A HASH of node references, not a subtree query. The POPPABLE pass moves every .ctl out
   // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —
   // whereas a registered reference keeps working wherever the node ends up. Exactly the
@@ -7106,9 +7108,23 @@
   const pulseLen = {};         // id -> seconds : live per-effect value (drives updateAnims)
   const plenEls = {};          // id -> {inp,out} : the length slider + readout (never persisted)
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
-  function makeChips(id, label) {
-    beatReact[id] = { low: false, mid: false, high: false };
-    chipEls[id] = {};
+  //
+  // Built once PER BLOCK, so it hangs its nodes on that block's wiring record `w` rather
+  // than writing chipEls/pulseEls/plenEls directly — pointMaps installs whichever block is
+  // selected into those singletons. The three LIVE maps it seeds (beatReact, pulseShape,
+  // pulseLen) belong to the selected layer and must be seeded exactly ONCE: seeding them
+  // per block would have slot 3's build reset whatever slot 0 already held.
+  //
+  // The handlers still write those singletons directly, and that is correct rather than
+  // sloppy: a block can only be reached by touching it, and touching a row selects it first
+  // (the capture-phase pointerdown). Each guards on being the LIVE block — the one pointMaps
+  // has installed — rather than on `slot === stackSel`, and the difference matters: while
+  // there is a single block it serves whichever layer is selected, so a slot test would
+  // deaden every chip the moment you selected layer 2. Identity is true in both worlds, and
+  // it also stops a synthetic dispatch writing across layers.
+  function makeChips(id, label, w) {
+    if (!(id in beatReact)) beatReact[id] = { low: false, mid: false, high: false };
+    const chips = w.chips = {};
     const wrap = document.createElement("span");
     wrap.className = "bandchips";
     for (const k of ["low", "mid", "high"]) {
@@ -7117,6 +7133,7 @@
       btn.textContent = k[0].toUpperCase();
       btn.title = k + " beat";
       btn.addEventListener("click", () => {
+        if (chipEls[id] !== chips) return;      // not the live block
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
         syncDots();              // the menu row shows the same armed state
@@ -7127,7 +7144,7 @@
         chipEdited();
       });
       wrap.appendChild(btn);
-      chipEls[id][k] = btn;
+      chips[k] = btn;
     }
     // Shape picker: how this slider's value animates back down after a beat. Its
     // `change` bubbles to the panel's delegated onEdit, which persists + autosaves,
@@ -7137,9 +7154,9 @@
     psel.title = "Beat pulse shape";
     PULSE_SHAPES.forEach(s => psel.appendChild(new Option(s.name, s.key)));
     psel.value = PULSE_DEFAULT;
-    psel.addEventListener("change", () => { pulseShape[id] = psel.value; });
-    pulseEls[id] = psel;
-    pulseShape[id] = PULSE_DEFAULT;
+    psel.addEventListener("change", () => { if (pulseEls[id] === psel) pulseShape[id] = psel.value; });
+    w.psel = psel;
+    if (!(id in pulseShape)) pulseShape[id] = PULSE_DEFAULT;
     // ---- pop-out box layout: value on top, then the SLIDER, then the beat controls ----
     // The chips used to be tucked into the label's right edge, above the slider. They are
     // their own titled block under it now, because the slider is the thing you are actually
@@ -7164,43 +7181,48 @@
     host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
-    pulseLen[id] = PULSE_DROP;
+    if (!(id in pulseLen)) pulseLen[id] = PULSE_DROP;
     const durT = document.createElement("div");
     durT.className = "plen-name"; durT.textContent = "Trigger duration";
     const row = document.createElement("div");
     row.className = "plen";
     const sl = document.createElement("input");
-    sl.type = "range"; sl.id = "plen-" + id; sl.min = PLEN_MIN; sl.max = PLEN_MAX; sl.step = 0.01; sl.value = PULSE_DROP;
+    // No id: it carried "plen-<id>" and nothing ever looked it up (the RNG_ORIG scan excludes
+    // these by their .plen wrapper, not by id), so with a copy per block it would only have
+    // been a set of duplicate ids waiting to shadow each other.
+    sl.type = "range"; sl.min = PLEN_MIN; sl.max = PLEN_MAX; sl.step = 0.01; sl.value = PULSE_DROP;
     sl.title = "How long a trigger takes to fall back";
     sl.setAttribute("aria-label", "Trigger duration");
     const out = document.createElement("span");
     out.className = "plen-val"; out.textContent = plenFmt(PULSE_DROP);
-    sl.addEventListener("input", () => { pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
+    sl.addEventListener("input", () => { if (plenEls[id] && plenEls[id].inp === sl) pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
     row.append(sl, out);
-    plenEls[id] = { inp: sl, out };
+    w.plen = { inp: sl, out };
     host.append(durT, row);              // foot of the control block (above the range editor)
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
-  function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
-    const lo = ctl(id + "-lo"), hi = ctl(id + "-hi"), out = ctl(valId);
+  // Wiring a control splits in two, because several open layers need one set of DOM nodes
+  // EACH against one shared definition.
+  //
+  //   wireRange(slot, …)  per block: the nodes, the fill/readout ui() closure, the two
+  //       cross-clamp listeners, the beat block. Registers nothing global, and — load-bearing
+  //       — does NOT call apply(). Building slot 1's `bloom` must not write bloomAmt.
+  //   registerAnim(…)  once per key, from slot 0: anims[id], animPhase[id] and the single
+  //       startup apply().
+  //   pointMaps(slot)  on every layer selection: re-points the singleton maps at another
+  //       block's nodes. It must never re-create animPhase — that would teleport every
+  //       drifting slider on every layer click — and must never call apply(), which would
+  //       rewrite the render globals out of turn.
+  function wireRange(slot, id, valId, fmt, beat) {
+    const lo = ctlIn(slot, id + "-lo") || ctl(id + "-lo");
+    const hi = ctlIn(slot, id + "-hi") || ctl(id + "-hi");
+    const out = ctlIn(slot, valId) || ctl(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
     // a11y: each dual slider is two anonymous inputs — name the low/high thumbs.
     const lbl = lo.closest(".dual").previousElementSibling;
     const nm = (lbl && lbl.childNodes[0] ? lbl.childNodes[0].nodeValue : id).trim();
     lo.setAttribute("aria-label", nm + " (low)");
     hi.setAttribute("aria-label", nm + " (high)");
-    // The DEFINITION lives here; the mutable animation PHASE lives in animPhase[id]
-    // (see newPhase). They are split because a stack of effects needs one phase record
-    // per layer per key while sharing one definition, one pair of DOM thumbs and one
-    // apply closure. With a single layer there is exactly one phase record and the
-    // behaviour is identical.
-    // `scene` marks a control that belongs to the whole scene rather than to one
-    // effect — the palette, banding, the camera, display zoom and every filter param.
-    // Those animate once per frame no matter how many effects are stacked. Derived
-    // from CONTROLS (host/group), NOT from the FILTERS registry, which is defined
-    // further down the file and does not exist yet when this wiring runs.
-    const a = anims[id] = { lo, hi, apply, name: nm, durScale: durScale || 1, scene: scene !== false };
-    animPhase[id] = newPhase(+lo.value);
     function ui() {
       // min/max are read live, not closed over: each box's range editor
       // rewrites them at runtime and the fill must follow.
@@ -7217,11 +7239,51 @@
       const show = v => fmt(mx - mn > 1 ? Math.round(v * 10) / 10 : v);
       out.textContent = A === B ? show(A) : show(A) + "–" + show(B);
     }
-    a.ui = ui;
     lo.addEventListener("input", () => { if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
     hi.addEventListener("input", () => { if (+hi.value < +lo.value) lo.value = hi.value; ui(); });
-    if (beat !== false) makeChips(id, lo.closest(".dual").previousElementSibling);
-    ui(); apply(animPhase[id].val);
+    const w = { lo, hi, out, ui, name: nm, chips: null, dots: null, psel: null, plen: null, row: null };
+    (W[slot] || (W[slot] = {}))[id] = w;
+    if (beat !== false) makeChips(id, lbl, w);
+    ui();                                // ...and no apply(): see the note above
+    return w;
+  }
+  // The DEFINITION, created once. The mutable animation PHASE lives in animPhase[id] (see
+  // newPhase); they are split because a stack of effects needs one phase record per layer
+  // per key while sharing one definition and one apply closure. The DOM refs on it name
+  // the SELECTED block and are re-pointed by pointMaps; everything else is immutable.
+  // `scene` marks a control belonging to the whole scene rather than to one effect — the
+  // palette, banding, the camera, display zoom and the shared filter params. Those animate
+  // once per frame no matter how many effects are stacked, and their nodes are singletons
+  // outside every block, so pointMaps never touches them. Derived from CONTROLS
+  // (host/group), NOT from the FILTERS registry, which does not exist yet when this runs.
+  function registerAnim(id, apply, durScale, scene, w) {
+    const a = anims[id] = { lo: w.lo, hi: w.hi, apply, name: w.name, durScale: durScale || 1, scene: scene !== false };
+    animPhase[id] = newPhase(+w.lo.value);
+    a.ui = w.ui;
+    apply(animPhase[id].val);
+  }
+  function bindRange(id, valId, fmt, apply, durScale, beat, scene) {
+    registerAnim(id, apply, durScale, scene, wireRange(0, id, valId, fmt, beat));
+  }
+  // Point the singleton wiring maps at one block's nodes — the whole of what "selecting a
+  // layer" means to the control machinery. Nothing is created, moved or applied; a node the
+  // user has a pointer down on is untouched, which is what lets a drag that started on a
+  // non-selected layer's slider carry straight on once the row selects it.
+  //
+  // Only keys this block actually holds are re-pointed. A scene control has no entry in any
+  // block's W, so `anims.bloom.lo` keeps naming its one true node forever.
+  function pointMaps(slot) {
+    const w = W[slot];
+    if (!w) return;
+    for (const id in w) {
+      const e = w[id], a = anims[id];
+      if (a) { a.lo = e.lo; a.hi = e.hi; a.ui = e.ui; }   // NOT a.apply, and NOT animPhase
+      if (e.chips) chipEls[id] = e.chips;
+      if (e.dots) dotEls[id] = e.dots;
+      if (e.psel) pulseEls[id] = e.psel;
+      if (e.plen) plenEls[id] = e.plen;
+      if (e.row) rows[id] = e.row;
+    }
   }
   // A control belongs to the SCENE rather than to one effect when it is not an effect
   // control (palette, banding) or the shared camera/display zoom. Everything else — every
@@ -10188,25 +10250,30 @@
     row.appendChild(name);
     // Beat dots, left of the +/- button. Only for sliders that have chips at all —
     // `plain` controls are poppable but never armed, so they get no dots.
-    if (chipEls[key]) {
+    const w = W[0] && W[0][key];
+    if (w && w.chips) {
       const dots = document.createElement("span");
       dots.className = "ctl-dots";
-      dotEls[key] = {};
+      const dm = w.dots = {};
       for (const b of ["low", "mid", "high"]) {
         const d = document.createElement("i");
         d.className = "ctl-dot d-" + b;
         d.title = b + " beat";
         dots.appendChild(d);
-        dotEls[key][b] = d;
+        dm[b] = d;
       }
       row.appendChild(dots);
     }
     row.appendChild(makePopBtn(key));            // +/- button, right of the name
     box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
     breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
+    if (w) w.row = row;
     rows[key] = row;
     syncPopBtns(key);
   });
+  // The launcher rows and beat dots are the last per-block pieces to exist, so install
+  // slot 0 into the singleton maps now that its record is complete.
+  pointMaps(0);
   // Index the layer control block as slot 0. Every per-layer control node is registered
   // under the string that is its id today, so ctl(k) resolves through keyMap instead of
   // getElementById — the same node, by a route that can hold four of them. This runs LAST,

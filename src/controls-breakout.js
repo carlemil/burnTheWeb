@@ -146,25 +146,30 @@
     row.appendChild(name);
     // Beat dots, left of the +/- button. Only for sliders that have chips at all —
     // `plain` controls are poppable but never armed, so they get no dots.
-    if (chipEls[key]) {
+    const w = W[0] && W[0][key];
+    if (w && w.chips) {
       const dots = document.createElement("span");
       dots.className = "ctl-dots";
-      dotEls[key] = {};
+      const dm = w.dots = {};
       for (const b of ["low", "mid", "high"]) {
         const d = document.createElement("i");
         d.className = "ctl-dot d-" + b;
         d.title = b + " beat";
         dots.appendChild(d);
-        dotEls[key][b] = d;
+        dm[b] = d;
       }
       row.appendChild(dots);
     }
     row.appendChild(makePopBtn(key));            // +/- button, right of the name
     box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
     breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
+    if (w) w.row = row;
     rows[key] = row;
     syncPopBtns(key);
   });
+  // The launcher rows and beat dots are the last per-block pieces to exist, so install
+  // slot 0 into the singleton maps now that its record is complete.
+  pointMaps(0);
   // Index the layer control block as slot 0. Every per-layer control node is registered
   // under the string that is its id today, so ctl(k) resolves through keyMap instead of
   // getElementById — the same node, by a route that can hold four of them. This runs LAST,
