@@ -663,6 +663,15 @@
      and a longer, more usable gain slider than the old fixed 38px. */
   #panel .lyr-ctl { display: flex; align-items: center; gap: 7px; padding-top: 1px; }
   #panel .lyr-ctl .sp { flex: 1; }
+  /* Layers is a titled SECTION, not a .box: every row is already a framed box and the
+     selected one holds a third frame (its controls), so a fourth border around the lot only
+     said "these are layers" twice. The heading matches the in-panel group headings
+     (.ctl-grp) so it reads as a section marker rather than a container that vanished. */
+  #panel #lyrsec { margin: 12px 0 0; }
+  #panel #lyrsec > .sec-t {
+    margin: 0 0 5px; padding-top: 9px; border-top: 1px solid rgba(255, 140, 40, 0.22);
+    color: #ffb15a; opacity: .95; font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+  }
   /* ---- the selected layer's controls, INSIDE its row -------------------------------
      #lyrctl (effect sliders → filters → palette) is moved into the selected row by
      syncStackUI, so a layer is one complete object: what it draws, what filters it, how it

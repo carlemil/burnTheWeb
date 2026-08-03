@@ -329,7 +329,7 @@ the way a video mixer's dissolve does.
 ## Layers
 
 A scene can stack **up to four effects at once**, composited into one picture. The
-**Layers** box holds one row per layer, and they combine in list order.
+**Layers** section holds one row per layer, and they combine in list order.
 
 **Each layer is one complete box.** Click a layer and it opens out in place: its header
 across the top — which effect it runs, its on/off dot, its strength slider, its blend mode —

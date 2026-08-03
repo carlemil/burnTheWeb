@@ -488,9 +488,13 @@ Two consequences: `#menubar` is a full-screen overlay that **catches** pointer e
 CSS rule an adopted block needs must name `#menubar` alongside `#panel` — including the *font*,
 which lives on `#panel` rather than `body`.
 
-**Panel layout.** Header + **five `.box` `<details>` sections** (fold state transient): *Scene*
-(chooser, auto-cycle, TTL, transition), *Scene filters*, *Beat tuning*, *Layers*, and *Layer effect
-& filters* (`#effect`, `#fxctl`, Orbit editor, Reset, per-layer filters, palette). `buildControls`
+**Panel layout.** Header + **four `.box` `<details>` sections** (fold state transient): *Scene*
+(chooser, auto-cycle, TTL, transition), *Scene filters*, *Beat tuning*, and the hidden *Layer
+effect & filters*; plus **`#lyrsec`, a plain titled SECTION for Layers** — not a box, because
+every layer row is already a framed box and the selected one holds a third frame (its controls),
+so a fourth border around the lot said "these are layers" twice. Its `.sec-t` heading matches the
+in-panel group headings. The hidden box still holds `#effect`, `#fxctl`, the Orbit editor, Reset,
+the per-layer filters and the palette. `buildControls`
 routes by `host`: `"band"` → `#bandctl`, `"pal"` → `#palctl`, else `#fxctl`.
 
 **The last box is normally EMPTY and hidden: its body is moved into the selected layer's row.**
