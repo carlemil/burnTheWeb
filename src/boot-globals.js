@@ -25,7 +25,14 @@
   // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —
   // whereas a registered reference keeps working wherever the node ends up. Exactly the
   // property `anims` already relies on.
-  function ctlReg(slot, k, node) { (keyMap[slot] || (keyMap[slot] = {}))[k] = node; }
+  // Registering also STAMPS the key onto the node. The map is what lookups use, but keeping
+  // data-k on the element as well means the DOM says which control it is — CSS can select it,
+  // and a probe reading the page sees the same names the code does. Without it, the nodes
+  // created in JS (the filter checkboxes, the Add buttons) were findable only through the map.
+  function ctlReg(slot, k, node) {
+    (keyMap[slot] || (keyMap[slot] = {}))[k] = node;
+    if (node && node.dataset && node.dataset.k !== k) node.dataset.k = k;
+  }
   function ctlIn(slot, k) { const m = keyMap[slot]; return (m && m[k]) || null; }
   // The SELECTED layer's node — the drop-in for el() at every control site, because
   // `stackSel` is what el() implicitly meant there. It falls through to getElementById, so

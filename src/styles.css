@@ -88,7 +88,7 @@
   #panel select option, #menubar select option { background: #1a0f08; color: #ffcf87; }
   /* Palette preview picker: a gradient swatch per palette, replacing the plain
      dropdown (the <select> stays as the value store, hidden once JS builds these). */
-  #palswatches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
+  [data-k="palswatches"] { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
   .palsw {
     position: relative; height: 24px; padding: 0; border-radius: 5px;
     border: 1px solid rgba(255, 140, 40, 0.35); cursor: pointer; overflow: hidden;
@@ -297,7 +297,7 @@
   #panel .verline { margin-top: 7px; opacity: .38; }
   #panel .verline a { color: #ffcf87; text-decoration: none; border-bottom: 1px dotted rgba(255, 207, 135, 0.45); }
   #panel .verline:hover { opacity: .8; }
-  #reset, #cardbtn, #addlayer {
+  [data-k="reset"], [data-k="cardbtn"], #addlayer {
     margin-top: 8px;
     width: 100%;
     padding: 7px 0;
@@ -310,8 +310,8 @@
     cursor: pointer;
     transition: background .15s;
   }
-  #reset:hover, #cardbtn:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
-  #cardbtn, #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
+  [data-k="reset"]:hover, [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
+  [data-k="cardbtn"], #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
   /* Cloud profile row. Hidden wholesale when CONFIG.cloud.apiKey is "" — an unconfigured
      build shows no trace of the feature rather than a dead button. */
   #panel #cloudrow.hidden { display: none; }
@@ -731,13 +731,16 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #panel #scenenow.unsaved { font-style: italic; opacity: .6; }
-  /* ---- the selected layer's controls, INSIDE its row -------------------------------
-     #lyrctl (effect sliders → filters → palette) is moved into the selected row by
-     syncStackUI, so a layer is one complete object: what it draws, what filters it, how it
-     is coloured. It spans both grid columns and sits under the header it belongs to. */
-  /* Fold the open layer shut without deselecting it — with the controls inline, an open
-     layer is tall and the rows below it are a long scroll away. The block is HIDDEN, never
-     removed: #lyrctl stays in the row and in the document, so every id lookup keeps working. */
+  /* ---- each layer's own controls, INSIDE its row -----------------------------------
+     A .lyrblock (effect sliders → filters → palette) per stack slot, cloned from the
+     <template> and living permanently in its layer's row, so a layer is one complete object:
+     what it draws, what filters it, how it is coloured. It spans both grid columns and sits
+     under the header it belongs to.
+     Keyed on the CLASS, not an id: there are STACK_MAX of them. Nothing inside carries an id
+     either — see the template. */
+  /* Fold a layer shut without deselecting it — with the controls inline, an open layer is
+     tall and the rows below it are a long scroll away. The block is HIDDEN, never removed: it
+     stays in the row and in the document, so every ctl() lookup keeps working. */
   /* The fold control, in the row's UPPER-LEFT CORNER, on EVERY row — clicking an unselected
      layer's chevron selects it and opens it, so the same control both opens and closes.
      Explicitly placed at column 1 / row 1, and that placement is what lets it be a grid child
@@ -756,9 +759,12 @@
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
-  #panel .lyr.folded > #lyrctl { display: none; }
+  #panel .lyr.folded > .lyrblock { display: none; }
+  /* M4a scaffolding: a block that is not the selected layer's holds stale values until
+     paintBlock exists, so it is hidden rather than shown wrong. Dropped at M4b. */
+  #panel .lyrblock.inactive { display: none; }
   #panel .lyr.folded { padding-bottom: 6px; }
-  #panel .lyr > #lyrctl {
+  #panel .lyr > .lyrblock {
     grid-column: 1 / -1;
     margin: 6px -7px -6px;                    /* out to the row's padding edges */
     padding: 8px 8px 7px;
@@ -770,10 +776,11 @@
   /* The selected row is a container now, not a line — give it room and let it stand out
      from the compact rows around it. */
   #panel .lyr.sel { padding-bottom: 0; }
-  #panel .lyr > #lyrctl > label:first-child,
-  #panel .lyr > #lyrctl > .ctl-grp:first-child { margin-top: 0; }
-  /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in
-     the DOM as #lyrctl's home — see parkLayerCtl. */
+  #panel .lyr > .lyrblock > label:first-child,
+  #panel .lyr > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
+  /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in the
+     DOM because it is where the blocks are parked between being built and being adopted into
+     their rows, and it holds the two value-store <select>s. */
   #panel #fxbox.hidden { display: none; }
   #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
   #panel .lyr b {
@@ -793,7 +800,7 @@
   #panel #addlayer.off { opacity: .4; pointer-events: none; }
   /* One column. Two columns fitted the checkboxes but not their names, and once each
      filter grew a foldable body there was nowhere sensible for it to open into. */
-  #panel #filterlist { margin: 2px 0 4px; }
+  #panel .lyrblock [data-k="filterlist"] { margin: 2px 0 4px; }
   /* One filter: a <details> whose summary carries the chevron, the tick and the name,
      and whose body holds that filter's own params — so they fold away with it instead
      of stacking up in one long list below. */
@@ -925,7 +932,7 @@
      `.grp-first` is set by markFirstGroup() per visibility pass, NOT :first-child: every group
      is in the DOM and only some are shown, so the first *child* is whichever comes first in
      the CONTROLS schema while the first *visible* one depends on the effect. */
-  #panel #fxctl > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
+  #panel [data-k="fxctl"] > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
   /* the "what this group of filters does" caption under a filter-group heading */
   #panel .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;

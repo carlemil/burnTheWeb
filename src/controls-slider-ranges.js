@@ -3,11 +3,24 @@
   // can store only the ones the user actually retunes (and let a changed shipped
   // default flow through to sliders they never touched). This must run before the
   // first applyBlob() (restore/share) below, which applies saved ranges via RNG_ORIG.
-  const RNG_ORIG = {};        // element id -> {min,max,step} as shipped
-  panel.querySelectorAll("input[type=range]").forEach(inp => {
-    if (inp.closest("#beatDetails") || inp.closest("[data-nopersist]")) return;   // beat tuning / dev tools aren't scene ranges
-    if (inp.closest(".plen")) return;   // nor the per-slider pulse-length knobs (fixed bounds)
-    RNG_ORIG[inp.id] = { min: inp.min, max: inp.max, step: inp.step };
+  // Keyed by the WIRE key ("speed-lo"), which is what a stored `ranges` map names.
+  //
+  // Built from the CONTROLS schema rather than by scanning the panel, for two reasons and the
+  // second is the silent one. A layer control exists once per stack slot and carries no id, so
+  // a scan would key every one of them `undefined`; and by the time this runs the layer rows
+  // exist, so the scan would also swallow the four gain sliders — type=range, no id — into
+  // that same junk key, which rangesDiffering would then skip without ever complaining.
+  // ctlHTML emits step="any" and min/max straight from the schema, so this reproduces exactly
+  // what the scan used to find.
+  const RNG_ORIG = {};
+  CONTROLS.forEach(c => {
+    if (c.type === "dual") { for (const t of ["lo", "hi"]) RNG_ORIG[c.key + "-" + t] = { min: String(c.min), max: String(c.max), step: "any" }; }
+    else if (c.type === "plain") RNG_ORIG[c.key] = { min: String(c.min), max: String(c.max), step: "any" };
+  });
+  // ...plus the two scene ranges authored in the markup rather than generated (TTL, transition).
+  ["ttl-lo", "ttl-hi", "tdur-lo", "tdur-hi"].forEach(id => {
+    const i = el(id);
+    if (i) RNG_ORIG[id] = { min: i.min, max: i.max, step: i.step };
   });
   // A slider's BOUNDS are per-LAYER exactly when the slider itself is (effect params, incl.
   // zoom) and scene-wide otherwise (camera rotation, palette cycle, banding, TTL, scene

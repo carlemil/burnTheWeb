@@ -232,7 +232,10 @@
     });
   }
 
-  el("cardbtn").addEventListener("click", () => { cardWanted = true; cardOpen(true); });
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "cardbtn").addEventListener("click", () => {
+    if (slot !== stackSel && stack[slot]) selectStack(slot);
+    cardWanted = true; cardOpen(true);
+  });
   el("card-close").addEventListener("click", () => { cardWanted = false; cardOpen(false); });
   el("cardPause").addEventListener("click", () => setOrbitPaused(!orbitPaused));
 

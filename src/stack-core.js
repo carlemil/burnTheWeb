@@ -274,28 +274,16 @@
       if (e.row) rows[id] = e.row;
     }
   }
-  // A control belongs to the SCENE rather than to one effect when it is not an effect
-  // control (palette, banding) or the shared camera/display zoom. Everything else — every
-  // effect param, AND now most filter params — is owned per stacked LAYER, so each effect
-  // in a stack carries its own filter settings (each layer runs its own filter chain, see
-  // renderStackColor). The exceptions stay scene-wide because they act on the ONE finished
-  // image, not a layer: the sim tick-rate `burn` (a shared clock), the glow `bloom`, and
-  // the four "screen" filters (Scanlines / Vignette / Film grain / Barrel).
-  const SHARED_FILTER_KEYS = new Set(["burn", "bloom", "barrel", "scan", "scancount", "vignette", "grain"]);
-  // Hosts whose sliders are PER-LAYER. "fx" is every effect slider, including the whole camera
-  // group (zoom AND camera X/Y/Z) — each stacked effect samples its own space, so it holds its
-  // own camera, pushed into camRX/RY/RZ by installStackItem before that layer draws.
-  // "band" (banding) and "pal" (palette cycle/hold) are here because their values ALREADY live
-  // per-effect in states[e], so loadState rewrote these supposedly scene-wide globals on every
-  // layer selection — selecting a layer visibly re-banded the scene and changed its cycle timing.
-  // They are per-layer in the render too: bakeLayerBytes bands each layer's own ramp and
-  // stepLayerPal runs each layer's own clock, so nothing had to change downstream.
-  const LAYER_HOSTS = new Set(["fx", "band", "pal"]);
-  const isSceneCtl = c => c.host === "filter"
-    ? SHARED_FILTER_KEYS.has(c.key)                       // filter params: per-layer unless shared
-    : !LAYER_HOSTS.has(c.host);                           // TTL / transition / the scene filters stay scene-wide
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
-  CONTROLS.filter(c => c.type === "dual").forEach(c => bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c)));
+  // Wire every generated dual slider in EVERY block, then register the definition once from
+  // slot 0. The order matters: registerAnim seeds animPhase from slot 0's thumbs and runs the
+  // one startup apply(), so wiring the other blocks first would be harmless but wiring them
+  // through bindRange would re-seed the phase three more times.
+  CONTROLS.filter(c => c.type === "dual").forEach(c => {
+    bindRange(c.key, c.valId, c.fmt, c.apply, c.durScale, c.beat, isSceneCtl(c));   // slot 0 + the definition
+    // A scene control exists only in slot 0, so there is nothing to wire in the others.
+    if (!isSceneCtl(c)) for (let slot = 1; slot < STACK_MAX; slot++) wireRange(slot, c.key, c.valId, c.fmt, c.beat);
+  });
   // Effect TTL is a range in *seconds*, not an animated value: each effect is
   // held for a random time drawn from [lo,hi] before switching. lo=hi=0 ⇒ never
   // switch. No-op apply; its thumbs are read directly by the cycler.

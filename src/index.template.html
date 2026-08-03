@@ -225,37 +225,43 @@
        control in the app. -->
   <details class="box" id="fxbox" open>
   <summary class="box-t">Layer effect &amp; filters</summary>
-  <div id="lyrctl">
-  <!-- The Effect chooser is HIDDEN here, not deleted: every layer row in the Layers box now
-       carries its own, so a second visible copy of the same control was redundant. The
-       element stays because it is the effect VALUE STORE — setEffect writes effectSel.value,
-       applyBlob validates against its <option> list, and its `change` event is the handler
-       every other path dispatches through (exactly the arrangement the palette <select> has).
-       Its <option>s are still generated from the EFFECTS registry. -->
+  <!-- The two VALUE STORES sit outside the block, and stay singletons. Every layer row has its
+       own effect chooser and its own palette swatch strip; these two <select>s are what those
+       pickers write into. setEffect writes effectSel.value, applyBlob validates against the
+       <option> lists, layerPalIndex reads paletteSel for the selected layer, and their `change`
+       events are what every other path dispatches through. Four copies of either would mean
+       setEffect writing one, applyBlob validating another and the render reading a third. -->
   <select id="effect" style="display:none"><!-- options generated from the EFFECTS registry --></select>
-  <div id="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
+  <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
+  <select id="palette" style="display:none"></select>
+  <!-- ONE control block PER STACK SLOT, cloned from here at startup, so several layers can be
+       open and editable at once. Nothing inside carries an `id`: four copies of #speed-lo
+       would be invalid and getElementById would hand every edit to layer 1. They carry the
+       same string on `data-k` and resolve through ctl()/ctlIn() instead. A <template> is
+       inert — getElementById cannot see into it — so the authored copy can never be mistaken
+       for a live one. -->
+  <template id="lyrblock"><div class="lyrblock">
+  <div data-k="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
-  <button id="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
-  <button id="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
-  <!-- Per-layer filters (feedback + post, minus the whole-scene ones hoisted above). -->
-  <div id="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
-  <div id="filterctl"><!-- each filter's params, shown while it is ticked --></div>
-  <!-- Palette for the selected layer: ramp, cycle, reverse, background, banding. -->
+  <button data-k="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
+  <button data-k="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
+  <!-- This layer's filters (feedback + post). -->
+  <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
+  <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
+  <!-- This layer's palette: ramp, cycle, reverse, background, banding. -->
   <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
        swatches) rather than what the button does, and read as a stop/fill icon. -->
-  <label>Palette <button type="button" id="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
-  <!-- <option>s generated from PALETTES by buildPalSwatches() — the single source; add a palette there -->
-  <select id="palette"></select>
-  <div id="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
-  <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" id="palrev"> Reverse colours</label>
+  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
+  <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
+  <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
     <!-- Palette first: it is the default, so the markup's own initial selection matches the
          live global before any JS runs (applyLayerExtras sets .value on every layer switch). -->
-    <select id="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
+    <select data-k="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
-  <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
-  <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
-  </div><!-- /#lyrctl -->
+  <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
+  <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  </div></template>
   </details>
 
   <!-- Credits. Generated from CREDITS in the script — the same array the startup burn-in

@@ -14,18 +14,27 @@
     }
     return "linear-gradient(to right, " + stops.join(",") + ")";
   }
+  // Highlight the selected layer's strip from the live <select>, and every other block's from
+  // that layer's own stored palette — read through the same fallback layerPalIndex uses.
   function syncPalSwatches() {
-    const host = ctl("palswatches");
-    if (!host) return;
-    const cur = paletteSel.value;
-    host.querySelectorAll(".palsw").forEach(b => b.classList.toggle("active", b.dataset.pal === cur));
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const host = ctlIn(slot, "palswatches");
+      if (!host) continue;
+      const L = stack[slot];
+      const cur = slot === stackSel || !L ? paletteSel.value
+        : String(L.palette != null ? L.palette : presetExtra(L.fx).palette);
+      host.querySelectorAll(".palsw").forEach(b => b.classList.toggle("active", b.dataset.pal === cur));
+    }
   }
+  // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
+  // (the single source — names live there) rather than hand-written in the HTML, so adding a
+  // palette needs only a PALETTES entry. The option value is still the index, read for
+  // validation. There is ONE store for every block, so this half runs once.
+  //
+  // Every caller must go through here rather than rebuilding a single strip — setPalUse,
+  // setPalUseAll, applyBlob's custom install and palRemapDeleted all shift what the indices
+  // mean, and a block left with stale data-pal would pick a different ramp than it shows.
   function buildPalSwatches() {
-    const host = ctl("palswatches");
-    if (!host) return;
-    // The <select>'s <option>s ARE the value store, but their list is generated from PALETTES
-    // (the single source — names live there) rather than hand-written in the HTML, so adding a
-    // palette needs only a PALETTES entry. The option value is still the index, read for validation.
     const cur = paletteSel.value;
     paletteSel.innerHTML = "";
     PALETTES.forEach((p, i) => {
@@ -34,6 +43,12 @@
       paletteSel.appendChild(o);
     });
     if (cur) paletteSel.value = cur;
+    for (let slot = 0; slot < STACK_MAX; slot++) buildPalStrip(slot);
+    syncPalSwatches();
+  }
+  function buildPalStrip(slot) {
+    const host = ctlIn(slot, "palswatches");
+    if (!host) return;
     host.innerHTML = "";
     PALETTES.forEach((p, i) => {
       // Only the palettes in use — plus whichever is selected, always, or picking a scene
@@ -51,6 +66,10 @@
       n.className = "palsw-n"; n.textContent = p.name;
       b.appendChild(n);
       b.addEventListener("click", () => {
+        // paletteSel is the SELECTED layer's store, so a pick in another layer's strip has to
+        // select it first. The row's capture-phase pointerdown already did that for a real
+        // click; this makes it true for a synthetic one too, and costs nothing when it did.
+        if (slot !== stackSel && stack[slot]) selectStack(slot);
         paletteSel.value = String(i);
         paletteSel.dispatchEvent(new Event("change", { bubbles: true }));   // morph/setPalette + persist
         syncPalSwatches();
@@ -62,7 +81,11 @@
       // and every existing scene keep meaning what they meant); a custom opens for editing.
       e.title = p.custom ? "Edit this palette" : "Make an editable copy of " + p.name;
       e.setAttribute("aria-label", e.title);
-      e.addEventListener("click", ev => { ev.stopPropagation(); openPalEditor(i); });
+      e.addEventListener("click", ev => {
+        ev.stopPropagation();
+        if (slot !== stackSel && stack[slot]) selectStack(slot);
+        openPalEditor(i);
+      });
       w.appendChild(e);
       host.appendChild(w);
     });
@@ -143,14 +166,21 @@
     el("paldlg").classList.remove("hidden");
   }
   const closePalDetail = () => el("paldlg").classList.add("hidden");
-  el("pal-detail-btn").addEventListener("click", openPalDetail);
   el("pal-close").addEventListener("click", closePalDetail);
   el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
-  const showBoxChk = el("showbox");
-  showBoxChk.addEventListener("change", () => showBox = showBoxChk.checked);
-  const randSeedChk = el("randseed");
-  // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
-  randSeedChk.addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
+  // These four are per-block controls whose one live value belongs to the selected layer, so
+  // each is an accessor over ctl() rather than a captured node. Every read and write site —
+  // including the render path's showBoxChk.checked — stays written exactly as it was.
+  const showBoxChk = { get checked() { const n = ctl("showbox"); return !!n && n.checked; },
+                       set checked(v) { for (const n of ctlEach("showbox")) n.checked = v; } };
+  const randSeedChk = { get checked() { const n = ctl("randseed"); return !!n && n.checked; },
+                        set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
+  for (let slot = 0; slot < STACK_MAX; slot++) {
+    ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
+    // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
+    ctlIn(slot, "randseed").addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
+    ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
+  }
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");

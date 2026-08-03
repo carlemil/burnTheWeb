@@ -37,10 +37,15 @@
     L.state = L.beat = L.pulse = L.plen = null;
     L.anim = {};
   }
+  // The ORDER here is load-bearing and any other one loses the user's last edit in silence:
+  // freezeItem reads the OUTGOING block, so it must run while the maps still point at it;
+  // pointMaps then installs the incoming block, so the loadState inside setEffect writes
+  // there. freeze -> stackSel -> pointMaps -> everything else.
   function selectStack(j) {
     if (j === stackSel || !stack[j]) return;
     freezeItem(stack[stackSel]);
     stackSel = j;
+    pointMaps(j);
     const pops = stack[j].popped;    // read BEFORE setEffect's persist re-freezes and wipes it
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
@@ -67,6 +72,7 @@
     L.filters = presetFilters(L.fx);
     stack.push(L);
     stackSel = stack.length - 1;
+    pointMaps(stackSel);
     thawItem(L);
     stageLayerExtras(L);
     setEffect(L.fx, false);
@@ -80,6 +86,7 @@
     dropOpen(j);                     // the fold state follows the surviving layers, not the slots
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
+    pointMaps(stackSel);
     const pops = stack[stackSel].popped;   // before setEffect's persist wipes it
     thawItem(stack[stackSel]);
     stageLayerExtras(stack[stackSel]);
@@ -127,13 +134,14 @@
     if (was) openSlots.add(to);
   }
   // There is no parkLayerCtl any more, and its absence is the point. syncStackUI used to
-  // wipe #stacklist on every call, so the control block had to be rescued to #fxbox first or
-  // it was DELETED from the document along with the rows. Nothing is wiped now, so there is
-  // nothing to rescue — and the hazard it guarded cannot recur, because the rows outlive
-  // every call.
-  function adoptLayerCtl(row) {
-    const block = el("lyrctl");
-    if (block && row) row.appendChild(block);
+  // wipe #stacklist on every call, so the one control block had to be rescued to #fxbox first
+  // or it was DELETED from the document along with the rows. Nothing is wiped now, so there
+  // is nothing to rescue — and the hazard it guarded cannot recur, because both the rows and
+  // the blocks outlive every call. Each block belongs to its own row permanently; this only
+  // has to install it the first time.
+  function adoptLayerCtl(slot, row) {
+    const block = blocks[slot];
+    if (block && row && block.parentNode !== row) row.appendChild(block);
   }
   // The rows are a FIXED POOL of STACK_MAX, keyed by slot, built exactly once and never
   // destroyed — `lyrRows[slot] = {row, …}` holding each row's own widgets. syncStackUI
@@ -398,11 +406,13 @@
       r.chev.title = open ? "Hide this layer's settings" : "Show this layer's settings";
       r.chev.setAttribute("aria-label", r.chev.title);
       r.chev.setAttribute("aria-expanded", String(open));
-      // The selected layer's row carries the controls, so its header and the sliders it
-      // governs read as one block. Everything above (mute, effect, gain, blend) is the row's
-      // own markup; everything below is #lyrctl, moved in. appendChild MOVES it, so this both
-      // installs it here and takes it out of whichever row had it.
-      if (slot === stackSel) adoptLayerCtl(r.row);
+      // Each layer's row carries ITS OWN controls, so a row reads as one complete object:
+      // header (effect, mute, gain, blend), then what it draws, then what filters it, then how
+      // it is coloured. The block lives here permanently.
+      adoptLayerCtl(slot, r.row);
+      // M4a: only the selected layer's block is meaningful yet — the others hold whatever they
+      // were built with until paintBlock exists. Hidden rather than shown wrong.
+      blocks[slot].classList.toggle("inactive", slot !== stackSel);
     }
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
@@ -410,7 +420,7 @@
     // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
     // first syncStackUI moves it into a row.
     const fxbox = el("fxbox");
-    if (fxbox) fxbox.classList.toggle("hidden", !!el("lyrctl") && el("lyrctl").parentNode !== fxbox);
+    if (fxbox) fxbox.classList.toggle("hidden", !!blocks[0] && blocks[0].parentNode !== fxbox);
   }
 
   // Per-effect beat-toggle state, parallel to `states`. beatStates[effect][id] =
@@ -592,8 +602,8 @@
     paletteSel.value = L.palette != null ? L.palette : fx.palette;
     paletteReverse = L.paletteRev != null ? !!L.paletteRev : !!fx.paletteRev;
     paletteBg = L.paletteBg != null ? bgOk(L.paletteBg) : bgOk(fx.paletteBg);
-    if (ctl("palrev")) ctl("palrev").checked = paletteReverse;
-    if (ctl("palbg")) ctl("palbg").value = paletteBg;
+    palrevChk.checked = paletteReverse;
+    palbgSel.value = paletteBg;
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;   // per-layer, not per-effect
     showBoxChk.checked = showBox;
     installSeedPath(L);              // seed globals = this layer's orbit path

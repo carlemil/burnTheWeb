@@ -158,22 +158,53 @@
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
     { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
   ];
+  // A control belongs to the SCENE rather than to one effect when it is not an effect
+  // control (palette, banding) or the shared camera/display zoom. Everything else — every
+  // effect param, AND now most filter params — is owned per stacked LAYER, so each effect
+  // in a stack carries its own filter settings (each layer runs its own filter chain, see
+  // renderStackColor). The exceptions stay scene-wide because they act on the ONE finished
+  // image, not a layer: the sim tick-rate `burn` (a shared clock), the glow `bloom`, and
+  // the four "screen" filters (Scanlines / Vignette / Film grain / Barrel).
+  const SHARED_FILTER_KEYS = new Set(["burn", "bloom", "barrel", "scan", "scancount", "vignette", "grain"]);
+  // Hosts whose sliders are PER-LAYER. "fx" is every effect slider, including the whole camera
+  // group (zoom AND camera X/Y/Z) — each stacked effect samples its own space, so it holds its
+  // own camera, pushed into camRX/RY/RZ by installStackItem before that layer draws.
+  // "band" (banding) and "pal" (palette cycle/hold) are here because their values ALREADY live
+  // per-effect in states[e], so loadState rewrote these supposedly scene-wide globals on every
+  // layer selection — selecting a layer visibly re-banded the scene and changed its cycle timing.
+  // They are per-layer in the render too: bakeLayerBytes bands each layer's own ramp and
+  // stepLayerPal runs each layer's own clock, so nothing had to change downstream.
+  const LAYER_HOSTS = new Set(["fx", "band", "pal"]);
+  const isSceneCtl = c => c.host === "filter"
+    ? SHARED_FILTER_KEYS.has(c.key)                       // filter params: per-layer unless shared
+    : !LAYER_HOSTS.has(c.host);                           // TTL / transition / the scene filters stay scene-wide
+  // A control's identifying attribute. A LAYER control exists once per stack slot, so it
+  // cannot carry an id: duplicate ids are invalid and getElementById returns whichever comes
+  // first, which would quietly route every edit to layer 1. It carries the same string on
+  // `data-k` instead and is looked up through ctl()/ctlIn(). A SCENE control (ttl, tdur, burn,
+  // bloom, the screen filters) exists once in the whole page and keeps its id, which is what
+  // lets ctl() fall through to getElementById for it and leaves those sites untouched.
+  //
+  // The STRING never changes either way: "speed-lo" is a wire key (a stored `ranges` map is
+  // keyed by it), so nothing on the wire moves.
+  const kAttr = c => (isSceneCtl(c) ? ' id="' : ' data-k="');
   function ctlHTML(c) {
-    const open = '<div class="ctl" id="ctl-' + c.key + '">';
+    const K = kAttr(c);
+    const open = '<div class="ctl"' + K + 'ctl-' + c.key + '">';
     if (c.type === "check")
-      return open + '<label class="check"><input type="checkbox" id="' + c.key + '" checked> ' + c.label + "</label></div>";
+      return open + '<label class="check"><input type="checkbox"' + K + c.key + '" checked> ' + c.label + "</label></div>";
     if (c.type === "layers")
-      return open + '<label>' + c.label + ' <span class="val" id="vLayers"></span></label>' +
-        '<div class="presetrow"><button id="layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
-        '<button id="layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
-        '<input type="number" id="layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
-    const lbl = "<label>" + c.label + ' <span class="val" id="' + c.valId + '"></span></label>';
+      return open + '<label>' + c.label + ' <span class="val"' + K + 'vLayers"></span></label>' +
+        '<div class="presetrow"><button' + K + 'layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
+        '<button' + K + 'layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
+        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
+    const lbl = "<label>" + c.label + ' <span class="val"' + K + c.valId + '"></span></label>';
     if (c.type === "plain")
-      return open + lbl + '<input id="' + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
+      return open + lbl + '<input' + K + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
     // step="any": sliders are continuous. A quantised step made the readout lie
     // (a 0.001-step control formatted to 2dp looked like it jumped 0.01 -> 0.02),
     // and every value is shown to 3 significant digits by sig3() instead.
-    const inp = t => '<input type="range" id="' + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
+    const inp = t => '<input type="range"' + K + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
     return open + lbl + '<div class="dual"><div class="track"></div><div class="fill"></div>' + inp("lo") + inp("hi") + "</div></div>";
   }
   // The Filters checkbox list. Ticking one reveals its parameter group (see the
@@ -222,7 +253,10 @@
   // `#flt-<id>` survives as a hidden checkbox inside each section: it is still the on/off
   // VALUE STORE that syncFilterUI writes and the picker reads, exactly as `#preset` and
   // `#palette` sit behind their visible pickers. Deleting it would mean rewriting all of them.
-  const filterSecs = {};
+  // Per slot in `secs`; `filterSecs` is the SELECTED block's, installed by pointMaps. `let`,
+  // not const, precisely so pointMaps can re-point it — setFilterOn, syncFilterSec and
+  // flashStageMove all read it and must act on the layer you are editing.
+  let filterSecs = {};
   // The two lists, and whether their order is the user's to choose. Only the per-effect
   // group is reorderable: the whole-scene filters are one fixed post-composite pass each,
   // and there is nothing meaningful to permute.
@@ -233,17 +267,32 @@
   function filterListOf(f) { return filterGroup(f).key === "scene" ? FILTER_LISTS[1] : FILTER_LISTS[0]; }
   const filterSetOf = id => (isSceneFilter(id) ? sceneOn : activeIds);
   // The ids currently in one list, in the order they will be applied.
-  function listIds(key) {
-    return orderFilters(key === "scene" ? [...sceneOn] : [...activeIds])
-      .filter(f => filterListOf(f).key === key).map(f => f.id);
+  function listIds(key) { return listIdsFor(stackSel, key); }
+  // One slot's chain. The selected layer's live set is `activeIds`; any other layer reads its
+  // own record, falling back to its effect's shipped list — the same fallback stageLayerExtras
+  // uses, and deliberately NOT `extras[L.fx]`, which is the per-effect last-used value and
+  // would make every same-effect layer mirror the last one edited.
+  function listIdsFor(slot, key) {
+    if (key === "scene") return orderFilters([...sceneOn]).filter(f => filterListOf(f).key === key).map(f => f.id);
+    const L = stack[slot];
+    const src = slot === stackSel ? [...activeIds]
+      : (L ? (filtersOk(L.filters) || presetFilters(L.fx)) : []);
+    return orderFilters(src).filter(f => filterListOf(f).key === key).map(f => f.id);
   }
+  // Built once PER BLOCK. The call site stays literally `buildFilterUI();` (filterprobe stubs
+  // it by name) with the slot loop INSIDE, so the probe's slice is unaffected.
   function buildFilterUI() {
-    const ctlHost = ctl("filterctl");
+    for (let slot = 0; slot < STACK_MAX; slot++) buildFilterUIFor(slot);
+    pointMaps(0);
+  }
+  function buildFilterUIFor(slot) {
+    secs[slot] = {};
+    const ctlHost = ctlIn(slot, "filterctl");
     // One caption over the per-effect chain. The Scene filters box's own title already says
     // what that list is, so only this one gets a heading — and it earns it twice over now:
     // it distinguishes per-layer from whole-scene, and it is where "top to bottom is the
     // order they run" is stated.
-    const lay = el(FILTER_LISTS[0].hostId);
+    const lay = ctlIn(slot, FILTER_LISTS[0].hostId);
     if (lay) {
       const g = filterGroup(FILTERS.find(f => f.stage === "feedback"));
       const h = document.createElement("div");
@@ -256,7 +305,7 @@
       lay.appendChild(h);
     }
     FILTERS.forEach(f => {
-      const L = filterListOf(f), dest = ctl(L.hostId);
+      const L = filterListOf(f), dest = ctlIn(slot, L.hostId);
       if (!dest) return;
       const sec = document.createElement("details");
       sec.className = "filter-sec";
@@ -264,9 +313,9 @@
       const sum = document.createElement("summary");
       // Hidden value store — the picker dialog ticks it, syncFilterUI reads it.
       const cb = document.createElement("input");
-      cb.type = "checkbox"; cb.id = "flt-" + f.id;
+      cb.type = "checkbox"; ctlReg(slot, "flt-" + f.id, cb);
       cb.style.display = "none";
-      if (L.reorder) sum.appendChild(makeFilterGrab(f, sec));
+      if (L.reorder) sum.appendChild(makeFilterGrab(f, sec, slot));
       const nm = document.createElement("span");
       nm.className = "filter-name"; nm.textContent = f.name;
       // Remove from the chain without opening the picker — the commonest edit by far.
@@ -281,7 +330,7 @@
       const body = document.createElement("div");
       body.className = "filter-body";
       // Adopt this filter's controls out of the flat #filterctl list.
-      (f.params || []).forEach(k => { const n = ctl("ctl-" + k); if (n) body.appendChild(n); });
+      (f.params || []).forEach(k => { const n = ctlIn(slot, "ctl-" + k); if (n) body.appendChild(n); });
       sec.appendChild(body);
       // A GPU-only filter on the Canvas2D fallback: say so rather than leaving a row that
       // silently does nothing. (It stays in the list — see cpuBlocked: never removed.)
@@ -290,22 +339,22 @@
         sec.classList.add("off");
         sum.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
       }
-      filterSecs[f.id] = sec;
+      secs[slot][f.id] = sec;
       dest.appendChild(sec);
     });
     // "+ Add filter" per list, plus the caption that used to head the group.
     FILTER_LISTS.forEach(L => {
-      const dest = ctl(L.hostId);
+      const dest = ctlIn(slot, L.hostId);
       if (!dest) return;
       const b = document.createElement("button");
-      b.type = "button"; b.id = L.addId; b.className = "filter-add";
+      b.type = "button"; b.className = "filter-add";
+      ctlReg(slot, L.addId, b);
       b.textContent = "+ Add filter";
       b.title = "Choose which filters this list runs";
       b.addEventListener("click", () => openFilterPicker(L.key));
       dest.appendChild(b);
     });
     if (ctlHost) ctlHost.style.display = "none";   // now empty; keep the node for scans
-    renderFilterLists();
   }
   // Put one list in order: the added sections first, in chain order, then the rest hidden,
   // then the Add button. Everything stays a child of the host — see the note above on why a
@@ -322,12 +371,19 @@
     d.title = "Filters above this line run on the heat before the effect draws; filters below run on the finished picture. Drag one across to change which it does.";
     return d;
   }
+  // Every block, each ordered by ITS OWN layer's chain. Reading `activeIds` for all of them
+  // would render four copies of the selected layer's order, with the divider in the wrong
+  // place — the kind of wrong that looks like the feature half-works.
   function renderFilterLists() {
+    for (let slot = 0; slot < STACK_MAX; slot++) renderFilterListsFor(slot);
+  }
+  function renderFilterListsFor(slot) {
     renderPass = String(+renderPass + 1);
+    const mySecs = secs[slot] || {};
     FILTER_LISTS.forEach(L => {
-      const host = ctl(L.hostId);
+      const host = ctlIn(slot, L.hostId);
       if (!host) return;
-      const ids = listIds(L.key), added = new Set(ids);
+      const ids = listIdsFor(slot, L.key), added = new Set(ids);
       const cap = host.querySelector(".filter-grp");
       if (cap) host.appendChild(cap);                       // caption stays on top
       // Rows go wherever you put them — the chain is a sequence, not two sorted groups. The
@@ -337,7 +393,7 @@
       // after the last feedback filter, so the marker is drawn there and nowhere else.
       const cut = splitChain(ids).heat.length;
       ids.forEach((id, i) => {
-        const sec = filterSecs[id];
+        const sec = mySecs[id];
         if (!sec) return;
         if (L.reorder && cut > 0 && i === cut) host.appendChild(stageDivider());
         sec.style.display = "";
@@ -347,13 +403,13 @@
       // Stale dividers from the previous render, now that the runs have moved.
       [...host.querySelectorAll(".filter-div")].forEach(d => { if (d.dataset.live !== renderPass) d.remove(); });
       FILTERS.forEach(f => {
-        const sec = filterSecs[f.id];
+        const sec = mySecs[f.id];
         if (!sec || added.has(f.id) || filterListOf(f).key !== L.key) return;
         sec.style.display = "none";
         sec.open = false;
         host.appendChild(sec);
       });
-      const btn = ctl(L.addId);
+      const btn = ctlIn(slot, L.addId);
       if (btn) host.appendChild(btn);
       host.classList.toggle("empty", ids.length === 0);
     });
@@ -375,7 +431,7 @@
   // on reparent, which kills the drag after the first pixel.
   //
   // The handle also swallows the summary's click, or every drag would toggle the fold open.
-  function makeFilterGrab(f, sec) {
+  function makeFilterGrab(f, sec, slot) {
     const grab = document.createElement("span");
     grab.className = "filter-grab";
     grab.textContent = "⠿";
@@ -383,6 +439,11 @@
     grab.setAttribute("aria-label", "Drag to reorder " + f.name);
     grab.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
     grab.addEventListener("pointerdown", e => {
+      // The reorder below rewrites `activeIds`, which is the SELECTED layer's set — so a drag
+      // that starts in another layer's list has to select it first, or it would silently
+      // reorder the wrong chain. The row's own capture-phase handler is bypassed here because
+      // the grab stops propagation (it must: a rebuild mid-drag drops the pointer capture).
+      if (slot !== stackSel) selectStack(slot);
       const host = sec.parentNode;
       const rows = () => [...host.querySelectorAll(".filter-sec")].filter(s => s.style.display !== "none");
       if (rows().length < 2) return;
@@ -404,7 +465,7 @@
           if (ev.clientY < b.top + b.height / 2) break;
           to++;
         }
-        host.insertBefore(marker, others[to] || ctl(filterListOf(f).addId) || null);
+        host.insertBefore(marker, others[to] || ctlIn(slot, filterListOf(f).addId) || null);
       };
       const onUp = () => {
         grab.releasePointerCapture(e.pointerId);
@@ -525,8 +586,9 @@
   if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
   if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
   // Kept for the callers that only want the fold state refreshed.
-  function syncFilterSec(id) {
-    const sec = filterSecs[id], cb = ctl("flt-" + id);
+  function syncFilterSec(id) { syncFilterSecIn(stackSel, id); }
+  function syncFilterSecIn(slot, id) {
+    const sec = (secs[slot] || {})[id], cb = ctlIn(slot, "flt-" + id);
     if (!sec || !cb) return;
     sec.classList.toggle("idle", !cb.checked);
     if (!cb.checked) sec.open = false;
@@ -628,8 +690,18 @@
     row.classList.remove("ctl-flash"); void row.offsetWidth; row.classList.add("ctl-flash");
     setTimeout(() => row.classList.remove("ctl-flash"), 1400);
   }
+  // Every block's checkboxes, each from ITS OWN layer's set — the hidden #flt-<id> store is
+  // per block, so writing only the selected one would leave the other three showing whatever
+  // they were built with.
   function syncFilterUI() {
-    FILTERS.forEach(f => { const cb = ctl("flt-" + f.id); if (cb) cb.checked = filterSetOf(f.id).has(f.id); syncFilterSec(f.id); });
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      const own = new Set(listIdsFor(slot, "layer").concat(listIdsFor(slot, "scene")));
+      FILTERS.forEach(f => {
+        const cb = ctlIn(slot, "flt-" + f.id);
+        if (cb) cb.checked = slot === stackSel ? filterSetOf(f.id).has(f.id) : own.has(f.id);
+        syncFilterSecIn(slot, f.id);
+      });
+    }
     renderFilterLists();     // membership AND order both come from the sets, so re-render
     syncFilterPicker();
   }
@@ -664,21 +736,47 @@
     f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
     palette: "Palette", banding: "Banding",
   };
-  function buildControls() {
-    const fxHost = ctl("fxctl"), bandHost = ctl("bandctl"), palHost = ctl("palctl"), filterHost = ctl("filterctl");
+  // Render the schema into ONE block, then index everything it made under `slot`. Group
+  // headings carry data-k too: a heading belongs to the block it titles, and each block shows
+  // the headings of ITS OWN effect.
+  function buildControls(slot) {
+    const root = blocks[slot];
+    const q = k => root.querySelector('[data-k="' + k + '"]');
+    const fxHost = q("fxctl"), bandHost = q("bandctl"), palHost = q("palctl"), filterHost = q("filterctl");
+    // A SCENE control exists ONCE in the whole page and keeps its id — so it is generated in
+    // slot 0 only. Generating it per block would put four elements carrying id="bloom-lo" in
+    // the document, and getElementById would hand every one of its sites the first.
+    // Filtered before the loop rather than skipped inside it, so a group whose members are
+    // all scene controls never opens an empty heading in the other blocks.
     let open = null;
-    CONTROLS.forEach(c => {
+    CONTROLS.filter(c => slot === 0 || !isSceneCtl(c)).forEach(c => {
       const host = c.host === "band" ? bandHost : c.host === "pal" ? palHost
         : c.host === "filter" ? filterHost : fxHost;
       if (c.group !== open) {
         open = c.group;
         if (c.group) host.insertAdjacentHTML("beforeend",
-          '<div class="ctl-grp" id="grp-' + c.group + '">' + CTL_GROUPS[c.group] + "</div>");
+          '<div class="ctl-grp" data-k="grp-' + c.group + '">' + CTL_GROUPS[c.group] + "</div>");
       }
       host.insertAdjacentHTML("beforeend", ctlHTML(c));
     });
+    // Index every [data-k] the block now holds: the ones authored in the template (the four
+    // hosts, the palette strip, Reset, Orbit) and the ones just generated. Registered by
+    // REFERENCE, so a node keeps resolving after buildFilterUI adopts it into a filter body or
+    // the POPPABLE pass exports it to #breakout.
+    for (const n of root.querySelectorAll("[data-k]")) ctlReg(slot, n.dataset.k, n);
   }
-  buildControls();   // render the control DOM before the bind() / bindRange() wiring below reads it
+  // One block per stack slot, cloned from the authored <template>. Each is built by the same
+  // passes rather than copied from the finished first one: cloneNode copies nodes, not
+  // listeners, so a clone of a wired block would look right and do nothing.
+  const blockTpl = el("lyrblock");
+  for (let slot = 0; slot < STACK_MAX; slot++) {
+    blocks[slot] = blockTpl.content.firstElementChild.cloneNode(true);
+    blocks[slot].dataset.slot = String(slot);
+    buildControls(slot);
+  }
+  // All four go into the document now (the wiring passes below read them); syncStackUI moves
+  // each into its layer's row on the first paint.
+  for (const b of blocks) el("fxbox").appendChild(b);
 
   function bind(id, valId, fmt, onChange) {
     const input = el(id), out = el(valId);
@@ -693,15 +791,19 @@
   // per-effect state/persist/preset machinery); each layer adds a smaller,
   // fewer-point, differently-seeded copy of the fractal.
   const LAYER_MAX = CONFIG.layerMax;
-  function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); el("vLayers").textContent = layerCount; }
-  ctl("layers").addEventListener("input", () => applyLayers(+ctl("layers").value));
+  function applyLayers(v) { layerCount = Math.max(1, Math.min(LAYER_MAX, v | 0)); ctl("vLayers").textContent = layerCount; }
   function stepLayers(d) {
     const v = Math.max(1, Math.min(LAYER_MAX, (+ctl("layers").value | 0) + d));
     ctl("layers").value = v;
     ctl("layers").dispatchEvent(new Event("input", { bubbles: true }));   // updates + persists via onEdit
   }
-  el("layer-plus").addEventListener("click", () => stepLayers(1));
-  el("layer-minus").addEventListener("click", () => stepLayers(-1));
+  // Wired per block. The handlers read back through ctl(), i.e. the SELECTED layer's nodes,
+  // which is right because touching a block selects it first.
+  for (let slot = 0; slot < STACK_MAX; slot++) {
+    ctlIn(slot, "layers").addEventListener("input", () => applyLayers(+ctl("layers").value));
+    ctlIn(slot, "layer-plus").addEventListener("click", () => stepLayers(1));
+    ctlIn(slot, "layer-minus").addEventListener("click", () => stepLayers(-1));
+  }
 
   // Ranged (dual-thumb) sliders: the two thumbs set a [lo,hi] band and the live
   // value wanders erratically inside it — a random target reached over a random

@@ -349,7 +349,10 @@
     // Esc close it), and every setEffect shows it iff the selected effect is cardioid AND wanted.
     // So it stays open as you jump between cardioid layers (showing each layer's orbit) and
     // auto-hides on a non-cardioid layer, re-appearing when you return to a cardioid one.
-    el("cardbtn").style.display = fx.cardioid ? "" : "none";
+    for (let s = 0; s < STACK_MAX; s++) {
+      const b = ctlIn(s, "cardbtn"), L = stack[s];
+      if (b) b.style.display = (s === stackSel ? fx.cardioid : L && EFFECTS[L.fx].cardioid) ? "" : "none";
+    }
     cardOpen(!!fx.cardioid && cardWanted);
     applyLayerRanges(stack[stackSel].ranges);   // this layer's custom slider bounds — BEFORE loadState, so its values validate against them
     loadState(i);                     // restore this effect's remembered sliders

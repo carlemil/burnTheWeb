@@ -29,10 +29,12 @@
   // backups (see collectRanges/applyRanges); ↺ restores the shipped ones. The
   // fields don't persist themselves — rngApply dispatches `input` on the real
   // slider, and the delegated onEdit turns that into a persist + autosave.
-  function ctlRangeInputs(key) {   // a dual's two thumbs share one set of bounds
-    const lo = ctl(key + "-lo"), hi = ctl(key + "-hi");
+  function ctlRangeInputs(key) { return ctlRangeInputsIn(stackSel, key); }
+  function ctlRangeInputsIn(slot, key) {   // a dual's two thumbs share one set of bounds
+    const g = k => ctlIn(slot, k) || el(k);      // el() covers the scene controls, which have ids
+    const lo = g(key + "-lo"), hi = g(key + "-hi");
     if (lo && hi) return [lo, hi];
-    const p = ctl(key);
+    const p = g(key);
     return p && p.type === "range" ? [p] : [];
   }
   // A slider's `step` attribute as a NUMBER for the editor field: "any" (continuous) and
@@ -55,8 +57,8 @@
       inp.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
-  function makeRangeEditor(key) {
-    const els = ctlRangeInputs(key);
+  function makeRangeEditor(slot, key) {
+    const els = ctlRangeInputsIn(slot, key);
     if (!els.length) return null;
     const box = document.createElement("div");
     box.className = "rng-edit";
@@ -100,8 +102,13 @@
     if (!g || !CTL_GROUPS[g]) return "";
     return (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
   }
-  POPPABLE.forEach(key => {
-    const box = ctl("ctl-" + key);
+  // Once PER BLOCK. Each block's .ctl boxes get their own owner line, bounds editor, pop
+  // button and launcher row, and each is exported into the one #breakout column;
+  // refreshBreakout is what keeps only the selected layer's boxes visible.
+  for (let slot = 0; slot < STACK_MAX; slot++) POPPABLE.forEach(key => {
+    const box = ctlIn(slot, "ctl-" + key);
+    if (!box) return;                            // a scene control exists in slot 0 only
+    box.dataset.slot = String(slot);
     box.classList.add("poppable");
     // Title line, first child so it sits above the label. Only ever visible in
     // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
@@ -128,7 +135,7 @@
     // everything lands in front of that. `.trig-t` is that anchor; with no chips (a `plain`
     // control that can't be beat-armed) there is nothing to insert before and appending is
     // right, which insertBefore(…, null) does for free.
-    const rngEd = makeRangeEditor(key);
+    const rngEd = makeRangeEditor(slot, key);
     if (rngEd) {
       const anchor = box.querySelector(".trig-t");
       box.insertBefore(rngEd, anchor);
@@ -146,7 +153,7 @@
     row.appendChild(name);
     // Beat dots, left of the +/- button. Only for sliders that have chips at all —
     // `plain` controls are poppable but never armed, so they get no dots.
-    const w = W[0] && W[0][key];
+    const w = W[slot] && W[slot][key];
     if (w && w.chips) {
       const dots = document.createElement("span");
       dots.className = "ctl-dots";
@@ -164,30 +171,20 @@
     box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
     breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
     if (w) w.row = row;
-    rows[key] = row;
-    syncPopBtns(key);
+    else rows[key] = row;                        // a scene control has no wiring record to hang it on
+    ctlReg(slot, "row-" + key, row);
   });
   // The launcher rows and beat dots are the last per-block pieces to exist, so install
   // slot 0 into the singleton maps now that its record is complete.
   pointMaps(0);
-  // Index the layer control block as slot 0. Every per-layer control node is registered
-  // under the string that is its id today, so ctl(k) resolves through keyMap instead of
-  // getElementById — the same node, by a route that can hold four of them. This runs LAST,
-  // after buildControls, buildFilterUI and the POPPABLE pass above, because it walks the
-  // finished DOM; from M4a each build pass registers its own nodes as it makes them and
-  // this whole-document sweep goes away.
-  //
-  // #breakout is walked too: the pass above just moved every .ctl out of the block into it,
-  // and those nodes are the ones the control sites look up.
-  blocks[0] = el("lyrctl");
-  for (const host of [el("lyrctl"), el("breakout")]) {
-    if (!host) continue;
-    if (host.id) ctlReg(0, host.id, host);
-    for (const n of host.querySelectorAll("[id]")) ctlReg(0, n.id, n);
-  }
+  POPPABLE.forEach(syncPopBtns);
+
   function syncPopBtns(key) {         // keep both the menu-row and the box's button in sync
     const docked = !popped.has(key);
-    for (const host of [rows[key], ctl("ctl-" + key)]) {
+    // Every block's launcher row, not just the selected one: a scene control such as `bloom`
+    // has ONE box and STACK_MAX rows, and rows left unwritten desync from `popped`.
+    for (const host of ctlEach("row-" + key).concat(ctlEach("ctl-" + key), [rows[key]])) {
+      if (!host) continue;
       const b = host.querySelector(".ctl-pop");
       if (!b) continue;
       b.textContent = docked ? "+" : "−";
@@ -198,7 +195,8 @@
   function popCtl(key) {
     if (popped.has(key)) return;
     popped.add(key);
-    breakout.appendChild(ctl("ctl-" + key));      // append ⇒ boxes stack top→down in click order
+    const b = ctl("ctl-" + key);
+    if (b) breakout.appendChild(b);              // append ⇒ boxes stack top→down in click order
     syncPopBtns(key);
     refreshBreakout();
   }
@@ -217,13 +215,18 @@
     const keys = [...popped];                    // snapshot: dockCtl mutates the set
     for (const key of keys) dockCtl(key);
   }
+  // #breakout holds one .ctl per POPPABLE key PER BLOCK. Only the selected layer's are ever
+  // shown: without the slot test all four would stack up, identical and indistinguishable.
   function refreshBreakout() {
     const shown = shownKeys();
     let anyVisible = false;
     for (const key of POPPABLE) {
-      const vis = popped.has(key) && shown.has(key);   // shown only when popped AND used by this effect
-      ctl("ctl-" + key).style.display = vis ? "" : "none";
-      if (vis) anyVisible = true;
+      for (const box of ctlEach("ctl-" + key).concat(el("ctl-" + key) ? [el("ctl-" + key)] : [])) {
+        const mine = !box.dataset.slot || +box.dataset.slot === stackSel;
+        const vis = mine && popped.has(key) && shown.has(key);   // popped AND used by this effect AND this layer's
+        box.style.display = vis ? "" : "none";
+        if (vis) anyVisible = true;
+      }
     }
     breakout.classList.toggle("empty", !anyVisible);
   }
@@ -330,16 +333,20 @@
   });
   // Reverse the colour order for the selected layer. Re-bakes the LUT immediately (the
   // multi-layer path re-bakes per frame via bakeLayerBytes); onEdit persists + autosaves it.
-  const palrevChk = el("palrev");
-  palrevChk.addEventListener("change", () => {
+  // Accessors over ctl(), not captured nodes: there is one of these per block and the live
+  // value belongs to the selected layer. Reading and writing sites stay written as they were.
+  const palrevChk = { get checked() { const n = ctl("palrev"); return !!n && n.checked; },
+                      set checked(v) { for (const n of ctlEach("palrev")) n.checked = v; } };
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "palrev").addEventListener("change", () => {
     paletteReverse = palrevChk.checked;
     composePalette(0);
     paletteDirty = true;
     captureLayerExtras(stack[stackSel]);   // so the selected layer owns the new value at once
   });
   // Background (heat 0): black / white / palette. Same re-bake + capture path as reverse.
-  const palbgSel = el("palbg");
-  palbgSel.addEventListener("change", () => {
+  const palbgSel = { get value() { const n = ctl("palbg"); return n ? n.value : "palette"; },
+                     set value(v) { for (const n of ctlEach("palbg")) n.value = v; } };
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "palbg").addEventListener("change", () => {
     paletteBg = bgOk(palbgSel.value);
     composePalette(0);
     paletteDirty = true;
@@ -360,8 +367,10 @@
     a.value = lo; b.value = hi;
     a.dispatchEvent(new Event("input")); b.dispatchEvent(new Event("input"));
   }
-  for (const id of ["palcycle-lo", "palcycle-hi"])
-    el(id).addEventListener("input", syncMorphFromSlider);
+  // Per block: palcycle is a layer control, so there is one pair of thumbs per stack slot.
+  for (let slot = 0; slot < STACK_MAX; slot++)
+    for (const id of ["palcycle-lo", "palcycle-hi"])
+      ctlIn(slot, id).addEventListener("input", syncMorphFromSlider);
   // Persist any control change (slider drag, select, checkbox) — one delegated
   // listener over the whole panel covers them all. When a preset is selected the
   // edit is auto-saved into it; in "— unsaved scene —" it just updates the working scene.
@@ -399,7 +408,7 @@
   // Reset: restore *only the current effect's* settings (sliders, beat chips,
   // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
   // change the effect, other effects, or the shared controls (auto-cycle, panel).
-  el("reset").addEventListener("click", () => {
+  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "reset").addEventListener("click", () => {
     // Confirm first — this throws away every change to the effect (values, ranges, beat
     // wiring, palette) and is not undoable.
     if (!confirm("Reset " + EFFECTS[effect].name + " to its shipped defaults?\nYour changes to this effect (sliders, ranges, beats, palette) will be lost.")) return;
