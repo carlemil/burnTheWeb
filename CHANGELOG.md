@@ -14,6 +14,30 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.8.0] — 2026-08-03
+
+### Changed
+
+- **Each layer is now one complete box.** The Layers list and the separate "Layer effect &
+  filters" box were two halves of the same thought — a row in one place, the settings for it
+  somewhere else. Click a layer and it opens out where it sits: its header across the top
+  (which effect it runs, its on/off dot, its strength slider, remove, and its blend mode), and
+  directly underneath, everything that shapes it — that effect's own sliders, then its filter
+  chain, then its palette. The layers you are not editing stay as single compact rows, so the
+  list still reads as a stack.
+
+  One knock-on to expect: the other layers now sit below the open one's controls, so reaching
+  layer three means scrolling past layer one's sliders. That is the cost of a layer being one
+  object rather than two.
+
+### Internal
+
+- The controls are MOVED into the selected row, not duplicated — there is one copy of them,
+  since the DOM is the store for the selected layer. `parkLayerCtl()` returns the block to its
+  home box before `syncStackUI` wipes the row list, which it does on every selection, mute,
+  gain drag, blend pick and add/remove; without that ordering the wipe would delete every
+  slider, filter and palette control from the document.
+
 ## [1.7.0] — 2026-08-03
 
 ### Added

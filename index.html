@@ -681,6 +681,27 @@
      and a longer, more usable gain slider than the old fixed 38px. */
   #panel .lyr-ctl { display: flex; align-items: center; gap: 7px; padding-top: 1px; }
   #panel .lyr-ctl .sp { flex: 1; }
+  /* ---- the selected layer's controls, INSIDE its row -------------------------------
+     #lyrctl (effect sliders → filters → palette) is moved into the selected row by
+     syncStackUI, so a layer is one complete object: what it draws, what filters it, how it
+     is coloured. It spans both grid columns and sits under the header it belongs to. */
+  #panel .lyr > #lyrctl {
+    grid-column: 1 / -1;
+    margin: 6px -7px -6px;                    /* out to the row's padding edges */
+    padding: 8px 8px 7px;
+    border-top: 1px solid rgba(255, 140, 40, 0.28);
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 0 0 6px 6px;
+    cursor: default;                          /* the ROW is clickable; its contents are not */
+  }
+  /* The selected row is a container now, not a line — give it room and let it stand out
+     from the compact rows around it. */
+  #panel .lyr.sel { padding-bottom: 0; }
+  #panel .lyr > #lyrctl > label:first-child,
+  #panel .lyr > #lyrctl > .ctl-grp:first-child { margin-top: 0; }
+  /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in
+     the DOM as #lyrctl's home — see parkLayerCtl. */
+  #panel #fxbox.hidden { display: none; }
   #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
   #panel .lyr b {
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
@@ -1293,11 +1314,18 @@
   <button id="addlayer" type="button" title="Add another effect on top of this one (up to 4)">+ Add layer</button>
   </details>
 
-  <!-- Box — Layer effect & filters: pick the selected layer's visual, its sliders, its
-       per-layer filters, and its palette. Everything here edits the SELECTED layer
-       (hence the singular "effect"); whole-scene FX live in the Scene filters box above. -->
-  <details class="box" open>
+  <!-- Box — Layer effect & filters. THIS BOX IS NORMALLY EMPTY AND HIDDEN: its body
+       (#lyrctl) is MOVED into the selected layer's row in the Layers box above, so each
+       layer reads as one complete unit — header, then its effect's sliders, then its
+       filters, then its palette. Same adopt trick the ☰ menubar uses on #sysbox, and for
+       the same reason: these are singleton controls (the DOM is the store for the selected
+       layer), so there is exactly one copy and it moves rather than being rebuilt.
+       The box stays in the markup because it is #lyrctl's HOME — syncStackUI moves the
+       block back here before it rebuilds the rows, or rebuilding would delete every
+       control in the app. -->
+  <details class="box" id="fxbox" open>
   <summary class="box-t">Layer effect &amp; filters</summary>
+  <div id="lyrctl">
   <!-- The Effect chooser is HIDDEN here, not deleted: every layer row in the Layers box now
        carries its own, so a second visible copy of the same control was redundant. The
        element stays because it is the effect VALUE STORE — setEffect writes effectSel.value,
@@ -1327,6 +1355,7 @@
   </label>
   <div id="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
   <div id="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  </div><!-- /#lyrctl -->
   </details>
 
   <!-- Credits. Generated from CREDITS in the script — the same array the startup burn-in
@@ -1571,7 +1600,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.7.0",
+    version: "1.8.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -8713,9 +8742,29 @@
   // these are per item — so they are plain DOM whose change bubbles to the delegated
   // onEdit for persist + autosave, the same route the palette <select> takes. They are
   // also deliberately not animatable or beat-armable.
+  // The selected layer's controls (#lyrctl — effect sliders, filters, palette) live INSIDE
+  // that layer's row, so a layer reads as one complete unit: header, then what it draws,
+  // then what filters it, then how it is coloured. There is only ever one copy of those
+  // controls (the DOM is the store for the selected layer), so the block is MOVED rather
+  // than rebuilt, exactly like the ☰ menubar adopting #sysbox.
+  //
+  // parkLayerCtl MUST run before the rows are cleared. syncStackUI wipes #stacklist on every
+  // call — a selection change, a mute, a gain drag — and anything adopted into a row goes
+  // with it. That would not "reset" the panel, it would DELETE every slider, filter and
+  // palette control from the document, and nothing that looks them up by id would work
+  // again. Same failure the menubar's returnAdopted exists to prevent.
+  function parkLayerCtl() {
+    const ctl = el("lyrctl"), home = el("fxbox");
+    if (ctl && home && ctl.parentNode !== home) home.appendChild(ctl);
+  }
+  function adoptLayerCtl(row) {
+    const ctl = el("lyrctl");
+    if (ctl && row) row.appendChild(ctl);
+  }
   function syncStackUI() {
     const host = el("stacklist");
     if (!host) return;
+    parkLayerCtl();                 // ...before the wipe below, or the controls go with it
     host.textContent = "";
     stack.forEach((L, j) => {
       const row = document.createElement("div");
@@ -8895,9 +8944,17 @@
       row.appendChild(blendRow);
 
       host.appendChild(row);
+      // The selected layer's row carries the controls, so the header you just built and the
+      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
+      // the row's own markup; everything below is #lyrctl, moved in.
+      if (j === stackSel) adoptLayerCtl(row);
     });
     const add = el("addlayer");
     if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
+    // The old box is empty now — hide the chrome rather than showing a stray heading over
+    // nothing. Kept in the DOM: it is #lyrctl's home (see parkLayerCtl).
+    const fxbox = el("fxbox");
+    if (fxbox) fxbox.classList.toggle("hidden", !!el("lyrctl") && el("lyrctl").parentNode !== fxbox);
   }
 
   // Per-effect beat-toggle state, parallel to `states`. beatStates[effect][id] =
