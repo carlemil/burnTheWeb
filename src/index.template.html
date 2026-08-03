@@ -23,6 +23,11 @@
 <canvas id="creditcv"></canvas>
 
 <div id="panel" class="hidden">
+  <!-- Title + subtitle are HIDDEN, not deleted (see the `#panel h1` rule in the CSS): the
+       panel opens straight onto the scene controls. Both nodes stay because they are still
+       wired — `sub` is written by setEffect on every effect change, and #help-btn opens the
+       help panel — and the same help is reachable from the ☰ menu ("What the controls do…").
+       Deleting them would mean null-guarding both call sites for no gain. -->
   <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 

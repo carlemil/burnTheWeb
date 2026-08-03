@@ -181,6 +181,30 @@
     if (Array.isArray(saved.layers) && saved.layers.length) {
       installStack(mergeLayers(saved));
       effectSel.value = stack[0].fx;
+    } else {
+      // NO `layers` ⇒ a single-layer scene, and mergeLayers never runs — so nothing ever
+      // read the filter list back and every reload silently unticked Fire / Fade / the
+      // image filters while the blob still held them. (Multi-layer scenes were fine: their
+      // items carry `filters` and go through mergeLayers, which is why this only bit once
+      // you were down to one layer.)
+      //
+      // The item's `filters` is given a CONCRETE value here, which is what the comment in
+      // layerFeedbackChain means by "old-scene compat is handled at load in mergeLayers":
+      // `applyLayerExtras` must keep falling back to the DESCRIPTOR default rather than the
+      // runtime `extras[L.fx]`, because that fallback is what made every not-yet-captured
+      // same-effect layer mirror the last one edited. So the value has to be in place
+      // BEFORE it is read, not discovered afterwards.
+      //
+      // Setting the live `activeIds` instead does NOT work, and the reason is worth
+      // recording: `stackOut()` returns null the moment the stack holds one item, so it
+      // never freezes and persist() never captures the live set into `L.filters` — the
+      // restored `activeIds` is simply overwritten by applyLayerExtras a moment later.
+      // Nothing clobbers `L.filters` for a one-item stack, for exactly the same reason.
+      const e = Number.isInteger(saved.effect) && EFFECTS[saved.effect] ? saved.effect : 0;
+      const fset = filtersOk(extras[e] && extras[e].filters);
+      // Written in registry order, like every other stored list, so reordering FILTERS
+      // cannot remap a saved scene.
+      if (fset && stack.length === 1) stack[0].filters = FILTERS.filter(f => fset.has(f.id)).map(f => f.id);
     }
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);

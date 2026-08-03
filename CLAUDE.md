@@ -1087,6 +1087,27 @@ again, and removing it means touching the transition path and `render()` for no 
 job is gone with it: the documented wart where **adding a shader item to a point scene
 un-zoomed the point item** cannot happen now that every layer zooms itself.
 
+**A single-layer scene never touches `mergeLayers`, and that lost its filters on every
+reload.** `applyBlob` only calls `mergeLayers` when `saved.layers` exists, so a one-item
+scene kept the initial `newStackItem(0)` with `filters: null` — and `applyLayerExtras` falls
+back to the **descriptor default** (no filters) rather than the runtime `extras[L.fx]`, on
+purpose. So Fire / Fade / the image filters were faithfully written to `extras[e].filters`
+and then never read: the blob still held them, the checkboxes came back empty. Multi-layer
+scenes were unaffected (their items carry `filters` through `mergeLayers`), which is why it
+only bit once you were down to one layer, and why the palette — which *does* fall back to
+`fx.palette` — survived while the filters did not.
+
+The fix seeds `stack[0].filters` from the restored `extras[e]` in `applyBlob`'s else-branch:
+a **concrete value at load**, which is exactly what `layerFeedbackChain`'s comment means by
+"old-scene compat is handled at load in mergeLayers". Two things make that the only workable
+shape, both learned by trying the alternatives:
+- **Do not add an `extras[L.fx]` fallback to `applyLayerExtras`.** That is the fallback whose
+  removal fixed every not-yet-captured same-effect layer mirroring the last one edited.
+- **Setting the live `activeIds` instead does not survive.** `stackOut()` returns null the
+  moment the stack holds one item, so it never freezes and `persist()` never captures the
+  live set into `L.filters` — `applyLayerExtras` overwrites `activeIds` a moment later. The
+  same fact is what makes the seed safe: nothing clobbers `L.filters` for a one-item stack.
+
 **Persistence: an optional `layers` array.** When the stack holds one item **nothing is
 emitted at all** (`stackOut` returns null), so every scene saved, shared or backed up
 before the feature — and every non-stacked one after it — is byte-for-byte unchanged.

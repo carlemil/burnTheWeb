@@ -34,14 +34,11 @@
     user-select: none;
     transition: opacity .3s, transform .3s, visibility .3s;
   }
-  #panel h1 {
-    margin: 0 0 2px;
-    font-size: 14px;
-    letter-spacing: .04em;
-    color: #ffb15a;
-    text-shadow: 0 0 12px rgba(255, 120, 20, .8);
-  }
-  #panel .sub { margin: 0 0 12px; opacity: .6; font-size: 11px; }
+  /* The panel opens straight onto the scene controls: no title, no per-effect subtitle.
+     Both nodes stay in the DOM and stay wired (setEffect writes #sub on every effect change,
+     #help-btn opens the help panel, which the ☰ menu also offers) — only the chrome is gone,
+     so nothing needs null-guarding. The first .box supplies its own top margin. */
+  #panel h1, #panel .sub { display: none; }
   #panel label, #menubar label { display: block; margin: 10px 0 3px; opacity: .85; }
   /* Control appearance is scoped to both the menu and the pop-out column so a
      control keeps its styling after it moves into a break-out box (#breakout). */
