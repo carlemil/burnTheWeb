@@ -564,10 +564,13 @@ adopt trick the ☰ menubar uses on `#sysbox`.
   block, so reaching layer 3 otherwise means scrolling past layer 1's sliders. It only HIDES:
   `#lyrctl` stays in the row and in the document either way, so every id lookup keeps working.
   Transient and per-session, like the panel's own box folds.
-- **The chevron sits top-left beside the effect chooser, in a `.lyr-nameline` flex WRAPPER that
-  takes the chooser's grid cell** — never as a new grid child. The row is a two-column grid whose
-  handle spans `grid-row: 1 / 4`, so an extra cell shifts every later child into the wrong column
-  and the chooser and blend row visibly collapse.
+- **The chevron is on EVERY row, in the upper-left corner**, and is the one control that both
+  opens and closes: on an unselected row it reads ▸ and selects + unfolds that layer, on the
+  selected row it toggles the fold.
+- **It is an explicitly PLACED grid child** (`grid-column: 1; grid-row: 1`), and that placement
+  is what makes it safe. Appended without one it takes the next auto cell and pushes the
+  chooser, the mute row and the blend row a cell along each, visibly collapsing the row — tried
+  it, that is what it looks like. The drag handle drops to `grid-row: 2 / 4` to make room.
 - It is styled as **`#panel .lyr b.lyr-chev`**, with the type selector: `#panel .lyr b` gives
   every `<b>` in a row the mute/✕ button chrome (border, background, `font: 10px/1`) and outranks
   a plain class selector, so a class-only rule renders the chevron as a 10px mark in a little box.

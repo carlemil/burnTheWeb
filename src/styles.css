@@ -734,24 +734,24 @@
   /* Fold the open layer shut without deselecting it — with the controls inline, an open
      layer is tall and the rows below it are a long scroll away. The block is HIDDEN, never
      removed: #lyrctl stays in the row and in the document, so every id lookup keeps working. */
-  /* Top-left of the open layer, beside the effect chooser. It lives in a flex wrapper that
-     takes the chooser's grid cell — never as a new grid child, since the row's handle spans
-     grid-row 1/4 and an extra cell shifts everything into the wrong column. */
-  #panel .lyr-nameline { display: flex; align-items: center; gap: 5px; min-width: 0; }
-  #panel .lyr-nameline > select.lyr-name { flex: 1 1 auto; min-width: 0; }
-  /* line-height 1, not 0: as a FLEX item a zero line box collapses the glyph to a sliver.
-     The ::before chevrons can use 0 because they are inline inside a taller line. */
-  /* `b.lyr-chev`, not `.lyr-chev`: `#panel .lyr b` gives every <b> in a row the mute/✕ button
-     chrome (border, background, `font: 10px/1`) and outranks a plain class selector, so the
-     chevron came out as a 10px mark in a little box. The type selector matches its specificity
-     and the reset below strips the button look — this is a marker, not a control to press. */
+  /* The fold control, in the row's UPPER-LEFT CORNER, on EVERY row — clicking an unselected
+     layer's chevron selects it and opens it, so the same control both opens and closes.
+     Explicitly placed at column 1 / row 1, and that placement is what lets it be a grid child
+     at all: appended without one it takes the next auto cell and pushes the chooser, the mute
+     row and the blend row a cell along each, which visibly collapses the row.
+     `b.lyr-chev`, not `.lyr-chev`: `#panel .lyr b` gives every <b> in a row the mute/x button
+     chrome (border, background, `font: 10px/1`) and outranks a plain class selector, so a
+     class-only rule renders it as a 10px mark in a little box. The reset strips that chrome —
+     this is a marker, not a control to press. */
   #panel .lyr b.lyr-chev {
-    flex: 0 0 auto; width: 16px; height: 18px; cursor: pointer; color: #ffb15a; opacity: .8;
+    grid-column: 1; grid-row: 1; justify-self: center; align-self: center;
+    width: 15px; height: 18px; cursor: pointer; color: #ffb15a; opacity: .8;
     font: 20px/1 monospace; padding: 0; border: 0; background: none;   /* 2x, and not a button */
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
-  #panel .lyr-chev:hover { opacity: 1; }
+  /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
+  #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > #lyrctl { display: none; }
   #panel .lyr.folded { padding-bottom: 6px; }
   #panel .lyr > #lyrctl {

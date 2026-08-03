@@ -301,43 +301,37 @@
       // The selected layer's row carries the controls, so the header you just built and the
       // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
       // the row's own markup; everything below is #lyrctl, moved in.
+      // EVERY row gets a chevron, not just the open one — the same control opens a collapsed
+      // layer and closes the open one, so there is one obvious way to fold and unfold rather
+      // than a control that only appears once you are already there.
+      //
+      // Open means "selected and not folded". So on an unselected row the chevron reads ▸ and
+      // clicking it selects that layer AND clears the fold; on the selected row it toggles.
+      const isOpen = j === stackSel && !lyrFolded;
+      const chev = document.createElement("b");
+      chev.className = "lyr-chev";
+      chev.textContent = isOpen ? "▾" : "▸";
+      chev.title = isOpen ? "Hide this layer's settings" : "Show this layer's settings";
+      chev.setAttribute("aria-label", chev.title);
+      chev.setAttribute("aria-expanded", String(isOpen));
+      // stopPropagation on pointerdown, or the row's capture-phase handler would select first
+      // and re-run syncStackUI underneath this click.
+      chev.addEventListener("pointerdown", e => e.stopPropagation());
+      chev.addEventListener("click", e => {
+        e.stopPropagation();
+        if (j !== stackSel) { lyrFolded = false; selectStack(j); }   // ...which re-runs syncStackUI
+        else { lyrFolded = !lyrFolded; syncStackUI(); }
+      });
+      // A grid child, but an EXPLICITLY PLACED one (column 1 / row 1 — see .lyr-chev). Appended
+      // without placement it takes the next auto cell and shifts the chooser, the mute row and
+      // the blend row each one along, which visibly collapses the row.
+      row.appendChild(chev);
+      // The selected layer's row carries the controls, so the header you just built and the
+      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is the
+      // row's own markup; everything below is #lyrctl, moved in.
       if (j === stackSel) {
         adoptLayerCtl(row);
-        // A chevron to fold the open layer shut without deselecting it. With the controls
-        // inline, an open layer is several hundred pixels tall and the layers below it are a
-        // long scroll away — this collapses that without changing which layer you are editing.
-        //
-        // It only HIDES the block (a class on the row); #lyrctl stays in the row and stays in
-        // the document either way, so every id lookup keeps working. Collapsing is transient
-        // and per-session, like the panel's own fold states, so it is a plain variable rather
-        // than anything persisted.
         row.classList.toggle("folded", lyrFolded);
-        const chev = document.createElement("b");
-        chev.className = "lyr-chev";
-        chev.textContent = lyrFolded ? "▸" : "▾";
-        chev.title = lyrFolded ? "Show this layer's settings" : "Hide this layer's settings";
-        chev.setAttribute("aria-label", chev.title);
-        chev.setAttribute("aria-expanded", String(!lyrFolded));
-        // stopPropagation, or the row's capture-phase pointerdown would also select — which
-        // is harmless here (it is already selected) but would re-run syncStackUI mid-click.
-        chev.addEventListener("pointerdown", e => e.stopPropagation());
-        chev.addEventListener("click", e => { e.stopPropagation(); lyrFolded = !lyrFolded; syncStackUI(); });
-        // Top-left, beside the effect chooser — the fold belongs with the layer's headline,
-        // not down in the mute/gain row.
-        //
-        // It goes in a flex WRAPPER that takes the chooser's existing grid cell, never as a
-        // new grid child: the row is a two-column grid whose handle spans `grid-row: 1 / 4`,
-        // so an extra cell shifts every later child into the wrong column and the chooser and
-        // blend row visibly collapse. (Tried it; that is what it looks like.)
-        const nameSel = row.querySelector("select.lyr-name");
-        if (nameSel) {
-          const line = document.createElement("div");
-          line.className = "lyr-nameline";
-          row.insertBefore(line, nameSel);      // claim the cell the chooser was in
-          line.append(chev, nameSel);
-        } else {
-          row.appendChild(chev);
-        }
       }
     });
     const add = el("addlayer");

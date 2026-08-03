@@ -752,24 +752,24 @@
   /* Fold the open layer shut without deselecting it — with the controls inline, an open
      layer is tall and the rows below it are a long scroll away. The block is HIDDEN, never
      removed: #lyrctl stays in the row and in the document, so every id lookup keeps working. */
-  /* Top-left of the open layer, beside the effect chooser. It lives in a flex wrapper that
-     takes the chooser's grid cell — never as a new grid child, since the row's handle spans
-     grid-row 1/4 and an extra cell shifts everything into the wrong column. */
-  #panel .lyr-nameline { display: flex; align-items: center; gap: 5px; min-width: 0; }
-  #panel .lyr-nameline > select.lyr-name { flex: 1 1 auto; min-width: 0; }
-  /* line-height 1, not 0: as a FLEX item a zero line box collapses the glyph to a sliver.
-     The ::before chevrons can use 0 because they are inline inside a taller line. */
-  /* `b.lyr-chev`, not `.lyr-chev`: `#panel .lyr b` gives every <b> in a row the mute/✕ button
-     chrome (border, background, `font: 10px/1`) and outranks a plain class selector, so the
-     chevron came out as a 10px mark in a little box. The type selector matches its specificity
-     and the reset below strips the button look — this is a marker, not a control to press. */
+  /* The fold control, in the row's UPPER-LEFT CORNER, on EVERY row — clicking an unselected
+     layer's chevron selects it and opens it, so the same control both opens and closes.
+     Explicitly placed at column 1 / row 1, and that placement is what lets it be a grid child
+     at all: appended without one it takes the next auto cell and pushes the chooser, the mute
+     row and the blend row a cell along each, which visibly collapses the row.
+     `b.lyr-chev`, not `.lyr-chev`: `#panel .lyr b` gives every <b> in a row the mute/x button
+     chrome (border, background, `font: 10px/1`) and outranks a plain class selector, so a
+     class-only rule renders it as a 10px mark in a little box. The reset strips that chrome —
+     this is a marker, not a control to press. */
   #panel .lyr b.lyr-chev {
-    flex: 0 0 auto; width: 16px; height: 18px; cursor: pointer; color: #ffb15a; opacity: .8;
+    grid-column: 1; grid-row: 1; justify-self: center; align-self: center;
+    width: 15px; height: 18px; cursor: pointer; color: #ffb15a; opacity: .8;
     font: 20px/1 monospace; padding: 0; border: 0; background: none;   /* 2x, and not a button */
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
-  #panel .lyr-chev:hover { opacity: 1; }
+  /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
+  #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > #lyrctl { display: none; }
   #panel .lyr.folded { padding-bottom: 6px; }
   #panel .lyr > #lyrctl {
@@ -9149,43 +9149,37 @@
       // The selected layer's row carries the controls, so the header you just built and the
       // sliders it governs are one block. Everything above (mute, effect, gain, blend) is
       // the row's own markup; everything below is #lyrctl, moved in.
+      // EVERY row gets a chevron, not just the open one — the same control opens a collapsed
+      // layer and closes the open one, so there is one obvious way to fold and unfold rather
+      // than a control that only appears once you are already there.
+      //
+      // Open means "selected and not folded". So on an unselected row the chevron reads ▸ and
+      // clicking it selects that layer AND clears the fold; on the selected row it toggles.
+      const isOpen = j === stackSel && !lyrFolded;
+      const chev = document.createElement("b");
+      chev.className = "lyr-chev";
+      chev.textContent = isOpen ? "▾" : "▸";
+      chev.title = isOpen ? "Hide this layer's settings" : "Show this layer's settings";
+      chev.setAttribute("aria-label", chev.title);
+      chev.setAttribute("aria-expanded", String(isOpen));
+      // stopPropagation on pointerdown, or the row's capture-phase handler would select first
+      // and re-run syncStackUI underneath this click.
+      chev.addEventListener("pointerdown", e => e.stopPropagation());
+      chev.addEventListener("click", e => {
+        e.stopPropagation();
+        if (j !== stackSel) { lyrFolded = false; selectStack(j); }   // ...which re-runs syncStackUI
+        else { lyrFolded = !lyrFolded; syncStackUI(); }
+      });
+      // A grid child, but an EXPLICITLY PLACED one (column 1 / row 1 — see .lyr-chev). Appended
+      // without placement it takes the next auto cell and shifts the chooser, the mute row and
+      // the blend row each one along, which visibly collapses the row.
+      row.appendChild(chev);
+      // The selected layer's row carries the controls, so the header you just built and the
+      // sliders it governs are one block. Everything above (mute, effect, gain, blend) is the
+      // row's own markup; everything below is #lyrctl, moved in.
       if (j === stackSel) {
         adoptLayerCtl(row);
-        // A chevron to fold the open layer shut without deselecting it. With the controls
-        // inline, an open layer is several hundred pixels tall and the layers below it are a
-        // long scroll away — this collapses that without changing which layer you are editing.
-        //
-        // It only HIDES the block (a class on the row); #lyrctl stays in the row and stays in
-        // the document either way, so every id lookup keeps working. Collapsing is transient
-        // and per-session, like the panel's own fold states, so it is a plain variable rather
-        // than anything persisted.
         row.classList.toggle("folded", lyrFolded);
-        const chev = document.createElement("b");
-        chev.className = "lyr-chev";
-        chev.textContent = lyrFolded ? "▸" : "▾";
-        chev.title = lyrFolded ? "Show this layer's settings" : "Hide this layer's settings";
-        chev.setAttribute("aria-label", chev.title);
-        chev.setAttribute("aria-expanded", String(!lyrFolded));
-        // stopPropagation, or the row's capture-phase pointerdown would also select — which
-        // is harmless here (it is already selected) but would re-run syncStackUI mid-click.
-        chev.addEventListener("pointerdown", e => e.stopPropagation());
-        chev.addEventListener("click", e => { e.stopPropagation(); lyrFolded = !lyrFolded; syncStackUI(); });
-        // Top-left, beside the effect chooser — the fold belongs with the layer's headline,
-        // not down in the mute/gain row.
-        //
-        // It goes in a flex WRAPPER that takes the chooser's existing grid cell, never as a
-        // new grid child: the row is a two-column grid whose handle spans `grid-row: 1 / 4`,
-        // so an extra cell shifts every later child into the wrong column and the chooser and
-        // blend row visibly collapse. (Tried it; that is what it looks like.)
-        const nameSel = row.querySelector("select.lyr-name");
-        if (nameSel) {
-          const line = document.createElement("div");
-          line.className = "lyr-nameline";
-          row.insertBefore(line, nameSel);      // claim the cell the chooser was in
-          line.append(chev, nameSel);
-        } else {
-          row.appendChild(chev);
-        }
       }
     });
     const add = el("addlayer");
