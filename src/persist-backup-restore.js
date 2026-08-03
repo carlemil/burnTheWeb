@@ -183,7 +183,6 @@
                    rotate: p.rotate === false ? false : undefined, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
-                   ttl: p.ttl, tdur: p.tdur,
                    layers: Array.isArray(p.layers) ? p.layers : undefined }));
   }
   // `validatePresetList` and `normalizeBackup` above are very much still live: the cloud

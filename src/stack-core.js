@@ -199,7 +199,14 @@
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
       fill.style.left = (A - mn) / span * 100 + "%";
       fill.style.width = (B - A) / span * 100 + "%";
-      out.textContent = A === B ? fmt(A) : fmt(A) + "–" + fmt(B);
+      // READOUT ONLY — never the applied value, which stays a free float (see stepAnim).
+      // A slider whose range spans more than 1 gets at most one decimal: three significant
+      // digits is right for a 0–1 knob but absurd on a wider one, where it produced readouts
+      // like "0.00815×–1.5×" for a bloom that goes to 1.5. Rounding before fmt keeps each
+      // control's own units and suffixes intact, and sig3 of an already-1dp number is that
+      // same number, so nothing narrower than 1 changes.
+      const show = v => fmt(mx - mn > 1 ? Math.round(v * 10) / 10 : v);
+      out.textContent = A === B ? show(A) : show(A) + "–" + show(B);
     }
     a.ui = ui;
     lo.addEventListener("input", () => { if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
