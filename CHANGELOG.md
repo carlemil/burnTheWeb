@@ -14,6 +14,37 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.12.3] — 2026-08-04
+
+### Changed
+
+- **Scene changes use a real transition more often.** "Cut" is no longer one of the transitions
+  the app picks between — it is only the fallback, used when you have unticked everything under
+  *Choose transitions*. It was previously weighted heavily whenever either scene carried trails,
+  so those switches mostly snapped rather than blending. Everything else you have ticked is
+  unaffected.
+- **Audio and Resolution sit at the top level of the ☰ menu.** They were behind a "System"
+  submenu, which cost an extra hover to reach the two settings the menu is mostly opened for.
+  That submenu is gone; nothing else moved.
+
+### Removed
+
+- **"Cut" no longer appears in the *Choose transitions* list.** It was never a choice worth
+  making — a cut is what you get when you turn everything else off — so ticking it alongside
+  real transitions only diluted them. Untick every row and scene changes still cut, exactly as
+  before.
+
+### Fixed
+
+- **A closed layer no longer shrinks when you select it.** Clicking a folded layer row dropped
+  a few pixels off the bottom of its frame, so the row jumped as the selection moved down a list.
+
+### Internal
+
+- CLAUDE.md records why a headless probe stalls under SwiftShader — building a second layer
+  switches on the per-layer colour path and the frame loop stops yielding, so the virtual clock
+  never advances — and the probe-generator traps that silently reuse a stale test page.
+
 ## [1.12.2] — 2026-08-04
 
 ### Removed
