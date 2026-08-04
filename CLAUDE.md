@@ -277,9 +277,15 @@ and the registry must list them in that order (`filterprobe` asserts it):
     Vignette after Bloom to darken the glow too.
   - **`SCENE_FILTER_IDS`/`SCENE_FILTER_KEYS` are the empty seams.** `isSceneFilter`, `filterOn`,
     `saveState`/`loadState` and `readSceneFx` all still route through them; empty is what makes
-    "nothing is scene-global" true in one place instead of twenty, and putting an id back
-    restores the old behaviour. `filterGroup` likewise returns one group for everything, and
-    `#screenfilterlist` + its Add button stay in the DOM, simply empty.
+    "nothing is scene-global" true in one place instead of twenty. They are kept because they
+    are the **wire-format** seam: `sceneFx` still rides in every blob, and `migrateSceneFx`
+    folds an old scene's whole-scene filters onto its layers on load.
+  - **There is no "Scene filters" box, and `FILTER_LISTS` has ONE entry.** The box fronted the
+    whole-scene stage; once that emptied it was a titled section with nothing in it, so it and
+    `#screenfilterlist`/`#screenfilterctl` are gone, `filterListOf` always returns the layer
+    list, and `filterGroup` returns one group. Putting a filter back on the whole scene now
+    means re-adding a host and a `FILTER_LISTS` entry as well as an id — the id seam alone has
+    nowhere to render, and a filter routed to a missing host silently vanishes.
   - **`migrateSceneFx`** folds a stored `sceneFx` onto the layers on load (ids appended to each
     chain — they ran last, so last is the matching position; values overwrite, since `sceneFx`
     was the authoritative copy while they were global). It runs beside `migrateCam` in both

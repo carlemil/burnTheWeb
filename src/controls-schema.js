@@ -223,11 +223,11 @@
   // two captions saying so in different words only made the list longer. The single heading
   // still works out of the registry order (all feedback, then all post-but-Bloom, then the
   // whole-scene set), so the run stays contiguous and one caption is emitted for it.
-  // ONE group: every filter belongs to a layer. There was a "Whole scene · final image" group
-  // for Bloom and the four screen filters; they are per-layer passes now, so the group has
-  // nothing to hold. FILTER_LISTS still has the scene entry and #screenfilterlist still
-  // exists — both simply stay empty, which is what keeps the Scene filters box and its Add
-  // button from needing special-casing if anything ever goes back.
+  // ONE group, and now ONE list: every filter belongs to a layer. There was a "Whole scene ·
+  // final image" group for Bloom and the four screen filters, routed to its own box; they are
+  // per-layer passes now, so both the group and the box had nothing to hold. Putting a filter
+  // back on the whole scene means re-adding a host and a FILTER_LISTS entry as well as an id
+  // to SCENE_FILTER_IDS — the id seam alone no longer has anywhere to render.
   function filterGroup(f) {
     return { key: "layer", title: "Per-effect · heat, trails & image",
              desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
@@ -262,9 +262,8 @@
   // and there is nothing meaningful to permute.
   const FILTER_LISTS = [
     { key: "layer", hostId: "filterlist", addId: "filter-add", reorder: true },
-    { key: "scene", hostId: "screenfilterlist", addId: "screenfilter-add", reorder: false },
   ];
-  function filterListOf(f) { return filterGroup(f).key === "scene" ? FILTER_LISTS[1] : FILTER_LISTS[0]; }
+  function filterListOf(f) { return FILTER_LISTS[0]; }
   const filterSetOf = id => (isSceneFilter(id) ? sceneOn : activeIds);
   // The ids currently in one list, in the order they will be applied.
   function listIds(key) { return listIdsFor(stackSel, key); }
@@ -273,7 +272,6 @@
   // uses, and deliberately NOT `extras[L.fx]`, which is the per-effect last-used value and
   // would make every same-effect layer mirror the last one edited.
   function listIdsFor(slot, key) {
-    if (key === "scene") return orderFilters([...sceneOn]).filter(f => filterListOf(f).key === key).map(f => f.id);
     const L = stack[slot];
     const src = slot === stackSel ? [...activeIds]
       : (L ? (filtersOk(L.filters) || presetFilters(L.fx)) : []);
@@ -537,10 +535,8 @@
     const dlg = el("fltdlg");
     if (!dlg) return;
     filterPickKey = key;
-    el("flt-title").textContent = key === "scene" ? "Scene filters" : "Filters for this layer";
-    el("flt-hint").textContent = key === "scene"
-      ? "Applied once to the finished, blended picture."
-      : "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
+    el("flt-title").textContent = "Filters for this layer";
+    el("flt-hint").textContent = "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
     buildFilterPicker();
     dlg.classList.remove("hidden");
   }
@@ -722,7 +718,7 @@
   // they were built with.
   function syncFilterUI() {
     for (let slot = 0; slot < STACK_MAX; slot++) {
-      const own = new Set(listIdsFor(slot, "layer").concat(listIdsFor(slot, "scene")));
+      const own = new Set(listIdsFor(slot, "layer"));
       FILTERS.forEach(f => {
         const cb = ctlIn(slot, "flt-" + f.id);
         if (cb) cb.checked = slot === stackSel ? filterSetOf(f.id).has(f.id) : own.has(f.id);

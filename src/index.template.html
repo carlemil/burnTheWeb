@@ -177,14 +177,11 @@
        value store the list drives, so it cannot drift from the selection. -->
   <div id="scenenow" class="sec-t"></div>
 
-  <!-- Box — Scene filters: whole-scene FX applied once to the finished, blended picture
-       (Bloom + the screen-stage filters). SCENE-GLOBAL — one on/off + value shared across
-       every layer (sceneOn / sceneFx), routed here by buildFilterUI (the "Whole scene" group). -->
-  <details class="box" open>
-  <summary class="box-t">Scene filters</summary>
-  <div id="screenfilterlist"><!-- whole-scene filter checkboxes, routed here from buildFilterUI --></div>
-  <div id="screenfilterctl"><!-- (unused host; params are adopted into each filter's body) --></div>
-  </details>
+  <!-- There is no "Scene filters" box. It held the whole-scene FX — Bloom and the four
+       screen-stage filters — until those became ordinary per-layer passes, after which it was
+       a titled section with nothing in it. The scene-global machinery it fronted (sceneOn,
+       sceneFx, SCENE_FILTER_IDS) is kept: it is the wire-format seam that lets a scene saved
+       when those WERE global still load, via migrateSceneFx folding them onto the layers. -->
 
   <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting; it is
        per-scene data now, so it belongs beside the other scene controls and autosaves

@@ -14,6 +14,20 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.12.2] — 2026-08-04
+
+### Removed
+
+- **The empty "Scene filters" box.** It held the whole-scene filters — Bloom and the four screen
+  FX — until those became ordinary per-layer passes, after which it was a titled section with
+  nothing in it. Every filter it used to hold is in each layer's own chain.
+
+### Fixed
+
+- The help text still described that box as where Bloom lives, and said most filters are
+  per-layer rather than all of them. Both now say what the app actually does, including that
+  where a filter sits relative to the line changes what it does.
+
 ## [1.12.1] — 2026-08-03
 
 ### Fixed

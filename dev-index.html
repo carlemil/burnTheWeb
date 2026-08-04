@@ -1420,14 +1420,11 @@
        value store the list drives, so it cannot drift from the selection. -->
   <div id="scenenow" class="sec-t"></div>
 
-  <!-- Box — Scene filters: whole-scene FX applied once to the finished, blended picture
-       (Bloom + the screen-stage filters). SCENE-GLOBAL — one on/off + value shared across
-       every layer (sceneOn / sceneFx), routed here by buildFilterUI (the "Whole scene" group). -->
-  <details class="box" open>
-  <summary class="box-t">Scene filters</summary>
-  <div id="screenfilterlist"><!-- whole-scene filter checkboxes, routed here from buildFilterUI --></div>
-  <div id="screenfilterctl"><!-- (unused host; params are adopted into each filter's body) --></div>
-  </details>
+  <!-- There is no "Scene filters" box. It held the whole-scene FX — Bloom and the four
+       screen-stage filters — until those became ordinary per-layer passes, after which it was
+       a titled section with nothing in it. The scene-global machinery it fronted (sceneOn,
+       sceneFx, SCENE_FILTER_IDS) is kept: it is the wire-format seam that lets a scene saved
+       when those WERE global still load, via migrateSceneFx folding them onto the layers. -->
 
   <!-- Box — Beat tuning. It lived in Diagnostics while it was a global dev setting; it is
        per-scene data now, so it belongs beside the other scene controls and autosaves
@@ -1754,7 +1751,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.12.1",
+    version: "1.12.2",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -6500,11 +6497,11 @@
   // two captions saying so in different words only made the list longer. The single heading
   // still works out of the registry order (all feedback, then all post-but-Bloom, then the
   // whole-scene set), so the run stays contiguous and one caption is emitted for it.
-  // ONE group: every filter belongs to a layer. There was a "Whole scene · final image" group
-  // for Bloom and the four screen filters; they are per-layer passes now, so the group has
-  // nothing to hold. FILTER_LISTS still has the scene entry and #screenfilterlist still
-  // exists — both simply stay empty, which is what keeps the Scene filters box and its Add
-  // button from needing special-casing if anything ever goes back.
+  // ONE group, and now ONE list: every filter belongs to a layer. There was a "Whole scene ·
+  // final image" group for Bloom and the four screen filters, routed to its own box; they are
+  // per-layer passes now, so both the group and the box had nothing to hold. Putting a filter
+  // back on the whole scene means re-adding a host and a FILTER_LISTS entry as well as an id
+  // to SCENE_FILTER_IDS — the id seam alone no longer has anywhere to render.
   function filterGroup(f) {
     return { key: "layer", title: "Per-effect · heat, trails & image",
              desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
@@ -6539,9 +6536,8 @@
   // and there is nothing meaningful to permute.
   const FILTER_LISTS = [
     { key: "layer", hostId: "filterlist", addId: "filter-add", reorder: true },
-    { key: "scene", hostId: "screenfilterlist", addId: "screenfilter-add", reorder: false },
   ];
-  function filterListOf(f) { return filterGroup(f).key === "scene" ? FILTER_LISTS[1] : FILTER_LISTS[0]; }
+  function filterListOf(f) { return FILTER_LISTS[0]; }
   const filterSetOf = id => (isSceneFilter(id) ? sceneOn : activeIds);
   // The ids currently in one list, in the order they will be applied.
   function listIds(key) { return listIdsFor(stackSel, key); }
@@ -6550,7 +6546,6 @@
   // uses, and deliberately NOT `extras[L.fx]`, which is the per-effect last-used value and
   // would make every same-effect layer mirror the last one edited.
   function listIdsFor(slot, key) {
-    if (key === "scene") return orderFilters([...sceneOn]).filter(f => filterListOf(f).key === key).map(f => f.id);
     const L = stack[slot];
     const src = slot === stackSel ? [...activeIds]
       : (L ? (filtersOk(L.filters) || presetFilters(L.fx)) : []);
@@ -6814,10 +6809,8 @@
     const dlg = el("fltdlg");
     if (!dlg) return;
     filterPickKey = key;
-    el("flt-title").textContent = key === "scene" ? "Scene filters" : "Filters for this layer";
-    el("flt-hint").textContent = key === "scene"
-      ? "Applied once to the finished, blended picture."
-      : "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
+    el("flt-title").textContent = "Filters for this layer";
+    el("flt-hint").textContent = "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
     buildFilterPicker();
     dlg.classList.remove("hidden");
   }
@@ -6999,7 +6992,7 @@
   // they were built with.
   function syncFilterUI() {
     for (let slot = 0; slot < STACK_MAX; slot++) {
-      const own = new Set(listIdsFor(slot, "layer").concat(listIdsFor(slot, "scene")));
+      const own = new Set(listIdsFor(slot, "layer"));
       FILTERS.forEach(f => {
         const cb = ctlIn(slot, "flt-" + f.id);
         if (cb) cb.checked = slot === stackSel ? filterSetOf(f.id).has(f.id) : own.has(f.id);
@@ -13250,7 +13243,7 @@
       { n: "Sway", w: "tetra", t: "Tetrahedron only, and only with Show box OFF — how far the whole object wanders up/down, sideways and in/out around the centre on a slow looping path (0 pins it to the centre so it just spins in place). Each stacked Object wanders on its own phase. The tempo follows Drift speed; arm its L/M/H chips to lunge on the beat." },
       { n: "Zoom", w: "all", t: "Scales the whole view in and out." },
       { n: "Camera X / Y / Z", w: "all", t: "Tilt and spin this layer in 3D, in degrees. X and Y rock it away from you; Z rolls it in the plane of the screen. Per-layer, like Zoom — each stacked effect keeps its own camera, applied to that layer before the layers are blended (in a one-layer scene it's simply the camera over what's running). The startup credits deliberately ignore it and stay level." },
-      { n: "Filters", w: "all", t: "A stack of post-effects, all OFF by default — tick the ones you want. Most are PER-LAYER (in the Effects &amp; Filters box): each stacked effect is filtered on its own, in the order listed. The whole-scene ones — Bloom and the screen FX (Barrel, Scanlines, Vignette, Film grain) — live in the separate Scene filters box and apply once to the finished, blended picture. Fire and Fade pixel feed back into the layer, building up over successive frames; the rest are single passes. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
+      { n: "Filters", w: "all", t: "A stack of post-effects, all OFF by default — tick the ones you want. Every one is PER-LAYER: each layer keeps its own chain, listed in the order it runs, so two layers can be filtered completely differently before they blend. Where a filter sits in that list matters — above the line it shapes the heat before the effect draws, below it repaints the finished picture — so dragging one across the line changes what it does. Fire and Fade pixel feed back into the layer, building up over successive frames; the rest are single passes. Ticking one reveals its own sliders. Without WebGL the GPU-only ones are greyed out." },
       { n: "Fire", w: "all", t: "The classic rising-fire feedback: heat drifts upward and cools each frame, so whatever the effect draws sprouts flames. Flame rise sets how tall they climb before fading (linear in height); Burn rate how many simulation steps run per second — faster is livelier and flickerier." },
       { n: "Fade pixel", w: "all", t: "Keeps a fraction of the previous frame instead of clearing it, leaving motion trails. Lifetime near 100% smears almost forever; lower values fade quickly. Stacks with Fire." },
       { n: "Pixelate", w: "all", t: "Chunks the image into blocks. Block sets the size — a direct route to a lo-fi console look." },
@@ -13258,7 +13251,7 @@
       { n: "Edge", w: "all", t: "Edge detection over the finished image — Amount fades between the original and the outlines it finds." },
       { n: "Posterize", w: "all", t: "Crushes the colours to a fixed number of Levels, turning smooth gradients into flat bands." },
       { n: "Mirror", w: "all", t: "Reflects the image about its centre. Axis picks horizontal, vertical or both (kaleidoscope-style quadrants)." },
-      { n: "Bloom", w: "all", t: "The additive glow around the brightest areas — a whole-scene filter (one glow over the finished, blended image), so it lives in the Scene filters box. Off by default; tick it and raise Strength to add the glow." },
+      { n: "Bloom", w: "all", t: "The additive glow around the brightest areas. Per-layer like every other filter, so each layer can glow by a different amount — or not at all. Off by default; add it to a layer's chain and raise Strength." },
       { n: "Cardioid RPM", w: "julia", t: "How fast the seed orbits the big cardioid loop, in revolutions per minute." },
       { n: "Inner : outer ratio", w: "julia", t: "A small circle rides on the seed; this is how many turns it makes per big-loop lap (a spirograph gear ratio). It reshapes the fractal's fine filigree." },
       { n: "Inner radius", w: "julia", t: "Size of the small circle that rides on the seed. Small values keep the seed just outside the cardioid (intricate fractals); larger ones swing it wider and can dip inside for solid-blob frames." },
