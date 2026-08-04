@@ -162,11 +162,15 @@
     const n = (blob.presets || []).length;
     if (!n) { cloudMsg("Nothing to save — you have no scenes yet.", true); return; }
     cloudMsg("Saving…");
+    // Held outside the chain because the history entry below reuses the SAME bytes — the
+    // snapshot is not a second encode, it is the payload that was just stored.
+    let saved = null;
     zipToB64(JSON.stringify(blob)).then(payload => {
       if (payload == null) throw new Error("this browser cannot compress the payload");
       if (payload.length >= CLOUD.maxPayload) {
         throw new Error("library too big to store (" + Math.round(payload.length / 1024) + " KB)");
       }
+      saved = payload;
       const body = fsOut({
         name: myProfileName() || DEFAULT_PROFILE_NAME,   // same default the list heading shows
         payload,
@@ -184,7 +188,30 @@
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
       cloudMsg("Saved " + n + " scene" + (n === 1 ? "" : "s") + " to your profile.");
       track("cloud_save", { count: n });
+      // The history entry comes AFTER the profile write and never in front of it. The profile
+      // is the thing being saved; a snapshot is a convenience on top, so a failure here is
+      // reported quietly rather than telling the user their save failed when it did not.
+      return snapWrite(saved, n).then(snapPrune).catch(e => {
+        cloudMsg("Saved " + n + " scene" + (n === 1 ? "" : "s")
+          + ", but could not add a history entry: " + e.message);
+      });
     }).catch(e => cloudMsg("Could not save: " + e.message, true));
+  }
+
+  // THE ONE PLACE A STORED PAYLOAD BECOMES A LIBRARY. Both the profile load and a history
+  // restore go through here, which is what stops either of them growing a private decoder —
+  // the whole reason a cloud payload is the same bytes as a #zp= bundle is that one decode
+  // path serves every transport. cloudprobe asserts this structurally.
+  function cloudApplyPayload(payload) {
+    return unzipFromB64(payload).then(json => {
+      if (json == null) throw new Error("could not read the stored payload");
+      let raw;
+      try { raw = JSON.parse(json); } catch (e) { throw new Error("stored payload is corrupt"); }
+      cloudMsg("");
+      // Straight into the existing shared-library path: validation, the merge-vs-replace
+      // Restore dialog, and landing on the stored selected preset all come for free.
+      openSharedLibrary(raw);
+    });
   }
 
   function cloudLoad() {
@@ -197,28 +224,29 @@
     }).then(doc => {
       const d = fsIn(doc);
       if (!d.payload) throw new Error("that profile is empty");
-      return unzipFromB64(d.payload);
-    }).then(json => {
-      if (json == null) throw new Error("could not read the stored payload");
-      let raw;
-      try { raw = JSON.parse(json); } catch (e) { throw new Error("stored payload is corrupt"); }
-      cloudMsg("");
-      // Straight into the existing shared-library path: validation, the merge-vs-replace
-      // Restore dialog, and landing on the stored selected preset all come for free.
-      openSharedLibrary(raw);
+      return cloudApplyPayload(d.payload);
+    }).then(() => {
       track("cloud_load", {});
     }).catch(e => cloudMsg("Could not load: " + e.message, true));
   }
 
   function cloudDelete() {
     if (!cloudSess) return;
-    if (!confirm("Delete your cloud profile permanently? Your scenes in this browser are not touched.")) return;
+    if (!confirm("Delete your cloud profile and its history permanently? Your scenes in this browser are not touched.")) return;
     cloudMsg("Deleting…");
-    cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }).then(r => {
-      if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      cloudMsg("Profile deleted.");
-      track("cloud_delete", {});
-    }).catch(e => cloudMsg("Could not delete: " + e.message, true));
+    // FIRESTORE DOES NOT CASCADE. Deleting a document leaves its subcollections completely
+    // intact — they simply hang off a path with nothing at it, still stored, still billed,
+    // still readable by their owner. So the history has to be swept explicitly, and BEFORE
+    // the profile goes: if the sweep fails we still have a profile to point the user at,
+    // whereas deleting the parent first would strand the snapshots with no UI left to reach
+    // them from.
+    snapDeleteAll()
+      .then(() => cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }))
+      .then(r => {
+        if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+        cloudMsg("Profile and history deleted.");
+        track("cloud_delete", {});
+      }).catch(e => cloudMsg("Could not delete: " + e.message, true));
   }
 
   // Read just the metadata after signing in, so the name field shows what is already stored
@@ -247,6 +275,142 @@
       if (j && j.error && j.error.message) return j.error.message;
     } catch (e) { /* not JSON */ }
     return "HTTP " + status;
+  }
+
+  // ---- version history: one snapshot of the whole library per day ---------------------
+  // The live profile above is untouched by all of this. A snapshot is the SAME payload the
+  // profile write just stored, filed under its date, so "restore an old version" is the
+  // existing load path pointed at an older document — no second format, no second decoder.
+  //
+  // THE DOCUMENT ID IS THE DATE. That is the whole mechanism for "at most one a day": a second
+  // save on the same day PATCHes the same id and overwrites it. No read-before-write, no
+  // dedup pass, no timestamp comparison, and ids sort lexicographically so listing comes back
+  // in order with no composite index to create.
+  const snapCollUrl = uid => docUrl(uid) + "/snapshots";
+  const snapDocUrl = (uid, sid) => snapCollUrl(uid) + "/" + encodeURIComponent(sid);
+
+  // LOCAL date, deliberately not toISOString().slice(0, 10). UTC rolls "today" at midnight in
+  // Greenwich, so anyone east of it saving in the evening would file under tomorrow and see a
+  // history dated a day ahead of the day they worked.
+  function snapToday() {
+    const d = new Date(), p = n => (n < 10 ? "0" : "") + n;
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  function snapWrite(payload, count) {
+    if (!cloudSess || !payload) return Promise.resolve();
+    const body = fsOut({ payload, count, created: new Date() });
+    // Full field mask, same reasoning as cloudSave: the rules' hasOnly() runs against the
+    // RESULTING document, so a merge that left a stray field behind would be rejected.
+    const mask = ["payload", "count", "created"].map(f => "updateMask.fieldPaths=" + f).join("&");
+    return cloudFetch(snapDocUrl(cloudSess.uid, snapToday()) + "?" + mask,
+      { method: "PATCH", body: JSON.stringify(body) })
+      .then(r => (r.ok ? null : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))));
+  }
+
+  // Metadata only: the mask keeps every stored library off the wire, the same reason galQuery
+  // projects `payload` away. A plain collection GET returns documents ordered by id, and the
+  // ids are dates, so this is already chronological without an orderBy or an index.
+  function snapList() {
+    if (!cloudSess) return Promise.resolve([]);
+    return cloudFetch(snapCollUrl(cloudSess.uid)
+      + "?mask.fieldPaths=count&mask.fieldPaths=created&pageSize=300", { method: "GET" })
+      .then(r => (r.ok ? r.json() : (r.status === 404 ? {} : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status)))))))
+      .then(j => ((j && j.documents) || []).map(doc => {
+        const d = fsIn(doc);
+        return { id: String(doc.name || "").split("/").pop(), count: d.count || 0, created: d.created || "" };
+      }).sort((a, b) => b.id.localeCompare(a.id)));            // newest first
+  }
+
+  function snapDelete(id) {
+    return cloudFetch(snapDocUrl(cloudSess.uid, id), { method: "DELETE" })
+      .then(r => (r.ok || r.status === 404 ? null
+        : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))));
+  }
+
+  // Keep the newest CONFIG.cloud.snapshotKeep and drop the rest.
+  function snapPrune() {
+    const keep = CLOUD.snapshotKeep || 14;
+    return snapList().then(items => {
+      const doomed = items.slice(keep);
+      if (!doomed.length) return null;
+      return Promise.all(doomed.map(s => snapDelete(s.id)));
+    });
+  }
+
+  // ONE implementation of "remove every snapshot", used by both the Clear history button and
+  // the sweep cloudDelete needs. Two copies of this would drift, and the one that drifted
+  // would be the one leaving documents behind.
+  function snapDeleteAll() {
+    if (!cloudSess) return Promise.resolve();
+    return snapList().then(items => Promise.all(items.map(s => snapDelete(s.id))));
+  }
+
+  function snapRestore(id) {
+    if (!cloudSess) return;
+    el("snap-hint").textContent = "Fetching " + id + "…";
+    cloudFetch(snapDocUrl(cloudSess.uid, id), { method: "GET" }).then(r => {
+      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      return r.json();
+    }).then(doc => {
+      const d = fsIn(doc);
+      if (!d.payload) throw new Error("that snapshot is empty");
+      snapOpen(false);
+      // The same decode path the profile load uses, so a restored snapshot lands in the
+      // Restore dialog with merge-vs-replace exactly like Load from cloud.
+      return cloudApplyPayload(d.payload).then(() => track("cloud_history_restore", {}));
+    }).catch(e => { el("snap-hint").textContent = "Could not restore: " + e.message; });
+  }
+
+  function snapClear() {
+    if (!cloudSess) return;
+    if (!confirm("Delete every history entry? Your saved profile and the scenes in this browser are not touched.")) return;
+    el("snap-hint").textContent = "Clearing…";
+    snapDeleteAll().then(() => {
+      el("snap-list").textContent = "";
+      el("snap-hint").textContent = "History cleared.";
+      track("cloud_history_clear", {});
+    }).catch(e => { el("snap-hint").textContent = "Could not clear: " + e.message; });
+  }
+
+  function snapRender(items) {
+    const host = el("snap-list");
+    host.textContent = "";
+    if (!items.length) {
+      el("snap-hint").textContent = "No history yet. Every Save to cloud adds an entry, at most one a day.";
+      return;
+    }
+    el("snap-hint").textContent = "";
+    items.forEach((s, i) => {
+      const row = document.createElement("div");
+      row.className = "gal-row";                    // same grid as the gallery rows
+      const nm = document.createElement("div");
+      nm.className = "gal-name";
+      nm.textContent = s.id + (i === 0 ? "  ·  newest" : "");
+      const meta = document.createElement("div");
+      meta.className = "gal-meta";
+      meta.textContent = s.count + " scene" + (s.count === 1 ? "" : "s");
+      const btns = document.createElement("div");
+      btns.className = "gal-btns";
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "audbtn"; b.textContent = "Restore";
+      b.title = "Open this version — you still choose merge or replace before anything changes";
+      b.addEventListener("click", () => snapRestore(s.id));
+      btns.appendChild(b);
+      row.appendChild(nm); row.appendChild(meta); row.appendChild(btns);
+      host.appendChild(row);
+    });
+  }
+
+  function snapOpen(show) {
+    const dlg = el("snapdlg");
+    if (!dlg) return;
+    dlg.classList.toggle("hidden", !show);
+    if (!show) return;
+    el("snap-list").textContent = "";
+    el("snap-hint").textContent = "Loading…";
+    snapList().then(snapRender)
+      .catch(e => { el("snap-hint").textContent = "Could not load your history: " + e.message; });
   }
 
   // ---- publish ----
@@ -623,6 +787,10 @@
   }
   // No #cloud-browse listener: the gallery is opened from the ☰ root item "Public scenes",
   // which calls galOpen(true) directly (see ui-menubar.js).
+  if (el("cloud-history")) el("cloud-history").addEventListener("click", () => snapOpen(true));
+  if (el("snap-close")) el("snap-close").addEventListener("click", () => snapOpen(false));
+  if (el("snap-clear")) el("snap-clear").addEventListener("click", snapClear);
+  if (el("snapdlg")) el("snapdlg").addEventListener("click", e => { if (e.target === el("snapdlg")) snapOpen(false); });
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
   if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });

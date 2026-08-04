@@ -796,6 +796,35 @@ or refused ⇒ falls back to `?z=`; the cloud route is an optimisation, not a ga
 user stamping their own uid as `owner`, **immutable** (`allow update: if false`), deletable by
 their owner.
 
+**`cloudApplyPayload(payload)` is the ONE place a stored payload becomes a library** — unzip →
+parse → `openSharedLibrary`. Both `cloudLoad` and a history restore go through it; neither may
+grow its own decoder, or a cloud payload stops being a `#zp=` bundle. `cloudprobe` pins it.
+
+**Version history: `/profiles/{uid}/snapshots/{YYYY-MM-DD}`**, `payload`+`count`+`created`, the
+same bytes the profile write just stored (`cloudSave` keeps them in `saved` rather than
+re-encoding).
+- **The document id IS the local date** — that *is* the "at most one a day" mechanism; a second
+  save the same day overwrites. No dedup pass, no read-before-write, and date ids sort
+  lexicographically so a plain collection GET is already chronological with no index.
+  **Not `toISOString()`** — UTC rolls the day at the wrong moment east of Greenwich.
+- Written **after** the profile write and never before; a failed snapshot must not report the
+  save as failed.
+- `snapList` masks `payload` away (same reason `galQuery` does). `snapPrune` keeps
+  `CONFIG.cloud.snapshotKeep` (14).
+- **Owner-only in the rules, INCLUDING read** — deliberately not the profile's
+  `pub == true || …`. Publishing offers the library you have now; it is not consent to expose
+  every earlier version, including scenes since deleted.
+- **A subcollection does NOT inherit `match /profiles/{uid}`** — it needs its own block, or the
+  catch-all denies it (the safe direction, but the feature is dead until the rules are
+  published).
+- **Firestore does not cascade-delete.** `cloudDelete` must sweep the subcollection *first*, or
+  a deleted profile strands every snapshot. `snapDeleteAll()` is the single implementation,
+  shared with Clear history.
+- Deleting a scene locally already removes it from the cloud — `cloudBlob()` is built from
+  `fullSnapshot()` and the write is a full replace, so there is no per-scene state to go stale.
+  It survives only in history (until cleared or aged out) and in any `/scenes` share links,
+  which are immutable by design.
+
 **`installShared` also resets the preset chooser to "— unsaved scene —"** (it set `curPreset = -1`
 but left the `<select>` showing whatever startup selected).
 

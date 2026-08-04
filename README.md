@@ -538,18 +538,28 @@ share, which means a scene you send someone reacts to music the way you set it u
 Your scenes live in this browser by default. The **Cloud profile** box is how you get them
 off it — sign in with Google and your library follows you between machines.
 
-- **Save to cloud** uploads every scene you have, replacing what is stored.
+- **Save to cloud** uploads every scene you have, replacing what is stored. It is a straight
+  replace, not a merge, so a scene you deleted here is gone from the cloud after the next
+  save — there is no leftover copy to come back.
 - **Load from cloud** fetches it back and asks whether to **merge** (add them to yours,
   overwriting any of yours with the same name) or **replace** (throw yours away and keep
   only these). Applying reloads the page.
+- **History…** is every earlier version of your library. Each save files a copy under that
+  day's date — save five times in one afternoon and that day still has one entry, the latest
+  — and the most recent fortnight is kept. **Restore** opens an older version exactly the way
+  Load from cloud does, so you still choose merge or replace before anything changes: it is a
+  way to look at what you had, not a button that overwrites your work. **Clear history**
+  empties it, which is also how you make a deleted scene properly gone if you would rather it
+  did not survive in an old version.
 - Your **profile name** is yours to pick — click it to rename. It's written with your next
   save.
-- **Delete profile** removes everything you have stored, and leaves this browser's scenes
-  alone.
+- **Delete profile** removes everything you have stored, history included, and leaves this
+  browser's scenes alone.
 - **Sign out** signs out on this device only.
 
-Stored against your account: the profile name you choose and your scenes. Nothing else —
-not your email, name or picture.
+Stored against your account: the profile name you choose, your scenes, and their history.
+Nothing else — not your email, name or picture. Your history is yours alone: publishing to
+the gallery shares the library you have *now*, never the older versions behind it.
 
 **Publish to gallery** is opt-in and off by default. Tick it and your profile is listed
 publicly, with your chosen name and how many scenes it holds. **Public scenes** on the ☰

@@ -374,13 +374,20 @@
   #panel #cloudrow #cloud-nameview:hover { border-bottom-color: #ffcf87; }
   #panel #cloudrow #cloud-nameview.empty { color: #ffb15a; opacity: .5; font-style: italic; }
   #panel #cloudrow #cloud-nameview:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  /* Public profile gallery — floating and translucent like the other popups. */
-  #galdlg {
+  /* Public profile gallery, and version history — floating and translucent like the other
+     popups. The two share every rule below: both are a short list where each row is one thing
+     you can load, and #snapdlg reuses .gal-box/.gal-row rather than growing a parallel set.
+     THIS IS WHY EVERY SELECTOR HERE NAMES BOTH IDS. The trap the project has hit three times
+     is a widget rule scoped to one container, which silently leaves the next user of the same
+     class as a raw browser default — a grey button in normal flow above the title. If a third
+     list dialog ever appears, add it to these selectors or give the three a shared class;
+     do not copy the block. */
+  #galdlg, #snapdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
     background: transparent; pointer-events: none;
   }
-  #galdlg.hidden { display: none; }
-  #galdlg .gal-box {
+  #galdlg.hidden, #snapdlg.hidden { display: none; }
+  #galdlg .gal-box, #snapdlg .gal-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 480px); max-height: 86vh; overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
@@ -388,7 +395,7 @@
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  #galdlg h2, #snapdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* ONE line: name, then the scene count / date centred between, then Load at the end.
      It used to wrap the buttons onto a second row spanning the full width, because there
      were two of them and "Load and replace" was far too wide to sit inline. There is one
@@ -396,27 +403,27 @@
      and one button fits — so a row is a row.
      Both text columns are 1fr and min-width:0, which is what lets a long name ellipsize
      instead of shoving the button off the end; `auto` there would let it push. */
-  #galdlg .gal-row {
+  #galdlg .gal-row, #snapdlg .gal-row {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
     gap: 6px 12px; align-items: center;
     padding: 11px 12px; margin-bottom: 9px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
   }
-  #galdlg .gal-row:last-child { margin-bottom: 0; }
-  #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #galdlg .gal-meta {
+  #galdlg .gal-row:last-child, #snapdlg .gal-row:last-child { margin-bottom: 0; }
+  #galdlg .gal-name, #snapdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #galdlg .gal-meta, #snapdlg .gal-meta {
     color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap;
     text-align: center; overflow: hidden; text-overflow: ellipsis;
   }
-  #galdlg .gal-btns { display: flex; gap: 8px; justify-content: flex-end; }
-  #galdlg .gal-row .audbtn { padding: 5px 12px; }
-  #galdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
+  #galdlg .gal-btns, #snapdlg .gal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  #galdlg .gal-row .audbtn, #snapdlg .gal-row .audbtn { padding: 5px 12px; }
+  #galdlg .pal-hint, #snapdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
   /* The merge-vs-replace explainer sits above the list, so the two buttons on every row need
      no caption of their own. It carries .pal-hint too, so these rules must come AFTER that
      one — same specificity, and it needs the opposite margin (space below, not above). */
-  #galdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
-  #galdlg .gal-help b { color: #ffcf87; font-weight: 600; }
-  body.ui-hidden #galdlg { display: none !important; }
+  #galdlg .gal-help, #snapdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
+  #galdlg .gal-help b, #snapdlg .gal-help b { color: #ffcf87; font-weight: 600; }
+  body.ui-hidden #galdlg, body.ui-hidden #snapdlg { display: none !important; }
   #panel .presetrow, #menubar .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn, #menubar .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
@@ -1043,10 +1050,10 @@
   /* The BOX gives up its top padding and the sticky header carries it. Without that there is
      a padding-height gap above the header that scrolling content passes through in full view
      — the header sticks to the scrollport's top edge, not to the padding edge. */
-  #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
+  #galdlg .gal-box, #snapdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
   #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
   #help .help-box, #syncpop, #carddlg, #restoredlg .rst-box { padding-top: 0; }
-  #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
+  #galdlg .gal-box > h2, #snapdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
   #help .help-box > h2, #syncpop > h2, #carddlg > h2, #restoredlg .rst-box > h2 {
     position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;
@@ -1345,6 +1352,13 @@
         <button id="cloud-save" class="audbtn" type="button" title="Upload your scene library to your profile, replacing what is there">Save to cloud</button>
         <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your scenes or replace them">Load from cloud</button>
       </div>
+      <!-- Version history. Every save files a copy of the whole library under that day's date,
+           so an older version can be picked back out. Its own row rather than a third button
+           squeezed into the grid above: saving and loading are the pair you use constantly,
+           and this is the one you reach for when something has gone wrong. -->
+      <div class="presetrow">
+        <button id="cloud-history" class="audbtn" type="button" title="Browse earlier versions of your library — one entry per day you saved — and restore any of them">History…</button>
+      </div>
       <!-- Opt-in, and off by default: publishing is a deliberate act, not a side effect of
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
@@ -1563,6 +1577,21 @@
      Each row applies STRAIGHT AWAY on its own two buttons — the Restore dialog would only
      ask merge-vs-replace a second time, having already been asked here. (That dialog is
      still live for `#zp=` links and Load from cloud, where the answer isn't in the click.) -->
+<!-- Version history. Same box/row furniture as the gallery below, because it is the same
+     shape of thing: a short list where each row is one thing you can load. -->
+<div id="snapdlg" class="hidden">
+  <div class="gal-box">
+    <button type="button" class="pal-close" id="snap-close" aria-label="Close">×</button>
+    <h2>Version history</h2>
+    <p class="pal-hint gal-help">Every <b>Save to cloud</b> files a copy of your whole scene library under that day's date — saving again the same day replaces that day's entry rather than adding one. <b>Restore</b> opens an older version the same way <b>Load from cloud</b> does, so you still choose merge or replace before anything changes. Entries older than the most recent few are dropped automatically.</p>
+    <div id="snap-list"></div>
+    <p class="pal-hint" id="snap-hint"></p>
+    <div class="presetrow">
+      <button id="snap-clear" class="audbtn" type="button" title="Delete every history entry. Your saved profile is not touched.">Clear history</button>
+    </div>
+  </div>
+</div>
+
 <div id="galdlg" class="hidden">
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
@@ -1830,6 +1859,7 @@
       galleryTtlMs: 300000,                       // cache the gallery listing 5 min (reads are quota)
       galleryLimit: 20,                           // profiles per gallery page
       maxPayload: 300000,                         // must match the cap in firestore.rules
+      snapshotKeep: 14,                           // version-history entries kept (one per day)
     },
 
     // --- effect / physics tuning (implementation constants; several are load-bearing) ---
@@ -12285,11 +12315,15 @@
     const n = (blob.presets || []).length;
     if (!n) { cloudMsg("Nothing to save — you have no scenes yet.", true); return; }
     cloudMsg("Saving…");
+    // Held outside the chain because the history entry below reuses the SAME bytes — the
+    // snapshot is not a second encode, it is the payload that was just stored.
+    let saved = null;
     zipToB64(JSON.stringify(blob)).then(payload => {
       if (payload == null) throw new Error("this browser cannot compress the payload");
       if (payload.length >= CLOUD.maxPayload) {
         throw new Error("library too big to store (" + Math.round(payload.length / 1024) + " KB)");
       }
+      saved = payload;
       const body = fsOut({
         name: myProfileName() || DEFAULT_PROFILE_NAME,   // same default the list heading shows
         payload,
@@ -12307,7 +12341,30 @@
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
       cloudMsg("Saved " + n + " scene" + (n === 1 ? "" : "s") + " to your profile.");
       track("cloud_save", { count: n });
+      // The history entry comes AFTER the profile write and never in front of it. The profile
+      // is the thing being saved; a snapshot is a convenience on top, so a failure here is
+      // reported quietly rather than telling the user their save failed when it did not.
+      return snapWrite(saved, n).then(snapPrune).catch(e => {
+        cloudMsg("Saved " + n + " scene" + (n === 1 ? "" : "s")
+          + ", but could not add a history entry: " + e.message);
+      });
     }).catch(e => cloudMsg("Could not save: " + e.message, true));
+  }
+
+  // THE ONE PLACE A STORED PAYLOAD BECOMES A LIBRARY. Both the profile load and a history
+  // restore go through here, which is what stops either of them growing a private decoder —
+  // the whole reason a cloud payload is the same bytes as a #zp= bundle is that one decode
+  // path serves every transport. cloudprobe asserts this structurally.
+  function cloudApplyPayload(payload) {
+    return unzipFromB64(payload).then(json => {
+      if (json == null) throw new Error("could not read the stored payload");
+      let raw;
+      try { raw = JSON.parse(json); } catch (e) { throw new Error("stored payload is corrupt"); }
+      cloudMsg("");
+      // Straight into the existing shared-library path: validation, the merge-vs-replace
+      // Restore dialog, and landing on the stored selected preset all come for free.
+      openSharedLibrary(raw);
+    });
   }
 
   function cloudLoad() {
@@ -12320,28 +12377,29 @@
     }).then(doc => {
       const d = fsIn(doc);
       if (!d.payload) throw new Error("that profile is empty");
-      return unzipFromB64(d.payload);
-    }).then(json => {
-      if (json == null) throw new Error("could not read the stored payload");
-      let raw;
-      try { raw = JSON.parse(json); } catch (e) { throw new Error("stored payload is corrupt"); }
-      cloudMsg("");
-      // Straight into the existing shared-library path: validation, the merge-vs-replace
-      // Restore dialog, and landing on the stored selected preset all come for free.
-      openSharedLibrary(raw);
+      return cloudApplyPayload(d.payload);
+    }).then(() => {
       track("cloud_load", {});
     }).catch(e => cloudMsg("Could not load: " + e.message, true));
   }
 
   function cloudDelete() {
     if (!cloudSess) return;
-    if (!confirm("Delete your cloud profile permanently? Your scenes in this browser are not touched.")) return;
+    if (!confirm("Delete your cloud profile and its history permanently? Your scenes in this browser are not touched.")) return;
     cloudMsg("Deleting…");
-    cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }).then(r => {
-      if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      cloudMsg("Profile deleted.");
-      track("cloud_delete", {});
-    }).catch(e => cloudMsg("Could not delete: " + e.message, true));
+    // FIRESTORE DOES NOT CASCADE. Deleting a document leaves its subcollections completely
+    // intact — they simply hang off a path with nothing at it, still stored, still billed,
+    // still readable by their owner. So the history has to be swept explicitly, and BEFORE
+    // the profile goes: if the sweep fails we still have a profile to point the user at,
+    // whereas deleting the parent first would strand the snapshots with no UI left to reach
+    // them from.
+    snapDeleteAll()
+      .then(() => cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }))
+      .then(r => {
+        if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+        cloudMsg("Profile and history deleted.");
+        track("cloud_delete", {});
+      }).catch(e => cloudMsg("Could not delete: " + e.message, true));
   }
 
   // Read just the metadata after signing in, so the name field shows what is already stored
@@ -12370,6 +12428,142 @@
       if (j && j.error && j.error.message) return j.error.message;
     } catch (e) { /* not JSON */ }
     return "HTTP " + status;
+  }
+
+  // ---- version history: one snapshot of the whole library per day ---------------------
+  // The live profile above is untouched by all of this. A snapshot is the SAME payload the
+  // profile write just stored, filed under its date, so "restore an old version" is the
+  // existing load path pointed at an older document — no second format, no second decoder.
+  //
+  // THE DOCUMENT ID IS THE DATE. That is the whole mechanism for "at most one a day": a second
+  // save on the same day PATCHes the same id and overwrites it. No read-before-write, no
+  // dedup pass, no timestamp comparison, and ids sort lexicographically so listing comes back
+  // in order with no composite index to create.
+  const snapCollUrl = uid => docUrl(uid) + "/snapshots";
+  const snapDocUrl = (uid, sid) => snapCollUrl(uid) + "/" + encodeURIComponent(sid);
+
+  // LOCAL date, deliberately not toISOString().slice(0, 10). UTC rolls "today" at midnight in
+  // Greenwich, so anyone east of it saving in the evening would file under tomorrow and see a
+  // history dated a day ahead of the day they worked.
+  function snapToday() {
+    const d = new Date(), p = n => (n < 10 ? "0" : "") + n;
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  function snapWrite(payload, count) {
+    if (!cloudSess || !payload) return Promise.resolve();
+    const body = fsOut({ payload, count, created: new Date() });
+    // Full field mask, same reasoning as cloudSave: the rules' hasOnly() runs against the
+    // RESULTING document, so a merge that left a stray field behind would be rejected.
+    const mask = ["payload", "count", "created"].map(f => "updateMask.fieldPaths=" + f).join("&");
+    return cloudFetch(snapDocUrl(cloudSess.uid, snapToday()) + "?" + mask,
+      { method: "PATCH", body: JSON.stringify(body) })
+      .then(r => (r.ok ? null : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))));
+  }
+
+  // Metadata only: the mask keeps every stored library off the wire, the same reason galQuery
+  // projects `payload` away. A plain collection GET returns documents ordered by id, and the
+  // ids are dates, so this is already chronological without an orderBy or an index.
+  function snapList() {
+    if (!cloudSess) return Promise.resolve([]);
+    return cloudFetch(snapCollUrl(cloudSess.uid)
+      + "?mask.fieldPaths=count&mask.fieldPaths=created&pageSize=300", { method: "GET" })
+      .then(r => (r.ok ? r.json() : (r.status === 404 ? {} : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status)))))))
+      .then(j => ((j && j.documents) || []).map(doc => {
+        const d = fsIn(doc);
+        return { id: String(doc.name || "").split("/").pop(), count: d.count || 0, created: d.created || "" };
+      }).sort((a, b) => b.id.localeCompare(a.id)));            // newest first
+  }
+
+  function snapDelete(id) {
+    return cloudFetch(snapDocUrl(cloudSess.uid, id), { method: "DELETE" })
+      .then(r => (r.ok || r.status === 404 ? null
+        : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))));
+  }
+
+  // Keep the newest CONFIG.cloud.snapshotKeep and drop the rest.
+  function snapPrune() {
+    const keep = CLOUD.snapshotKeep || 14;
+    return snapList().then(items => {
+      const doomed = items.slice(keep);
+      if (!doomed.length) return null;
+      return Promise.all(doomed.map(s => snapDelete(s.id)));
+    });
+  }
+
+  // ONE implementation of "remove every snapshot", used by both the Clear history button and
+  // the sweep cloudDelete needs. Two copies of this would drift, and the one that drifted
+  // would be the one leaving documents behind.
+  function snapDeleteAll() {
+    if (!cloudSess) return Promise.resolve();
+    return snapList().then(items => Promise.all(items.map(s => snapDelete(s.id))));
+  }
+
+  function snapRestore(id) {
+    if (!cloudSess) return;
+    el("snap-hint").textContent = "Fetching " + id + "…";
+    cloudFetch(snapDocUrl(cloudSess.uid, id), { method: "GET" }).then(r => {
+      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      return r.json();
+    }).then(doc => {
+      const d = fsIn(doc);
+      if (!d.payload) throw new Error("that snapshot is empty");
+      snapOpen(false);
+      // The same decode path the profile load uses, so a restored snapshot lands in the
+      // Restore dialog with merge-vs-replace exactly like Load from cloud.
+      return cloudApplyPayload(d.payload).then(() => track("cloud_history_restore", {}));
+    }).catch(e => { el("snap-hint").textContent = "Could not restore: " + e.message; });
+  }
+
+  function snapClear() {
+    if (!cloudSess) return;
+    if (!confirm("Delete every history entry? Your saved profile and the scenes in this browser are not touched.")) return;
+    el("snap-hint").textContent = "Clearing…";
+    snapDeleteAll().then(() => {
+      el("snap-list").textContent = "";
+      el("snap-hint").textContent = "History cleared.";
+      track("cloud_history_clear", {});
+    }).catch(e => { el("snap-hint").textContent = "Could not clear: " + e.message; });
+  }
+
+  function snapRender(items) {
+    const host = el("snap-list");
+    host.textContent = "";
+    if (!items.length) {
+      el("snap-hint").textContent = "No history yet. Every Save to cloud adds an entry, at most one a day.";
+      return;
+    }
+    el("snap-hint").textContent = "";
+    items.forEach((s, i) => {
+      const row = document.createElement("div");
+      row.className = "gal-row";                    // same grid as the gallery rows
+      const nm = document.createElement("div");
+      nm.className = "gal-name";
+      nm.textContent = s.id + (i === 0 ? "  ·  newest" : "");
+      const meta = document.createElement("div");
+      meta.className = "gal-meta";
+      meta.textContent = s.count + " scene" + (s.count === 1 ? "" : "s");
+      const btns = document.createElement("div");
+      btns.className = "gal-btns";
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "audbtn"; b.textContent = "Restore";
+      b.title = "Open this version — you still choose merge or replace before anything changes";
+      b.addEventListener("click", () => snapRestore(s.id));
+      btns.appendChild(b);
+      row.appendChild(nm); row.appendChild(meta); row.appendChild(btns);
+      host.appendChild(row);
+    });
+  }
+
+  function snapOpen(show) {
+    const dlg = el("snapdlg");
+    if (!dlg) return;
+    dlg.classList.toggle("hidden", !show);
+    if (!show) return;
+    el("snap-list").textContent = "";
+    el("snap-hint").textContent = "Loading…";
+    snapList().then(snapRender)
+      .catch(e => { el("snap-hint").textContent = "Could not load your history: " + e.message; });
   }
 
   // ---- publish ----
@@ -12746,6 +12940,10 @@
   }
   // No #cloud-browse listener: the gallery is opened from the ☰ root item "Public scenes",
   // which calls galOpen(true) directly (see ui-menubar.js).
+  if (el("cloud-history")) el("cloud-history").addEventListener("click", () => snapOpen(true));
+  if (el("snap-close")) el("snap-close").addEventListener("click", () => snapOpen(false));
+  if (el("snap-clear")) el("snap-clear").addEventListener("click", snapClear);
+  if (el("snapdlg")) el("snapdlg").addEventListener("click", e => { if (e.target === el("snapdlg")) snapOpen(false); });
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
   if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
