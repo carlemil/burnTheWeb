@@ -760,7 +760,6 @@
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > .lyrblock { display: none; }
-  #panel .lyr.folded { padding-bottom: 6px; }
   #panel .lyr > .lyrblock {
     grid-column: 1 / -1;
     margin: 6px -7px -6px;                    /* out to the row's padding edges */
@@ -770,9 +769,13 @@
     border-radius: 0 0 6px 6px;
     cursor: default;                          /* the ROW is clickable; its contents are not */
   }
-  /* The selected row is a container now, not a line — give it room and let it stand out
-     from the compact rows around it. */
-  #panel .lyr.sel { padding-bottom: 0; }
+  /* NOTHING overrides the row's padding-bottom. An OPEN row is squared off by the block's own
+     `margin-bottom: -6px` above, which lands its edge exactly on the border whether the row is
+     selected or not; a FOLDED row has no block, so the 6px padding is all that holds its floor
+     up. A `.lyr.sel { padding-bottom: 0 }` used to sit here, from when only the selected row
+     carried a block — same specificity as `.lyr.folded` and later in the file, so it won, and
+     selecting a folded row visibly shrank it by 6px. Any per-state padding here has to name
+     `:not(.folded)`. */
   #panel .lyr > .lyrblock > label:first-child,
   #panel .lyr > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
   /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in the

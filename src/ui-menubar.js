@@ -1,7 +1,7 @@
   // ---- ☰ fold-out menubar ------------------------------------------------------------
   // A traditional multi-level menu: the ☰ opens a root list, items with a ▸ open a submenu
-  // beside it, and those can nest again (System ▸ Audio ▸ Capture). It holds what used to be
-  // the panel's System, Cloud profile and Credits boxes, plus the Controls panel toggle —
+  // beside it, and those can nest again (Audio ▸ Capture). It holds what used to be
+  // the panel's Audio, Resolution, Cloud profile and Credits boxes, plus the Controls panel toggle —
   // the ☰ no longer toggles the panel itself, so this is where that lives (the "m" key still
   // does it directly, which is the fast route).
   //
@@ -164,10 +164,12 @@
       { label: "Hide all UI", title: "Strip every button and the menu for a clean capture (also the H key)",
         run: () => document.body.classList.add("ui-hidden") },
       { sep: true },
-      { label: "System", sub: [
-        { label: "Audio", sub: [{ adopt: "audiobox" }] },
-        { label: "Resolution", sub: [{ adopt: "resbox" }] },
-      ] },
+      // Audio and Resolution are ROOT items. They were under a "System" parent, which bought
+      // one more hover to reach the two settings anyone actually opens this menu for, and
+      // grouped them under a word that describes neither. Each still needs its own adopt host
+      // (#audiobox, #resbox) — that never depended on the parent.
+      { label: "Audio", sub: [{ adopt: "audiobox" }] },
+      { label: "Resolution", sub: [{ adopt: "resbox" }] },
       { label: "Cloud profile", sub: [{ adopt: "cloudbox" }] },
       // A ROOT item, not a row inside Cloud profile: the gallery is readable signed out (the
       // rules allow an unauthenticated `pub == true` query), so filing it under a sign-in box

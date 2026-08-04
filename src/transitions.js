@@ -89,6 +89,13 @@
   // reordering it. Global, like auto-cycle and Preset TTL — a shared scene does not carry it.
   let transUse = null;
   const transInUse = id => !transUse || transUse.has(id);
+  // "cut" IS NOT A CHOICE — it is the floor under the choices. It is not listed in the picker,
+  // it is never auto-picked while anything else is ticked, and ticking anything drops it from
+  // the set. It survives only as the one-member set `{"cut"}`, which is how "none of these,
+  // thanks" is stored (and what "Select none" writes): pickTransition finds an empty pool and
+  // falls back to it. So every count and every list here runs over TRANS_PICKABLE, not
+  // TRANSITIONS — comparing a full set against TRANSITIONS.length would never collapse to null.
+  const TRANS_PICKABLE = TRANSITIONS.filter(t => t.id !== "cut");
   function transUseOk(v) {
     if (!Array.isArray(v)) return null;
     const s = new Set();
@@ -104,7 +111,7 @@
     const host = el("transpick-list");
     if (!host) return;
     host.textContent = "";
-    TRANSITIONS.forEach(t => {
+    TRANS_PICKABLE.forEach(t => {
       const lab = document.createElement("label");
       lab.className = "flt-opt";
       const cb = document.createElement("input");
@@ -122,9 +129,11 @@
   // full set before removing from it — and a set that ends up full or empty collapses back to
   // null, which is also how it is stored.
   function setTransUse(id, on) {
-    if (!transUse) transUse = new Set(TRANSITIONS.map(t => t.id));
+    if (!transUse) transUse = new Set(TRANS_PICKABLE.map(t => t.id));
     if (on) transUse.add(id); else transUse.delete(id);
-    if (!transUse.size || transUse.size === TRANSITIONS.length) transUse = null;
+    transUse.delete("cut");                  // ticking anything at all retires the fallback
+    if (!transUse.size) transUse = new Set(["cut"]);         // emptied ⇒ cut-only, not "all"
+    else if (transUse.size === TRANS_PICKABLE.length) transUse = null;
     buildTransPick();
     persist();
   }
@@ -168,7 +177,10 @@
   // picker. Unticking everything falls back to Cut rather than to the whole list: "none of
   // these, thanks" is a real choice, and a hard cut is the honest way to honour it.
   function pickTransition(a, b) {
-    const pool = TRANSITIONS.filter(t => transInUse(t.id));
+    // TRANS_PICKABLE, not TRANSITIONS: "cut" is the fallback, never a candidate. With everything
+    // in use (transUse null) the old pool included it, and its fits() weight of 3 when either
+    // side retains meant a retaining scene mostly cut — which is the behaviour this removes.
+    const pool = TRANS_PICKABLE.filter(t => transInUse(t.id));
     if (!pool.length) return TRANS_BY_ID.cut;
     const w = pool.map(t => Math.max(0, t.fits(a, b)));
     const total = w.reduce((x, y) => x + y, 0);
