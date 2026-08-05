@@ -12703,10 +12703,11 @@
     }).catch(e => cloudMsg("Could not save: " + e.message, true));
   }
 
-  // THE ONE PLACE A STORED PAYLOAD BECOMES A LIBRARY. Both the profile load and a history
-  // restore go through here, which is what stops either of them growing a private decoder —
-  // the whole reason a cloud payload is the same bytes as a #zp= bundle is that one decode
-  // path serves every transport. cloudprobe asserts this structurally.
+  // THE ONE PLACE A STORED PAYLOAD BECOMES A LIBRARY. `cloudLoad` is the only caller today —
+  // the history restore that was the second one is gone — and the seam is kept anyway, which
+  // is the point of it: the NEXT transport that needs to turn a stored payload into a library
+  // has to come through here rather than growing a private decoder. That is the whole reason a
+  // cloud payload is the same bytes as a #zp= bundle. cloudprobe asserts this structurally.
   function cloudApplyPayload(payload) {
     return unzipFromB64(payload).then(json => {
       if (json == null) throw new Error("could not read the stored payload");
@@ -12785,11 +12786,58 @@
     if (!cloudSess) return;
     if (!confirm("Delete your cloud profile permanently? Your scenes in this browser are not touched.")) return;
     cloudMsg("Deleting…");
-    cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }).then(r => {
-      if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      cloudMsg("Profile deleted.");
-      track("cloud_delete", {});
-    }).catch(e => cloudMsg("Could not delete: " + e.message, true));
+    // FIRESTORE DOES NOT CASCADE. Deleting a document leaves its subcollections completely
+    // intact — they simply hang off a path with nothing at it, still stored, still billed,
+    // still readable by their owner. So any leftover history has to be swept explicitly, and
+    // BEFORE the profile goes: if the sweep fails we still have a profile to point the user
+    // at, whereas deleting the parent first would strand the snapshots with no UI left to
+    // reach them from. (Version history is retired — see snapDeleteAll for why this stays.)
+    snapDeleteAll()
+      .then(() => cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }))
+      .then(r => {
+        if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+        cloudMsg("Profile deleted.");
+        track("cloud_delete", {});
+      }).catch(e => cloudMsg("Could not delete: " + e.message, true));
+  }
+  // ---- leftover version-history sweep ------------------------------------------------
+  // Version history shipped in 1.13.0 and was removed in 1.13.1, which took out every client
+  // path that could DELETE a snapshot — while the rules still permit the owner to, precisely
+  // so the cleanup remains possible. Anything written during that window is a full copy of a
+  // whole scene library, and without this it survives a "Delete profile" that reports success,
+  // permanently unreachable AND undeletable from the app.
+  //
+  // Nothing writes these any more, so this is one-way: it only ever removes. Recovered from
+  // the pre-removal code rather than rewritten. Retire it together with the
+  // `/profiles/{uid}/snapshots` block in firestore.rules once the console is confirmed clean.
+  //
+  // Deliberately SILENT on the common path: a profile that never had a subcollection lists
+  // empty (or 404s) and deletes exactly as before, with no mention of a feature its owner may
+  // never have seen.
+  const snapCollUrl = uid => docUrl(uid) + "/snapshots";
+  const snapDocUrl = (uid, sid) => snapCollUrl(uid) + "/" + encodeURIComponent(sid);
+  // Ids only, in effect: the mask keeps every stored library off the wire, the same reason
+  // galQuery projects `payload` away. **404 is an empty list, not an error** — that is the
+  // overwhelmingly common case, a profile with no subcollection at all, and treating it as a
+  // failure would block every ordinary delete.
+  //
+  // No pagination loop: 1.13.0 kept at most `snapshotKeep` (14) and was live for a single day,
+  // so one page of 300 cannot be short.
+  function snapList() {
+    if (!cloudSess) return Promise.resolve([]);
+    return cloudFetch(snapCollUrl(cloudSess.uid) + "?mask.fieldPaths=count&pageSize=300", { method: "GET" })
+      .then(r => (r.ok ? r.json()
+        : (r.status === 404 ? {} : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status)))))))
+      .then(j => ((j && j.documents) || []).map(doc => String(doc.name || "").split("/").pop()).filter(Boolean));
+  }
+  function snapDelete(id) {
+    return cloudFetch(snapDocUrl(cloudSess.uid, id), { method: "DELETE" })
+      .then(r => (r.ok || r.status === 404 ? null
+        : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))))));
+  }
+  function snapDeleteAll() {
+    if (!cloudSess) return Promise.resolve();
+    return snapList().then(ids => Promise.all(ids.map(snapDelete)));
   }
 
   // Read just the metadata after signing in, so the name field shows what is already stored

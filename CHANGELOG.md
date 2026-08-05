@@ -29,7 +29,9 @@ the single source of truth; `/deploy` bumps it and adds the section below in the
   already gives you.
 
   Your scenes are untouched, and nothing about saving, loading, sharing or publishing changes.
-  Any history already stored has been deleted.
+  The profiles known at the time were cleared by hand; **Delete profile** removes anything left
+  over. *(Corrected after release — this originally said all stored history had been deleted,
+  which was only true of the profiles that were cleared by hand. See 1.14.0.)*
 
 ## [1.13.0] — 2026-08-05
 

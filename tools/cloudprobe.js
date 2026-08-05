@@ -111,6 +111,29 @@ console.log("--- Cloud profiles: Firestore codec (" + file + ")\n");
   ok("...and does not unzip on its own", !/unzipFromB64\(/.test(load));
 }
 
+// ---- structural: Delete profile sweeps the retired history subcollection -------------
+// FIRESTORE DOES NOT CASCADE. Deleting /profiles/{uid} leaves /profiles/{uid}/snapshots
+// untouched — a full copy of the whole scene library, still stored, still owner-readable,
+// with no UI left to reach it from. This shipped broken for one release, so it is pinned.
+// Sliced to cloudDelete ALONE: snapDelete issues a DELETE of its own, so an index comparison
+// over a wider slice would compare against the wrong one.
+{
+  const del = slice("function cloudDelete() {", "// ---- leftover version-history sweep");
+  ok("delete sweeps the snapshots subcollection", /snapDeleteAll\(/.test(del));
+  // BOTH indices are required to exist. `indexOf` returns -1 for a missing needle, and -1 is
+  // less than everything — so the bare `a < b` form PASSES when the sweep has been deleted,
+  // which is the one case this assertion exists to catch.
+  const at = del.indexOf("snapDeleteAll("), parent = del.indexOf('method: "DELETE"');
+  ok("...BEFORE deleting the profile document, so a failed sweep leaves a profile to point at",
+     at >= 0 && parent >= 0 && at < parent,
+     "sweep at " + at + ", parent delete at " + parent);
+  const list = slice("function snapList() {", "function snapDelete(");
+  ok("the sweep treats 404 as an empty list, not an error", /status === 404/.test(list));
+  ok("...and keeps stored libraries off the wire with a field mask", /mask\.fieldPaths/.test(list));
+  const one = slice("function snapDelete(id) {", "function snapDeleteAll()");
+  ok("deleting one snapshot tolerates an already-missing document", /status === 404/.test(one));
+}
+
 // ---- structural: the kill switch ---------------------------------------------------
 {
   const init = slice("function cloudInit() {", "if (el(\"cloud-save\")");

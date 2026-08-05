@@ -76,8 +76,15 @@ service cloud.firestore {
     // delete they would be permanently unreachable AND undeletable — still stored, still
     // counting against the quota, with no way for anyone to remove them.
     //
-    // The known profiles were swept before this was published. Delete this block once you are
-    // satisfied nothing is left anywhere.
+    // This block is LOAD-BEARING, not vestigial: `snapDeleteAll` in src/cloud-profile.js sweeps
+    // the subcollection on every "Delete profile", and the read+delete granted here is exactly
+    // what lets it. For one release neither existed — the client half was removed in 1.13.1 and
+    // the sweep was not restored until afterwards — so a profile deleted in between kept its
+    // snapshots, and the button said otherwise.
+    //
+    // The known profiles were swept by hand before this was published. Retire this block AND
+    // the sweep together, once the console is confirmed clean — either alone re-opens the trap
+    // above.
     match /profiles/{uid}/snapshots/{sid} {
       allow read, delete: if request.auth.uid == uid;
       allow create, update: if false;
