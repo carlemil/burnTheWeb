@@ -14,6 +14,58 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.14.0] — 2026-08-05
+
+### Added
+
+- **A third scene ships with the app.** A new visitor now starts with *Fetingen*, *Round and
+  round* and **Julia shapes** — an AnimeJulia layer under bouncing shapes, blended with **XOR**.
+
+- **The collections you follow travel with your profile.** **Load from cloud** on another
+  machine now brings back everyone's sets you had added, fetched fresh at the time you load —
+  so they arrive up to date rather than as they were when you saved. A collection whose owner
+  has since removed or unlisted their profile is skipped and named; the rest still load, and it
+  returns if they do.
+
+### Changed
+
+- **Save to cloud stores your own scenes only.** Scenes you loaded from someone else's
+  collection are no longer uploaded: they are that person's to publish, and a copy in your
+  profile would be counted on your gallery card and passed on again to anyone who loads you.
+  They stay in this browser, and what your profile records is simply *which* collections you
+  added — the names, not the work. Expect your scene count to drop to the number that is
+  actually yours.
+
+- **The beat dots on a slider's menu row are twice the size** and brighter, so you can read
+  which bands a scene has wired to the music from further away.
+
+- **Palette swatches are one per row** instead of two, giving each gradient the panel's full
+  width and its name room to breathe.
+
+- **The little amber "changed from default" dot is gone** from slider rows. On a real scene it
+  marked nearly everything, so it read as clutter rather than information.
+
+### Fixed
+
+- **Bloom, Barrel distortion, Scanlines, Vignette and Film grain had no sliders at all** —
+  expanding one showed an empty panel with no way to reach its settings. Fire was missing its
+  **Burn rate** the same way. All six are back where they belong, in the filter's own section.
+
+- **Delete profile now clears leftover version history.** The 1.13.0 history feature was
+  removed in 1.13.1 along with everything that could delete what it had already stored, so
+  those copies of your library survived a delete that reported success. They are swept now.
+  *(1.13.1's note said all stored history had been deleted; that was only true of the profiles
+  cleared by hand. The note has been corrected.)*
+
+- **A borrowed scene can no longer overwrite one of yours** with the same name when you merge
+  on load. Collections exist so that their *Sunset* and your *Sunset* are different scenes, and
+  the merge now honours that.
+
+### Internal
+
+- `cloudprobe` gains five assertions pinning the snapshot sweep, and the collection filter and
+  re-follow are covered by their own probes.
+
 ## [1.13.1] — 2026-08-05
 
 ### Removed
