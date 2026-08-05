@@ -14,6 +14,23 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.13.1] — 2026-08-05
+
+### Removed
+
+- **Version history is gone**, one release after it arrived. **Save to cloud** keeps only the
+  current version of your library: a save replaces what is stored, and the previous copy is not
+  kept. The **History…** button and its dialog have been removed. If there is a state you might
+  want back, save it as its own scene — that is what the scene list is for.
+
+  The reason is what a history entry actually was: a copy of your *whole library*, not a record
+  of what changed. Keeping more of them, or keeping them more often, multiplied both the stored
+  data and the work every save had to do, for something that duplicated what saving a scene
+  already gives you.
+
+  Your scenes are untouched, and nothing about saving, loading, sharing or publishing changes.
+  Any history already stored has been deleted.
+
 ## [1.13.0] — 2026-08-05
 
 ### Added
