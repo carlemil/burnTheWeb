@@ -49,6 +49,12 @@
   // both localStorage (persist) and the Backup file are this exact object, so a new
   // saved setting can never end up in one but not the other. Anything NOT here is
   // deliberately transient (pause, fullscreen, the dev overlays) — see the Backup docs.
+  // Which gallery collections you hold — `[{ key, uid }]`. FILLED by persist-presets.js
+  // (noteCollection / forgetCollection / collectionsOk, all function declarations so they
+  // hoist), DECLARED here because fullSnapshot and applyBlob are the readers and `restore()`
+  // runs at the foot of this slice, three above that one — a `let` down there would be in the
+  // TDZ on every reload that carried the field. Same split as cpuBlocked.
+  let collectionsHeld = [];
   function fullSnapshot() {
     saveState(effect);                // fold the live sliders into the current effect
     saveBeat(effect);                 // ...the live beat toggles
@@ -64,6 +70,7 @@
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
       transUse: transUse ? [...transUse] : null,     // which transitions a scene change picks from (null ⇒ all)
+      collections: collectionsHeld.map(c => ({ key: c.key, uid: c.uid })),   // gallery collections you have added (not their scenes — see cloudBlob)
       presets, curPreset,
       cycle: cycleChk.checked,                       // auto-cycle presets (global)
       ttl: [+el("ttl-lo").value, +el("ttl-hi").value],  // preset TTL (global, not per-effect)
@@ -113,6 +120,9 @@
     // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
     // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
     if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
+    // Which gallery collections you hold. Browser-local like the presets themselves, so it is
+    // skipped while `sharing` — a scene link says nothing about whose sets the sender collects.
+    if (!sharing && saved.collections !== undefined) collectionsHeld = collectionsOk(saved.collections);
     const ok = (id, x) => { const n = ctl(id); if (!n) return false; const mn = +n.min, mx = +n.max; return typeof x === "number" && x >= mn && x <= mx; };
     if (saved.states) {
       for (const k in states) {

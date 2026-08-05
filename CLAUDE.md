@@ -709,9 +709,10 @@ field is one `snapshotScene` captures *and* one the import mapping carries.
 `Date.now()` chaos seed, every accumulated phase.
 
 **First-visit library** built once when `presets.length === 0`: `defaultPresets()`, applied at
-index 0, then `persist()` once. It is **`DEFAULT_LIBRARY` — exactly TWO scenes**, `Fetingen`
-(Sierpiński, single layer) and `Round and round` (Moiré, two layers), lifted from the published
-dyze and Erbsman profiles with `collection` stripped so a new visitor sees them as their own.
+index 0, then `persist()` once. It is **`DEFAULT_LIBRARY` — THREE scenes**: `Fetingen`
+(Sierpiński, single layer), `Round and round` (Moiré, two layers) and `Julia shapes`
+(AnimeJulia + Bouncing shapes, two layers, `xor` blend), lifted from the published dyze and
+Erbsman profiles with `collection` stripped so a new visitor sees them as their own.
 - **Wire format** (effect ids), so a registry reorder cannot remap them, and every map is kept
   **whole** — pruning `beat` against all-false is only sound while no descriptor arms a chip,
   and source bytes are free. Re-export from the app and paste over to change them.
@@ -876,6 +877,21 @@ copy of the *whole library* rather than a delta, so it scaled badly in both stor
 - **Deleting a scene locally already removes it from the cloud** — `cloudBlob()` is built from
   `fullSnapshot()` and the write is a full replace, so there is no per-scene state to go stale.
   A deleted scene survives only in `/scenes` share links, which are immutable by design.
+- **`cloudBlob()` sends YOUR scenes only** — it drops every preset carrying a `collection`,
+  which is exactly the "not mine" marker. A borrowed collection in your document would be
+  counted on your gallery card and re-published to anyone who loads you. What rides instead is
+  **`collections`**, the list of `{key, uid}` you hold — the *fact* that you added them, not
+  their work. `curPreset` is an index into the array being sent, so it is **remapped, not
+  copied**, and falls back to 0 when the selected scene is a borrowed one.
+- **`collectionsHeld` is declared in `audio-tuning-data.js`, filled from `persist-presets.js`**
+  (`noteCollection`/`forgetCollection`/`collectionsOk`, function declarations so they hoist).
+  `restore()` runs at the foot of that earlier slice, so a `let` down beside the functions is
+  in the TDZ on **every reload that carries the field** — the same split as `cpuBlocked`.
+  `galLoad` calls `noteCollection` **before** `applySharedLibrary`, which reloads the page.
+- **Nothing re-fetches those collections yet.** Loading your profile on another device gets
+  your scenes and the record of whose sets you follow, but not the sets — the install path
+  (`applySharedLibrary` → `applyRestore`) reloads, so re-adding N collections would be N
+  reloads. Wiring that up means a non-reloading install path first.
 - `firestore.rules` still carries a **read-and-delete-only** `snapshots` block. It is not dead
   weight: those documents are owner-only and **Firestore does not cascade-delete**, so with no
   rule permitting a delete anything written while the feature existed would be permanently

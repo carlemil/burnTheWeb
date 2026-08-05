@@ -539,9 +539,13 @@ share, which means a scene you send someone reacts to music the way you set it u
 Your scenes live in this browser by default. The **Cloud profile** box is how you get them
 off it — sign in with Google and your library follows you between machines.
 
-- **Save to cloud** uploads every scene you have, replacing what is stored. It is a straight
+- **Save to cloud** uploads **your own scenes**, replacing what is stored. It is a straight
   replace, not a merge, so a scene you deleted here is gone from the cloud after the next
   save — there is no leftover copy to come back.
+  Scenes you loaded from someone else's collection are **not** uploaded: they are that
+  person's to publish, and a copy in your profile would be counted on your gallery card and
+  handed on again to whoever loads you. They stay in this browser, and what your profile
+  records is simply **which collections you added** — the names, not the work.
 - **Load from cloud** fetches it back and asks whether to **merge** (add them to yours,
   overwriting any of yours with the same name) or **replace** (throw yours away and keep
   only these). Applying reloads the page.
@@ -554,8 +558,9 @@ off it — sign in with Google and your library follows you between machines.
 Only the current version is kept — there is no version history, so a save replaces what is
 stored and the old copy is gone. Keep anything you might want back as its own scene.
 
-Stored against your account: the profile name you choose and your scenes. Nothing else —
-not your email, name or picture.
+Stored against your account: the profile name you choose, your own scenes, and the names of
+the collections you follow. Nothing else — not your email, name or picture, and none of
+anyone else's scenes.
 
 **Publish to gallery** is opt-in and off by default. Tick it and your profile is listed
 publicly, with your chosen name and how many scenes it holds. **Public scenes** on the ☰

@@ -147,11 +147,31 @@
   // codec — so one encoder and one decoder serve both, and a cloud profile and a #zp= link
   // are the same bytes. That is what keeps this feature small and what makes the existing
   // decode path (openSharedLibrary) able to consume a downloaded profile unchanged.
+  // YOUR SCENES ONLY. A collection you loaded from the gallery is somebody else's work that
+  // you are holding locally; uploading it would put a second copy in your document, count it
+  // on your gallery card, and hand it on again to anyone who loads you — three wrongs from one
+  // line. `collection` is exactly the "not mine" marker (a scene of your own never carries
+  // one), so that field is the whole filter.
+  //
+  // What DOES ride is the fact that you added them: `collections` is the list of collections
+  // you hold, names and source uids, no scenes. Their work stays theirs to publish and stays
+  // in this browser's localStorage, which is where a reading list belongs.
+  //
+  // curPreset is an INDEX INTO THE ARRAY BEING SENT, so it is remapped rather than copied —
+  // and it falls back to 0 when the scene you are sitting on is one of the borrowed ones,
+  // which would otherwise point past the end or at a stranger's scene.
   function cloudBlob() {
     autosavePreset();                     // fold pending edits into the selected preset first
     const snap = fullSnapshot();
-    const blob = { presets: snap.presets, cycle: snap.cycle };
-    if (snap.curPreset >= 0) blob.curPreset = snap.curPreset;
+    const mine = [];
+    let cur = -1;
+    (snap.presets || []).forEach((p, i) => {
+      if (collectionOf(p)) return;
+      if (i === snap.curPreset) cur = mine.length;
+      mine.push(p);
+    });
+    const blob = { presets: mine, cycle: snap.cycle, collections: snap.collections };
+    if (mine.length) blob.curPreset = cur >= 0 ? cur : 0;
     return serializeBlob(blob);
   }
 
@@ -160,7 +180,14 @@
     if (!cloudSess) return;
     const blob = cloudBlob();
     const n = (blob.presets || []).length;
-    if (!n) { cloudMsg("Nothing to save — you have no scenes yet.", true); return; }
+    // Your library can be non-empty and still have nothing to send: every scene in it came
+    // from someone else's collection, and those are not yours to store.
+    if (!n) {
+      cloudMsg(presets.length
+        ? "Nothing to save — every scene you hold belongs to someone else's collection."
+        : "Nothing to save — you have no scenes yet.", true);
+      return;
+    }
     cloudMsg("Saving…");
     zipToB64(JSON.stringify(blob)).then(payload => {
       if (payload == null) throw new Error("this browser cannot compress the payload");
@@ -401,6 +428,9 @@
       // into their own collection rather than over yours. Same validation and the same
       // write/reload underneath (applySharedLibrary drives applyRestore), so nothing about
       // the load path itself changes — only where the scenes land.
+      // Record that you added them BEFORE the install: applySharedLibrary ends in applyRestore,
+      // which snapshots, writes localStorage and reloads, so anything set afterwards is lost.
+      noteCollection(p.name, p.uid);
       applySharedLibrary(raw, false, p.name);
       track("cloud_gallery_load", { collection: p.name });
     }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
