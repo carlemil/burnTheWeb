@@ -12026,6 +12026,19 @@
   // "something is always selected" cannot hold over an empty list.
   el("delpreset").addEventListener("click", () => {
     if (curPreset < 0 || curPreset >= presets.length) return;
+    // ASK FIRST. Delete sits one button along from Rename in a row you click while working, a
+    // scene is the only copy of everything you tuned into it, and there is no undo — the next
+    // persist() writes the shorter list. The other destructive buttons (Delete profile, Remove
+    // collection, Delete palette, Reset) have always asked; this one never did.
+    //
+    // Named, because "are you sure?" does not tell you WHICH scene is selected, and the whole
+    // accident this prevents is deleting the wrong one. The last-scene case says what happens
+    // instead, since deleting it re-seeds the shipped library rather than emptying the list.
+    const doomed = presets[curPreset];
+    if (!confirm("Delete the scene “" + doomed.name + "”?\n\n"
+      + (presets.length === 1
+        ? "It is your only scene, so the scenes that ship with the app will be put back."
+        : "This cannot be undone."))) return;
     const at = curPreset;
     presets.splice(at, 1);
     ensureSelection();                                  // re-seeds if that was the last one
