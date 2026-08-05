@@ -370,8 +370,8 @@
   // re-fix later: a preset named after the effect it started as will keep that name after
   // you change the effect. Rename it if that bothers you.
   //
-  // autosavePreset() early-returns while curPreset < 0, so "— unsaved scene —" still
-  // behaves as a scratch mode and nothing is written.
+  // There is no scratch mode to fall back on: a scene is ALWAYS selected, so this write
+  // always lands somewhere. Press New first if you want to keep the original.
   effectSel.addEventListener("change", () => {
     setEffect(+effectSel.value);
     autosavePreset();
@@ -437,8 +437,8 @@
     for (const id of ["palcycle-lo", "palcycle-hi"])
       ctlIn(slot, id).addEventListener("input", syncMorphFromSlider);
   // Persist any control change (slider drag, select, checkbox) — one delegated
-  // listener over the whole panel covers them all. When a preset is selected the
-  // edit is auto-saved into it; in "— unsaved scene —" it just updates the working scene.
+  // listener over the whole panel covers them all. A scene is always selected, so the edit is
+  // always auto-saved into one — there is no longer a mode where it goes nowhere.
   function onEdit(e) {
     // A dev tool must never be folded into a preset. This used to be a `#diag` check, but that
     // section is gone and its one surviving toggle (the beat trace) now sits INSIDE the Beat
