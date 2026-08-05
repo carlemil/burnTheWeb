@@ -888,10 +888,27 @@ copy of the *whole library* rather than a delta, so it scaled badly in both stor
   `restore()` runs at the foot of that earlier slice, so a `let` down beside the functions is
   in the TDZ on **every reload that carries the field** — the same split as `cpuBlocked`.
   `galLoad` calls `noteCollection` **before** `applySharedLibrary`, which reloads the page.
-- **Nothing re-fetches those collections yet.** Loading your profile on another device gets
-  your scenes and the record of whose sets you follow, but not the sets — the install path
-  (`applySharedLibrary` → `applyRestore`) reloads, so re-adding N collections would be N
-  reloads. Wiring that up means a non-reloading install path first.
+- **`refollowCollections(raw)` puts them back, INSIDE `cloudApplyPayload`** — before anything
+  is applied, so the whole load stays **one `applyRestore` and one reload**. Doing it after the
+  reload cannot be that cheap: the install path (`applySharedLibrary` → `applyRestore`) *ends*
+  in `location.reload()`, so N collections would be N reloads.
+  - **Appended, never prepended** — `curPreset` indexes that array.
+  - Each fetched scene is **re-stamped with the key YOU follow it under**, as the gallery
+    install does; an older source carrying its own borrowed scenes must not smuggle a third
+    party's name through.
+  - A collection **already present in the payload is not re-fetched** (older blobs, saved
+    before `cloudBlob` filtered, carry them) — re-fetching would duplicate, not refresh.
+  - A source that is gone/unpublished/corrupt is **skipped and named**; it resolves
+    `{raw, missed}` so the caller can report without `cloudMsg("")` wiping it. Sequential, so
+    one slow source is not blamed on the others.
+  - `galFetchLibrary(uid)` is the shared fetch→unzip→parse, split out of `galLoad`.
+- **`applyRestore`'s MERGE matches on `(name, collection)`, not name alone.** A profile load
+  now brings your scenes *and* the collections you follow in one array, so name alone would let
+  a borrowed "Sunset" overwrite yours — the very collision collections exist to prevent.
+  Identical for anything with no collections (every key is `""`).
+- **`sharedLibrary` carries `collections` through**, and `applyRestore` writes it **only when
+  `coll` is unset** — a gallery install is one person's set, and whose sets *they* follow is
+  not a statement about whose you do.
 - `firestore.rules` still carries a **read-and-delete-only** `snapshots` block. It is not dead
   weight: those documents are owner-only and **Firestore does not cascade-delete**, so with no
   rule permitting a delete anything written while the feature existed would be permanently

@@ -549,6 +549,11 @@ off it — sign in with Google and your library follows you between machines.
 - **Load from cloud** fetches it back and asks whether to **merge** (add them to yours,
   overwriting any of yours with the same name) or **replace** (throw yours away and keep
   only these). Applying reloads the page.
+  The collections you follow are fetched fresh at the same time and come back with you, so a
+  new machine ends up with your scenes *and* everyone's sets you had added — up to date, not
+  as they were when you saved. A collection whose owner has since deleted or unlisted their
+  profile is simply skipped and named; the rest still load, and it returns if they do.
+  A borrowed scene can never overwrite one of yours on a merge, even with the same name.
 - Your **profile name** is yours to pick — click it to rename. It's written with your next
   save.
 - **Delete profile** removes everything you have stored, and leaves this browser's scenes

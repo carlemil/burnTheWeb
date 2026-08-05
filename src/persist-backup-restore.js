@@ -233,10 +233,22 @@
       } else if (el("rst-replace").checked) {
         lib = p.valid.slice();                 // Replace: only the backup's presets
       } else {                                 // Merge: overwrite same-named, keep the rest, append new
+        // Matched on NAME **AND** COLLECTION, not name alone. Collections exist precisely so
+        // that their "Sunset" and your "Sunset" are not a collision (see the branch above), and
+        // an incoming list can now carry both — a profile load brings your own scenes and the
+        // collections you follow in one array. Name alone would let a borrowed scene overwrite
+        // your own. Identical for anything with no collections at all: every key is "".
         lib = out.presets.slice();
-        for (const q of p.valid) { const at = lib.findIndex(x => x.name === q.name); if (at >= 0) lib[at] = q; else lib.push(q); }
+        const same = (x, q) => x.name === q.name && (x.collection || "") === (q.collection || "");
+        for (const q of p.valid) { const at = lib.findIndex(x => same(x, q)); if (at >= 0) lib[at] = q; else lib.push(q); }
       }
       out.presets = lib;
+      // The follow-list travels with the scenes, but ONLY when this is not a gallery install:
+      // `coll` set means you are adding one person's set, and whose sets THEY follow is not a
+      // statement about whose you do. Absent ⇒ untouched, so every older blob keeps yours.
+      if (!coll && !Array.isArray(p.parsed) && p.parsed.collections !== undefined) {
+        out.collections = collectionsOk(p.parsed.collections);
+      }
       const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
         ? p.parsed.presets[p.parsed.curPreset].name : null;
       // Match the sender's selection INSIDE the collection it was installed into — by name
@@ -323,7 +335,11 @@
     const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
     const valid = validatePresetList(arr);
     if (!valid.length) { alert("This link has no usable scenes."); return null; }
-    return { parsed: { presets: arr, curPreset: parts.curPreset, cycle: parts.cycle, __link: true }, valid };
+    // `collections` — who the sender follows — rides through so a profile load can restore the
+    // follow-list along with the scenes. It is only ever ACTED on for your own profile (see
+    // applyRestore): a stranger's bundle saying "you follow these" is not their call to make.
+    return { parsed: { presets: arr, curPreset: parts.curPreset, cycle: parts.cycle,
+                       collections: parts.collections, __link: true }, valid };
   }
   // Apply a shared library with NO dialog, for the gallery — whose per-row "Load and merge" /
   // "Load and replace" buttons have already asked the only question the dialog asks, so

@@ -223,11 +223,57 @@
       if (json == null) throw new Error("could not read the stored payload");
       let raw;
       try { raw = JSON.parse(json); } catch (e) { throw new Error("stored payload is corrupt"); }
-      cloudMsg("");
+      // Put the collections you follow back before anything is applied — see below for why
+      // here and not after the reload.
+      return refollowCollections(raw);
+    }).then(res => {
+      // A source that went away is worth saying out loud, and it must survive the clear —
+      // the Restore dialog is cancellable, so this is not always a message nobody reads.
+      cloudMsg(res.missed.length ? "Could not fetch " + res.missed.join(", ") + " — the rest loaded." : "",
+               res.missed.length > 0);
       // Straight into the existing shared-library path: validation, the merge-vs-replace
       // Restore dialog, and landing on the stored selected preset all come for free.
-      openSharedLibrary(raw);
+      openSharedLibrary(res.raw);
     });
+  }
+  // Re-follow the collections this profile records. A profile stores WHO you added, never
+  // their scenes (see cloudBlob), so without this a load on a second machine arrives with your
+  // own scenes and a follow-list that renders as nothing at all.
+  //
+  // Fetched HERE, and appended to the SAME preset array, so the whole load is still ONE
+  // applyRestore and ONE reload. The obvious alternative — re-adding them after the reload —
+  // cannot work as cheaply: the install path (applySharedLibrary → applyRestore) ends in
+  // location.reload(), so N collections would be N reloads.
+  //
+  // APPENDED, never prepended: `curPreset` indexes this array, and anything inserted ahead of
+  // it would silently slide the sender's selection onto a different scene.
+  //
+  // A source that has been deleted, unpublished, emptied or corrupted is SKIPPED and named in
+  // the message. Someone else's profile going away must never fail the load of your own
+  // scenes — and the record survives, so it comes back if they do.
+  //
+  // Sequential rather than parallel: the list is short (collectionsOk caps it at 40), and one
+  // request at a time keeps a slow or failing source from being blamed on the others.
+  function refollowCollections(raw) {
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.presets)) return Promise.resolve({ raw, missed: [] });
+    const want = collectionsOk(raw.collections);
+    // Anything already present in the payload is left alone. Nothing writes a collection into
+    // a profile today, but an older blob (saved before cloudBlob started filtering) carries
+    // them, and re-fetching those would duplicate the set rather than refresh it.
+    const have = new Set(raw.presets.map(p => (p && p.collection) || "").filter(Boolean));
+    const todo = want.filter(c => c.uid && !have.has(c.key));
+    if (!todo.length) return Promise.resolve({ raw, missed: [] });
+    cloudMsg("Fetching " + todo.length + " collection" + (todo.length === 1 ? "" : "s") + "…");
+    const missed = [];
+    return todo.reduce((chain, c) => chain.then(() =>
+      galFetchLibrary(c.uid).then(lib => {
+        const arr = (lib && Array.isArray(lib.presets)) ? lib.presets : [];
+        // Stamped with the label YOU follow them under, exactly as the gallery install does —
+        // their own borrowed scenes (an older profile could carry some) must not come through
+        // wearing a third party's name.
+        for (const p of arr) if (p && typeof p === "object") raw.presets.push({ ...p, collection: c.key });
+      }).catch(() => { missed.push(c.key); })
+    ), Promise.resolve()).then(() => ({ raw, missed }));
   }
 
   function cloudLoad() {
@@ -410,9 +456,12 @@
       host.appendChild(row);
     });
   }
-  function galLoad(p) {
-    el("gal-hint").textContent = "Fetching “" + p.name + "”…";
-    galFetchJson(galUrl + "/profiles/" + encodeURIComponent(p.uid)).then(r => {
+  // One public profile, fetched and decoded into its blob. Split out of galLoad because
+  // refollowCollections needs exactly the same three steps (fetch → payload → unzip → parse)
+  // and a second copy is how the two would drift. Rejects with a readable message at each
+  // step; every caller turns that into a line of UI rather than a console trace.
+  function galFetchLibrary(uid) {
+    return galFetchJson(galUrl + "/profiles/" + encodeURIComponent(uid)).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
       return r.json();
     }).then(doc => {
@@ -421,8 +470,12 @@
       return unzipFromB64(d.payload);
     }).then(json => {
       if (json == null) throw new Error("could not read that profile");
-      let raw;
-      try { raw = JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
+      try { return JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
+    });
+  }
+  function galLoad(p) {
+    el("gal-hint").textContent = "Fetching “" + p.name + "”…";
+    galFetchLibrary(p.uid).then(raw => {
       galOpen(false);
       // Straight in, no Restore dialog: there is nothing left to ask, since the scenes go
       // into their own collection rather than over yours. Same validation and the same
