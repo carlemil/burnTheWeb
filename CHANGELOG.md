@@ -14,6 +14,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.14.1] — 2026-08-05
+
+### Fixed
+
+- **Deleting a scene asks first, and names the scene it is about to delete.** **Delete** sits
+  one button along from **Rename** in a row you click while working, and it removed the
+  selected scene on the click with no way back. It now confirms — naming the scene, because
+  the mistake worth preventing is deleting the wrong one. Delete your last scene and it tells
+  you the scenes that ship with the app will be put back, since the list is never left empty.
+
 ## [1.14.0] — 2026-08-05
 
 ### Added
