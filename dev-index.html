@@ -10544,6 +10544,15 @@
   const isPopped = (slot, key) => popped.has(popKey(slot, key));
   const rows = {};                   // key -> menu row element (name + +/- button)
   const POPPABLE = CONTROLS.filter(c => c.type === "dual" || c.type === "plain").map(c => c.key);
+  // A scene control has ONE box for the whole page, so its popped-state is keyed "s/<key>"
+  // whichever block's launcher row you clicked. The sweeps below loop over the four blocks
+  // and would otherwise ask about "2/bloom", which is nobody's key — so fold those keys to
+  // the scene slot up front, in the one place that reads a slot back out of the set.
+  const SCENE_POP_KEYS = new Set(POPPABLE.filter(k => {
+    const c = CONTROLS.find(x => x.key === k);
+    return !!c && isSceneCtl(c);
+  }));
+  const popSlot = (slot, key) => (SCENE_POP_KEYS.has(key) ? -1 : slot);
   const ctlLabel = key => { const c = CONTROLS.find(x => x.key === key); return c ? c.label : key; };
   function makePopBtn(slot, key) {
     const b = document.createElement("button");
@@ -10644,13 +10653,9 @@
       if (t) t.textContent = ctlOwner(slot, key);
     }
   }
-  // Once PER BLOCK. Each block's .ctl boxes get their own owner line, bounds editor, pop
-  // button and launcher row, and each is exported into the one #breakout column;
-  // refreshBreakout is what keeps only the selected layer's boxes visible.
-  for (let slot = 0; slot < STACK_MAX; slot++) POPPABLE.forEach(key => {
-    const box = ctlIn(slot, "ctl-" + key);
-    if (!box) return;                            // a scene control exists in slot 0 only
-    box.dataset.slot = String(slot);
+  // The box's own furniture — owner line, bounds editor, dock button. Split out because the
+  // SCENE pass below dresses one box for the whole page rather than one per block.
+  function dressBox(slot, key, box) {
     box.classList.add("poppable");
     // Title line, first child so it sits above the label. Only ever visible in
     // #breakout: the menu slot shows the .ctl-row launcher, never the .ctl itself.
@@ -10688,7 +10693,13 @@
       }
     }
     box.appendChild(makePopBtn(slot, key));      // the box's own dock button (left gutter in #breakout)
-    const row = document.createElement("div");   // the launcher that stays in the menu slot
+  }
+  // The launcher that stays in the menu slot: the control's name, its beat dots and the
+  // +/- button. `slot` is the POP slot — -1 for a scene control, which has no wiring
+  // record in W and therefore no chips to mirror. (None of the scene controls declares
+  // `beat`, so no dots are lost; arm one and it would need a home for a second `w.dots`.)
+  function makeLauncherRow(slot, key) {
+    const row = document.createElement("div");
     row.className = "ctl-row";
     const name = document.createElement("span");
     name.className = "ctl-row-name"; name.textContent = ctlLabel(key);
@@ -10710,18 +10721,66 @@
       row.appendChild(dots);
     }
     row.appendChild(makePopBtn(slot, key));      // +/- button, right of the name
+    return row;
+  }
+  // Once PER BLOCK. Each block's .ctl boxes get their own owner line, bounds editor, pop
+  // button and launcher row, and each is exported into the one #breakout column;
+  // refreshBreakout is what keeps only the selected layer's boxes visible.
+  for (let slot = 0; slot < STACK_MAX; slot++) POPPABLE.forEach(key => {
+    const box = ctlIn(slot, "ctl-" + key);
+    if (!box) return;                            // a scene control is not in any block's map
+    box.dataset.slot = String(slot);
+    dressBox(slot, key, box);
+    const row = makeLauncherRow(slot, key);
     box.parentNode.insertBefore(row, box);       // row takes the control's menu slot
     breakout.appendChild(box);                   // full control lives in the column (hidden until popped)
+    const w = W[slot] && W[slot][key];
     if (w) w.row = row;
-    else rows[key] = row;                        // a scene control has no wiring record to hang it on
     ctlReg(slot, "row-" + key, row);
   });
+  // ---- the SCENE filter params: one box, N rows ---------------------------------
+  // A scene control carries an `id` rather than `data-k` and is generated in slot 0 only,
+  // so `ctlIn` — a map lookup over the [data-k] nodes — never finds it and the pass above
+  // skipped every one. That left Bloom, Barrel, Scanlines, Vignette and Film grain with no
+  // slider anywhere: buildFilterUI could not adopt them into their <details> either (same
+  // lookup), so they stayed behind in #filterctl, which buildFilterUI then hides. Expanding
+  // Bloom showed an empty body and Strength was unreachable. Fire lost `Burn rate` the same
+  // way and kept only `Rise`.
+  //
+  // The rest of this module already anticipates the shape of the fix — popKey's "s/" prefix,
+  // refreshBreakout's scene loop, syncPopBtns' "one box, N rows", remapPopped's `s === "s"`
+  // skip, ctlOwner dropping the "L2 ·" prefix at slot < 0. Only the construction was missing.
+  // So: ONE box in the column, popped as "s/<key>", and one launcher row in EVERY block's
+  // copy of that filter's section, because the section is per block and the value is not.
+  //
+  // Driven off FILTERS rather than POPPABLE so the rows land in the order the filter
+  // declares its params (Fire: Rise, then Burn rate). Only filter params are done here:
+  // ttl/tdur are scene controls too, but they have one home in the Scene box and already
+  // render there in full, so they need no launcher.
+  FILTERS.forEach(f => (f.params || []).forEach(key => {
+    const c = CONTROLS.find(x => x.key === key);
+    if (!c || !isSceneCtl(c) || !POPPABLE.includes(key)) return;
+    const box = el("ctl-" + key);
+    if (!box) return;
+    dressBox(-1, key, box);                      // no data-slot: this box belongs to no layer
+    breakout.appendChild(box);
+    // One row per block. `secs` is keyed by slot, but a plain query keeps this independent
+    // of that map and returns the bodies in block order, which is what the rows want.
+    document.querySelectorAll('.filter-sec[data-fid="' + f.id + '"] > .filter-body')
+      .forEach((body, slot) => {
+        const row = makeLauncherRow(-1, key);
+        body.appendChild(row);
+        if (slot === 0) rows[key] = row;         // a scene control has no wiring record to hang it on
+        ctlReg(slot, "row-" + key, row);
+      });
+  }));
   // The launcher rows and beat dots are the last per-block pieces to exist, so install
   // slot 0 into the singleton maps now that its record is complete.
   pointMaps(0);
   for (let slot = 0; slot < STACK_MAX; slot++) POPPABLE.forEach(k => syncPopBtns(slot, k));
 
   function syncPopBtns(slot, key) {   // keep both the menu-row and the box's button in sync
+    slot = popSlot(slot, key);
     const docked = !isPopped(slot, key);
     const hosts = slot < 0
       ? ctlEach("row-" + key).concat([rows[key], el("ctl-" + key)])   // a scene control: one box, N rows

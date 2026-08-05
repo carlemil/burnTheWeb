@@ -327,6 +327,16 @@ top→down in click order. A thumb is only ever visible in the column.
   `refreshBreakout()` shows one iff its slot/key is popped **and** that layer still uses the
   control. `ctlOwner(slot, key)` prefixes `L2 ·`; `syncPopOwners()` re-stamps after a reorder.
   Transient.
+- **A SCENE filter param is ONE box and N rows** (`bloom`, `burn`, `barrel`, `scan`,
+  `scancount`, `vignette`, `grain`). It carries an `id`, not `data-k`, so `ctlIn` — a map
+  lookup — never finds it: the per-block POPPABLE loop and `buildFilterUIFor`'s adoption both
+  skipped it, and the slider was stranded in the `#filterctl` that `buildFilterUIFor` then
+  hides (Bloom's `<details>` opened empty; Fire showed `Rise` and not `Burn rate`). A second
+  pass over `FILTERS`' params — **params order, not `POPPABLE` order** — dresses one box into
+  `#breakout` with **no `data-slot`** and appends a launcher row to *every* block's copy of
+  that section. **`popSlot(slot, key)` folds those keys to `-1`** inside `syncPopBtns`, so the
+  block-sweeps don't ask about `"2/bloom"`. `ttl`/`tdur` are scene controls too but have one
+  home in the Scene box and render there in full — they get no launcher.
 - **NOTHING calls `dockAll()`** — kept, no callers.
 - `#breakout` is **outside** `#panel`, so: control CSS scoped `#panel …, #breakout …`; `onEdit`
   attached to `#breakout` too; its **own capture-phase `pointerdown` + `focusin`** selecting
