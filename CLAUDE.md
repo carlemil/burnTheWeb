@@ -645,7 +645,8 @@ is rebuilt per tick; nothing ticked ⇒ the cycler **idles**. `setRotation` call
 - Like `collection`, **not** in `snapshotScene`, and **must be listed in `validatePresetList`**.
 - The row is a `.pl-row` with the checkbox **beside** the `.pl-scene` button; its click
   `stopPropagation()`s.
-- **`.pl-unsaved` also carries `.pl-scene`** — anything counting `.pl-scene` is off by one.
+- Every `.pl-scene` is a real saved scene. (An `.pl-unsaved` row used to carry `.pl-scene` too,
+  making any count of that class off by one; it is gone.)
 
 **`autosavePreset` must carry over every field that rides beside `name`** (it rebuilds from
 `snapshotScene()`, which captures none of them). Adding such a field means editing **three**
@@ -678,13 +679,37 @@ effect) with **`DEFAULT_SCENE` prepended and applied** (`JuliaBgTet`, a four-lay
 beat/pulse/plen pruned, state maps whole). `defaultScenePreset()` runs it through
 `deserializeBlob`, null if it names a retired effect. Then `persist()` once.
 
-**Creating a preset and restoring a backup both `stopCycling()`.** `applyRestore` can't (it
-reloads), so it writes `out.cycle = false` **last**, overriding the backup file's own `cycle`.
+**Creating a preset, adopting a shared scene and restoring a backup all `stopCycling()`.**
+`applyRestore` can't (it reloads), so it writes `out.cycle = false` **last**, overriding the
+backup file's own `cycle`.
 
 **Switching effect stays on the selected preset and folds the change into it** — three lines:
 `setEffect`, `autosavePreset`, `persist`. A preset named after its original effect keeps that
-name; that is **intended**. `autosavePreset()` early-returns while `curPreset < 0`.
-`presetprobe` asserts this structurally (the two previous behaviours both look reasonable).
+name; that is **intended**. `presetprobe` asserts this structurally (the two previous
+behaviours both look reasonable).
+
+**THERE IS NO "unsaved scene" — something is ALWAYS selected**: `presets.length >= 1` and
+`0 <= curPreset < presets.length`. **`ensureSelection()`** is the single choke point (re-seeds
+the default library if empty, then clamps); `curPreset = -1` survives only as the bootstrap
+declaration and `applyBlob`'s empty-library fallback, and `presetprobe` fails if a third site
+appears. A stored blob or link carrying `-1` still decodes — it resolves to scene 0.
+- **The corollary is the whole risk: selection and live state must AGREE.** `autosavePreset()`
+  now writes on every edit, so any path that changes the selection while leaving a different
+  picture up will have that picture written over the newly selected scene on the next slider
+  move. **Delete** and **`dropCollection`** therefore call `applyPreset` rather than just moving
+  the highlight, and a settings-only restore lands on scene 0 *and applies it*.
+- Deleting the last scene **re-seeds** the shipped library; an empty library would break the
+  invariant.
+- **A shared link is kept**, as a scene in a `"Shared with you"` collection (`SHARED_COLLECTION`)
+  — collections already guarantee it cannot collide with a scene of yours and can be dropped
+  whole. `installShared` only parks `pendingShared`; **`adoptSharedScene()`** does the library
+  write. That split is mandatory: the legacy `?s=` path calls `installShared` **synchronously
+  mid-slice**, three slices before the preset code exists and before `restore()` has built the
+  library — a push there is discarded by the load that follows. `adoptSharedScene` is idempotent
+  and is called from the startup epilogue (covering `?s=`) and from the `?z=`/`#c=` handlers.
+  Only `#c=` has a real name to use (the `/scenes` doc's `name`); `sceneBlob()` has no name
+  field, so the rest fall back to `"Shared scene"` — **`bumpName` only when it is taken**, since
+  it always bumps and made the first one "Shared scene 2".
 
 Presets are **local to the browser**; selecting one links edits to it (`onEdit` →
 `autosavePreset()`, no manual save). `mergeState()` normalizes against `presetState(e)`;
@@ -825,8 +850,8 @@ re-encoding).
   It survives only in history (until cleared or aged out) and in any `/scenes` share links,
   which are immutable by design.
 
-**`installShared` also resets the preset chooser to "— unsaved scene —"** (it set `curPreset = -1`
-but left the `<select>` showing whatever startup selected).
+**`installShared` hands its scene to the library** (see the presets section): it parks
+`pendingShared` and `adoptSharedScene()` files it under `"Shared with you"`.
 
 **The gallery applies a row straight away — no Restore dialog.** Rows offer *Load and merge* /
 *Load and replace*. **`applySharedLibrary(raw, replace)` does not reimplement the apply** — it
@@ -974,8 +999,17 @@ link is otherwise silent — `useProgram(null)` just draws nothing). Expect ~8�
 **SwiftShader is why probes HANG** — virtual time only advances when the task queue drains:
 - **Do not add a layer from a probe** (two live layers switch on `renderStackColor` and the frame
   loop stops yielding). Test per-layer UI by toggling classes.
+- **The shipped `DEFAULT_SCENE` is a FOUR-LAYER stack, so a fresh profile starts on the heavy
+  path.** Anything that keeps it on screen for the run stalls: stopping auto-cycle is enough,
+  because the cycler is otherwise what moves you onto a cheap single-layer scene. This is why
+  seeding `cycle:false` hangs, and why it looks like the feature under test broke.
+  **For a DOM-only probe, stub rAF in `<head>`** (`requestAnimationFrame = () => 0`) so
+  `frame()` never runs — all the DOM logic still works and nothing renders.
 - **Never `while (...) el.click()`** — bound every drive loop.
 - Kill stray `msedge*` first, **including `msedgewebview2`**.
+- **A Git Bash path is not a `file://` URL.** `file:///c/Users/…` loads Chromium's "File not
+  found" page, which *passes* every "did it finish" check instantly — a green harness measuring
+  nothing. Use `file:///C:/Users/…`.
 
 **A probe-generator script must contain no backtick** anywhere in the injected source (comments
 included) when that source sits in a template literal — it closes the literal, node dies, and **the

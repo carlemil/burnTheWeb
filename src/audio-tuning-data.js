@@ -233,7 +233,12 @@
     }
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);
-      curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length) ? saved.curPreset : -1;
+      // Out of range (or a `-1` written before the scratch mode was removed) resolves to the
+      // first scene rather than to "nothing selected" — ensureSelection() finishes the job once
+      // the library is known to be non-empty. Old blobs and share links therefore keep loading;
+      // they just land on a real scene.
+      curPreset = (Number.isInteger(saved.curPreset) && saved.curPreset >= 0 && saved.curPreset < presets.length)
+        ? saved.curPreset : (presets.length ? 0 : -1);
       if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
       if (saved.audio === "capture" || saved.audio === "mic") armAudioResume(saved.audio);
     }
@@ -254,7 +259,7 @@
   // default would silently inherit the recipient's value instead. The pruned
   // beats/pulses/plens maps omit defaults by design, so that bled through for
   // anyone who had used the app before (it looked perfect in a fresh browser).
-  function installShared(d) {
+  function installShared(d, name) {
     if (!d) return false;
     initStates(); initBeatStates(); initPulseStates(); initPlenStates(); initExtras();
     sceneOn = new Set();     // same reason: a shared scene omitting sceneFx must not inherit the recipient's Scene filters
@@ -262,12 +267,13 @@
     // item, not inherit whatever stack the recipient happened to have built.
     installStack([newStackItem(0)]);
     applyBlob(d, true);
-    curPreset = -1;                  // a shared scene isn't one of your saved presets
-    // ...and the chooser has to say so. Without this it keeps displaying whichever preset
-    // startup had selected, so a shared link looks like it loaded YOUR preset of that name.
-    // Harmless to the data (autosavePreset early-returns while curPreset < 0) and purely
-    // misleading, which is exactly the kind of thing nobody reports and everybody misreads.
-    if (typeof presetSel !== "undefined" && presetSel) presetSel.value = "-1";
+    // A shared scene is KEPT: it becomes a real scene in a "Shared with you" collection rather
+    // than an unsaved state you could edit and lose. Only the intent is recorded here — the
+    // library write is adoptSharedScene(), three slices later, because the legacy ?s= path runs
+    // this function synchronously while audio-tuning-data.js is still loading, before restore()
+    // has populated `presets` at all. Pushing here would be thrown away by the load that
+    // follows, quite apart from the TDZ on everything down there.
+    pendingShared = { name: name || "" };
     return true;
   }
   // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.
@@ -303,10 +309,13 @@
     const c = (location.hash.match(/[?&#]c=([A-Za-z0-9_-]+)/) || location.search.match(/[?&]c=([A-Za-z0-9_-]+)/));
     if (c) {
       try { history.replaceState(null, "", location.pathname); } catch (e) {}
-      Promise.resolve().then(() => cloudFetchScene(c[1])).then(json => {
-        if (!json || !installShared(parse(json))) return;
+      Promise.resolve().then(() => cloudFetchScene(c[1])).then(got => {
+        // The /scenes document carries the sender's own name for the scene; ?z= and ?s= have
+        // nowhere to put one (sceneBlob has no name field), so only this path gets a real one.
+        if (!got || !got.json || !installShared(parse(got.json), got.name)) return;
         resize();
         setEffect(+effectSel.value, false);
+        adoptSharedScene();
       });
       return;
     }
@@ -314,6 +323,8 @@
     const m = z ? null : location.search.match(/[?&]s=([^&#]+)/);
     if (!z && !m) return;
     stripShareParam();
+    // ?s= installs SYNCHRONOUSLY, mid-slice — no adoptSharedScene() call here on purpose. The
+    // startup epilogue makes it, once restore() has built the library this scene has to join.
     if (m) { installShared(parse(atobSafe(m[1]))); return; }
     // The compressed path is async, so it lands after the startup below has already
     // run setEffect() on the recipient's own scene — re-activate once it arrives.
@@ -323,6 +334,7 @@
       stageLayerExtras(stack[stackSel]);
       setEffect(+effectSel.value, false);
       applyLayerExtras(stack[stackSel]);   // the shared scene's selected-layer palette + filters
+      adoptSharedScene();                  // ...and keep it, as a scene in its own collection
     });
   }
   function atobSafe(s) { try { return decodeURIComponent(escape(atob(s))); } catch (e) { return ""; } }

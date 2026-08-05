@@ -194,7 +194,6 @@
   .pl-scene:hover { background: rgba(255, 122, 26, 0.22); }
   .pl-scene.on { border-color: #ffcf87; background: rgba(255, 122, 26, 0.28); color: #fff; }
   .pl-cyc:not(:checked) + .pl-scene.on { opacity: .8; }   /* selected still reads as selected */
-  .pl-unsaved { font-style: italic; opacity: .85; }
   .pl-head:focus-visible, .pl-scene:focus-visible, .pl-drop:focus-visible,
   .pl-cyc:focus-visible {
     outline: 2px solid #ffb15a; outline-offset: 1px;
@@ -737,7 +736,6 @@
     color: #ffcf87; opacity: 1; font-size: 12px; letter-spacing: .03em; text-transform: none;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  #panel #scenenow.unsaved { font-style: italic; opacity: .6; }
   /* ---- each layer's own controls, INSIDE its row -----------------------------------
      A .lyrblock (effect sliders → filters → palette) per stack slot, cloned from the
      <template> and living permanently in its layer's row, so a layer is one complete object:

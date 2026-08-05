@@ -49,10 +49,61 @@
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
-    presetSel.appendChild(new Option("— unsaved scene —", "-1"));
     presets.forEach((p, i) => presetSel.appendChild(new Option(p.name, String(i))));
-    presetSel.value = curPreset < 0 ? "-1" : String(curPreset);
+    presetSel.value = String(curPreset);
     buildPresetList();
+  }
+
+  // ---- something is ALWAYS selected ---------------------------------------------------
+  // THE one choke point for the invariant, rather than a clamp repeated at each of the eight
+  // places that used to drop to "— unsaved scene —". Seeds the library if it is empty (the
+  // same defaults the first visit uses) and pulls curPreset into range.
+  //
+  // An empty library has to be impossible, not merely unlikely: with no scratch mode,
+  // autosavePreset() writes on every edit, and it needs somewhere to write.
+  function ensureSelection() {
+    if (!presets.length) {
+      presets = defaultPresets();
+      const ds = defaultScenePreset();
+      if (ds) presets.unshift(ds);
+    }
+    if (!(curPreset >= 0 && curPreset < presets.length)) curPreset = 0;
+  }
+
+  // A shared link's scene, adopted into the library under its own collection.
+  //
+  // WHY THIS IS NOT DONE IN installShared. The legacy `?s=` path calls installShared
+  // SYNCHRONOUSLY while audio-tuning-data.js is still loading — three slices before this one.
+  // Two things are wrong at that moment: every `const` down here is in the temporal dead zone,
+  // and, worse, restore() has not run, so `presets` is still empty and whatever we pushed would
+  // be thrown away by the load that follows. So installShared only parks `pendingShared`, and
+  // the write happens here, from callers that run after startup has settled.
+  //
+  // Idempotent — it clears the marker — because it is called from three places that cannot all
+  // be ordered against each other: the startup epilogue (which covers the sync ?s= path) and
+  // the ?z= / #c= promise handlers (which land after every slice has run).
+  //
+  // A collection, not a loose scene, so the same guarantees the gallery already provides apply:
+  // it cannot collide with a scene of your own that shares its name, the group folds, and its
+  // ✕ removes the whole set.
+  const SHARED_COLLECTION = "Shared with you";
+  function adoptSharedScene() {
+    if (!pendingShared) return false;
+    const want = pendingShared;
+    pendingShared = null;
+    // sceneBlob() carries no name — a shared scene has nothing to be called — so #c= links pass
+    // the sender's own name through and everything else falls back to a default.
+    // bumpName ONLY when the name is already taken: it always bumps, so calling it
+    // unconditionally made the very first shared scene "Shared scene 2".
+    const base = (want.name || "Shared scene").slice(0, 60);
+    const name = presets.some(p => p.name === base) ? bumpName(base) : base;
+    presets.push({ name, collection: SHARED_COLLECTION, ...snapshotScene() });
+    curPreset = presets.length - 1;
+    openCollections.add(SHARED_COLLECTION);   // opened, or the scene you just received is hidden
+    stopCycling();                            // ...and stays on screen; auto-cycle is on by default
+    rebuildPresetOptions();
+    persist();
+    return true;
   }
 
   // ---- Scene collections -------------------------------------------------------------
@@ -171,13 +222,16 @@
   function syncSceneTitle() {
     const h = el("scenenow");
     if (!h) return;
-    const p = curPreset >= 0 ? presets[curPreset] : null;
-    h.textContent = p ? p.name : "— unsaved scene —";
-    h.classList.toggle("unsaved", !p);
+    // Something is always selected (see ensureSelection), so there is no "nothing" branch.
+    // The || is a belt-and-braces read for the window during startup before ensureSelection
+    // has run, not a state the user can reach.
+    const p = presets[curPreset] || presets[0];
+    if (!p) return;
+    h.textContent = p.name;
     // Whose scene it is, when it came from someone else's collection — the same fact the
     // on-screen banner gives you, kept visible while you work rather than for four seconds.
-    const from = p ? collectionOf(p) : "";
-    h.title = from ? p.name + " — from " + from : (p ? p.name : "Nothing saved is selected — edits are not written to any scene");
+    const from = collectionOf(p);
+    h.title = from ? p.name + " — from " + from : p.name;
   }
   function buildPresetList() {
     syncSceneTitle();
@@ -185,15 +239,9 @@
     if (!host) return;
     presetSel.style.display = "none";       // the <select> is the value store, not the control
     host.textContent = "";
-    // "— unsaved scene —" sits OUTSIDE every group: it is a mode, not a saved scene.
-    const un = document.createElement("button");
-    un.type = "button";
-    un.className = "pl-scene pl-unsaved" + (curPreset < 0 ? " on" : "");
-    un.textContent = "— unsaved scene —";
-    un.title = "Tweak without touching a saved scene — nothing is written while this is selected";
-    un.addEventListener("click", () => pickPreset(-1));
-    host.appendChild(un);
-
+    // Every .pl-scene in here is now a real saved scene. The list used to open with an
+    // "— unsaved scene —" row that also carried .pl-scene, so anything counting that class to
+    // count scenes was off by one; it isn't any more.
     for (const g of presetGroups()) {
       const sec = document.createElement("div");
       sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");
@@ -287,10 +335,24 @@
       + " will be deleted. Your own scenes are not touched.")) return;
     // Re-find the selection by IDENTITY afterwards: every index above the removed run
     // shifts, so keeping the old number would silently select someone else's scene.
-    const cur = curPreset >= 0 ? presets[curPreset] : null;
+    const cur = presets[curPreset];
+    const at = curPreset;
     presets = presets.filter(p => collectionOf(p) !== key);
-    curPreset = cur ? presets.indexOf(cur) : -1;      // −1 if the scene we were on just went
     openCollections.delete(key);
+    const kept = cur ? presets.indexOf(cur) : -1;
+    if (kept >= 0) {                  // the scene we were on survived — leave the picture alone
+      curPreset = kept;
+      rebuildPresetOptions();
+      persist();
+      return;
+    }
+    // It went with the collection, so a neighbour is selected — and it must be APPLIED, not
+    // merely highlighted. Selecting without applying leaves the deleted scene on screen under
+    // a name that now belongs to a different scene, and the next slider move autosaves it over
+    // that scene. See the same reasoning on Delete.
+    ensureSelection();
+    curPreset = Math.min(at, presets.length - 1);
+    applyPreset(curPreset);
     rebuildPresetOptions();
     persist();
   }
@@ -497,12 +559,11 @@
   }
   function createPreset() {           // save the current scene as a new preset
     // New nearly always means "a variation on the one I am editing", so it proposes that
-    // scene's name with its version bumped. With nothing selected ("— unsaved scene —")
-    // there is no name to vary, so fall back to the plain "Scene N" — routed through the
-    // same bump so it can't land on a number already used either.
-    const suggest = curPreset >= 0 && curPreset < presets.length
-      ? bumpName(presets[curPreset].name)
-      : bumpName("Scene " + presets.length);
+    // scene's name with its version bumped. Something is always selected now, so the old
+    // "nothing to vary" fallback is gone — but the read stays defensive, since createPreset is
+    // reachable from a keyboard shortcut before the first paint.
+    const cur = presets[curPreset];
+    const suggest = bumpName(cur ? cur.name : "Scene " + presets.length);
     const name = (prompt("Scene name:", suggest) || "").trim();
     if (!name) return;
     presets.push({ name, ...snapshotScene() });
@@ -543,6 +604,9 @@
   // `collection` losing that way quietly reassigned someone else's scene to you (it left
   // their collection and appeared under your name), and `rotate` losing that way put a scene
   // you had taken out of the show straight back into it.
+  // There is no scratch mode any more, so this writes on every edit. The range check is a
+  // guard for the startup window before ensureSelection has run, NOT a mode: if it ever
+  // silently skips once the app is up, an edit has gone nowhere and that is a bug.
   function autosavePreset() {
     if (curPreset >= 0 && curPreset < presets.length) {
       const p = presets[curPreset];
@@ -550,17 +614,29 @@
     }
   }
   el("renamepreset").addEventListener("click", () => {
-    if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
+    if (curPreset < 0 || curPreset >= presets.length) return;
     const name = (prompt("Rename scene:", presets[curPreset].name) || "").trim();
     if (!name) return;
     presets[curPreset].name = name;
     rebuildPresetOptions();
     persist();
   });
+  // Delete used to drop to "— unsaved scene —" and leave the deleted scene on screen, which
+  // was safe precisely because nothing was selected to autosave into. With something always
+  // selected that shortcut is destructive: highlight the neighbour without applying it and the
+  // next slider move writes the scene you just deleted straight over the neighbour. So the
+  // neighbour is APPLIED, and the picture changes — that is the visible cost of losing the
+  // scratch mode, and it is the correct trade.
+  //
+  // Deleting the last scene re-seeds the shipped library rather than leaving an empty one:
+  // "something is always selected" cannot hold over an empty list.
   el("delpreset").addEventListener("click", () => {
-    if (curPreset < 0 || curPreset >= presets.length) return;   // nothing real selected
-    presets.splice(curPreset, 1);
-    curPreset = -1;
+    if (curPreset < 0 || curPreset >= presets.length) return;
+    const at = curPreset;
+    presets.splice(at, 1);
+    ensureSelection();                                  // re-seeds if that was the last one
+    curPreset = Math.min(at, presets.length - 1);
+    applyPreset(curPreset);
     rebuildPresetOptions();
     persist();
   });
@@ -573,8 +649,8 @@
   // comes back if you return to an effect that has it, so nothing stale is ever shown.
   presetSel.addEventListener("change", () => {
     const i = +presetSel.value;
-    // applyPreset repaints the list itself; "— unsaved scene —" never reaches it, so it has
-    // to move the highlight by hand (the same asymmetry dockAll is called up front for).
-    if (i >= 0) applyPreset(i); else { curPreset = -1; buildPresetList(); }
+    // Every option is a real scene now, so there is no second branch: applyPreset repaints the
+    // list and moves the highlight itself.
+    if (i >= 0 && i < presets.length) applyPreset(i);
   });
 

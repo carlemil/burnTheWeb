@@ -614,6 +614,11 @@
   }
   // Recipient side of #c=<id>. Called (deferred) from applyShared: the fetch is anonymous,
   // because a share link must open for someone with no account.
+  //
+  // Returns {json, name}, not the bare payload: the document carries the sender's own name for
+  // the scene, and a shared scene is now KEPT as a real scene in the recipient's library, so it
+  // needs something to be called. ?z=/?s= have no equivalent — sceneBlob() has no name field —
+  // so this is the only path that can supply one.
   function cloudFetchScene(id) {
     if (!CLOUD.apiKey || !CLOUD.projectId) return Promise.resolve(null);
     return galFetchJson(galUrl + "/scenes/" + encodeURIComponent(id))
@@ -621,7 +626,8 @@
       .then(doc => {
         if (!doc) return null;
         const d = fsIn(doc);
-        return d.payload ? unzipFromB64(d.payload) : null;
+        if (!d.payload) return null;
+        return unzipFromB64(d.payload).then(json => (json ? { json, name: d.name || "" } : null));
       })
       .catch(() => null);
   }

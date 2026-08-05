@@ -90,7 +90,17 @@
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
   let randSeed = true;       // AnimeJulia: re-roll the orbit start on reload / effect entry (toggle)
   let cycleOn = CONFIG.scene.autoCycle;   // auto-cycle saved presets on the TTL timer (toggle); default from config
-  let presets = [], curPreset = -1, applyingPreset = false;   // named full-scene snapshots
+  // Named full-scene snapshots. INVARIANT once startup has finished: presets.length >= 1 and
+  // 0 <= curPreset < presets.length — something is ALWAYS selected, so every edit has a scene
+  // to be auto-saved into. The -1 here is the pre-restore bootstrap value only;
+  // ensureSelection() resolves it before the first paint. It is also what lets a stored blob or
+  // share link carrying `curPreset: -1` (written before this change) keep loading — it decodes
+  // to a real selection rather than being rejected.
+  let presets = [], curPreset = -1, applyingPreset = false;
+  // A shared link (?z=/?s=/#c=) hands its scene to the library instead of leaving it unsaved.
+  // installShared cannot do that write itself — see adoptSharedScene — so it parks the intent
+  // here and the write happens once everything exists. {name} or null.
+  let pendingShared = null;
 
   // Zoom factor, per LAYER (1 = default; installStackItem installs the drawing layer's).
   // EVERY effect now zooms by re-evaluating its content at the zoomed coordinates rather

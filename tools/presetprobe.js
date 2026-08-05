@@ -149,6 +149,48 @@ const D = P.BEAT_DEFAULTS;
   ok(/setEffect\(/.test(src2), "...and still switches the effect");
 }
 
+// --- 3b. something is ALWAYS selected -------------------------------------------
+// There is no "— unsaved scene —" any more, and the invariant behind that is worth pinning:
+// with no scratch mode, autosavePreset() writes on every edit, so a curPreset of -1 anywhere
+// past startup means an edit goes nowhere — or, worse, that a path selected a scene without
+// applying it and the next slider move overwrites that scene with a different picture.
+// Invisible to a screenshot: the panel looks right the whole time and the damage only shows
+// the next time you open the scene that got clobbered.
+{
+  const body = src.replace(/^\s*\/\/.*$/gm, "");     // comments discuss -1; code must not use it
+  const writes = body.match(/curPreset\s*=\s*-1/g) || [];
+  // Exactly two are legitimate: the bootstrap declaration in boot-globals, and applyBlob's
+  // fallback for an empty library (both are resolved by ensureSelection before anything paints).
+  ok(writes.length <= 2, "no path drops the selection to -1 beyond the two bootstrap sites",
+     writes.length + " site(s)");
+  ok(/function ensureSelection\(\)/.test(body), "ensureSelection() exists as the single choke point");
+  ok(/presets\s*=\s*defaultPresets\(\)/.test(cut("function ensureSelection()", "function adoptSharedScene")),
+     "...and re-seeds the library rather than allowing an empty one");
+  // The destructive case: both paths that remove the selected scene must APPLY what they pick.
+  const del = cut('el("delpreset").addEventListener', "presetSel.addEventListener");
+  ok(/applyPreset\(/.test(del), "Delete applies the neighbour it selects, it does not just highlight it");
+  const drop = cut("function dropCollection(", "function mergeState(");
+  ok(/applyPreset\(/.test(drop), "...and so does dropping the collection holding the selection");
+  // The scratch mode is gone from the UI too.
+  ok(!/pl-unsaved/.test(body), "the unsaved row is gone from the scene list");
+  ok(!/— unsaved scene —/.test(body), "...and so is its label");
+}
+
+// --- 3c. a shared scene is kept, and the write is deferred ----------------------
+// installShared runs SYNCHRONOUSLY for the legacy ?s= link, three slices before the preset
+// code exists and before restore() has built the library the scene has to join. Writing there
+// would be discarded by the load that follows. So it parks an intent and adoptSharedScene does
+// the write later — from the startup epilogue (which covers ?s=) and from the ?z=/#c= handlers.
+{
+  const inst = cut("function installShared(", "// ?z= (deflated)");
+  ok(/pendingShared\s*=/.test(inst), "installShared parks the intent instead of writing presets");
+  ok(!/presets\.push\(/.test(inst), "...and does not touch the library itself");
+  const adopt = cut("function adoptSharedScene()", "// ---- Scene collections");
+  ok(/pendingShared\s*=\s*null/.test(adopt), "adoptSharedScene is idempotent (clears the marker)");
+  ok(/collection:\s*SHARED_COLLECTION/.test(adopt), "...files the scene in its own collection");
+  ok(/stopCycling\(\)/.test(adopt), "...and stops the cycler swapping straight off it");
+}
+
 // --- 4. saved scenes survive a registry reorder -------------------------------
 // The per-effect maps used to be stored keyed by registry position, so reordering or
 // removing an effect silently handed every saved scene to whichever effect now sat at

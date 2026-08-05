@@ -242,14 +242,17 @@
       // Match the sender's selection INSIDE the collection it was installed into — by name
       // alone it could land on a same-named scene of your own, which is exactly the
       // collision collections exist to stop.
-      out.curPreset = sel
-        ? lib.findIndex(x => x.name === sel && (x.collection || "") === coll)
-        : -1;
+      // No match (or nothing recorded) lands on the first scene rather than on nothing —
+      // ensureSelection clamps it at startup either way.
+      const found = sel ? lib.findIndex(x => x.name === sel && (x.collection || "") === coll) : -1;
+      out.curPreset = found >= 0 ? found : 0;
       // A shared bundle records which preset the sender had open; land the receiver on it
       // (its scene, not just the dropdown) after the reload — a one-shot marker the startup
       // reads. Cleared on use, so ordinary reloads keep the persisted scene. Backups don't
       // carry curPreset, so this only fires for shared links.
-      if (out.curPreset >= 0) sessionStorage.setItem("btw.applyPreset", String(out.curPreset));
+      // Gated on `found`, NOT on out.curPreset: that is always >= 0 now, so testing it would
+      // fire this one-shot for ordinary file restores too and yank them onto scene 0.
+      if (found >= 0) sessionStorage.setItem("btw.applyPreset", String(found));
       else sessionStorage.removeItem("btw.applyPreset");
     }
     if (p.hasSettings && el("rst-settings").checked) {
@@ -263,7 +266,14 @@
       if (Array.isArray(s.ttl)) out.ttl = s.ttl;   // global preset TTL
       if (s.scale) out.scale = s.scale;
       if (typeof s.panelOpen === "boolean") out.panelOpen = s.panelOpen;
-      if (!el("rst-presets").checked) out.curPreset = -1;   // live values came from the file; don't claim a preset
+      // Settings-only restore: the live values came from the FILE, so they are not scene 0's.
+      // Selecting scene 0 without applying it would let the next edit autosave the file's
+      // values over it. Land on it AND apply it, so selection and picture agree — the rule the
+      // whole no-scratch-mode change rests on.
+      if (!el("rst-presets").checked) {
+        out.curPreset = 0;
+        sessionStorage.setItem("btw.applyPreset", "0");
+      }
     }
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
     if (p.hasBeat && el("rst-beat").checked) out.beatTune = p.parsed.beatTune;
@@ -365,8 +375,16 @@
       presets.unshift(ds);
       applyPreset(0);                 // installs the stack and sets curPreset = 0
       freshVisit = true;
-    } else { curPreset = effect; }
+    } else { curPreset = 0; }         // a preset index, NOT `effect` — that was an effect index
   }
+  // The invariant, established before anything can paint or autosave: a real scene is selected.
+  // Covers a library that arrived empty, a stored curPreset that no longer resolves, and the
+  // `-1` written by every version before the scratch mode was removed.
+  ensureSelection();
+  // A shared link parked its scene during applyShared; adopt it now that the library it joins
+  // exists. This is the call that covers the synchronous ?s= path — the ?z= and #c= handlers
+  // land later and make their own call, and adoptSharedScene is idempotent so both are safe.
+  adoptSharedScene();
   rebuildPresetOptions();
   syncTtlEnabled();                   // match the Preset TTL enabled-state to the restored cycle toggle
   startCredits();                     // burn the credits into the opening frames
