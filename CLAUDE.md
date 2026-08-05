@@ -442,7 +442,7 @@ living permanently in their row. Any number open at once. No `#lyrctl`, no `park
   **`repaintAllBlocks()` must run wherever a slot changes which layer it holds** — reorder, add,
   remove, `installStack`. It lives inside `installStack`, not `applyPreset`.
 - **Visibility passes are per block**: `shownKeysFor(slot)`, `refreshBlockVisibility`,
-  `markFirstGroup`, `refreshChanged`, `refreshBlocked`, `ctlHiIn` all take a slot.
+  `markFirstGroup`, `refreshBlocked`, `ctlHiIn` all take a slot.
 - **`RNG_ORIG` is built from `CONTROLS`, not a DOM scan** (layer controls have no id; a scan also
   swallows the gain sliders).
 - **`selectStack`'s order is load-bearing**: `freezeItem` → `stackSel = j` → `pointMaps(j)` → rest.
@@ -510,8 +510,9 @@ still resets.
 
 **Beat chips ship unarmed**; per-band colours (L blue, M green, H red) apply only to `.on`.
 
-**Beat dots** (`.ctl-dot`, `dotEls`): ≤3 per row, chip colours, `display:none` unless armed,
-`opacity .34` idle, lit by `flashChips()`. `syncDots()` is called **from** `syncChips()`; dots
+**Beat dots** (`.ctl-dot`, `dotEls`): ≤3 per row, **12px**, chip colours, `display:none` unless
+armed, `opacity .5` idle, lit by `flashChips()` (the idle figure is repeated in `flashChips`'s
+ramp — keep the two in step). `syncDots()` is called **from** `syncChips()`; dots
 are built only for keys present in `chipEls`.
 
 **Beat pulse**: `updateAnims` snaps an armed slider to the high thumb and decays `a.pulse`

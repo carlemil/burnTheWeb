@@ -275,8 +275,8 @@
         const dot = dotEls[id] && dotEls[id][k];
         if (dot) {
           if (lit > 0.05) {
-            dot.style.opacity = (0.34 + lit * 0.66).toFixed(3);
-            dot.style.boxShadow = "0 0 " + (2 + lit * 7).toFixed(1) + "px " + BANDCOLOR[k];
+            dot.style.opacity = (0.5 + lit * 0.5).toFixed(3);
+            dot.style.boxShadow = "0 0 " + (3 + lit * 11).toFixed(1) + "px " + BANDCOLOR[k];
           } else {
             dot.style.opacity = "";
             dot.style.boxShadow = "";

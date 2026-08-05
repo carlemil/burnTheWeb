@@ -448,7 +448,6 @@
     if (e.target.closest("[data-nopersist]")) return;
     if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
     refreshBlocked();                        // a thumb move can neutralise (or free) a dependent control
-    refreshChanged();                        // a thumb move can move a slider off (or back to) its default
     if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }

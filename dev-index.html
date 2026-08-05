@@ -106,7 +106,9 @@
   #panel select option, #menubar select option { background: #1a0f08; color: #ffcf87; }
   /* Palette preview picker: a gradient swatch per palette, replacing the plain
      dropdown (the <select> stays as the value store, hidden once JS builds these). */
-  [data-k="palswatches"] { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 4px; }
+  /* ONE column: a swatch is a gradient with its name written over it, so width is what
+     makes it readable — two columns squeezed both the ramp and the label. */
+  [data-k="palswatches"] { display: grid; grid-template-columns: 1fr; gap: 4px; margin: 0 0 4px; }
   .palsw {
     position: relative; height: 24px; padding: 0; border-radius: 5px;
     border: 1px solid rgba(255, 140, 40, 0.35); cursor: pointer; overflow: hidden;
@@ -648,31 +650,23 @@
   .ctl-row.ctl-blocked, #breakout .ctl.ctl-blocked { opacity: .32; }
   .ctl-row.ctl-blocked { cursor: help; }
   .ctl-row.ctl-blocked .ctl-pop { pointer-events: none; opacity: .5; }
-  /* Modified-from-default: an amber dot before the name on the menu row, and a left accent
-     on the pop-out box, so you can see at a glance which sliders you've moved off default. */
-  .ctl-row.ctl-changed .ctl-row-name::before {
-    content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px;
-    border-radius: 50%; background: #ffb15a; vertical-align: middle;
-    box-shadow: 0 0 4px rgba(255, 140, 40, 0.75);
-  }
-  #breakout .ctl.ctl-changed { box-shadow: inset 3px 0 0 -1px #ffb15a; }
   @keyframes ctlflash { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,140,40,0); background: transparent; }
                         25%, 65% { box-shadow: 0 0 0 2px rgba(255,140,40,0.95); background: rgba(255,140,40,0.28); } }
   .ctl-row.ctl-flash { animation: ctlflash 1.4s ease; border-radius: 6px; }
   /* Beat-trigger dots: which of L/M/H is armed for this slider, at a glance, without
      popping every box open. A dot only exists while its band is armed; it sits dim and
      lights up on that band's beat, the same cue the chip in the box gives. */
-  .ctl-dots { flex: none; display: flex; align-items: center; gap: 3px; }
+  .ctl-dots { flex: none; display: flex; align-items: center; gap: 5px; }
   .ctl-dot {
-    display: none; width: 6px; height: 6px; border-radius: 50%;
-    background: currentColor; opacity: .34; transition: opacity .08s;
+    display: none; width: 12px; height: 12px; border-radius: 50%;
+    background: currentColor; opacity: .5; transition: opacity .08s;
   }
   .ctl-dot.armed { display: block; }
   .ctl-dot.d-low { color: #5a9cff; }      /* L — matches .bandchips button:nth-child(1).on */
   .ctl-dot.d-mid { color: #45cf62; }      /* M */
   .ctl-dot.d-high { color: #ff5f4d; }     /* H */
   /* Audio off ⇒ nothing can trigger, so dim them like the chips (#panel.audio-off). */
-  #panel.audio-off .ctl-dot { opacity: .18; }
+  #panel.audio-off .ctl-dot { opacity: .26; }
   /* Credits: set like a demo's title screen rather than two flat sentences —
      the scene role in glowing caps over the real name, handle picked out, each
      entry hung off a thin gradient bar. */
@@ -6235,8 +6229,8 @@
         const dot = dotEls[id] && dotEls[id][k];
         if (dot) {
           if (lit > 0.05) {
-            dot.style.opacity = (0.34 + lit * 0.66).toFixed(3);
-            dot.style.boxShadow = "0 0 " + (2 + lit * 7).toFixed(1) + "px " + BANDCOLOR[k];
+            dot.style.opacity = (0.5 + lit * 0.5).toFixed(3);
+            dot.style.boxShadow = "0 0 " + (3 + lit * 11).toFixed(1) + "px " + BANDCOLOR[k];
           } else {
             dot.style.opacity = "";
             dot.style.boxShadow = "";
@@ -7050,36 +7044,6 @@
     }
     markFirstGroup(slot);              // ...and the topmost visible one loses its divider
     refreshBlocked(slot, shown);      // grey any control another setting has neutralised
-    refreshChanged(slot, shown);      // mark any slider moved off its shipped default
-  }
-  // Mark a slider's menu row (and its pop-out box) when its live value differs from the
-  // current effect's SHIPPED default — a modified-from-default dot, so you can see at a
-  // glance what you've customised. Reads the DOM thumbs (stable; the drift lives elsewhere),
-  // so it must run on every edit too. Dual → compare [lo,hi]; plain → the single value.
-  function refreshChanged(slot, shown) {
-    if (slot === undefined) slot = stackSel;
-    shown = shown || shownKeysFor(slot);
-    const L = stack[slot];
-    const def = presetState(slot === stackSel || !L ? effect : L.fx);
-    const g = k => ctlIn(slot, k) || (slot === 0 ? el(k) : null);
-    for (const c of CONTROLS) {
-      const row = ctlIn(slot, "row-" + c.key) || (slot === 0 ? rows[c.key] : null);
-      if (!row) continue;             // only poppable sliders carry a launcher row
-      let changed = false;
-      if (shown.has(c.key)) {
-        const d = def[c.key];
-        if (Array.isArray(d)) {
-          const lo = g(c.key + "-lo"), hi = g(c.key + "-hi");
-          if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
-        } else if (d != null) {
-          const e = g(c.key);
-          if (e) changed = Math.abs(+e.value - d) > 1e-9;
-        }
-      }
-      row.classList.toggle("ctl-changed", changed);
-      const box = g("ctl-" + c.key);
-      if (box) box.classList.toggle("ctl-changed", changed);
-    }
   }
   // A control that does nothing while another slider sits at its neutral value (a dual
   // whose HIGH thumb is 0 — i.e. turned fully off, so the drift can never leave 0). Keyed
@@ -11010,7 +10974,6 @@
     if (e.target.closest("[data-nopersist]")) return;
     if (e.target.closest(".rng-edit")) return;   // bounds fields persist via the input they dispatch on the slider
     refreshBlocked();                        // a thumb move can neutralise (or free) a dependent control
-    refreshChanged();                        // a thumb move can move a slider off (or back to) its default
     if (persistReady && !applyingPreset && e.target.id !== "preset") autosavePreset();
     persist();
   }

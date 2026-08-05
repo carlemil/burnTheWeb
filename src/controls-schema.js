@@ -691,36 +691,6 @@
     }
     markFirstGroup(slot);              // ...and the topmost visible one loses its divider
     refreshBlocked(slot, shown);      // grey any control another setting has neutralised
-    refreshChanged(slot, shown);      // mark any slider moved off its shipped default
-  }
-  // Mark a slider's menu row (and its pop-out box) when its live value differs from the
-  // current effect's SHIPPED default — a modified-from-default dot, so you can see at a
-  // glance what you've customised. Reads the DOM thumbs (stable; the drift lives elsewhere),
-  // so it must run on every edit too. Dual → compare [lo,hi]; plain → the single value.
-  function refreshChanged(slot, shown) {
-    if (slot === undefined) slot = stackSel;
-    shown = shown || shownKeysFor(slot);
-    const L = stack[slot];
-    const def = presetState(slot === stackSel || !L ? effect : L.fx);
-    const g = k => ctlIn(slot, k) || (slot === 0 ? el(k) : null);
-    for (const c of CONTROLS) {
-      const row = ctlIn(slot, "row-" + c.key) || (slot === 0 ? rows[c.key] : null);
-      if (!row) continue;             // only poppable sliders carry a launcher row
-      let changed = false;
-      if (shown.has(c.key)) {
-        const d = def[c.key];
-        if (Array.isArray(d)) {
-          const lo = g(c.key + "-lo"), hi = g(c.key + "-hi");
-          if (lo && hi) changed = Math.abs(+lo.value - d[0]) > 1e-9 || Math.abs(+hi.value - d[1]) > 1e-9;
-        } else if (d != null) {
-          const e = g(c.key);
-          if (e) changed = Math.abs(+e.value - d) > 1e-9;
-        }
-      }
-      row.classList.toggle("ctl-changed", changed);
-      const box = g("ctl-" + c.key);
-      if (box) box.classList.toggle("ctl-changed", changed);
-    }
   }
   // A control that does nothing while another slider sits at its neutral value (a dual
   // whose HIGH thumb is 0 — i.e. turned fully off, so the drift can never leave 0). Keyed
