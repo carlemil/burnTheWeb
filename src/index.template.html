@@ -22,7 +22,10 @@
 <canvas id="fire"></canvas>
 <canvas id="creditcv"></canvas>
 
-<div id="panel" class="hidden">
+<!-- OPEN by default, so a first-time visitor can see there is something to play with rather
+     than a bare canvas. It is only the default: applyBlob overrides it from the stored
+     `panelOpen` for anyone who has been here before, so closing it stays closed. -->
+<div id="panel">
   <!-- Title + subtitle are HIDDEN, not deleted (see the `#panel h1` rule in the CSS): the
        panel opens straight onto the scene controls. Both nodes stay because they are still
        wired — `sub` is written by setEffect on every effect change, and #help-btn opens the

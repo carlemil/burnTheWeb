@@ -154,9 +154,18 @@
   // The key is deliberately its own, not part of cloudSess: this is what to call your local
   // library, so it outlives a sign-out. Same per-browser class as the credits preference.
   const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";
-  // What an unnamed profile is called — the same string cloudSave writes as the default
-  // profile name, so the heading and what would actually be published cannot disagree.
+  // TWO different defaults, because the two places had two different jobs and sharing one
+  // string served neither well.
+  //
+  // DEFAULT_PROFILE_NAME is what cloudSave PUBLISHES under when you never named your profile —
+  // it has to read as somebody's name in the public gallery, so it stays the app's name.
+  //
+  // DEFAULT_LIBRARY_LABEL is only the heading over your own group in the scene list before you
+  // have a profile name. "burnTheWeb" there just named the app back at you; "Default scenes"
+  // says what the group actually holds on a fresh install. Setting a profile name replaces it
+  // either way, so this is the pre-account label and nothing more.
   const DEFAULT_PROFILE_NAME = "burnTheWeb";
+  const DEFAULT_LIBRARY_LABEL = "Default scenes";
   function storedProfileName() {
     try { return (localStorage.getItem(PROFILE_NAME_KEY) || "").trim(); } catch (e) { return ""; }
   }
@@ -167,7 +176,7 @@
     const n = el("cloud-name");
     return (n && (n.value || "").trim()) || storedProfileName();
   }
-  function myCollectionLabel() { return myProfileName() || DEFAULT_PROFILE_NAME; }
+  function myCollectionLabel() { return myProfileName() || DEFAULT_LIBRARY_LABEL; }
   // The one way the name is set. Writes the field (still the value store), caches it, and
   // rebuilds the scene list so the heading follows immediately rather than at the next
   // incidental rebuild.
@@ -186,7 +195,7 @@
   // The author is `collection` — the published profile a scene came from, stamped on by the
   // gallery install. Absent means it is one of YOURS, so it falls back to your cloud profile
   // name; with no profile there is no account to name and the title shows the scene name
-  // alone. Deliberately NOT myCollectionLabel(), whose "burnTheWeb" default is a list heading
+  // alone. Deliberately NOT myCollectionLabel(), whose "Default scenes" fallback is a list heading
   // and would read as an author here.
   //
   // Declared here rather than inline in applyPreset ON PURPOSE: presetprobe slices
