@@ -369,13 +369,9 @@
   syncStackUI();                      // draw the layer rows for the restored stack
   let freshVisit = false;
   if (presets.length === 0) {         // first visit: seed the preset library
-    presets = defaultPresets();       // one per effect...
-    const ds = defaultScenePreset();
-    if (ds) {                         // ...plus the shipped opening scene, selected + shown
-      presets.unshift(ds);
-      applyPreset(0);                 // installs the stack and sets curPreset = 0
-      freshVisit = true;
-    } else { curPreset = 0; }         // a preset index, NOT `effect` — that was an effect index
+    presets = defaultPresets();       // the two shipped scenes (never empty — see defaultPresets)
+    applyPreset(0);                   // open on the first of them; installs its stack, curPreset = 0
+    freshVisit = true;
   }
   // The invariant, established before anything can paint or autosave: a real scene is selected.
   // Covers a library that arrived empty, a stored curPreset that no longer resolves, and the

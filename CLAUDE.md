@@ -673,11 +673,19 @@ field is one `snapshotScene` captures *and* one the import mapping carries.
 **Does not travel**: resolution (`cfg.scale`), audio on/off, the `randSeed` re-roll, the
 `Date.now()` chaos seed, every accumulated phase.
 
-**First-visit library** built once when `presets.length === 0`: `defaultPresets()` (one per
-effect) with **`DEFAULT_SCENE` prepended and applied** (`JuliaBgTet`, a four-layer Rasta stack).
-`DEFAULT_SCENE` is a real exported preset in the **wire format** (effect ids; only
-beat/pulse/plen pruned, state maps whole). `defaultScenePreset()` runs it through
-`deserializeBlob`, null if it names a retired effect. Then `persist()` once.
+**First-visit library** built once when `presets.length === 0`: `defaultPresets()`, applied at
+index 0, then `persist()` once. It is **`DEFAULT_LIBRARY` — exactly TWO scenes**, `Fetingen`
+(Sierpiński, single layer) and `Round and round` (Moiré, two layers), lifted from the published
+dyze and Erbsman profiles with `collection` stripped so a new visitor sees them as their own.
+- **Wire format** (effect ids), so a registry reorder cannot remap them, and every map is kept
+  **whole** — pruning `beat` against all-false is only sound while no descriptor arms a chip,
+  and source bytes are free. Re-export from the app and paste over to change them.
+- `defaultPresets()` runs it through `deserializeBlob`, which drops any scene naming a retired
+  effect; if that took the lot it falls back to **`perEffectPresets()`** (the old one-per-effect
+  builder, now only a backstop) so the library can never be empty and break the
+  always-something-selected invariant.
+- **`function defaultPresets(` is a `presetprobe` slicing marker** — keep the name and keep it
+  directly after `snapshotScene`, or the probe's field extraction swallows the giant literal.
 
 **Creating a preset, adopting a shared scene and restoring a backup all `stopCycling()`.**
 `applyRestore` can't (it reloads), so it writes `out.cycle = false` **last**, overriding the
@@ -1031,7 +1039,11 @@ rules and watching it go red.
 - **`gl.getError()` must be sampled inside a real frame** (afterwards it returns a spurious `0x502`
   from the probe's own `readPixels`). Pixel evidence must be the screenshot, not `readPixels`.
 - **`?stack=<id>` does not survive a fresh profile** — the first-visit branch installs
-  `DEFAULT_SCENE` over it.
+  `DEFAULT_LIBRARY`'s first scene over it.
+- **The shipped scenes are not headlessly renderable.** `Fetingen` runs the fire sim (a point
+  effect) and `Round and round` is two layers; both stall SwiftShader, so a first-visit
+  *screenshot* will not come back. Verify the library through the DOM and look at the real
+  preview for the picture.
 - **Keep the run under 30s of active time** or `SYNC_DELAYS[0]` opens the nudge over the canvas.
   `?credits=0` doesn't clear credits in a slow run (`creditLeft` counts *rendered* time).
 
