@@ -294,7 +294,14 @@
   /* Version / release-notes line at the foot of the panel. Quieter than the key hints
      above it (it is reference, not instruction) and brightens on hover like a link should. */
   #panel .verline { margin-top: 7px; opacity: .38; }
-  #panel .verline a { color: #ffcf87; text-decoration: none; border-bottom: 1px dotted rgba(255, 207, 135, 0.45); }
+  /* The whole two-line block is the link, so `block` rather than the default inline — an inline
+     <a> spanning two lines gets two separate hit boxes and a border that breaks across them. */
+  #panel .verline a {
+    display: block; color: #ffcf87; text-decoration: none;
+    border-bottom: 1px dotted rgba(255, 207, 135, 0.45);
+  }
+  #panel .verline .ver-t, #panel .verline .ver-v { display: block; }
+  #panel .verline .ver-v { opacity: .7; }
   #panel .verline:hover { opacity: .8; }
   [data-k="reset"], [data-k="cardbtn"], #addlayer {
     margin-top: 8px;
@@ -730,10 +737,12 @@
   }
   #panel #lyrsec > .sec-t { margin-top: 0; }
   /* The selected scene's name, so you can tell at a glance what every box below is editing.
-     Brighter than a plain section marker because it is an answer, not a label — and it is
-     free text, so it has to be able to run out of room without pushing the panel wide. */
+     Given the DIALOG TITLE treatment — 15px with the amber glow, the largest title type in the
+     app — because it is the answer to "what am I working on", not another section marker. It is
+     free text, so it still has to run out of room without pushing the panel wide. */
   #panel #scenenow {
-    color: #ffcf87; opacity: 1; font-size: 12px; letter-spacing: .03em; text-transform: none;
+    color: #ffcf87; opacity: 1; font-size: 15px; letter-spacing: .01em; text-transform: none;
+    text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* ---- each layer's own controls, INSIDE its row -----------------------------------
@@ -826,6 +835,19 @@
   #panel .filter-sec.idle > summary { opacity: .62; }
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
+  /* The bypass dot: mute a filter in place, keeping its position in the chain and its
+     settings. ✕ beside it REMOVES; this only silences, which is what you want when you are
+     working out what a filter is contributing. Filled = acting, hollow = muted. */
+  #panel .filter-sec > summary .filter-by {
+    flex: 0 0 auto; width: 16px; height: 16px; padding: 0; border: 0; background: none;
+    color: #ffb15a; font: 13px/1 monospace; cursor: pointer; opacity: .8;
+  }
+  #panel .filter-sec > summary .filter-by:hover { opacity: 1; }
+  /* A muted row stays legible — it is still part of the chain and you still want to read and
+     drag it — but its name is struck through, the same "off but present" language the mute
+     button uses on a layer. */
+  #panel .filter-sec.bypassed > summary .filter-name { text-decoration: line-through; opacity: .55; }
+  #panel .filter-sec.bypassed > summary .filter-by { opacity: .55; }
   #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
   /* ---- the chain: drag handle, remove, and the Add button --------------------------
      The list shows only the filters you have added, in the order they run. The handle is
@@ -938,6 +960,20 @@
      is in the DOM and only some are shown, so the first *child* is whichever comes first in
      the CONTROLS schema while the first *visible* one depends on the effect. */
   #panel [data-k="fxctl"] > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
+  /* A foldable group heading (Camera) is a control, so it says so: pointer, and it brightens on
+     hover like every other pressable thing in the panel. */
+  #panel .ctl-grp.foldable { cursor: pointer; user-select: none; }
+  #panel .ctl-grp.foldable:hover { opacity: 1; }
+  /* 2x like every other chevron in the app, and `line-height: 0` so the bigger glyph cannot
+     grow the heading's line box (the layer-row one uses 1 instead, because as a FLEX item a
+     zero line box collapses it to a sliver — this one is inline in a block, so 0 is right). */
+  #panel .ctl-grp.foldable .grp-chev {
+    display: inline-block; width: 12px; margin-right: 2px;
+    font: 20px/0 monospace; vertical-align: -1px; opacity: .8;
+    transition: transform .12s ease;
+  }
+  /* Folded points right (closed), open points down — the same reading as the panel boxes. */
+  #panel .ctl-grp.foldable.folded .grp-chev { transform: rotate(-90deg); }
   /* the "what this group of filters does" caption under a filter-group heading */
   #panel .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;

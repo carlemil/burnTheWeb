@@ -312,7 +312,14 @@
   /* Version / release-notes line at the foot of the panel. Quieter than the key hints
      above it (it is reference, not instruction) and brightens on hover like a link should. */
   #panel .verline { margin-top: 7px; opacity: .38; }
-  #panel .verline a { color: #ffcf87; text-decoration: none; border-bottom: 1px dotted rgba(255, 207, 135, 0.45); }
+  /* The whole two-line block is the link, so `block` rather than the default inline — an inline
+     <a> spanning two lines gets two separate hit boxes and a border that breaks across them. */
+  #panel .verline a {
+    display: block; color: #ffcf87; text-decoration: none;
+    border-bottom: 1px dotted rgba(255, 207, 135, 0.45);
+  }
+  #panel .verline .ver-t, #panel .verline .ver-v { display: block; }
+  #panel .verline .ver-v { opacity: .7; }
   #panel .verline:hover { opacity: .8; }
   [data-k="reset"], [data-k="cardbtn"], #addlayer {
     margin-top: 8px;
@@ -748,10 +755,12 @@
   }
   #panel #lyrsec > .sec-t { margin-top: 0; }
   /* The selected scene's name, so you can tell at a glance what every box below is editing.
-     Brighter than a plain section marker because it is an answer, not a label — and it is
-     free text, so it has to be able to run out of room without pushing the panel wide. */
+     Given the DIALOG TITLE treatment — 15px with the amber glow, the largest title type in the
+     app — because it is the answer to "what am I working on", not another section marker. It is
+     free text, so it still has to run out of room without pushing the panel wide. */
   #panel #scenenow {
-    color: #ffcf87; opacity: 1; font-size: 12px; letter-spacing: .03em; text-transform: none;
+    color: #ffcf87; opacity: 1; font-size: 15px; letter-spacing: .01em; text-transform: none;
+    text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* ---- each layer's own controls, INSIDE its row -----------------------------------
@@ -844,6 +853,19 @@
   #panel .filter-sec.idle > summary { opacity: .62; }
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
+  /* The bypass dot: mute a filter in place, keeping its position in the chain and its
+     settings. ✕ beside it REMOVES; this only silences, which is what you want when you are
+     working out what a filter is contributing. Filled = acting, hollow = muted. */
+  #panel .filter-sec > summary .filter-by {
+    flex: 0 0 auto; width: 16px; height: 16px; padding: 0; border: 0; background: none;
+    color: #ffb15a; font: 13px/1 monospace; cursor: pointer; opacity: .8;
+  }
+  #panel .filter-sec > summary .filter-by:hover { opacity: 1; }
+  /* A muted row stays legible — it is still part of the chain and you still want to read and
+     drag it — but its name is struck through, the same "off but present" language the mute
+     button uses on a layer. */
+  #panel .filter-sec.bypassed > summary .filter-name { text-decoration: line-through; opacity: .55; }
+  #panel .filter-sec.bypassed > summary .filter-by { opacity: .55; }
   #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
   /* ---- the chain: drag handle, remove, and the Add button --------------------------
      The list shows only the filters you have added, in the order they run. The handle is
@@ -956,6 +978,20 @@
      is in the DOM and only some are shown, so the first *child* is whichever comes first in
      the CONTROLS schema while the first *visible* one depends on the effect. */
   #panel [data-k="fxctl"] > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
+  /* A foldable group heading (Camera) is a control, so it says so: pointer, and it brightens on
+     hover like every other pressable thing in the panel. */
+  #panel .ctl-grp.foldable { cursor: pointer; user-select: none; }
+  #panel .ctl-grp.foldable:hover { opacity: 1; }
+  /* 2x like every other chevron in the app, and `line-height: 0` so the bigger glyph cannot
+     grow the heading's line box (the layer-row one uses 1 instead, because as a FLEX item a
+     zero line box collapses it to a sliver — this one is inline in a block, so 0 is right). */
+  #panel .ctl-grp.foldable .grp-chev {
+    display: inline-block; width: 12px; margin-right: 2px;
+    font: 20px/0 monospace; vertical-align: -1px; opacity: .8;
+    transition: transform .12s ease;
+  }
+  /* Folded points right (closed), open points down — the same reading as the panel boxes. */
+  #panel .ctl-grp.foldable.folded .grp-chev { transform: rotate(-90deg); }
   /* the "what this group of filters does" caption under a filter-group heading */
   #panel .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;
@@ -1537,8 +1573,10 @@
        the panel, below every box. The text is filled in from CONFIG.version at startup so the
        version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
        than baking the notes into the page, which would grow this file on every release. -->
+  <!-- TWO lines, both inside the one <a>, so the whole block is the link rather than a long
+       single line that wrapped mid-sentence at panel width. -->
   <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
-     title="What changed in this and previous releases">burnTheWeb <span id="vernum">·</span> — release notes ↗</a></p>
+     title="What changed in this and previous releases"><span class="ver-t">Release notes ↗</span><span class="ver-v" id="vernum">·</span></a></p>
 </div>
 <button id="toggle" type="button" aria-label="Open the menu" aria-haspopup="true" aria-expanded="false">☰</button>
 <!-- The fold-out application menu the ☰ opens: a traditional multi-level menubar. Its
@@ -2076,9 +2114,27 @@
   // a layer that is not the selected one, and always cleared before the frame returns, so
   // every UI caller (syncFilterUI, refreshControlVisibility) still sees activeIds.
   let renderFilters = null;
+  // BYPASS: a filter that is in the chain but switched off for now. Purely a debugging aid —
+  // A/B a filter without ✕-ing it out and losing its position and its settings — so it is
+  // TRANSIENT and deliberately not in the wire format. A saved scene, share link or cloud
+  // profile records the chain, never which of it you had muted while looking at it.
+  //
+  // Held on the LAYER object (`L.fxOff`), not in a slot-keyed map: layer objects move when you
+  // reorder, so the bypass follows its layer for free, and stackItemOut names its fields
+  // explicitly so an extra property is never serialised. installStack replaces the objects on
+  // every scene load, which is exactly when the bypass should evaporate.
+  const fxOffOf = L => (L && (L.fxOff || (L.fxOff = new Set()))) || new Set();
+  // Whichever layer is being drawn right now: renderFxOff is set per layer by the stacked
+  // path, mirroring renderFilters; falling back to the selected layer covers the editor and
+  // the single-layer render.
+  let renderFxOff = null;
+  const fxBypassed = id => (renderFxOff || fxOffOf(stack[stackSel])).has(id);
+  // THE single predicate. Everything that asks "is this filter acting?" goes through here —
+  // activeFilters(), hasFeedback() (so bypassing the only feedback filter really does let the
+  // heat buffer clear again) and the CPU mirrors — so the bypass needs adding in one place.
   function filterOn(id) {
     const on = isSceneFilter(id) ? sceneOn.has(id) : (renderFilters || activeIds).has(id);
-    return on && !cpuBlocked.has(id);
+    return on && !cpuBlocked.has(id) && !fxBypassed(id);
   }
   // Camera rotation (radians) applied to each effect's own sampled space — see
   // camProg/camGlsl for the GL path and the camM matrix for the CPU path. These are the
@@ -4079,7 +4135,10 @@
     // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
     // splitChain, not a stage filter: the heat phase is everything the user put at or above
     // the last feedback filter, INCLUDING image filters they dragged up there (see splitChain).
-    const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
+    // A bypassed filter is dropped BEFORE splitChain, so it neither runs nor counts as the
+    // last feedback filter — otherwise muting a feedback filter would leave the boundary
+    // where it was and silently move image filters into the heat phase.
+    const ids = liveChainIds(L);
     return splitChain(ids).heat;
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
@@ -4157,7 +4216,7 @@
   // are free during renderStackColor. Bloom has no gl hook (it is the scene glow) so it is
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
-    const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
+    const set = liveChainIds(L);            // descriptor default, not extras[L.fx] — see layerFeedbackChain
     const chain = splitChain(set).image;    // only what the user placed BELOW the last feedback filter
     if (!chain.length) return src;
     let s = src, slot = 0;
@@ -5777,6 +5836,12 @@
     const onePal = !useGL || live.length <= 1;
     const renderOther = onePal && renderL !== stack[stackSel];
     renderFilters = renderOther ? layerFilterSet(renderL) : null;
+    // The bypass set of the layer being drawn, alongside its filter set and for the same
+    // reason: filterOn() (and so hasFeedback(), and so whether the heat buffer clears) must
+    // answer for THAT layer, not for whichever one is selected in the panel. Unlike
+    // renderFilters this is set even when the drawing layer IS the selected one — fxBypassed
+    // falls back to the selected layer anyway, so the two agree either way.
+    renderFxOff = renderL ? fxOffOf(renderL) : null;
     const retain = hasFeedback();     // ...so this reads the DRAWING layer's feedback filters
     // Install the drawing layer BEFORE the morph/palette work below: banding (band/bandsize/
     // banddim) and the palette cycle (palcycle/palhold) are per-layer keys now, and morphStep /
@@ -5888,6 +5953,7 @@
     if (useGL) glRender();
     else render();
     renderFilters = null;              // back to activeIds for every UI caller of filterOn
+    renderFxOff = null;                // ...and back to the SELECTED layer's bypass set
     // Epilogue install, part 2 — THE EDITOR OVERLAYS. cardDraw must track the layer you are
     // EDITING, which is the original reason this epilogue exists: without it the Orbit editor
     // silently follows whichever item drew last.
@@ -6637,7 +6703,25 @@
       rm.title = "Remove " + f.name + " from this list";
       rm.setAttribute("aria-label", "Remove " + f.name);
       rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
-      sum.appendChild(cb); sum.appendChild(nm); sum.appendChild(rm);
+      // BYPASS DOT. ✕ removes a filter, which loses its place in the chain and its settings —
+      // no good when you just want to see what it is contributing. This mutes it in place:
+      // the row stays, the order stays, the sliders keep their values.
+      //
+      // It is inside a <summary>, so preventDefault as well as stopPropagation — a click
+      // anywhere in a summary toggles the <details>, and opening the body every time you
+      // A/B a filter is not what you asked for.
+      const by = document.createElement("button");
+      by.type = "button"; by.className = "filter-by";
+      by.addEventListener("click", e => {
+        e.preventDefault(); e.stopPropagation();
+        const L = stack[slot];
+        if (!L) return;
+        const off = fxOffOf(L);
+        if (off.has(f.id)) off.delete(f.id); else off.add(f.id);
+        syncFilterBypass(slot);
+        applyFilters();               // recompute the chain the render reads
+      });
+      sum.appendChild(cb); sum.appendChild(by); sum.appendChild(nm); sum.appendChild(rm);
       sum.title = f.help || f.name;
       sec.appendChild(sum);
       const body = document.createElement("div");
@@ -6688,7 +6772,27 @@
   // would render four copies of the selected layer's order, with the divider in the wrong
   // place — the kind of wrong that looks like the feature half-works.
   function renderFilterLists() {
-    for (let slot = 0; slot < STACK_MAX; slot++) renderFilterListsFor(slot);
+    for (let slot = 0; slot < STACK_MAX; slot++) { renderFilterListsFor(slot); syncFilterBypass(slot); }
+  }
+  // Paint one block's bypass dots from its layer's live set. Separate from renderFilterListsFor
+  // so a bypass toggle repaints the dots without re-appending every section (which would fight
+  // an in-flight drag) — and so a layer reorder, which re-points the blocks, repaints them too.
+  function syncFilterBypass(slot) {
+    const L = stack[slot], off = (L && L.fxOff) || null;
+    const mySecs = secs[slot] || {};
+    for (const id in mySecs) {
+      const sec = mySecs[id];
+      if (!sec) continue;
+      const muted = !!(off && off.has(id));
+      sec.classList.toggle("bypassed", muted);
+      const dot = sec.querySelector(".filter-by");
+      if (!dot) continue;
+      const nm = (FILTER_BY_ID[id] || {}).name || id;
+      dot.textContent = muted ? "○" : "●";
+      dot.title = muted ? "Switch " + nm + " back on" : "Mute " + nm + " without removing it";
+      dot.setAttribute("aria-label", dot.title);
+      dot.setAttribute("aria-pressed", muted ? "true" : "false");
+    }
   }
   function renderFilterListsFor(slot) {
     renderPass = String(+renderPass + 1);
@@ -6946,7 +7050,10 @@
   function refreshBlockVisibility(slot) {
     const shown = shownKeysFor(slot);
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
-      const vis = shown.has(c.key) ? "" : "none";
+      // A folded group hides its ROWS but keeps its HEADING (below), which is the only way
+      // back. Folding is deliberately not the same thing as "this effect does not use it":
+      // `shown` decides what exists here at all, the fold decides what you are looking at.
+      const vis = (shown.has(c.key) && !foldedGroups.has(c.group)) ? "" : "none";
       const row = ctlIn(slot, "row-" + c.key), box = ctlIn(slot, "ctl-" + c.key);
       if (row) row.style.display = vis;
       else if (box) box.style.display = vis;
@@ -6956,7 +7063,12 @@
     });
     for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
       const hdr = ctlIn(slot, "grp-" + g);
-      if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
+      if (!hdr) continue;
+      // Against `shown`, NOT the fold: a folded group hid its own rows a moment ago, so asking
+      // "is anything visible under me" would hide the heading too and strip the only way to
+      // unfold it.
+      hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
+      hdr.classList.toggle("folded", foldedGroups.has(g));
     }
     markFirstGroup(slot);              // ...and the topmost visible one loses its divider
     refreshBlocked(slot, shown);      // grey any control another setting has neutralised
@@ -7059,6 +7171,15 @@
   // Banding), so the Settings box reads as sections rather than one long list.
   // setEffect shows a heading only while at least one of its controls is in the
   // current effect's params.
+  // Which control groups can be folded away, and which start folded. Transient, like every
+  // other fold state in the panel (the boxes, the layer blocks, the scene collections) — it is
+  // how you are looking at the panel right now, not part of the scene.
+  //
+  // `foldedGroups` starts as a COPY of the foldable set, so Camera opens collapsed. It applies
+  // to every layer block at once: Camera is scene-global state, so per-block folds would be
+  // three chevrons for one set of sliders.
+  const FOLDABLE_GROUPS = new Set(["camera"]);
+  const foldedGroups = new Set(FOLDABLE_GROUPS);
   const CTL_GROUPS = {
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
@@ -7092,8 +7213,15 @@
         : c.host === "filter" ? filterHost : fxHost;
       if (c.group !== open) {
         open = c.group;
+        // A FOLDABLE group carries a chevron and can be collapsed; the rest are plain headings.
+        // Only Camera for now: it is three sliders you set once and then read past forever, so
+        // it is pure clutter in every block. Extend by adding a key to FOLDABLE_GROUPS — the
+        // heading, the click handler and the visibility pass all read that one set.
         if (c.group) host.insertAdjacentHTML("beforeend",
-          '<div class="ctl-grp" data-k="grp-' + c.group + '">' + CTL_GROUPS[c.group] + "</div>");
+          '<div class="ctl-grp' + (FOLDABLE_GROUPS.has(c.group) ? " foldable" : "")
+          + '" data-k="grp-' + c.group + '" data-grp="' + c.group + '">'
+          + (FOLDABLE_GROUPS.has(c.group) ? '<b class="grp-chev">▾</b>' : "")
+          + CTL_GROUPS[c.group] + "</div>");
       }
       host.insertAdjacentHTML("beforeend", ctlHTML(c));
     });
@@ -7115,6 +7243,18 @@
   // All four go into the document now (the wiring passes below read them); syncStackUI moves
   // each into its layer's row on the first paint.
   for (const b of blocks) el("fxbox").appendChild(b);
+
+  // Fold a control group from its heading. DELEGATED on #panel rather than a listener per
+  // heading: every block builds its own headings and they are re-rendered by the visibility
+  // pass, so per-heading listeners would have to be re-attached each time. One listener on a
+  // container that never goes away cannot get out of step.
+  panel.addEventListener("click", e => {
+    const h = e.target.closest(".ctl-grp.foldable");
+    if (!h || !panel.contains(h) || !h.dataset.grp) return;
+    const g = h.dataset.grp;
+    if (foldedGroups.has(g)) foldedGroups.delete(g); else foldedGroups.add(g);
+    refreshControlVisibility();       // every block at once — the fold is not per-layer
+  });
 
   function bind(id, valId, fmt, onChange) {
     const input = el(id), out = el(valId);
@@ -8810,6 +8950,15 @@
   // transBurning(): a "burn off" transition lends retention to a scene that has none,
   // so the outgoing image decays under it instead of being wiped on the first frame.
   const hasFeedback = () => transBurning() || FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));
+  // ONE layer's chain as it will actually be drawn: its stored order (or the descriptor
+  // default) less anything bypassed. The stored list itself is never touched — bypass is a
+  // view of the chain, not an edit to it, so it survives no save and changes no scene.
+  function liveChainIds(L) {
+    const set = filtersOk(L && L.filters) || new Set(presetFilters(L ? L.fx : effect));
+    const off = (L && L.fxOff) || null;
+    if (!off || !off.size) return set;
+    return new Set([...set].filter(id => !off.has(id)));
+  }
   function filtersOk(v) {                     // validate a stored list
     if (!Array.isArray(v)) return null;
     const seen = new Set();

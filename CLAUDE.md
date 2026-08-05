@@ -228,6 +228,30 @@ pointer swap) and MAX-merges — depends on **every CPU mirror writing every cel
 (`cpuBlocked` → `filterOn()` → `activeFilters()`/`hasFeedback()`) and **never remove them from
 `activeIds`**. `cpuBlocked` is filled by the FILTERS block but declared with the render globals.
 
+**BYPASS (`.filter-by`, the dot beside each filter row)** mutes a filter *in place* — ✕ removes
+it and loses its chain position and settings, which is useless for working out what a filter
+contributes. **Transient and deliberately outside the wire format**: a scene records its chain,
+never what you had muted while looking at it.
+- Held on the **layer object** (`L.fxOff`, a Set) rather than a slot-keyed map, so it follows
+  its layer through a reorder for free; `stackItemOut` names its fields explicitly, so it is
+  never serialised, and `installStack` drops it on every scene load.
+- **`filterOn(id)` is the one place it is applied** for the drawing layer — which is what makes
+  `hasFeedback()` (and so whether the heat buffer clears) and every CPU mirror agree without
+  further edits. `renderFxOff` is set per layer in `frame()` beside `renderFilters`.
+- The two per-layer chain builders read **`liveChainIds(L)`**, which strips the bypass **before
+  `splitChain`** — otherwise muting a feedback filter would leave the heat/image boundary where
+  it was and silently move image filters into the heat phase.
+- The dot is inside a `<summary>`, so its handler must `preventDefault()` as well as
+  `stopPropagation()`, or every A/B toggles the `<details>` open.
+
+**Foldable control groups** — `FOLDABLE_GROUPS` (just `camera`) and the transient `foldedGroups`,
+which starts as a copy of it, so Camera opens collapsed. `refreshBlockVisibility` hides a folded
+group's ROWS but **the heading is shown against `shown`, never the fold** — gate it on the fold
+and it hides itself along with the only way back. The heading click is delegated on `#panel`
+(headings are rebuilt by the visibility pass, so per-heading listeners drift). Applies to every
+block at once: Camera is scene-global, so per-block folds would be three chevrons for one set of
+sliders.
+
 **The list shows only the filters you have ADDED, in run order.** `+ Add filter` → `#fltdlg` is
 the only place the full catalogue appears; rows carry `⠿` and `✕`. `buildFilterUI` builds one
 `<details>` per filter (body adopted out of `#filterctl`); `renderFilterLists()` re-appends the

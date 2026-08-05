@@ -165,6 +165,12 @@
     const onePal = !useGL || live.length <= 1;
     const renderOther = onePal && renderL !== stack[stackSel];
     renderFilters = renderOther ? layerFilterSet(renderL) : null;
+    // The bypass set of the layer being drawn, alongside its filter set and for the same
+    // reason: filterOn() (and so hasFeedback(), and so whether the heat buffer clears) must
+    // answer for THAT layer, not for whichever one is selected in the panel. Unlike
+    // renderFilters this is set even when the drawing layer IS the selected one — fxBypassed
+    // falls back to the selected layer anyway, so the two agree either way.
+    renderFxOff = renderL ? fxOffOf(renderL) : null;
     const retain = hasFeedback();     // ...so this reads the DRAWING layer's feedback filters
     // Install the drawing layer BEFORE the morph/palette work below: banding (band/bandsize/
     // banddim) and the palette cycle (palcycle/palhold) are per-layer keys now, and morphStep /
@@ -276,6 +282,7 @@
     if (useGL) glRender();
     else render();
     renderFilters = null;              // back to activeIds for every UI caller of filterOn
+    renderFxOff = null;                // ...and back to the SELECTED layer's bypass set
     // Epilogue install, part 2 — THE EDITOR OVERLAYS. cardDraw must track the layer you are
     // EDITING, which is the original reason this epilogue exists: without it the Orbit editor
     // silently follows whichever item drew last.

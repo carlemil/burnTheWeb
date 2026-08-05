@@ -322,7 +322,25 @@
       rm.title = "Remove " + f.name + " from this list";
       rm.setAttribute("aria-label", "Remove " + f.name);
       rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
-      sum.appendChild(cb); sum.appendChild(nm); sum.appendChild(rm);
+      // BYPASS DOT. ✕ removes a filter, which loses its place in the chain and its settings —
+      // no good when you just want to see what it is contributing. This mutes it in place:
+      // the row stays, the order stays, the sliders keep their values.
+      //
+      // It is inside a <summary>, so preventDefault as well as stopPropagation — a click
+      // anywhere in a summary toggles the <details>, and opening the body every time you
+      // A/B a filter is not what you asked for.
+      const by = document.createElement("button");
+      by.type = "button"; by.className = "filter-by";
+      by.addEventListener("click", e => {
+        e.preventDefault(); e.stopPropagation();
+        const L = stack[slot];
+        if (!L) return;
+        const off = fxOffOf(L);
+        if (off.has(f.id)) off.delete(f.id); else off.add(f.id);
+        syncFilterBypass(slot);
+        applyFilters();               // recompute the chain the render reads
+      });
+      sum.appendChild(cb); sum.appendChild(by); sum.appendChild(nm); sum.appendChild(rm);
       sum.title = f.help || f.name;
       sec.appendChild(sum);
       const body = document.createElement("div");
@@ -373,7 +391,27 @@
   // would render four copies of the selected layer's order, with the divider in the wrong
   // place — the kind of wrong that looks like the feature half-works.
   function renderFilterLists() {
-    for (let slot = 0; slot < STACK_MAX; slot++) renderFilterListsFor(slot);
+    for (let slot = 0; slot < STACK_MAX; slot++) { renderFilterListsFor(slot); syncFilterBypass(slot); }
+  }
+  // Paint one block's bypass dots from its layer's live set. Separate from renderFilterListsFor
+  // so a bypass toggle repaints the dots without re-appending every section (which would fight
+  // an in-flight drag) — and so a layer reorder, which re-points the blocks, repaints them too.
+  function syncFilterBypass(slot) {
+    const L = stack[slot], off = (L && L.fxOff) || null;
+    const mySecs = secs[slot] || {};
+    for (const id in mySecs) {
+      const sec = mySecs[id];
+      if (!sec) continue;
+      const muted = !!(off && off.has(id));
+      sec.classList.toggle("bypassed", muted);
+      const dot = sec.querySelector(".filter-by");
+      if (!dot) continue;
+      const nm = (FILTER_BY_ID[id] || {}).name || id;
+      dot.textContent = muted ? "○" : "●";
+      dot.title = muted ? "Switch " + nm + " back on" : "Mute " + nm + " without removing it";
+      dot.setAttribute("aria-label", dot.title);
+      dot.setAttribute("aria-pressed", muted ? "true" : "false");
+    }
   }
   function renderFilterListsFor(slot) {
     renderPass = String(+renderPass + 1);
@@ -631,7 +669,10 @@
   function refreshBlockVisibility(slot) {
     const shown = shownKeysFor(slot);
     CONTROLS.forEach(c => {           // poppable sliders toggle their menu row; other controls toggle themselves
-      const vis = shown.has(c.key) ? "" : "none";
+      // A folded group hides its ROWS but keeps its HEADING (below), which is the only way
+      // back. Folding is deliberately not the same thing as "this effect does not use it":
+      // `shown` decides what exists here at all, the fold decides what you are looking at.
+      const vis = (shown.has(c.key) && !foldedGroups.has(c.group)) ? "" : "none";
       const row = ctlIn(slot, "row-" + c.key), box = ctlIn(slot, "ctl-" + c.key);
       if (row) row.style.display = vis;
       else if (box) box.style.display = vis;
@@ -641,7 +682,12 @@
     });
     for (const g in CTL_GROUPS) {     // a heading shows only if something under it is shown
       const hdr = ctlIn(slot, "grp-" + g);
-      if (hdr) hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
+      if (!hdr) continue;
+      // Against `shown`, NOT the fold: a folded group hid its own rows a moment ago, so asking
+      // "is anything visible under me" would hide the heading too and strip the only way to
+      // unfold it.
+      hdr.style.display = CONTROLS.some(c => c.group === g && shown.has(c.key)) ? "" : "none";
+      hdr.classList.toggle("folded", foldedGroups.has(g));
     }
     markFirstGroup(slot);              // ...and the topmost visible one loses its divider
     refreshBlocked(slot, shown);      // grey any control another setting has neutralised
@@ -744,6 +790,15 @@
   // Banding), so the Settings box reads as sections rather than one long list.
   // setEffect shows a heading only while at least one of its controls is in the
   // current effect's params.
+  // Which control groups can be folded away, and which start folded. Transient, like every
+  // other fold state in the panel (the boxes, the layer blocks, the scene collections) — it is
+  // how you are looking at the panel right now, not part of the scene.
+  //
+  // `foldedGroups` starts as a COPY of the foldable set, so Camera opens collapsed. It applies
+  // to every layer block at once: Camera is scene-global state, so per-block folds would be
+  // three chevrons for one set of sliders.
+  const FOLDABLE_GROUPS = new Set(["camera"]);
+  const foldedGroups = new Set(FOLDABLE_GROUPS);
   const CTL_GROUPS = {
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
@@ -777,8 +832,15 @@
         : c.host === "filter" ? filterHost : fxHost;
       if (c.group !== open) {
         open = c.group;
+        // A FOLDABLE group carries a chevron and can be collapsed; the rest are plain headings.
+        // Only Camera for now: it is three sliders you set once and then read past forever, so
+        // it is pure clutter in every block. Extend by adding a key to FOLDABLE_GROUPS — the
+        // heading, the click handler and the visibility pass all read that one set.
         if (c.group) host.insertAdjacentHTML("beforeend",
-          '<div class="ctl-grp" data-k="grp-' + c.group + '">' + CTL_GROUPS[c.group] + "</div>");
+          '<div class="ctl-grp' + (FOLDABLE_GROUPS.has(c.group) ? " foldable" : "")
+          + '" data-k="grp-' + c.group + '" data-grp="' + c.group + '">'
+          + (FOLDABLE_GROUPS.has(c.group) ? '<b class="grp-chev">▾</b>' : "")
+          + CTL_GROUPS[c.group] + "</div>");
       }
       host.insertAdjacentHTML("beforeend", ctlHTML(c));
     });
@@ -800,6 +862,18 @@
   // All four go into the document now (the wiring passes below read them); syncStackUI moves
   // each into its layer's row on the first paint.
   for (const b of blocks) el("fxbox").appendChild(b);
+
+  // Fold a control group from its heading. DELEGATED on #panel rather than a listener per
+  // heading: every block builds its own headings and they are re-rendered by the visibility
+  // pass, so per-heading listeners would have to be re-attached each time. One listener on a
+  // container that never goes away cannot get out of step.
+  panel.addEventListener("click", e => {
+    const h = e.target.closest(".ctl-grp.foldable");
+    if (!h || !panel.contains(h) || !h.dataset.grp) return;
+    const g = h.dataset.grp;
+    if (foldedGroups.has(g)) foldedGroups.delete(g); else foldedGroups.add(g);
+    refreshControlVisibility();       // every block at once — the fold is not per-layer
+  });
 
   function bind(id, valId, fmt, onChange) {
     const input = el(id), out = el(valId);

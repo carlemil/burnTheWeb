@@ -286,8 +286,10 @@
        the panel, below every box. The text is filled in from CONFIG.version at startup so the
        version lives in exactly one place; the link goes to the rendered CHANGELOG.md rather
        than baking the notes into the page, which would grow this file on every release. -->
+  <!-- TWO lines, both inside the one <a>, so the whole block is the link rather than a long
+       single line that wrapped mid-sentence at panel width. -->
   <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
-     title="What changed in this and previous releases">burnTheWeb <span id="vernum">·</span> — release notes ↗</a></p>
+     title="What changed in this and previous releases"><span class="ver-t">Release notes ↗</span><span class="ver-v" id="vernum">·</span></a></p>
 </div>
 <button id="toggle" type="button" aria-label="Open the menu" aria-haspopup="true" aria-expanded="false">☰</button>
 <!-- The fold-out application menu the ☰ opens: a traditional multi-level menubar. Its

@@ -172,9 +172,27 @@
   // a layer that is not the selected one, and always cleared before the frame returns, so
   // every UI caller (syncFilterUI, refreshControlVisibility) still sees activeIds.
   let renderFilters = null;
+  // BYPASS: a filter that is in the chain but switched off for now. Purely a debugging aid —
+  // A/B a filter without ✕-ing it out and losing its position and its settings — so it is
+  // TRANSIENT and deliberately not in the wire format. A saved scene, share link or cloud
+  // profile records the chain, never which of it you had muted while looking at it.
+  //
+  // Held on the LAYER object (`L.fxOff`), not in a slot-keyed map: layer objects move when you
+  // reorder, so the bypass follows its layer for free, and stackItemOut names its fields
+  // explicitly so an extra property is never serialised. installStack replaces the objects on
+  // every scene load, which is exactly when the bypass should evaporate.
+  const fxOffOf = L => (L && (L.fxOff || (L.fxOff = new Set()))) || new Set();
+  // Whichever layer is being drawn right now: renderFxOff is set per layer by the stacked
+  // path, mirroring renderFilters; falling back to the selected layer covers the editor and
+  // the single-layer render.
+  let renderFxOff = null;
+  const fxBypassed = id => (renderFxOff || fxOffOf(stack[stackSel])).has(id);
+  // THE single predicate. Everything that asks "is this filter acting?" goes through here —
+  // activeFilters(), hasFeedback() (so bypassing the only feedback filter really does let the
+  // heat buffer clear again) and the CPU mirrors — so the bypass needs adding in one place.
   function filterOn(id) {
     const on = isSceneFilter(id) ? sceneOn.has(id) : (renderFilters || activeIds).has(id);
-    return on && !cpuBlocked.has(id);
+    return on && !cpuBlocked.has(id) && !fxBypassed(id);
   }
   // Camera rotation (radians) applied to each effect's own sampled space — see
   // camProg/camGlsl for the GL path and the camM matrix for the CPU path. These are the

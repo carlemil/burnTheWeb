@@ -243,6 +243,15 @@
   // transBurning(): a "burn off" transition lends retention to a scene that has none,
   // so the outgoing image decays under it instead of being wiped on the first frame.
   const hasFeedback = () => transBurning() || FILTERS.some(f => f.stage === "feedback" && filterOn(f.id));
+  // ONE layer's chain as it will actually be drawn: its stored order (or the descriptor
+  // default) less anything bypassed. The stored list itself is never touched — bypass is a
+  // view of the chain, not an edit to it, so it survives no save and changes no scene.
+  function liveChainIds(L) {
+    const set = filtersOk(L && L.filters) || new Set(presetFilters(L ? L.fx : effect));
+    const off = (L && L.fxOff) || null;
+    if (!off || !off.size) return set;
+    return new Set([...set].filter(id => !off.has(id)));
+  }
   function filtersOk(v) {                     // validate a stored list
     if (!Array.isArray(v)) return null;
     const seen = new Set();

@@ -868,7 +868,10 @@
     // layerSeedPts). Old-scene compat is handled at load in mergeLayers (tex.filters), not here.
     // splitChain, not a stage filter: the heat phase is everything the user put at or above
     // the last feedback filter, INCLUDING image filters they dragged up there (see splitChain).
-    const ids = filtersOk(L.filters) || new Set(presetFilters(L.fx));
+    // A bypassed filter is dropped BEFORE splitChain, so it neither runs nor counts as the
+    // last feedback filter — otherwise muting a feedback filter would leave the boundary
+    // where it was and silently move image filters into the heat phase.
+    const ids = liveChainIds(L);
     return splitChain(ids).heat;
   }
   // glBeginHeat, but on ONE layer's private heat pair. Returns the index the last pass
@@ -946,7 +949,7 @@
   // are free during renderStackColor. Bloom has no gl hook (it is the scene glow) so it is
   // naturally excluded and stays whole-scene. Empty ⇒ the source passes straight through.
   function glLayerPostChain(L, src) {
-    const set = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // descriptor default, not extras[L.fx] — see layerFeedbackChain
+    const set = liveChainIds(L);            // descriptor default, not extras[L.fx] — see layerFeedbackChain
     const chain = splitChain(set).image;    // only what the user placed BELOW the last feedback filter
     if (!chain.length) return src;
     let s = src, slot = 0;
