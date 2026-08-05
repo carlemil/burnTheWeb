@@ -29,11 +29,8 @@ rules_version = '2';
 //  12. authenticated create in /scenes with owner != your uid       → DENY
 //  13. UPDATE of an existing /scenes document                       → DENY (snapshots are immutable)
 //  14. delete a /scenes document you do not own                     → DENY
-//  15. owner GET of their own snapshot                              → ALLOW
-//  16. owner LIST of their own snapshots collection                 → ALLOW
-//  17. unauthenticated GET of a snapshot under a pub == true uid    → DENY  ← the important one
-//  18. authenticated GET of another user's snapshot                 → DENY
-//  19. snapshot write with an extra/unknown field                   → DENY
+//  15. CREATE under /profiles/{uid}/snapshots (the retired feature) → DENY
+//  16. owner DELETE of a leftover snapshot                          → ALLOW (cleanup only)
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -70,34 +67,20 @@ service cloud.firestore {
         && request.resource.data.pub is bool;
     }
 
-    // VERSION HISTORY: one snapshot of the whole library per day, id = that local date, so
-    // "at most one a day" is a property of the id rather than logic anyone has to maintain —
-    // a second save the same day simply overwrites. Same payload bytes as the profile above.
+    // RETIRED: version history. The app kept a daily snapshot of the whole library here; it
+    // does not any more, and nothing writes this collection.
     //
-    // A SUBCOLLECTION DOES NOT INHERIT THE RULE ABOVE. `match /profiles/{uid}` covers that one
-    // document and nothing beneath it, so without this block the catch-all at the foot denies
-    // every snapshot. That is the right way round to fail, but it does mean the feature is
-    // dead until this is published.
+    // The block SURVIVES, read-and-delete only, purely so an owner can still clear anything
+    // written while the feature existed. Dropping it outright would be the trap: these
+    // documents are owner-only and Firestore does not cascade, so with no rule permitting a
+    // delete they would be permanently unreachable AND undeletable — still stored, still
+    // counting against the quota, with no way for anyone to remove them.
     //
-    // OWNER-ONLY, INCLUDING READ — deliberately NOT `resource.data.pub == true || …` like the
-    // profile. Publishing to the gallery offers up the library you have now; it is not consent
-    // to expose every earlier version of it, including scenes you have since deleted. Ticking
-    // a checkbox must never widen who can read your history.
+    // The known profiles were swept before this was published. Delete this block once you are
+    // satisfied nothing is left anywhere.
     match /profiles/{uid}/snapshots/{sid} {
-      allow read: if request.auth.uid == uid;        // `read` = get AND list; both owner-only
-
-      allow create, update: if request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['payload', 'count', 'created'])
-        && request.resource.data.payload is string
-        && request.resource.data.payload.size() < 300000
-        && request.resource.data.count is int
-        && request.resource.data.count >= 0
-        && request.resource.data.count <= 500;
-
-      // The owner prunes their own ring, clears the whole history, and sweeps this collection
-      // before deleting the profile — Firestore does not cascade, so that sweep is the only
-      // thing standing between a deleted profile and a pile of orphaned documents.
-      allow delete: if request.auth.uid == uid;
+      allow read, delete: if request.auth.uid == uid;
+      allow create, update: if false;
     }
 
     // A shared SCENE: one immutable snapshot per "Share this scene", holding just the scene

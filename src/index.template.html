@@ -102,13 +102,6 @@
         <button id="cloud-save" class="audbtn" type="button" title="Upload your scene library to your profile, replacing what is there">Save to cloud</button>
         <button id="cloud-load" class="audbtn" type="button" title="Fetch your profile and choose whether to merge it with your scenes or replace them">Load from cloud</button>
       </div>
-      <!-- Version history. Every save files a copy of the whole library under that day's date,
-           so an older version can be picked back out. Its own row rather than a third button
-           squeezed into the grid above: saving and loading are the pair you use constantly,
-           and this is the one you reach for when something has gone wrong. -->
-      <div class="presetrow">
-        <button id="cloud-history" class="audbtn" type="button" title="Browse earlier versions of your library — one entry per day you saved — and restore any of them">History…</button>
-      </div>
       <!-- Opt-in, and off by default: publishing is a deliberate act, not a side effect of
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
@@ -329,21 +322,6 @@
      Each row applies STRAIGHT AWAY on its own two buttons — the Restore dialog would only
      ask merge-vs-replace a second time, having already been asked here. (That dialog is
      still live for `#zp=` links and Load from cloud, where the answer isn't in the click.) -->
-<!-- Version history. Same box/row furniture as the gallery below, because it is the same
-     shape of thing: a short list where each row is one thing you can load. -->
-<div id="snapdlg" class="hidden">
-  <div class="gal-box">
-    <button type="button" class="pal-close" id="snap-close" aria-label="Close">×</button>
-    <h2>Version history</h2>
-    <p class="pal-hint gal-help">Every <b>Save to cloud</b> files a copy of your whole scene library under that day's date — saving again the same day replaces that day's entry rather than adding one. <b>Restore</b> opens an older version the same way <b>Load from cloud</b> does, so you still choose merge or replace before anything changes. Entries older than the most recent few are dropped automatically.</p>
-    <div id="snap-list"></div>
-    <p class="pal-hint" id="snap-hint"></p>
-    <div class="presetrow">
-      <button id="snap-clear" class="audbtn" type="button" title="Delete every history entry. Your saved profile is not touched.">Clear history</button>
-    </div>
-  </div>
-</div>
-
 <div id="galdlg" class="hidden">
   <div class="gal-box">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>

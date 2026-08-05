@@ -362,20 +362,18 @@
   #panel #cloudrow #cloud-nameview:hover { border-bottom-color: #ffcf87; }
   #panel #cloudrow #cloud-nameview.empty { color: #ffb15a; opacity: .5; font-style: italic; }
   #panel #cloudrow #cloud-nameview:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  /* Public profile gallery, and version history — floating and translucent like the other
-     popups. The two share every rule below: both are a short list where each row is one thing
-     you can load, and #snapdlg reuses .gal-box/.gal-row rather than growing a parallel set.
-     THIS IS WHY EVERY SELECTOR HERE NAMES BOTH IDS. The trap the project has hit three times
-     is a widget rule scoped to one container, which silently leaves the next user of the same
-     class as a raw browser default — a grey button in normal flow above the title. If a third
-     list dialog ever appears, add it to these selectors or give the three a shared class;
-     do not copy the block. */
-  #galdlg, #snapdlg {
+  /* Public profile gallery — floating and translucent like the other popups.
+     A second list dialog shared every rule below for one release (version history), and that
+     is the pattern to follow if another ever appears: ADD it to these selectors, or give both
+     a shared class. Do not copy the block. The trap this project has hit three times is a
+     widget rule scoped to one container, which silently leaves the next user of the same class
+     as a raw browser default — a grey button in normal flow above the title. */
+  #galdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
     background: transparent; pointer-events: none;
   }
-  #galdlg.hidden, #snapdlg.hidden { display: none; }
-  #galdlg .gal-box, #snapdlg .gal-box {
+  #galdlg.hidden { display: none; }
+  #galdlg .gal-box {
     position: relative; pointer-events: auto;
     width: min(90vw, 480px); max-height: 86vh; overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
@@ -383,7 +381,7 @@
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #galdlg h2, #snapdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* ONE line: name, then the scene count / date centred between, then Load at the end.
      It used to wrap the buttons onto a second row spanning the full width, because there
      were two of them and "Load and replace" was far too wide to sit inline. There is one
@@ -391,27 +389,27 @@
      and one button fits — so a row is a row.
      Both text columns are 1fr and min-width:0, which is what lets a long name ellipsize
      instead of shoving the button off the end; `auto` there would let it push. */
-  #galdlg .gal-row, #snapdlg .gal-row {
+  #galdlg .gal-row {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
     gap: 6px 12px; align-items: center;
     padding: 11px 12px; margin-bottom: 9px;
     border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px; background: rgba(255, 140, 40, 0.05);
   }
-  #galdlg .gal-row:last-child, #snapdlg .gal-row:last-child { margin-bottom: 0; }
-  #galdlg .gal-name, #snapdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #galdlg .gal-meta, #snapdlg .gal-meta {
+  #galdlg .gal-row:last-child { margin-bottom: 0; }
+  #galdlg .gal-name { color: #ffcf87; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #galdlg .gal-meta {
     color: #ffb15a; opacity: .6; font-size: 10px; white-space: nowrap;
     text-align: center; overflow: hidden; text-overflow: ellipsis;
   }
-  #galdlg .gal-btns, #snapdlg .gal-btns { display: flex; gap: 8px; justify-content: flex-end; }
-  #galdlg .gal-row .audbtn, #snapdlg .gal-row .audbtn { padding: 5px 12px; }
-  #galdlg .pal-hint, #snapdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
+  #galdlg .gal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  #galdlg .gal-row .audbtn { padding: 5px 12px; }
+  #galdlg .pal-hint { margin: 14px 0 0; opacity: .6; font-size: 10.5px; }
   /* The merge-vs-replace explainer sits above the list, so the two buttons on every row need
      no caption of their own. It carries .pal-hint too, so these rules must come AFTER that
      one — same specificity, and it needs the opposite margin (space below, not above). */
-  #galdlg .gal-help, #snapdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
-  #galdlg .gal-help b, #snapdlg .gal-help b { color: #ffcf87; font-weight: 600; }
-  body.ui-hidden #galdlg, body.ui-hidden #snapdlg { display: none !important; }
+  #galdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
+  #galdlg .gal-help b { color: #ffcf87; font-weight: 600; }
+  body.ui-hidden #galdlg { display: none !important; }
   #panel .presetrow, #menubar .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn, #menubar .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
@@ -1066,10 +1064,10 @@
   /* The BOX gives up its top padding and the sticky header carries it. Without that there is
      a padding-height gap above the header that scrolling content passes through in full view
      — the header sticks to the scrollport's top edge, not to the padding edge. */
-  #galdlg .gal-box, #snapdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
+  #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
   #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
   #help .help-box, #syncpop, #carddlg, #restoredlg .rst-box { padding-top: 0; }
-  #galdlg .gal-box > h2, #snapdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
+  #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
   #help .help-box > h2, #syncpop > h2, #carddlg > h2, #restoredlg .rst-box > h2 {
     position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;

@@ -93,7 +93,6 @@
       galleryTtlMs: 300000,                       // cache the gallery listing 5 min (reads are quota)
       galleryLimit: 20,                           // profiles per gallery page
       maxPayload: 300000,                         // must match the cap in firestore.rules
-      snapshotKeep: 14,                           // version-history entries kept (one per day)
     },
 
     // --- effect / physics tuning (implementation constants; several are load-bearing) ---

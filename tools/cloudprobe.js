@@ -98,70 +98,17 @@ console.log("--- Cloud profiles: Firestore codec (" + file + ")\n");
   const save = slice("function cloudSave() {", "function cloudApplyPayload(");
   ok("save compresses with the share codec (zipToB64)", /zipToB64\(/.test(save));
   ok("...and enforces the same size cap the rules do", /maxPayload/.test(save));
-  // ONE decode path for every transport. This used to live inside cloudLoad; the history
-  // restore forced it out into a helper, and the assertion moved with it — if either caller
-  // ever grows its own unzip/parse, a cloud payload stops being a #zp= bundle by accident.
+  // ONE decode path for every transport. It lives in a helper rather than inside cloudLoad,
+  // which is a seam worth keeping even with a single caller: the moment anything else needs to
+  // turn a stored payload into a library, it must come through here, or a cloud payload stops
+  // being a #zp= bundle by accident.
   const apply = slice("function cloudApplyPayload(payload) {", "function cloudLoad()");
   ok("the shared apply path expands with the share codec (unzipFromB64)", /unzipFromB64\(/.test(apply));
   ok("...and hands the blob to openSharedLibrary, not a private decoder",
      /openSharedLibrary\(/.test(apply));
-  const load = slice("function cloudLoad() {", "// ---- version history");
+  const load = slice("function cloudLoad() {", "function cloudDelete()");
   ok("load decodes through the shared path", /cloudApplyPayload\(/.test(load));
   ok("...and does not unzip on its own", !/unzipFromB64\(/.test(load));
-}
-
-// ---- structural: version history ---------------------------------------------------
-// Every failure mode here is invisible to a screenshot and shows up either as slow storage
-// growth or as a privacy leak, so it is all pinned against the source.
-{
-  const snap = slice("// ---- version history", "// ---- publish ----");
-  const save = slice("function cloudSave() {", "function cloudApplyPayload(");
-  // Strip full-line comments before asserting a thing is ABSENT. The comment explaining why
-  // toISOString is not used contains the word, so grepping the raw slice reports the very
-  // mistake the comment warns against. (solidsprobe hit the same thing with Math.random.)
-  const code = snap.replace(/^\s*\/\/.*$/gm, "");
-
-  // The snapshot is the payload that was just stored, not a second encode of the same
-  // library — two encodes could drift (rounding, a re-entered autosave) and the history
-  // would stop being a copy of what the profile holds.
-  ok("the history entry reuses the bytes the profile write stored",
-     /saved\s*=\s*payload/.test(save) && /snapWrite\(saved,/.test(save));
-  ok("...written AFTER the profile write, never before",
-     save.indexOf("track(\"cloud_save\"") < save.indexOf("snapWrite("));
-  ok("...and a failed snapshot does not report the save as failed",
-     /snapWrite\([^)]*\)[\s\S]{0,120}?\.catch\(/.test(save));
-
-  // "At most one a day" is the document id, not logic — so the id must be a date, and a
-  // LOCAL one. toISOString() would roll the day at UTC midnight.
-  ok("the snapshot id is a date", /function snapToday\(\)/.test(snap) && /getFullYear\(\)/.test(snap));
-  ok("...built from LOCAL date parts, not toISOString", !/toISOString/.test(code)
-     && /getMonth\(\)/.test(code) && /getDate\(\)/.test(code));
-
-  // hasOnly() in the rules runs against the RESULTING document, so the mask must name every
-  // field or a stray leftover fails the write.
-  ok("snapWrite names every field in its update mask",
-     /updateMask\.fieldPaths/.test(snap)
-     && /"payload",\s*"count",\s*"created"/.test(snap));
-
-  // The listing must not drag every stored library down the wire.
-  ok("snapList masks the payload away", /mask\.fieldPaths=count/.test(snap)
-     && !/mask\.fieldPaths=payload/.test(snap));
-  ok("...and sorts newest first", /localeCompare/.test(snap));
-
-  ok("prune keeps CONFIG.cloud.snapshotKeep entries", /snapshotKeep/.test(snap));
-
-  // Firestore does not cascade-delete subcollections. Without this sweep, deleting a profile
-  // strands every snapshot: still stored, still billed, still readable by its owner.
-  const del = slice("function cloudDelete() {", "// Read just the metadata");
-  ok("cloudDelete sweeps the snapshots before deleting the profile",
-     /snapDeleteAll\(\)/.test(del)
-     && del.indexOf("snapDeleteAll()") < del.indexOf("method: \"DELETE\""));
-  ok("Clear history and the profile sweep share one implementation",
-     /function snapDeleteAll\(\)/.test(snap)
-     && (snap.match(/snapDeleteAll\(\)/g) || []).length >= 2);
-
-  // A restore is the same decode path as a load, so it inherits the Restore dialog.
-  ok("a restore goes through the shared apply path", /cloudApplyPayload\(/.test(snap));
 }
 
 // ---- structural: the kill switch ---------------------------------------------------
