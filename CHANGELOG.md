@@ -14,6 +14,63 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.13.0] — 2026-08-05
+
+### Added
+
+- **Version history for your cloud profile.** **History…** in the Cloud profile box lists every
+  earlier version of your scene library. Each save files a copy under that day's date — save
+  five times in an afternoon and that day still has one entry, the latest — and the most recent
+  fortnight is kept. **Restore** opens an older version exactly the way **Load from cloud** does,
+  so you still choose merge or replace before anything changes: it is a way to look at what you
+  had, not a button that overwrites your work. **Clear history** empties it. Your history is
+  yours alone — publishing to the gallery shares the library you have *now*, never the older
+  versions behind it.
+- **A mute dot on every filter.** Each filter in a layer's list has a dot beside it that switches
+  it off without removing it: it keeps its place in the chain and all its settings, and the name
+  is struck through while it is off. Previously the only way to switch a filter off was **✕**,
+  which removes it — so working out what one filter was contributing meant deleting it and then
+  rebuilding it. The dot is for looking, not for keeping: it is not saved with the scene.
+
+### Changed
+
+- **A new visitor opens on two scenes, not twenty.** The shipped library is now *Fetingen* and
+  *Round and round* rather than one machine-named scene per effect, and the page opens on
+  Fetingen. Your own library is untouched — this only changes what a brand-new browser starts
+  with.
+- **The controls panel is open the first time you visit**, so there is something to reach for
+  rather than a bare canvas. Close it and it stays closed.
+- **A link somebody sends you is kept.** Opening a shared scene used to leave it unsaved, so it
+  vanished the moment you moved on. It now lands in a **Shared with you** group in your scene
+  list — its own group, so it can never collide with or overwrite a scene of yours, and its **✕**
+  removes the whole set when you are done.
+- **The Camera sliders fold away**, closed by default: click **Camera** to open them. They are
+  three settings you adjust once and then read past forever.
+- **The selected scene's name is now a proper title**, at the size the dialog headings use, so it
+  is obvious what every box below it is editing.
+- **Your own scene group is called "Default scenes"** until you set a profile name, instead of
+  repeating the app's name back at you.
+- **The release-notes link at the foot of the panel is two lines** — the title over the version —
+  instead of one long line that wrapped mid-sentence.
+
+### Removed
+
+- **"— unsaved scene —" is gone.** One scene is always selected now, so everything you change is
+  always being saved into something. To experiment without touching a scene you like, press
+  **New** first and work on the copy. **Delete** moves you onto the scene beside it, and deleting
+  the last one brings the shipped scenes back rather than leaving you with an empty list.
+
+### Internal
+
+- Firestore rules gain an owner-only `snapshots` subcollection, verified against the live
+  database: a published profile's history stays private, and share links stay unlisted.
+- `presetprobe` grew to 67 assertions, pinning the always-something-selected invariant and that
+  Delete applies the scene it selects rather than only highlighting it; `cloudprobe` to 44,
+  pinning that history and profile loading share one decoder.
+- CLAUDE.md compacted by a third, with the reasoning recoverable from git, plus two harness
+  traps worth the loss of an afternoon: the shipped scenes stall headless SwiftShader, and a Git
+  Bash path is not a `file://` URL.
+
 ## [1.12.3] — 2026-08-04
 
 ### Changed
