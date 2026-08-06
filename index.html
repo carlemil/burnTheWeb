@@ -1812,7 +1812,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.18.0",
+    version: "1.18.1",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -9522,7 +9522,7 @@
   // that shows a palette. `full` also rebuilds the swatch grid + <select> options, which is
   // only needed when a palette is ADDED or REMOVED — a stop edit just repaints one swatch,
   // so dragging a handle doesn't rebuild (and steal focus from) the control being dragged.
-  function paleApply(full) {
+  function paleApply(full, dragLive) {
     const st = paleStops();
     PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
     if (full) buildPalSwatches();
@@ -9535,7 +9535,12 @@
     // Repaint the on-screen ramp if this palette is the one showing. Guarded on `morphing`:
     // mid-cycle the frame loop owns paletteBase, and it re-reads PALETTES each step anyway.
     if (+paletteSel.value === paleIdx && !morphing) setPalette(paleIdx);
-    paleRender();
+    // Mid-drag, refresh the gradient and fields but DO NOT rebuild the handle buttons —
+    // the drag's pointer capture and listeners live on one of them (see paleDragStart).
+    if (dragLive) {
+      el("pale-grad").style.background = paleGradCss(st);
+      if (paleSel) el("pale-pos").value = Math.round(paleSel[0] * 100);
+    } else paleRender();
   }
 
   // Draw the bar, the handles, and the fields for the selected stop.
@@ -9573,28 +9578,44 @@
   // Dragging a handle. The stop list is re-sorted on every move (so a handle dragged past its
   // neighbour really does change order), which is exactly why the selection is held by object
   // identity rather than by index — an index would silently start pointing at another stop.
+  //
+  // NOTHING in this gesture may rebuild #pale-stops: the pointer capture and the move/up
+  // listeners live on `btn`, and a rebuild removes it from the document — which drops the
+  // capture (the same Chromium rule as the filter-list drag) and the gesture goes dead on
+  // its first frame. That is exactly the bug that shipped: paleDragStart ended in
+  // paleRender(), so the handles LOOKED draggable but only ever registered the click.
+  // Selection is painted in place, the moves go through paleApply's dragLive path, and the
+  // full re-render happens once on release.
   function paleDragStart(ev, btn, stop) {
     ev.preventDefault(); ev.stopPropagation();
     paleSel = stop;
     const bar = el("pale-grad");
-    btn.setPointerCapture(ev.pointerId);
+    for (const h of el("pale-stops").children) h.classList.toggle("sel", h === btn);
+    el("pale-color").value = paleHex(stop[1]);
+    el("pale-pos").value = Math.round(stop[0] * 100);
+    // Synthetic probe events carry no live pointer, and capture is a nicety (the listeners
+    // sit on the button either way) — so a capture failure must not abort the drag.
+    try { btn.setPointerCapture(ev.pointerId); } catch (e) {}
     const move = e => {
       const r = bar.getBoundingClientRect();
       stop[0] = Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1)));
       paleStops().sort((a, b) => a[0] - b[0]);
-      paleEdited(false);
+      btn.style.left = (stop[0] * 100) + "%";
+      btn.title = Math.round(stop[0] * 100) + "% · " + paleHex(stop[1]);
+      paleDirty = true;
+      paleApply(false, true);       // gradient + fields only; the handle nodes stay alive
     };
     const up = () => {
-      btn.releasePointerCapture(ev.pointerId);
+      try { btn.releasePointerCapture(ev.pointerId); } catch (e) {}
       btn.removeEventListener("pointermove", move);
       btn.removeEventListener("pointerup", up);
       btn.removeEventListener("pointercancel", up);
       paleCommit();                 // persist ONCE on release, not on every pointermove
+      paleRender();                 // the full rebuild is safe now the gesture is over
     };
     btn.addEventListener("pointermove", move);
     btn.addEventListener("pointerup", up);
     btn.addEventListener("pointercancel", up);
-    paleRender();
   }
 
   // An edit happened: mark dirty and repaint. `full` for add/remove (rebuilds the grid).

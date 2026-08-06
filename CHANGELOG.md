@@ -14,6 +14,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.18.1] — 2026-08-06
+
+### Fixed
+
+- **Palette editor: the colour-stop handles now really drag.** They always looked
+  draggable, but the gesture died the moment it started, so a stop's position could only
+  be typed into the % field. Drag a handle and the stop slides with the pointer — the
+  gradient, the % field and the scene all update live, and dragging a stop past its
+  neighbour swaps their order as you would expect.
+
 ## [1.18.0] — 2026-08-06
 
 ### Changed
