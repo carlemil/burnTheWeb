@@ -843,11 +843,15 @@ Services for the sign-in button.
 **`CONFIG.cloud.apiKey` is a kill switch** (like `CONFIG.analyticsId`): empty ⇒ row hidden, no
 script injected, **no request at all**.
 
-**The payload is one deflated string, not Firestore structure.** `cloudBlob()` builds exactly the
-blob `libraryUrl()` builds and runs it through the same `zipToB64` — **a cloud profile and a `#zp=`
-bundle are the same bytes**; the document has five scalar fields and `fsOut`/`fsIn` is a dozen
-lines. A downloaded profile goes straight to `openSharedLibrary(raw)`. **If the two formats ever
-diverge, cloud loading needs its own decoder** — `cloudprobe` asserts the shared path structurally.
+**The payload is one deflated string, not Firestore structure.** `cloudBlob()` builds a
+`libraryUrl()`-shaped blob through the same `serializeBlob` + `zipToB64` — **same codec, same
+decode path**, so a downloaded profile goes straight to `openSharedLibrary(raw)` and every `#zp=`
+decoder opens it. Since 1.14.0 the CONTENT differs on purpose: the cloud blob filters borrowed
+presets and adds a `collections` field `libraryUrl` never emits (see the bullets below) — a
+filtered superset of the shape, NOT the same bytes, and that is fine because the decode side
+tolerates both. **What must never diverge is the codec/decode path itself** — anything that would
+stop `openSharedLibrary` opening a profile means cloud loading needs its own decoder; `cloudprobe`
+asserts the shared path structurally.
 
 **Rules are the only defence** (the web API key is public by design, there is no backend). They
 carry the size caps a server's body limit would provide, and `hasOnly()` pins the document shape —
@@ -877,17 +881,30 @@ copy of the *whole library* rather than a delta, so it scaled badly in both stor
 - **Deleting a scene locally already removes it from the cloud** — `cloudBlob()` is built from
   `fullSnapshot()` and the write is a full replace, so there is no per-scene state to go stale.
   A deleted scene survives only in `/scenes` share links, which are immutable by design.
-- **`cloudBlob()` sends YOUR scenes only** — it drops every preset carrying a `collection`,
-  which is exactly the "not mine" marker. A borrowed collection in your document would be
-  counted on your gallery card and re-published to anyone who loads you. What rides instead is
+- **`cloudBlob()` sends YOUR scenes only — except `"Shared with you"`**, which uploads like your
+  own work: an adopted link scene has no source profile to re-fetch from, so filtering it out
+  would destroy it on the next cross-machine load. Every other preset carrying a `collection`
+  (the "not mine" marker) is dropped — a borrowed collection in your document would be counted
+  on your gallery card and re-published to anyone who loads you. What rides instead is
   **`collections`**, the list of `{key, uid}` you hold — the *fact* that you added them, not
-  their work. `curPreset` is an index into the array being sent, so it is **remapped, not
-  copied**, and falls back to 0 when the selected scene is a borrowed one.
+  their work. A borrowed collection with **no follow entry** (pre-follow-list library) is noted
+  **uid-less** before its scenes are dropped, and `refollowCollections` resolves it by name;
+  never clobber an entry that has a uid. `curPreset` is an index into the array being sent, so
+  it is **remapped, not copied**, and falls back to 0 when the selected scene is a dropped one.
+  `cloudSave` refuses only when there are **no scenes AND no follows** — a follow-list alone is
+  a legal, count-0 document (`firestore.rules` allows `count >= 0`).
 - **`collectionsHeld` is declared in `audio-tuning-data.js`, filled from `persist-presets.js`**
   (`noteCollection`/`forgetCollection`/`collectionsOk`, function declarations so they hoist).
   `restore()` runs at the foot of that earlier slice, so a `let` down beside the functions is
   in the TDZ on **every reload that carries the field** — the same split as `cpuBlocked`.
-  `galLoad` calls `noteCollection` **before** `applySharedLibrary`, which reloads the page.
+  **The follow is noted INSIDE `applySharedLibrary`, after validation passes** (galLoad hands
+  the uid through) — noting it in `galLoad` first left a phantom follow whenever every scene
+  failed `validatePresetList`, uploaded on every save and unremovable from the UI because
+  `dropCollection` needs a group that exists in the scene list. **`delpreset` calls
+  `forgetCollection` when the delete empties a collection**, or the next profile load would
+  re-fetch the set just deleted scene by scene; its confirm says a partially-kept collection
+  refreshes on load (that is the follow model, not a bug — a profile that stores no borrowed
+  scenes cannot round-trip holes inside someone else's set).
 - **`refollowCollections(raw)` puts them back, INSIDE `cloudApplyPayload`** — before anything
   is applied, so the whole load stays **one `applyRestore` and one reload**. Doing it after the
   reload cannot be that cheap: the install path (`applySharedLibrary` → `applyRestore`) *ends*
@@ -901,14 +918,24 @@ copy of the *whole library* rather than a delta, so it scaled badly in both stor
   - A source that is gone/unpublished/corrupt is **skipped and named**; it resolves
     `{raw, missed}` so the caller can report without `cloudMsg("")` wiping it. Sequential, so
     one slow source is not blamed on the others.
+  - **A uid-less entry is resolved by NAME against `galList()`** (the collection key IS the
+    source profile's name — `galLoad` keys it so). One listing covers every such entry; a
+    healed uid is **written back into `raw.collections`** so the restore stores it and the
+    resolution only has to succeed once. Still unresolved ⇒ `missed`, by name — the old
+    `c.uid &&` filter made uid-less entries doubly invisible (never fetched, never missed).
   - `galFetchLibrary(uid)` is the shared fetch→unzip→parse, split out of `galLoad`.
 - **`applyRestore`'s MERGE matches on `(name, collection)`, not name alone.** A profile load
   now brings your scenes *and* the collections you follow in one array, so name alone would let
   a borrowed "Sunset" overwrite yours — the very collision collections exist to prevent.
   Identical for anything with no collections (every key is `""`).
 - **`sharedLibrary` carries `collections` through**, and `applyRestore` writes it **only when
-  `coll` is unset** — a gallery install is one person's set, and whose sets *they* follow is
-  not a statement about whose you do.
+  `__ownCloud` is set** (and `coll` unset — a gallery install is one person's set, and whose
+  sets *they* follow is not a statement about whose you do). `__ownCloud` comes from
+  **`cloudOwnLoad`, an out-of-band `let` beside `sharedLibrary`** that only `cloudApplyPayload`
+  sets and the next `sharedLibrary()` consumes — never from the payload, because a `#zp=` link
+  is attacker-authored JSON and "this is your own profile" is the claim that lets `collections`
+  replace your follow-list. **Merge mode UNIONS the follow-lists** (local entry wins unless the
+  incoming one has a uid the local lacks); Replace replaces.
 - `firestore.rules` still carries a **read-and-delete-only** `snapshots` block. It is not dead
   weight: those documents are owner-only and **Firestore does not cascade-delete**, so with no
   rule permitting a delete anything written while the feature existed would be permanently

@@ -243,11 +243,28 @@
         for (const q of p.valid) { const at = lib.findIndex(x => same(x, q)); if (at >= 0) lib[at] = q; else lib.push(q); }
       }
       out.presets = lib;
-      // The follow-list travels with the scenes, but ONLY when this is not a gallery install:
-      // `coll` set means you are adding one person's set, and whose sets THEY follow is not a
-      // statement about whose you do. Absent ⇒ untouched, so every older blob keeps yours.
-      if (!coll && !Array.isArray(p.parsed) && p.parsed.collections !== undefined) {
-        out.collections = collectionsOk(p.parsed.collections);
+      // The follow-list travels ONLY on a load of YOUR OWN profile — `__ownCloud`, which
+      // comes from the out-of-band flag beside sharedLibrary, never from the payload, so a
+      // stranger's #zp= bundle cannot claim it. (A gallery install has `coll` set and skips
+      // this anyway; whose sets THEY follow is not a statement about whose you do.)
+      //
+      // Merge mode UNIONS, mirroring the scene merge above: a follow added locally since the
+      // last save must survive loading that older copy, or its scenes vanish from the next
+      // save with nothing recording them. Same key ⇒ keep the local entry unless the incoming
+      // one carries a uid the local lacks (refollow heals uid-less entries by name, and a
+      // healed uid should win over a blank). Replace keeps replace semantics.
+      if (!coll && !Array.isArray(p.parsed) && p.parsed.__ownCloud && p.parsed.collections !== undefined) {
+        const incoming = collectionsOk(p.parsed.collections);
+        if (el("rst-replace").checked) out.collections = incoming;
+        else {
+          const merged = (out.collections || []).slice();
+          for (const c of incoming) {
+            const at = merged.findIndex(x => x.key === c.key);
+            if (at < 0) merged.push(c);
+            else if (c.uid && !merged[at].uid) merged[at] = c;
+          }
+          out.collections = merged;
+        }
       }
       const sel = (!Array.isArray(p.parsed) && p.parsed.curPreset >= 0 && p.parsed.presets && p.parsed.presets[p.parsed.curPreset])
         ? p.parsed.presets[p.parsed.curPreset].name : null;
@@ -324,11 +341,18 @@
     if (!parsed) return;
     openRestore(parsed.parsed, parsed.valid, "shared link");
   }
+  // Set by cloudApplyPayload for the ONE call where the incoming bundle is your own stored
+  // profile, consumed (and reset) by the very next sharedLibrary() whatever its outcome.
+  // OUT-OF-BAND on purpose: a #zp= link is attacker-authored JSON, and "this is your own
+  // profile" is exactly the claim it must not be able to make — it is what lets `collections`
+  // replace your follow-list in applyRestore. A field on the blob would be forgeable.
+  let cloudOwnLoad = false;
   // Decode + validate a shared/fetched library into the pair openRestore takes. Shared by the
   // dialog route above and the dialogless one below, so both see identical validation.
   // Carries the sender's auto-cycle toggle + selected-scene index; __link marks it a shared
   // bundle (backups force cycle off, links honour it).
   function sharedLibrary(raw) {
+    const own = cloudOwnLoad; cloudOwnLoad = false;   // consume: one decode, whatever happens
     const norm = normalizeBackup(raw);
     if (!norm) return null;
     const parts = deserializeBlob(norm);
@@ -336,10 +360,11 @@
     const valid = validatePresetList(arr);
     if (!valid.length) { alert("This link has no usable scenes."); return null; }
     // `collections` — who the sender follows — rides through so a profile load can restore the
-    // follow-list along with the scenes. It is only ever ACTED on for your own profile (see
-    // applyRestore): a stranger's bundle saying "you follow these" is not their call to make.
+    // follow-list along with the scenes. applyRestore acts on it only when __ownCloud is set,
+    // i.e. only for your own profile: a stranger's bundle saying "you follow these" is not
+    // their call to make, and __ownCloud comes from the flag above, never from the payload.
     return { parsed: { presets: arr, curPreset: parts.curPreset, cycle: parts.cycle,
-                       collections: parts.collections, __link: true }, valid };
+                       collections: parts.collections, __ownCloud: own, __link: true }, valid };
   }
   // Apply a shared library with NO dialog, for the gallery — whose per-row "Load and merge" /
   // "Load and replace" buttons have already asked the only question the dialog asks, so
@@ -351,11 +376,19 @@
   // nodes whether or not #restoredlg is visible, so this needs no special case in there.
   // `collection` set ⇒ install as that profile's own set (the gallery path) and merge/replace
   // no longer applies; unset ⇒ the old merge-vs-replace over your own library.
-  function applySharedLibrary(raw, replace, collection) {
+  function applySharedLibrary(raw, replace, collection, collectionUid) {
     const parsed = sharedLibrary(raw);
     if (!parsed) return;
+    const coll = (collection || "").trim();
+    // Record the follow HERE, after validation has passed — not in galLoad before the call.
+    // A source whose scenes ALL fail validatePresetList installs nothing, and a follow noted
+    // for it would be a phantom: uploaded with every save, "Fetching…" on every load, and —
+    // because dropCollection is only reachable from a collection group that exists in the
+    // scene list — impossible to remove from the UI. Still BEFORE applyRestore, whose
+    // fullSnapshot() is what carries collectionsHeld into the blob it writes and reloads on.
+    if (coll) noteCollection(coll, collectionUid);
     pendingRestore = { parsed: parsed.parsed, valid: parsed.valid, hasSettings: false, hasRanges: false, hasBeat: false,
-      collection: (collection || "").trim() };
+      collection: coll };
     el("rst-presets").checked = true;                 // a bundle carries scenes and nothing else
     el("rst-merge").checked = !replace;
     el("rst-replace").checked = !!replace;

@@ -546,6 +546,10 @@ off it — sign in with Google and your library follows you between machines.
   person's to publish, and a copy in your profile would be counted on your gallery card and
   handed on again to whoever loads you. They stay in this browser, and what your profile
   records is simply **which collections you added** — the names, not the work.
+  The one exception is **Shared with you**: a scene someone sent you as a link has no
+  collection to re-fetch it from, so it saves with your own scenes rather than being lost.
+  A follow-list with no scenes of your own still saves — following people is worth syncing
+  on its own.
 - **Load from cloud** fetches it back and asks whether to **merge** (add them to yours,
   overwriting any of yours with the same name) or **replace** (throw yours away and keep
   only these). Applying reloads the page.

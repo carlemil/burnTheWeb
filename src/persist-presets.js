@@ -692,12 +692,25 @@
     // accident this prevents is deleting the wrong one. The last-scene case says what happens
     // instead, since deleting it re-seeds the shipped library rather than emptying the list.
     const doomed = presets[curPreset];
-    if (!confirm("Delete the scene “" + doomed.name + "”?\n\n"
-      + (presets.length === 1
-        ? "It is your only scene, so the scenes that ship with the app will be put back."
-        : "This cannot be undone."))) return;
+    // A borrowed scene is not gone the way one of yours is: the follow-list refreshes its
+    // whole collection on a profile load, so a one-scene delete can silently un-delete later.
+    // Say so in the confirm rather than springing it — and when the delete empties the
+    // collection, drop the follow too (below), so an emptied set does not resurrect at all.
+    // ("Shared with you" refetches from nothing, so it keeps the plain wording.)
+    const from = collectionOf(doomed);
+    const tail = presets.length === 1
+      ? "It is your only scene, so the scenes that ship with the app will be put back."
+      : (from && from !== SHARED_COLLECTION)
+        ? "It comes from the “" + from + "” collection — loading your cloud profile fetches"
+          + " that collection fresh, so it can come back then. Removing the whole collection"
+          + " from the scene list is what makes it stay gone."
+        : "This cannot be undone.";
+    if (!confirm("Delete the scene “" + doomed.name + "”?\n\n" + tail)) return;
     const at = curPreset;
     presets.splice(at, 1);
+    // Emptied its collection ⇒ you no longer hold it, and the follow must go with it, or the
+    // next profile load re-fetches the whole set you just deleted scene by scene.
+    if (from && !presets.some(p => collectionOf(p) === from)) forgetCollection(from);
     ensureSelection();                                  // re-seeds if that was the last one
     curPreset = Math.min(at, presets.length - 1);
     applyPreset(curPreset);

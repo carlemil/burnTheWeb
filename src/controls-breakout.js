@@ -347,8 +347,15 @@
         if (vis) anyVisible = true;
       }
     }
-    // ...and the scene controls, which have one box outside every block.
-    const sceneShown = shownKeysFor(stackSel);
+    // ...and the scene controls, which have one box outside every block. Gated on the UNION
+    // of every live layer's shown keys, not the selected layer's: a scene-wide filter param
+    // (Bloom, Scanlines…) belongs to the whole picture, so the Strength box you popped from
+    // layer 2's section must not vanish because you clicked layer 1, whose chain lacks Bloom
+    // — the filter is still rendering. (`stackSel` alone was fine while these boxes could not
+    // be constructed; the scene-filter-params fix made them real.)
+    const sceneShown = new Set(shownKeysFor(stackSel));
+    for (let s = 0; s < STACK_MAX; s++)
+      if (s !== stackSel && stack[s]) for (const k of shownKeysFor(s)) sceneShown.add(k);
     for (const key of POPPABLE) {
       const box = el("ctl-" + key);
       if (!box) continue;

@@ -147,30 +147,44 @@
   // codec — so one encoder and one decoder serve both, and a cloud profile and a #zp= link
   // are the same bytes. That is what keeps this feature small and what makes the existing
   // decode path (openSharedLibrary) able to consume a downloaded profile unchanged.
-  // YOUR SCENES ONLY. A collection you loaded from the gallery is somebody else's work that
-  // you are holding locally; uploading it would put a second copy in your document, count it
-  // on your gallery card, and hand it on again to anyone who loads you — three wrongs from one
-  // line. `collection` is exactly the "not mine" marker (a scene of your own never carries
-  // one), so that field is the whole filter.
+  // YOUR SCENES ONLY — with one deliberate exception. A collection you loaded from the
+  // gallery is somebody else's work that you are holding locally; uploading it would put a
+  // second copy in your document, count it on your gallery card, and hand it on again to
+  // anyone who loads you — three wrongs from one line. `collection` is the "not mine" marker
+  // (a scene of your own never carries one), so that field drives the filter.
   //
-  // What DOES ride is the fact that you added them: `collections` is the list of collections
-  // you hold, names and source uids, no scenes. Their work stays theirs to publish and stays
-  // in this browser's localStorage, which is where a reading list belongs.
+  // The exception is "Shared with you": a scene someone handed you as a one-off link
+  // (adoptSharedScene). It has NO source profile to re-fetch from, so dropping it here would
+  // simply destroy it on the next cross-machine load — and the sharer sent it to you
+  // deliberately. It rides in the upload like your own work, still wearing its label.
+  //
+  // What rides for the real collections is the fact that you added them: `collections` is the
+  // follow-list, names and source uids, no scenes. A borrowed collection with NO follow entry
+  // (loaded before the follow-list existed) is noted here, uid-less, before its scenes are
+  // dropped — refollowCollections resolves a uid-less entry by NAME against the public
+  // gallery, so the set comes back wherever its owner is still published, and lands in the
+  // load's `missed` report where they are not. Never clobbers an entry that has a uid.
   //
   // curPreset is an INDEX INTO THE ARRAY BEING SENT, so it is remapped rather than copied —
-  // and it falls back to 0 when the scene you are sitting on is one of the borrowed ones,
+  // and it falls back to 0 when the scene you are sitting on is one of the dropped ones,
   // which would otherwise point past the end or at a stranger's scene.
   function cloudBlob() {
     autosavePreset();                     // fold pending edits into the selected preset first
     const snap = fullSnapshot();
     const mine = [];
-    let cur = -1;
+    let cur = -1, noted = false;
     (snap.presets || []).forEach((p, i) => {
-      if (collectionOf(p)) return;
+      const coll = collectionOf(p);
+      if (coll && coll !== SHARED_COLLECTION) {
+        if (!collectionsHeld.some(c => c.key === coll)) { noteCollection(coll, ""); noted = true; }
+        return;
+      }
       if (i === snap.curPreset) cur = mine.length;
       mine.push(p);
     });
-    const blob = { presets: mine, cycle: snap.cycle, collections: snap.collections };
+    if (noted) persist();                 // the legacy note above grew the follow-list — keep it
+    const blob = { presets: mine, cycle: snap.cycle,
+                   collections: collectionsHeld.map(c => ({ key: c.key, uid: c.uid })) };
     if (mine.length) blob.curPreset = cur >= 0 ? cur : 0;
     return serializeBlob(blob);
   }
@@ -180,14 +194,13 @@
     if (!cloudSess) return;
     const blob = cloudBlob();
     const n = (blob.presets || []).length;
-    // Your library can be non-empty and still have nothing to send: every scene in it came
-    // from someone else's collection, and those are not yours to store.
-    if (!n) {
-      cloudMsg(presets.length
-        ? "Nothing to save — every scene you hold belongs to someone else's collection."
-        : "Nothing to save — you have no scenes yet.", true);
-      return;
-    }
+    const nc = (blob.collections || []).length;
+    // A library can hold no scenes of your own and STILL have something to store: the
+    // follow-list. A collections-only user syncing machines is exactly who needs it saved —
+    // refusing here would mean their follows could never reach the cloud at all. Only a
+    // truly empty profile (no scenes, no follows) has nothing to say. The rules allow
+    // count 0 (`count >= 0`), so an empty presets array is a legal document.
+    if (!n && !nc) { cloudMsg("Nothing to save — you have no scenes yet.", true); return; }
     cloudMsg("Saving…");
     zipToB64(JSON.stringify(blob)).then(payload => {
       if (payload == null) throw new Error("this browser cannot compress the payload");
@@ -209,7 +222,14 @@
       return cloudFetch(docUrl(cloudSess.uid) + "?" + mask, { method: "PATCH", body: JSON.stringify(body) });
     }).then(r => {
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      cloudMsg("Saved " + n + " scene" + (n === 1 ? "" : "s") + " to your profile.");
+      // Name both halves of what was stored — "Saved 9 scenes" reads as data loss to someone
+      // who is looking at 19 in the panel, so say where the other ten live.
+      cloudMsg(n
+        ? "Saved " + n + " scene" + (n === 1 ? "" : "s")
+          + (nc ? " and " + nc + " followed collection" + (nc === 1 ? "" : "s") : "")
+          + " to your profile."
+        : "Saved your " + nc + " followed collection" + (nc === 1 ? "" : "s")
+          + " — no scenes of your own yet.");
       track("cloud_save", { count: n });
     }).catch(e => cloudMsg("Could not save: " + e.message, true));
   }
@@ -234,6 +254,12 @@
                res.missed.length > 0);
       // Straight into the existing shared-library path: validation, the merge-vs-replace
       // Restore dialog, and landing on the stored selected preset all come for free.
+      //
+      // The flag marks the next decode as YOUR OWN profile — the one case where the bundle's
+      // `collections` may replace your follow-list. Out-of-band (a module let, not a blob
+      // field) because a #zp= link is attacker-authored JSON: an in-band marker would let any
+      // crafted bundle claim to be your profile and overwrite what you follow.
+      cloudOwnLoad = true;
       openSharedLibrary(res.raw);
     });
   }
@@ -262,19 +288,40 @@
     // a profile today, but an older blob (saved before cloudBlob started filtering) carries
     // them, and re-fetching those would duplicate the set rather than refresh it.
     const have = new Set(raw.presets.map(p => (p && p.collection) || "").filter(Boolean));
-    const todo = want.filter(c => c.uid && !have.has(c.key));
+    // EVERY absent collection is attempted — a uid-less entry included. Filtering those out
+    // up front (`c.uid &&`) made them doubly invisible: never fetched AND never in `missed`,
+    // so a follow that arrived without a uid simply vanished with no trace.
+    const todo = want.filter(c => !have.has(c.key));
     if (!todo.length) return Promise.resolve({ raw, missed: [] });
     cloudMsg("Fetching " + todo.length + " collection" + (todo.length === 1 ? "" : "s") + "…");
     const missed = [];
-    return todo.reduce((chain, c) => chain.then(() =>
-      galFetchLibrary(c.uid).then(lib => {
-        const arr = (lib && Array.isArray(lib.presets)) ? lib.presets : [];
-        // Stamped with the label YOU follow them under, exactly as the gallery install does —
-        // their own borrowed scenes (an older profile could carry some) must not come through
-        // wearing a third party's name.
-        for (const p of arr) if (p && typeof p === "object") raw.presets.push({ ...p, collection: c.key });
-      }).catch(() => { missed.push(c.key); })
-    ), Promise.resolve()).then(() => ({ raw, missed }));
+    // A uid-less entry (recorded by cloudBlob for a collection that predates the follow-list)
+    // is resolved by NAME against the public gallery: the collection key IS the source
+    // profile's name — galLoad keys it so — and the listing is the only place that mapping
+    // exists. One galList() covers every such entry; still unresolved ⇒ fetched as uid-less
+    // below, which lands it in `missed` by name instead of dropping it silently.
+    const resolve = todo.some(c => !c.uid)
+      ? galList().then(items => todo.map(c => {
+          if (c.uid) return c;
+          const hit = (items || []).find(i => i.name === c.key);
+          return hit ? { key: c.key, uid: String(hit.uid || "") } : c;
+        })).catch(() => todo)
+      : Promise.resolve(todo);
+    return resolve.then(list => {
+      // Write the healed uids back into the payload the restore will store, so a name
+      // resolution only has to succeed once — the next save carries the real uid.
+      raw.collections = want.map(w => list.find(c => c.key === w.key) || w);
+      return list.reduce((chain, c) => chain.then(() => {
+        if (!c.uid) { missed.push(c.key); return; }
+        return galFetchLibrary(c.uid).then(lib => {
+          const arr = (lib && Array.isArray(lib.presets)) ? lib.presets : [];
+          // Stamped with the label YOU follow them under, exactly as the gallery install does —
+          // their own borrowed scenes (an older profile could carry some) must not come through
+          // wearing a third party's name.
+          for (const p of arr) if (p && typeof p === "object") raw.presets.push({ ...p, collection: c.key });
+        }).catch(() => { missed.push(c.key); });
+      }), Promise.resolve());
+    }).then(() => ({ raw, missed }));
   }
 
   function cloudLoad() {
@@ -528,11 +575,10 @@
       // Straight in, no Restore dialog: there is nothing left to ask, since the scenes go
       // into their own collection rather than over yours. Same validation and the same
       // write/reload underneath (applySharedLibrary drives applyRestore), so nothing about
-      // the load path itself changes — only where the scenes land.
-      // Record that you added them BEFORE the install: applySharedLibrary ends in applyRestore,
-      // which snapshots, writes localStorage and reloads, so anything set afterwards is lost.
-      noteCollection(p.name, p.uid);
-      applySharedLibrary(raw, false, p.name);
+      // the load path itself changes — only where the scenes land. The uid rides along so
+      // the follow is noted INSIDE applySharedLibrary, after validation — noting it here
+      // first left a phantom follow whenever every scene failed validation.
+      applySharedLibrary(raw, false, p.name, p.uid);
       track("cloud_gallery_load", { collection: p.name });
     }).catch(e => { el("gal-hint").textContent = "Could not load: " + e.message; });
   }
