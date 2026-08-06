@@ -1061,12 +1061,16 @@
     in vec2 vUv; out vec4 o;
     float rh(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
     void main(){
-      // U everywhere; V in a scatter of small blobs so the culture has somewhere to start
+      // U everywhere; the seed blobs are the CANONICAL gentle patches (U 0.5, V 0.25 — the
+      // Karl Sims values). The first seed put V 0.9 into full U 1.0, and u*v*v ≈ 0.8
+      // detonates: the blobs burn a wave outward and the whole culture annihilates to
+      // black within ~500 steps — under a second at real frame rates, which the
+      // frame-starved headless runs never reached.
       vec2 cell = floor(vUv*14.0);
       float g = step(0.82, rh(cell + uSalt));
       vec2 f = fract(vUv*14.0) - 0.5;
       float blob = g*smoothstep(0.30, 0.05, length(f));
-      o = vec4(1.0, blob*0.9, 0.0, 1.0);
+      o = vec4(1.0 - blob*0.5, blob*0.25, 0.0, 1.0);
     }`;
     const FS_RDSHOW = `#version 300 es
     precision highp float;

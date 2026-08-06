@@ -392,10 +392,14 @@
   // The GL state lives in glTex.rd (see glRDTick); this is the fallback's own dish: two
   // Float32 pairs at grid size, stepped a capped number of times per frame (the full K
   // would eat the frame budget in JS). Look-equivalent: slower evolution, same regimes.
-  // Defaults sit on the MITOSIS point (F 0.037, k 0.065): spots that divide forever, so
-  // the culture never settles. F 0.037 / k 0.060 looked "frozen" in testing — that pair is
-  // the STABLE-soliton regime, a legitimate Gray–Scott endpoint that simply stops moving.
-  let rdFeed = 0.037, rdKill = 0.065, rdSpeedV = 8, rdGain = 1;
+  // Defaults F 0.030 / k 0.062: measured ALIVE in this exact discretization — V-mass grows
+  // steadily for thousands of steps (spots multiplying and spreading). NB the textbook
+  // (F, k) map does NOT transfer here: the canonical "mitosis" (.037/.065) and "coral"
+  // (.0545/.062) pairs both die to black within ~500 steps under these laplacian weights
+  // and dt — measured offline in rd-dynamics scans, not guessed. Many slider positions
+  // kill the dish too; that is real Gray–Scott, and the auto-reseed (see glRDTick and the
+  // mirror below) is what makes it safe to explore.
+  let rdFeed = 0.03, rdKill = 0.062, rdSpeedV = 8, rdGain = 1;
   let rdCpuU = null, rdCpuV = null, rdCpuU2 = null, rdCpuV2 = null, rdCpuSeed = true;
   function rdSeedFn(dt) {
     // Steps scale with dt (targeting `Sim speed` steps per 60Hz frame), so the culture
@@ -416,7 +420,7 @@
         const cx = Math.floor(x * 14), cy = Math.floor(y * 14);
         if (sunH21(cx + rdSalt, cy + rdSalt) > 0.82) {
           const fx = x * 14 - cx - 0.5, fy = y * 14 - cy - 0.5;
-          if (Math.hypot(fx, fy) < 0.2) rdCpuV[i] = 0.9;
+          if (Math.hypot(fx, fy) < 0.2) { rdCpuU[i] = 0.5; rdCpuV[i] = 0.25; }   // canonical gentle seed — see FS_RDSEED
         }
       }
     }
@@ -439,6 +443,11 @@
       t = rdCpuU; rdCpuU = rdCpuU2; rdCpuU2 = t;
       t = rdCpuV; rdCpuV = rdCpuV2; rdCpuV2 = t;
     }
+    // the CPU half of the death check (see glRDTick): scan a stride of the dish, and if
+    // nothing lives anywhere, re-seed — a dead dish can never regrow on its own
+    let alive = false;
+    for (let i = 0; i < N; i += 97) if (rdCpuV[i] > 0.004) { alive = true; break; }
+    if (!alive) rdCpuSeed = true;
     // display: heat from V, EVERY cell written (zoom/camera skipped on the fallback dish —
     // the sim grid IS the picture, exactly like the fire sim itself)
     for (let i = 0; i < fw * fh; i++) fire[i] = Math.min(1, rdCpuV[i] * s.gain * 2.6) * 255;

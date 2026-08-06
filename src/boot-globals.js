@@ -143,8 +143,10 @@
   let drosteDepth = 2, drosteTwist = 0.5;                // Droste zoom
   let kuwRad = 3;                                        // Kuwahara oil-paint
   // Reaction–diffusion dish flags: declared here because glResize (an earlier slice than
-  // the effect code) marks the dish for re-seeding when the grid reallocates.
+  // the effect code) marks the dish for re-seeding when the grid reallocates. rdIsFloat
+  // is a var on purpose — initGL assigns it while later slices' lets are still in TDZ.
   let rdNeedSeed = true, rdSalt = 1;
+  var rdIsFloat = false;
   // Wall time for the post/screen passes that animate on their own (Slice glitch,
   // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
   // so a stubbed-rAF pixel gate stays reproducible.

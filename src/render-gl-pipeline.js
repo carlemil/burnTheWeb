@@ -618,6 +618,7 @@
     // without the extension: degraded (slow, coarse evolution), not broken.
     // LINEAR: the step shader samples between texels for the laplacian's diagonal taps.
     const rdFloat = !!gl.getExtension("EXT_color_buffer_float");
+    rdIsFloat = rdFloat;               // the death check below reads pixels in the matching type
     const rdI = rdFloat ? gl.RGBA16F : gl.RGBA8, rdT = rdFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
     glTex.rd = [
       createTex(rdI, gl.RGBA, rdT, gl.LINEAR, gl.CLAMP_TO_EDGE),
@@ -1250,7 +1251,16 @@
   // ping-ponging the rd pair. Runs entirely OUTSIDE the heat machinery (its own
   // textures); the effect's draw calls this and then samples glTex.rd[rdCur] in the
   // rdshow pass. `rdCur` always names the freshest buffer.
-  let rdCur = 0;
+  //
+  // THE DEATH CHECK: plenty of legal Feed/Kill settings genuinely kill the culture —
+  // V hits 0 everywhere, and with uvv = 0 nothing can ever grow again, so a beat-jumped
+  // Feed would leave a permanently black effect. Every ~120 frames a handful of pixels
+  // are read back (in the buffer's own type — FLOAT reads on an RGBA16F target); if
+  // every sample is dead, the dish re-seeds. One tiny readback every couple of seconds,
+  // and only while the effect is actually drawing.
+  // `rdIsFloat` is a var: initGL runs during an early slice, before this file's lets
+  // initialise, so a let here would be in its TDZ at assignment time.
+  let rdCur = 0, rdCheck = 0;
   function glRDTick(steps, feed, kill) {
     if (rdNeedSeed) {
       rdNeedSeed = false;
@@ -1272,6 +1282,25 @@
       gl.uniform1f(glProg.rdstep.u.uKill, kill);
       drawQuad();
       rdCur = dst;
+    }
+    rdCheck = (rdCheck + 1) % 120;
+    if (rdCheck === 0) {
+      bindFbo(glFbo.rd[rdCur], fw, fh);
+      let dead = true;
+      if (rdIsFloat) {
+        const p = new Float32Array(4);
+        for (let k = 0; k < 8 && dead; k++) {
+          gl.readPixels(((k * 2 + 1) * fw) >> 4, ((k * 2 + 1) * fh) >> 4, 1, 1, gl.RGBA, gl.FLOAT, p);
+          if (p[1] > 0.01) dead = false;
+        }
+      } else {
+        const p = new Uint8Array(4);
+        for (let k = 0; k < 8 && dead; k++) {
+          gl.readPixels(((k * 2 + 1) * fw) >> 4, ((k * 2 + 1) * fh) >> 4, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, p);
+          if (p[1] > 2) dead = false;
+        }
+      }
+      if (dead) rdNeedSeed = true;
     }
   }
   function postPass(name, src, setU) {

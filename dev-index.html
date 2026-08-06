@@ -2063,8 +2063,10 @@
   let drosteDepth = 2, drosteTwist = 0.5;                // Droste zoom
   let kuwRad = 3;                                        // Kuwahara oil-paint
   // Reaction–diffusion dish flags: declared here because glResize (an earlier slice than
-  // the effect code) marks the dish for re-seeding when the grid reallocates.
+  // the effect code) marks the dish for re-seeding when the grid reallocates. rdIsFloat
+  // is a var on purpose — initGL assigns it while later slices' lets are still in TDZ.
   let rdNeedSeed = true, rdSalt = 1;
+  var rdIsFloat = false;
   // Wall time for the post/screen passes that animate on their own (Slice glitch,
   // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
   // so a stubbed-rAF pixel gate stays reproducible.
@@ -3650,12 +3652,16 @@
     in vec2 vUv; out vec4 o;
     float rh(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
     void main(){
-      // U everywhere; V in a scatter of small blobs so the culture has somewhere to start
+      // U everywhere; the seed blobs are the CANONICAL gentle patches (U 0.5, V 0.25 — the
+      // Karl Sims values). The first seed put V 0.9 into full U 1.0, and u*v*v ≈ 0.8
+      // detonates: the blobs burn a wave outward and the whole culture annihilates to
+      // black within ~500 steps — under a second at real frame rates, which the
+      // frame-starved headless runs never reached.
       vec2 cell = floor(vUv*14.0);
       float g = step(0.82, rh(cell + uSalt));
       vec2 f = fract(vUv*14.0) - 0.5;
       float blob = g*smoothstep(0.30, 0.05, length(f));
-      o = vec4(1.0, blob*0.9, 0.0, 1.0);
+      o = vec4(1.0 - blob*0.5, blob*0.25, 0.0, 1.0);
     }`;
     const FS_RDSHOW = `#version 300 es
     precision highp float;
@@ -4287,6 +4293,7 @@
     // without the extension: degraded (slow, coarse evolution), not broken.
     // LINEAR: the step shader samples between texels for the laplacian's diagonal taps.
     const rdFloat = !!gl.getExtension("EXT_color_buffer_float");
+    rdIsFloat = rdFloat;               // the death check below reads pixels in the matching type
     const rdI = rdFloat ? gl.RGBA16F : gl.RGBA8, rdT = rdFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
     glTex.rd = [
       createTex(rdI, gl.RGBA, rdT, gl.LINEAR, gl.CLAMP_TO_EDGE),
@@ -4919,7 +4926,16 @@
   // ping-ponging the rd pair. Runs entirely OUTSIDE the heat machinery (its own
   // textures); the effect's draw calls this and then samples glTex.rd[rdCur] in the
   // rdshow pass. `rdCur` always names the freshest buffer.
-  let rdCur = 0;
+  //
+  // THE DEATH CHECK: plenty of legal Feed/Kill settings genuinely kill the culture —
+  // V hits 0 everywhere, and with uvv = 0 nothing can ever grow again, so a beat-jumped
+  // Feed would leave a permanently black effect. Every ~120 frames a handful of pixels
+  // are read back (in the buffer's own type — FLOAT reads on an RGBA16F target); if
+  // every sample is dead, the dish re-seeds. One tiny readback every couple of seconds,
+  // and only while the effect is actually drawing.
+  // `rdIsFloat` is a var: initGL runs during an early slice, before this file's lets
+  // initialise, so a let here would be in its TDZ at assignment time.
+  let rdCur = 0, rdCheck = 0;
   function glRDTick(steps, feed, kill) {
     if (rdNeedSeed) {
       rdNeedSeed = false;
@@ -4941,6 +4957,25 @@
       gl.uniform1f(glProg.rdstep.u.uKill, kill);
       drawQuad();
       rdCur = dst;
+    }
+    rdCheck = (rdCheck + 1) % 120;
+    if (rdCheck === 0) {
+      bindFbo(glFbo.rd[rdCur], fw, fh);
+      let dead = true;
+      if (rdIsFloat) {
+        const p = new Float32Array(4);
+        for (let k = 0; k < 8 && dead; k++) {
+          gl.readPixels(((k * 2 + 1) * fw) >> 4, ((k * 2 + 1) * fh) >> 4, 1, 1, gl.RGBA, gl.FLOAT, p);
+          if (p[1] > 0.01) dead = false;
+        }
+      } else {
+        const p = new Uint8Array(4);
+        for (let k = 0; k < 8 && dead; k++) {
+          gl.readPixels(((k * 2 + 1) * fw) >> 4, ((k * 2 + 1) * fh) >> 4, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, p);
+          if (p[1] > 2) dead = false;
+        }
+      }
+      if (dead) rdNeedSeed = true;
     }
   }
   function postPass(name, src, setU) {
@@ -6109,10 +6144,14 @@
   // The GL state lives in glTex.rd (see glRDTick); this is the fallback's own dish: two
   // Float32 pairs at grid size, stepped a capped number of times per frame (the full K
   // would eat the frame budget in JS). Look-equivalent: slower evolution, same regimes.
-  // Defaults sit on the MITOSIS point (F 0.037, k 0.065): spots that divide forever, so
-  // the culture never settles. F 0.037 / k 0.060 looked "frozen" in testing — that pair is
-  // the STABLE-soliton regime, a legitimate Gray–Scott endpoint that simply stops moving.
-  let rdFeed = 0.037, rdKill = 0.065, rdSpeedV = 8, rdGain = 1;
+  // Defaults F 0.030 / k 0.062: measured ALIVE in this exact discretization — V-mass grows
+  // steadily for thousands of steps (spots multiplying and spreading). NB the textbook
+  // (F, k) map does NOT transfer here: the canonical "mitosis" (.037/.065) and "coral"
+  // (.0545/.062) pairs both die to black within ~500 steps under these laplacian weights
+  // and dt — measured offline in rd-dynamics scans, not guessed. Many slider positions
+  // kill the dish too; that is real Gray–Scott, and the auto-reseed (see glRDTick and the
+  // mirror below) is what makes it safe to explore.
+  let rdFeed = 0.03, rdKill = 0.062, rdSpeedV = 8, rdGain = 1;
   let rdCpuU = null, rdCpuV = null, rdCpuU2 = null, rdCpuV2 = null, rdCpuSeed = true;
   function rdSeedFn(dt) {
     // Steps scale with dt (targeting `Sim speed` steps per 60Hz frame), so the culture
@@ -6133,7 +6172,7 @@
         const cx = Math.floor(x * 14), cy = Math.floor(y * 14);
         if (sunH21(cx + rdSalt, cy + rdSalt) > 0.82) {
           const fx = x * 14 - cx - 0.5, fy = y * 14 - cy - 0.5;
-          if (Math.hypot(fx, fy) < 0.2) rdCpuV[i] = 0.9;
+          if (Math.hypot(fx, fy) < 0.2) { rdCpuU[i] = 0.5; rdCpuV[i] = 0.25; }   // canonical gentle seed — see FS_RDSEED
         }
       }
     }
@@ -6156,6 +6195,11 @@
       t = rdCpuU; rdCpuU = rdCpuU2; rdCpuU2 = t;
       t = rdCpuV; rdCpuV = rdCpuV2; rdCpuV2 = t;
     }
+    // the CPU half of the death check (see glRDTick): scan a stride of the dish, and if
+    // nothing lives anywhere, re-seed — a dead dish can never regrow on its own
+    let alive = false;
+    for (let i = 0; i < N; i += 97) if (rdCpuV[i] > 0.004) { alive = true; break; }
+    if (!alive) rdCpuSeed = true;
     // display: heat from V, EVERY cell written (zoom/camera skipped on the fallback dish —
     // the sim grid IS the picture, exactly like the fire sim itself)
     for (let i = 0; i < fw * fh; i++) fire[i] = Math.min(1, rdCpuV[i] * s.gain * 2.6) * 255;
@@ -7774,8 +7818,8 @@
     { key: "ausway", host: "fx", group: "aurora", type: "dual", label: "Sway", valId: "vAuSway", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => auSway = v, durScale: 10 },
     { key: "auspeed", host: "fx", group: "aurora", type: "dual", label: "Speed", valId: "vAuSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => auSpeed = v, durScale: 10 },
     { key: "aushimmer", host: "fx", group: "aurora", type: "dual", label: "Shimmer", valId: "vAuShim", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => auShim = v, durScale: 10 },
-    { key: "rdfeed", host: "fx", group: "rd", type: "dual", label: "Feed", valId: "vRdFeed", min: 0.01, max: 0.09, step: 0.001, lo: 0.037, hi: 0.037, fmt: v => sig3(v), apply: v => rdFeed = v, durScale: 10 },
-    { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.065, hi: 0.065, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
+    { key: "rdfeed", host: "fx", group: "rd", type: "dual", label: "Feed", valId: "vRdFeed", min: 0.01, max: 0.09, step: 0.001, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => rdFeed = v, durScale: 10 },
+    { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
     { key: "mgdive", host: "fx", group: "menger", type: "dual", label: "Dive speed", valId: "vMgDive", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => mgDive = v, durScale: 10 },
@@ -9791,11 +9835,11 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], aucurtains: [3, 3], ausway: [0.5, 0.5], auspeed: [1, 1], aushimmer: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "reactdiff", name: "Reaction-diffusion", subtitle: "Gray–Scott · living patterns",
-      help: "Two chemicals feeding and killing each other on a dish, forming spots, stripes, coral and mazes that grow and never repeat. Feed and Kill choose the regime — tiny nudges cross into whole new pattern families, so arm Feed's chips and the beat pushes the culture into a new life. Sim speed is how many chemistry steps run per frame; the culture re-seeds every time you switch to the effect. The state is ONE shared dish: two layers of it show the same culture.",
+      help: "Two chemicals feeding and killing each other on a dish, forming spots, stripes, coral and mazes that grow and never repeat. Feed and Kill choose the regime — tiny nudges cross into whole new pattern families, and some settings kill the culture outright; when everything dies, the dish quietly re-seeds itself, so exploring (or arming Feed's chips to let the beat push the culture into a new life) is always safe. Sim speed is how many chemistry steps run per frame. The state is ONE shared dish: two layers of it show the same culture.",
       params: ["rdfeed", "rdkill", "rdspeed", "rdgain", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "rd", "band"], bakesOwnZoom: true,
       onEnter: () => { rdNeedSeed = true; rdCpuSeed = true; },
       draw: dt => { const s = rdSeedFn(dt); if (useGL) { glRDTick(s.steps, s.feed, s.kill); glShaderDraw("rdshow", u => { bindTexUnit(0, glTex.rd[rdCur]); gl.uniform1i(u.uState, 0); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); } else rdCPU(s); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], rdfeed: [0.037, 0.037], rdkill: [0.065, 0.065], rdspeed: [8, 8], rdgain: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], rdfeed: [0.03, 0.03], rdkill: [0.062, 0.062], rdspeed: [8, 8], rdgain: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "menger", name: "Menger sponge", subtitle: "Menger · infinite lattice dive",
       help: "An endless lattice of Menger sponges — the 3D Sierpiński carpet — raymarched while the camera dives forward through the holes with a slow roll. Dive speed is the flight, Detail the fractal depth (and the GPU bill), Glow lights the tunnel. Kin to Sierpiński: this is what its carpet looks like grown into a solid.",
