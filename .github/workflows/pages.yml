@@ -1,0 +1,36 @@
+# Deploy the site to GitHub Pages via Actions, replacing the legacy branch-build pipeline.
+#
+# Why: the legacy builder started failing ERRATICALLY after v1.16.0 — instant
+# (duration 0) "Page build failed." with no further diagnostics, on pushes that
+# changed nothing Pages should care about, while githubstatus reported all green.
+# Four of the five builds after fbe58f7 failed that way; retriggers sometimes helped,
+# then stopped helping. This path gives real logs, no shared build queue, and
+# actions/configure-pages flips the site's build type to "workflow" on first run.
+#
+# The site is plain static files (there is a .nojekyll too) — upload everything as-is.
+name: Deploy Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
