@@ -251,7 +251,8 @@
             glPtCount = 0;                       // a fresh point list per item...
             stampTick(L, now);
             capturePhase(L);
-            glBlitPoints(L.blend, L.gain);       // ...so each blits with its own blend/gain
+            // a stampAdd effect (Fractal flames) accumulates density whatever the layer blend
+            glBlitPoints(EFFECTS[L.fx].stampAdd ? "add" : L.blend, L.gain);   // ...so each blits with its own blend/gain
           }
           curHeat = pendingDst;                  // close the tick once, after every item
         }

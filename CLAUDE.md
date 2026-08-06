@@ -9,12 +9,13 @@ compaction pass; recover it with `git show v1.12.3:CLAUDE.md`.
 Self-contained demoscene visual on GitHub Pages (https://carlemil.github.io/burnTheWeb/).
 Effects share one palette + glow + banding + beat-reactive pipeline, in four families:
 
-- **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrafyer, Attractor (de Jong).
+- **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrafyer, Attractor (de Jong),
+  Fractal flames (`flames`, the one **additive** stamper — `stampAdd`).
 - **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton.
 - **Shader pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching
-  Squares, Copper Bars, Sun surface.
+  Squares, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm.
 - **Shader SDF** — Polygon, Shape grid, Concentric rings, Bouncing shapes (2D), Bouncing
-  solids (3D raymarched).
+  solids (3D raymarched), Mandelbulb (3D raymarched).
 
 Each = one `EFFECTS` descriptor + a `draw(dt)` shader hook or a `stamp(box)` point hook. No
 package manager, test framework or runtime dependency. Keep `README.md` in sync.
@@ -110,6 +111,12 @@ Run the fire sim, stamp via `plot()`. `simulate()` dispatches to `stamp(box)` if
 `draw`.
 - **Stamp at `POINT_HEAT` (`CONFIG.tuning.pointHeat` = 209), not 255** — 14/19 palettes are
   near-white at 255 and effects ship with no filters, so the raw stamps are the picture.
+- **`stampAdd: true` (Fractal flames) switches the stamp to ADDITIVE**: `plot(x, y, v, true)`
+  does `min(255, heat + v)` on the CPU, and all three `glBlitPoints` call sites pass `"add"`
+  (FUNC_ADD ONE/ONE) when the item's descriptor carries the flag — density is the picture, and
+  MAX stamping would flatten it to a silhouette. The white-out-at-255 concern inverts here:
+  the saturated core IS the flame look. `flamesStamp` reseeds the chaos PRNG itself and
+  advances `flPhase` per tick (like `nodPhase`); Strike-style beat wiring does not apply.
 - Stamping happens inside a **safe box** (heat grid less a 1px margin), shared by all three.
   Size/Rotation scale & spin the corners about the box centre.
 
@@ -174,7 +181,8 @@ to it. Unticking the last row writes that set, **not** `null` (which means all).
 `FILTERS` — second registry, **three stages**, and the registry must list them in that order
 (`filterprobe` asserts it):
 
-**feedback** (`Fire`, `Fade pixel`, `Diffuse`, `Echo`, `Zoom feedback`, `Swirl`) — mutate
+**feedback** (`Fire`, `Fade pixel`, `Diffuse`, `Echo`, `Zoom feedback`, `Swirl`, `Cellular
+automaton`) — mutate
 retained heat, run inside `glBeginHeat` before the effect is MAX-injected. With no feedback
 filter `glBeginHeat` **clears** and the CPU path zeroes `fire`.
 - Echo/Zoom feedback/Swirl are **one program**, `FS_HWARP`, via
@@ -189,7 +197,7 @@ filter `glBeginHeat` **clears** and the CPU path zeroes `fire`.
   `warpBuf`); `cpuOk: false` here would leave the fallback with nothing carrying heat over.
 
 **post** (Twist, Wedge fold, Slice glitch, Pixelate, Blur/sharpen, Edge, Posterize, Halftone,
-Solarize, Chromatic aberration, Mirror, Shockwave, Bloom) — read the palette-mapped image. `glPostChain()`
+Solarize, Chromatic aberration, Mirror, Shockwave, Pixel sort, Bloom) — read the palette-mapped image. `glPostChain()`
 ping-pongs `glTex.post[0]/[1]` and **returns `glTex.native` untouched when empty** (no
 pass-through copy). Bloom has no pass — it is the glow composite under `bloomAmt`/`uBloom`.
 

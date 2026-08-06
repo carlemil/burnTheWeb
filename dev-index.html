@@ -2051,6 +2051,8 @@
   // Screen stage (after the glow, at display resolution)
   let barrelAmt = 0.15, scanAmt = 0.35, scanCount = 240, vigAmt = 0.4, grainAmt = 0.08;
   let shockAmt = 0, shockAmp = 0.06, shockWidth = 0.1;   // Shockwave ring: progress, push, thickness
+  let pxThresh = 0.55, pxStreak = 0.5, pxDir = 0;        // Pixel sort
+  let cellStates = 12, cellMix = 1, cellKeep = 1;        // Cellular automaton (feedback)
   // Wall time for the post/screen passes that animate on their own (Slice glitch,
   // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
   // so a stubbed-rAF pixel gate stays reproducible.
@@ -3304,6 +3306,178 @@
       }
       o = vec4(clamp(heat*uGlow, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Kefrens bars: the classic per-scanline effect — each row draws the bars at a phase
+    // offset of its own, so vertical ribbons weave impossibly through each other. The 12
+    // loop bound is the Bars slider's max (same slider-ceiling coupling as FS_METABALL).
+    const FS_KEFRENS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uBars; uniform float uSway; uniform float uWidth; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = (vec2(gl_FragCoord.x/fw, gl_FragCoord.y/fh) - 0.5)/uZoom + 0.5;
+      float y = q.y, t = uTime, heat = 0.0;
+      int n = int(uBars);
+      for (int b = 0; b < 12; b++){
+        if (b >= n) break;
+        float fb = float(b);
+        float bx = 0.5 + uSway*(0.62*sin(t*(0.90 + 0.13*fb) + y*4.6 + fb*2.39)
+                              + 0.38*sin(t*(0.53 + 0.07*fb) - y*7.7 + fb*1.17));
+        float bar = max(0.0, 1.0 - abs(q.x - bx)/uWidth);
+        float sh = 0.55 + 0.45*sin(y*40.0 + fb*1.7 + t*2.0);   // raster gradient inside the bar
+        heat = max(heat, bar*bar*(0.45 + 0.55*sh));
+      }
+      o = vec4(clamp(heat*0.92, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Twister: the classic twisting column. Four edges at cos(a + i*90°); a face is the
+    // span between consecutive edges wherever the right edge sits right of the left one,
+    // shaded by its orientation. Up to 3 columns, phase-offset.
+    const FS_TWISTER = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCols; uniform float uWidth; uniform float uTwist; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)/uZoom;
+      float heat = 0.0;
+      int n = int(uCols);
+      for (int c = 0; c < 3; c++){
+        if (c >= n) break;
+        float fc = float(c);
+        float cx = (fc - (uCols - 1.0)*0.5) * uWidth*2.9;
+        float a = uTime*(1.0 + 0.13*fc) + q.y*uTwist + 0.35*sin(uTime*0.42 + q.y*2.2 + fc*2.1);
+        for (int i = 0; i < 4; i++){
+          float fi = float(i);
+          float x0 = cx + uWidth*cos(a + fi*1.5708);
+          float x1 = cx + uWidth*cos(a + (fi + 1.0)*1.5708);
+          if (x1 > x0 && q.x >= x0 && q.x <= x1){
+            float sh = 0.25 + 0.75*abs(sin(a + fi*1.5708 + 0.7854));   // face lighting
+            float u = (q.x - x0)/max(x1 - x0, 1e-4);
+            heat = max(heat, sh + 0.18*pow(abs(u*2.0 - 1.0), 6.0));    // bright seams at the edges
+          }
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Cymatics: Chladni-plate standing waves. Heat is highest ON the nodal lines (where
+    // the sand collects), so the picture is the classic bright line-figure; Sharpness
+    // thins the lines. Non-integer modes morph smoothly, which is what the Mode slider's
+    // drift (or a beat snap) animates.
+    const FS_CYMATICS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uModeN; uniform float uModeM; uniform float uSharp; uniform float uShim; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float t = uTime;
+      float xx = q.x + uShim*0.05*sin(t*0.8 + q.y*5.0);
+      float yy = q.y + uShim*0.05*cos(t*0.7 + q.x*4.0);
+      float k = 1.5707963;
+      float ch = cos(uModeN*k*xx)*cos(uModeM*k*yy) + cos(uModeM*k*xx)*cos(uModeN*k*yy);
+      float lines = pow(clamp(1.0 - abs(ch)*0.5, 0.0, 1.0), uSharp);   // sand on the nodes
+      float anti  = 0.10*pow(abs(ch)*0.5, 2.0);                        // faint antinode sheen
+      o = vec4(clamp(lines + anti, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Lightning storm: up to 5 simultaneous bolts, each a 1-D value-noise path x(y) from
+    // a per-bolt seed. uEnv is the strike envelope (1 = fresh bolt, decaying to 0) and
+    // uSeed changes per strike, so every flash is a NEW bolt — both come from stormSeed,
+    // where the beat-armed Strike slider and the auto Rate clock are merged.
+    const FS_STORM = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float h1(float x){ return fract(sin(x*127.1)*43758.5453); }
+    float vn(float t, float s){
+      float i = floor(t), f = fract(t);
+      return mix(h1(i + s), h1(i + 1.0 + s), f*f*(3.0 - 2.0*f));
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)/uZoom;
+      float yt = 0.5 - q.y;                       // 0 at the top, 1 at the bottom
+      float heat = 0.0;
+      int n = int(uBolts);
+      for (int k = 0; k < 5; k++){
+        if (k >= n) break;
+        float sk = uSeed + float(k)*271.13;
+        float bx = (h1(sk)*0.9 - 0.45)*ar
+                 + 0.50*(vn(yt*3.0,  sk + 7.0)  - 0.5)
+                 + 0.24*(vn(yt*9.0,  sk + 17.0) - 0.5)
+                 + 0.10*(vn(yt*27.0, sk + 29.0) - 0.5);
+        float d = abs(q.x - bx);
+        float bright = 0.7 + 0.3*h1(sk + 3.3);
+        float fl = 0.72 + 0.28*sin(uEnv*40.0 + sk*9.0);   // flicker as the envelope decays
+        heat = max(heat, uEnv*bright*fl*(exp(-d*80.0) + 0.30*exp(-d*13.0)));
+      }
+      // sky flash + a whisper of ambience so the frame is not dead black between strikes
+      heat += uEnv*uGlow*0.22*(0.4 + 0.6*(1.0 - yt)) + uGlow*0.05;
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Mandelbulb: the power-N 3D fractal, raymarched with the standard distance
+    // estimator. Slow orbit via uPhase (the effect's own clock — the shared camera
+    // still composes on top through camProg like every effect). Heat = diffuse + rim
+    // on a hit, and a soft proximity halo on a miss so the silhouette glows.
+    const FS_BULB = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uPhase; uniform float uPower; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float bulbDE(vec3 p, float P, int it){
+      vec3 z = p;
+      float dr = 1.0, r = 0.0;
+      for (int i = 0; i < 12; i++){
+        if (i >= it) break;
+        r = length(z);
+        if (r > 2.0) break;
+        float th = acos(clamp(z.z/max(r, 1e-6), -1.0, 1.0));
+        float ph = atan(z.y, z.x);
+        dr = pow(r, P - 1.0)*P*dr + 1.0;
+        float zr = pow(r, P);
+        th *= P; ph *= P;
+        z = zr*vec3(sin(th)*cos(ph), sin(th)*sin(ph), cos(th)) + p;
+      }
+      return 0.5*log(max(r, 1e-6))*r/dr;
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uPhase), sa = sin(uPhase);
+      float tilt = 0.35*sin(uPhase*0.7);
+      float ct = cos(tilt), st = sin(tilt);
+      vec3 ro = vec3(0.0, 0.0, -2.35);
+      vec3 rd = normalize(vec3(uv, 1.55));
+      // orbit: rotate the CAMERA about Y, with a slow nodding tilt about X
+      ro = vec3(ro.x*ca + ro.z*sa, ro.y, -ro.x*sa + ro.z*ca);
+      rd = vec3(rd.x*ca + rd.z*sa, rd.y, -rd.x*sa + rd.z*ca);
+      ro = vec3(ro.x, ro.y*ct - ro.z*st, ro.y*st + ro.z*ct);
+      rd = vec3(rd.x, rd.y*ct - rd.z*st, rd.y*st + rd.z*ct);
+      int it = int(uIter);
+      float P = uPower;
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 64; i++){
+        vec3 p = ro + rd*t;
+        float d = bulbDE(p, P, it);
+        halo = min(halo, d/max(t, 0.3));
+        if (d < 0.0009*max(t, 0.4)){
+          float e = 0.0012*max(t, 0.4);
+          vec2 h = vec2(1.0, -1.0)*0.5773;
+          vec3 nrm = normalize(h.xyy*bulbDE(p + h.xyy*e, P, it) + h.yyx*bulbDE(p + h.yyx*e, P, it)
+                             + h.yxy*bulbDE(p + h.yxy*e, P, it) + h.xxx*bulbDE(p + h.xxx*e, P, it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.6, 0.7, -0.5))));
+          float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
+          heat = (0.22 + 0.70*dif + uGlow*0.5*rim)*smoothstep(4.2, 1.4, t);
+          break;
+        }
+        t += d;
+        if (t > 4.5) break;
+      }
+      if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     // ---- post-FX passes. All RGB, all read the palette-mapped image, so they
     // behave as named (an Edge in palette-INDEX space would find edges where there
@@ -3481,6 +3655,52 @@
       off.x /= asp;
       vec3 col = texture(uSrc, clamp(vUv - off, 0.0, 1.0)).rgb;   // pixels read as pushed outward
       o = vec4(col * (1.0 + g * uAmount * 0.35), 1.0);            // slight glint riding the ring
+    }`;
+    // Pixel sort (approximated): true sorting is sequential, so this is the shader fake —
+    // each pixel takes the max of itself and any BRIGHT pixel behind it along the sort
+    // direction, weighted down with distance. Bright areas smear into streaks, dark areas
+    // stay put: the modern glitch look. 32 taps is the ceiling; uLen scales within it.
+    const FS_PIXSORT = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uThresh; uniform float uLen; uniform float uDir;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 dirv = uDir < 0.5 ? vec2(0.0, 1.0) : uDir < 1.5 ? vec2(0.0, -1.0)
+                : uDir < 2.5 ? vec2(-1.0, 0.0) : vec2(1.0, 0.0);
+      vec3 c = texture(uSrc, vUv).rgb;
+      for (int i = 1; i <= 32; i++){
+        float fi = float(i);
+        vec2 p = vUv + dirv*(fi/32.0)*uLen*0.35;
+        if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) break;
+        vec3 s = texture(uSrc, p).rgb;
+        float l = dot(s, vec3(0.299, 0.587, 0.114));
+        c = max(c, s*(step(uThresh, l)*(1.0 - fi/34.0)));
+      }
+      o = vec4(c, 1.0);
+    }`;
+    // Cellular automaton over the retained HEAT (feedback stage): quantise to uStates
+    // buckets; a cell with any 8-neighbour exactly one state ahead advances to it,
+    // wrapping — the classic cyclic CA, whose spirals and boiling fronts here ride the
+    // palette. Runs once per sim tick like every feedback filter. Writing the bucket
+    // CENTRE ((s+1.5)/uStates) keeps floor() stable against R8's 1/255 quantisation.
+    const FS_CELL = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform vec2 uSize; uniform float uStates; uniform float uMix; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 px = 1.0/uSize;
+      float h = texture(uHeat, vUv).r;
+      float s = min(floor(h*uStates), uStates - 1.0);
+      float nxt = mod(s + 1.0, uStates);
+      float cnt = 0.0;
+      for (int j = -1; j <= 1; j++)
+      for (int i = -1; i <= 1; i++){
+        if (i == 0 && j == 0) continue;
+        float nh = texture(uHeat, clamp(vUv + vec2(float(i), float(j))*px, 0.0, 1.0)).r;
+        if (min(floor(nh*uStates), uStates - 1.0) == nxt) cnt += 1.0;
+      }
+      float ca = cnt >= 1.0 ? (nxt + 0.5)/uStates : h;
+      o = vec4(mix(h, ca, uMix)*uKeep, 0.0, 0.0, 1.0);
     }`;
     // Feedback: fade the retained heat toward black each tick (phosphor trails).
     const FS_FADE = `#version 300 es
@@ -3733,6 +3953,11 @@
     glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
     glProg.solids = camProg(VS_QUAD, FS_SOLIDS, ["uSize", "uZoom", "uCount", "uRim", "uPos", "uQuat", "uShape"]);
     glProg.sun = camProg(VS_QUAD, FS_SUN, ["uSize", "uTime", "uDensity", "uLane", "uGlow", "uSpot", "uZoom"]);
+    glProg.kefrens = camProg(VS_QUAD, FS_KEFRENS, ["uSize", "uTime", "uBars", "uSway", "uWidth", "uZoom"]);
+    glProg.twister = camProg(VS_QUAD, FS_TWISTER, ["uSize", "uTime", "uCols", "uWidth", "uTwist", "uZoom"]);
+    glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
+    glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom"]);
+    glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
@@ -3745,6 +3970,8 @@
     glProg.thresh = makeProg(VS_QUAD, FS_THRESH, ["uSrc", "uLevel", "uAmount"]);
     glProg.chroma = makeProg(VS_QUAD, FS_CHROMA, ["uSrc", "uAmount"]);
     glProg.shock = makeProg(VS_QUAD, FS_SHOCK, ["uSrc", "uSize", "uAmount", "uAmp", "uWidth"]);
+    glProg.pixsort = makeProg(VS_QUAD, FS_PIXSORT, ["uSrc", "uSize", "uThresh", "uLen", "uDir"]);
+    glProg.cell = makeProg(VS_QUAD, FS_CELL, ["uHeat", "uSize", "uStates", "uMix", "uKeep"]);
     glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
     glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
     glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);
@@ -4011,7 +4238,11 @@
     }
   }
   function glDrawPoints() {
-    glBlitPoints();
+    // The single-layer tick path: honour a stampAdd effect (Fractal flames) here too, or
+    // the density accumulation would only exist in a stack. Read the ITEM's effect, not
+    // the `effect` global — render paths take everything from the stack.
+    const L = stack[stackSel];
+    glBlitPoints(L && EFFECTS[L.fx].stampAdd ? "add" : undefined);
     curHeat = pendingDst;
   }
   // Close a heat tick. Split out from glDrawPoints so the flip has a name that
@@ -4243,7 +4474,8 @@
         cur = glLayerBeginHeat(slot, cur, chain);  // propagate into the other buffer, leave it bound
         glPtCount = 0;
         stampTick(L, now); capturePhase(L);
-        glBlitPoints(L.blend, 1);                  // stamp into the bound buffer (gain deferred)
+        // a stampAdd effect (Fractal flames) accumulates density whatever the layer blend
+        glBlitPoints(EFFECTS[L.fx].stampAdd ? "add" : L.blend, 1);   // stamp into the bound buffer (gain deferred)
       }
       layerCur[slot] = cur;
       return glTex.heatL[slot][cur];
@@ -4504,7 +4736,7 @@
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
   // (It briefly took a `raw` flag to let the credits skip the camera; they render on
   // their own layer now, so every caller wants the camera and the flag is gone.)
-  function plot(x, y, v) {
+  function plot(x, y, v, add) {
     // Zoom is applied HERE, to the point, not to the finished picture. FS_ZOOM magnifies
     // an fw×fh raster, so detail falls off as 1/zoom and the point effects went visibly
     // blocky — the 17 shader effects never had that because they divide their coordinates
@@ -4526,7 +4758,13 @@
     }
     const xi = x | 0, yi = y | 0;
     if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
+    // `add` is the density mode Fractal flames stamps in: heat ACCUMULATES per hit
+    // instead of taking the max, so where the orbit lands often burns brighter — the
+    // log-density look, with the R8 clamp as the white-hot core. The GL half of the
+    // same choice is the blit call sites passing "add" when the descriptor says
+    // `stampAdd` (glBlitPoints already spoke FUNC_ADD for the layer blend).
     if (useGL) { pushPt(xi, yi, v); }
+    else if (add) { const idx = yi * fw + xi; fire[idx] = Math.min(255, fire[idx] + v); }
     else { const idx = yi * fw + xi; if (v > fire[idx]) fire[idx] = v; }
   }
 
@@ -5474,6 +5712,223 @@
     }
   }
 
+  // ---- Kefrens bars: per-scanline weaving ribbons (shader effect) ----
+  // The mirror caches every bar's x per ROW once per frame (bar x depends only on y),
+  // so the per-pixel loop is just distance tests; a rotated camera reads the nearest
+  // cached row, which is visually identical at grid resolution.
+  let kfBars = 6, kfSway = 0.25, kfSpeed = 1, kfWidth = 0.045, kfTime = 0;
+  function kefrensSeed(dt) {
+    kfTime += dt * kfSpeed;
+    return { t: kfTime, bars: kfBars, sway: kfSway, width: kfWidth, zoom };
+  }
+  let kfRow = null;
+  function kefrens(dt) {                  // CPU fallback — mirrors FS_KEFRENS
+    const s = kefrensSeed(dt), t = s.t, n = Math.round(s.bars), w = s.width;
+    if (!kfRow || kfRow.length < fh * 12) kfRow = new Float32Array(fh * 12);
+    for (let r = 0; r < fh; r++) {
+      const y = (r / fh - 0.5) / s.zoom + 0.5;
+      for (let b = 0; b < n; b++) {
+        kfRow[r * 12 + b] = 0.5 + s.sway * (0.62 * Math.sin(t * (0.90 + 0.13 * b) + y * 4.6 + b * 2.39)
+                                          + 0.38 * Math.sin(t * (0.53 + 0.07 * b) - y * 7.7 + b * 1.17));
+      }
+    }
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) / s.zoom + 0.5;
+        const qy = (camPY / fh - 0.5) / s.zoom + 0.5;
+        // the cache is indexed by SCREEN row; camPY is exactly that (camPix is screen-space)
+        const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));
+        let heat = 0;
+        for (let b = 0; b < n; b++) {
+          const bar = Math.max(0, 1 - Math.abs(qx - kfRow[r * 12 + b]) / w);
+          if (bar > 0) {
+            const sh = 0.55 + 0.45 * Math.sin(qy * 40 + b * 1.7 + t * 2);
+            const v = bar * bar * (0.45 + 0.55 * sh);
+            if (v > heat) heat = v;
+          }
+        }
+        fire[idx++] = Math.min(1, heat * 0.92) * 255;
+      }
+    }
+  }
+
+  // ---- Twister: the classic twisting column (shader effect) ----
+  let twCols = 1, twWidth = 0.22, twTwist = 2, twSpeed = 1, twTime = 0;
+  function twisterSeed(dt) {
+    twTime += dt * twSpeed;
+    return { t: twTime, cols: twCols, width: twWidth, twist: twTwist, zoom };
+  }
+  function twister(dt) {                  // CPU fallback — mirrors FS_TWISTER
+    const s = twisterSeed(dt), ar = fw / fh, n = Math.round(s.cols), W = s.width;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        let heat = 0;
+        for (let c = 0; c < n; c++) {
+          const cx = (c - (n - 1) * 0.5) * W * 2.9;
+          const a = s.t * (1 + 0.13 * c) + qy * s.twist + 0.35 * Math.sin(s.t * 0.42 + qy * 2.2 + c * 2.1);
+          for (let i = 0; i < 4; i++) {
+            const x0 = cx + W * Math.cos(a + i * 1.5708);
+            const x1 = cx + W * Math.cos(a + (i + 1) * 1.5708);
+            if (x1 > x0 && qx >= x0 && qx <= x1) {
+              const sh = 0.25 + 0.75 * Math.abs(Math.sin(a + i * 1.5708 + 0.7854));
+              const u = (qx - x0) / Math.max(x1 - x0, 1e-4);
+              const v = sh + 0.18 * Math.pow(Math.abs(u * 2 - 1), 6);
+              if (v > heat) heat = v;
+            }
+          }
+        }
+        fire[idx++] = Math.min(1, heat) * 255;
+      }
+    }
+  }
+
+  // ---- Cymatics: Chladni-plate standing waves (shader effect) ----
+  let cyModeV = 3, cyOff = 1, cySharp = 5, cyShim = 0.4, cyTime = 0;
+  function cymaticsSeed(dt) {
+    cyTime += dt;                          // shimmer clock; mode animation is the slider's drift
+    return { t: cyTime, n: cyModeV, m: cyModeV + cyOff, sharp: cySharp, shim: cyShim, zoom };
+  }
+  function cymatics(dt) {                 // CPU fallback — mirrors FS_CYMATICS
+    const s = cymaticsSeed(dt), ar = fw / fh, k = 1.5707963;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const qy = (camPY / fh - 0.5) * 2 / s.zoom;
+        const xx = qx + s.shim * 0.05 * Math.sin(s.t * 0.8 + qy * 5);
+        const yy = qy + s.shim * 0.05 * Math.cos(s.t * 0.7 + qx * 4);
+        const ch = Math.cos(s.n * k * xx) * Math.cos(s.m * k * yy) + Math.cos(s.m * k * xx) * Math.cos(s.n * k * yy);
+        const a = Math.abs(ch) * 0.5;
+        const lines = Math.pow(Math.max(0, 1 - a), s.sharp);
+        fire[idx++] = Math.min(1, lines + 0.10 * a * a) * 255;
+      }
+    }
+  }
+
+  // ---- Lightning storm: beat-fired bolts (shader effect) ----
+  // Shockwave's value-is-progress trick, applied to strikes: a beat snaps the Strike
+  // slider to 1 (a fresh bolt at full brightness) and the pulse decays it to afterglow
+  // over the Trigger duration. `stormSeed` merges that with the auto Rate clock and
+  // advances the bolt seed on every NEW strike — a rising Strike edge, or the auto
+  // clock wrapping — so each flash draws a different bolt.
+  let ltStrikeV = 0, ltRateV = 0.5, ltBoltsV = 2, ltGlowV = 0.5, ltTime = 0, ltSeed = 0, ltPrev = 0;
+  function stormSeed(dt) {
+    ltTime += dt * ltRateV;                          // auto clock, in strikes
+    if (ltStrikeV > ltPrev + 0.25) ltSeed++;         // a beat (or hand) fired a fresh bolt
+    ltPrev = ltStrikeV;
+    const auto = ltRateV > 0 ? Math.pow(1 - (ltTime - Math.floor(ltTime)), 3) : 0;
+    return { env: Math.max(auto, ltStrikeV), seed: Math.floor(ltTime) * 7.31 + ltSeed * 13.7,
+             bolts: ltBoltsV, glow: ltGlowV, zoom };
+  }
+  const ltH1 = x => { const v = Math.sin(x * 127.1) * 43758.5453; return v - Math.floor(v); };
+  function ltVn(t, sd) {
+    const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f);
+    return ltH1(i + sd) * (1 - u) + ltH1(i + 1 + sd) * u;
+  }
+  let ltRow = null;
+  function storm(dt) {                    // CPU fallback — mirrors FS_STORM
+    const s = stormSeed(dt), ar = fw / fh, n = Math.round(s.bolts);
+    // bolt x per ROW per bolt, cached once per frame (the path depends only on y)
+    if (!ltRow || ltRow.length < fh * 5) ltRow = new Float32Array(fh * 5);
+    const bright = [];
+    for (let k = 0; k < n; k++) {
+      const sk = s.seed + k * 271.13;
+      bright.push((0.7 + 0.3 * ltH1(sk + 3.3)) * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)));
+      for (let r = 0; r < fh; r++) {
+        const yt = 0.5 - ((r / fh - 0.5) / s.zoom);
+        ltRow[r * 5 + k] = (ltH1(sk) * 0.9 - 0.45) * ar
+          + 0.50 * (ltVn(yt * 3, sk + 7) - 0.5)
+          + 0.24 * (ltVn(yt * 9, sk + 17) - 0.5)
+          + 0.10 * (ltVn(yt * 27, sk + 29) - 0.5);
+      }
+    }
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));   // cache is by screen row
+        const yt = 0.5 - qy;
+        let heat = 0;
+        for (let k = 0; k < n; k++) {
+          const d = Math.abs(qx - ltRow[r * 5 + k]);
+          const v = s.env * bright[k] * (Math.exp(-d * 80) + 0.30 * Math.exp(-d * 13));
+          if (v > heat) heat = v;
+        }
+        heat += s.env * s.glow * 0.22 * (0.4 + 0.6 * (1 - yt)) + s.glow * 0.05;
+        fire[idx++] = Math.min(1, heat) * 255;
+      }
+    }
+  }
+
+  // ---- Mandelbulb: raymarched power-N fractal (shader effect) ----
+  // The mirror marches every 3rd pixel and fills 3x3 blocks — a raymarch with a
+  // transcendental DE is orders beyond the other mirrors, so this trades sharpness
+  // for a fallback that still moves. Steps 24 vs the shader's 64, iterations capped 6.
+  let bpPower = 8, bpDetail = 7, bpSpin = 0.35, bpGlow = 0.5, bpPhase = 0;
+  function bulbSeed(dt) {
+    bpPhase += dt * bpSpin;
+    return { phase: bpPhase, power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
+  }
+  function bulbDE(px, py, pz, P, it) {
+    let zx = px, zy = py, zz = pz, dr = 1, r = 0;
+    for (let i = 0; i < it; i++) {
+      r = Math.sqrt(zx * zx + zy * zy + zz * zz);
+      if (r > 2) break;
+      const th = Math.acos(Math.max(-1, Math.min(1, zz / Math.max(r, 1e-6)))) * P;
+      const ph = Math.atan2(zy, zx) * P;
+      dr = Math.pow(r, P - 1) * P * dr + 1;
+      const zr = Math.pow(r, P), st = Math.sin(th);
+      zx = zr * st * Math.cos(ph) + px;
+      zy = zr * st * Math.sin(ph) + py;
+      zz = zr * Math.cos(th) + pz;
+    }
+    return 0.5 * Math.log(Math.max(r, 1e-6)) * r / dr;
+  }
+  function bulb(dt) {                     // CPU fallback — mirrors FS_BULB, coarsely
+    const s = bulbSeed(dt), ar = fw / fh;
+    const it = Math.min(6, Math.round(s.iter)), P = s.power;
+    const ca = Math.cos(s.phase), sa = Math.sin(s.phase);
+    const tilt = 0.35 * Math.sin(s.phase * 0.7), ct = Math.cos(tilt), st = Math.sin(tilt);
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rox = 0, roy = 0, roz = -2.35;
+        const rl = Math.hypot(ux, uy, 1.55);
+        let rdx = ux / rl, rdy = uy / rl, rdz = 1.55 / rl;
+        let tx = rox * ca + roz * sa; roz = -rox * sa + roz * ca; rox = tx;
+        tx = rdx * ca + rdz * sa; rdz = -rdx * sa + rdz * ca; rdx = tx;
+        let ty = roy * ct - roz * st; roz = roy * st + roz * ct; roy = ty;
+        ty = rdy * ct - rdz * st; rdz = rdy * st + rdz * ct; rdy = ty;
+        let t = 0, halo = 9, heat = 0;
+        for (let i = 0; i < 24; i++) {
+          const d = bulbDE(rox + rdx * t, roy + rdy * t, roz + rdz * t, P, it);
+          if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
+          if (d < 0.003 * Math.max(t, 0.4)) {
+            heat = (0.45 + s.glow * 0.3) * Math.max(0, 1 - (t - 1.4) / 2.8);   // flat shade — no normals on the fallback
+            break;
+          }
+          t += d;
+          if (t > 4.5) break;
+        }
+        if (heat === 0) heat = s.glow * 0.35 * Math.exp(-halo * 55);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)           // fill the 3x3 block
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Geometric shape effects (CPU mirrors of FS_POLYGON / FS_SHAPEGRID / FS_CONCENTRIC
   // / FS_BOUNCE). Each *Seed(dt) advances this frame's phase and is called ONCE per frame
   // in the descriptor's draw hook; the mirror TAKES that seed and never re-seeds, so the
@@ -5583,6 +6038,53 @@
       // Guarded so jit === 0 stays byte-identical to the un-jittered map.
       if (jit > 0) { px += (Math.random() - 0.5) * 2 * jit; py += (Math.random() - 0.5) * 2 * jit; }
       plot(px, py, POINT_HEAT);
+    }
+  }
+
+  // ---- Fractal flames: IFS chaos game with nonlinear variations (point effect) ----
+  // Two affine transforms whose coefficients orbit slowly (flPhase), then one of six
+  // classic flame variations applied after each affine step. Stamped ADDITIVELY
+  // (`stampAdd` on the descriptor + plot's add mode): where the orbit lands often burns
+  // brighter, which is the log-density look that makes flames flames — MAX stamping
+  // flattens it to a silhouette. Uses the seeded chaos PRNG (rnd), so the point
+  // sequence is per-frame deterministic like the other point effects.
+  let flVar = 3, flMorph = 0.3, flGlow = 45, flPhase = 0;
+  function flamesStamp(xL, xR, yT, yB, n) {
+    rngState = (SEED + 0x51ab) >>> 0;      // per-frame reseed: same point SEQUENCE every tick
+    flPhase += flMorph * 2 / cfg.burn;     // coefficient orbit advances per TICK, like nodPhase
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.30, sy = (yB - yT) * 0.30;
+    const p = flPhase, V = Math.round(flVar), inc = flGlow;
+    // two affine maps, coefficients breathing about a good-coverage base
+    const A = [0.62 + 0.20 * Math.sin(p * 0.71), -0.48 + 0.18 * Math.sin(p * 0.53 + 1.7), 0.30 + 0.12 * Math.sin(p * 0.37 + 4.1),
+               0.48 + 0.18 * Math.cos(p * 0.61 + 0.6), 0.60 + 0.20 * Math.cos(p * 0.43 + 2.9), 0.20 + 0.14 * Math.sin(p * 0.29 + 5.3)];
+    const B = [-0.55 + 0.20 * Math.sin(p * 0.47 + 3.3), 0.52 + 0.18 * Math.cos(p * 0.67 + 1.1), -0.25 + 0.12 * Math.sin(p * 0.31 + 2.2),
+               -0.42 + 0.18 * Math.sin(p * 0.59 + 4.8), -0.58 + 0.20 * Math.cos(p * 0.41 + 0.3), -0.15 + 0.14 * Math.cos(p * 0.23 + 3.7)];
+    let x = 0.1, y = 0.1;
+    for (let i = 0; i < n; i++) {
+      const T = rnd() < 0.5 ? A : B;
+      let nx = T[0] * x + T[1] * y + T[2];
+      let ny = T[3] * x + T[4] * y + T[5];
+      const r2 = nx * nx + ny * ny;
+      if (V === 1) {                                        // sinusoidal
+        x = Math.sin(nx); y = Math.sin(ny);
+      } else if (V === 2) {                                 // spherical
+        const k = 0.7 / (r2 + 0.05); x = nx * k; y = ny * k;
+      } else if (V === 3) {                                 // swirl
+        const sr = Math.sin(r2), cr = Math.cos(r2);
+        x = nx * sr - ny * cr; y = nx * cr + ny * sr;
+      } else if (V === 4) {                                 // horseshoe
+        const r = Math.sqrt(r2) + 0.05;
+        x = (nx - ny) * (nx + ny) / r * 0.7; y = 2 * nx * ny / r * 0.7;
+      } else if (V === 5) {                                 // polar
+        x = Math.atan2(ny, nx) * 0.3183; y = Math.sqrt(r2) - 1;
+      } else {                                              // disc
+        const th = Math.atan2(ny, nx) * 0.3183, r = Math.sqrt(r2);
+        x = th * Math.sin(3.14159 * r); y = th * Math.cos(3.14159 * r);
+      }
+      if (!(x * x + y * y < 16)) { x = 0.1; y = 0.1; continue; }   // catches NaN too
+      if (i <= 20) continue;                                // skip the transient
+      plot(cx + x * sx, cy + y * sy, inc, true);            // ADD, not max — density is the picture
     }
   }
 
@@ -6065,7 +6567,8 @@
             glPtCount = 0;                       // a fresh point list per item...
             stampTick(L, now);
             capturePhase(L);
-            glBlitPoints(L.blend, L.gain);       // ...so each blits with its own blend/gain
+            // a stampAdd effect (Fractal flames) accumulates density whatever the layer blend
+            glBlitPoints(EFFECTS[L.fx].stampAdd ? "add" : L.blend, L.gain);   // ...so each blits with its own blend/gain
           }
           curHeat = pendingDst;                  // close the tick once, after every item
         }
@@ -6630,6 +7133,29 @@
     { key: "sunlane", host: "fx", group: "sun", type: "dual", label: "Lane width", valId: "vSunLane", min: 0.1, max: 1.2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => sunLaneW = v, durScale: 10 },
     { key: "sunglow", host: "fx", group: "sun", type: "dual", label: "Brightness", valId: "vSunGlow", min: 0.5, max: 1.4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sunGlow = v, durScale: 10 },
     { key: "sunspot", host: "fx", group: "sun", type: "dual", label: "Sunspot", valId: "vSunSpot", min: 0, max: 1, step: 0.02, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : sig3(v), apply: v => sunSpotAmt = v, durScale: 10 },
+    { key: "kfbars", host: "fx", group: "kefrens", type: "dual", label: "Bars", valId: "vKfBars", min: 1, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => kfBars = Math.round(v), durScale: 10 },
+    { key: "kfsway", host: "fx", group: "kefrens", type: "dual", label: "Sway", valId: "vKfSway", min: 0, max: 0.45, step: 0.01, lo: 0.25, hi: 0.25, fmt: v => sig3(v), apply: v => kfSway = v, durScale: 10 },
+    { key: "kfspeed", host: "fx", group: "kefrens", type: "dual", label: "Speed", valId: "vKfSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => kfSpeed = v, durScale: 10 },
+    { key: "kfwidth", host: "fx", group: "kefrens", type: "dual", label: "Bar width", valId: "vKfWidth", min: 0.01, max: 0.15, step: 0.005, lo: 0.045, hi: 0.045, fmt: v => sig3(v), apply: v => kfWidth = v, durScale: 10 },
+    { key: "twcols", host: "fx", group: "twister", type: "dual", label: "Columns", valId: "vTwCols", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => sig3(Math.round(v)), apply: v => twCols = Math.round(v), durScale: 10 },
+    { key: "twwidth", host: "fx", group: "twister", type: "dual", label: "Width", valId: "vTwWidth", min: 0.05, max: 0.4, step: 0.01, lo: 0.22, hi: 0.22, fmt: v => sig3(v), apply: v => twWidth = v, durScale: 10 },
+    { key: "twtwist", host: "fx", group: "twister", type: "dual", label: "Twist", valId: "vTwTwist", min: -6, max: 6, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v), apply: v => twTwist = v, durScale: 10 },
+    { key: "twspeed", host: "fx", group: "twister", type: "dual", label: "Speed", valId: "vTwSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => twSpeed = v, durScale: 10 },
+    { key: "cymode", host: "fx", group: "chladni", type: "dual", label: "Mode", valId: "vCyMode", min: 1, max: 12, step: 0.05, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => cyModeV = v, durScale: 10 },
+    { key: "cymoff", host: "fx", group: "chladni", type: "dual", label: "Mode offset", valId: "vCyMoff", min: 0, max: 6, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cyOff = v, durScale: 10 },
+    { key: "cysharp", host: "fx", group: "chladni", type: "dual", label: "Sharpness", valId: "vCySharp", min: 1, max: 12, step: 0.1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cySharp = v, durScale: 10 },
+    { key: "cyshimmer", host: "fx", group: "chladni", type: "dual", label: "Shimmer", valId: "vCyShim", min: 0, max: 2, step: 0.05, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => cyShim = v, durScale: 10 },
+    { key: "ltstrike", host: "fx", group: "storm", type: "dual", label: "Strike", valId: "vLtStrike", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => ltStrikeV = v, durScale: 10 },
+    { key: "ltrate", host: "fx", group: "storm", type: "dual", label: "Rate", valId: "vLtRate", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "/s", apply: v => ltRateV = v, durScale: 10 },
+    { key: "ltbolts", host: "fx", group: "storm", type: "dual", label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
+    { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
+    { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => bpPower = Math.round(v), durScale: 10 },
+    { key: "bpdetail", host: "fx", group: "bulb", type: "dual", label: "Detail", valId: "vBpDetail", min: 3, max: 12, step: 1, lo: 7, hi: 7, fmt: v => sig3(Math.round(v)), apply: v => bpDetail = Math.round(v), durScale: 10 },
+    { key: "bpspin", host: "fx", group: "bulb", type: "dual", label: "Orbit speed", valId: "vBpSpin", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bpSpin = v, durScale: 10 },
+    { key: "bpglow", host: "fx", group: "bulb", type: "dual", label: "Glow", valId: "vBpGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => bpGlow = v, durScale: 10 },
+    { key: "flvar", host: "fx", group: "flames", type: "dual", label: "Variation", valId: "vFlVar", min: 1, max: 6, step: 1, lo: 3, hi: 3, fmt: v => ["", "Sinusoidal", "Spherical", "Swirl", "Horseshoe", "Polar", "Disc"][Math.round(v)] || "?", apply: v => flVar = Math.round(v), durScale: 10 },
+    { key: "flmorph", host: "fx", group: "flames", type: "dual", label: "Morph speed", valId: "vFlMorph", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => flMorph = v, durScale: 10 },
+    { key: "flglow", host: "fx", group: "flames", type: "dual", label: "Point glow", valId: "vFlGlow", min: 6, max: 120, step: 1, lo: 45, hi: 45, fmt: v => sig3(Math.round(v)), apply: v => flGlow = v, durScale: 10 },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which
@@ -6680,6 +7206,12 @@
     { key: "shock", host: "filter", group: "f_shock", type: "dual", label: "Shock", valId: "vShock", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => shockAmt = v, durScale: 10 },
     { key: "shockamp", host: "filter", group: "f_shock", type: "dual", label: "Push", valId: "vShockAmp", min: 0, max: 0.2, step: 0.005, lo: 0.06, hi: 0.06, fmt: v => sig3(v), apply: v => shockAmp = v, durScale: 10 },
     { key: "shockwidth", host: "filter", group: "f_shock", type: "dual", label: "Ring width", valId: "vShockWidth", min: 0.02, max: 0.4, step: 0.01, lo: 0.1, hi: 0.1, fmt: v => sig3(v), apply: v => shockWidth = v, durScale: 10 },
+    { key: "pxthresh", host: "filter", group: "f_pixsort", type: "dual", label: "Threshold", valId: "vPxThresh", min: 0, max: 1, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => pxThresh = v, durScale: 10 },
+    { key: "pxstreak", host: "filter", group: "f_pixsort", type: "dual", label: "Streak", valId: "vPxStreak", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => pxStreak = v, durScale: 10 },
+    { key: "pxdir", host: "filter", group: "f_pixsort", type: "dual", label: "Direction", valId: "vPxDir", min: 0, max: 3, step: 1, lo: 0, hi: 0, fmt: v => ["Down", "Up", "Right", "Left"][Math.round(v)] || "Down", apply: v => pxDir = Math.round(v), durScale: 10 },
+    { key: "cellstates", host: "filter", group: "f_cell", type: "dual", label: "States", valId: "vCellStates", min: 3, max: 24, step: 1, lo: 12, hi: 12, fmt: v => sig3(Math.round(v)), apply: v => cellStates = Math.round(v), durScale: 10 },
+    { key: "cellmix", host: "filter", group: "f_cell", type: "dual", label: "Blend", valId: "vCellMix", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cellMix = v, durScale: 10 },
+    { key: "cellkeep", host: "filter", group: "f_cell", type: "dual", label: "Lifetime", valId: "vCellKeep", min: 0.85, max: 1, step: 0.002, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cellKeep = v, durScale: 10 },
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
@@ -7306,12 +7838,14 @@
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
     attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
-    solids: "Bouncing solids", sun: "Sun surface",
+    solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
+    chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
     f_diffuse: "Diffuse", f_echo: "Echo", f_zoomfb: "Zoom feedback", f_swirl: "Swirl",
     f_twist: "Twist", f_wedge: "Wedge fold", f_glitch: "Slice glitch", f_shock: "Shockwave",
+    f_pixsort: "Pixel sort", f_cell: "Cellular automaton",
     f_halftone: "Halftone", f_thresh: "Solarize", f_chroma: "Chromatic aberration",
     f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
     palette: "Palette", banding: "Banding",
@@ -7442,6 +7976,16 @@
     ["coSpin", () => coSpin, v => coSpin = v],
     ["bnTime", () => bnTime, v => bnTime = v],
     ["sunTime", () => sunTime, v => sunTime = v],
+    ["kfTime", () => kfTime, v => kfTime = v],
+    ["twTime", () => twTime, v => twTime = v],
+    ["cyTime", () => cyTime, v => cyTime = v],
+    // Lightning carries three: the auto clock, the strike counter and the last Strike
+    // value (the rising-edge detector) — all per layer, or two storms share bolts.
+    ["ltTime", () => ltTime, v => ltTime = v],
+    ["ltSeed", () => ltSeed, v => ltSeed = v],
+    ["ltPrev", () => ltPrev, v => ltPrev = v],
+    ["bpPhase", () => bpPhase, v => bpPhase = v],
+    ["flPhase", () => flPhase, v => flPhase = v],
   ];
   const phaseSnapshot = () => { const o = {}; for (const p of PHASE_VARS) o[p[0]] = p[1](); return o; };
   // Taken once, here, while every clock still holds its declared starting value — a new
@@ -8544,6 +9088,42 @@
       draw: dt => { if (useGL) { const s = sunSeed(dt); glShaderDraw("sun", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uDensity, s.density); gl.uniform1f(u.uLane, s.lane); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uSpot, s.spot); gl.uniform1f(u.uZoom, s.zoom); }); } else sun(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], sunscale: [14, 14], sunspeed: [1, 1], sunlane: [0.35, 0.35], sunglow: [1, 1], sunspot: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
+    { id: "kefrens", name: "Kefrens bars", subtitle: "Kefrens · weaving ribbons",
+      help: "The classic Amiga effect: vertical bars redrawn at a phase offset on every scanline, so the ribbons weave impossibly through each other. Bars sets how many, Sway how far they wander, Speed how fast, and Bar width how fat each ribbon is. Arm Sway or Speed to a beat to make them lash.",
+      params: ["kfbars", "kfsway", "kfspeed", "kfwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "kefrens", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = kefrensSeed(dt); glShaderDraw("kefrens", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uBars, s.bars); gl.uniform1f(u.uSway, s.sway); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); } else kefrens(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], kfbars: [6, 6], kfsway: [0.25, 0.25], kfspeed: [1, 1], kfwidth: [0.045, 0.045], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
+    { id: "twister", name: "Twister", subtitle: "Twister · liquorice column",
+      help: "The classic twisting column: a square bar wrung along its height, each face shaded by its angle, bright seams on the edges. Twist sets how hard it is wrung (negative reverses), Speed how fast it turns, Width how fat it is, and Columns puts up to three side by side, out of phase.",
+      params: ["twcols", "twwidth", "twtwist", "twspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "twister", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = twisterSeed(dt); glShaderDraw("twister", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCols, s.cols); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uZoom, s.zoom); }); } else twister(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], twcols: [1, 1], twwidth: [0.22, 0.22], twtwist: [2, 2], twspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
+    { id: "cymatics", name: "Cymatics", subtitle: "Cymatics · Chladni plate",
+      help: "Sand on a vibrating plate: bright lines trace the nodes of a standing wave, and the figure snaps into a new symmetry every time the mode changes. Mode is the wave number — drift its two thumbs apart for continuous morphing, or arm its chips so the figure JUMPS on the beat. Mode offset skews the pattern off square, Sharpness thins the lines, Shimmer makes the sand tremble.",
+      params: ["cymode", "cymoff", "cysharp", "cyshimmer", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "chladni", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = cymaticsSeed(dt); glShaderDraw("cymatics", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uModeN, s.n); gl.uniform1f(u.uModeM, s.m); gl.uniform1f(u.uSharp, s.sharp); gl.uniform1f(u.uShim, s.shim); gl.uniform1f(u.uZoom, s.zoom); }); } else cymatics(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], cymode: [3, 3], cymoff: [1, 1], cysharp: [5, 5], cyshimmer: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "lightning", name: "Lightning storm", subtitle: "Lightning · beat-fired bolts",
+      help: "Bolts of lightning tearing down the screen, each one a fresh shape. Rate fires them on a clock; arm Strike's L/M/H chips and the BEAT fires them instead — a kick snaps Strike to full and the bolt decays over the Trigger duration, exactly like Shockwave's ring. Bolts sets how many strike at once, Afterglow how much the sky lights up.",
+      params: ["ltstrike", "ltrate", "ltbolts", "ltglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "storm", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = stormSeed(dt); glShaderDraw("storm", u => { gl.uniform1f(u.uEnv, s.env); gl.uniform1f(u.uSeed, s.seed); gl.uniform1f(u.uBolts, s.bolts); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else storm(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
+    { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · raymarched 3D fractal",
+      help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, slowly orbited by the camera. Power reshapes it — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it. Detail adds fractal depth (and GPU cost), Orbit speed sets the camera's lap, Glow lights the silhouette and puts a halo on near-misses. The heaviest effect in the app — it wants a real GPU.",
+      params: ["bppower", "bpdetail", "bpspin", "bpglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "bulb", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = bulbSeed(dt); glShaderDraw("bulb", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uPower, s.power); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else bulb(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bppower: [8, 8], bpdetail: [7, 7], bpspin: [0.35, 0.35], bpglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
+    { id: "flames", name: "Fractal flames", subtitle: "Fractal flames · IFS density",
+      help: "An iterated function system in the Apophysis / Electric Sheep style: the chaos game bounces between two slowly-morphing affine maps, a nonlinear Variation bends every step, and each landing ADDS heat — so the dense heart of the orbit burns white while the wisps stay faint. Variation picks the fold (Spherical and Swirl are the classics), Morph speed orbits the coefficients, Point glow sets how much each landing adds, and Points the density budget.",
+      params: ["flvar", "flmorph", "flglow", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "flames"], bakesOwnZoom: true, stampAdd: true,
+      stamp: (xL, xR, yT, yB, n) => flamesStamp(xL, xR, yT, yB, n),
+      defaults: { palcycle: [0, 0], palhold: [0, 0], flvar: [3, 3], flmorph: [0.3, 0.3], flglow: [45, 45], points: [16000, 16000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -8858,6 +9438,30 @@
   // seed every effect's state (see presetState) so any effect can use any filter
   // without editing all 19 descriptors. `cpu: false` marks a filter the Canvas2D
   // fallback can't do — the UI greys those out rather than lying.
+  // CPU mirror of FS_CELL — the cyclic-CA feedback pass. A feedback filter MUST have a
+  // CPU mirror (the fallback would otherwise have nothing carrying heat over). Reads
+  // fire whole, writes a scratch, copies back — the same shape as heatDiffuseCPU.
+  let cellBuf = null;
+  function cellularCPU(states, mix, keep) {
+    if (!cellBuf || cellBuf.length !== fire.length) cellBuf = new Float32Array(fire.length);
+    const S = Math.round(states), q = S / 256;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        const i = y * fw + x, h = fire[i];
+        const s = Math.min(S - 1, (h * q) | 0), nxt = (s + 1) % S;
+        let adv = false;
+        for (let j = -1; j <= 1 && !adv; j++) for (let k = -1; k <= 1; k++) {
+          if (!j && !k) continue;
+          const yy = y + j, xx = x + k;
+          if (yy < 0 || yy >= fh || xx < 0 || xx >= fw) continue;
+          if (Math.min(S - 1, (fire[yy * fw + xx] * q) | 0) === nxt) { adv = true; break; }
+        }
+        const ca = adv ? (nxt + 0.5) * 256 / S : h;
+        cellBuf[i] = (h + (ca - h) * mix) * keep;
+      }
+    }
+    for (let i = 0; i < fire.length; i++) fire[i] = cellBuf[i];
+  }
   const FILTERS = [
     { id: "fire",  name: "Fire",  stage: "feedback", params: ["rise", "burn"],
       help: "Heat rises and cools, the classic fire sim — now available to every effect, not just the point ones.",
@@ -8909,6 +9513,20 @@
       defaults: { swirl: [2, 2], swirlkeep: [0.94, 0.94] },
       glFeedback: src => glWarpFeedback(src, 0, 0, 1, swirlSpin, swirlKeep),
       cpuFeedback: () => heatWarpCPU(0, 0, 1, swirlSpin, swirlKeep) },
+    { id: "cellular", name: "Cellular automaton", stage: "feedback", params: ["cellstates", "cellmix", "cellkeep"],
+      help: "The retained heat evolves as a cyclic cellular automaton every tick: any neighbour one state ahead pulls a cell forward, wrapping — boiling fronts and spirals crawl through whatever the effect draws. States sets the cycle length, Blend how hard the rule bites.",
+      defaults: { cellstates: [12, 12], cellmix: [1, 1], cellkeep: [1, 1] },
+      glFeedback: src => {
+        const P = glProg.cell;
+        gl.useProgram(P.p);
+        bindTexUnit(0, src); gl.uniform1i(P.u.uHeat, 0);
+        gl.uniform2f(P.u.uSize, fw, fh);
+        gl.uniform1f(P.u.uStates, cellStates);
+        gl.uniform1f(P.u.uMix, cellMix);
+        gl.uniform1f(P.u.uKeep, cellKeep);
+        drawQuad();
+      },
+      cpuFeedback: () => cellularCPU(cellStates, cellMix, cellKeep) },
     { id: "twist", cpuOk: false, name: "Twist", stage: "post", params: ["twist"],
       help: "Spin the middle of the image and leave the rim — straight structure curls into the centre.",
       defaults: { twist: [1.2, 1.2] },
@@ -8963,6 +9581,10 @@
       help: "A displacement ring rushing out from the centre. Arm Shock's beat chips and every beat fires a wave — Trigger duration sets how long it takes to cross the screen.",
       defaults: { shock: [0, 0], shockamp: [0.06, 0.06], shockwidth: [0.1, 0.1] },
       gl: src => postPass("shock", src, u => { gl.uniform1f(u.uAmount, shockAmt); gl.uniform1f(u.uAmp, shockAmp); gl.uniform1f(u.uWidth, shockWidth); }) },
+    { id: "pixsort", cpuOk: false, name: "Pixel sort", stage: "post", params: ["pxthresh", "pxstreak", "pxdir"],
+      help: "The modern glitch: pixels brighter than the threshold smear into streaks along one direction, dark areas stay put. Lower the threshold to melt more of the picture.",
+      defaults: { pxthresh: [0.55, 0.55], pxstreak: [0.5, 0.5], pxdir: [0, 0] },
+      gl: src => postPass("pixsort", src, u => { gl.uniform1f(u.uThresh, pxThresh); gl.uniform1f(u.uLen, pxStreak); gl.uniform1f(u.uDir, pxDir); }) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
     // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own
@@ -14142,6 +14764,29 @@
       { n: "Churn speed", w: "sun", t: "Sun surface only — how fast the cells boil: drift, deform and brighten or dim. 1× gives each granule a lifetime of roughly 15–30 seconds; 0 freezes the surface." },
       { n: "Lane width", w: "sun", t: "Sun surface only — how wide and soft the dark lanes between cells are. Low values give hairline cracks; high values fat dark borders that shrink the bright cells." },
       { n: "Brightness", w: "sun", t: "Sun surface only — scales the whole surface up or down the palette. Lower it to sit the cells deeper in the ramp's oranges; raise it to push the centres toward white heat." },
+      { n: "Bars", w: "kefrens", t: "Kefrens bars only — how many ribbons weave down the screen, up to 12." },
+      { n: "Sway", w: "kefrens", t: "Kefrens bars only — how far the ribbons wander sideways. High values whip them across the full width." },
+      { n: "Speed", w: "kefrens", t: "Kefrens bars only — how fast the ribbons weave. 0 freezes the tangle." },
+      { n: "Bar width", w: "kefrens", t: "Kefrens bars only — how fat each ribbon is. Thin bars read as threads, fat ones as overlapping silk." },
+      { n: "Columns", w: "twister", t: "Twister only — how many columns stand side by side, up to three, each turning out of phase with its neighbours." },
+      { n: "Width", w: "twister", t: "Twister only — how fat the column is (and how far apart multiple columns stand)." },
+      { n: "Twist", w: "twister", t: "Twister only — how hard the column is wrung along its height. 0 is an untwisted turning bar; negative reverses the wring." },
+      { n: "Speed", w: "twister", t: "Twister only — how fast the column turns. 0 holds it still, faces frozen mid-twist." },
+      { n: "Mode", w: "chladni", t: "Cymatics only — the standing wave's mode number. Every value has its own figure; drift the two thumbs apart for continuous morphing, or arm the L/M/H chips and the figure snaps to a new symmetry on the beat." },
+      { n: "Mode offset", w: "chladni", t: "Cymatics only — offsets the second wave's mode from the first. 0 is fully symmetric; raising it skews the figure into rectangular patterns." },
+      { n: "Sharpness", w: "chladni", t: "Cymatics only — how thin the sand lines are. Low is a soft glow around the nodes, high is a fine engraved line figure." },
+      { n: "Shimmer", w: "chladni", t: "Cymatics only — a slow tremble in the plate, so the sand lines breathe instead of standing perfectly still." },
+      { n: "Strike", w: "storm", t: "Lightning storm only — the strike itself: 1 is a fresh bolt at full brightness, decaying to darkness at 0. Arm its L/M/H chips and every beat fires a NEW bolt that fades over the Trigger duration — the storm plays the drums." },
+      { n: "Rate", w: "storm", t: "Lightning storm only — automatic strikes per second, for a storm that rolls without music. 0 leaves firing entirely to the Strike chips." },
+      { n: "Bolts", w: "storm", t: "Lightning storm only — how many bolts each strike throws down at once, up to five." },
+      { n: "Afterglow", w: "storm", t: "Lightning storm only — how much each strike lights the sky behind it, and how much ambient glow remains between strikes." },
+      { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes. Whole numbers only." },
+      { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
+      { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
+      { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Variation", w: "flames", t: "Fractal flames only — the nonlinear fold applied to every step of the chaos game: Sinusoidal, Spherical, Swirl, Horseshoe, Polar or Disc. Each is a different family of shapes; Spherical and Swirl are the classic flame looks." },
+      { n: "Morph speed", w: "flames", t: "Fractal flames only — how fast the underlying maps' coefficients orbit, morphing the flame through its family of shapes. 0 freezes the form." },
+      { n: "Point glow", w: "flames", t: "Fractal flames only — how much heat every landing point ADDS. Flames accumulate density instead of stamping a fixed heat, so this sets how quickly the dense heart burns toward white." },
       { n: "Sunspot", w: "sun", t: "Sun surface only — sinks a sunspot into the centre: a near-black core (the umbra) ringed by fine bright and dark filaments radiating outward (the penumbra) that fade into the granulation. 0, the default, is a clean surface; higher values grow the spot. The camera sliders move it off-centre." },
     ],
   };

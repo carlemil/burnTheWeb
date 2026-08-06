@@ -1,16 +1,19 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **twenty-one effects** in four families,
+A GPU demoscene visual: a collection of **twenty-seven effects** in four families,
 all sharing one palette + glow + banding pipeline —
 
-- **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, or a de
-  Jong strange attractor stamped as fresh heat into a classic rising-fire buffer.
+- **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, a de
+  Jong strange attractor, or an Apophysis-style fractal flame stamped as fresh
+  heat into a classic rising-fire buffer.
 - **Shader fractals** — animated Julia, Burning Ship, Multibrot and Newton.
 - **Coordinate / pattern classics** — plasma, tunnel, metaballs, kaleidoscope,
-  rotozoomer, moiré, munching squares, copper bars and a boiling sun surface.
+  rotozoomer, moiré, munching squares, copper bars, Kefrens bars, a twister
+  column, Chladni-plate cymatics, a beat-fired lightning storm and a boiling
+  sun surface.
 - **Signed-distance shapes** — rotating polygons, a pulsing shape grid,
-  concentric ring tunnels, bouncing 2D shapes, and a raymarched 3D room of
-  tumbling solids.
+  concentric ring tunnels, bouncing 2D shapes, a raymarched 3D room of
+  tumbling solids, and a raymarched Mandelbulb.
 
 Stack up to four of them into one scene, each with its own palette and filters.
 The whole thing burns, flickers, and morphs continuously — and every effect can
@@ -21,7 +24,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 ## Effects
 
 Every row in the panel's **Layers** box carries an **Effect** chooser, switching that layer
-between twenty-one visuals that share the same palette, glow and music-reactivity pipeline —
+between twenty-seven visuals that share the same palette, glow and music-reactivity pipeline —
 but each is an independent "scene" that remembers its own settings (see Controls). You can
 **stack up to four of them at once**, each with its own palette and filters — see Layers
 below:
@@ -71,6 +74,12 @@ below:
   - **Bouncing shapes** — a handful of circles↔squares drifting and bouncing off the edges, DVD-logo style. Tick a Fade or Fire filter for glowing trails.
   - **Bouncing solids** — the 3D one: solid **spheres, boxes, doughnuts, capsules, octahedra and cylinders** tumbling and ricocheting around an invisible room, raymarched as signed-distance fields and shaded into the palette by surface angle and depth. **Count** sets how many bodies, **Size** how big (it is also the radius they bounce on, so bigger ones turn sooner), **Shape mix** how many different primitives are in play (1 = all spheres, 6 = one of each), **Speed** how fast they travel, **Tumble** how hard they spin — a wall hit turns slide into roll, so an angled clip kicks a body into a tumble — and **Edge glow** lights the silhouettes.
   - **Sun surface** — the sun's boiling granulation, Inouye-telescope style: a full-screen field of bright convection cells split by narrow dark lanes (animated Voronoi), each cell drifting, deforming and brightening on its own slow cycle, with tiny bright points sparking in the lanes. **Cell density** sets how fine the boil is, **Churn speed** how fast, **Lane width** how fat the dark cracks are, and **Sunspot** sinks a dark umbra ringed by radiating penumbral filaments into the middle (0 = the clean surface from the telescope footage). Amber/Fire/Ember palettes give it its colour.
+  - **Kefrens bars** — the classic Amiga effect: vertical ribbons redrawn at a per-scanline phase offset, weaving impossibly through each other. **Bars**, **Sway**, **Speed** and **Bar width** shape the tangle.
+  - **Twister** — the classic twisting column, each face shaded by its angle with bright seams on the edges. **Twist** wrings it, **Speed** turns it, **Columns** stands up to three side by side.
+  - **Cymatics** — sand on a vibrating plate: bright lines trace a standing wave's nodes, snapping into a new symmetry as **Mode** changes — drift its thumbs for continuous morphing or arm its chips so the figure jumps on the beat. **Sharpness** engraves the lines, **Shimmer** makes them tremble.
+  - **Lightning storm** — bolts tearing down the screen, every strike a new shape. **Rate** fires them on a clock; arm **Strike**'s chips and the beat fires them instead, each bolt decaying over the Trigger duration. **Bolts** strikes several at once, **Afterglow** lights the sky.
+  - **Mandelbulb** — the 3D Mandelbrot, raymarched and slowly orbited. **Power** reshapes it (8 is the classic), **Detail** adds fractal depth, **Glow** lights the silhouette and haloes near-misses. The heaviest effect in the app — it wants a real GPU.
+  - **Fractal flames** — an Apophysis-style iterated function system: the chaos game bounces between two slowly-morphing maps with a nonlinear **Variation** folding every step, and each landing **adds** heat — dense orbits burn white, wisps stay faint. The only point effect that accumulates density rather than stamping a fixed heat.
 
 ## How it works
 
@@ -234,7 +243,7 @@ except the shared few listed above.
 | **Background** | What unlit pixels show for this layer: **Palette** (the default — whatever colour the ramp itself defines at index 0), **Black** or **White**. Every built-in ramp starts black, so this only shows up on a custom palette, or on a bottom layer you want to sit on white. *(Per layer.)* |
 | **Heat boost** *(ranged)* | Pushes the whole picture toward the bright end of the palette — a gamma curve on the heat before it is coloured, so faint structure lights up without touching the palette itself. **off** (the default) leaves the ramp exactly as it is. *(Per layer, and animatable / beat-armable like any other slider.)* |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
-| **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars, Sun surface) — strength of the light/dark contour-stripe filter over the active palette. |
+| **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm, Mandelbulb) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
 | **Points** | Number of points stamped per frame (100–8000). *(Sierpiński / Tetrahedron / Attractor.)* |
@@ -267,6 +276,12 @@ except the shared few listed above.
 | **Lane width** *(ranged)* | Sun surface only — how wide and soft the dark lanes between cells are, from hairline cracks to fat borders. |
 | **Brightness** *(ranged)* | Sun surface only — scales the whole surface up or down the palette: lower sits the cells deeper in the oranges, higher pushes the centres toward white heat. |
 | **Sunspot** *(ranged)* | Sun surface only — sinks a sunspot into the centre: a near-black umbra ringed by fine radiating penumbral filaments that fade into the granulation. 0 (the default) is the clean surface; the camera sliders move it off-centre. |
+| **Bars / Sway / Bar width** *(ranged)* | Kefrens bars only — how many ribbons, how far they wander, how fat each one is. |
+| **Columns / Twist** *(ranged)* | Twister only — side-by-side columns (up to 3) and how hard the column is wrung (negative reverses). |
+| **Mode / Mode offset / Sharpness / Shimmer** *(ranged)* | Cymatics only — the standing wave's numbers (arm Mode's chips to snap figures on the beat), the skew off square, line thinness, and plate tremble. |
+| **Strike / Rate / Bolts / Afterglow** *(ranged)* | Lightning storm only — the strike itself (arm its chips and the beat fires bolts), automatic strikes per second, simultaneous bolts, and sky glow. |
+| **Power / Detail / Orbit speed / Glow** *(ranged)* | Mandelbulb only — the exponent (8 = classic), fractal iterations, camera lap speed, and silhouette/halo lighting. |
+| **Variation / Morph speed / Point glow** *(ranged)* | Fractal flames only — which nonlinear fold shapes the flame, how fast its maps morph, and how much heat each landing point adds. |
 | **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
 
 **☰** opens the application menu (System, Cloud profile, Credits — see above); **M**
@@ -445,6 +460,10 @@ on its own rather than piling up to white.
   Over 1× it rushes outward into an endless tunnel; under 1× it falls inward.
 - **Swirl** — the same, rotating instead of scaling, so trails spiral. Stack it
   with Zoom feedback for a vortex.
+- **Cellular automaton** — the retained heat evolves as a cyclic CA every tick: any
+  neighbour one **State** ahead pulls a cell forward, wrapping, so boiling fronts and
+  spirals crawl through whatever the effect draws. **Blend** softens the rule's bite;
+  **Lifetime** decays it like the other feedback filters.
 
 **Post (image)** *— per layer* — these repaint each layer's coloured picture, before
 the layers blend together.
@@ -466,6 +485,9 @@ the layers blend together.
 - **Chromatic aberration** — split red and blue radially, so the picture fringes
   toward the corners the way a cheap lens does.
 - **Mirror** — fold the image about its centre, on **X**, **Y** or both.
+- **Pixel sort** — the modern glitch: pixels brighter than **Threshold** smear into
+  **Streak**s along one **Direction**, dark areas stay put. Melts any effect into
+  dripping light.
 - **Shockwave** — a displacement ring rushing out from the centre, shoving the picture
   aside as it passes. The **Shock** slider *is* the ring's position (1 = centre, 0 = gone
   off the edge), so arm its **L/M/H** beat chips and every kick fires a wave — the

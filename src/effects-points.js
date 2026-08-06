@@ -110,3 +110,50 @@
     }
   }
 
+  // ---- Fractal flames: IFS chaos game with nonlinear variations (point effect) ----
+  // Two affine transforms whose coefficients orbit slowly (flPhase), then one of six
+  // classic flame variations applied after each affine step. Stamped ADDITIVELY
+  // (`stampAdd` on the descriptor + plot's add mode): where the orbit lands often burns
+  // brighter, which is the log-density look that makes flames flames — MAX stamping
+  // flattens it to a silhouette. Uses the seeded chaos PRNG (rnd), so the point
+  // sequence is per-frame deterministic like the other point effects.
+  let flVar = 3, flMorph = 0.3, flGlow = 45, flPhase = 0;
+  function flamesStamp(xL, xR, yT, yB, n) {
+    rngState = (SEED + 0x51ab) >>> 0;      // per-frame reseed: same point SEQUENCE every tick
+    flPhase += flMorph * 2 / cfg.burn;     // coefficient orbit advances per TICK, like nodPhase
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.30, sy = (yB - yT) * 0.30;
+    const p = flPhase, V = Math.round(flVar), inc = flGlow;
+    // two affine maps, coefficients breathing about a good-coverage base
+    const A = [0.62 + 0.20 * Math.sin(p * 0.71), -0.48 + 0.18 * Math.sin(p * 0.53 + 1.7), 0.30 + 0.12 * Math.sin(p * 0.37 + 4.1),
+               0.48 + 0.18 * Math.cos(p * 0.61 + 0.6), 0.60 + 0.20 * Math.cos(p * 0.43 + 2.9), 0.20 + 0.14 * Math.sin(p * 0.29 + 5.3)];
+    const B = [-0.55 + 0.20 * Math.sin(p * 0.47 + 3.3), 0.52 + 0.18 * Math.cos(p * 0.67 + 1.1), -0.25 + 0.12 * Math.sin(p * 0.31 + 2.2),
+               -0.42 + 0.18 * Math.sin(p * 0.59 + 4.8), -0.58 + 0.20 * Math.cos(p * 0.41 + 0.3), -0.15 + 0.14 * Math.cos(p * 0.23 + 3.7)];
+    let x = 0.1, y = 0.1;
+    for (let i = 0; i < n; i++) {
+      const T = rnd() < 0.5 ? A : B;
+      let nx = T[0] * x + T[1] * y + T[2];
+      let ny = T[3] * x + T[4] * y + T[5];
+      const r2 = nx * nx + ny * ny;
+      if (V === 1) {                                        // sinusoidal
+        x = Math.sin(nx); y = Math.sin(ny);
+      } else if (V === 2) {                                 // spherical
+        const k = 0.7 / (r2 + 0.05); x = nx * k; y = ny * k;
+      } else if (V === 3) {                                 // swirl
+        const sr = Math.sin(r2), cr = Math.cos(r2);
+        x = nx * sr - ny * cr; y = nx * cr + ny * sr;
+      } else if (V === 4) {                                 // horseshoe
+        const r = Math.sqrt(r2) + 0.05;
+        x = (nx - ny) * (nx + ny) / r * 0.7; y = 2 * nx * ny / r * 0.7;
+      } else if (V === 5) {                                 // polar
+        x = Math.atan2(ny, nx) * 0.3183; y = Math.sqrt(r2) - 1;
+      } else {                                              // disc
+        const th = Math.atan2(ny, nx) * 0.3183, r = Math.sqrt(r2);
+        x = th * Math.sin(3.14159 * r); y = th * Math.cos(3.14159 * r);
+      }
+      if (!(x * x + y * y < 16)) { x = 0.1; y = 0.1; continue; }   // catches NaN too
+      if (i <= 20) continue;                                // skip the transient
+      plot(cx + x * sx, cy + y * sy, inc, true);            // ADD, not max — density is the picture
+    }
+  }
+

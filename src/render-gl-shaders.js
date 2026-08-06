@@ -729,4 +729,176 @@
       }
       o = vec4(clamp(heat*uGlow, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Kefrens bars: the classic per-scanline effect — each row draws the bars at a phase
+    // offset of its own, so vertical ribbons weave impossibly through each other. The 12
+    // loop bound is the Bars slider's max (same slider-ceiling coupling as FS_METABALL).
+    const FS_KEFRENS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uBars; uniform float uSway; uniform float uWidth; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = (vec2(gl_FragCoord.x/fw, gl_FragCoord.y/fh) - 0.5)/uZoom + 0.5;
+      float y = q.y, t = uTime, heat = 0.0;
+      int n = int(uBars);
+      for (int b = 0; b < 12; b++){
+        if (b >= n) break;
+        float fb = float(b);
+        float bx = 0.5 + uSway*(0.62*sin(t*(0.90 + 0.13*fb) + y*4.6 + fb*2.39)
+                              + 0.38*sin(t*(0.53 + 0.07*fb) - y*7.7 + fb*1.17));
+        float bar = max(0.0, 1.0 - abs(q.x - bx)/uWidth);
+        float sh = 0.55 + 0.45*sin(y*40.0 + fb*1.7 + t*2.0);   // raster gradient inside the bar
+        heat = max(heat, bar*bar*(0.45 + 0.55*sh));
+      }
+      o = vec4(clamp(heat*0.92, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Twister: the classic twisting column. Four edges at cos(a + i*90°); a face is the
+    // span between consecutive edges wherever the right edge sits right of the left one,
+    // shaded by its orientation. Up to 3 columns, phase-offset.
+    const FS_TWISTER = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCols; uniform float uWidth; uniform float uTwist; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)/uZoom;
+      float heat = 0.0;
+      int n = int(uCols);
+      for (int c = 0; c < 3; c++){
+        if (c >= n) break;
+        float fc = float(c);
+        float cx = (fc - (uCols - 1.0)*0.5) * uWidth*2.9;
+        float a = uTime*(1.0 + 0.13*fc) + q.y*uTwist + 0.35*sin(uTime*0.42 + q.y*2.2 + fc*2.1);
+        for (int i = 0; i < 4; i++){
+          float fi = float(i);
+          float x0 = cx + uWidth*cos(a + fi*1.5708);
+          float x1 = cx + uWidth*cos(a + (fi + 1.0)*1.5708);
+          if (x1 > x0 && q.x >= x0 && q.x <= x1){
+            float sh = 0.25 + 0.75*abs(sin(a + fi*1.5708 + 0.7854));   // face lighting
+            float u = (q.x - x0)/max(x1 - x0, 1e-4);
+            heat = max(heat, sh + 0.18*pow(abs(u*2.0 - 1.0), 6.0));    // bright seams at the edges
+          }
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Cymatics: Chladni-plate standing waves. Heat is highest ON the nodal lines (where
+    // the sand collects), so the picture is the classic bright line-figure; Sharpness
+    // thins the lines. Non-integer modes morph smoothly, which is what the Mode slider's
+    // drift (or a beat snap) animates.
+    const FS_CYMATICS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uModeN; uniform float uModeM; uniform float uSharp; uniform float uShim; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float t = uTime;
+      float xx = q.x + uShim*0.05*sin(t*0.8 + q.y*5.0);
+      float yy = q.y + uShim*0.05*cos(t*0.7 + q.x*4.0);
+      float k = 1.5707963;
+      float ch = cos(uModeN*k*xx)*cos(uModeM*k*yy) + cos(uModeM*k*xx)*cos(uModeN*k*yy);
+      float lines = pow(clamp(1.0 - abs(ch)*0.5, 0.0, 1.0), uSharp);   // sand on the nodes
+      float anti  = 0.10*pow(abs(ch)*0.5, 2.0);                        // faint antinode sheen
+      o = vec4(clamp(lines + anti, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Lightning storm: up to 5 simultaneous bolts, each a 1-D value-noise path x(y) from
+    // a per-bolt seed. uEnv is the strike envelope (1 = fresh bolt, decaying to 0) and
+    // uSeed changes per strike, so every flash is a NEW bolt — both come from stormSeed,
+    // where the beat-armed Strike slider and the auto Rate clock are merged.
+    const FS_STORM = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float h1(float x){ return fract(sin(x*127.1)*43758.5453); }
+    float vn(float t, float s){
+      float i = floor(t), f = fract(t);
+      return mix(h1(i + s), h1(i + 1.0 + s), f*f*(3.0 - 2.0*f));
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)/uZoom;
+      float yt = 0.5 - q.y;                       // 0 at the top, 1 at the bottom
+      float heat = 0.0;
+      int n = int(uBolts);
+      for (int k = 0; k < 5; k++){
+        if (k >= n) break;
+        float sk = uSeed + float(k)*271.13;
+        float bx = (h1(sk)*0.9 - 0.45)*ar
+                 + 0.50*(vn(yt*3.0,  sk + 7.0)  - 0.5)
+                 + 0.24*(vn(yt*9.0,  sk + 17.0) - 0.5)
+                 + 0.10*(vn(yt*27.0, sk + 29.0) - 0.5);
+        float d = abs(q.x - bx);
+        float bright = 0.7 + 0.3*h1(sk + 3.3);
+        float fl = 0.72 + 0.28*sin(uEnv*40.0 + sk*9.0);   // flicker as the envelope decays
+        heat = max(heat, uEnv*bright*fl*(exp(-d*80.0) + 0.30*exp(-d*13.0)));
+      }
+      // sky flash + a whisper of ambience so the frame is not dead black between strikes
+      heat += uEnv*uGlow*0.22*(0.4 + 0.6*(1.0 - yt)) + uGlow*0.05;
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Mandelbulb: the power-N 3D fractal, raymarched with the standard distance
+    // estimator. Slow orbit via uPhase (the effect's own clock — the shared camera
+    // still composes on top through camProg like every effect). Heat = diffuse + rim
+    // on a hit, and a soft proximity halo on a miss so the silhouette glows.
+    const FS_BULB = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uPhase; uniform float uPower; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float bulbDE(vec3 p, float P, int it){
+      vec3 z = p;
+      float dr = 1.0, r = 0.0;
+      for (int i = 0; i < 12; i++){
+        if (i >= it) break;
+        r = length(z);
+        if (r > 2.0) break;
+        float th = acos(clamp(z.z/max(r, 1e-6), -1.0, 1.0));
+        float ph = atan(z.y, z.x);
+        dr = pow(r, P - 1.0)*P*dr + 1.0;
+        float zr = pow(r, P);
+        th *= P; ph *= P;
+        z = zr*vec3(sin(th)*cos(ph), sin(th)*sin(ph), cos(th)) + p;
+      }
+      return 0.5*log(max(r, 1e-6))*r/dr;
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      float ar = fw/fh;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uPhase), sa = sin(uPhase);
+      float tilt = 0.35*sin(uPhase*0.7);
+      float ct = cos(tilt), st = sin(tilt);
+      vec3 ro = vec3(0.0, 0.0, -2.35);
+      vec3 rd = normalize(vec3(uv, 1.55));
+      // orbit: rotate the CAMERA about Y, with a slow nodding tilt about X
+      ro = vec3(ro.x*ca + ro.z*sa, ro.y, -ro.x*sa + ro.z*ca);
+      rd = vec3(rd.x*ca + rd.z*sa, rd.y, -rd.x*sa + rd.z*ca);
+      ro = vec3(ro.x, ro.y*ct - ro.z*st, ro.y*st + ro.z*ct);
+      rd = vec3(rd.x, rd.y*ct - rd.z*st, rd.y*st + rd.z*ct);
+      int it = int(uIter);
+      float P = uPower;
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 64; i++){
+        vec3 p = ro + rd*t;
+        float d = bulbDE(p, P, it);
+        halo = min(halo, d/max(t, 0.3));
+        if (d < 0.0009*max(t, 0.4)){
+          float e = 0.0012*max(t, 0.4);
+          vec2 h = vec2(1.0, -1.0)*0.5773;
+          vec3 nrm = normalize(h.xyy*bulbDE(p + h.xyy*e, P, it) + h.yyx*bulbDE(p + h.yyx*e, P, it)
+                             + h.yxy*bulbDE(p + h.yxy*e, P, it) + h.xxx*bulbDE(p + h.xxx*e, P, it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.6, 0.7, -0.5))));
+          float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
+          heat = (0.22 + 0.70*dif + uGlow*0.5*rim)*smoothstep(4.2, 1.4, t);
+          break;
+        }
+        t += d;
+        if (t > 4.5) break;
+      }
+      if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)

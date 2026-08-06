@@ -330,3 +330,220 @@
     }
   }
 
+  // ---- Kefrens bars: per-scanline weaving ribbons (shader effect) ----
+  // The mirror caches every bar's x per ROW once per frame (bar x depends only on y),
+  // so the per-pixel loop is just distance tests; a rotated camera reads the nearest
+  // cached row, which is visually identical at grid resolution.
+  let kfBars = 6, kfSway = 0.25, kfSpeed = 1, kfWidth = 0.045, kfTime = 0;
+  function kefrensSeed(dt) {
+    kfTime += dt * kfSpeed;
+    return { t: kfTime, bars: kfBars, sway: kfSway, width: kfWidth, zoom };
+  }
+  let kfRow = null;
+  function kefrens(dt) {                  // CPU fallback — mirrors FS_KEFRENS
+    const s = kefrensSeed(dt), t = s.t, n = Math.round(s.bars), w = s.width;
+    if (!kfRow || kfRow.length < fh * 12) kfRow = new Float32Array(fh * 12);
+    for (let r = 0; r < fh; r++) {
+      const y = (r / fh - 0.5) / s.zoom + 0.5;
+      for (let b = 0; b < n; b++) {
+        kfRow[r * 12 + b] = 0.5 + s.sway * (0.62 * Math.sin(t * (0.90 + 0.13 * b) + y * 4.6 + b * 2.39)
+                                          + 0.38 * Math.sin(t * (0.53 + 0.07 * b) - y * 7.7 + b * 1.17));
+      }
+    }
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) / s.zoom + 0.5;
+        const qy = (camPY / fh - 0.5) / s.zoom + 0.5;
+        // the cache is indexed by SCREEN row; camPY is exactly that (camPix is screen-space)
+        const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));
+        let heat = 0;
+        for (let b = 0; b < n; b++) {
+          const bar = Math.max(0, 1 - Math.abs(qx - kfRow[r * 12 + b]) / w);
+          if (bar > 0) {
+            const sh = 0.55 + 0.45 * Math.sin(qy * 40 + b * 1.7 + t * 2);
+            const v = bar * bar * (0.45 + 0.55 * sh);
+            if (v > heat) heat = v;
+          }
+        }
+        fire[idx++] = Math.min(1, heat * 0.92) * 255;
+      }
+    }
+  }
+
+  // ---- Twister: the classic twisting column (shader effect) ----
+  let twCols = 1, twWidth = 0.22, twTwist = 2, twSpeed = 1, twTime = 0;
+  function twisterSeed(dt) {
+    twTime += dt * twSpeed;
+    return { t: twTime, cols: twCols, width: twWidth, twist: twTwist, zoom };
+  }
+  function twister(dt) {                  // CPU fallback — mirrors FS_TWISTER
+    const s = twisterSeed(dt), ar = fw / fh, n = Math.round(s.cols), W = s.width;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        let heat = 0;
+        for (let c = 0; c < n; c++) {
+          const cx = (c - (n - 1) * 0.5) * W * 2.9;
+          const a = s.t * (1 + 0.13 * c) + qy * s.twist + 0.35 * Math.sin(s.t * 0.42 + qy * 2.2 + c * 2.1);
+          for (let i = 0; i < 4; i++) {
+            const x0 = cx + W * Math.cos(a + i * 1.5708);
+            const x1 = cx + W * Math.cos(a + (i + 1) * 1.5708);
+            if (x1 > x0 && qx >= x0 && qx <= x1) {
+              const sh = 0.25 + 0.75 * Math.abs(Math.sin(a + i * 1.5708 + 0.7854));
+              const u = (qx - x0) / Math.max(x1 - x0, 1e-4);
+              const v = sh + 0.18 * Math.pow(Math.abs(u * 2 - 1), 6);
+              if (v > heat) heat = v;
+            }
+          }
+        }
+        fire[idx++] = Math.min(1, heat) * 255;
+      }
+    }
+  }
+
+  // ---- Cymatics: Chladni-plate standing waves (shader effect) ----
+  let cyModeV = 3, cyOff = 1, cySharp = 5, cyShim = 0.4, cyTime = 0;
+  function cymaticsSeed(dt) {
+    cyTime += dt;                          // shimmer clock; mode animation is the slider's drift
+    return { t: cyTime, n: cyModeV, m: cyModeV + cyOff, sharp: cySharp, shim: cyShim, zoom };
+  }
+  function cymatics(dt) {                 // CPU fallback — mirrors FS_CYMATICS
+    const s = cymaticsSeed(dt), ar = fw / fh, k = 1.5707963;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const qy = (camPY / fh - 0.5) * 2 / s.zoom;
+        const xx = qx + s.shim * 0.05 * Math.sin(s.t * 0.8 + qy * 5);
+        const yy = qy + s.shim * 0.05 * Math.cos(s.t * 0.7 + qx * 4);
+        const ch = Math.cos(s.n * k * xx) * Math.cos(s.m * k * yy) + Math.cos(s.m * k * xx) * Math.cos(s.n * k * yy);
+        const a = Math.abs(ch) * 0.5;
+        const lines = Math.pow(Math.max(0, 1 - a), s.sharp);
+        fire[idx++] = Math.min(1, lines + 0.10 * a * a) * 255;
+      }
+    }
+  }
+
+  // ---- Lightning storm: beat-fired bolts (shader effect) ----
+  // Shockwave's value-is-progress trick, applied to strikes: a beat snaps the Strike
+  // slider to 1 (a fresh bolt at full brightness) and the pulse decays it to afterglow
+  // over the Trigger duration. `stormSeed` merges that with the auto Rate clock and
+  // advances the bolt seed on every NEW strike — a rising Strike edge, or the auto
+  // clock wrapping — so each flash draws a different bolt.
+  let ltStrikeV = 0, ltRateV = 0.5, ltBoltsV = 2, ltGlowV = 0.5, ltTime = 0, ltSeed = 0, ltPrev = 0;
+  function stormSeed(dt) {
+    ltTime += dt * ltRateV;                          // auto clock, in strikes
+    if (ltStrikeV > ltPrev + 0.25) ltSeed++;         // a beat (or hand) fired a fresh bolt
+    ltPrev = ltStrikeV;
+    const auto = ltRateV > 0 ? Math.pow(1 - (ltTime - Math.floor(ltTime)), 3) : 0;
+    return { env: Math.max(auto, ltStrikeV), seed: Math.floor(ltTime) * 7.31 + ltSeed * 13.7,
+             bolts: ltBoltsV, glow: ltGlowV, zoom };
+  }
+  const ltH1 = x => { const v = Math.sin(x * 127.1) * 43758.5453; return v - Math.floor(v); };
+  function ltVn(t, sd) {
+    const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f);
+    return ltH1(i + sd) * (1 - u) + ltH1(i + 1 + sd) * u;
+  }
+  let ltRow = null;
+  function storm(dt) {                    // CPU fallback — mirrors FS_STORM
+    const s = stormSeed(dt), ar = fw / fh, n = Math.round(s.bolts);
+    // bolt x per ROW per bolt, cached once per frame (the path depends only on y)
+    if (!ltRow || ltRow.length < fh * 5) ltRow = new Float32Array(fh * 5);
+    const bright = [];
+    for (let k = 0; k < n; k++) {
+      const sk = s.seed + k * 271.13;
+      bright.push((0.7 + 0.3 * ltH1(sk + 3.3)) * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)));
+      for (let r = 0; r < fh; r++) {
+        const yt = 0.5 - ((r / fh - 0.5) / s.zoom);
+        ltRow[r * 5 + k] = (ltH1(sk) * 0.9 - 0.45) * ar
+          + 0.50 * (ltVn(yt * 3, sk + 7) - 0.5)
+          + 0.24 * (ltVn(yt * 9, sk + 17) - 0.5)
+          + 0.10 * (ltVn(yt * 27, sk + 29) - 0.5);
+      }
+    }
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));   // cache is by screen row
+        const yt = 0.5 - qy;
+        let heat = 0;
+        for (let k = 0; k < n; k++) {
+          const d = Math.abs(qx - ltRow[r * 5 + k]);
+          const v = s.env * bright[k] * (Math.exp(-d * 80) + 0.30 * Math.exp(-d * 13));
+          if (v > heat) heat = v;
+        }
+        heat += s.env * s.glow * 0.22 * (0.4 + 0.6 * (1 - yt)) + s.glow * 0.05;
+        fire[idx++] = Math.min(1, heat) * 255;
+      }
+    }
+  }
+
+  // ---- Mandelbulb: raymarched power-N fractal (shader effect) ----
+  // The mirror marches every 3rd pixel and fills 3x3 blocks — a raymarch with a
+  // transcendental DE is orders beyond the other mirrors, so this trades sharpness
+  // for a fallback that still moves. Steps 24 vs the shader's 64, iterations capped 6.
+  let bpPower = 8, bpDetail = 7, bpSpin = 0.35, bpGlow = 0.5, bpPhase = 0;
+  function bulbSeed(dt) {
+    bpPhase += dt * bpSpin;
+    return { phase: bpPhase, power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
+  }
+  function bulbDE(px, py, pz, P, it) {
+    let zx = px, zy = py, zz = pz, dr = 1, r = 0;
+    for (let i = 0; i < it; i++) {
+      r = Math.sqrt(zx * zx + zy * zy + zz * zz);
+      if (r > 2) break;
+      const th = Math.acos(Math.max(-1, Math.min(1, zz / Math.max(r, 1e-6)))) * P;
+      const ph = Math.atan2(zy, zx) * P;
+      dr = Math.pow(r, P - 1) * P * dr + 1;
+      const zr = Math.pow(r, P), st = Math.sin(th);
+      zx = zr * st * Math.cos(ph) + px;
+      zy = zr * st * Math.sin(ph) + py;
+      zz = zr * Math.cos(th) + pz;
+    }
+    return 0.5 * Math.log(Math.max(r, 1e-6)) * r / dr;
+  }
+  function bulb(dt) {                     // CPU fallback — mirrors FS_BULB, coarsely
+    const s = bulbSeed(dt), ar = fw / fh;
+    const it = Math.min(6, Math.round(s.iter)), P = s.power;
+    const ca = Math.cos(s.phase), sa = Math.sin(s.phase);
+    const tilt = 0.35 * Math.sin(s.phase * 0.7), ct = Math.cos(tilt), st = Math.sin(tilt);
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rox = 0, roy = 0, roz = -2.35;
+        const rl = Math.hypot(ux, uy, 1.55);
+        let rdx = ux / rl, rdy = uy / rl, rdz = 1.55 / rl;
+        let tx = rox * ca + roz * sa; roz = -rox * sa + roz * ca; rox = tx;
+        tx = rdx * ca + rdz * sa; rdz = -rdx * sa + rdz * ca; rdx = tx;
+        let ty = roy * ct - roz * st; roz = roy * st + roz * ct; roy = ty;
+        ty = rdy * ct - rdz * st; rdz = rdy * st + rdz * ct; rdy = ty;
+        let t = 0, halo = 9, heat = 0;
+        for (let i = 0; i < 24; i++) {
+          const d = bulbDE(rox + rdx * t, roy + rdy * t, roz + rdz * t, P, it);
+          if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
+          if (d < 0.003 * Math.max(t, 0.4)) {
+            heat = (0.45 + s.glow * 0.3) * Math.max(0, 1 - (t - 1.4) / 2.8);   // flat shade — no normals on the fallback
+            break;
+          }
+          t += d;
+          if (t > 4.5) break;
+        }
+        if (heat === 0) heat = s.glow * 0.35 * Math.exp(-halo * 55);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)           // fill the 3x3 block
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+

@@ -20,6 +20,30 @@
   // seed every effect's state (see presetState) so any effect can use any filter
   // without editing all 19 descriptors. `cpu: false` marks a filter the Canvas2D
   // fallback can't do — the UI greys those out rather than lying.
+  // CPU mirror of FS_CELL — the cyclic-CA feedback pass. A feedback filter MUST have a
+  // CPU mirror (the fallback would otherwise have nothing carrying heat over). Reads
+  // fire whole, writes a scratch, copies back — the same shape as heatDiffuseCPU.
+  let cellBuf = null;
+  function cellularCPU(states, mix, keep) {
+    if (!cellBuf || cellBuf.length !== fire.length) cellBuf = new Float32Array(fire.length);
+    const S = Math.round(states), q = S / 256;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        const i = y * fw + x, h = fire[i];
+        const s = Math.min(S - 1, (h * q) | 0), nxt = (s + 1) % S;
+        let adv = false;
+        for (let j = -1; j <= 1 && !adv; j++) for (let k = -1; k <= 1; k++) {
+          if (!j && !k) continue;
+          const yy = y + j, xx = x + k;
+          if (yy < 0 || yy >= fh || xx < 0 || xx >= fw) continue;
+          if (Math.min(S - 1, (fire[yy * fw + xx] * q) | 0) === nxt) { adv = true; break; }
+        }
+        const ca = adv ? (nxt + 0.5) * 256 / S : h;
+        cellBuf[i] = (h + (ca - h) * mix) * keep;
+      }
+    }
+    for (let i = 0; i < fire.length; i++) fire[i] = cellBuf[i];
+  }
   const FILTERS = [
     { id: "fire",  name: "Fire",  stage: "feedback", params: ["rise", "burn"],
       help: "Heat rises and cools, the classic fire sim — now available to every effect, not just the point ones.",
@@ -71,6 +95,20 @@
       defaults: { swirl: [2, 2], swirlkeep: [0.94, 0.94] },
       glFeedback: src => glWarpFeedback(src, 0, 0, 1, swirlSpin, swirlKeep),
       cpuFeedback: () => heatWarpCPU(0, 0, 1, swirlSpin, swirlKeep) },
+    { id: "cellular", name: "Cellular automaton", stage: "feedback", params: ["cellstates", "cellmix", "cellkeep"],
+      help: "The retained heat evolves as a cyclic cellular automaton every tick: any neighbour one state ahead pulls a cell forward, wrapping — boiling fronts and spirals crawl through whatever the effect draws. States sets the cycle length, Blend how hard the rule bites.",
+      defaults: { cellstates: [12, 12], cellmix: [1, 1], cellkeep: [1, 1] },
+      glFeedback: src => {
+        const P = glProg.cell;
+        gl.useProgram(P.p);
+        bindTexUnit(0, src); gl.uniform1i(P.u.uHeat, 0);
+        gl.uniform2f(P.u.uSize, fw, fh);
+        gl.uniform1f(P.u.uStates, cellStates);
+        gl.uniform1f(P.u.uMix, cellMix);
+        gl.uniform1f(P.u.uKeep, cellKeep);
+        drawQuad();
+      },
+      cpuFeedback: () => cellularCPU(cellStates, cellMix, cellKeep) },
     { id: "twist", cpuOk: false, name: "Twist", stage: "post", params: ["twist"],
       help: "Spin the middle of the image and leave the rim — straight structure curls into the centre.",
       defaults: { twist: [1.2, 1.2] },
@@ -125,6 +163,10 @@
       help: "A displacement ring rushing out from the centre. Arm Shock's beat chips and every beat fires a wave — Trigger duration sets how long it takes to cross the screen.",
       defaults: { shock: [0, 0], shockamp: [0.06, 0.06], shockwidth: [0.1, 0.1] },
       gl: src => postPass("shock", src, u => { gl.uniform1f(u.uAmount, shockAmt); gl.uniform1f(u.uAmp, shockAmp); gl.uniform1f(u.uWidth, shockWidth); }) },
+    { id: "pixsort", cpuOk: false, name: "Pixel sort", stage: "post", params: ["pxthresh", "pxstreak", "pxdir"],
+      help: "The modern glitch: pixels brighter than the threshold smear into streaks along one direction, dark areas stay put. Lower the threshold to melt more of the picture.",
+      defaults: { pxthresh: [0.55, 0.55], pxstreak: [0.5, 0.5], pxdir: [0, 0] },
+      gl: src => postPass("pixsort", src, u => { gl.uniform1f(u.uThresh, pxThresh); gl.uniform1f(u.uLen, pxStreak); gl.uniform1f(u.uDir, pxDir); }) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
     // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own

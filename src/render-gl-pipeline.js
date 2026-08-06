@@ -175,6 +175,52 @@
       vec3 col = texture(uSrc, clamp(vUv - off, 0.0, 1.0)).rgb;   // pixels read as pushed outward
       o = vec4(col * (1.0 + g * uAmount * 0.35), 1.0);            // slight glint riding the ring
     }`;
+    // Pixel sort (approximated): true sorting is sequential, so this is the shader fake —
+    // each pixel takes the max of itself and any BRIGHT pixel behind it along the sort
+    // direction, weighted down with distance. Bright areas smear into streaks, dark areas
+    // stay put: the modern glitch look. 32 taps is the ceiling; uLen scales within it.
+    const FS_PIXSORT = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uThresh; uniform float uLen; uniform float uDir;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 dirv = uDir < 0.5 ? vec2(0.0, 1.0) : uDir < 1.5 ? vec2(0.0, -1.0)
+                : uDir < 2.5 ? vec2(-1.0, 0.0) : vec2(1.0, 0.0);
+      vec3 c = texture(uSrc, vUv).rgb;
+      for (int i = 1; i <= 32; i++){
+        float fi = float(i);
+        vec2 p = vUv + dirv*(fi/32.0)*uLen*0.35;
+        if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) break;
+        vec3 s = texture(uSrc, p).rgb;
+        float l = dot(s, vec3(0.299, 0.587, 0.114));
+        c = max(c, s*(step(uThresh, l)*(1.0 - fi/34.0)));
+      }
+      o = vec4(c, 1.0);
+    }`;
+    // Cellular automaton over the retained HEAT (feedback stage): quantise to uStates
+    // buckets; a cell with any 8-neighbour exactly one state ahead advances to it,
+    // wrapping — the classic cyclic CA, whose spirals and boiling fronts here ride the
+    // palette. Runs once per sim tick like every feedback filter. Writing the bucket
+    // CENTRE ((s+1.5)/uStates) keeps floor() stable against R8's 1/255 quantisation.
+    const FS_CELL = `#version 300 es
+    precision highp float;
+    uniform highp sampler2D uHeat; uniform vec2 uSize; uniform float uStates; uniform float uMix; uniform float uKeep;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 px = 1.0/uSize;
+      float h = texture(uHeat, vUv).r;
+      float s = min(floor(h*uStates), uStates - 1.0);
+      float nxt = mod(s + 1.0, uStates);
+      float cnt = 0.0;
+      for (int j = -1; j <= 1; j++)
+      for (int i = -1; i <= 1; i++){
+        if (i == 0 && j == 0) continue;
+        float nh = texture(uHeat, clamp(vUv + vec2(float(i), float(j))*px, 0.0, 1.0)).r;
+        if (min(floor(nh*uStates), uStates - 1.0) == nxt) cnt += 1.0;
+      }
+      float ca = cnt >= 1.0 ? (nxt + 0.5)/uStates : h;
+      o = vec4(mix(h, ca, uMix)*uKeep, 0.0, 0.0, 1.0);
+    }`;
     // Feedback: fade the retained heat toward black each tick (phosphor trails).
     const FS_FADE = `#version 300 es
     precision highp float;
@@ -426,6 +472,11 @@
     glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
     glProg.solids = camProg(VS_QUAD, FS_SOLIDS, ["uSize", "uZoom", "uCount", "uRim", "uPos", "uQuat", "uShape"]);
     glProg.sun = camProg(VS_QUAD, FS_SUN, ["uSize", "uTime", "uDensity", "uLane", "uGlow", "uSpot", "uZoom"]);
+    glProg.kefrens = camProg(VS_QUAD, FS_KEFRENS, ["uSize", "uTime", "uBars", "uSway", "uWidth", "uZoom"]);
+    glProg.twister = camProg(VS_QUAD, FS_TWISTER, ["uSize", "uTime", "uCols", "uWidth", "uTwist", "uZoom"]);
+    glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
+    glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom"]);
+    glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
@@ -438,6 +489,8 @@
     glProg.thresh = makeProg(VS_QUAD, FS_THRESH, ["uSrc", "uLevel", "uAmount"]);
     glProg.chroma = makeProg(VS_QUAD, FS_CHROMA, ["uSrc", "uAmount"]);
     glProg.shock = makeProg(VS_QUAD, FS_SHOCK, ["uSrc", "uSize", "uAmount", "uAmp", "uWidth"]);
+    glProg.pixsort = makeProg(VS_QUAD, FS_PIXSORT, ["uSrc", "uSize", "uThresh", "uLen", "uDir"]);
+    glProg.cell = makeProg(VS_QUAD, FS_CELL, ["uHeat", "uSize", "uStates", "uMix", "uKeep"]);
     glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
     glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
     glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);
@@ -704,7 +757,11 @@
     }
   }
   function glDrawPoints() {
-    glBlitPoints();
+    // The single-layer tick path: honour a stampAdd effect (Fractal flames) here too, or
+    // the density accumulation would only exist in a stack. Read the ITEM's effect, not
+    // the `effect` global — render paths take everything from the stack.
+    const L = stack[stackSel];
+    glBlitPoints(L && EFFECTS[L.fx].stampAdd ? "add" : undefined);
     curHeat = pendingDst;
   }
   // Close a heat tick. Split out from glDrawPoints so the flip has a name that
@@ -936,7 +993,8 @@
         cur = glLayerBeginHeat(slot, cur, chain);  // propagate into the other buffer, leave it bound
         glPtCount = 0;
         stampTick(L, now); capturePhase(L);
-        glBlitPoints(L.blend, 1);                  // stamp into the bound buffer (gain deferred)
+        // a stampAdd effect (Fractal flames) accumulates density whatever the layer blend
+        glBlitPoints(EFFECTS[L.fx].stampAdd ? "add" : L.blend, 1);   // stamp into the bound buffer (gain deferred)
       }
       layerCur[slot] = cur;
       return glTex.heatL[slot][cur];
@@ -1197,7 +1255,7 @@
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
   // (It briefly took a `raw` flag to let the credits skip the camera; they render on
   // their own layer now, so every caller wants the camera and the flag is gone.)
-  function plot(x, y, v) {
+  function plot(x, y, v, add) {
     // Zoom is applied HERE, to the point, not to the finished picture. FS_ZOOM magnifies
     // an fw×fh raster, so detail falls off as 1/zoom and the point effects went visibly
     // blocky — the 17 shader effects never had that because they divide their coordinates
@@ -1219,7 +1277,13 @@
     }
     const xi = x | 0, yi = y | 0;
     if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
+    // `add` is the density mode Fractal flames stamps in: heat ACCUMULATES per hit
+    // instead of taking the max, so where the orbit lands often burns brighter — the
+    // log-density look, with the R8 clamp as the white-hot core. The GL half of the
+    // same choice is the blit call sites passing "add" when the descriptor says
+    // `stampAdd` (glBlitPoints already spoke FUNC_ADD for the layer blend).
     if (useGL) { pushPt(xi, yi, v); }
+    else if (add) { const idx = yi * fw + xi; fire[idx] = Math.min(255, fire[idx] + v); }
     else { const idx = yi * fw + xi; if (v > fire[idx]) fire[idx] = v; }
   }
 
