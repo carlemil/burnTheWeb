@@ -2050,6 +2050,7 @@
     halfDot = 4, halfAmt = 0.8, threshLevel = 0.5, threshAmt = 0.8, chromaAmt = 1;
   // Screen stage (after the glow, at display resolution)
   let barrelAmt = 0.15, scanAmt = 0.35, scanCount = 240, vigAmt = 0.4, grainAmt = 0.08;
+  let shockAmt = 0, shockAmp = 0.06, shockWidth = 0.1;   // Shockwave ring: progress, push, thickness
   // Wall time for the post/screen passes that animate on their own (Slice glitch,
   // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
   // so a stubbed-rAF pixel gate stays reproducible.
@@ -3459,6 +3460,28 @@
       float b = texture(uSrc, clamp(vUv - d, 0.0, 1.0)).b;
       o = vec4(r, g, b, 1.0);
     }`;
+    // Shockwave: a displacement ring travelling out from the centre, driven ENTIRELY by
+    // the Shock VALUE — 1 = ring at the centre, 0 = gone past the corners. A beat-armed
+    // Shock snapped to the high thumb and decaying over the Trigger duration therefore IS
+    // the travelling wave: the pulse machinery does the animation, so there is no clock
+    // and no PHASE_VARS entry. Displacement and the ring's lens glint both scale by
+    // uAmount, so 0 is a true no-op whatever Push and Ring width hold.
+    const FS_SHOCK = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uAmp; uniform float uWidth;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float d = length(c);
+      float R = (1.0 - uAmount) * 1.1;           // 1.1 > the corner distance, so it fully exits
+      float g = exp(-pow((d - R) / max(uWidth, 1e-4), 2.0));
+      vec2 dir = d > 1e-4 ? c / d : vec2(0.0);
+      vec2 off = dir * g * uAmp * uAmount;
+      off.x /= asp;
+      vec3 col = texture(uSrc, clamp(vUv - off, 0.0, 1.0)).rgb;   // pixels read as pushed outward
+      o = vec4(col * (1.0 + g * uAmount * 0.35), 1.0);            // slight glint riding the ring
+    }`;
     // Feedback: fade the retained heat toward black each tick (phosphor trails).
     const FS_FADE = `#version 300 es
     precision highp float;
@@ -3721,6 +3744,7 @@
     glProg.halftone = makeProg(VS_QUAD, FS_HALFTONE, ["uSrc", "uSize", "uDot", "uAmount"]);
     glProg.thresh = makeProg(VS_QUAD, FS_THRESH, ["uSrc", "uLevel", "uAmount"]);
     glProg.chroma = makeProg(VS_QUAD, FS_CHROMA, ["uSrc", "uAmount"]);
+    glProg.shock = makeProg(VS_QUAD, FS_SHOCK, ["uSrc", "uSize", "uAmount", "uAmp", "uWidth"]);
     glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
     glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
     glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);
@@ -6653,6 +6677,9 @@
     { key: "threshamt", host: "filter", group: "f_thresh", type: "dual", label: "Amount", valId: "vThreshAmt", min: 0, max: 1, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => threshAmt = v, durScale: 10 },
     { key: "chroma", host: "filter", group: "f_chroma", type: "dual", label: "Amount", valId: "vChroma", min: 0, max: 6, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => chromaAmt = v, durScale: 10 },
     { key: "mirror", host: "filter", group: "f_mirror", type: "dual", label: "Axis", valId: "vMirror", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["", "X", "Y", "Both"][Math.round(v)] || "X", apply: v => mirrorMode = Math.round(v), durScale: 10 },
+    { key: "shock", host: "filter", group: "f_shock", type: "dual", label: "Shock", valId: "vShock", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => shockAmt = v, durScale: 10 },
+    { key: "shockamp", host: "filter", group: "f_shock", type: "dual", label: "Push", valId: "vShockAmp", min: 0, max: 0.2, step: 0.005, lo: 0.06, hi: 0.06, fmt: v => sig3(v), apply: v => shockAmp = v, durScale: 10 },
+    { key: "shockwidth", host: "filter", group: "f_shock", type: "dual", label: "Ring width", valId: "vShockWidth", min: 0.02, max: 0.4, step: 0.01, lo: 0.1, hi: 0.1, fmt: v => sig3(v), apply: v => shockWidth = v, durScale: 10 },
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
@@ -7284,7 +7311,7 @@
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
     f_diffuse: "Diffuse", f_echo: "Echo", f_zoomfb: "Zoom feedback", f_swirl: "Swirl",
-    f_twist: "Twist", f_wedge: "Wedge fold", f_glitch: "Slice glitch",
+    f_twist: "Twist", f_wedge: "Wedge fold", f_glitch: "Slice glitch", f_shock: "Shockwave",
     f_halftone: "Halftone", f_thresh: "Solarize", f_chroma: "Chromatic aberration",
     f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
     palette: "Palette", banding: "Banding",
@@ -8928,6 +8955,14 @@
       help: "Fold the image about its centre — X, Y or both.",
       defaults: { mirror: [1, 1] },
       gl: src => postPass("mirror", src, u => gl.uniform1f(u.uMode, mirrorMode)) },
+    // The Shock value IS the ring's position (1 = centre, 0 = off the edge), so arming its
+    // beat chips and letting the pulse decay it over the Trigger duration is what animates
+    // the wave — the filter itself is stateless. Inserted BEFORE bloom: the menu's
+    // per-effect/whole-scene grouping needs the bloom+screen run to stay contiguous.
+    { id: "shock", cpuOk: false, name: "Shockwave", stage: "post", params: ["shock", "shockamp", "shockwidth"],
+      help: "A displacement ring rushing out from the centre. Arm Shock's beat chips and every beat fires a wave — Trigger duration sets how long it takes to cross the screen.",
+      defaults: { shock: [0, 0], shockamp: [0.06, 0.06], shockwidth: [0.1, 0.1] },
+      gl: src => postPass("shock", src, u => { gl.uniform1f(u.uAmount, shockAmt); gl.uniform1f(u.uAmp, shockAmp); gl.uniform1f(u.uWidth, shockWidth); }) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
     // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own
@@ -14100,6 +14135,9 @@
       { n: "Speed", w: "solids", t: "Bouncing solids only — how fast the bodies travel, and so how often they hit a wall. 0 freezes them mid-air, still lit and still spinning down." },
       { n: "Tumble", w: "solids", t: "Bouncing solids only — how fast the bodies rotate. A wall impact converts sideways travel into roll, so an angled clip visibly kicks a body into a tumble; this scales all of that. 0 holds every solid at a fixed orientation." },
       { n: "Edge glow", w: "solids", t: "Bouncing solids only — lights the silhouettes, brightest where a surface turns away from you. Low values give flat shaded solids; high values outline every body in fire and read almost like an X-ray." },
+      { n: "Shock", w: "all", t: "The Shockwave filter's wave itself: 1 puts the ring at the centre, 0 has it gone off the edge — so the value IS the ring's position. Arm its L/M/H chips and every beat snaps it to the high thumb and lets it fall, firing a wave that crosses the screen in one Trigger duration." },
+      { n: "Push", w: "all", t: "How hard the Shockwave ring displaces the picture as it passes — 0 is an invisible wave, high values shove pixels aside like a blast front." },
+      { n: "Ring width", w: "all", t: "How thick and soft the Shockwave ring is, from a hairline ripple to a broad swell." },
       { n: "Cell density", w: "sun", t: "Sun surface only — how many convection cells fill the screen. Low values give a few huge granules; high values a fine boiling texture like the telescope footage." },
       { n: "Churn speed", w: "sun", t: "Sun surface only — how fast the cells boil: drift, deform and brighten or dim. 1× gives each granule a lifetime of roughly 15–30 seconds; 0 freezes the surface." },
       { n: "Lane width", w: "sun", t: "Sun surface only — how wide and soft the dark lanes between cells are. Low values give hairline cracks; high values fat dark borders that shrink the bright cells." },

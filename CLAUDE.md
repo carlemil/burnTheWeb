@@ -189,7 +189,7 @@ filter `glBeginHeat` **clears** and the CPU path zeroes `fire`.
   `warpBuf`); `cpuOk: false` here would leave the fallback with nothing carrying heat over.
 
 **post** (Twist, Wedge fold, Slice glitch, Pixelate, Blur/sharpen, Edge, Posterize, Halftone,
-Solarize, Chromatic aberration, Mirror, Bloom) — read the palette-mapped image. `glPostChain()`
+Solarize, Chromatic aberration, Mirror, Shockwave, Bloom) — read the palette-mapped image. `glPostChain()`
 ping-pongs `glTex.post[0]/[1]` and **returns `glTex.native` untouched when empty** (no
 pass-through copy). Bloom has no pass — it is the glow composite under `bloomAmt`/`uBloom`.
 

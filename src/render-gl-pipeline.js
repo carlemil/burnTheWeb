@@ -153,6 +153,28 @@
       float b = texture(uSrc, clamp(vUv - d, 0.0, 1.0)).b;
       o = vec4(r, g, b, 1.0);
     }`;
+    // Shockwave: a displacement ring travelling out from the centre, driven ENTIRELY by
+    // the Shock VALUE — 1 = ring at the centre, 0 = gone past the corners. A beat-armed
+    // Shock snapped to the high thumb and decaying over the Trigger duration therefore IS
+    // the travelling wave: the pulse machinery does the animation, so there is no clock
+    // and no PHASE_VARS entry. Displacement and the ring's lens glint both scale by
+    // uAmount, so 0 is a true no-op whatever Push and Ring width hold.
+    const FS_SHOCK = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uAmp; uniform float uWidth;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float d = length(c);
+      float R = (1.0 - uAmount) * 1.1;           // 1.1 > the corner distance, so it fully exits
+      float g = exp(-pow((d - R) / max(uWidth, 1e-4), 2.0));
+      vec2 dir = d > 1e-4 ? c / d : vec2(0.0);
+      vec2 off = dir * g * uAmp * uAmount;
+      off.x /= asp;
+      vec3 col = texture(uSrc, clamp(vUv - off, 0.0, 1.0)).rgb;   // pixels read as pushed outward
+      o = vec4(col * (1.0 + g * uAmount * 0.35), 1.0);            // slight glint riding the ring
+    }`;
     // Feedback: fade the retained heat toward black each tick (phosphor trails).
     const FS_FADE = `#version 300 es
     precision highp float;
@@ -415,6 +437,7 @@
     glProg.halftone = makeProg(VS_QUAD, FS_HALFTONE, ["uSrc", "uSize", "uDot", "uAmount"]);
     glProg.thresh = makeProg(VS_QUAD, FS_THRESH, ["uSrc", "uLevel", "uAmount"]);
     glProg.chroma = makeProg(VS_QUAD, FS_CHROMA, ["uSrc", "uAmount"]);
+    glProg.shock = makeProg(VS_QUAD, FS_SHOCK, ["uSrc", "uSize", "uAmount", "uAmp", "uWidth"]);
     glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
     glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
     glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);

@@ -466,6 +466,11 @@ the layers blend together.
 - **Chromatic aberration** — split red and blue radially, so the picture fringes
   toward the corners the way a cheap lens does.
 - **Mirror** — fold the image about its centre, on **X**, **Y** or both.
+- **Shockwave** — a displacement ring rushing out from the centre, shoving the picture
+  aside as it passes. The **Shock** slider *is* the ring's position (1 = centre, 0 = gone
+  off the edge), so arm its **L/M/H** beat chips and every kick fires a wave — the
+  **Trigger duration** knob in its pop-out box sets how long the crossing takes, **Push**
+  how hard it displaces, **Ring width** how fat the wavefront is.
 
 **Whole scene (final)** *— the Scene filters box* — these go on top of the finished,
 blended frame, at your display's real resolution rather than the fire grid's. They're the

@@ -117,6 +117,14 @@
       help: "Fold the image about its centre — X, Y or both.",
       defaults: { mirror: [1, 1] },
       gl: src => postPass("mirror", src, u => gl.uniform1f(u.uMode, mirrorMode)) },
+    // The Shock value IS the ring's position (1 = centre, 0 = off the edge), so arming its
+    // beat chips and letting the pulse decay it over the Trigger duration is what animates
+    // the wave — the filter itself is stateless. Inserted BEFORE bloom: the menu's
+    // per-effect/whole-scene grouping needs the bloom+screen run to stay contiguous.
+    { id: "shock", cpuOk: false, name: "Shockwave", stage: "post", params: ["shock", "shockamp", "shockwidth"],
+      help: "A displacement ring rushing out from the centre. Arm Shock's beat chips and every beat fires a wave — Trigger duration sets how long it takes to cross the screen.",
+      defaults: { shock: [0, 0], shockamp: [0.06, 0.06], shockwidth: [0.1, 0.1] },
+      gl: src => postPass("shock", src, u => { gl.uniform1f(u.uAmount, shockAmt); gl.uniform1f(u.uAmp, shockAmp); gl.uniform1f(u.uWidth, shockWidth); }) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
     // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own
