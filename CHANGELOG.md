@@ -14,6 +14,42 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.16.0] — 2026-08-06
+
+### Added
+
+- **Six new effects** — the biggest drop since layers:
+  - **Kefrens bars** — the classic Amiga effect: vertical ribbons redrawn at a per-scanline
+    phase offset, weaving impossibly through each other.
+  - **Twister** — the classic twisting column, faces shaded by angle, up to three side by
+    side and out of phase.
+  - **Cymatics** — sand on a vibrating plate: bright lines trace a standing wave's nodes.
+    Drift **Mode**'s thumbs for continuous morphing, or arm its beat chips and the figure
+    snaps to a new symmetry on the kick.
+  - **Lightning storm** — bolts tearing down the screen, every strike a fresh shape.
+    **Rate** fires them on a clock; arm **Strike**'s chips and the beat fires them instead,
+    each bolt decaying over its Trigger duration.
+  - **Mandelbulb** — the 3D Mandelbrot, raymarched and slowly orbited. **Power** reshapes
+    it, **Detail** adds fractal depth, **Glow** haloes the silhouette. The heaviest effect
+    in the app — it wants a real GPU.
+  - **Fractal flames** — an Apophysis-style iterated function system whose landing points
+    **add** heat into a fading trail, so the dense heart burns white while the wisps stay
+    faint. Six **Variation** folds; Swirl gives a nebula ribbon, Sinusoidal an electric
+    fractal.
+- **Two new filters**:
+  - **Shockwave** *(added just after 1.15.0)* — a displacement ring rushing out from the
+    centre. Arm **Shock**'s beat chips and every kick fires a wave; its Trigger duration is
+    literally how long the crossing takes.
+  - **Pixel sort** — the modern glitch: bright pixels smear into streaks along one
+    direction, dark areas stay put.
+  - **Cellular automaton** — the retained heat evolves as a cyclic CA, so boiling fronts
+    and spirals crawl through whatever the effect draws.
+
+### Changed
+
+- The **Points** slider now reaches 24 000 (was 8 000) — Fractal flames' picture is point
+  density, and the other point effects can use the headroom too.
+
 ## [1.15.0] — 2026-08-06
 
 ### Added
