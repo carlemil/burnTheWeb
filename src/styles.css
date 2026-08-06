@@ -885,22 +885,29 @@
   }
   #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
   /* ---- the "Add filter" / "Palettes in use" pickers ---- */
+  /* Docked TOP-LEFT beside the panel (same 58px top line, at the #breakout column's 298px),
+     not centered: these are panel tools, so they attach next to the menu boxes they came
+     from instead of covering the middle of the picture. */
   #fltdlg, #palpickdlg, #transpickdlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
   #fltdlg.hidden, #palpickdlg.hidden, #transpickdlg.hidden { display: none; }
   #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box {
     position: relative; pointer-events: auto;
-    width: min(90vw, 430px); max-height: 86vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px;
+    width: min(90vw, 430px); max-height: calc(100vh - 72px); overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 20px 22px 18px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
+  /* No margin-right for the close button: it floats, so the title wraps around it — a
+     right margin only shrank the h2's box, which left the header's box-shadow bleed 22px
+     short of the box's right edge (a strip of raw content showed beside the ×). */
   #fltdlg h2, #palpickdlg h2, #transpickdlg h2 {
-    margin: 0 30px 8px 0; color: #ffb15a; font-size: 15px;
+    margin: 0 0 8px; color: #ffb15a; font-size: 15px;
     text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
   }
   #fltdlg .pal-hint, #palpickdlg .pal-hint, #transpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
@@ -1077,6 +1084,19 @@
   }
   /* The × sticks level with the title, allowing for the padding the header now carries. */
   .pal-close, .card-close, .help-close, .sync-close { top: 18px; }
+  /* The docked pickers seat the × in the actual corner: pulled 12px into the side padding
+     (10px off the box edge) and 12px down from the top (the float otherwise sits flush
+     against the border because the box gave its top padding to the sticky header). The
+     header tone also matches the box tint here rather than the near-black of the big
+     dialogs — over a bright scene the 0.93 black header read as a black bar on a warm
+     translucent panel. blur(10) still keeps scrolled text from ghosting through. */
+  #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2 {
+    background: rgba(10, 6, 4, 0.85);
+    box-shadow: 0 -30px 0 30px rgba(10, 6, 4, 0.88);
+  }
+  #fltdlg .pal-close, #palpickdlg .pal-close, #transpickdlg .pal-close {
+    top: 12px; margin-top: 12px; margin-right: -12px;
+  }
   .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
     background: rgba(255, 122, 26, 0.25);
   }

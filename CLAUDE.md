@@ -479,6 +479,14 @@ close, so an adopted block must go home first or the real audio buttons, resolut
 
 **Every dialog's title + close button are STICKY.** First two children = the `.pal-close`-family
 button and an `<h2>`.
+- **The three pickers (`#fltdlg`, `#palpickdlg`, `#transpickdlg`) dock TOP-LEFT beside the
+  panel** (margin 58px/298px — the `#breakout` column line), not centered: they are panel tools
+  and attach next to the menu boxes. Their `h2` has **no right margin** (the × floats, so text
+  wraps; a right margin shrinks the h2 box and the header's shadow bleed stops short of the
+  right edge, leaving a raw strip beside the ×), their header tone matches the box tint (the
+  0.93 black of the big dialogs read as a black bar on the warm translucent picker), and the ×
+  is pulled 12px into the side padding and 12px down (the float otherwise sits flush against
+  the border, because the box's top padding lives on the sticky header).
 - Button is `position: sticky` + `float: right`, **not `absolute`**.
 - **The box gives up its `padding-top`; the header carries it.**
 - Header background bleeds over side padding via `box-shadow: 0 -30px 0 30px` (padding differs
