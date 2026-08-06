@@ -2053,6 +2053,12 @@
   let shockAmt = 0, shockAmp = 0.06, shockWidth = 0.1;   // Shockwave ring: progress, push, thickness
   let pxThresh = 0.55, pxStreak = 0.5, pxDir = 0;        // Pixel sort
   let cellStates = 12, cellMix = 1, cellKeep = 1;        // Cellular automaton (feedback)
+  let lensSize = 0.28, lensMag = 1.8, lensSpeed = 0.6;   // Lens bubble
+  let drosteDepth = 2, drosteTwist = 0.5;                // Droste zoom
+  let kuwRad = 3;                                        // Kuwahara oil-paint
+  // Reaction–diffusion dish flags: declared here because glResize (an earlier slice than
+  // the effect code) marks the dish for re-seeding when the grid reallocates.
+  let rdNeedSeed = true, rdSalt = 1;
   // Wall time for the post/screen passes that animate on their own (Slice glitch,
   // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
   // so a stubbed-rAF pixel gate stays reproducible.
@@ -3398,7 +3404,7 @@
       float fw = uSize.x, fh = uSize.y;
       float ar = fw/fh;
       vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)/uZoom;
-      float yt = 0.5 - q.y;                       // 0 at the top, 1 at the bottom
+      float yt = q.y + 0.5;                       // 0 at the SCREEN top (buffer is Y-flipped)
       float heat = 0.0;
       int n = int(uBolts);
       for (int k = 0; k < 5; k++){
@@ -3477,6 +3483,176 @@
       }
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Starfield / hyperspace: 6 depth layers of cell-hashed stars flying outward; uWarp
+    // re-samples the whole field at radially squeezed coordinates so every star smears
+    // into a streak — beat-arm Warp and the kick punches to hyperspace. The field lives
+    // in a helper (no gl_FragCoord inside — camProg's rewrite must not touch it).
+    const FS_STARS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uDensity; uniform float uWarp; uniform float uTwinkle; uniform float uZoom;
+    out vec4 o;
+    float h21s(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
+    float field(vec2 q, float t, float dens, float tw){
+      float heat = 0.0;
+      for (int i = 0; i < 6; i++){
+        float fi = float(i)/6.0;
+        float d = fract(t*0.15 + fi);                  // 0 = far, 1 = at the screen
+        float sc = mix(11.0, 1.2, d) * dens;
+        vec2 p = q * sc;
+        vec2 cell = floor(p), f = fract(p) - 0.5;
+        float g = step(0.78, h21s(cell + fi*31.7));    // sparse: most cells hold no star
+        vec2 off = vec2(h21s(cell + fi*77.0), h21s(cell + fi*77.0 + 9.1)) - 0.5;
+        float dist = length(f - off*0.8);
+        float size = mix(0.04, 0.16, d);
+        float blink = 1.0 - tw*0.5*(0.5 + 0.5*sin(t*(3.0 + 5.0*h21s(cell + 2.2)) + h21s(cell + 5.5)*6.2831853));
+        float fade = smoothstep(0.0, 0.2, d)*(1.0 - smoothstep(0.85, 1.0, d));
+        heat = max(heat, g * blink * fade * smoothstep(size, 0.0, dist) * mix(0.45, 1.0, d));
+      }
+      return heat;
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)/uZoom;
+      float heat = field(q, uTime, uDensity, uTwinkle);
+      if (uWarp > 0.01){                               // streaks: the field, radially squeezed
+        for (int k = 1; k <= 5; k++){
+          float fk = float(k);
+          heat = max(heat, field(q*(1.0 - uWarp*0.055*fk), uTime, uDensity, uTwinkle)*(1.0 - fk*0.14));
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Aurora borealis: gaussian light curtains hanging from the top, swaying on layered
+    // sines, each shimmering on its own phase. The palette does the colour — Ice and
+    // Electric were made for this.
+    const FS_AURORA = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCurtains; uniform float uSway; uniform float uShim; uniform float uZoom;
+    out vec4 o;
+    float ah1(float x){ return fract(sin(x*127.1)*43758.5453); }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      // NB the heat buffer is Y-FLIPPED against the screen (row 0 = screen top — proven
+      // with a gradient probe), so +y here means UP only after this negation. Every
+      // orientation-sensitive effect shader needs it; the symmetric ones never notice.
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)/uZoom;
+      float t = uTime;
+      // the whole sky sways; each curtain also wanders on its own
+      float xx = q.x + uSway*(0.22*sin(q.y*2.1 + t*0.5) + 0.13*sin(q.y*5.3 - t*0.31));
+      float band = 0.0;
+      int n = int(uCurtains);
+      for (int i = 0; i < 5; i++){
+        if (i >= n) break;
+        float fi = float(i);
+        float ph = ah1(fi*17.3)*6.2831853;
+        float cx = 0.75*sin(t*(0.11 + 0.045*fi) + ph);
+        float w = 0.10 + 0.08*ah1(fi + 3.3);
+        float d = abs(xx - cx);
+        float rip = 0.65 + 0.35*sin(t*(1.3 + 0.8*ah1(fi + 8.8))*uShim + q.y*7.0 + ph);
+        band = max(band, exp(-pow(d/w, 2.0)) * rip);
+      }
+      // curtains hang from the top and thin out downward, over a faint horizon glow
+      float top = smoothstep(-0.55, -0.05, q.y);
+      float hang = mix(0.35, 1.0, smoothstep(-0.2, 0.45, q.y));
+      float heat = band*top*hang*1.4 + 0.06*exp(-pow((q.y + 0.42)/0.12, 2.0));
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Menger sponge: an infinite periodic lattice of sponges, camera diving forward with
+    // a slow roll. The standard scale-3 fold DE; shading like the bulb (diffuse + depth
+    // fade + proximity halo on a miss).
+    const FS_MENGER = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uDive; uniform float uSpin; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float mengerDE(vec3 p, int it){
+      vec3 q = mod(p + 1.5, 3.0) - 1.5;                 // infinite lattice
+      float d = max(abs(q.x), max(abs(q.y), abs(q.z))) - 1.05;
+      float s = 1.0;
+      for (int i = 0; i < 5; i++){
+        if (i >= it) break;
+        vec3 a = mod(q*s + 1.0, 2.0) - 1.0;
+        s *= 3.0;
+        vec3 r = abs(1.0 - 3.0*abs(a));
+        float da = max(r.x, r.y), db = max(r.y, r.z), dc = max(r.z, r.x);
+        float c = (min(da, min(db, dc)) - 1.0)/s;
+        d = max(d, c);
+      }
+      return d;
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uSpin), sa = sin(uSpin);
+      vec3 ro = vec3(0.35*sin(uSpin*0.6), 0.28*cos(uSpin*0.45), uDive);
+      vec3 rd = normalize(vec3(uv, 1.4));
+      rd = vec3(rd.x*ca - rd.y*sa, rd.x*sa + rd.y*ca, rd.z);   // slow roll
+      int it = int(uIter);
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 64; i++){
+        vec3 p = ro + rd*t;
+        float d = mengerDE(p, it);
+        halo = min(halo, d/max(t, 0.25));
+        if (d < 0.0012*max(t, 0.3)){
+          float e = 0.0015*max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0)*0.5773;
+          vec3 nrm = normalize(h.xyy*mengerDE(p + h.xyy*e, it) + h.yyx*mengerDE(p + h.yyx*e, it)
+                             + h.yxy*mengerDE(p + h.yxy*e, it) + h.xxx*mengerDE(p + h.xxx*e, it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65*dif)*smoothstep(9.0, 1.0, t) + uGlow*0.25*smoothstep(3.0, 0.4, t);
+          break;
+        }
+        t += d;
+        if (t > 9.0) break;
+      }
+      if (heat == 0.0) heat = uGlow*0.30*exp(-halo*40.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Reaction–diffusion (Gray–Scott), three passes. The STATE lives in its own RGBA8
+    // ping-pong pair (glTex.rd) at fire-grid size — U in .r, V in .g — stepped K times a
+    // frame by FS_RDSTEP (vUv space, camera-free: the dish must not rotate), seeded by
+    // FS_RDSEED, and displayed by FS_RDSHOW, which IS the effect shader (camProg, zoom,
+    // heat from V). 8-bit state is the classic shadertoy trade: renderable everywhere,
+    // and Gray–Scott tolerates it at these feed/kill ranges.
+    const FS_RDSTEP = `#version 300 es
+    precision highp float;
+    uniform sampler2D uPrev; uniform vec2 uSize; uniform float uFeed; uniform float uKill;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 px = 1.0/uSize;
+      vec2 c = texture(uPrev, vUv).rg;
+      vec2 lap = -c;
+      lap += 0.20*(texture(uPrev, vUv + vec2(px.x, 0.0)).rg + texture(uPrev, vUv - vec2(px.x, 0.0)).rg
+                 + texture(uPrev, vUv + vec2(0.0, px.y)).rg + texture(uPrev, vUv - vec2(0.0, px.y)).rg);
+      lap += 0.05*(texture(uPrev, vUv + px).rg + texture(uPrev, vUv - px).rg
+                 + texture(uPrev, vUv + vec2(px.x, -px.y)).rg + texture(uPrev, vUv - vec2(px.x, -px.y)).rg);
+      float u = c.x, v = c.y;
+      float uvv = u*v*v;
+      float du = 1.00*lap.x - uvv + uFeed*(1.0 - u);
+      float dv = 0.50*lap.y + uvv - (uKill + uFeed)*v;
+      o = vec4(clamp(u + du, 0.0, 1.0), clamp(v + dv, 0.0, 1.0), 0.0, 1.0);
+    }`;
+    const FS_RDSEED = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uSalt;
+    in vec2 vUv; out vec4 o;
+    float rh(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
+    void main(){
+      // U everywhere; V in a scatter of small blobs so the culture has somewhere to start
+      vec2 cell = floor(vUv*14.0);
+      float g = step(0.82, rh(cell + uSalt));
+      vec2 f = fract(vUv*14.0) - 0.5;
+      float blob = g*smoothstep(0.30, 0.05, length(f));
+      o = vec4(1.0, blob*0.9, 0.0, 1.0);
+    }`;
+    const FS_RDSHOW = `#version 300 es
+    precision highp float;
+    uniform sampler2D uState; uniform vec2 uSize; uniform float uGain; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      vec2 uv = (gl_FragCoord.xy/uSize - 0.5)/uZoom + 0.5;
+      float v = texture(uState, clamp(uv, 0.0, 1.0)).g;
+      o = vec4(clamp(v*uGain*2.6, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
     // heat → palette colour (fire-oriented, no flip yet)
     // ---- post-FX passes. All RGB, all read the palette-mapped image, so they
@@ -3701,6 +3877,72 @@
       }
       float ca = cnt >= 1.0 ? (nxt + 0.5)/uStates : h;
       o = vec4(mix(h, ca, uMix)*uKeep, 0.0, 0.0, 1.0);
+    }`;
+    // Lens bubble: a wandering fisheye magnifier — the classic demo "lens". The centre is
+    // computed on the CPU from postTime (a Lissajous wander), so the shader is one branch-
+    // free remap: inside the radius, coordinates compress toward the centre (magnify),
+    // easing to identity at the rim.
+    const FS_LENS = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform vec2 uCenter; uniform float uRad; uniform float uMag;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x/uSize.y;
+      vec2 d = vUv - uCenter; d.x *= asp;
+      float r = length(d);
+      float inside = smoothstep(uRad, uRad*0.85, r);
+      float m = mix(1.0, 1.0/uMag, inside);           // compress sampling = magnify
+      vec2 p = uCenter + d*m/vec2(asp, 1.0);
+      vec3 col = texture(uSrc, clamp(p, 0.0, 1.0)).rgb;
+      col *= 1.0 + 0.15*smoothstep(uRad, uRad*0.92, r)*step(r, uRad);   // rim glint
+      o = vec4(col, 1.0);
+    }`;
+    // Droste zoom: the picture swallowing itself. Log-polar tiling — radius repeats in
+    // log space (each ring is the whole image again, uDepth smaller), the angle shears
+    // with log(r) for the spiral, and postTime drives the endless inward crawl.
+    const FS_DROSTE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uDepth; uniform float uTwist; uniform float uTime;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x/uSize.y;
+      vec2 d = (vUv - 0.5)*vec2(asp, 1.0);
+      float r = max(length(d), 1e-4);
+      float th = atan(d.y, d.x);
+      float lk = log(uDepth);
+      float lr = fract(log(r)/lk - uTime*0.12);
+      float rr = exp((lr - 1.0)*lk)*0.62;              // back into the visible ring
+      float t2 = th + uTwist*log(r)*1.2;
+      vec2 p = vec2(cos(t2), sin(t2))*rr/vec2(asp, 1.0) + 0.5;
+      o = vec4(texture(uSrc, clamp(p, 0.0, 1.0)).rgb, 1.0);
+    }`;
+    // Kuwahara: 4-quadrant oil-paint. Each quadrant of a (uRad+1)^2 window contributes a
+    // mean and a variance; the pixel takes the mean of the calmest quadrant, flattening
+    // texture while keeping edges — screen-print. Fixed 5x5 quadrant loops = Radius max 4.
+    const FS_KUWAHARA = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uRad;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 px = 1.0/uSize;
+      float R = uRad;
+      vec3 best = texture(uSrc, vUv).rgb;
+      float bestVar = 1e9;
+      for (int q = 0; q < 4; q++){
+        vec2 s = vec2(q == 0 || q == 3 ? 1.0 : -1.0, q < 2 ? 1.0 : -1.0);
+        vec3 sum = vec3(0.0); float sum2 = 0.0; float n = 0.0;
+        for (int j = 0; j <= 4; j++)
+        for (int i = 0; i <= 4; i++){
+          if (float(i) > R || float(j) > R) continue;
+          vec3 c = texture(uSrc, clamp(vUv + vec2(float(i), float(j))*s*px, 0.0, 1.0)).rgb;
+          sum += c; sum2 += dot(c, vec3(0.299, 0.587, 0.114))*dot(c, vec3(0.299, 0.587, 0.114)); n += 1.0;
+        }
+        vec3 mean = sum/n;
+        float ml = dot(mean, vec3(0.299, 0.587, 0.114));
+        float va = sum2/n - ml*ml;
+        if (va < bestVar){ bestVar = va; best = mean; }
+      }
+      o = vec4(best, 1.0);
     }`;
     // Feedback: fade the retained heat toward black each tick (phosphor trails).
     const FS_FADE = `#version 300 es
@@ -3958,6 +4200,12 @@
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
+    glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
+    glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
+    glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uDive", "uSpin", "uIter", "uGlow", "uZoom"]);
+    glProg.rdstep = makeProg(VS_QUAD, FS_RDSTEP, ["uPrev", "uSize", "uFeed", "uKill"]);
+    glProg.rdseed = makeProg(VS_QUAD, FS_RDSEED, ["uSize", "uSalt"]);
+    glProg.rdshow = camProg(VS_QUAD, FS_RDSHOW, ["uState", "uSize", "uGain", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
@@ -3972,6 +4220,9 @@
     glProg.shock = makeProg(VS_QUAD, FS_SHOCK, ["uSrc", "uSize", "uAmount", "uAmp", "uWidth"]);
     glProg.pixsort = makeProg(VS_QUAD, FS_PIXSORT, ["uSrc", "uSize", "uThresh", "uLen", "uDir"]);
     glProg.cell = makeProg(VS_QUAD, FS_CELL, ["uHeat", "uSize", "uStates", "uMix", "uKeep"]);
+    glProg.lens = makeProg(VS_QUAD, FS_LENS, ["uSrc", "uSize", "uCenter", "uRad", "uMag"]);
+    glProg.droste = makeProg(VS_QUAD, FS_DROSTE, ["uSrc", "uSize", "uDepth", "uTwist", "uTime"]);
+    glProg.kuwahara = makeProg(VS_QUAD, FS_KUWAHARA, ["uSrc", "uSize", "uRad"]);
     glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
     glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
     glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);
@@ -4015,6 +4266,21 @@
     // another the way two glShaderDraw calls into the shared buffer used to.
     glTex.layer = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glFbo.layer = createFbo(glTex.layer);
+    // Reaction–diffusion state: U/V in .rg of a ping-pong pair at fire-grid size.
+    // A SINGLETON deliberately — two RD layers share one culture and just display it
+    // differently; per-layer dishes would be four more texture pairs for a niche win.
+    // FLOAT (RGBA16F) wherever EXT_color_buffer_float exists — in 8 bits a Gray–Scott
+    // increment under 1/510 rounds to ZERO and the culture freezes at its seed, which is
+    // exactly what the first screenshot showed. The RGBA8 fallback stays for GL stacks
+    // without the extension: degraded (slow, coarse evolution), not broken.
+    // LINEAR: the step shader samples between texels for the laplacian's diagonal taps.
+    const rdFloat = !!gl.getExtension("EXT_color_buffer_float");
+    const rdI = rdFloat ? gl.RGBA16F : gl.RGBA8, rdT = rdFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    glTex.rd = [
+      createTex(rdI, gl.RGBA, rdT, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(rdI, gl.RGBA, rdT, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.rd = [createFbo(glTex.rd[0]), createFbo(glTex.rd[1])];
     // Per-layer state for multi-layer stacks (see the frame loop / glLayerBeginHeat).
     // Each slot gets its own persistent heat pair (so it retains its own fire/feedback),
     // its own 256×1 palette LUT, so every stacked effect keeps its own colours. The
@@ -4084,6 +4350,8 @@
     resizeTex(glTex.post[1], fw, fh);
     resizeTex(glTex.prev, fw, fh);
     resizeTex(glTex.layer, fw, fh);
+    resizeTex(glTex.rd[0], fw, fh); resizeTex(glTex.rd[1], fw, fh);
+    rdNeedSeed = true;                 // a resized dish is blank — re-seed the culture
     for (let i = 0; i < STACK_MAX; i++) {
       resizeTex(glTex.heatL[i][0], fw, fh);
       resizeTex(glTex.heatL[i][1], fw, fh);
@@ -4634,6 +4902,34 @@
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
     gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
     drawQuad();
+  }
+  // Reaction–diffusion driver: seed the dish on demand, then K Gray–Scott steps
+  // ping-ponging the rd pair. Runs entirely OUTSIDE the heat machinery (its own
+  // textures); the effect's draw calls this and then samples glTex.rd[rdCur] in the
+  // rdshow pass. `rdCur` always names the freshest buffer.
+  let rdCur = 0;
+  function glRDTick(steps, feed, kill) {
+    if (rdNeedSeed) {
+      rdNeedSeed = false;
+      rdSalt = (rdSalt + 1.7) % 100;     // a fresh scatter each (re)seed
+      bindFbo(glFbo.rd[0], fw, fh);
+      gl.useProgram(glProg.rdseed.p);
+      gl.uniform2f(glProg.rdseed.u.uSize, fw, fh);
+      gl.uniform1f(glProg.rdseed.u.uSalt, rdSalt);
+      drawQuad();
+      rdCur = 0;
+    }
+    for (let k = 0; k < steps; k++) {
+      const dst = 1 - rdCur;
+      bindFbo(glFbo.rd[dst], fw, fh);    // never sample the render target
+      gl.useProgram(glProg.rdstep.p);
+      bindTexUnit(0, glTex.rd[rdCur]); gl.uniform1i(glProg.rdstep.u.uPrev, 0);
+      gl.uniform2f(glProg.rdstep.u.uSize, fw, fh);
+      gl.uniform1f(glProg.rdstep.u.uFeed, feed);
+      gl.uniform1f(glProg.rdstep.u.uKill, kill);
+      drawQuad();
+      rdCur = dst;
+    }
   }
   function postPass(name, src, setU) {
     const P = glProg[name];
@@ -5633,6 +5929,199 @@
     }
   }
 
+  // ---- Starfield / hyperspace (shader effect) ----
+  let stDensity = 1.2, stSpeed = 1, stWarp = 0, stTwinkle = 0.8, stTime = 0;
+  function starsSeed(dt) {
+    stTime += dt * stSpeed;
+    return { t: stTime, density: stDensity, warp: stWarp, twinkle: stTwinkle, zoom };
+  }
+  const stH21 = (x, y) => { const px = x * 123.34 % 1, py = y * 456.21 % 1, s = (px < 0 ? px + 1 : px) + (py < 0 ? py + 1 : py); const v = (s + 45.32) * s * 43.7; return v - Math.floor(v); };
+  function starsField(qx, qy, t, dens, tw) {
+    let heat = 0;
+    for (let i = 0; i < 6; i++) {
+      const fi = i / 6;
+      const d = (t * 0.15 + fi) % 1;
+      const sc = (11 + (1.2 - 11) * d) * dens;
+      const px = qx * sc, py = qy * sc;
+      const cx = Math.floor(px), cy = Math.floor(py);
+      if (stH21(cx + fi * 31.7, cy + fi * 31.7) < 0.78) continue;
+      const ox = stH21(cx + fi * 77, cy + fi * 77) - 0.5, oy = stH21(cx + fi * 77 + 9.1, cy + fi * 77 + 9.1) - 0.5;
+      const fx = px - cx - 0.5 - ox * 0.8, fy = py - cy - 0.5 - oy * 0.8;
+      const dist = Math.hypot(fx, fy);
+      const size = 0.04 + 0.12 * d;
+      if (dist > size) continue;
+      const blink = 1 - tw * 0.5 * (0.5 + 0.5 * Math.sin(t * (3 + 5 * stH21(cx + 2.2, cy + 2.2)) + stH21(cx + 5.5, cy + 5.5) * 6.2832));
+      const fade = Math.min(1, d / 0.2) * (d > 0.85 ? (1 - d) / 0.15 : 1);
+      const v = blink * fade * (1 - dist / size) * (0.45 + 0.55 * d);
+      if (v > heat) heat = v;
+    }
+    return heat;
+  }
+  function stars(dt) {                    // CPU fallback — mirrors FS_STARS (base field; one streak tap)
+    const s = starsSeed(dt), ar = fw / fh;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        let heat = starsField(qx, qy, s.t, s.density, s.twinkle);
+        if (s.warp > 0.01) {
+          const k = 1 - s.warp * 0.09;
+          const v = starsField(qx * k, qy * k, s.t, s.density, s.twinkle) * 0.78;
+          if (v > heat) heat = v;
+        }
+        fire[idx++] = Math.min(1, heat) * 255;
+      }
+    }
+  }
+
+  // ---- Aurora borealis (shader effect) ----
+  let auCurtains = 3, auSway = 0.5, auSpeed = 1, auShim = 1, auTime = 0;
+  function auroraSeed(dt) {
+    auTime += dt * auSpeed;
+    return { t: auTime, curtains: auCurtains, sway: auSway, shim: auShim, zoom };
+  }
+  const auH1 = x => { const v = Math.sin(x * 127.1) * 43758.5453; return v - Math.floor(v); };
+  function aurora(dt) {                   // CPU fallback — mirrors FS_AURORA
+    const s = auroraSeed(dt), ar = fw / fh, t = s.t, n = Math.round(s.curtains);
+    const ph = [], cx = [], w = [], rf = [];
+    for (let i = 0; i < n; i++) {
+      ph.push(auH1(i * 17.3) * 6.2832);
+      cx.push(0.75 * Math.sin(t * (0.11 + 0.045 * i) + ph[i]));
+      w.push(0.10 + 0.08 * auH1(i + 3.3));
+      rf.push(1.3 + 0.8 * auH1(i + 8.8));
+    }
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (0.5 - camPY / fh) / s.zoom;   // Y-flip: +y = screen UP, matching FS_AURORA
+        const xx = qx + s.sway * (0.22 * Math.sin(qy * 2.1 + t * 0.5) + 0.13 * Math.sin(qy * 5.3 - t * 0.31));
+        let band = 0;
+        for (let i = 0; i < n; i++) {
+          const d = (xx - cx[i]) / w[i];
+          const rip = 0.65 + 0.35 * Math.sin(t * rf[i] * s.shim + qy * 7 + ph[i]);
+          const v = Math.exp(-d * d) * rip;
+          if (v > band) band = v;
+        }
+        const top = Math.max(0, Math.min(1, (qy + 0.55) / 0.5));
+        const hang = 0.35 + 0.65 * Math.max(0, Math.min(1, (qy + 0.2) / 0.65));
+        const hz = qy + 0.42;
+        fire[idx++] = Math.min(1, band * top * hang * 1.4 + 0.06 * Math.exp(-(hz * hz) / 0.0144)) * 255;
+      }
+    }
+  }
+
+  // ---- Menger sponge flythrough (shader effect) ----
+  let mgDive = 0.5, mgRot = 0.3, mgIter = 4, mgGlow = 0.5, mgZ = 0, mgSpin = 0;
+  function mengerSeed(dt) {
+    mgZ += dt * mgDive;                   // forward through the lattice
+    mgSpin += dt * mgRot * 0.4;           // slow roll
+    return { z: mgZ, spin: mgSpin, iter: mgIter, glow: mgGlow, zoom };
+  }
+  function mengerDEc(px, py, pz, it) {
+    let qx = ((px + 1.5) % 3 + 3) % 3 - 1.5, qy = ((py + 1.5) % 3 + 3) % 3 - 1.5, qz = ((pz + 1.5) % 3 + 3) % 3 - 1.5;
+    let d = Math.max(Math.abs(qx), Math.abs(qy), Math.abs(qz)) - 1.05;
+    let s = 1;
+    for (let i = 0; i < it; i++) {
+      const ax = Math.abs(((qx * s + 1) % 2 + 2) % 2 - 1), ay = Math.abs(((qy * s + 1) % 2 + 2) % 2 - 1), az = Math.abs(((qz * s + 1) % 2 + 2) % 2 - 1);
+      s *= 3;
+      const rx = Math.abs(1 - 3 * ax), ry = Math.abs(1 - 3 * ay), rz = Math.abs(1 - 3 * az);
+      const c = (Math.min(Math.max(rx, ry), Math.max(ry, rz), Math.max(rz, rx)) - 1) / s;
+      if (c > d) d = c;
+    }
+    return d;
+  }
+  function menger(dt) {                   // CPU fallback — coarse like the bulb mirror (3x3 blocks)
+    const s = mengerSeed(dt), ar = fw / fh, it = Math.min(3, Math.round(s.iter));
+    const ca = Math.cos(s.spin), sa = Math.sin(s.spin);
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        const rl = Math.hypot(ux, uy, 1.4);
+        let rdx = ux / rl, rdy = uy / rl;
+        const rdz = 1.4 / rl;
+        const tx = rdx * ca - rdy * sa; rdy = rdx * sa + rdy * ca; rdx = tx;
+        const rox = 0.35 * Math.sin(s.spin * 0.6), roy = 0.28 * Math.cos(s.spin * 0.45), roz = s.z;
+        let t = 0, halo = 9, heat = 0;
+        for (let i = 0; i < 20; i++) {
+          const d = mengerDEc(rox + rdx * t, roy + rdy * t, roz + rdz * t, it);
+          if (d / Math.max(t, 0.25) < halo) halo = d / Math.max(t, 0.25);
+          if (d < 0.004 * Math.max(t, 0.3)) {
+            heat = (0.5 + s.glow * 0.3) * Math.max(0, 1 - t / 8);   // flat shade on the fallback
+            break;
+          }
+          t += d;
+          if (t > 9) break;
+        }
+        if (heat === 0) heat = s.glow * 0.30 * Math.exp(-halo * 40);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
+  // ---- Reaction–diffusion (Gray–Scott) — CPU sim mirror -----------------------------
+  // The GL state lives in glTex.rd (see glRDTick); this is the fallback's own dish: two
+  // Float32 pairs at grid size, stepped a capped number of times per frame (the full K
+  // would eat the frame budget in JS). Look-equivalent: slower evolution, same regimes.
+  // Defaults sit on the MITOSIS point (F 0.037, k 0.065): spots that divide forever, so
+  // the culture never settles. F 0.037 / k 0.060 looked "frozen" in testing — that pair is
+  // the STABLE-soliton regime, a legitimate Gray–Scott endpoint that simply stops moving.
+  let rdFeed = 0.037, rdKill = 0.065, rdSpeedV = 8, rdGain = 1;
+  let rdCpuU = null, rdCpuV = null, rdCpuU2 = null, rdCpuV2 = null, rdCpuSeed = true;
+  function rdSeedFn(dt) {
+    // Steps scale with dt (targeting `Sim speed` steps per 60Hz frame), so the culture
+    // evolves in REAL time whatever the frame rate. This matters beyond fairness: headless
+    // virtual-time runs render very few frames with large clamped dt — a fixed per-frame
+    // step count made the dish look frozen there while time-driven effects sailed on.
+    return { steps: Math.max(1, Math.min(24, Math.round(rdSpeedV * dt * 60))),
+             feed: rdFeed, kill: rdKill, gain: rdGain, zoom };
+  }
+  function rdCPU(s) {
+    const N = fw * fh;
+    if (!rdCpuU || rdCpuU.length !== N) { rdCpuU = new Float32Array(N); rdCpuV = new Float32Array(N); rdCpuU2 = new Float32Array(N); rdCpuV2 = new Float32Array(N); rdCpuSeed = true; }
+    if (rdCpuSeed) {
+      rdCpuSeed = false;
+      rdCpuU.fill(1); rdCpuV.fill(0);
+      for (let i = 0; i < N; i++) {
+        const x = (i % fw) / fw, y = ((i / fw) | 0) / fh;
+        const cx = Math.floor(x * 14), cy = Math.floor(y * 14);
+        if (sunH21(cx + rdSalt, cy + rdSalt) > 0.82) {
+          const fx = x * 14 - cx - 0.5, fy = y * 14 - cy - 0.5;
+          if (Math.hypot(fx, fy) < 0.2) rdCpuV[i] = 0.9;
+        }
+      }
+    }
+    const steps = Math.min(3, s.steps);   // JS budget cap — evolution is slower, not different
+    for (let k = 0; k < steps; k++) {
+      for (let y = 0; y < fh; y++) {
+        for (let x = 0; x < fw; x++) {
+          const i = y * fw + x;
+          const xm = x > 0 ? i - 1 : i, xp = x < fw - 1 ? i + 1 : i;
+          const ym = y > 0 ? i - fw : i, yp = y < fh - 1 ? i + fw : i;
+          const u = rdCpuU[i], v = rdCpuV[i];
+          const lu = 0.2 * (rdCpuU[xm] + rdCpuU[xp] + rdCpuU[ym] + rdCpuU[yp]) - 0.8 * u;
+          const lv = 0.2 * (rdCpuV[xm] + rdCpuV[xp] + rdCpuV[ym] + rdCpuV[yp]) - 0.8 * v;
+          const uvv = u * v * v;
+          rdCpuU2[i] = Math.max(0, Math.min(1, u + lu - uvv + s.feed * (1 - u)));
+          rdCpuV2[i] = Math.max(0, Math.min(1, v + 0.5 * lv + uvv - (s.kill + s.feed) * v));
+        }
+      }
+      let t;
+      t = rdCpuU; rdCpuU = rdCpuU2; rdCpuU2 = t;
+      t = rdCpuV; rdCpuV = rdCpuV2; rdCpuV2 = t;
+    }
+    // display: heat from V, EVERY cell written (zoom/camera skipped on the fallback dish —
+    // the sim grid IS the picture, exactly like the fire sim itself)
+    for (let i = 0; i < fw * fh; i++) fire[i] = Math.min(1, rdCpuV[i] * s.gain * 2.6) * 255;
+  }
+
   // ---- Sun surface: boiling solar granulation via animated Voronoi (shader effect) ----
   // Clock starts at 0, not unix time (float32 uTime — same trap plasmaTime documents).
   // The mirror is look-equivalent, not bit-identical: sites are cached per frame per CELL
@@ -5842,7 +6331,7 @@
       const sk = s.seed + k * 271.13;
       bright.push((0.7 + 0.3 * ltH1(sk + 3.3)) * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)));
       for (let r = 0; r < fh; r++) {
-        const yt = 0.5 - ((r / fh - 0.5) / s.zoom);
+        const yt = (r / fh - 0.5) / s.zoom + 0.5;   // 0 at SCREEN top (buffer row 0 = top)
         ltRow[r * 5 + k] = (ltH1(sk) * 0.9 - 0.45) * ar
           + 0.50 * (ltVn(yt * 3, sk + 7) - 0.5)
           + 0.24 * (ltVn(yt * 9, sk + 17) - 0.5)
@@ -5856,7 +6345,7 @@
         const qx = (camPX / fw - 0.5) * ar / s.zoom;
         const qy = (camPY / fh - 0.5) / s.zoom;
         const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));   // cache is by screen row
-        const yt = 0.5 - qy;
+        const yt = qy + 0.5;                                          // matches FS_STORM's flip
         let heat = 0;
         for (let k = 0; k < n; k++) {
           const d = Math.abs(qx - ltRow[r * 5 + k]);
@@ -6088,6 +6577,81 @@
       if (!(x * x + y * y < 16)) { x = 0.1; y = 0.1; continue; }   // catches NaN too
       if (i <= 20) continue;                                // skip the transient
       plot(cx + x * sx, cy + y * sy, inc, true);            // ADD, not max — density is the picture
+    }
+  }
+
+  // ---- Boids murmuration: a flock stamping heat (point effect) ----------------------
+  // The flock lives ON THE LAYER (L.boids) exactly like L.solids — installBoids points the
+  // global at this layer's birds before it draws, or two flocks would share one sky.
+  // Hash-seeded start (no Math.random), no randomness in flight: per-frame deterministic.
+  // Scatter is the value-is-trigger pattern again: a rising Scatter edge (a beat chip
+  // snap, or a hand flick) blasts every bird away from the flock's centroid.
+  let bdCount = 80, bdSpeedV = 1, bdCoh = 1, bdFearV = 0, bdPrev = 0;
+  let bdFlock = null;
+  const bdH = (i, s) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };
+  function ensureBoids(arr, n, salt) {
+    while (arr.length < n) {
+      const i = arr.length;
+      arr.push({ x: 0.15 + 0.7 * bdH(i, salt + 1), y: 0.15 + 0.7 * bdH(i, salt + 2),
+                 vx: (bdH(i, salt + 3) - 0.5) * 0.24, vy: (bdH(i, salt + 4) - 0.5) * 0.24 });
+    }
+    if (arr.length > n) arr.length = n;
+  }
+  function installBoids(L) {
+    L.boids = L.boids || [];
+    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), stack.indexOf(L) + 1);
+    bdFlock = L.boids;
+  }
+  function boidsStamp(xL, xR, yT, yB, n) {
+    const B = bdFlock;
+    if (!B) return;
+    ensureBoids(B, Math.max(2, Math.min(200, Math.round(bdCount))), 1);
+    const dt = 1 / Math.max(30, cfg.burn);
+    const scatter = bdFearV > bdPrev + 0.2;   // rising edge = one blast, however long the decay
+    bdPrev = bdFearV;
+    const N = B.length, base = 0.16 * bdSpeedV;
+    let mx = 0, my = 0;
+    for (const b of B) { mx += b.x; my += b.y; }
+    mx /= N; my /= N;
+    // stride-sampled neighbours: every 3rd bird is plenty for flock shape at these counts
+    for (let i = 0; i < N; i++) {
+      const b = B[i];
+      let ax = 0, ay = 0, cxs = 0, cys = 0, vxs = 0, vys = 0, near = 0;
+      for (let j = i % 3; j < N; j += 3) {
+        if (j === i) continue;
+        const o = B[j];
+        const dx = o.x - b.x, dy = o.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 > 0.045) continue;
+        near++;
+        cxs += o.x; cys += o.y; vxs += o.vx; vys += o.vy;
+        if (d2 < 0.0016) { const k = 0.0016 / Math.max(d2, 1e-5); ax -= dx * k; ay -= dy * k; }   // separation
+      }
+      if (near > 0) {
+        ax += ((cxs / near - b.x) * 1.4 * bdCoh + (vxs / near - b.vx) * 1.1);   // cohesion + alignment
+        ay += ((cys / near - b.y) * 1.4 * bdCoh + (vys / near - b.vy) * 1.1);
+      }
+      ax += (0.5 - b.x) * 0.35; ay += (0.5 - b.y) * 0.35;                       // soft box pull
+      if (scatter) { ax += (b.x - mx) * 60; ay += (b.y - my) * 60; }            // the blast
+      b.vx += ax * dt; b.vy += ay * dt;
+      const sp = Math.hypot(b.vx, b.vy) || 1e-5;
+      const want = base * (1 + bdFearV * 1.5);                                  // fear also means haste
+      const k = sp > want * 1.6 ? (want * 1.6) / sp : sp < want * 0.5 ? (want * 0.5) / sp : 1;
+      b.vx *= k; b.vy *= k;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < 0.02) { b.x = 0.02; b.vx = Math.abs(b.vx); }
+      if (b.x > 0.98) { b.x = 0.98; b.vx = -Math.abs(b.vx); }
+      if (b.y < 0.02) { b.y = 0.02; b.vy = Math.abs(b.vy); }
+      if (b.y > 0.98) { b.y = 0.98; b.vy = -Math.abs(b.vy); }
+    }
+    // stamp: each bird is a short streak along its velocity — with the shipped Fade the
+    // streaks become the murmuration's smoky trails
+    const w = xR - xL, h = yB - yT;
+    for (const b of B) {
+      const sp = Math.hypot(b.vx, b.vy) || 1e-5;
+      const tx = b.vx / sp, ty = b.vy / sp;
+      for (let k = 0; k < 4; k++) {
+        plot(xL + (b.x - tx * k * 0.006) * w, yT + (b.y - ty * k * 0.006) * h, POINT_HEAT * (1 - k * 0.16));
+      }
     }
   }
 
@@ -7161,6 +7725,26 @@
     { key: "flvar", host: "fx", group: "flames", type: "dual", label: "Variation", valId: "vFlVar", min: 1, max: 6, step: 1, lo: 3, hi: 3, fmt: v => ["", "Sinusoidal", "Spherical", "Swirl", "Horseshoe", "Polar", "Disc"][Math.round(v)] || "?", apply: v => flVar = Math.round(v), durScale: 10 },
     { key: "flmorph", host: "fx", group: "flames", type: "dual", label: "Morph speed", valId: "vFlMorph", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => flMorph = v, durScale: 10 },
     { key: "flglow", host: "fx", group: "flames", type: "dual", label: "Point glow", valId: "vFlGlow", min: 2, max: 120, step: 1, lo: 30, hi: 30, fmt: v => sig3(Math.round(v)), apply: v => flGlow = v, durScale: 10 },
+    { key: "stdensity", host: "fx", group: "stars", type: "dual", label: "Star density", valId: "vStDensity", min: 0.4, max: 3, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => stDensity = v, durScale: 10 },
+    { key: "stspeed", host: "fx", group: "stars", type: "dual", label: "Fly speed", valId: "vStSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => stSpeed = v, durScale: 10 },
+    { key: "stwarp", host: "fx", group: "stars", type: "dual", label: "Warp", valId: "vStWarp", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => stWarp = v, durScale: 10 },
+    { key: "sttwinkle", host: "fx", group: "stars", type: "dual", label: "Twinkle", valId: "vStTwinkle", min: 0, max: 2, step: 0.05, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => stTwinkle = v, durScale: 10 },
+    { key: "aucurtains", host: "fx", group: "aurora", type: "dual", label: "Curtains", valId: "vAuCurtains", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => auCurtains = Math.round(v), durScale: 10 },
+    { key: "ausway", host: "fx", group: "aurora", type: "dual", label: "Sway", valId: "vAuSway", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => auSway = v, durScale: 10 },
+    { key: "auspeed", host: "fx", group: "aurora", type: "dual", label: "Speed", valId: "vAuSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => auSpeed = v, durScale: 10 },
+    { key: "aushimmer", host: "fx", group: "aurora", type: "dual", label: "Shimmer", valId: "vAuShim", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => auShim = v, durScale: 10 },
+    { key: "rdfeed", host: "fx", group: "rd", type: "dual", label: "Feed", valId: "vRdFeed", min: 0.01, max: 0.09, step: 0.001, lo: 0.037, hi: 0.037, fmt: v => sig3(v), apply: v => rdFeed = v, durScale: 10 },
+    { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.065, hi: 0.065, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
+    { key: "rdspeed", host: "fx", group: "rd", type: "dual", label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
+    { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "mgdive", host: "fx", group: "menger", type: "dual", label: "Dive speed", valId: "vMgDive", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => mgDive = v, durScale: 10 },
+    { key: "mgrot", host: "fx", group: "menger", type: "dual", label: "Roll", valId: "vMgRot", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => mgRot = v, durScale: 10 },
+    { key: "mgiter", host: "fx", group: "menger", type: "dual", label: "Detail", valId: "vMgIter", min: 2, max: 5, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => mgIter = Math.round(v), durScale: 10 },
+    { key: "mgglow", host: "fx", group: "menger", type: "dual", label: "Glow", valId: "vMgGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => mgGlow = v, durScale: 10 },
+    { key: "bdcount", host: "fx", group: "boids", type: "dual", label: "Flock", valId: "vBdCount", min: 10, max: 200, step: 5, lo: 80, hi: 80, fmt: v => sig3(Math.round(v)), apply: v => bdCount = Math.round(v), durScale: 10 },
+    { key: "bdspeed", host: "fx", group: "boids", type: "dual", label: "Speed", valId: "vBdSpeed", min: 0.2, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bdSpeedV = v, durScale: 10 },
+    { key: "bdcoh", host: "fx", group: "boids", type: "dual", label: "Cohesion", valId: "vBdCoh", min: 0, max: 2, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bdCoh = v, durScale: 10 },
+    { key: "bdfear", host: "fx", group: "boids", type: "dual", label: "Scatter", valId: "vBdFear", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => bdFearV = v, durScale: 10 },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which
@@ -7217,6 +7801,12 @@
     { key: "cellstates", host: "filter", group: "f_cell", type: "dual", label: "States", valId: "vCellStates", min: 3, max: 24, step: 1, lo: 12, hi: 12, fmt: v => sig3(Math.round(v)), apply: v => cellStates = Math.round(v), durScale: 10 },
     { key: "cellmix", host: "filter", group: "f_cell", type: "dual", label: "Blend", valId: "vCellMix", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cellMix = v, durScale: 10 },
     { key: "cellkeep", host: "filter", group: "f_cell", type: "dual", label: "Lifetime", valId: "vCellKeep", min: 0.85, max: 1, step: 0.002, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cellKeep = v, durScale: 10 },
+    { key: "lenssize", host: "filter", group: "f_lens", type: "dual", label: "Lens size", valId: "vLensSize", min: 0.1, max: 0.5, step: 0.01, lo: 0.28, hi: 0.28, fmt: v => sig3(v), apply: v => lensSize = v, durScale: 10 },
+    { key: "lensmag", host: "filter", group: "f_lens", type: "dual", label: "Magnify", valId: "vLensMag", min: 1, max: 3, step: 0.05, lo: 1.8, hi: 1.8, fmt: v => sig3(v) + "×", apply: v => lensMag = v, durScale: 10 },
+    { key: "lensspeed", host: "filter", group: "f_lens", type: "dual", label: "Wander", valId: "vLensSpeed", min: 0, max: 2, step: 0.05, lo: 0.6, hi: 0.6, fmt: v => sig3(v) + "×", apply: v => lensSpeed = v, durScale: 10 },
+    { key: "drdepth", host: "filter", group: "f_droste", type: "dual", label: "Depth", valId: "vDrDepth", min: 1.3, max: 4, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v), apply: v => drosteDepth = v, durScale: 10 },
+    { key: "drtwist", host: "filter", group: "f_droste", type: "dual", label: "Spiral", valId: "vDrTwist", min: -1.5, max: 1.5, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => drosteTwist = v, durScale: 10 },
+    { key: "kuwrad", host: "filter", group: "f_kuwahara", type: "dual", label: "Brush size", valId: "vKuwRad", min: 1, max: 4, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)) + "px", apply: v => kuwRad = Math.round(v), durScale: 10 },
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
@@ -7845,12 +8435,15 @@
     attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
+    stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
+    boids: "Boids",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
     f_diffuse: "Diffuse", f_echo: "Echo", f_zoomfb: "Zoom feedback", f_swirl: "Swirl",
     f_twist: "Twist", f_wedge: "Wedge fold", f_glitch: "Slice glitch", f_shock: "Shockwave",
     f_pixsort: "Pixel sort", f_cell: "Cellular automaton",
+    f_lens: "Lens bubble", f_droste: "Droste zoom", f_kuwahara: "Oil paint",
     f_halftone: "Halftone", f_thresh: "Solarize", f_chroma: "Chromatic aberration",
     f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
     palette: "Palette", banding: "Banding",
@@ -7991,6 +8584,13 @@
     ["ltPrev", () => ltPrev, v => ltPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
     ["flPhase", () => flPhase, v => flPhase = v],
+    ["stTime", () => stTime, v => stTime = v],
+    ["auTime", () => auTime, v => auTime = v],
+    ["mgZ", () => mgZ, v => mgZ = v],
+    ["mgSpin", () => mgSpin, v => mgSpin = v],
+    // Boids' flock lives on the layer (L.boids, like L.solids) — only the Scatter
+    // rising-edge detector is a scalar that must not be shared between flocks.
+    ["bdPrev", () => bdPrev, v => bdPrev = v],
   ];
   const phaseSnapshot = () => { const o = {}; for (const p of PHASE_VARS) o[p[0]] = p[1](); return o; };
   // Taken once, here, while every clock still holds its declared starting value — a new
@@ -8406,6 +9006,9 @@
     // live on the layer and this points the globals at THIS layer's set before it draws.
     // Without it two Bouncing solids layers would share one set and render as one.
     if (EFFECTS[L.fx].solids) installSolids(L);
+    // Boids follow the identical arrangement: the flock is a list on the layer, not a
+    // scalar clock, so it can't ride PHASE_VARS either.
+    if (EFFECTS[L.fx].boids) installBoids(L);
   }
   // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
   // effect keep separate orbits. The render loop installs each layer's config into the seed
@@ -9134,6 +9737,39 @@
       filters: ["fade", "diffuse"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], flvar: [3, 3], flmorph: [0.3, 0.3], flglow: [30, 30], points: [16000, 16000], fade: [0.975, 0.975], diffuse: [0.8, 0.8], diffkeep: [0.985, 0.985], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
+    { id: "starfield", name: "Starfield", subtitle: "Starfield · hyperspace",
+      help: "A 3D starfield flying past — six parallax depths of hash-placed stars, each twinkling on its own phase. Warp smears every star into a radial streak: arm its L/M/H chips and the kick punches to hyperspace, easing back as the pulse decays. Star density and Fly speed set the traffic, Twinkle the shimmer.",
+      params: ["stdensity", "stspeed", "stwarp", "sttwinkle", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "stars", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = starsSeed(dt); glShaderDraw("stars", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uDensity, s.density); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uTwinkle, s.twinkle); gl.uniform1f(u.uZoom, s.zoom); }); } else stars(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], stdensity: [1.2, 1.2], stspeed: [1, 1], stwarp: [0, 0], sttwinkle: [0.8, 0.8], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "aurora", name: "Aurora", subtitle: "Aurora · northern lights",
+      help: "Curtains of light hanging from the top of the sky, swaying on slow layered waves, each rippling and shimmering on its own phase over a faint horizon glow. Curtains sets how many, Sway how far the whole sky bends, Shimmer how restless the light is. Ice and Electric palettes were made for it; Verdant gives the green aurora.",
+      params: ["aucurtains", "ausway", "auspeed", "aushimmer", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "aurora", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = auroraSeed(dt); glShaderDraw("aurora", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCurtains, s.curtains); gl.uniform1f(u.uSway, s.sway); gl.uniform1f(u.uShim, s.shim); gl.uniform1f(u.uZoom, s.zoom); }); } else aurora(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], aucurtains: [3, 3], ausway: [0.5, 0.5], auspeed: [1, 1], aushimmer: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "reactdiff", name: "Reaction-diffusion", subtitle: "Gray–Scott · living patterns",
+      help: "Two chemicals feeding and killing each other on a dish, forming spots, stripes, coral and mazes that grow and never repeat. Feed and Kill choose the regime — tiny nudges cross into whole new pattern families, so arm Feed's chips and the beat pushes the culture into a new life. Sim speed is how many chemistry steps run per frame; the culture re-seeds every time you switch to the effect. The state is ONE shared dish: two layers of it show the same culture.",
+      params: ["rdfeed", "rdkill", "rdspeed", "rdgain", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "rd", "band"], bakesOwnZoom: true,
+      onEnter: () => { rdNeedSeed = true; rdCpuSeed = true; },
+      draw: dt => { const s = rdSeedFn(dt); if (useGL) { glRDTick(s.steps, s.feed, s.kill); glShaderDraw("rdshow", u => { bindTexUnit(0, glTex.rd[rdCur]); gl.uniform1i(u.uState, 0); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); } else rdCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], rdfeed: [0.037, 0.037], rdkill: [0.065, 0.065], rdspeed: [8, 8], rdgain: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
+    { id: "menger", name: "Menger sponge", subtitle: "Menger · infinite lattice dive",
+      help: "An endless lattice of Menger sponges — the 3D Sierpiński carpet — raymarched while the camera dives forward through the holes with a slow roll. Dive speed is the flight, Detail the fractal depth (and the GPU bill), Glow lights the tunnel. Kin to Sierpiński: this is what its carpet looks like grown into a solid.",
+      params: ["mgdive", "mgrot", "mgiter", "mgglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "menger", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = mengerSeed(dt); glShaderDraw("menger", u => { gl.uniform1f(u.uDive, s.z); gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else menger(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], mgdive: [0.5, 0.5], mgrot: [0.3, 0.3], mgiter: [4, 4], mgglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
+    { id: "boids", name: "Boids", subtitle: "Boids · murmuration",
+      help: "A flock of birds wheeling as one — cohesion, alignment and separation, nothing else, which is the whole magic of boids. Each bird stamps a short streak, and the shipped Fade filter turns the flock into a smoky murmuration. Arm Scatter's L/M/H chips and every beat BLASTS the flock apart from its centre before it regathers; Cohesion sets how tightly it wheels.",
+      params: ["bdcount", "bdspeed", "bdcoh", "bdfear", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "boids"], boids: true,
+      stamp: (xL, xR, yT, yB, n) => boidsStamp(xL, xR, yT, yB, n),
+      bakesOwnZoom: true,
+      filters: ["fade"],
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -9595,6 +10231,22 @@
       help: "The modern glitch: pixels brighter than the threshold smear into streaks along one direction, dark areas stay put. Lower the threshold to melt more of the picture.",
       defaults: { pxthresh: [0.55, 0.55], pxstreak: [0.5, 0.5], pxdir: [0, 0] },
       gl: src => postPass("pixsort", src, u => { gl.uniform1f(u.uThresh, pxThresh); gl.uniform1f(u.uLen, pxStreak); gl.uniform1f(u.uDir, pxDir); }) },
+    { id: "lens", cpuOk: false, name: "Lens bubble", stage: "post", params: ["lenssize", "lensmag", "lensspeed"],
+      help: "A wandering fisheye magnifier drifting over the picture — the classic demo lens. Wander at 0 parks it in the middle.",
+      defaults: { lenssize: [0.28, 0.28], lensmag: [1.8, 1.8], lensspeed: [0.6, 0.6] },
+      gl: src => {
+        const cx = 0.5 + 0.33 * Math.sin(postTime * lensSpeed * 0.7);
+        const cy = 0.5 + 0.30 * Math.cos(postTime * lensSpeed * 0.53);
+        postPass("lens", src, u => { gl.uniform2f(u.uCenter, cx, cy); gl.uniform1f(u.uRad, lensSize); gl.uniform1f(u.uMag, lensMag); });
+      } },
+    { id: "droste", cpuOk: false, name: "Droste zoom", stage: "post", params: ["drdepth", "drtwist"],
+      help: "The picture swallows itself: every ring inward is the whole image again, Depth times smaller, crawling endlessly toward the centre. Spiral shears the rings into a vortex — try it over Wedge fold.",
+      defaults: { drdepth: [2, 2], drtwist: [0.5, 0.5] },
+      gl: src => postPass("droste", src, u => { gl.uniform1f(u.uDepth, drosteDepth); gl.uniform1f(u.uTwist, drosteTwist); gl.uniform1f(u.uTime, postTime); }) },
+    { id: "kuwahara", cpuOk: false, name: "Oil paint", stage: "post", params: ["kuwrad"],
+      help: "Kuwahara filtering: each pixel takes the calmest neighbourhood's average, flattening texture while keeping edges — the screen-print / oil-paint look.",
+      defaults: { kuwrad: [3, 3] },
+      gl: src => postPass("kuwahara", src, u => gl.uniform1f(u.uRad, kuwRad)) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
     // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own
@@ -14797,6 +15449,26 @@
       { n: "Variation", w: "flames", t: "Fractal flames only — the nonlinear fold applied to every step of the chaos game: Sinusoidal, Spherical, Swirl, Horseshoe, Polar or Disc. Each is a different family of shapes; Spherical and Swirl are the classic flame looks." },
       { n: "Morph speed", w: "flames", t: "Fractal flames only — how fast the underlying maps' coefficients orbit, morphing the flame through its family of shapes. 0 freezes the form." },
       { n: "Point glow", w: "flames", t: "Fractal flames only — how much heat every landing point ADDS. Flames accumulate density instead of stamping a fixed heat, so this sets how quickly the dense heart burns toward white." },
+      { n: "Star density", w: "stars", t: "Starfield only — how thick the star traffic is across all six parallax depths." },
+      { n: "Fly speed", w: "stars", t: "Starfield only — how fast you fly through the field. 0 parks the ship; the stars just twinkle." },
+      { n: "Warp", w: "stars", t: "Starfield only — hyperspace: every star smears into a radial streak. Arm its L/M/H chips and the kick punches to warp, easing back as the pulse decays." },
+      { n: "Twinkle", w: "stars", t: "Starfield only — how much the stars shimmer. 0 is a steady field." },
+      { n: "Curtains", w: "aurora", t: "Aurora only — how many light curtains hang in the sky, up to five, each wandering on its own." },
+      { n: "Sway", w: "aurora", t: "Aurora only — how far the whole sky bends the curtains as they hang." },
+      { n: "Speed", w: "aurora", t: "Aurora only — how fast the display moves: the wander, the sway and the shimmer all scale with it." },
+      { n: "Shimmer", w: "aurora", t: "Aurora only — how restless the light inside each curtain is." },
+      { n: "Feed", w: "rd", t: "Reaction-diffusion only — how fast chemical U is replenished. With Kill it chooses the regime: spots, stripes, coral, mazes. Arm its chips and the beat pushes the culture into a new pattern family." },
+      { n: "Kill", w: "rd", t: "Reaction-diffusion only — how fast chemical V dies off. Tiny nudges against Feed cross into whole new pattern families." },
+      { n: "Sim speed", w: "rd", t: "Reaction-diffusion only — chemistry steps per frame. More is faster evolution, not a different pattern." },
+      { n: "Brightness", w: "rd", t: "Reaction-diffusion only — scales the culture up or down the palette ramp." },
+      { n: "Dive speed", w: "menger", t: "Menger sponge only — how fast the camera flies forward through the lattice. 0 hangs in the tunnel." },
+      { n: "Roll", w: "menger", t: "Menger sponge only — the slow barrel roll (and drift) of the dive." },
+      { n: "Detail", w: "menger", t: "Menger sponge only — fractal recursion depth. Each step cubes the holes and multiplies the GPU cost." },
+      { n: "Glow", w: "menger", t: "Menger sponge only — lights the tunnel walls and haloes the near-misses." },
+      { n: "Flock", w: "boids", t: "Boids only — how many birds fly, up to 200." },
+      { n: "Speed", w: "boids", t: "Boids only — how fast the flock flies. Scattering birds also fly faster while Scatter is raised." },
+      { n: "Cohesion", w: "boids", t: "Boids only — how strongly the birds pull toward their neighbours. Low is a loose drift, high a tight wheeling ball." },
+      { n: "Scatter", w: "boids", t: "Boids only — a rising value blasts the flock apart from its centre (the fall regathers it). Arm its L/M/H chips and every beat is a hawk." },
       { n: "Sunspot", w: "sun", t: "Sun surface only — sinks a sunspot into the centre: a near-black core (the umbra) ringed by fine bright and dark filaments radiating outward (the penumbra) that fade into the granulation. 0, the default, is a clean surface; higher values grow the spot. The camera sliders move it off-centre." },
     ],
   };

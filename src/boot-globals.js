@@ -139,6 +139,12 @@
   let shockAmt = 0, shockAmp = 0.06, shockWidth = 0.1;   // Shockwave ring: progress, push, thickness
   let pxThresh = 0.55, pxStreak = 0.5, pxDir = 0;        // Pixel sort
   let cellStates = 12, cellMix = 1, cellKeep = 1;        // Cellular automaton (feedback)
+  let lensSize = 0.28, lensMag = 1.8, lensSpeed = 0.6;   // Lens bubble
+  let drosteDepth = 2, drosteTwist = 0.5;                // Droste zoom
+  let kuwRad = 3;                                        // Kuwahara oil-paint
+  // Reaction–diffusion dish flags: declared here because glResize (an earlier slice than
+  // the effect code) marks the dish for re-seeding when the grid reallocates.
+  let rdNeedSeed = true, rdSalt = 1;
   // Wall time for the post/screen passes that animate on their own (Slice glitch,
   // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
   // so a stubbed-rAF pixel gate stays reproducible.

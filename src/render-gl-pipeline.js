@@ -221,6 +221,72 @@
       float ca = cnt >= 1.0 ? (nxt + 0.5)/uStates : h;
       o = vec4(mix(h, ca, uMix)*uKeep, 0.0, 0.0, 1.0);
     }`;
+    // Lens bubble: a wandering fisheye magnifier — the classic demo "lens". The centre is
+    // computed on the CPU from postTime (a Lissajous wander), so the shader is one branch-
+    // free remap: inside the radius, coordinates compress toward the centre (magnify),
+    // easing to identity at the rim.
+    const FS_LENS = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform vec2 uCenter; uniform float uRad; uniform float uMag;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x/uSize.y;
+      vec2 d = vUv - uCenter; d.x *= asp;
+      float r = length(d);
+      float inside = smoothstep(uRad, uRad*0.85, r);
+      float m = mix(1.0, 1.0/uMag, inside);           // compress sampling = magnify
+      vec2 p = uCenter + d*m/vec2(asp, 1.0);
+      vec3 col = texture(uSrc, clamp(p, 0.0, 1.0)).rgb;
+      col *= 1.0 + 0.15*smoothstep(uRad, uRad*0.92, r)*step(r, uRad);   // rim glint
+      o = vec4(col, 1.0);
+    }`;
+    // Droste zoom: the picture swallowing itself. Log-polar tiling — radius repeats in
+    // log space (each ring is the whole image again, uDepth smaller), the angle shears
+    // with log(r) for the spiral, and postTime drives the endless inward crawl.
+    const FS_DROSTE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uDepth; uniform float uTwist; uniform float uTime;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x/uSize.y;
+      vec2 d = (vUv - 0.5)*vec2(asp, 1.0);
+      float r = max(length(d), 1e-4);
+      float th = atan(d.y, d.x);
+      float lk = log(uDepth);
+      float lr = fract(log(r)/lk - uTime*0.12);
+      float rr = exp((lr - 1.0)*lk)*0.62;              // back into the visible ring
+      float t2 = th + uTwist*log(r)*1.2;
+      vec2 p = vec2(cos(t2), sin(t2))*rr/vec2(asp, 1.0) + 0.5;
+      o = vec4(texture(uSrc, clamp(p, 0.0, 1.0)).rgb, 1.0);
+    }`;
+    // Kuwahara: 4-quadrant oil-paint. Each quadrant of a (uRad+1)^2 window contributes a
+    // mean and a variance; the pixel takes the mean of the calmest quadrant, flattening
+    // texture while keeping edges — screen-print. Fixed 5x5 quadrant loops = Radius max 4.
+    const FS_KUWAHARA = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uRad;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 px = 1.0/uSize;
+      float R = uRad;
+      vec3 best = texture(uSrc, vUv).rgb;
+      float bestVar = 1e9;
+      for (int q = 0; q < 4; q++){
+        vec2 s = vec2(q == 0 || q == 3 ? 1.0 : -1.0, q < 2 ? 1.0 : -1.0);
+        vec3 sum = vec3(0.0); float sum2 = 0.0; float n = 0.0;
+        for (int j = 0; j <= 4; j++)
+        for (int i = 0; i <= 4; i++){
+          if (float(i) > R || float(j) > R) continue;
+          vec3 c = texture(uSrc, clamp(vUv + vec2(float(i), float(j))*s*px, 0.0, 1.0)).rgb;
+          sum += c; sum2 += dot(c, vec3(0.299, 0.587, 0.114))*dot(c, vec3(0.299, 0.587, 0.114)); n += 1.0;
+        }
+        vec3 mean = sum/n;
+        float ml = dot(mean, vec3(0.299, 0.587, 0.114));
+        float va = sum2/n - ml*ml;
+        if (va < bestVar){ bestVar = va; best = mean; }
+      }
+      o = vec4(best, 1.0);
+    }`;
     // Feedback: fade the retained heat toward black each tick (phosphor trails).
     const FS_FADE = `#version 300 es
     precision highp float;
@@ -477,6 +543,12 @@
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
+    glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
+    glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
+    glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uDive", "uSpin", "uIter", "uGlow", "uZoom"]);
+    glProg.rdstep = makeProg(VS_QUAD, FS_RDSTEP, ["uPrev", "uSize", "uFeed", "uKill"]);
+    glProg.rdseed = makeProg(VS_QUAD, FS_RDSEED, ["uSize", "uSalt"]);
+    glProg.rdshow = camProg(VS_QUAD, FS_RDSHOW, ["uState", "uSize", "uGain", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
@@ -491,6 +563,9 @@
     glProg.shock = makeProg(VS_QUAD, FS_SHOCK, ["uSrc", "uSize", "uAmount", "uAmp", "uWidth"]);
     glProg.pixsort = makeProg(VS_QUAD, FS_PIXSORT, ["uSrc", "uSize", "uThresh", "uLen", "uDir"]);
     glProg.cell = makeProg(VS_QUAD, FS_CELL, ["uHeat", "uSize", "uStates", "uMix", "uKeep"]);
+    glProg.lens = makeProg(VS_QUAD, FS_LENS, ["uSrc", "uSize", "uCenter", "uRad", "uMag"]);
+    glProg.droste = makeProg(VS_QUAD, FS_DROSTE, ["uSrc", "uSize", "uDepth", "uTwist", "uTime"]);
+    glProg.kuwahara = makeProg(VS_QUAD, FS_KUWAHARA, ["uSrc", "uSize", "uRad"]);
     glProg.barrel = makeProg(VS_QUAD, FS_BARREL, ["uSrc", "uAmount"]);
     glProg.scan = makeProg(VS_QUAD, FS_SCAN, ["uSrc", "uAmount", "uCount"]);
     glProg.vignette = makeProg(VS_QUAD, FS_VIGNETTE, ["uSrc", "uSize", "uAmount"]);
@@ -534,6 +609,21 @@
     // another the way two glShaderDraw calls into the shared buffer used to.
     glTex.layer = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glFbo.layer = createFbo(glTex.layer);
+    // Reaction–diffusion state: U/V in .rg of a ping-pong pair at fire-grid size.
+    // A SINGLETON deliberately — two RD layers share one culture and just display it
+    // differently; per-layer dishes would be four more texture pairs for a niche win.
+    // FLOAT (RGBA16F) wherever EXT_color_buffer_float exists — in 8 bits a Gray–Scott
+    // increment under 1/510 rounds to ZERO and the culture freezes at its seed, which is
+    // exactly what the first screenshot showed. The RGBA8 fallback stays for GL stacks
+    // without the extension: degraded (slow, coarse evolution), not broken.
+    // LINEAR: the step shader samples between texels for the laplacian's diagonal taps.
+    const rdFloat = !!gl.getExtension("EXT_color_buffer_float");
+    const rdI = rdFloat ? gl.RGBA16F : gl.RGBA8, rdT = rdFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    glTex.rd = [
+      createTex(rdI, gl.RGBA, rdT, gl.LINEAR, gl.CLAMP_TO_EDGE),
+      createTex(rdI, gl.RGBA, rdT, gl.LINEAR, gl.CLAMP_TO_EDGE),
+    ];
+    glFbo.rd = [createFbo(glTex.rd[0]), createFbo(glTex.rd[1])];
     // Per-layer state for multi-layer stacks (see the frame loop / glLayerBeginHeat).
     // Each slot gets its own persistent heat pair (so it retains its own fire/feedback),
     // its own 256×1 palette LUT, so every stacked effect keeps its own colours. The
@@ -603,6 +693,8 @@
     resizeTex(glTex.post[1], fw, fh);
     resizeTex(glTex.prev, fw, fh);
     resizeTex(glTex.layer, fw, fh);
+    resizeTex(glTex.rd[0], fw, fh); resizeTex(glTex.rd[1], fw, fh);
+    rdNeedSeed = true;                 // a resized dish is blank — re-seed the culture
     for (let i = 0; i < STACK_MAX; i++) {
       resizeTex(glTex.heatL[i][0], fw, fh);
       resizeTex(glTex.heatL[i][1], fw, fh);
@@ -1153,6 +1245,34 @@
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
     gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
     drawQuad();
+  }
+  // Reaction–diffusion driver: seed the dish on demand, then K Gray–Scott steps
+  // ping-ponging the rd pair. Runs entirely OUTSIDE the heat machinery (its own
+  // textures); the effect's draw calls this and then samples glTex.rd[rdCur] in the
+  // rdshow pass. `rdCur` always names the freshest buffer.
+  let rdCur = 0;
+  function glRDTick(steps, feed, kill) {
+    if (rdNeedSeed) {
+      rdNeedSeed = false;
+      rdSalt = (rdSalt + 1.7) % 100;     // a fresh scatter each (re)seed
+      bindFbo(glFbo.rd[0], fw, fh);
+      gl.useProgram(glProg.rdseed.p);
+      gl.uniform2f(glProg.rdseed.u.uSize, fw, fh);
+      gl.uniform1f(glProg.rdseed.u.uSalt, rdSalt);
+      drawQuad();
+      rdCur = 0;
+    }
+    for (let k = 0; k < steps; k++) {
+      const dst = 1 - rdCur;
+      bindFbo(glFbo.rd[dst], fw, fh);    // never sample the render target
+      gl.useProgram(glProg.rdstep.p);
+      bindTexUnit(0, glTex.rd[rdCur]); gl.uniform1i(glProg.rdstep.u.uPrev, 0);
+      gl.uniform2f(glProg.rdstep.u.uSize, fw, fh);
+      gl.uniform1f(glProg.rdstep.u.uFeed, feed);
+      gl.uniform1f(glProg.rdstep.u.uKill, kill);
+      drawQuad();
+      rdCur = dst;
+    }
   }
   function postPass(name, src, setU) {
     const P = glProg[name];

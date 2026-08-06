@@ -160,3 +160,78 @@
     }
   }
 
+  // ---- Boids murmuration: a flock stamping heat (point effect) ----------------------
+  // The flock lives ON THE LAYER (L.boids) exactly like L.solids — installBoids points the
+  // global at this layer's birds before it draws, or two flocks would share one sky.
+  // Hash-seeded start (no Math.random), no randomness in flight: per-frame deterministic.
+  // Scatter is the value-is-trigger pattern again: a rising Scatter edge (a beat chip
+  // snap, or a hand flick) blasts every bird away from the flock's centroid.
+  let bdCount = 80, bdSpeedV = 1, bdCoh = 1, bdFearV = 0, bdPrev = 0;
+  let bdFlock = null;
+  const bdH = (i, s) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };
+  function ensureBoids(arr, n, salt) {
+    while (arr.length < n) {
+      const i = arr.length;
+      arr.push({ x: 0.15 + 0.7 * bdH(i, salt + 1), y: 0.15 + 0.7 * bdH(i, salt + 2),
+                 vx: (bdH(i, salt + 3) - 0.5) * 0.24, vy: (bdH(i, salt + 4) - 0.5) * 0.24 });
+    }
+    if (arr.length > n) arr.length = n;
+  }
+  function installBoids(L) {
+    L.boids = L.boids || [];
+    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), stack.indexOf(L) + 1);
+    bdFlock = L.boids;
+  }
+  function boidsStamp(xL, xR, yT, yB, n) {
+    const B = bdFlock;
+    if (!B) return;
+    ensureBoids(B, Math.max(2, Math.min(200, Math.round(bdCount))), 1);
+    const dt = 1 / Math.max(30, cfg.burn);
+    const scatter = bdFearV > bdPrev + 0.2;   // rising edge = one blast, however long the decay
+    bdPrev = bdFearV;
+    const N = B.length, base = 0.16 * bdSpeedV;
+    let mx = 0, my = 0;
+    for (const b of B) { mx += b.x; my += b.y; }
+    mx /= N; my /= N;
+    // stride-sampled neighbours: every 3rd bird is plenty for flock shape at these counts
+    for (let i = 0; i < N; i++) {
+      const b = B[i];
+      let ax = 0, ay = 0, cxs = 0, cys = 0, vxs = 0, vys = 0, near = 0;
+      for (let j = i % 3; j < N; j += 3) {
+        if (j === i) continue;
+        const o = B[j];
+        const dx = o.x - b.x, dy = o.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 > 0.045) continue;
+        near++;
+        cxs += o.x; cys += o.y; vxs += o.vx; vys += o.vy;
+        if (d2 < 0.0016) { const k = 0.0016 / Math.max(d2, 1e-5); ax -= dx * k; ay -= dy * k; }   // separation
+      }
+      if (near > 0) {
+        ax += ((cxs / near - b.x) * 1.4 * bdCoh + (vxs / near - b.vx) * 1.1);   // cohesion + alignment
+        ay += ((cys / near - b.y) * 1.4 * bdCoh + (vys / near - b.vy) * 1.1);
+      }
+      ax += (0.5 - b.x) * 0.35; ay += (0.5 - b.y) * 0.35;                       // soft box pull
+      if (scatter) { ax += (b.x - mx) * 60; ay += (b.y - my) * 60; }            // the blast
+      b.vx += ax * dt; b.vy += ay * dt;
+      const sp = Math.hypot(b.vx, b.vy) || 1e-5;
+      const want = base * (1 + bdFearV * 1.5);                                  // fear also means haste
+      const k = sp > want * 1.6 ? (want * 1.6) / sp : sp < want * 0.5 ? (want * 0.5) / sp : 1;
+      b.vx *= k; b.vy *= k;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < 0.02) { b.x = 0.02; b.vx = Math.abs(b.vx); }
+      if (b.x > 0.98) { b.x = 0.98; b.vx = -Math.abs(b.vx); }
+      if (b.y < 0.02) { b.y = 0.02; b.vy = Math.abs(b.vy); }
+      if (b.y > 0.98) { b.y = 0.98; b.vy = -Math.abs(b.vy); }
+    }
+    // stamp: each bird is a short streak along its velocity — with the shipped Fade the
+    // streaks become the murmuration's smoky trails
+    const w = xR - xL, h = yB - yT;
+    for (const b of B) {
+      const sp = Math.hypot(b.vx, b.vy) || 1e-5;
+      const tx = b.vx / sp, ty = b.vy / sp;
+      for (let k = 0; k < 4; k++) {
+        plot(xL + (b.x - tx * k * 0.006) * w, yT + (b.y - ty * k * 0.006) * h, POINT_HEAT * (1 - k * 0.16));
+      }
+    }
+  }
+

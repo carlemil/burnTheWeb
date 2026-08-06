@@ -167,6 +167,22 @@
       help: "The modern glitch: pixels brighter than the threshold smear into streaks along one direction, dark areas stay put. Lower the threshold to melt more of the picture.",
       defaults: { pxthresh: [0.55, 0.55], pxstreak: [0.5, 0.5], pxdir: [0, 0] },
       gl: src => postPass("pixsort", src, u => { gl.uniform1f(u.uThresh, pxThresh); gl.uniform1f(u.uLen, pxStreak); gl.uniform1f(u.uDir, pxDir); }) },
+    { id: "lens", cpuOk: false, name: "Lens bubble", stage: "post", params: ["lenssize", "lensmag", "lensspeed"],
+      help: "A wandering fisheye magnifier drifting over the picture — the classic demo lens. Wander at 0 parks it in the middle.",
+      defaults: { lenssize: [0.28, 0.28], lensmag: [1.8, 1.8], lensspeed: [0.6, 0.6] },
+      gl: src => {
+        const cx = 0.5 + 0.33 * Math.sin(postTime * lensSpeed * 0.7);
+        const cy = 0.5 + 0.30 * Math.cos(postTime * lensSpeed * 0.53);
+        postPass("lens", src, u => { gl.uniform2f(u.uCenter, cx, cy); gl.uniform1f(u.uRad, lensSize); gl.uniform1f(u.uMag, lensMag); });
+      } },
+    { id: "droste", cpuOk: false, name: "Droste zoom", stage: "post", params: ["drdepth", "drtwist"],
+      help: "The picture swallows itself: every ring inward is the whole image again, Depth times smaller, crawling endlessly toward the centre. Spiral shears the rings into a vortex — try it over Wedge fold.",
+      defaults: { drdepth: [2, 2], drtwist: [0.5, 0.5] },
+      gl: src => postPass("droste", src, u => { gl.uniform1f(u.uDepth, drosteDepth); gl.uniform1f(u.uTwist, drosteTwist); gl.uniform1f(u.uTime, postTime); }) },
+    { id: "kuwahara", cpuOk: false, name: "Oil paint", stage: "post", params: ["kuwrad"],
+      help: "Kuwahara filtering: each pixel takes the calmest neighbourhood's average, flattening texture while keeping edges — the screen-print / oil-paint look.",
+      defaults: { kuwrad: [3, 3] },
+      gl: src => postPass("kuwahara", src, u => gl.uniform1f(u.uRad, kuwRad)) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
     // per-layer. glBloomPass makes it an ordinary chain entry, so each layer glows on its own

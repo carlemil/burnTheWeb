@@ -1,19 +1,20 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **twenty-seven effects** in four families,
+A GPU demoscene visual: a collection of **thirty-two effects** in four families,
 all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, a de
-  Jong strange attractor, or an Apophysis-style fractal flame stamped as fresh
-  heat into a classic rising-fire buffer.
+  Jong strange attractor, an Apophysis-style fractal flame, or a wheeling boids
+  murmuration stamped as fresh heat into a classic rising-fire buffer.
 - **Shader fractals** — animated Julia, Burning Ship, Multibrot and Newton.
 - **Coordinate / pattern classics** — plasma, tunnel, metaballs, kaleidoscope,
   rotozoomer, moiré, munching squares, copper bars, Kefrens bars, a twister
-  column, Chladni-plate cymatics, a beat-fired lightning storm and a boiling
+  column, Chladni-plate cymatics, a beat-fired lightning storm, a hyperspace
+  starfield, aurora curtains, a living reaction–diffusion dish and a boiling
   sun surface.
 - **Signed-distance shapes** — rotating polygons, a pulsing shape grid,
   concentric ring tunnels, bouncing 2D shapes, a raymarched 3D room of
-  tumbling solids, and a raymarched Mandelbulb.
+  tumbling solids, a raymarched Mandelbulb, and an infinite Menger-sponge dive.
 
 Stack up to four of them into one scene, each with its own palette and filters.
 The whole thing burns, flickers, and morphs continuously — and every effect can
@@ -24,7 +25,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 ## Effects
 
 Every row in the panel's **Layers** box carries an **Effect** chooser, switching that layer
-between twenty-seven visuals that share the same palette, glow and music-reactivity pipeline —
+between thirty-two visuals that share the same palette, glow and music-reactivity pipeline —
 but each is an independent "scene" that remembers its own settings (see Controls). You can
 **stack up to four of them at once**, each with its own palette and filters — see Layers
 below:
@@ -80,6 +81,11 @@ below:
   - **Lightning storm** — bolts tearing down the screen, every strike a new shape. **Rate** fires them on a clock; arm **Strike**'s chips and the beat fires them instead, each bolt decaying over the Trigger duration. **Bolts** strikes several at once, **Afterglow** lights the sky.
   - **Mandelbulb** — the 3D Mandelbrot, raymarched and slowly orbited. **Power** reshapes it (8 is the classic), **Detail** adds fractal depth, **Glow** lights the silhouette and haloes near-misses. The heaviest effect in the app — it wants a real GPU.
   - **Fractal flames** — an Apophysis-style iterated function system: the chaos game bounces between two slowly-morphing maps with a nonlinear **Variation** folding every step, and each landing **adds** heat — dense orbits burn white, wisps stay faint. The only point effect that accumulates density rather than stamping a fixed heat.
+  - **Starfield** — a 3D starfield flying past on six parallax depths. Arm **Warp**'s beat chips and the kick punches to hyperspace, every star smearing into a radial streak.
+  - **Aurora** — curtains of light hanging from the top of the sky, swaying and shimmering over a faint horizon glow. Ice, Electric and Verdant palettes were made for it.
+  - **Reaction-diffusion** — a Gray–Scott dish: two chemicals feeding and killing each other into spots, stripes, coral and mazes that never repeat. **Feed**/**Kill** choose the regime — arm Feed's chips and the beat pushes the culture into a new life. One shared dish; it re-seeds each time you enter the effect.
+  - **Menger sponge** — an endless lattice of Menger sponges (the 3D Sierpiński carpet), raymarched while the camera dives through the holes with a slow roll.
+  - **Boids** — a murmuration: cohesion, alignment and separation, nothing else. Each bird trails a streak through the shipped Fade filter; arm **Scatter**'s chips and every beat is a hawk.
 
 ## How it works
 
@@ -243,7 +249,7 @@ except the shared few listed above.
 | **Background** | What unlit pixels show for this layer: **Palette** (the default — whatever colour the ramp itself defines at index 0), **Black** or **White**. Every built-in ramp starts black, so this only shows up on a custom palette, or on a bottom layer you want to sit on white. *(Per layer.)* |
 | **Heat boost** *(ranged)* | Pushes the whole picture toward the bright end of the palette — a gamma curve on the heat before it is coloured, so faint structure lights up without touching the palette itself. **off** (the default) leaves the ramp exactly as it is. *(Per layer, and animatable / beat-armable like any other slider.)* |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
-| **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm, Mandelbulb) — strength of the light/dark contour-stripe filter over the active palette. |
+| **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm, Mandelbulb, Starfield, Aurora, Reaction-diffusion, Menger sponge) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
 | **Points** | Number of points stamped per frame (100–8000). *(Sierpiński / Tetrahedron / Attractor.)* |
@@ -282,6 +288,11 @@ except the shared few listed above.
 | **Strike / Rate / Bolts / Afterglow** *(ranged)* | Lightning storm only — the strike itself (arm its chips and the beat fires bolts), automatic strikes per second, simultaneous bolts, and sky glow. |
 | **Power / Detail / Orbit speed / Glow** *(ranged)* | Mandelbulb only — the exponent (8 = classic), fractal iterations, camera lap speed, and silhouette/halo lighting. |
 | **Variation / Morph speed / Point glow** *(ranged)* | Fractal flames only — which nonlinear fold shapes the flame, how fast its maps morph, and how much heat each landing point adds. |
+| **Star density / Fly speed / Warp / Twinkle** *(ranged)* | Starfield only — the traffic, the flight, the beat-armable hyperspace smear, and the shimmer. |
+| **Curtains / Sway / Shimmer** *(ranged)* | Aurora only — how many light curtains hang, how far the sky bends them, how restless the light is. |
+| **Feed / Kill / Sim speed** *(ranged)* | Reaction-diffusion only — the Gray–Scott regime knobs (arm Feed's chips to jump regimes on the beat) and how many chemistry steps run per frame. |
+| **Dive speed / Roll** *(ranged)* | Menger sponge only — the flight through the lattice and its slow barrel roll. |
+| **Flock / Cohesion / Scatter** *(ranged)* | Boids only — how many birds, how tightly they wheel, and the beat-armable hawk that blasts them apart. |
 | **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
 
 **☰** opens the application menu (System, Cloud profile, Credits — see above); **M**
@@ -488,6 +499,13 @@ the layers blend together.
 - **Pixel sort** — the modern glitch: pixels brighter than **Threshold** smear into
   **Streak**s along one **Direction**, dark areas stay put. Melts any effect into
   dripping light.
+- **Lens bubble** — a wandering fisheye magnifier drifting over the picture — the classic
+  demo lens. **Wander** at 0 parks it in the middle.
+- **Droste zoom** — the picture swallows itself: every ring inward is the whole image
+  again, **Depth** times smaller, crawling endlessly toward the centre. **Spiral** shears
+  it into a vortex — try it over Wedge fold.
+- **Oil paint** — Kuwahara filtering: texture flattens into brushy patches while edges
+  stay crisp, the screen-print look. **Brush size** sets how painterly.
 - **Shockwave** — a displacement ring rushing out from the centre, shoving the picture
   aside as it passes. The **Shock** slider *is* the ring's position (1 = centre, 0 = gone
   off the edge), so arm its **L/M/H** beat chips and every kick fires a wave — the

@@ -251,6 +251,199 @@
     }
   }
 
+  // ---- Starfield / hyperspace (shader effect) ----
+  let stDensity = 1.2, stSpeed = 1, stWarp = 0, stTwinkle = 0.8, stTime = 0;
+  function starsSeed(dt) {
+    stTime += dt * stSpeed;
+    return { t: stTime, density: stDensity, warp: stWarp, twinkle: stTwinkle, zoom };
+  }
+  const stH21 = (x, y) => { const px = x * 123.34 % 1, py = y * 456.21 % 1, s = (px < 0 ? px + 1 : px) + (py < 0 ? py + 1 : py); const v = (s + 45.32) * s * 43.7; return v - Math.floor(v); };
+  function starsField(qx, qy, t, dens, tw) {
+    let heat = 0;
+    for (let i = 0; i < 6; i++) {
+      const fi = i / 6;
+      const d = (t * 0.15 + fi) % 1;
+      const sc = (11 + (1.2 - 11) * d) * dens;
+      const px = qx * sc, py = qy * sc;
+      const cx = Math.floor(px), cy = Math.floor(py);
+      if (stH21(cx + fi * 31.7, cy + fi * 31.7) < 0.78) continue;
+      const ox = stH21(cx + fi * 77, cy + fi * 77) - 0.5, oy = stH21(cx + fi * 77 + 9.1, cy + fi * 77 + 9.1) - 0.5;
+      const fx = px - cx - 0.5 - ox * 0.8, fy = py - cy - 0.5 - oy * 0.8;
+      const dist = Math.hypot(fx, fy);
+      const size = 0.04 + 0.12 * d;
+      if (dist > size) continue;
+      const blink = 1 - tw * 0.5 * (0.5 + 0.5 * Math.sin(t * (3 + 5 * stH21(cx + 2.2, cy + 2.2)) + stH21(cx + 5.5, cy + 5.5) * 6.2832));
+      const fade = Math.min(1, d / 0.2) * (d > 0.85 ? (1 - d) / 0.15 : 1);
+      const v = blink * fade * (1 - dist / size) * (0.45 + 0.55 * d);
+      if (v > heat) heat = v;
+    }
+    return heat;
+  }
+  function stars(dt) {                    // CPU fallback — mirrors FS_STARS (base field; one streak tap)
+    const s = starsSeed(dt), ar = fw / fh;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        let heat = starsField(qx, qy, s.t, s.density, s.twinkle);
+        if (s.warp > 0.01) {
+          const k = 1 - s.warp * 0.09;
+          const v = starsField(qx * k, qy * k, s.t, s.density, s.twinkle) * 0.78;
+          if (v > heat) heat = v;
+        }
+        fire[idx++] = Math.min(1, heat) * 255;
+      }
+    }
+  }
+
+  // ---- Aurora borealis (shader effect) ----
+  let auCurtains = 3, auSway = 0.5, auSpeed = 1, auShim = 1, auTime = 0;
+  function auroraSeed(dt) {
+    auTime += dt * auSpeed;
+    return { t: auTime, curtains: auCurtains, sway: auSway, shim: auShim, zoom };
+  }
+  const auH1 = x => { const v = Math.sin(x * 127.1) * 43758.5453; return v - Math.floor(v); };
+  function aurora(dt) {                   // CPU fallback — mirrors FS_AURORA
+    const s = auroraSeed(dt), ar = fw / fh, t = s.t, n = Math.round(s.curtains);
+    const ph = [], cx = [], w = [], rf = [];
+    for (let i = 0; i < n; i++) {
+      ph.push(auH1(i * 17.3) * 6.2832);
+      cx.push(0.75 * Math.sin(t * (0.11 + 0.045 * i) + ph[i]));
+      w.push(0.10 + 0.08 * auH1(i + 3.3));
+      rf.push(1.3 + 0.8 * auH1(i + 8.8));
+    }
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const qy = (0.5 - camPY / fh) / s.zoom;   // Y-flip: +y = screen UP, matching FS_AURORA
+        const xx = qx + s.sway * (0.22 * Math.sin(qy * 2.1 + t * 0.5) + 0.13 * Math.sin(qy * 5.3 - t * 0.31));
+        let band = 0;
+        for (let i = 0; i < n; i++) {
+          const d = (xx - cx[i]) / w[i];
+          const rip = 0.65 + 0.35 * Math.sin(t * rf[i] * s.shim + qy * 7 + ph[i]);
+          const v = Math.exp(-d * d) * rip;
+          if (v > band) band = v;
+        }
+        const top = Math.max(0, Math.min(1, (qy + 0.55) / 0.5));
+        const hang = 0.35 + 0.65 * Math.max(0, Math.min(1, (qy + 0.2) / 0.65));
+        const hz = qy + 0.42;
+        fire[idx++] = Math.min(1, band * top * hang * 1.4 + 0.06 * Math.exp(-(hz * hz) / 0.0144)) * 255;
+      }
+    }
+  }
+
+  // ---- Menger sponge flythrough (shader effect) ----
+  let mgDive = 0.5, mgRot = 0.3, mgIter = 4, mgGlow = 0.5, mgZ = 0, mgSpin = 0;
+  function mengerSeed(dt) {
+    mgZ += dt * mgDive;                   // forward through the lattice
+    mgSpin += dt * mgRot * 0.4;           // slow roll
+    return { z: mgZ, spin: mgSpin, iter: mgIter, glow: mgGlow, zoom };
+  }
+  function mengerDEc(px, py, pz, it) {
+    let qx = ((px + 1.5) % 3 + 3) % 3 - 1.5, qy = ((py + 1.5) % 3 + 3) % 3 - 1.5, qz = ((pz + 1.5) % 3 + 3) % 3 - 1.5;
+    let d = Math.max(Math.abs(qx), Math.abs(qy), Math.abs(qz)) - 1.05;
+    let s = 1;
+    for (let i = 0; i < it; i++) {
+      const ax = Math.abs(((qx * s + 1) % 2 + 2) % 2 - 1), ay = Math.abs(((qy * s + 1) % 2 + 2) % 2 - 1), az = Math.abs(((qz * s + 1) % 2 + 2) % 2 - 1);
+      s *= 3;
+      const rx = Math.abs(1 - 3 * ax), ry = Math.abs(1 - 3 * ay), rz = Math.abs(1 - 3 * az);
+      const c = (Math.min(Math.max(rx, ry), Math.max(ry, rz), Math.max(rz, rx)) - 1) / s;
+      if (c > d) d = c;
+    }
+    return d;
+  }
+  function menger(dt) {                   // CPU fallback — coarse like the bulb mirror (3x3 blocks)
+    const s = mengerSeed(dt), ar = fw / fh, it = Math.min(3, Math.round(s.iter));
+    const ca = Math.cos(s.spin), sa = Math.sin(s.spin);
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        const rl = Math.hypot(ux, uy, 1.4);
+        let rdx = ux / rl, rdy = uy / rl;
+        const rdz = 1.4 / rl;
+        const tx = rdx * ca - rdy * sa; rdy = rdx * sa + rdy * ca; rdx = tx;
+        const rox = 0.35 * Math.sin(s.spin * 0.6), roy = 0.28 * Math.cos(s.spin * 0.45), roz = s.z;
+        let t = 0, halo = 9, heat = 0;
+        for (let i = 0; i < 20; i++) {
+          const d = mengerDEc(rox + rdx * t, roy + rdy * t, roz + rdz * t, it);
+          if (d / Math.max(t, 0.25) < halo) halo = d / Math.max(t, 0.25);
+          if (d < 0.004 * Math.max(t, 0.3)) {
+            heat = (0.5 + s.glow * 0.3) * Math.max(0, 1 - t / 8);   // flat shade on the fallback
+            break;
+          }
+          t += d;
+          if (t > 9) break;
+        }
+        if (heat === 0) heat = s.glow * 0.30 * Math.exp(-halo * 40);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
+  // ---- Reaction–diffusion (Gray–Scott) — CPU sim mirror -----------------------------
+  // The GL state lives in glTex.rd (see glRDTick); this is the fallback's own dish: two
+  // Float32 pairs at grid size, stepped a capped number of times per frame (the full K
+  // would eat the frame budget in JS). Look-equivalent: slower evolution, same regimes.
+  // Defaults sit on the MITOSIS point (F 0.037, k 0.065): spots that divide forever, so
+  // the culture never settles. F 0.037 / k 0.060 looked "frozen" in testing — that pair is
+  // the STABLE-soliton regime, a legitimate Gray–Scott endpoint that simply stops moving.
+  let rdFeed = 0.037, rdKill = 0.065, rdSpeedV = 8, rdGain = 1;
+  let rdCpuU = null, rdCpuV = null, rdCpuU2 = null, rdCpuV2 = null, rdCpuSeed = true;
+  function rdSeedFn(dt) {
+    // Steps scale with dt (targeting `Sim speed` steps per 60Hz frame), so the culture
+    // evolves in REAL time whatever the frame rate. This matters beyond fairness: headless
+    // virtual-time runs render very few frames with large clamped dt — a fixed per-frame
+    // step count made the dish look frozen there while time-driven effects sailed on.
+    return { steps: Math.max(1, Math.min(24, Math.round(rdSpeedV * dt * 60))),
+             feed: rdFeed, kill: rdKill, gain: rdGain, zoom };
+  }
+  function rdCPU(s) {
+    const N = fw * fh;
+    if (!rdCpuU || rdCpuU.length !== N) { rdCpuU = new Float32Array(N); rdCpuV = new Float32Array(N); rdCpuU2 = new Float32Array(N); rdCpuV2 = new Float32Array(N); rdCpuSeed = true; }
+    if (rdCpuSeed) {
+      rdCpuSeed = false;
+      rdCpuU.fill(1); rdCpuV.fill(0);
+      for (let i = 0; i < N; i++) {
+        const x = (i % fw) / fw, y = ((i / fw) | 0) / fh;
+        const cx = Math.floor(x * 14), cy = Math.floor(y * 14);
+        if (sunH21(cx + rdSalt, cy + rdSalt) > 0.82) {
+          const fx = x * 14 - cx - 0.5, fy = y * 14 - cy - 0.5;
+          if (Math.hypot(fx, fy) < 0.2) rdCpuV[i] = 0.9;
+        }
+      }
+    }
+    const steps = Math.min(3, s.steps);   // JS budget cap — evolution is slower, not different
+    for (let k = 0; k < steps; k++) {
+      for (let y = 0; y < fh; y++) {
+        for (let x = 0; x < fw; x++) {
+          const i = y * fw + x;
+          const xm = x > 0 ? i - 1 : i, xp = x < fw - 1 ? i + 1 : i;
+          const ym = y > 0 ? i - fw : i, yp = y < fh - 1 ? i + fw : i;
+          const u = rdCpuU[i], v = rdCpuV[i];
+          const lu = 0.2 * (rdCpuU[xm] + rdCpuU[xp] + rdCpuU[ym] + rdCpuU[yp]) - 0.8 * u;
+          const lv = 0.2 * (rdCpuV[xm] + rdCpuV[xp] + rdCpuV[ym] + rdCpuV[yp]) - 0.8 * v;
+          const uvv = u * v * v;
+          rdCpuU2[i] = Math.max(0, Math.min(1, u + lu - uvv + s.feed * (1 - u)));
+          rdCpuV2[i] = Math.max(0, Math.min(1, v + 0.5 * lv + uvv - (s.kill + s.feed) * v));
+        }
+      }
+      let t;
+      t = rdCpuU; rdCpuU = rdCpuU2; rdCpuU2 = t;
+      t = rdCpuV; rdCpuV = rdCpuV2; rdCpuV2 = t;
+    }
+    // display: heat from V, EVERY cell written (zoom/camera skipped on the fallback dish —
+    // the sim grid IS the picture, exactly like the fire sim itself)
+    for (let i = 0; i < fw * fh; i++) fire[i] = Math.min(1, rdCpuV[i] * s.gain * 2.6) * 255;
+  }
+
   // ---- Sun surface: boiling solar granulation via animated Voronoi (shader effect) ----
   // Clock starts at 0, not unix time (float32 uTime — same trap plasmaTime documents).
   // The mirror is look-equivalent, not bit-identical: sites are cached per frame per CELL
@@ -460,7 +653,7 @@
       const sk = s.seed + k * 271.13;
       bright.push((0.7 + 0.3 * ltH1(sk + 3.3)) * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)));
       for (let r = 0; r < fh; r++) {
-        const yt = 0.5 - ((r / fh - 0.5) / s.zoom);
+        const yt = (r / fh - 0.5) / s.zoom + 0.5;   // 0 at SCREEN top (buffer row 0 = top)
         ltRow[r * 5 + k] = (ltH1(sk) * 0.9 - 0.45) * ar
           + 0.50 * (ltVn(yt * 3, sk + 7) - 0.5)
           + 0.24 * (ltVn(yt * 9, sk + 17) - 0.5)
@@ -474,7 +667,7 @@
         const qx = (camPX / fw - 0.5) * ar / s.zoom;
         const qy = (camPY / fh - 0.5) / s.zoom;
         const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));   // cache is by screen row
-        const yt = 0.5 - qy;
+        const yt = qy + 0.5;                                          // matches FS_STORM's flip
         let heat = 0;
         for (let k = 0; k < n; k++) {
           const d = Math.abs(qx - ltRow[r * 5 + k]);

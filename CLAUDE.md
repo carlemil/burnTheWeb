@@ -10,12 +10,14 @@ Self-contained demoscene visual on GitHub Pages (https://carlemil.github.io/burn
 Effects share one palette + glow + banding + beat-reactive pipeline, in four families:
 
 - **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrafyer, Attractor (de Jong),
-  Fractal flames (`flames`, the one **additive** stamper — `stampAdd`).
+  Fractal flames (`flames`, the one **additive** stamper — `stampAdd`), Boids (flock on
+  `L.boids`, the solids arrangement).
 - **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton.
 - **Shader pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching
-  Squares, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm.
+  Squares, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm,
+  Starfield, Aurora, Reaction-diffusion (own state textures — see below).
 - **Shader SDF** — Polygon, Shape grid, Concentric rings, Bouncing shapes (2D), Bouncing
-  solids (3D raymarched), Mandelbulb (3D raymarched).
+  solids (3D raymarched), Mandelbulb, Menger sponge (both 3D raymarched).
 
 Each = one `EFFECTS` descriptor + a `draw(dt)` shader hook or a `stamp(box)` point hook. No
 package manager, test framework or runtime dependency. Keep `README.md` in sync.
@@ -104,6 +106,28 @@ half the steps.
 - Start state uses `sdHash(k, salt, i)`, **not sines**; positions scale to `SOLID_BOX[ax] −
   radius`.
 - `tools/solidsprobe.js` pins containment, quaternion normality, per-layer ownership, spread.
+
+### Effect-shader gotchas (learned the hard way)
+- **The heat buffer is Y-FLIPPED against the screen** — buffer row 0 renders at the screen
+  TOP (proven with a gradient probe; `fire[]` row 0 is the top on the CPU path too). An
+  orientation-sensitive shader (Aurora's hanging curtains, Lightning's sky gradient) must
+  treat `gl_FragCoord.y/fh − 0.5` as pointing DOWN, or negate it at construction. Symmetric
+  effects never notice, which is why nothing older documents this.
+- **Reaction–diffusion owns a state texture pair** (`glTex.rd`, RGBA16F where
+  `EXT_color_buffer_float` exists, RGBA8 fallback — 8-bit sub-1/510 increments round to
+  zero and freeze the culture). `glRDTick` seeds on `rdNeedSeed` (set by `glResize` and the
+  effect's `onEnter`) and ping-pongs `rdCur`. **A SINGLETON deliberately**: two RD layers
+  share one culture. Steps scale with `dt` (target `Sim speed`/60Hz-frame), so evolution is
+  frame-rate independent.
+- **Headless virtual-time runs render FEW real frames with large clamped `dt`** — a
+  per-frame-stepped sim looks frozen there while dt-driven animation sails on. Before
+  diagnosing a freeze, patch the pass in a PROBE COPY (hard zero / pure decay /
+  accumulator writes) — three screenshots separate "pass never lands" from "dynamics
+  converged" from "frame-starved". The RD "freeze" was the third.
+- **Boids follows the solids arrangement exactly**: the flock lives on the layer
+  (`L.boids`), `installStackItem` calls `installBoids(L)` for `boids: true` descriptors,
+  start state is hash-seeded, flight is deterministic. Only `bdPrev` (the Scatter
+  rising-edge detector) rides `PHASE_VARS`.
 
 ### Point-accumulation effects
 Run the fire sim, stamp via `plot()`. `simulate()` dispatches to `stamp(box)` if present
@@ -197,7 +221,8 @@ filter `glBeginHeat` **clears** and the CPU path zeroes `fire`.
   `warpBuf`); `cpuOk: false` here would leave the fallback with nothing carrying heat over.
 
 **post** (Twist, Wedge fold, Slice glitch, Pixelate, Blur/sharpen, Edge, Posterize, Halftone,
-Solarize, Chromatic aberration, Mirror, Shockwave, Pixel sort, Bloom) — read the palette-mapped image. `glPostChain()`
+Solarize, Chromatic aberration, Mirror, Shockwave, Pixel sort, Lens bubble, Droste zoom,
+Oil paint, Bloom) — read the palette-mapped image. `glPostChain()`
 ping-pongs `glTex.post[0]/[1]` and **returns `glTex.native` untouched when empty** (no
 pass-through copy). Bloom has no pass — it is the glow composite under `bloomAmt`/`uBloom`.
 

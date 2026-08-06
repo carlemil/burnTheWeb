@@ -821,7 +821,7 @@
       float fw = uSize.x, fh = uSize.y;
       float ar = fw/fh;
       vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)/uZoom;
-      float yt = 0.5 - q.y;                       // 0 at the top, 1 at the bottom
+      float yt = q.y + 0.5;                       // 0 at the SCREEN top (buffer is Y-flipped)
       float heat = 0.0;
       int n = int(uBolts);
       for (int k = 0; k < 5; k++){
@@ -900,5 +900,175 @@
       }
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Starfield / hyperspace: 6 depth layers of cell-hashed stars flying outward; uWarp
+    // re-samples the whole field at radially squeezed coordinates so every star smears
+    // into a streak — beat-arm Warp and the kick punches to hyperspace. The field lives
+    // in a helper (no gl_FragCoord inside — camProg's rewrite must not touch it).
+    const FS_STARS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uDensity; uniform float uWarp; uniform float uTwinkle; uniform float uZoom;
+    out vec4 o;
+    float h21s(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
+    float field(vec2 q, float t, float dens, float tw){
+      float heat = 0.0;
+      for (int i = 0; i < 6; i++){
+        float fi = float(i)/6.0;
+        float d = fract(t*0.15 + fi);                  // 0 = far, 1 = at the screen
+        float sc = mix(11.0, 1.2, d) * dens;
+        vec2 p = q * sc;
+        vec2 cell = floor(p), f = fract(p) - 0.5;
+        float g = step(0.78, h21s(cell + fi*31.7));    // sparse: most cells hold no star
+        vec2 off = vec2(h21s(cell + fi*77.0), h21s(cell + fi*77.0 + 9.1)) - 0.5;
+        float dist = length(f - off*0.8);
+        float size = mix(0.04, 0.16, d);
+        float blink = 1.0 - tw*0.5*(0.5 + 0.5*sin(t*(3.0 + 5.0*h21s(cell + 2.2)) + h21s(cell + 5.5)*6.2831853));
+        float fade = smoothstep(0.0, 0.2, d)*(1.0 - smoothstep(0.85, 1.0, d));
+        heat = max(heat, g * blink * fade * smoothstep(size, 0.0, dist) * mix(0.45, 1.0, d));
+      }
+      return heat;
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)/uZoom;
+      float heat = field(q, uTime, uDensity, uTwinkle);
+      if (uWarp > 0.01){                               // streaks: the field, radially squeezed
+        for (int k = 1; k <= 5; k++){
+          float fk = float(k);
+          heat = max(heat, field(q*(1.0 - uWarp*0.055*fk), uTime, uDensity, uTwinkle)*(1.0 - fk*0.14));
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Aurora borealis: gaussian light curtains hanging from the top, swaying on layered
+    // sines, each shimmering on its own phase. The palette does the colour — Ice and
+    // Electric were made for this.
+    const FS_AURORA = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCurtains; uniform float uSway; uniform float uShim; uniform float uZoom;
+    out vec4 o;
+    float ah1(float x){ return fract(sin(x*127.1)*43758.5453); }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      // NB the heat buffer is Y-FLIPPED against the screen (row 0 = screen top — proven
+      // with a gradient probe), so +y here means UP only after this negation. Every
+      // orientation-sensitive effect shader needs it; the symmetric ones never notice.
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)/uZoom;
+      float t = uTime;
+      // the whole sky sways; each curtain also wanders on its own
+      float xx = q.x + uSway*(0.22*sin(q.y*2.1 + t*0.5) + 0.13*sin(q.y*5.3 - t*0.31));
+      float band = 0.0;
+      int n = int(uCurtains);
+      for (int i = 0; i < 5; i++){
+        if (i >= n) break;
+        float fi = float(i);
+        float ph = ah1(fi*17.3)*6.2831853;
+        float cx = 0.75*sin(t*(0.11 + 0.045*fi) + ph);
+        float w = 0.10 + 0.08*ah1(fi + 3.3);
+        float d = abs(xx - cx);
+        float rip = 0.65 + 0.35*sin(t*(1.3 + 0.8*ah1(fi + 8.8))*uShim + q.y*7.0 + ph);
+        band = max(band, exp(-pow(d/w, 2.0)) * rip);
+      }
+      // curtains hang from the top and thin out downward, over a faint horizon glow
+      float top = smoothstep(-0.55, -0.05, q.y);
+      float hang = mix(0.35, 1.0, smoothstep(-0.2, 0.45, q.y));
+      float heat = band*top*hang*1.4 + 0.06*exp(-pow((q.y + 0.42)/0.12, 2.0));
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Menger sponge: an infinite periodic lattice of sponges, camera diving forward with
+    // a slow roll. The standard scale-3 fold DE; shading like the bulb (diffuse + depth
+    // fade + proximity halo on a miss).
+    const FS_MENGER = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uDive; uniform float uSpin; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float mengerDE(vec3 p, int it){
+      vec3 q = mod(p + 1.5, 3.0) - 1.5;                 // infinite lattice
+      float d = max(abs(q.x), max(abs(q.y), abs(q.z))) - 1.05;
+      float s = 1.0;
+      for (int i = 0; i < 5; i++){
+        if (i >= it) break;
+        vec3 a = mod(q*s + 1.0, 2.0) - 1.0;
+        s *= 3.0;
+        vec3 r = abs(1.0 - 3.0*abs(a));
+        float da = max(r.x, r.y), db = max(r.y, r.z), dc = max(r.z, r.x);
+        float c = (min(da, min(db, dc)) - 1.0)/s;
+        d = max(d, c);
+      }
+      return d;
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uSpin), sa = sin(uSpin);
+      vec3 ro = vec3(0.35*sin(uSpin*0.6), 0.28*cos(uSpin*0.45), uDive);
+      vec3 rd = normalize(vec3(uv, 1.4));
+      rd = vec3(rd.x*ca - rd.y*sa, rd.x*sa + rd.y*ca, rd.z);   // slow roll
+      int it = int(uIter);
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 64; i++){
+        vec3 p = ro + rd*t;
+        float d = mengerDE(p, it);
+        halo = min(halo, d/max(t, 0.25));
+        if (d < 0.0012*max(t, 0.3)){
+          float e = 0.0015*max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0)*0.5773;
+          vec3 nrm = normalize(h.xyy*mengerDE(p + h.xyy*e, it) + h.yyx*mengerDE(p + h.yyx*e, it)
+                             + h.yxy*mengerDE(p + h.yxy*e, it) + h.xxx*mengerDE(p + h.xxx*e, it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65*dif)*smoothstep(9.0, 1.0, t) + uGlow*0.25*smoothstep(3.0, 0.4, t);
+          break;
+        }
+        t += d;
+        if (t > 9.0) break;
+      }
+      if (heat == 0.0) heat = uGlow*0.30*exp(-halo*40.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Reaction–diffusion (Gray–Scott), three passes. The STATE lives in its own RGBA8
+    // ping-pong pair (glTex.rd) at fire-grid size — U in .r, V in .g — stepped K times a
+    // frame by FS_RDSTEP (vUv space, camera-free: the dish must not rotate), seeded by
+    // FS_RDSEED, and displayed by FS_RDSHOW, which IS the effect shader (camProg, zoom,
+    // heat from V). 8-bit state is the classic shadertoy trade: renderable everywhere,
+    // and Gray–Scott tolerates it at these feed/kill ranges.
+    const FS_RDSTEP = `#version 300 es
+    precision highp float;
+    uniform sampler2D uPrev; uniform vec2 uSize; uniform float uFeed; uniform float uKill;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 px = 1.0/uSize;
+      vec2 c = texture(uPrev, vUv).rg;
+      vec2 lap = -c;
+      lap += 0.20*(texture(uPrev, vUv + vec2(px.x, 0.0)).rg + texture(uPrev, vUv - vec2(px.x, 0.0)).rg
+                 + texture(uPrev, vUv + vec2(0.0, px.y)).rg + texture(uPrev, vUv - vec2(0.0, px.y)).rg);
+      lap += 0.05*(texture(uPrev, vUv + px).rg + texture(uPrev, vUv - px).rg
+                 + texture(uPrev, vUv + vec2(px.x, -px.y)).rg + texture(uPrev, vUv - vec2(px.x, -px.y)).rg);
+      float u = c.x, v = c.y;
+      float uvv = u*v*v;
+      float du = 1.00*lap.x - uvv + uFeed*(1.0 - u);
+      float dv = 0.50*lap.y + uvv - (uKill + uFeed)*v;
+      o = vec4(clamp(u + du, 0.0, 1.0), clamp(v + dv, 0.0, 1.0), 0.0, 1.0);
+    }`;
+    const FS_RDSEED = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uSalt;
+    in vec2 vUv; out vec4 o;
+    float rh(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
+    void main(){
+      // U everywhere; V in a scatter of small blobs so the culture has somewhere to start
+      vec2 cell = floor(vUv*14.0);
+      float g = step(0.82, rh(cell + uSalt));
+      vec2 f = fract(vUv*14.0) - 0.5;
+      float blob = g*smoothstep(0.30, 0.05, length(f));
+      o = vec4(1.0, blob*0.9, 0.0, 1.0);
+    }`;
+    const FS_RDSHOW = `#version 300 es
+    precision highp float;
+    uniform sampler2D uState; uniform vec2 uSize; uniform float uGain; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      vec2 uv = (gl_FragCoord.xy/uSize - 0.5)/uZoom + 0.5;
+      float v = texture(uState, clamp(uv, 0.0, 1.0)).g;
+      o = vec4(clamp(v*uGain*2.6, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
     // heat → palette colour (fire-oriented, no flip yet)

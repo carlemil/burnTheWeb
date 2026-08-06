@@ -404,6 +404,9 @@
     // live on the layer and this points the globals at THIS layer's set before it draws.
     // Without it two Bouncing solids layers would share one set and render as one.
     if (EFFECTS[L.fx].solids) installSolids(L);
+    // Boids follow the identical arrangement: the flock is a list on the layer, not a
+    // scalar clock, so it can't ride PHASE_VARS either.
+    if (EFFECTS[L.fx].boids) installBoids(L);
   }
   // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
   // effect keep separate orbits. The render loop installs each layer's config into the seed
