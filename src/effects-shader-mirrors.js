@@ -368,7 +368,7 @@
         let rdx = ux / rl, rdy = uy / rl;
         const rdz = 1.4 / rl;
         const tx = rdx * ca - rdy * sa; rdy = rdx * sa + rdy * ca; rdx = tx;
-        const rox = 0.35 * Math.sin(s.spin * 0.6), roy = 0.28 * Math.cos(s.spin * 0.45), roz = s.z;
+        const rox = 1.5 + 0.35 * Math.sin(s.spin * 0.6), roy = 1.5 + 0.28 * Math.cos(s.spin * 0.45), roz = s.z;   // the cell-edge street — see FS_MENGER
         let t = 0, halo = 9, heat = 0;
         for (let i = 0; i < 20; i++) {
           const d = mengerDEc(rox + rdx * t, roy + rdy * t, roz + rdz * t, it);

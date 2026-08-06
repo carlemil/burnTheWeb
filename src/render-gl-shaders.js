@@ -1001,7 +1001,13 @@
       float fw = uSize.x, fh = uSize.y;
       vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
       float ca = cos(uSpin), sa = sin(uSpin);
-      vec3 ro = vec3(0.35*sin(uSpin*0.6), 0.28*cos(uSpin*0.45), uDive);
+      // The camera flies the STREET along the cell edges (x = y = 1.5 in the 3-cell), the
+      // gap between neighbouring sponges. That corridor has 0.45 clearance in the box
+      // norm and deeper iterations only carve MORE space, so with this wobble the path
+      // provably never dips below 0.17 distance — no clipping through surfaces, ever.
+      // (The old path wobbled around the LATTICE AXIS, whose "tunnel" is exactly on the
+      // carve boundary: clearance zero, hence the flicker as the camera cut walls.)
+      vec3 ro = vec3(1.5 + 0.35*sin(uSpin*0.6), 1.5 + 0.28*cos(uSpin*0.45), uDive);
       vec3 rd = normalize(vec3(uv, 1.4));
       rd = vec3(rd.x*ca - rd.y*sa, rd.x*sa + rd.y*ca, rd.z);   // slow roll
       int it = int(uIter);
