@@ -29,8 +29,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # Stage ONLY the site files. Uploading `path: .` tars the whole checkout — with the
+      # generated ~1 MB pages committed on every change, the artifact ballooned and each
+      # deploy took 8–10 minutes. The site needs just the two pages (the changelog link
+      # points at github.com, not the Pages site); this keeps deploys under a minute.
+      - name: Stage site
+        run: |
+          mkdir _site
+          cp index.html dev-index.html _site/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
