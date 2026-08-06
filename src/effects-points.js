@@ -117,12 +117,12 @@
   // brighter, which is the log-density look that makes flames flames — MAX stamping
   // flattens it to a silhouette. Uses the seeded chaos PRNG (rnd), so the point
   // sequence is per-frame deterministic like the other point effects.
-  let flVar = 3, flMorph = 0.3, flGlow = 45, flPhase = 0;
+  let flVar = 3, flMorph = 0.3, flGlow = 30, flPhase = 0;
   function flamesStamp(xL, xR, yT, yB, n) {
     rngState = (SEED + 0x51ab) >>> 0;      // per-frame reseed: same point SEQUENCE every tick
     flPhase += flMorph * 2 / cfg.burn;     // coefficient orbit advances per TICK, like nodPhase
     const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
-    const sx = (xR - xL) * 0.30, sy = (yB - yT) * 0.30;
+    const sx = (xR - xL) * 0.26, sy = (yB - yT) * 0.26;
     const p = flPhase, V = Math.round(flVar), inc = flGlow;
     // two affine maps, coefficients breathing about a good-coverage base
     const A = [0.62 + 0.20 * Math.sin(p * 0.71), -0.48 + 0.18 * Math.sin(p * 0.53 + 1.7), 0.30 + 0.12 * Math.sin(p * 0.37 + 4.1),
@@ -130,7 +130,10 @@
     const B = [-0.55 + 0.20 * Math.sin(p * 0.47 + 3.3), 0.52 + 0.18 * Math.cos(p * 0.67 + 1.1), -0.25 + 0.12 * Math.sin(p * 0.31 + 2.2),
                -0.42 + 0.18 * Math.sin(p * 0.59 + 4.8), -0.58 + 0.20 * Math.cos(p * 0.41 + 0.3), -0.15 + 0.14 * Math.cos(p * 0.23 + 3.7)];
     let x = 0.1, y = 0.1;
-    for (let i = 0; i < n; i++) {
+    // 2x the shared Points budget: density IS this effect's picture, and the other point
+    // effects' costs are per-VERTEX where this is a bare orbit step — 2n is still cheap.
+    const N = n * 2;
+    for (let i = 0; i < N; i++) {
       const T = rnd() < 0.5 ? A : B;
       let nx = T[0] * x + T[1] * y + T[2];
       let ny = T[3] * x + T[4] * y + T[5];

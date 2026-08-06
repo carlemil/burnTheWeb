@@ -13,7 +13,9 @@
   const CONTROLS = [
     { key: "showbox", host: "fx", group: "shape", type: "check", label: "Show box" },
     { key: "boxsize", host: "fx", group: "shape", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
-    { key: "points", host: "fx", group: "shape", type: "dual", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(v), apply: v => cfg.points = Math.round(v), durScale: 10 },
+    // max raised 8000 → 24000 for Fractal flames, whose whole picture is point DENSITY —
+    // a range change only: every stored value stays in bounds, RNG_ORIG follows.
+    { key: "points", host: "fx", group: "shape", type: "dual", label: "Points", valId: "vPoints", min: 100, max: 24000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(v), apply: v => cfg.points = Math.round(v), durScale: 10 },
     { key: "layers", host: "fx", group: "shape", type: "layers", label: "Objects", valId: "vLayers" },
     { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
 
@@ -128,7 +130,7 @@
     { key: "bpglow", host: "fx", group: "bulb", type: "dual", label: "Glow", valId: "vBpGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => bpGlow = v, durScale: 10 },
     { key: "flvar", host: "fx", group: "flames", type: "dual", label: "Variation", valId: "vFlVar", min: 1, max: 6, step: 1, lo: 3, hi: 3, fmt: v => ["", "Sinusoidal", "Spherical", "Swirl", "Horseshoe", "Polar", "Disc"][Math.round(v)] || "?", apply: v => flVar = Math.round(v), durScale: 10 },
     { key: "flmorph", host: "fx", group: "flames", type: "dual", label: "Morph speed", valId: "vFlMorph", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => flMorph = v, durScale: 10 },
-    { key: "flglow", host: "fx", group: "flames", type: "dual", label: "Point glow", valId: "vFlGlow", min: 6, max: 120, step: 1, lo: 45, hi: 45, fmt: v => sig3(Math.round(v)), apply: v => flGlow = v, durScale: 10 },
+    { key: "flglow", host: "fx", group: "flames", type: "dual", label: "Point glow", valId: "vFlGlow", min: 2, max: 120, step: 1, lo: 30, hi: 30, fmt: v => sig3(Math.round(v)), apply: v => flGlow = v, durScale: 10 },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which

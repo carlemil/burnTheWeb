@@ -6048,12 +6048,12 @@
   // brighter, which is the log-density look that makes flames flames — MAX stamping
   // flattens it to a silhouette. Uses the seeded chaos PRNG (rnd), so the point
   // sequence is per-frame deterministic like the other point effects.
-  let flVar = 3, flMorph = 0.3, flGlow = 45, flPhase = 0;
+  let flVar = 3, flMorph = 0.3, flGlow = 30, flPhase = 0;
   function flamesStamp(xL, xR, yT, yB, n) {
     rngState = (SEED + 0x51ab) >>> 0;      // per-frame reseed: same point SEQUENCE every tick
     flPhase += flMorph * 2 / cfg.burn;     // coefficient orbit advances per TICK, like nodPhase
     const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
-    const sx = (xR - xL) * 0.30, sy = (yB - yT) * 0.30;
+    const sx = (xR - xL) * 0.26, sy = (yB - yT) * 0.26;
     const p = flPhase, V = Math.round(flVar), inc = flGlow;
     // two affine maps, coefficients breathing about a good-coverage base
     const A = [0.62 + 0.20 * Math.sin(p * 0.71), -0.48 + 0.18 * Math.sin(p * 0.53 + 1.7), 0.30 + 0.12 * Math.sin(p * 0.37 + 4.1),
@@ -6061,7 +6061,10 @@
     const B = [-0.55 + 0.20 * Math.sin(p * 0.47 + 3.3), 0.52 + 0.18 * Math.cos(p * 0.67 + 1.1), -0.25 + 0.12 * Math.sin(p * 0.31 + 2.2),
                -0.42 + 0.18 * Math.sin(p * 0.59 + 4.8), -0.58 + 0.20 * Math.cos(p * 0.41 + 0.3), -0.15 + 0.14 * Math.cos(p * 0.23 + 3.7)];
     let x = 0.1, y = 0.1;
-    for (let i = 0; i < n; i++) {
+    // 2x the shared Points budget: density IS this effect's picture, and the other point
+    // effects' costs are per-VERTEX where this is a bare orbit step — 2n is still cheap.
+    const N = n * 2;
+    for (let i = 0; i < N; i++) {
       const T = rnd() < 0.5 ? A : B;
       let nx = T[0] * x + T[1] * y + T[2];
       let ny = T[3] * x + T[4] * y + T[5];
@@ -7040,7 +7043,9 @@
   const CONTROLS = [
     { key: "showbox", host: "fx", group: "shape", type: "check", label: "Show box" },
     { key: "boxsize", host: "fx", group: "shape", type: "dual", label: "Box size", valId: "vBoxSize", min: 0.8, max: 5, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v) + "×", apply: v => boxSize = v, durScale: 10 },
-    { key: "points", host: "fx", group: "shape", type: "dual", label: "Points", valId: "vPoints", min: 100, max: 8000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(v), apply: v => cfg.points = Math.round(v), durScale: 10 },
+    // max raised 8000 → 24000 for Fractal flames, whose whole picture is point DENSITY —
+    // a range change only: every stored value stays in bounds, RNG_ORIG follows.
+    { key: "points", host: "fx", group: "shape", type: "dual", label: "Points", valId: "vPoints", min: 100, max: 24000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(v), apply: v => cfg.points = Math.round(v), durScale: 10 },
     { key: "layers", host: "fx", group: "shape", type: "layers", label: "Objects", valId: "vLayers" },
     { key: "speed", host: "fx", group: "shape", type: "dual", label: "Drift speed", valId: "vSpeed", min: 1, max: 300, step: 1, lo: 92, hi: 92, fmt: v => sig3(v), apply: v => cfg.speed = v / 100 },
 
@@ -7155,7 +7160,7 @@
     { key: "bpglow", host: "fx", group: "bulb", type: "dual", label: "Glow", valId: "vBpGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => bpGlow = v, durScale: 10 },
     { key: "flvar", host: "fx", group: "flames", type: "dual", label: "Variation", valId: "vFlVar", min: 1, max: 6, step: 1, lo: 3, hi: 3, fmt: v => ["", "Sinusoidal", "Spherical", "Swirl", "Horseshoe", "Polar", "Disc"][Math.round(v)] || "?", apply: v => flVar = Math.round(v), durScale: 10 },
     { key: "flmorph", host: "fx", group: "flames", type: "dual", label: "Morph speed", valId: "vFlMorph", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => flMorph = v, durScale: 10 },
-    { key: "flglow", host: "fx", group: "flames", type: "dual", label: "Point glow", valId: "vFlGlow", min: 6, max: 120, step: 1, lo: 45, hi: 45, fmt: v => sig3(Math.round(v)), apply: v => flGlow = v, durScale: 10 },
+    { key: "flglow", host: "fx", group: "flames", type: "dual", label: "Point glow", valId: "vFlGlow", min: 2, max: 120, step: 1, lo: 30, hi: 30, fmt: v => sig3(Math.round(v)), apply: v => flGlow = v, durScale: 10 },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which
@@ -9122,7 +9127,12 @@
       help: "An iterated function system in the Apophysis / Electric Sheep style: the chaos game bounces between two slowly-morphing affine maps, a nonlinear Variation bends every step, and each landing ADDS heat — so the dense heart of the orbit burns white while the wisps stay faint. Variation picks the fold (Spherical and Swirl are the classics), Morph speed orbits the coefficients, Point glow sets how much each landing adds, and Points the density budget.",
       params: ["flvar", "flmorph", "flglow", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "flames"], bakesOwnZoom: true, stampAdd: true,
       stamp: (xL, xR, yT, yB, n) => flamesStamp(xL, xR, yT, yB, n),
-      defaults: { palcycle: [0, 0], palhold: [0, 0], flvar: [3, 3], flmorph: [0.3, 0.3], flglow: [45, 45], points: [16000, 16000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      // The ONE effect that ships with a filter: additive stamps + Fade retention IS the
+      // fractal-flame render model — density accumulates over ~a second and decays, so the
+      // dense heart of the orbit stacks toward white while the wisps stay faint. Without
+      // retention each tick starts from black and the picture is a sparse dust.
+      filters: ["fade", "diffuse"],
+      defaults: { palcycle: [0, 0], palhold: [0, 0], flvar: [3, 3], flmorph: [0.3, 0.3], flglow: [30, 30], points: [16000, 16000], fade: [0.975, 0.975], diffuse: [0.8, 0.8], diffkeep: [0.985, 0.985], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry

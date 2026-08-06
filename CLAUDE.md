@@ -1096,9 +1096,15 @@ value handed to `fmt` and is **readout only** — the applied value stays a free
   screenshot. Style the result block `position:fixed;inset:0;background:#fff;color:#000`, or it
   renders under the canvas and a red run looks clean.
 
-**Headless CAN run WebGL2 via SwiftShader**: `--enable-unsafe-swiftshader --use-gl=angle
---use-angle=swiftshader`. Assert `gl.getError() === 0` and a console-error count of 0 (a failed
-link is otherwise silent — `useProgram(null)` just draws nothing). Expect ~8–15 fps.
+**Headless runs WebGL2 on the REAL GPU by default — prefer that.** Drop `--disable-gpu` and
+the SwiftShader flags entirely: on this dev machine (RTX 4090) four effect screenshots take
+~12 s where SwiftShader took ~10 min, and heavy raymarchers (Mandelbulb) render fully. Assert
+`gl.getError() === 0` and a console-error count of 0 (a failed link is otherwise silent —
+`useProgram(null)` just draws nothing).
+- **SwiftShader remains the fallback** for machines without a GPU and for the bit-reproducible
+  pixel gates (which were proven under it): `--enable-unsafe-swiftshader --use-gl=angle
+  --use-angle=swiftshader`, ~8–15 fps. The SwiftShader-specific stall traps below apply ONLY
+  under SwiftShader — on hardware GL a four-layer scene renders fine headlessly.
 
 **SwiftShader is why probes HANG** — virtual time only advances when the task queue drains:
 - **Do not add a layer from a probe** (two live layers switch on `renderStackColor` and the frame
