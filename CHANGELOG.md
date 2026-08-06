@@ -14,6 +14,40 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.17.0] — 2026-08-06
+
+### Added
+
+- **Five new effects** — thirty-two in all now:
+  - **Starfield** — a 3D starfield flying past on six parallax depths. Arm **Warp**'s beat
+    chips and the kick punches to hyperspace, every star smearing into a radial streak.
+  - **Aurora** — curtains of light hanging from the top of the sky, swaying and shimmering
+    over a faint horizon glow. Ice, Electric and Verdant palettes were made for it.
+  - **Reaction-diffusion** — a living Gray–Scott dish: two chemicals feeding and killing
+    each other into spots, stripes, coral and mazes that never repeat. **Feed** and
+    **Kill** choose the regime — arm Feed's chips and the beat pushes the culture into a
+    new life. The dish re-seeds each time you enter the effect.
+  - **Menger sponge** — an endless lattice of Menger sponges (the 3D Sierpiński carpet),
+    raymarched while the camera dives through the holes with a slow roll.
+  - **Boids** — a murmuration of up to 200 birds wheeling as one, each trailing a streak.
+    Arm **Scatter**'s chips and every beat is a hawk that blasts the flock apart.
+- **Three new filters**:
+  - **Lens bubble** — a wandering fisheye magnifier, the classic demo lens.
+  - **Droste zoom** — the picture swallows itself, every ring inward the whole image again,
+    crawling endlessly toward the centre. Try it over Wedge fold.
+  - **Oil paint** — Kuwahara filtering: texture flattens into brushy patches while edges
+    stay crisp, the screen-print look.
+
+### Changed
+
+- **Power sweeps continuously on Multibrot and Mandelbulb.** Whole numbers still give the
+  classic sets; the fractions in between morph one form into the next — drift Power's two
+  thumbs apart and the fractal never stops reshaping. (Fractional Multibrots show a
+  straight seam ray where the exponent's branch cut lies — a signature of the maths, not a
+  glitch.) The Multibrot seed now rides a blend of the two neighbouring whole-power
+  cardioids, pushed a little further out at fractional powers so the set keeps its
+  filigree.
+
 ## [1.16.0] — 2026-08-06
 
 ### Added
