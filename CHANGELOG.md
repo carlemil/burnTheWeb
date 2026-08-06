@@ -14,6 +14,45 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.15.0] — 2026-08-06
+
+### Added
+
+- **New effect: Sun surface** — the boiling surface of the sun, as the Inouye Solar
+  Telescope filmed it: a full-screen field of bright convection cells split by narrow dark
+  lanes, each cell drifting, deforming and brightening on its own slow cycle, with tiny
+  bright points sparking in the lanes. **Cell density** sets how fine the boil is, **Churn
+  speed** how fast, **Lane width** how fat the dark cracks are, **Brightness** how deep in
+  the palette it sits — and **Sunspot** sinks a dark spot into the middle, a near-black core
+  ringed by fine filaments radiating out into the granulation (0, the default, is the clean
+  surface). It banding-stripes, beat-reacts, stacks and filters like every other effect, and
+  opens in the Amber palette.
+
+### Fixed
+
+- **Scenes adopted from a share link now survive Save to cloud.** They live in the
+  "Shared with you" collection, which has no source to re-fetch them from — 1.14.0's
+  own-scenes-only filter dropped them from the upload, so a load on another machine lost
+  them. They now save with your own scenes.
+- **Collections you followed before 1.14.0 are no longer lost on your first save.** They are
+  recorded in your follow-list as you save, and a profile load finds their source in the
+  Public scenes listing by name — a source that has gone away is named rather than silently
+  skipped.
+- **Your follow-list can no longer be overwritten by a scene-bundle link** someone sends
+  you; it only ever travels on a load of your own profile. Loading an older copy of your
+  profile with **Merge** now keeps collections you added since, instead of reverting the
+  list wholesale.
+- **A follow-list with no scenes of your own still saves** — following people is worth
+  syncing on its own; before, a collections-only library refused to save at all.
+- **Deleting scenes from a followed collection is honest now**: the confirm says the
+  collection comes back fresh on a profile load, and deleting its last scene stops
+  following it, so an emptied collection stays gone.
+- **A failed collection load no longer leaves a phantom follow** that re-fetched forever
+  and could not be removed.
+- **A popped-out Bloom/Scanlines/Vignette box no longer vanishes** when you select a layer
+  whose filter chain doesn't include that filter — the filter is scene-wide and still
+  running, so its slider stays put. It still hides once no layer runs it.
+
 ## [1.14.1] — 2026-08-05
 
 ### Fixed
