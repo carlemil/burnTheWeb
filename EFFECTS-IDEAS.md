@@ -55,7 +55,7 @@ that are inherently "one animated scalar field" rank above ones that need real R
 
 | Filter | What it is | How it fits |
 |---|---|---|
-| **Shockwave** ★★ | A radial displacement ring from the centre — armed on the kick, the single highest-impact addition for music sync | Post filter (an `FS_HWARP` cousin); Strength beat-armed, Speed, Width |
+| ~~**Shockwave**~~ ✅ | SHIPPED (post-1.15.0): the Shock value IS the ring position, so the beat pulse animates the wave — a trick worth reusing (see Lightning) | Done — `FS_SHOCK`, Shock / Push / Ring width |
 | **Pixel sort** ★ | The modern glitch: streak bright pixels along rows/columns above a threshold | Post filter; Threshold / Direction / Length |
 | **Droste zoom** | Infinite recursive spiral zoom of the image into itself | Post filter; Depth / Twist |
 | **Kuwahara oil-paint** | Painterly flattening — every effect looks screen-printed | Post filter; Radius |
@@ -72,12 +72,23 @@ that are inherently "one animated scalar field" rank above ones that need real R
 - **Datamosh** — no real motion vectors in this pipeline; fakes just look like Swirl.
 - **Voxel terrain (Comanche)** — the heightfield's own colour IS the content; the ramp fights it.
 
-## Recommended build order
+## Recommended build order (updated after Shockwave shipped)
 
-1. **Shockwave filter** — smallest work, biggest beat-sync payoff.
-2. **Kefrens bars + Twister** — two cheap classics.
-3. **Fractal flames** — the point family's flagship; log-density is the only new machinery.
-4. **Mandelbulb** — the high-end headline; the solids infra carries most of it.
-5. **Lightning storm** — beat-triggered strikes show off the trigger system.
-6. **Reaction–diffusion** — the "how does it keep not repeating" effect.
-7. **Cymatics** — cheap, and the most literally music-driven.
+1. **Kefrens bars** (effect) — the cheapest missed classic, an afternoon.
+2. **Twister** (effect) — its natural sibling; the two share nothing but nostalgia value.
+3. **Fractal flames** (effect) — the point family's flagship; log-density tone mapping is
+   the only new pipeline machinery.
+4. **Mandelbulb** (effect) — the high-end headline; the solids raymarch/camera infra
+   carries most of it.
+5. **Lightning storm** (effect) — reuse Shockwave's value-is-progress trick: a beat-armed
+   **Strike** at 1 is a fresh bolt at full brightness, decaying to afterglow over the
+   Trigger duration. No clock needed for the strike itself.
+6. **Cymatics / Chladni** (effect) — cheap, and the most literally music-driven idea here
+   (mode numbers stepping on the beat).
+7. **Pixel sort** (filter) — the strongest remaining filter; the modern glitch look.
+8. **Cellular automaton** (filter, feedback stage) — nearly free, endlessly trippy with
+   the palette pipeline.
+
+Next tier: Aurora (pure beauty, low risk), Starfield/hyperspace (beat-armed Warp),
+Reaction–diffusion (highest wow of the sims, but needs its own ping-pong state texture),
+Lens bubble (cheap classic filter).
