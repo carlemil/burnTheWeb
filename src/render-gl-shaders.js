@@ -975,12 +975,13 @@
       float heat = band*top*hang*1.4 + 0.06*exp(-pow((q.y + 0.42)/0.12, 2.0));
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
-    // Menger sponge: an infinite periodic lattice of sponges, camera diving forward with
-    // a slow roll. The standard scale-3 fold DE; shading like the bulb (diffuse + depth
-    // fade + proximity halo on a miss).
+    // Menger sponge: an infinite periodic lattice of sponges. The camera path is computed
+    // on the CPU (mengerSeed drives the street grid, turning at intersections) and arrives
+    // as a position + heading; the shader only builds the view basis and marches. The
+    // standard scale-3 fold DE; shading like the bulb (diffuse + depth fade + halo).
     const FS_MENGER = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform float uDive; uniform float uSpin; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    uniform vec2 uSize; uniform vec3 uPos; uniform vec3 uFwd; uniform float uRoll; uniform float uIter; uniform float uGlow; uniform float uZoom;
     out vec4 o;
     float mengerDE(vec3 p, int it){
       vec3 q = mod(p + 1.5, 3.0) - 1.5;                 // infinite lattice
@@ -1000,16 +1001,15 @@
     void main(){
       float fw = uSize.x, fh = uSize.y;
       vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
-      float ca = cos(uSpin), sa = sin(uSpin);
-      // The camera flies the STREET along the cell edges (x = y = 1.5 in the 3-cell), the
-      // gap between neighbouring sponges. That corridor has 0.45 clearance in the box
-      // norm and deeper iterations only carve MORE space, so with this wobble the path
-      // provably never dips below 0.17 distance — no clipping through surfaces, ever.
-      // (The old path wobbled around the LATTICE AXIS, whose "tunnel" is exactly on the
-      // carve boundary: clearance zero, hence the flicker as the camera cut walls.)
-      vec3 ro = vec3(1.5 + 0.35*sin(uSpin*0.6), 1.5 + 0.28*cos(uSpin*0.45), uDive);
-      vec3 rd = normalize(vec3(uv, 1.4));
-      rd = vec3(rd.x*ca - rd.y*sa, rd.x*sa + rd.y*ca, rd.z);   // slow roll
+      float cr = cos(uRoll), sr = sin(uRoll);
+      uv = vec2(uv.x*cr - uv.y*sr, uv.x*sr + uv.y*cr);         // screen roll
+      // View basis from the CPU-computed heading. uFwd is horizontal (the street grid is
+      // driven in the y = 1.5 plane), so world-up never degenerates the cross product.
+      vec3 f = normalize(uFwd);
+      vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f));
+      vec3 up = cross(f, r);
+      vec3 ro = uPos;
+      vec3 rd = normalize(r*uv.x + up*uv.y + f*1.4);
       int it = int(uIter);
       float t = 0.0, halo = 9.0, heat = 0.0;
       for (int i = 0; i < 64; i++){

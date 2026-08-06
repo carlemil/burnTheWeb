@@ -994,7 +994,14 @@
     ["flPhase", () => flPhase, v => flPhase = v],
     ["stTime", () => stTime, v => stTime = v],
     ["auTime", () => auTime, v => auTime = v],
-    ["mgZ", () => mgZ, v => mgZ = v],
+    // Menger carries its whole street-drive state — segment progress, segment counter,
+    // current corner, headings — so two sponge layers wander different routes.
+    ["mgS", () => mgS, v => mgS = v],
+    ["mgSeg", () => mgSeg, v => mgSeg = v],
+    ["mgCx", () => mgCx, v => mgCx = v],
+    ["mgCz", () => mgCz, v => mgCz = v],
+    ["mgDirI", () => mgDirI, v => mgDirI = v],
+    ["mgPrevI", () => mgPrevI, v => mgPrevI = v],
     ["mgSpin", () => mgSpin, v => mgSpin = v],
     // Boids' flock lives on the layer (L.boids, like L.solids) — only the Scatter
     // rising-edge detector is a scalar that must not be shared between flocks.
