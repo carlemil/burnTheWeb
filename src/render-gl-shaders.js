@@ -662,4 +662,71 @@
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Sun surface: DKIST-style solar granulation — animated Voronoi cells (bright
+    // convective centres, dark intergranular lanes), slow per-cell churn, tiny bright
+    // points sparking in the lanes, and an optional sunspot (dark umbra + radiating
+    // penumbral filaments) behind uSpot, 0 = none.
+    //
+    // Site jitter is 0.38 about the cell centre, so a site never leaves [0.12, 0.88]
+    // of its own cell — which is what makes the fixed 3x3 neighbourhood sufficient.
+    // The winning cell's id is kept and hashed ONCE after the loop (not per candidate).
+    // Lanes sit at heat ~0.16 and cell centres cap at ~0.85: most palettes are white
+    // at the very top (the POINT_HEAT reasoning), so full range would white the cells
+    // out; only the lane points spark toward 1.0. The uSpot branch is uniform control
+    // flow, so it is legal (and free when off) on every GL — including SwiftShader.
+    // Helpers take p as a parameter and never touch gl_FragCoord (camProg rewrites it).
+    const FS_SUN = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uDensity; uniform float uLane;
+    uniform float uGlow; uniform float uSpot; uniform float uZoom;
+    out vec4 o;
+    float h21(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
+    vec2 h22(vec2 p){ float n = h21(p); return vec2(n, h21(p + n + 17.17)); }
+    vec2 site(vec2 cell, float t){
+      vec2 h = h22(cell);
+      // hashed incommensurate frequencies: each cell boils on its own ~20-40 s cycle
+      return cell + 0.5 + 0.38*vec2(sin(t*(0.18 + 0.14*h.x) + h.x*6.2831853),
+                                    cos(t*(0.15 + 0.13*h.y) + h.y*6.2831853));
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5) / uZoom;
+      float t = uTime;
+      vec2 p = q * uDensity;
+      vec2 g = floor(p);
+      float F1 = 64.0, F2 = 64.0; vec2 id = g;
+      for (int j = -1; j <= 1; j++)
+      for (int i = -1; i <= 1; i++){
+        vec2 cell = g + vec2(float(i), float(j));
+        float d = distance(p, site(cell, t));
+        if (d < F1) { F2 = F1; F1 = d; id = cell; }
+        else if (d < F2) { F2 = d; }
+      }
+      float lane = smoothstep(0.0, uLane, F2 - F1);        // 0 in the lane, 1 inside a cell
+      float hb = h21(id + 7.7);                            // per-cell brightness personality
+      float osc = 0.5 + 0.5*sin(t*(0.20 + 0.20*hb) + hb*6.2831853);   // ~15-30 s convection
+      float fall = 1.0 - 0.30*smoothstep(0.0, 0.8, F1);    // brighter toward the cell centre
+      float ls = 0.94 + 0.06*sin(p.x*0.33 + t*0.05)*sin(p.y*0.29 - t*0.04);
+      float heat = mix(0.16, (0.58 + 0.27*osc)*fall, lane) * ls;
+      // tiny bright points living in the lanes: a finer 3x lattice, hash-thresholded,
+      // each blinking on its own hashed phase — the magnetic bright points in the video
+      vec2 lg = floor(p*3.0);
+      float hp = h21(lg + 3.3);
+      vec2 fp = fract(p*3.0) - (0.25 + 0.5*h22(lg + 9.9));
+      float blink = 0.5 + 0.5*sin(t*(0.3 + 0.5*hp) + hp*6.2831853);
+      heat = max(heat, (1.0 - lane) * step(0.93, hp) * blink * smoothstep(0.11, 0.0, length(fp)));
+      if (uSpot > 0.001) {
+        float ru = uSpot*0.22;                             // umbra radius, screen halves
+        float d = length(q);
+        float ang = atan(q.y, q.x + 1e-5);
+        // penumbra: radial spokes with an angular wobble and a very slow shimmer.
+        // NB 1.0 - smoothstep(lo, hi, d), never smoothstep(hi, lo, d) — reversed
+        // edges are formally undefined in GLSL.
+        float fil = 0.5 + 0.5*sin(ang*44.0 + 2.5*sin(ang*9.0 + t*0.07) + d*uDensity*0.9);
+        float pen = 1.0 - smoothstep(ru*1.05, ru*2.6, d);
+        heat = mix(heat, 0.18 + 0.42*fil, pen*0.9);        // filaments over the granules
+        heat *= smoothstep(ru*0.55, ru, d);                // umbra sinks to ~0
+      }
+      o = vec4(clamp(heat*uGlow, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)

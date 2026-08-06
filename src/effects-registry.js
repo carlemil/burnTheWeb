@@ -134,6 +134,15 @@
       draw: dt => { const s = solidsSeed(dt); if (useGL) glShaderDraw("solids", u => { gl.uniform4fv(u.uPos, s.pos); gl.uniform4fv(u.uQuat, s.quat); gl.uniform1fv(u.uShape, s.shape); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRim, s.rim); gl.uniform1f(u.uZoom, s.zoom); }); else solids(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], sdcount: [5, 5], sdsize: [0.26, 0.26], sdmix: [6, 6], sdspeed: [1, 1], sdspin: [1, 1], sdrim: [0.55, 0.55], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "sunsurface", name: "Sun surface", subtitle: "Sun surface · solar granulation",
+      help: "The boiling surface of the sun, as the Inouye Solar Telescope sees it: a full-screen field of bright convection cells separated by narrow dark lanes, each cell slowly drifting, deforming and brightening as it churns, with tiny bright points sparking in the lanes. Raise Sunspot to sink a dark spot into the middle — a near-black core ringed by fine filaments radiating out into the granulation. Fire-family palettes (Amber, Fire, Ember, Sunburst) give it its colour.",
+      params: ["sunscale", "sunspeed", "sunlane", "sunglow", "sunspot", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "sun", "band"], bakesOwnZoom: true,
+      // Plasma-shaped draw: the clock advances exactly ONCE per frame on either path —
+      // sun(dt) calls sunSeed itself, so nothing may pre-call it before the CPU branch.
+      // (The metaballs-style `const s = seed(dt); ... else mirror(dt)` double-advances.)
+      draw: dt => { if (useGL) { const s = sunSeed(dt); glShaderDraw("sun", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uDensity, s.density); gl.uniform1f(u.uLane, s.lane); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uSpot, s.spot); gl.uniform1f(u.uZoom, s.zoom); }); } else sun(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], sunscale: [14, 14], sunspeed: [1, 1], sunlane: [0.35, 0.35], sunglow: [1, 1], sunspot: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that

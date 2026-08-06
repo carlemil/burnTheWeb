@@ -101,6 +101,11 @@
     { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
     { key: "atd", host: "fx", group: "attractor", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => sig3(v), apply: v => atD = v, durScale: 10 },
     { key: "atjit", host: "fx", group: "attractor", type: "dual", label: "Point jitter", valId: "vAtJit", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "px", apply: v => atJit = v, durScale: 10 },
+    { key: "sunscale", host: "fx", group: "sun", type: "dual", label: "Cell density", valId: "vSunScale", min: 4, max: 32, step: 0.5, lo: 14, hi: 14, fmt: v => sig3(v), apply: v => sunDensity = v, durScale: 10 },
+    { key: "sunspeed", host: "fx", group: "sun", type: "dual", label: "Churn speed", valId: "vSunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sunSpeed = v, durScale: 10 },
+    { key: "sunlane", host: "fx", group: "sun", type: "dual", label: "Lane width", valId: "vSunLane", min: 0.1, max: 1.2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => sunLaneW = v, durScale: 10 },
+    { key: "sunglow", host: "fx", group: "sun", type: "dual", label: "Brightness", valId: "vSunGlow", min: 0.5, max: 1.4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sunGlow = v, durScale: 10 },
+    { key: "sunspot", host: "fx", group: "sun", type: "dual", label: "Sunspot", valId: "vSunSpot", min: 0, max: 1, step: 0.02, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : sig3(v), apply: v => sunSpotAmt = v, durScale: 10 },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which
@@ -774,7 +779,7 @@
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
     attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
-    solids: "Bouncing solids",
+    solids: "Bouncing solids", sun: "Sun surface",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
@@ -909,6 +914,7 @@
     ["coTime", () => coTime, v => coTime = v],
     ["coSpin", () => coSpin, v => coSpin = v],
     ["bnTime", () => bnTime, v => bnTime = v],
+    ["sunTime", () => sunTime, v => sunTime = v],
   ];
   const phaseSnapshot = () => { const o = {}; for (const p of PHASE_VARS) o[p[0]] = p[1](); return o; };
   // Taken once, here, while every clock still holds its declared starting value — a new

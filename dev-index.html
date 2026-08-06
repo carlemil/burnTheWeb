@@ -3236,6 +3236,73 @@
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Sun surface: DKIST-style solar granulation — animated Voronoi cells (bright
+    // convective centres, dark intergranular lanes), slow per-cell churn, tiny bright
+    // points sparking in the lanes, and an optional sunspot (dark umbra + radiating
+    // penumbral filaments) behind uSpot, 0 = none.
+    //
+    // Site jitter is 0.38 about the cell centre, so a site never leaves [0.12, 0.88]
+    // of its own cell — which is what makes the fixed 3x3 neighbourhood sufficient.
+    // The winning cell's id is kept and hashed ONCE after the loop (not per candidate).
+    // Lanes sit at heat ~0.16 and cell centres cap at ~0.85: most palettes are white
+    // at the very top (the POINT_HEAT reasoning), so full range would white the cells
+    // out; only the lane points spark toward 1.0. The uSpot branch is uniform control
+    // flow, so it is legal (and free when off) on every GL — including SwiftShader.
+    // Helpers take p as a parameter and never touch gl_FragCoord (camProg rewrites it).
+    const FS_SUN = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uDensity; uniform float uLane;
+    uniform float uGlow; uniform float uSpot; uniform float uZoom;
+    out vec4 o;
+    float h21(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
+    vec2 h22(vec2 p){ float n = h21(p); return vec2(n, h21(p + n + 17.17)); }
+    vec2 site(vec2 cell, float t){
+      vec2 h = h22(cell);
+      // hashed incommensurate frequencies: each cell boils on its own ~20-40 s cycle
+      return cell + 0.5 + 0.38*vec2(sin(t*(0.18 + 0.14*h.x) + h.x*6.2831853),
+                                    cos(t*(0.15 + 0.13*h.y) + h.y*6.2831853));
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5) / uZoom;
+      float t = uTime;
+      vec2 p = q * uDensity;
+      vec2 g = floor(p);
+      float F1 = 64.0, F2 = 64.0; vec2 id = g;
+      for (int j = -1; j <= 1; j++)
+      for (int i = -1; i <= 1; i++){
+        vec2 cell = g + vec2(float(i), float(j));
+        float d = distance(p, site(cell, t));
+        if (d < F1) { F2 = F1; F1 = d; id = cell; }
+        else if (d < F2) { F2 = d; }
+      }
+      float lane = smoothstep(0.0, uLane, F2 - F1);        // 0 in the lane, 1 inside a cell
+      float hb = h21(id + 7.7);                            // per-cell brightness personality
+      float osc = 0.5 + 0.5*sin(t*(0.20 + 0.20*hb) + hb*6.2831853);   // ~15-30 s convection
+      float fall = 1.0 - 0.30*smoothstep(0.0, 0.8, F1);    // brighter toward the cell centre
+      float ls = 0.94 + 0.06*sin(p.x*0.33 + t*0.05)*sin(p.y*0.29 - t*0.04);
+      float heat = mix(0.16, (0.58 + 0.27*osc)*fall, lane) * ls;
+      // tiny bright points living in the lanes: a finer 3x lattice, hash-thresholded,
+      // each blinking on its own hashed phase — the magnetic bright points in the video
+      vec2 lg = floor(p*3.0);
+      float hp = h21(lg + 3.3);
+      vec2 fp = fract(p*3.0) - (0.25 + 0.5*h22(lg + 9.9));
+      float blink = 0.5 + 0.5*sin(t*(0.3 + 0.5*hp) + hp*6.2831853);
+      heat = max(heat, (1.0 - lane) * step(0.93, hp) * blink * smoothstep(0.11, 0.0, length(fp)));
+      if (uSpot > 0.001) {
+        float ru = uSpot*0.22;                             // umbra radius, screen halves
+        float d = length(q);
+        float ang = atan(q.y, q.x + 1e-5);
+        // penumbra: radial spokes with an angular wobble and a very slow shimmer.
+        // NB 1.0 - smoothstep(lo, hi, d), never smoothstep(hi, lo, d) — reversed
+        // edges are formally undefined in GLSL.
+        float fil = 0.5 + 0.5*sin(ang*44.0 + 2.5*sin(ang*9.0 + t*0.07) + d*uDensity*0.9);
+        float pen = 1.0 - smoothstep(ru*1.05, ru*2.6, d);
+        heat = mix(heat, 0.18 + 0.42*fil, pen*0.9);        // filaments over the granules
+        heat *= smoothstep(ru*0.55, ru, d);                // umbra sinks to ~0
+      }
+      o = vec4(clamp(heat*uGlow, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // heat → palette colour (fire-oriented, no flip yet)
     // ---- post-FX passes. All RGB, all read the palette-mapped image, so they
     // behave as named (an Edge in palette-INDEX space would find edges where there
@@ -3642,6 +3709,7 @@
     glProg.concentric = camProg(VS_QUAD, FS_CONCENTRIC, ["uSize", "uTime", "uSides", "uCount", "uThick", "uSpin", "uZoom"]);
     glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
     glProg.solids = camProg(VS_QUAD, FS_SOLIDS, ["uSize", "uZoom", "uCount", "uRim", "uPos", "uQuat", "uShape"]);
+    glProg.sun = camProg(VS_QUAD, FS_SUN, ["uSize", "uTime", "uDensity", "uLane", "uGlow", "uSpot", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
@@ -5303,6 +5371,85 @@
     }
   }
 
+  // ---- Sun surface: boiling solar granulation via animated Voronoi (shader effect) ----
+  // Clock starts at 0, not unix time (float32 uTime — same trap plasmaTime documents).
+  // The mirror is look-equivalent, not bit-identical: sites are cached per frame per CELL
+  // (a site depends only on its cell id + t), so the trig runs ~once per cell instead of
+  // 9x per pixel — that is what keeps this at Metaballs-mirror cost on the CPU path. The
+  // loop compares squared distances and square-roots only the two winners (monotonic, so
+  // the ordering is identical to the shader's distance()).
+  let sunDensity = 14, sunSpeed = 1, sunLaneW = 0.35, sunGlow = 1, sunSpotAmt = 0, sunTime = 0;
+  function sunSeed(dt) {
+    sunTime += dt * sunSpeed;             // one clock; the sunspot shimmer rides it too
+    return { t: sunTime, density: sunDensity, lane: sunLaneW, glow: sunGlow, spot: sunSpotAmt, zoom };
+  }
+  const sunFract = v => v - Math.floor(v);
+  function sunH21(x, y) {                 // port of the shader's h21 (same constants)
+    const px = sunFract(x * 123.34), py = sunFract(y * 456.21);
+    const s = px * (px + 45.32) + py * (py + 45.32);
+    return sunFract((px + s) * (py + s));
+  }
+  const sunSites = new Map();             // persistent, cleared per frame — no per-frame allocation
+  function sun(dt) {                      // CPU fallback — mirrors FS_SUN
+    const s = sunSeed(dt), ar = fw / fh, t = s.t, dens = s.density, laneW = s.lane, TAU = 6.2831853;
+    const spot = s.spot, ru = spot * 0.22;
+    sunSites.clear();
+    const siteOf = (ci, cj) => {
+      const k = ci * 8192 + cj;           // cell coords are tiny (|c| ~ density) — never collides
+      let v = sunSites.get(k);
+      if (!v) {
+        const hx = sunH21(ci, cj);        // = h22(cell): second hash re-feeds the first
+        const hy = sunH21(ci + hx + 17.17, cj + hx + 17.17);
+        v = [ci + 0.5 + 0.38 * Math.sin(t * (0.18 + 0.14 * hx) + hx * TAU),
+             cj + 0.5 + 0.38 * Math.cos(t * (0.15 + 0.13 * hy) + hy * TAU),
+             sunH21(ci + 7.7, cj + 7.7)]; // per-cell brightness hash, cached with the site
+        sunSites.set(k, v);
+      }
+      return v;
+    };
+    const sstep = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const px = qx * dens, py = qy * dens;
+        const gx = Math.floor(px), gy = Math.floor(py);
+        let f1 = 4096, f2 = 4096, hb = 0;
+        for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+          const st = siteOf(gx + i, gy + j);
+          const dx = px - st[0], dy = py - st[1], d2 = dx * dx + dy * dy;
+          if (d2 < f1) { f2 = f1; f1 = d2; hb = st[2]; } else if (d2 < f2) f2 = d2;
+        }
+        const F1 = Math.sqrt(f1);
+        const lane = sstep((Math.sqrt(f2) - F1) / laneW);
+        const osc = 0.5 + 0.5 * Math.sin(t * (0.20 + 0.20 * hb) + hb * TAU);
+        const fall = 1 - 0.30 * sstep(F1 / 0.8);
+        const ls = 0.94 + 0.06 * Math.sin(px * 0.33 + t * 0.05) * Math.sin(py * 0.29 - t * 0.04);
+        let heat = (0.16 + ((0.58 + 0.27 * osc) * fall - 0.16) * lane) * ls;
+        const lgx = Math.floor(px * 3), lgy = Math.floor(py * 3);
+        const hp = sunH21(lgx + 3.3, lgy + 3.3);
+        if (hp >= 0.93) {                 // bright lane point (the shader's step())
+          const ox = sunH21(lgx + 9.9, lgy + 9.9);
+          const oy = sunH21(lgx + 9.9 + ox + 17.17, lgy + 9.9 + ox + 17.17);
+          const fx = sunFract(px * 3) - (0.25 + 0.5 * ox), fy = sunFract(py * 3) - (0.25 + 0.5 * oy);
+          const blink = 0.5 + 0.5 * Math.sin(t * (0.3 + 0.5 * hp) + hp * TAU);
+          const pts = (1 - lane) * blink * (1 - sstep(Math.hypot(fx, fy) / 0.11));
+          if (pts > heat) heat = pts;
+        }
+        if (spot > 0.001) {
+          const d = Math.hypot(qx, qy), ang = Math.atan2(qy, qx + 1e-5);
+          const fil = 0.5 + 0.5 * Math.sin(ang * 44 + 2.5 * Math.sin(ang * 9 + t * 0.07) + d * dens * 0.9);
+          const pen = 1 - sstep((d - ru * 1.05) / (ru * 1.55));      // = 1 - smoothstep(1.05ru, 2.6ru, d)
+          heat += (0.18 + 0.42 * fil - heat) * pen * 0.9;
+          heat *= sstep((d - ru * 0.55) / (ru * 0.45));              // = smoothstep(0.55ru, ru, d)
+        }
+        fire[idx++] = Math.max(0, Math.min(1, heat * s.glow)) * 255; // EVERY cell written — MAX-merge needs it
+      }
+    }
+  }
+
   // ---- Geometric shape effects (CPU mirrors of FS_POLYGON / FS_SHAPEGRID / FS_CONCENTRIC
   // / FS_BOUNCE). Each *Seed(dt) advances this frame's phase and is called ONCE per frame
   // in the descriptor's draw hook; the mirror TAKES that seed and never re-seeds, so the
@@ -6454,6 +6601,11 @@
     { key: "atc", host: "fx", group: "attractor", type: "dual", label: "Coeff c", valId: "vAtC", min: -3, max: 3, step: 0.01, lo: 2.4, hi: 2.4, fmt: v => sig3(v), apply: v => atC = v, durScale: 10 },
     { key: "atd", host: "fx", group: "attractor", type: "dual", label: "Coeff d", valId: "vAtD", min: -3, max: 3, step: 0.01, lo: -2.1, hi: -2.1, fmt: v => sig3(v), apply: v => atD = v, durScale: 10 },
     { key: "atjit", host: "fx", group: "attractor", type: "dual", label: "Point jitter", valId: "vAtJit", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "px", apply: v => atJit = v, durScale: 10 },
+    { key: "sunscale", host: "fx", group: "sun", type: "dual", label: "Cell density", valId: "vSunScale", min: 4, max: 32, step: 0.5, lo: 14, hi: 14, fmt: v => sig3(v), apply: v => sunDensity = v, durScale: 10 },
+    { key: "sunspeed", host: "fx", group: "sun", type: "dual", label: "Churn speed", valId: "vSunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sunSpeed = v, durScale: 10 },
+    { key: "sunlane", host: "fx", group: "sun", type: "dual", label: "Lane width", valId: "vSunLane", min: 0.1, max: 1.2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => sunLaneW = v, durScale: 10 },
+    { key: "sunglow", host: "fx", group: "sun", type: "dual", label: "Brightness", valId: "vSunGlow", min: 0.5, max: 1.4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sunGlow = v, durScale: 10 },
+    { key: "sunspot", host: "fx", group: "sun", type: "dual", label: "Sunspot", valId: "vSunSpot", min: 0, max: 1, step: 0.02, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : sig3(v), apply: v => sunSpotAmt = v, durScale: 10 },
     { key: "zoom", host: "fx", group: "camera", type: "dual", label: "Zoom", valId: "vZoom", min: 0.5, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => zoom = v, durScale: 10 },
     // Camera rotation, in degrees, shown for every effect. Global on purpose:
     // deliberately absent from every effect's `defaults`, so save/loadState (which
@@ -7127,7 +7279,7 @@
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
     attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
-    solids: "Bouncing solids",
+    solids: "Bouncing solids", sun: "Sun surface",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
@@ -7262,6 +7414,7 @@
     ["coTime", () => coTime, v => coTime = v],
     ["coSpin", () => coSpin, v => coSpin = v],
     ["bnTime", () => bnTime, v => bnTime = v],
+    ["sunTime", () => sunTime, v => sunTime = v],
   ];
   const phaseSnapshot = () => { const o = {}; for (const p of PHASE_VARS) o[p[0]] = p[1](); return o; };
   // Taken once, here, while every clock still holds its declared starting value — a new
@@ -8355,6 +8508,15 @@
       draw: dt => { const s = solidsSeed(dt); if (useGL) glShaderDraw("solids", u => { gl.uniform4fv(u.uPos, s.pos); gl.uniform4fv(u.uQuat, s.quat); gl.uniform1fv(u.uShape, s.shape); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRim, s.rim); gl.uniform1f(u.uZoom, s.zoom); }); else solids(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], sdcount: [5, 5], sdsize: [0.26, 0.26], sdmix: [6, 6], sdspeed: [1, 1], sdspin: [1, 1], sdrim: [0.55, 0.55], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "sunsurface", name: "Sun surface", subtitle: "Sun surface · solar granulation",
+      help: "The boiling surface of the sun, as the Inouye Solar Telescope sees it: a full-screen field of bright convection cells separated by narrow dark lanes, each cell slowly drifting, deforming and brightening as it churns, with tiny bright points sparking in the lanes. Raise Sunspot to sink a dark spot into the middle — a near-black core ringed by fine filaments radiating out into the granulation. Fire-family palettes (Amber, Fire, Ember, Sunburst) give it its colour.",
+      params: ["sunscale", "sunspeed", "sunlane", "sunglow", "sunspot", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "sun", "band"], bakesOwnZoom: true,
+      // Plasma-shaped draw: the clock advances exactly ONCE per frame on either path —
+      // sun(dt) calls sunSeed itself, so nothing may pre-call it before the CPU branch.
+      // (The metaballs-style `const s = seed(dt); ... else mirror(dt)` double-advances.)
+      draw: dt => { if (useGL) { const s = sunSeed(dt); glShaderDraw("sun", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uDensity, s.density); gl.uniform1f(u.uLane, s.lane); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uSpot, s.spot); gl.uniform1f(u.uZoom, s.zoom); }); } else sun(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], sunscale: [14, 14], sunspeed: [1, 1], sunlane: [0.35, 0.35], sunglow: [1, 1], sunspot: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
   ];
   EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
@@ -13938,6 +14100,11 @@
       { n: "Speed", w: "solids", t: "Bouncing solids only — how fast the bodies travel, and so how often they hit a wall. 0 freezes them mid-air, still lit and still spinning down." },
       { n: "Tumble", w: "solids", t: "Bouncing solids only — how fast the bodies rotate. A wall impact converts sideways travel into roll, so an angled clip visibly kicks a body into a tumble; this scales all of that. 0 holds every solid at a fixed orientation." },
       { n: "Edge glow", w: "solids", t: "Bouncing solids only — lights the silhouettes, brightest where a surface turns away from you. Low values give flat shaded solids; high values outline every body in fire and read almost like an X-ray." },
+      { n: "Cell density", w: "sun", t: "Sun surface only — how many convection cells fill the screen. Low values give a few huge granules; high values a fine boiling texture like the telescope footage." },
+      { n: "Churn speed", w: "sun", t: "Sun surface only — how fast the cells boil: drift, deform and brighten or dim. 1× gives each granule a lifetime of roughly 15–30 seconds; 0 freezes the surface." },
+      { n: "Lane width", w: "sun", t: "Sun surface only — how wide and soft the dark lanes between cells are. Low values give hairline cracks; high values fat dark borders that shrink the bright cells." },
+      { n: "Brightness", w: "sun", t: "Sun surface only — scales the whole surface up or down the palette. Lower it to sit the cells deeper in the ramp's oranges; raise it to push the centres toward white heat." },
+      { n: "Sunspot", w: "sun", t: "Sun surface only — sinks a sunspot into the centre: a near-black core (the umbra) ringed by fine bright and dark filaments radiating outward (the penumbra) that fade into the granulation. 0, the default, is a clean surface; higher values grow the spot. The camera sliders move it off-centre." },
     ],
   };
   const helpEl = el("help");

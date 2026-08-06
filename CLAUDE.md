@@ -12,7 +12,7 @@ Effects share one palette + glow + banding + beat-reactive pipeline, in four fam
 - **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrafyer, Attractor (de Jong).
 - **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton.
 - **Shader pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching
-  Squares, Copper Bars.
+  Squares, Copper Bars, Sun surface.
 - **Shader SDF** — Polygon, Shape grid, Concentric rings, Bouncing shapes (2D), Bouncing
   solids (3D raymarched).
 

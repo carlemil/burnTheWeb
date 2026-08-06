@@ -1,13 +1,13 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **twenty effects** in four families,
+A GPU demoscene visual: a collection of **twenty-one effects** in four families,
 all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, or a de
   Jong strange attractor stamped as fresh heat into a classic rising-fire buffer.
 - **Shader fractals** — animated Julia, Burning Ship, Multibrot and Newton.
 - **Coordinate / pattern classics** — plasma, tunnel, metaballs, kaleidoscope,
-  rotozoomer, moiré, munching squares and copper bars.
+  rotozoomer, moiré, munching squares, copper bars and a boiling sun surface.
 - **Signed-distance shapes** — rotating polygons, a pulsing shape grid,
   concentric ring tunnels, bouncing 2D shapes, and a raymarched 3D room of
   tumbling solids.
@@ -21,7 +21,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 ## Effects
 
 Every row in the panel's **Layers** box carries an **Effect** chooser, switching that layer
-between twenty visuals that share the same palette, glow and music-reactivity pipeline —
+between twenty-one visuals that share the same palette, glow and music-reactivity pipeline —
 but each is an independent "scene" that remembers its own settings (see Controls). You can
 **stack up to four of them at once**, each with its own palette and filters — see Layers
 below:
@@ -70,6 +70,7 @@ below:
   - **Concentric rings** — nested polygon contours marching outward from the centre, a hypnotic shape-tunnel (Sides / Ring count / March speed / Spin).
   - **Bouncing shapes** — a handful of circles↔squares drifting and bouncing off the edges, DVD-logo style. Tick a Fade or Fire filter for glowing trails.
   - **Bouncing solids** — the 3D one: solid **spheres, boxes, doughnuts, capsules, octahedra and cylinders** tumbling and ricocheting around an invisible room, raymarched as signed-distance fields and shaded into the palette by surface angle and depth. **Count** sets how many bodies, **Size** how big (it is also the radius they bounce on, so bigger ones turn sooner), **Shape mix** how many different primitives are in play (1 = all spheres, 6 = one of each), **Speed** how fast they travel, **Tumble** how hard they spin — a wall hit turns slide into roll, so an angled clip kicks a body into a tumble — and **Edge glow** lights the silhouettes.
+  - **Sun surface** — the sun's boiling granulation, Inouye-telescope style: a full-screen field of bright convection cells split by narrow dark lanes (animated Voronoi), each cell drifting, deforming and brightening on its own slow cycle, with tiny bright points sparking in the lanes. **Cell density** sets how fine the boil is, **Churn speed** how fast, **Lane width** how fat the dark cracks are, and **Sunspot** sinks a dark umbra ringed by radiating penumbral filaments into the middle (0 = the clean surface from the telescope footage). Amber/Fire/Ember palettes give it its colour.
 
 ## How it works
 
@@ -233,7 +234,7 @@ except the shared few listed above.
 | **Background** | What unlit pixels show for this layer: **Palette** (the default — whatever colour the ramp itself defines at index 0), **Black** or **White**. Every built-in ramp starts black, so this only shows up on a custom palette, or on a bottom layer you want to sit on white. *(Per layer.)* |
 | **Heat boost** *(ranged)* | Pushes the whole picture toward the bright end of the palette — a gamma curve on the heat before it is coloured, so faint structure lights up without touching the palette itself. **off** (the default) leaves the ramp exactly as it is. *(Per layer, and animatable / beat-armable like any other slider.)* |
 | **React to music** | **Capture** system/tab audio (e.g. Spotify) or **Mic**; the audio is split into low/mid/high bands with per-band beat detection (see below). |
-| **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars) — strength of the light/dark contour-stripe filter over the active palette. |
+| **Banding** *(ranged)* | Most shader effects (AnimeJulia, Plasma, Metaballs, Burning Ship, Kaleidoscope, Rotozoomer, Moiré, Newton, Multibrot, Copper Bars, Sun surface) — strength of the light/dark contour-stripe filter over the active palette. |
 | **Band size** *(ranged)* | Shader effects with banding — colours per light (and per dark) run in the banding pattern. |
 | **Darkness** *(ranged)* | Shader effects with banding — how far the banding's dark runs are darkened. |
 | **Points** | Number of points stamped per frame (100–8000). *(Sierpiński / Tetrahedron / Attractor.)* |
@@ -261,6 +262,11 @@ except the shared few listed above.
 | **Speed** *(ranged)* | Plasma only — how fast the waves animate (0 freezes the field). |
 | **Scale** *(ranged)* | Plasma only — spatial frequency of the waves (fine vs coarse pattern). |
 | **Warp** *(ranged)* | Plasma only — domain warp: bends the waves into swirls (0 = clean interference). |
+| **Cell density** *(ranged)* | Sun surface only — how many convection cells fill the screen: a few huge granules at the low end, a fine boiling texture at the high. |
+| **Churn speed** *(ranged)* | Sun surface only — how fast the cells boil (drift, deform, brighten and dim). 1× gives each granule a lifetime of roughly 15–30 s; 0 freezes the surface. |
+| **Lane width** *(ranged)* | Sun surface only — how wide and soft the dark lanes between cells are, from hairline cracks to fat borders. |
+| **Brightness** *(ranged)* | Sun surface only — scales the whole surface up or down the palette: lower sits the cells deeper in the oranges, higher pushes the centres toward white heat. |
+| **Sunspot** *(ranged)* | Sun surface only — sinks a sunspot into the centre: a near-black umbra ringed by fine radiating penumbral filaments that fade into the granulation. 0 (the default) is the clean surface; the camera sliders move it off-centre. |
 | **Reset this effect** | Put the current effect back the way it ships: every slider's **value and range**, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone. (The ↺ in a single slider's pop-out box does the same for just that slider.) |
 
 **☰** opens the application menu (System, Cloud profile, Credits — see above); **M**

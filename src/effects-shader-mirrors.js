@@ -251,3 +251,82 @@
     }
   }
 
+  // ---- Sun surface: boiling solar granulation via animated Voronoi (shader effect) ----
+  // Clock starts at 0, not unix time (float32 uTime — same trap plasmaTime documents).
+  // The mirror is look-equivalent, not bit-identical: sites are cached per frame per CELL
+  // (a site depends only on its cell id + t), so the trig runs ~once per cell instead of
+  // 9x per pixel — that is what keeps this at Metaballs-mirror cost on the CPU path. The
+  // loop compares squared distances and square-roots only the two winners (monotonic, so
+  // the ordering is identical to the shader's distance()).
+  let sunDensity = 14, sunSpeed = 1, sunLaneW = 0.35, sunGlow = 1, sunSpotAmt = 0, sunTime = 0;
+  function sunSeed(dt) {
+    sunTime += dt * sunSpeed;             // one clock; the sunspot shimmer rides it too
+    return { t: sunTime, density: sunDensity, lane: sunLaneW, glow: sunGlow, spot: sunSpotAmt, zoom };
+  }
+  const sunFract = v => v - Math.floor(v);
+  function sunH21(x, y) {                 // port of the shader's h21 (same constants)
+    const px = sunFract(x * 123.34), py = sunFract(y * 456.21);
+    const s = px * (px + 45.32) + py * (py + 45.32);
+    return sunFract((px + s) * (py + s));
+  }
+  const sunSites = new Map();             // persistent, cleared per frame — no per-frame allocation
+  function sun(dt) {                      // CPU fallback — mirrors FS_SUN
+    const s = sunSeed(dt), ar = fw / fh, t = s.t, dens = s.density, laneW = s.lane, TAU = 6.2831853;
+    const spot = s.spot, ru = spot * 0.22;
+    sunSites.clear();
+    const siteOf = (ci, cj) => {
+      const k = ci * 8192 + cj;           // cell coords are tiny (|c| ~ density) — never collides
+      let v = sunSites.get(k);
+      if (!v) {
+        const hx = sunH21(ci, cj);        // = h22(cell): second hash re-feeds the first
+        const hy = sunH21(ci + hx + 17.17, cj + hx + 17.17);
+        v = [ci + 0.5 + 0.38 * Math.sin(t * (0.18 + 0.14 * hx) + hx * TAU),
+             cj + 0.5 + 0.38 * Math.cos(t * (0.15 + 0.13 * hy) + hy * TAU),
+             sunH21(ci + 7.7, cj + 7.7)]; // per-cell brightness hash, cached with the site
+        sunSites.set(k, v);
+      }
+      return v;
+    };
+    const sstep = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) {
+      for (let x = 0; x < fw; x++) {
+        camPix(x, y);
+        const qy = (camPY / fh - 0.5) / s.zoom;
+        const qx = (camPX / fw - 0.5) * ar / s.zoom;
+        const px = qx * dens, py = qy * dens;
+        const gx = Math.floor(px), gy = Math.floor(py);
+        let f1 = 4096, f2 = 4096, hb = 0;
+        for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+          const st = siteOf(gx + i, gy + j);
+          const dx = px - st[0], dy = py - st[1], d2 = dx * dx + dy * dy;
+          if (d2 < f1) { f2 = f1; f1 = d2; hb = st[2]; } else if (d2 < f2) f2 = d2;
+        }
+        const F1 = Math.sqrt(f1);
+        const lane = sstep((Math.sqrt(f2) - F1) / laneW);
+        const osc = 0.5 + 0.5 * Math.sin(t * (0.20 + 0.20 * hb) + hb * TAU);
+        const fall = 1 - 0.30 * sstep(F1 / 0.8);
+        const ls = 0.94 + 0.06 * Math.sin(px * 0.33 + t * 0.05) * Math.sin(py * 0.29 - t * 0.04);
+        let heat = (0.16 + ((0.58 + 0.27 * osc) * fall - 0.16) * lane) * ls;
+        const lgx = Math.floor(px * 3), lgy = Math.floor(py * 3);
+        const hp = sunH21(lgx + 3.3, lgy + 3.3);
+        if (hp >= 0.93) {                 // bright lane point (the shader's step())
+          const ox = sunH21(lgx + 9.9, lgy + 9.9);
+          const oy = sunH21(lgx + 9.9 + ox + 17.17, lgy + 9.9 + ox + 17.17);
+          const fx = sunFract(px * 3) - (0.25 + 0.5 * ox), fy = sunFract(py * 3) - (0.25 + 0.5 * oy);
+          const blink = 0.5 + 0.5 * Math.sin(t * (0.3 + 0.5 * hp) + hp * TAU);
+          const pts = (1 - lane) * blink * (1 - sstep(Math.hypot(fx, fy) / 0.11));
+          if (pts > heat) heat = pts;
+        }
+        if (spot > 0.001) {
+          const d = Math.hypot(qx, qy), ang = Math.atan2(qy, qx + 1e-5);
+          const fil = 0.5 + 0.5 * Math.sin(ang * 44 + 2.5 * Math.sin(ang * 9 + t * 0.07) + d * dens * 0.9);
+          const pen = 1 - sstep((d - ru * 1.05) / (ru * 1.55));      // = 1 - smoothstep(1.05ru, 2.6ru, d)
+          heat += (0.18 + 0.42 * fil - heat) * pen * 0.9;
+          heat *= sstep((d - ru * 0.55) / (ru * 0.45));              // = smoothstep(0.55ru, ru, d)
+        }
+        fire[idx++] = Math.max(0, Math.min(1, heat * s.glow)) * 255; // EVERY cell written — MAX-merge needs it
+      }
+    }
+  }
+
