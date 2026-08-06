@@ -831,10 +831,11 @@
   // other fold state in the panel (the boxes, the layer blocks, the scene collections) — it is
   // how you are looking at the panel right now, not part of the scene.
   //
-  // `foldedGroups` starts as a COPY of the foldable set, so Camera opens collapsed. It applies
-  // to every layer block at once: Camera is scene-global state, so per-block folds would be
-  // three chevrons for one set of sliders.
-  const FOLDABLE_GROUPS = new Set(["camera"]);
+  // EMPTY on purpose: Camera used to be the one foldable group (chevron, started collapsed)
+  // and the user asked for it always open with no chevron. The machinery stays — heading
+  // build, click handler and visibility pass all read this one set, so making a group
+  // foldable again is one key here. `foldedGroups` starts as a copy, so nothing starts folded.
+  const FOLDABLE_GROUPS = new Set([]);
   const foldedGroups = new Set(FOLDABLE_GROUPS);
   const CTL_GROUPS = {
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
@@ -875,9 +876,9 @@
       if (c.group !== open) {
         open = c.group;
         // A FOLDABLE group carries a chevron and can be collapsed; the rest are plain headings.
-        // Only Camera for now: it is three sliders you set once and then read past forever, so
-        // it is pure clutter in every block. Extend by adding a key to FOLDABLE_GROUPS — the
-        // heading, the click handler and the visibility pass all read that one set.
+        // None currently (Camera was, and was un-folded by request). Extend by adding a key to
+        // FOLDABLE_GROUPS — the heading, the click handler and the visibility pass all read
+        // that one set.
         if (c.group) host.insertAdjacentHTML("beforeend",
           '<div class="ctl-grp' + (FOLDABLE_GROUPS.has(c.group) ? " foldable" : "")
           + '" data-k="grp-' + c.group + '" data-grp="' + c.group + '">'
