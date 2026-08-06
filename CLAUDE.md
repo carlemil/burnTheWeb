@@ -42,6 +42,10 @@ package manager, test framework or runtime dependency. Keep `README.md` in sync.
   past it. **major = a saved scene / share link / backup stops loading identically**; that must
   never happen, so patch for fixes, minor for a new effect/filter/control. `CHANGELOG.md` is
   linked from the live page — user-facing.
+- **Pages deploys via `.github/workflows/pages.yml`** (Actions), not the legacy branch
+  builder — that pipeline went flaky post-1.16.0 (instant zero-detail failures; the
+  workflow file's header has the history). Publish status lives in the Actions tab;
+  a failed deploy has real logs there.
 - `.gitattributes` pins LF (global `core.autocrlf=true`).
 
 ## Workflow
