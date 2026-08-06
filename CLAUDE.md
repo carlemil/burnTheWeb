@@ -121,28 +121,35 @@ half the steps.
 
 ### Menger sponge camera (street drive + tunnel dives)
 The camera **drives the street grid** of the lattice (corridors at x/z ≡ 1.5 mod 3 in the
-y = 1.5 plane), turning at hash-picked intersections through quadratic-Bezier corners
-(`MG_R` 0.9), and **hash-picked segments dive through the sponges on a lane LADDER**:
-level 0 = street, level 1 = the edge tunnel (`(±1, ±1)` lines — carve DE exactly **1/3**),
-level 2 = the inner tunnel through the sponge body (`(±1/3, ±1/3)` lines — carve DE
-exactly **1/9**), each bound holding on the whole infinite line at every Detail (the DE is
-`max`-composed, so deeper carves only raise it; fewest iterations is the binding case).
-**Adjacent lanes cannot be cut between mid-cube** (the diagonal between them pinches to
-zero), so every swoop happens inside the open gap slab between cube rows and the level
-steps by at most ±1 per crossing — the pyramid `min(r, C−1−r, 2)` in `mgLvlAt` gives that
-for free. 5-cell dive segments reach the deep level (~6% of drive time). `mgLvlAt` is a
-pure function of (segment hash, s) — no new state. Path lives in **`mengerSeed` on the
-CPU** (scalar state → `PHASE_VARS`); the shader gets `uPos`/`uFwd`/`uRoll` and only builds
-the view basis. `uFwd` **tilts during swoops (|fy| ≤ ~0.41) but must never go vertical**;
-the CPU mirror builds the same full tilted basis. The bob is scaled by `(1−g)` (off in
-tunnels) and its phase **must not contain `mgSeg`** — a term that jumps at segment
+y = 1.5 plane), turning at hash-picked intersections, and **most segments (`MG_DIVE_P`
+0.72) dive through the sponges on a lane LADDER**: level 0 = street, level 1 = the edge
+tunnel (`(±1, ±1)` lines — carve DE exactly **1/3**), level 2 = the inner corridor through
+the sponge body (`(±1/3, ±1/3)` lines — carve DE exactly **1/9**), each bound holding on
+the whole infinite line at every Detail (the DE is `max`-composed, so deeper carves only
+raise it; fewest iterations is the binding case). **Adjacent lanes cannot be cut between
+mid-cube** (the diagonal between them pinches to zero), so every swoop happens inside the
+open gap slab between cube rows and the level steps by at most ±1 per crossing — the
+pyramid `min(r, C−1−r, 2)` in `mgLvlAt` gives that for free. Dive segments run 4–7 cells,
+weighted long: **~50% of drive time is inside the sponges, ~21% in the deep corridors**.
+**The whole path is C2** — swoops and level blends use SMOOTHERSTEP (`mgSS`, window ±0.42
+of the 0.45 gap half-width) and corners are a smootherstep blend **between the two street
+lines** (`mgCorner`, `MG_R` 0.9) — continuous curvature everywhere, which is what
+"spline-smooth" means here. **A free waypoint spline is NOT usable** — it bows off the
+lane inside a 1/9-clearance tunnel; C2 blends inside proven corridors give the same
+smoothness with the safety intact. (The line-blend corner also beats the old quadratic
+Bezier's clearance: peak street-line offset ~0.065 vs R/4.) `mgLvlAt` is a pure function
+of (segment hash, s) — no new state. Path lives in **`mengerSeed` on the CPU** (scalar
+state → `PHASE_VARS`); the shader gets `uPos`/`uFwd`/`uRoll` and only builds the view
+basis; aim = lookahead 1.6. `uFwd` **tilts during swoops (|fy| ≤ ~0.36) but must never go
+vertical**; the CPU mirror builds the same full tilted basis. The bob is scaled by `(1−g)`
+(off in tunnels) and its phase **must not contain `mgSeg`** — a term that jumps at segment
 crossings is a camera that visibly hitches (shipped bug; the smoothness scan pins it:
-fine-dt step ratio ≈ the kinematic 2.6, not a dt-independent snap). **Never put the camera
-on the lattice AXIS or a face-centre line** — both sit on carve pinch points (clearance
-zero ⇒ wall-cutting flicker; the original bug). Scan-verified: min DE = 1/9 exactly, ~850
-dives over 6000 s at max sliders, 9.5 s frames included. Lookahead (`mgEval`) is safe
-because everything ahead is hash-determined, and `mgEval` must stay pure (the committed
-advance is only in `mengerSeed`). `MG_DIVE_P` exists so probe pages can force dives.
+fine-dt step ratio ≈ the kinematic ~2.3, not a dt-independent snap). **Never put the
+camera on the lattice AXIS or a face-centre line** — both sit on carve pinch points
+(clearance zero ⇒ wall-cutting flicker; the original bug). Scan-verified: min DE 0.107
+(the swoop-end bound; lane bound is 1/9), ~940 dives over 6000 s at max sliders, 9.5 s
+frames included. Lookahead (`mgEval`) is safe because everything ahead is hash-determined,
+and `mgEval` must stay pure (the committed advance is only in `mengerSeed`).
 
 ### Effect-shader gotchas (learned the hard way)
 - **The heat buffer is Y-FLIPPED against the screen** — buffer row 0 renders at the screen

@@ -356,13 +356,15 @@
   let mgS = 1, mgSeg = 1, mgCx = 1.5, mgCz = 1.5, mgDirI = 2, mgPrevI = 2;
   const MG_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];        // ±x, ±z street directions
   const MG_R = 0.9;                                          // corner-rounding radius
-  const MG_DIVE_P = 0.5;                  // chance a segment dives (probe pages patch this)
+  const MG_DIVE_P = 0.72;                 // chance a segment dives (probe pages patch this)
   const mgH = n => { const v = Math.sin(n * 127.1) * 43758.5453; return v - Math.floor(v); };
   const mgDiveOn = seg => mgH(seg * 13.7) < MG_DIVE_P;
-  // dive segments are longer (3–5 cells, weighted toward 5) so the ladder has room
+  // dive segments are long (4–7 cells, weighted toward the top) so most dives reach the
+  // inner corridor and stay there for several cubes — the flight lives INSIDE the objects
   const mgLen = seg => {
     const u = mgH(seg * 3.7);
-    return (mgDiveOn(seg) ? (u < 0.25 ? 3 : u < 0.5 ? 4 : 5) : 2 + Math.floor(u * 3)) * 3;
+    return (mgDiveOn(seg) ? (u < 0.2 ? 4 : u < 0.45 ? 5 : u < 0.75 ? 6 : 7)
+                          : 2 + Math.floor(u * 3)) * 3;
   };
   function mgNextDir(seg, dirI) {
     const r = mgH(seg * 7.13);
@@ -370,7 +372,12 @@
     const opts = dirI < 2 ? [2, 3] : [0, 1];                 // else turn onto the cross street
     return opts[r < 0.71 ? 0 : 1];
   }
-  const mgSS = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  // SMOOTHERSTEP, not smoothstep: 6t⁵−15t⁴+10t³ is C2, so the path has continuous
+  // curvature and the camera's tilt RATE ramps instead of kinking at each blend end (the
+  // C1 smoothstep's second-derivative jump read as a subtle jerk every swoop). Its error
+  // near the ends is cubic rather than quadratic, which also tightens the swoop-end
+  // clearance analysis.
+  const mgSS = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * t * (t * (t * 6 - 15) + 10);
   // A dive is a LADDER of lane levels, one step per gap crossing between cube rows:
   // level 0 = the street, level 1 = the edge tunnel (±1, ±1 — carve DE exactly 1/3),
   // level 2 = the INNER tunnel through the sponge body (±1/3, ±1/3 — carve DE exactly
@@ -384,16 +391,30 @@
     if (!mgDiveOn(seg)) return 0;
     const C = L / 3;
     const lvl = r => (r < 1 || r > C - 2) ? 0 : Math.min(r, C - 1 - r, 2);
+    // Swoop window ±0.42 of the 0.45 gap half-width: wider is smoother (lower peak
+    // lateral speed), and the smootherstep cubic error keeps the swoop-end clearance
+    // above ~0.10 even 0.03 from the slab edge.
     const r = Math.floor(s / 3);          // run r spans [3r, 3r+3); crossings at 3r, 3(r+1)
-    const a = mgSS((s - (3 * r - 0.3)) / 0.6);
-    const b = mgSS((s - (3 * (r + 1) - 0.3)) / 0.6);
+    const a = mgSS((s - (3 * r - 0.42)) / 0.84);
+    const b = mgSS((s - (3 * (r + 1) - 0.42)) / 0.84);
     return lvl(r - 1) + (lvl(r) - lvl(r - 1)) * a + (lvl(r + 1) - lvl(r)) * b;
   }
   const mgDiveOff = seg =>                // which quadrant of tunnel lanes to ladder into
     [mgH(seg * 17.3) < 0.5 ? -1 : 1, mgH(seg * 23.9) < 0.5 ? -1 : 1];
   // Position ds units ahead along the wander → [x, y, z, diveBlend]. Lookahead is safe
-  // because everything ahead is hash-determined; the corner blend is a quadratic Bezier
-  // through the intersection (P0/P2 sit R along the joining streets).
+  // because everything ahead is hash-determined. Corners are a smootherstep blend
+  // BETWEEN THE TWO STREET LINES (p = lerp(lineA(σ), lineB(σ), SS5) over σ ∈ [−R, R]
+  // around the corner): with the swoops on the same C2 easing, the WHOLE path has
+  // continuous curvature — spline-smooth — while every piece still holds its proven
+  // corridor (a free waypoint spline would bow off the lane inside a 1/9-clearance
+  // tunnel). The blend also hugs the intersection tighter than the old quadratic Bezier
+  // (peak street-line offset ~0.065 vs R/4), so corner clearance IMPROVED to ~0.385.
+  function mgCorner(cxx, czz, dA, dB, sig) {
+    const w = mgSS(0.5 + sig / (2 * MG_R));
+    const ax = cxx + MG_DIRS[dA][0] * sig, az = czz + MG_DIRS[dA][1] * sig;
+    const bx = cxx + MG_DIRS[dB][0] * sig, bz = czz + MG_DIRS[dB][1] * sig;
+    return [ax + (bx - ax) * w, 1.5, az + (bz - az) * w, 0];
+  }
   function mgEval(ds) {
     let s = mgS + ds, seg = mgSeg, cx = mgCx, cz = mgCz, di = mgDirI, pi = mgPrevI;
     let L = mgLen(seg);
@@ -402,23 +423,12 @@
       pi = di; di = mgNextDir(++seg, di);
       L = mgLen(seg);
     }
-    if (s < MG_R && seg > 1 && pi !== di) {                  // second half of a corner blend
-      const t = 0.5 + s / (2 * MG_R), a = 1 - t, b = t;
-      const p0x = cx - MG_DIRS[pi][0] * MG_R, p0z = cz - MG_DIRS[pi][1] * MG_R;
-      const p2x = cx + MG_DIRS[di][0] * MG_R, p2z = cz + MG_DIRS[di][1] * MG_R;
-      return [a * a * p0x + 2 * a * b * cx + b * b * p2x, 1.5,
-              a * a * p0z + 2 * a * b * cz + b * b * p2z, 0];
-    }
+    if (s < MG_R && seg > 1 && pi !== di)                    // second half of a corner blend
+      return mgCorner(cx, cz, pi, di, s);
     if (s > L - MG_R) {                                      // first half of the NEXT corner
       const nd = mgNextDir(seg + 1, di);
-      if (nd !== di) {
-        const ex = cx + MG_DIRS[di][0] * L, ez = cz + MG_DIRS[di][1] * L;
-        const t = (s - (L - MG_R)) / (2 * MG_R), a = 1 - t, b = t;
-        const p0x = ex - MG_DIRS[di][0] * MG_R, p0z = ez - MG_DIRS[di][1] * MG_R;
-        const p2x = ex + MG_DIRS[nd][0] * MG_R, p2z = ez + MG_DIRS[nd][1] * MG_R;
-        return [a * a * p0x + 2 * a * b * ex + b * b * p2x, 1.5,
-                a * a * p0z + 2 * a * b * ez + b * b * p2z, 0];
-      }
+      if (nd !== di)
+        return mgCorner(cx + MG_DIRS[di][0] * L, cz + MG_DIRS[di][1] * L, di, nd, s - L);
     }
     let x = cx + MG_DIRS[di][0] * s, z = cz + MG_DIRS[di][1] * s, y = 1.5;
     const lv = mgLvlAt(seg, s, L);
@@ -438,7 +448,7 @@
       mgPrevI = mgDirI; mgDirI = mgNextDir(++mgSeg, mgDirI);
       L = mgLen(mgSeg);
     }
-    const p = mgEval(0), ahead = mgEval(1.35);               // aim a little down the road
+    const p = mgEval(0), ahead = mgEval(1.6);                // aim a little down the road
     // NO mgSeg in the bob's phase — it increments at segment crossings, and a phase that
     // jumps is a camera that jumps (the "hitches every few seconds" bug). mgSpin alone
     // still decorrelates layers: it is a PHASE_VARS clock, per layer by construction.
