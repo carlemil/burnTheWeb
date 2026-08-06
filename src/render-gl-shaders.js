@@ -1003,8 +1003,8 @@
       vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
       float cr = cos(uRoll), sr = sin(uRoll);
       uv = vec2(uv.x*cr - uv.y*sr, uv.x*sr + uv.y*cr);         // screen roll
-      // View basis from the CPU-computed heading. uFwd is horizontal (the street grid is
-      // driven in the y = 1.5 plane), so world-up never degenerates the cross product.
+      // View basis from the CPU-computed heading. uFwd tilts during dive swoops but is
+      // never near vertical, so world-up never degenerates the cross product.
       vec3 f = normalize(uFwd);
       vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f));
       vec3 up = cross(f, r);

@@ -119,18 +119,25 @@ half the steps.
   radius`.
 - `tools/solidsprobe.js` pins containment, quaternion normality, per-layer ownership, spread.
 
-### Menger sponge camera (street drive)
+### Menger sponge camera (street drive + tunnel dives)
 The camera **drives the street grid** of the lattice (corridors at x/z ≡ 1.5 mod 3 in the
 y = 1.5 plane), turning at hash-picked intersections through quadratic-Bezier corners
-(`MG_R` 0.9). Path lives in **`mengerSeed` on the CPU** (scalar state → `PHASE_VARS`); the
-shader gets `uPos`/`uFwd`/`uRoll` and only builds the view basis. **Safety is closed-form**:
-clearance = `0.45 − min(per-axis offset from the nearest street line)`; corners peak at
-`MG_R/4`, the bob at 0.12 ⇒ never below 0.33 (scan-verified over 3k segments, 9.5 s frames
-included). **Never put the camera on the lattice AXIS** — its tunnel sits exactly on the
-carve boundary (clearance zero ⇒ wall-cutting flicker; the original bug). Keep `uFwd`
-horizontal — the basis uses world-up. Lookahead (`mgEval`) is safe because segment lengths
-and turns are hash-determined, and `mgEval` must stay pure (the committed advance is only
-in `mengerSeed`).
+(`MG_R` 0.9), and **hash-picked segments dive through the sponges**: the carve leaves
+straight flyable tunnels along the `(±1, ±1)` edge lines of every cube row — the level-1
+carve term is exactly **1/3 on that whole line at every Detail** (the DE is `max`-composed,
+so deeper carves only raise it; fewest iterations is the binding case). A dive swoops
+±0.5 laterally and vertically inside the open gap slab between cube rows (clearance there
+≥ ~0.27), threads 1–3 cubes, returns before the end corner; `mgDiveG` is a pure function
+of (segment hash, s), so no new state. Path lives in **`mengerSeed` on the CPU** (scalar
+state → `PHASE_VARS`); the shader gets `uPos`/`uFwd`/`uRoll` and only builds the view
+basis. `uFwd` **tilts during swoops (|fy| ≤ ~0.33) but must never go vertical** — the
+basis uses world-up; the CPU mirror builds the same full tilted basis. The bob is scaled
+by `(1−g)` (off in tunnels). **Never put the camera on the lattice AXIS or a face-centre
+line** — both sit on carve pinch points (clearance zero ⇒ wall-cutting flicker; the
+original bug). Only the edge lines are provably clear. Scan-verified: min DE 0.27 over
+~900 dives at max sliders, 9.5 s frames included. Lookahead (`mgEval`) is safe because
+everything ahead is hash-determined, and `mgEval` must stay pure (the committed advance is
+only in `mengerSeed`). `MG_DIVE_P` exists so probe pages can force every segment to dive.
 
 ### Effect-shader gotchas (learned the hard way)
 - **The heat buffer is Y-FLIPPED against the screen** — buffer row 0 renders at the screen

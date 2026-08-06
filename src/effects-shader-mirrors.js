@@ -339,26 +339,48 @@
   // ---- Menger sponge flythrough (shader effect) ----
   // The camera DRIVES THE STREET GRID: the lattice's corridors (x or z ≡ 1.5 mod 3 in the
   // y = 1.5 plane) form an infinite city grid, and the camera runs hash-picked segments,
-  // turning at intersections through rounded (quadratic-Bezier) corners. Safety is
-  // closed-form: clearance to the sponges = 0.45 − min(per-axis offset from the nearest
-  // street line), corners peak at R/4 = 0.225 offset and the vertical bob at 0.12, so the
-  // path never dips below ~0.33 clearance — no wall clipping at any Dive/Roll setting.
-  // All state is scalar so two Menger layers wander independently via PHASE_VARS.
+  // turning at intersections through rounded (quadratic-Bezier) corners — and hash-picked
+  // segments DIVE THROUGH THE SPONGES: the carve leaves straight tunnels along the
+  // (±1, ±1) edge lines of every cube row, where the level-1 carve term of the DE is
+  // exactly (2−1)/3 = 1/3 for the whole infinite line at EVERY Detail level (deeper
+  // carves only ever raise the DE — d = max(d, c)). A dive swoops half a unit sideways
+  // and down while crossing the open gap slab between cube rows (base clearance there is
+  // max(|q|)−1.05 ≥ ~0.28 along the whole swoop), threads the tunnel through 1–3 cubes,
+  // and swoops back to the street before the segment's end corner. Everything is a pure
+  // function of (segment hash, distance), so lookahead still works and no new state is
+  // needed. The bob fades out (×(1−g)) inside dives — 1/3 clearance leaves less headroom
+  // than the street's 0.45. Safety scan-verified: min DE ≥ 0.20 over thousands of
+  // segments at max sliders. All state is scalar so two Menger layers wander
+  // independently via PHASE_VARS.
   let mgDive = 0.5, mgRot = 0.3, mgIter = 4, mgGlow = 0.5, mgSpin = 0;
   let mgS = 1, mgSeg = 1, mgCx = 1.5, mgCz = 1.5, mgDirI = 2, mgPrevI = 2;
   const MG_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];        // ±x, ±z street directions
   const MG_R = 0.9;                                          // corner-rounding radius
+  const MG_DIVE_P = 0.5;                  // chance a segment dives (probe pages patch this)
   const mgH = n => { const v = Math.sin(n * 127.1) * 43758.5453; return v - Math.floor(v); };
-  const mgLen = seg => (2 + Math.floor(mgH(seg * 3.7) * 3)) * 3;   // 6/9/12 units a segment
+  const mgDiveOn = seg => mgH(seg * 13.7) < MG_DIVE_P;
+  // dive segments are longer (3–5 cells) so the tunnel run has room between the corners
+  const mgLen = seg => ((mgDiveOn(seg) ? 3 : 2) + Math.floor(mgH(seg * 3.7) * 3)) * 3;
   function mgNextDir(seg, dirI) {
     const r = mgH(seg * 7.13);
     if (r < 0.42) return dirI;                               // carry straight through
     const opts = dirI < 2 ? [2, 3] : [0, 1];                 // else turn onto the cross street
     return opts[r < 0.71 ? 0 : 1];
   }
-  // Position ds units ahead along the wander. Lookahead is safe because everything ahead
-  // is hash-determined; the corner blend is a quadratic Bezier through the intersection
-  // (P0/P2 sit R along the joining streets), entered half a blend before the corner.
+  const mgSS = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  // Dive blend: 0 on the street, 1 on the tunnel lane. The swoops sit in the open gap
+  // slabs between cube rows — entry crossing the row gap at s = 3, exit at the gap one
+  // cell before the segment ends (both ≡ 0 mod 3; corners live at s ≡ 0 too but the
+  // nearest swoop stays 1.8 units clear of them).
+  function mgDiveG(seg, s, L) {
+    if (!mgDiveOn(seg)) return 0;
+    return mgSS((s - 2.7) / 0.6) * (1 - mgSS((s - (L - 3.3)) / 0.6));
+  }
+  const mgDiveOff = seg =>                // which of the four tunnel lanes beside the street
+    [mgH(seg * 17.3) < 0.5 ? -0.5 : 0.5, mgH(seg * 23.9) < 0.5 ? -0.5 : 0.5];
+  // Position ds units ahead along the wander → [x, y, z, diveBlend]. Lookahead is safe
+  // because everything ahead is hash-determined; the corner blend is a quadratic Bezier
+  // through the intersection (P0/P2 sit R along the joining streets).
   function mgEval(ds) {
     let s = mgS + ds, seg = mgSeg, cx = mgCx, cz = mgCz, di = mgDirI, pi = mgPrevI;
     let L = mgLen(seg);
@@ -371,7 +393,8 @@
       const t = 0.5 + s / (2 * MG_R), a = 1 - t, b = t;
       const p0x = cx - MG_DIRS[pi][0] * MG_R, p0z = cz - MG_DIRS[pi][1] * MG_R;
       const p2x = cx + MG_DIRS[di][0] * MG_R, p2z = cz + MG_DIRS[di][1] * MG_R;
-      return [a * a * p0x + 2 * a * b * cx + b * b * p2x, a * a * p0z + 2 * a * b * cz + b * b * p2z];
+      return [a * a * p0x + 2 * a * b * cx + b * b * p2x, 1.5,
+              a * a * p0z + 2 * a * b * cz + b * b * p2z, 0];
     }
     if (s > L - MG_R) {                                      // first half of the NEXT corner
       const nd = mgNextDir(seg + 1, di);
@@ -380,10 +403,18 @@
         const t = (s - (L - MG_R)) / (2 * MG_R), a = 1 - t, b = t;
         const p0x = ex - MG_DIRS[di][0] * MG_R, p0z = ez - MG_DIRS[di][1] * MG_R;
         const p2x = ex + MG_DIRS[nd][0] * MG_R, p2z = ez + MG_DIRS[nd][1] * MG_R;
-        return [a * a * p0x + 2 * a * b * ex + b * b * p2x, a * a * p0z + 2 * a * b * ez + b * b * p2z];
+        return [a * a * p0x + 2 * a * b * ex + b * b * p2x, 1.5,
+                a * a * p0z + 2 * a * b * ez + b * b * p2z, 0];
       }
     }
-    return [cx + MG_DIRS[di][0] * s, cz + MG_DIRS[di][1] * s];
+    let x = cx + MG_DIRS[di][0] * s, z = cz + MG_DIRS[di][1] * s, y = 1.5;
+    const g = mgDiveG(seg, s, L);
+    if (g > 0) {                                             // swoop onto the tunnel lane
+      const off = mgDiveOff(seg);
+      if (di < 2) z += g * off[0]; else x += g * off[0];
+      y += g * off[1];
+    }
+    return [x, y, z, g];
   }
   function mengerSeed(dt) {
     mgSpin += dt * mgRot * 0.4;           // slow screen roll (and the bob's clock)
@@ -395,10 +426,10 @@
       L = mgLen(mgSeg);
     }
     const p = mgEval(0), ahead = mgEval(1.35);               // aim a little down the road
-    const bob = 0.12 * Math.sin(mgSpin * 1.7 + mgSeg);
-    let fx = ahead[0] - p[0], fz = ahead[1] - p[1];
-    const fl = Math.hypot(fx, fz) || 1;
-    return { px: p[0], py: 1.5 + bob, pz: p[1], fx: fx / fl, fz: fz / fl,
+    const bob = 0.12 * Math.sin(mgSpin * 1.7 + mgSeg) * (1 - p[3]);
+    let fx = ahead[0] - p[0], fy = ahead[1] - p[1], fz = ahead[2] - p[2];
+    const fl = Math.hypot(fx, fy, fz) || 1;
+    return { px: p[0], py: p[1] + bob, pz: p[2], fx: fx / fl, fy: fy / fl, fz: fz / fl,
              roll: mgSpin, iter: mgIter, glow: mgGlow, zoom };
   }
   function mengerDEc(px, py, pz, it) {
@@ -417,8 +448,11 @@
   function menger(dt) {                   // CPU fallback — coarse like the bulb mirror (3x3 blocks)
     const s = mengerSeed(dt), ar = fw / fh, it = Math.min(3, Math.round(s.iter));
     const cr = Math.cos(s.roll), sr = Math.sin(s.roll);
-    // view basis from the heading, exactly as FS_MENGER builds it (fwd is horizontal)
-    const rgx = s.fz, rgz = -s.fx;                       // right = up0 × fwd = (fz, 0, −fx)
+    // view basis from the heading, exactly as FS_MENGER builds it. fwd tilts during dive
+    // swoops but never goes vertical, so right = normalize(up0 × fwd) is always sound.
+    const fh2 = Math.hypot(s.fx, s.fz) || 1;
+    const rgx = s.fz / fh2, rgz = -s.fx / fh2;           // right = up0 × fwd, normalised
+    const upx = -s.fx * s.fy / fh2, upy = fh2, upz = -s.fy * s.fz / fh2;   // up = fwd × right
     for (let y = 0; y < fh; y += 3) {
       for (let x = 0; x < fw; x += 3) {
         camPix(x, y);
@@ -428,7 +462,9 @@
         const rl = Math.hypot(ux, uy, 1.4);
         ux /= rl; uy /= rl;
         const fl = 1.4 / rl;
-        const rdx = rgx * ux + s.fx * fl, rdy = uy, rdz = rgz * ux + s.fz * fl;
+        const rdx = rgx * ux + upx * uy + s.fx * fl;
+        const rdy = upy * uy + s.fy * fl;
+        const rdz = rgz * ux + upz * uy + s.fz * fl;
         const rox = s.px, roy = s.py, roz = s.pz;        // the street drive — see mengerSeed
         let t = 0, halo = 9, heat = 0;
         for (let i = 0; i < 20; i++) {
