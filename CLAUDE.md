@@ -575,6 +575,12 @@ Flips indices **1..255** of the baked LUT, leaving 0 as background. Both bake ch
 custom; shipped ramps stay pristine. Floating, non-modal, hides on `m`/`Esc`.
 - **Edits LIVE, not as a draft** (palettes are referenced by index and re-derived every frame).
   **A fresh copy closed without an edit is removed again**; `Save & close` overrides.
+- **A stop-handle drag must not rebuild `#pale-stops`** — the capture and move/up listeners
+  live on the dragged button, and a rebuild removes it (capture dies with the node, the same
+  rule as the filter-list drag). Shipped broken exactly that way: `paleDragStart` ended in
+  `paleRender()`, so handles only ever registered the click. Mid-drag goes through
+  `paleApply(full, dragLive)` (gradient + fields only); the full re-render runs on release.
+  `setPointerCapture` is wrapped in try/catch — synthetic probe events carry no live pointer.
 - **Customs live in the SAME `PALETTES` array**, after the built-ins; `PAL_BUILTIN` captured
   immediately after the literal. `grad()` hangs `stops` on the returned fn; `palStopsOf` samples
   for the three procedural ramps.
