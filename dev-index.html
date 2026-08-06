@@ -6111,8 +6111,11 @@
   const MG_DIVE_P = 0.5;                  // chance a segment dives (probe pages patch this)
   const mgH = n => { const v = Math.sin(n * 127.1) * 43758.5453; return v - Math.floor(v); };
   const mgDiveOn = seg => mgH(seg * 13.7) < MG_DIVE_P;
-  // dive segments are longer (3–5 cells) so the tunnel run has room between the corners
-  const mgLen = seg => ((mgDiveOn(seg) ? 3 : 2) + Math.floor(mgH(seg * 3.7) * 3)) * 3;
+  // dive segments are longer (3–5 cells, weighted toward 5) so the ladder has room
+  const mgLen = seg => {
+    const u = mgH(seg * 3.7);
+    return (mgDiveOn(seg) ? (u < 0.25 ? 3 : u < 0.5 ? 4 : 5) : 2 + Math.floor(u * 3)) * 3;
+  };
   function mgNextDir(seg, dirI) {
     const r = mgH(seg * 7.13);
     if (r < 0.42) return dirI;                               // carry straight through
@@ -6120,16 +6123,26 @@
     return opts[r < 0.71 ? 0 : 1];
   }
   const mgSS = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
-  // Dive blend: 0 on the street, 1 on the tunnel lane. The swoops sit in the open gap
-  // slabs between cube rows — entry crossing the row gap at s = 3, exit at the gap one
-  // cell before the segment ends (both ≡ 0 mod 3; corners live at s ≡ 0 too but the
-  // nearest swoop stays 1.8 units clear of them).
-  function mgDiveG(seg, s, L) {
+  // A dive is a LADDER of lane levels, one step per gap crossing between cube rows:
+  // level 0 = the street, level 1 = the edge tunnel (±1, ±1 — carve DE exactly 1/3),
+  // level 2 = the INNER tunnel through the sponge body (±1/3, ±1/3 — carve DE exactly
+  // 1/9). Adjacent lanes cannot be cut between mid-cube (the diagonal between them
+  // pinches to zero clearance), so each swoop happens inside the open gap slab and the
+  // level steps by at most ±1 per crossing — which the pyramid min(r, C−1−r, 2) gives
+  // for free. 5-cell dives reach the deep level; 3–4-cell ones thread the edge tunnel.
+  const MG_OFF = [0, 0.5, 7 / 6];         // lateral lane offsets from the street, per level
+  const mgOffAt = lv => lv <= 1 ? lv * MG_OFF[1] : MG_OFF[1] + (lv - 1) * (MG_OFF[2] - MG_OFF[1]);
+  function mgLvlAt(seg, s, L) {           // continuous lane level along the segment
     if (!mgDiveOn(seg)) return 0;
-    return mgSS((s - 2.7) / 0.6) * (1 - mgSS((s - (L - 3.3)) / 0.6));
+    const C = L / 3;
+    const lvl = r => (r < 1 || r > C - 2) ? 0 : Math.min(r, C - 1 - r, 2);
+    const r = Math.floor(s / 3);          // run r spans [3r, 3r+3); crossings at 3r, 3(r+1)
+    const a = mgSS((s - (3 * r - 0.3)) / 0.6);
+    const b = mgSS((s - (3 * (r + 1) - 0.3)) / 0.6);
+    return lvl(r - 1) + (lvl(r) - lvl(r - 1)) * a + (lvl(r + 1) - lvl(r)) * b;
   }
-  const mgDiveOff = seg =>                // which of the four tunnel lanes beside the street
-    [mgH(seg * 17.3) < 0.5 ? -0.5 : 0.5, mgH(seg * 23.9) < 0.5 ? -0.5 : 0.5];
+  const mgDiveOff = seg =>                // which quadrant of tunnel lanes to ladder into
+    [mgH(seg * 17.3) < 0.5 ? -1 : 1, mgH(seg * 23.9) < 0.5 ? -1 : 1];
   // Position ds units ahead along the wander → [x, y, z, diveBlend]. Lookahead is safe
   // because everything ahead is hash-determined; the corner blend is a quadratic Bezier
   // through the intersection (P0/P2 sit R along the joining streets).
@@ -6160,13 +6173,13 @@
       }
     }
     let x = cx + MG_DIRS[di][0] * s, z = cz + MG_DIRS[di][1] * s, y = 1.5;
-    const g = mgDiveG(seg, s, L);
-    if (g > 0) {                                             // swoop onto the tunnel lane
-      const off = mgDiveOff(seg);
-      if (di < 2) z += g * off[0]; else x += g * off[0];
-      y += g * off[1];
+    const lv = mgLvlAt(seg, s, L);
+    if (lv > 0) {                                            // swoop down the lane ladder
+      const off = mgDiveOff(seg), m = mgOffAt(lv);
+      if (di < 2) z += off[0] * m; else x += off[0] * m;
+      y += off[1] * m;
     }
-    return [x, y, z, g];
+    return [x, y, z, Math.min(lv, 1)];
   }
   function mengerSeed(dt) {
     mgSpin += dt * mgRot * 0.4;           // slow screen roll (and the bob's clock)
@@ -6178,7 +6191,10 @@
       L = mgLen(mgSeg);
     }
     const p = mgEval(0), ahead = mgEval(1.35);               // aim a little down the road
-    const bob = 0.12 * Math.sin(mgSpin * 1.7 + mgSeg) * (1 - p[3]);
+    // NO mgSeg in the bob's phase — it increments at segment crossings, and a phase that
+    // jumps is a camera that jumps (the "hitches every few seconds" bug). mgSpin alone
+    // still decorrelates layers: it is a PHASE_VARS clock, per layer by construction.
+    const bob = 0.12 * Math.sin(mgSpin * 1.7) * (1 - p[3]);
     let fx = ahead[0] - p[0], fy = ahead[1] - p[1], fz = ahead[2] - p[2];
     const fl = Math.hypot(fx, fy, fz) || 1;
     return { px: p[0], py: p[1] + bob, pz: p[2], fx: fx / fl, fy: fy / fl, fz: fz / fl,
@@ -8605,10 +8621,11 @@
   // other fold state in the panel (the boxes, the layer blocks, the scene collections) — it is
   // how you are looking at the panel right now, not part of the scene.
   //
-  // `foldedGroups` starts as a COPY of the foldable set, so Camera opens collapsed. It applies
-  // to every layer block at once: Camera is scene-global state, so per-block folds would be
-  // three chevrons for one set of sliders.
-  const FOLDABLE_GROUPS = new Set(["camera"]);
+  // EMPTY on purpose: Camera used to be the one foldable group (chevron, started collapsed)
+  // and the user asked for it always open with no chevron. The machinery stays — heading
+  // build, click handler and visibility pass all read this one set, so making a group
+  // foldable again is one key here. `foldedGroups` starts as a copy, so nothing starts folded.
+  const FOLDABLE_GROUPS = new Set([]);
   const foldedGroups = new Set(FOLDABLE_GROUPS);
   const CTL_GROUPS = {
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
@@ -8649,9 +8666,9 @@
       if (c.group !== open) {
         open = c.group;
         // A FOLDABLE group carries a chevron and can be collapsed; the rest are plain headings.
-        // Only Camera for now: it is three sliders you set once and then read past forever, so
-        // it is pure clutter in every block. Extend by adding a key to FOLDABLE_GROUPS — the
-        // heading, the click handler and the visibility pass all read that one set.
+        // None currently (Camera was, and was un-folded by request). Extend by adding a key to
+        // FOLDABLE_GROUPS — the heading, the click handler and the visibility pass all read
+        // that one set.
         if (c.group) host.insertAdjacentHTML("beforeend",
           '<div class="ctl-grp' + (FOLDABLE_GROUPS.has(c.group) ? " foldable" : "")
           + '" data-k="grp-' + c.group + '" data-grp="' + c.group + '">'

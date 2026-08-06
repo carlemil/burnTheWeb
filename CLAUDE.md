@@ -122,22 +122,27 @@ half the steps.
 ### Menger sponge camera (street drive + tunnel dives)
 The camera **drives the street grid** of the lattice (corridors at x/z ≡ 1.5 mod 3 in the
 y = 1.5 plane), turning at hash-picked intersections through quadratic-Bezier corners
-(`MG_R` 0.9), and **hash-picked segments dive through the sponges**: the carve leaves
-straight flyable tunnels along the `(±1, ±1)` edge lines of every cube row — the level-1
-carve term is exactly **1/3 on that whole line at every Detail** (the DE is `max`-composed,
-so deeper carves only raise it; fewest iterations is the binding case). A dive swoops
-±0.5 laterally and vertically inside the open gap slab between cube rows (clearance there
-≥ ~0.27), threads 1–3 cubes, returns before the end corner; `mgDiveG` is a pure function
-of (segment hash, s), so no new state. Path lives in **`mengerSeed` on the CPU** (scalar
-state → `PHASE_VARS`); the shader gets `uPos`/`uFwd`/`uRoll` and only builds the view
-basis. `uFwd` **tilts during swoops (|fy| ≤ ~0.33) but must never go vertical** — the
-basis uses world-up; the CPU mirror builds the same full tilted basis. The bob is scaled
-by `(1−g)` (off in tunnels). **Never put the camera on the lattice AXIS or a face-centre
-line** — both sit on carve pinch points (clearance zero ⇒ wall-cutting flicker; the
-original bug). Only the edge lines are provably clear. Scan-verified: min DE 0.27 over
-~900 dives at max sliders, 9.5 s frames included. Lookahead (`mgEval`) is safe because
-everything ahead is hash-determined, and `mgEval` must stay pure (the committed advance is
-only in `mengerSeed`). `MG_DIVE_P` exists so probe pages can force every segment to dive.
+(`MG_R` 0.9), and **hash-picked segments dive through the sponges on a lane LADDER**:
+level 0 = street, level 1 = the edge tunnel (`(±1, ±1)` lines — carve DE exactly **1/3**),
+level 2 = the inner tunnel through the sponge body (`(±1/3, ±1/3)` lines — carve DE
+exactly **1/9**), each bound holding on the whole infinite line at every Detail (the DE is
+`max`-composed, so deeper carves only raise it; fewest iterations is the binding case).
+**Adjacent lanes cannot be cut between mid-cube** (the diagonal between them pinches to
+zero), so every swoop happens inside the open gap slab between cube rows and the level
+steps by at most ±1 per crossing — the pyramid `min(r, C−1−r, 2)` in `mgLvlAt` gives that
+for free. 5-cell dive segments reach the deep level (~6% of drive time). `mgLvlAt` is a
+pure function of (segment hash, s) — no new state. Path lives in **`mengerSeed` on the
+CPU** (scalar state → `PHASE_VARS`); the shader gets `uPos`/`uFwd`/`uRoll` and only builds
+the view basis. `uFwd` **tilts during swoops (|fy| ≤ ~0.41) but must never go vertical**;
+the CPU mirror builds the same full tilted basis. The bob is scaled by `(1−g)` (off in
+tunnels) and its phase **must not contain `mgSeg`** — a term that jumps at segment
+crossings is a camera that visibly hitches (shipped bug; the smoothness scan pins it:
+fine-dt step ratio ≈ the kinematic 2.6, not a dt-independent snap). **Never put the camera
+on the lattice AXIS or a face-centre line** — both sit on carve pinch points (clearance
+zero ⇒ wall-cutting flicker; the original bug). Scan-verified: min DE = 1/9 exactly, ~850
+dives over 6000 s at max sliders, 9.5 s frames included. Lookahead (`mgEval`) is safe
+because everything ahead is hash-determined, and `mgEval` must stay pure (the committed
+advance is only in `mengerSeed`). `MG_DIVE_P` exists so probe pages can force dives.
 
 ### Effect-shader gotchas (learned the hard way)
 - **The heat buffer is Y-FLIPPED against the screen** — buffer row 0 renders at the screen
@@ -309,13 +314,13 @@ never what you had muted while looking at it.
 - The dot is inside a `<summary>`, so its handler must `preventDefault()` as well as
   `stopPropagation()`, or every A/B toggles the `<details>` open.
 
-**Foldable control groups** — `FOLDABLE_GROUPS` (just `camera`) and the transient `foldedGroups`,
-which starts as a copy of it, so Camera opens collapsed. `refreshBlockVisibility` hides a folded
-group's ROWS but **the heading is shown against `shown`, never the fold** — gate it on the fold
-and it hides itself along with the only way back. The heading click is delegated on `#panel`
-(headings are rebuilt by the visibility pass, so per-heading listeners drift). Applies to every
-block at once: Camera is scene-global, so per-block folds would be three chevrons for one set of
-sliders.
+**Foldable control groups** — `FOLDABLE_GROUPS` is **EMPTY by request** (Camera was the one
+member; the user wants it always open, no chevron). The machinery stays: the heading build, the
+delegated `#panel` click and the visibility pass all read that one set, so re-enabling a group
+is one key. `refreshBlockVisibility` hides a folded group's ROWS but **the heading is shown
+against `shown`, never the fold** — gate it on the fold and it hides itself along with the only
+way back. The heading click is delegated on `#panel` (headings are rebuilt by the visibility
+pass, so per-heading listeners drift). Folds apply to every block at once.
 
 **The list shows only the filters you have ADDED, in run order.** `+ Add filter` → `#fltdlg` is
 the only place the full catalogue appears; rows carry `⠿` and `✕`. `buildFilterUI` builds one
