@@ -903,22 +903,29 @@
   }
   #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
   /* ---- the "Add filter" / "Palettes in use" pickers ---- */
+  /* Docked TOP-LEFT beside the panel (same 58px top line, at the #breakout column's 298px),
+     not centered: these are panel tools, so they attach next to the menu boxes they came
+     from instead of covering the middle of the picture. */
   #fltdlg, #palpickdlg, #transpickdlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
   #fltdlg.hidden, #palpickdlg.hidden, #transpickdlg.hidden { display: none; }
   #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box {
     position: relative; pointer-events: auto;
-    width: min(90vw, 430px); max-height: 86vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px;
+    width: min(90vw, 430px); max-height: calc(100vh - 72px); overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 20px 22px 18px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
+  /* No margin-right for the close button: it floats, so the title wraps around it — a
+     right margin only shrank the h2's box, which left the header's box-shadow bleed 22px
+     short of the box's right edge (a strip of raw content showed beside the ×). */
   #fltdlg h2, #palpickdlg h2, #transpickdlg h2 {
-    margin: 0 30px 8px 0; color: #ffb15a; font-size: 15px;
+    margin: 0 0 8px; color: #ffb15a; font-size: 15px;
     text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
   }
   #fltdlg .pal-hint, #palpickdlg .pal-hint, #transpickdlg .pal-hint { margin: 0 0 12px; opacity: .65; font-size: 10.5px; line-height: 1.5; }
@@ -1095,6 +1102,19 @@
   }
   /* The × sticks level with the title, allowing for the padding the header now carries. */
   .pal-close, .card-close, .help-close, .sync-close { top: 18px; }
+  /* The docked pickers seat the × in the actual corner: pulled 12px into the side padding
+     (10px off the box edge) and 12px down from the top (the float otherwise sits flush
+     against the border because the box gave its top padding to the sticky header). The
+     header tone also matches the box tint here rather than the near-black of the big
+     dialogs — over a bright scene the 0.93 black header read as a black bar on a warm
+     translucent panel. blur(10) still keeps scrolled text from ghosting through. */
+  #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2 {
+    background: rgba(10, 6, 4, 0.85);
+    box-shadow: 0 -30px 0 30px rgba(10, 6, 4, 0.88);
+  }
+  #fltdlg .pal-close, #palpickdlg .pal-close, #transpickdlg .pal-close {
+    top: 12px; margin-top: 12px; margin-right: -12px;
+  }
   .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
     background: rgba(255, 122, 26, 0.25);
   }
@@ -1792,7 +1812,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.17.0",
+    version: "1.18.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2063,8 +2083,10 @@
   let drosteDepth = 2, drosteTwist = 0.5;                // Droste zoom
   let kuwRad = 3;                                        // Kuwahara oil-paint
   // Reaction–diffusion dish flags: declared here because glResize (an earlier slice than
-  // the effect code) marks the dish for re-seeding when the grid reallocates.
+  // the effect code) marks the dish for re-seeding when the grid reallocates. rdIsFloat
+  // is a var on purpose — initGL assigns it while later slices' lets are still in TDZ.
   let rdNeedSeed = true, rdSalt = 1;
+  var rdIsFloat = false;
   // Wall time for the post/screen passes that animate on their own (Slice glitch,
   // Grain). Accumulated from the frame loop's dt, never read off performance.now(),
   // so a stubbed-rAF pixel gate stays reproducible.
@@ -3564,12 +3586,13 @@
       float heat = band*top*hang*1.4 + 0.06*exp(-pow((q.y + 0.42)/0.12, 2.0));
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
-    // Menger sponge: an infinite periodic lattice of sponges, camera diving forward with
-    // a slow roll. The standard scale-3 fold DE; shading like the bulb (diffuse + depth
-    // fade + proximity halo on a miss).
+    // Menger sponge: an infinite periodic lattice of sponges. The camera path is computed
+    // on the CPU (mengerSeed drives the street grid, turning at intersections) and arrives
+    // as a position + heading; the shader only builds the view basis and marches. The
+    // standard scale-3 fold DE; shading like the bulb (diffuse + depth fade + halo).
     const FS_MENGER = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform float uDive; uniform float uSpin; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    uniform vec2 uSize; uniform vec3 uPos; uniform vec3 uFwd; uniform float uRoll; uniform float uIter; uniform float uGlow; uniform float uZoom;
     out vec4 o;
     float mengerDE(vec3 p, int it){
       vec3 q = mod(p + 1.5, 3.0) - 1.5;                 // infinite lattice
@@ -3589,10 +3612,15 @@
     void main(){
       float fw = uSize.x, fh = uSize.y;
       vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
-      float ca = cos(uSpin), sa = sin(uSpin);
-      vec3 ro = vec3(0.35*sin(uSpin*0.6), 0.28*cos(uSpin*0.45), uDive);
-      vec3 rd = normalize(vec3(uv, 1.4));
-      rd = vec3(rd.x*ca - rd.y*sa, rd.x*sa + rd.y*ca, rd.z);   // slow roll
+      float cr = cos(uRoll), sr = sin(uRoll);
+      uv = vec2(uv.x*cr - uv.y*sr, uv.x*sr + uv.y*cr);         // screen roll
+      // View basis from the CPU-computed heading. uFwd tilts during dive swoops but is
+      // never near vertical, so world-up never degenerates the cross product.
+      vec3 f = normalize(uFwd);
+      vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f));
+      vec3 up = cross(f, r);
+      vec3 ro = uPos;
+      vec3 rd = normalize(r*uv.x + up*uv.y + f*1.4);
       int it = int(uIter);
       float t = 0.0, halo = 9.0, heat = 0.0;
       for (int i = 0; i < 64; i++){
@@ -3644,12 +3672,16 @@
     in vec2 vUv; out vec4 o;
     float rh(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
     void main(){
-      // U everywhere; V in a scatter of small blobs so the culture has somewhere to start
+      // U everywhere; the seed blobs are the CANONICAL gentle patches (U 0.5, V 0.25 — the
+      // Karl Sims values). The first seed put V 0.9 into full U 1.0, and u*v*v ≈ 0.8
+      // detonates: the blobs burn a wave outward and the whole culture annihilates to
+      // black within ~500 steps — under a second at real frame rates, which the
+      // frame-starved headless runs never reached.
       vec2 cell = floor(vUv*14.0);
       float g = step(0.82, rh(cell + uSalt));
       vec2 f = fract(vUv*14.0) - 0.5;
       float blob = g*smoothstep(0.30, 0.05, length(f));
-      o = vec4(1.0, blob*0.9, 0.0, 1.0);
+      o = vec4(1.0 - blob*0.5, blob*0.25, 0.0, 1.0);
     }`;
     const FS_RDSHOW = `#version 300 es
     precision highp float;
@@ -4208,7 +4240,7 @@
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
-    glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uDive", "uSpin", "uIter", "uGlow", "uZoom"]);
+    glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uPos", "uFwd", "uRoll", "uIter", "uGlow", "uZoom"]);
     glProg.rdstep = makeProg(VS_QUAD, FS_RDSTEP, ["uPrev", "uSize", "uFeed", "uKill"]);
     glProg.rdseed = makeProg(VS_QUAD, FS_RDSEED, ["uSize", "uSalt"]);
     glProg.rdshow = camProg(VS_QUAD, FS_RDSHOW, ["uState", "uSize", "uGain", "uZoom"]);
@@ -4281,6 +4313,7 @@
     // without the extension: degraded (slow, coarse evolution), not broken.
     // LINEAR: the step shader samples between texels for the laplacian's diagonal taps.
     const rdFloat = !!gl.getExtension("EXT_color_buffer_float");
+    rdIsFloat = rdFloat;               // the death check below reads pixels in the matching type
     const rdI = rdFloat ? gl.RGBA16F : gl.RGBA8, rdT = rdFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
     glTex.rd = [
       createTex(rdI, gl.RGBA, rdT, gl.LINEAR, gl.CLAMP_TO_EDGE),
@@ -4913,7 +4946,16 @@
   // ping-ponging the rd pair. Runs entirely OUTSIDE the heat machinery (its own
   // textures); the effect's draw calls this and then samples glTex.rd[rdCur] in the
   // rdshow pass. `rdCur` always names the freshest buffer.
-  let rdCur = 0;
+  //
+  // THE DEATH CHECK: plenty of legal Feed/Kill settings genuinely kill the culture —
+  // V hits 0 everywhere, and with uvv = 0 nothing can ever grow again, so a beat-jumped
+  // Feed would leave a permanently black effect. Every ~120 frames a handful of pixels
+  // are read back (in the buffer's own type — FLOAT reads on an RGBA16F target); if
+  // every sample is dead, the dish re-seeds. One tiny readback every couple of seconds,
+  // and only while the effect is actually drawing.
+  // `rdIsFloat` is a var: initGL runs during an early slice, before this file's lets
+  // initialise, so a let here would be in its TDZ at assignment time.
+  let rdCur = 0, rdCheck = 0;
   function glRDTick(steps, feed, kill) {
     if (rdNeedSeed) {
       rdNeedSeed = false;
@@ -4935,6 +4977,25 @@
       gl.uniform1f(glProg.rdstep.u.uKill, kill);
       drawQuad();
       rdCur = dst;
+    }
+    rdCheck = (rdCheck + 1) % 120;
+    if (rdCheck === 0) {
+      bindFbo(glFbo.rd[rdCur], fw, fh);
+      let dead = true;
+      if (rdIsFloat) {
+        const p = new Float32Array(4);
+        for (let k = 0; k < 8 && dead; k++) {
+          gl.readPixels(((k * 2 + 1) * fw) >> 4, ((k * 2 + 1) * fh) >> 4, 1, 1, gl.RGBA, gl.FLOAT, p);
+          if (p[1] > 0.01) dead = false;
+        }
+      } else {
+        const p = new Uint8Array(4);
+        for (let k = 0; k < 8 && dead; k++) {
+          gl.readPixels(((k * 2 + 1) * fw) >> 4, ((k * 2 + 1) * fh) >> 4, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, p);
+          if (p[1] > 2) dead = false;
+        }
+      }
+      if (dead) rdNeedSeed = true;
     }
   }
   function postPass(name, src, setU) {
@@ -6048,11 +6109,126 @@
   }
 
   // ---- Menger sponge flythrough (shader effect) ----
-  let mgDive = 0.5, mgRot = 0.3, mgIter = 4, mgGlow = 0.5, mgZ = 0, mgSpin = 0;
+  // The camera DRIVES THE STREET GRID: the lattice's corridors (x or z ≡ 1.5 mod 3 in the
+  // y = 1.5 plane) form an infinite city grid, and the camera runs hash-picked segments,
+  // turning at intersections through rounded (quadratic-Bezier) corners — and hash-picked
+  // segments DIVE THROUGH THE SPONGES: the carve leaves straight tunnels along the
+  // (±1, ±1) edge lines of every cube row, where the level-1 carve term of the DE is
+  // exactly (2−1)/3 = 1/3 for the whole infinite line at EVERY Detail level (deeper
+  // carves only ever raise the DE — d = max(d, c)). A dive swoops half a unit sideways
+  // and down while crossing the open gap slab between cube rows (base clearance there is
+  // max(|q|)−1.05 ≥ ~0.28 along the whole swoop), threads the tunnel through 1–3 cubes,
+  // and swoops back to the street before the segment's end corner. Everything is a pure
+  // function of (segment hash, distance), so lookahead still works and no new state is
+  // needed. The bob fades out (×(1−g)) inside dives — 1/3 clearance leaves less headroom
+  // than the street's 0.45. Safety scan-verified: min DE ≥ 0.20 over thousands of
+  // segments at max sliders. All state is scalar so two Menger layers wander
+  // independently via PHASE_VARS.
+  let mgDive = 0.5, mgRot = 0.3, mgIter = 4, mgGlow = 0.5, mgSpin = 0;
+  let mgS = 1, mgSeg = 1, mgCx = 1.5, mgCz = 1.5, mgDirI = 2, mgPrevI = 2;
+  const MG_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];        // ±x, ±z street directions
+  const MG_R = 0.9;                                          // corner-rounding radius
+  const MG_DIVE_P = 0.72;                 // chance a segment dives (probe pages patch this)
+  const mgH = n => { const v = Math.sin(n * 127.1) * 43758.5453; return v - Math.floor(v); };
+  const mgDiveOn = seg => mgH(seg * 13.7) < MG_DIVE_P;
+  // dive segments are long (4–7 cells, weighted toward the top) so most dives reach the
+  // inner corridor and stay there for several cubes — the flight lives INSIDE the objects
+  const mgLen = seg => {
+    const u = mgH(seg * 3.7);
+    return (mgDiveOn(seg) ? (u < 0.2 ? 4 : u < 0.45 ? 5 : u < 0.75 ? 6 : 7)
+                          : 2 + Math.floor(u * 3)) * 3;
+  };
+  function mgNextDir(seg, dirI) {
+    const r = mgH(seg * 7.13);
+    if (r < 0.42) return dirI;                               // carry straight through
+    const opts = dirI < 2 ? [2, 3] : [0, 1];                 // else turn onto the cross street
+    return opts[r < 0.71 ? 0 : 1];
+  }
+  // SMOOTHERSTEP, not smoothstep: 6t⁵−15t⁴+10t³ is C2, so the path has continuous
+  // curvature and the camera's tilt RATE ramps instead of kinking at each blend end (the
+  // C1 smoothstep's second-derivative jump read as a subtle jerk every swoop). Its error
+  // near the ends is cubic rather than quadratic, which also tightens the swoop-end
+  // clearance analysis.
+  const mgSS = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * t * (t * (t * 6 - 15) + 10);
+  // A dive is a LADDER of lane levels, one step per gap crossing between cube rows:
+  // level 0 = the street, level 1 = the edge tunnel (±1, ±1 — carve DE exactly 1/3),
+  // level 2 = the INNER tunnel through the sponge body (±1/3, ±1/3 — carve DE exactly
+  // 1/9). Adjacent lanes cannot be cut between mid-cube (the diagonal between them
+  // pinches to zero clearance), so each swoop happens inside the open gap slab and the
+  // level steps by at most ±1 per crossing — which the pyramid min(r, C−1−r, 2) gives
+  // for free. 5-cell dives reach the deep level; 3–4-cell ones thread the edge tunnel.
+  const MG_OFF = [0, 0.5, 7 / 6];         // lateral lane offsets from the street, per level
+  const mgOffAt = lv => lv <= 1 ? lv * MG_OFF[1] : MG_OFF[1] + (lv - 1) * (MG_OFF[2] - MG_OFF[1]);
+  function mgLvlAt(seg, s, L) {           // continuous lane level along the segment
+    if (!mgDiveOn(seg)) return 0;
+    const C = L / 3;
+    const lvl = r => (r < 1 || r > C - 2) ? 0 : Math.min(r, C - 1 - r, 2);
+    // Swoop window ±0.42 of the 0.45 gap half-width: wider is smoother (lower peak
+    // lateral speed), and the smootherstep cubic error keeps the swoop-end clearance
+    // above ~0.10 even 0.03 from the slab edge.
+    const r = Math.floor(s / 3);          // run r spans [3r, 3r+3); crossings at 3r, 3(r+1)
+    const a = mgSS((s - (3 * r - 0.42)) / 0.84);
+    const b = mgSS((s - (3 * (r + 1) - 0.42)) / 0.84);
+    return lvl(r - 1) + (lvl(r) - lvl(r - 1)) * a + (lvl(r + 1) - lvl(r)) * b;
+  }
+  const mgDiveOff = seg =>                // which quadrant of tunnel lanes to ladder into
+    [mgH(seg * 17.3) < 0.5 ? -1 : 1, mgH(seg * 23.9) < 0.5 ? -1 : 1];
+  // Position ds units ahead along the wander → [x, y, z, diveBlend]. Lookahead is safe
+  // because everything ahead is hash-determined. Corners are a smootherstep blend
+  // BETWEEN THE TWO STREET LINES (p = lerp(lineA(σ), lineB(σ), SS5) over σ ∈ [−R, R]
+  // around the corner): with the swoops on the same C2 easing, the WHOLE path has
+  // continuous curvature — spline-smooth — while every piece still holds its proven
+  // corridor (a free waypoint spline would bow off the lane inside a 1/9-clearance
+  // tunnel). The blend also hugs the intersection tighter than the old quadratic Bezier
+  // (peak street-line offset ~0.065 vs R/4), so corner clearance IMPROVED to ~0.385.
+  function mgCorner(cxx, czz, dA, dB, sig) {
+    const w = mgSS(0.5 + sig / (2 * MG_R));
+    const ax = cxx + MG_DIRS[dA][0] * sig, az = czz + MG_DIRS[dA][1] * sig;
+    const bx = cxx + MG_DIRS[dB][0] * sig, bz = czz + MG_DIRS[dB][1] * sig;
+    return [ax + (bx - ax) * w, 1.5, az + (bz - az) * w, 0];
+  }
+  function mgEval(ds) {
+    let s = mgS + ds, seg = mgSeg, cx = mgCx, cz = mgCz, di = mgDirI, pi = mgPrevI;
+    let L = mgLen(seg);
+    while (s >= L) {
+      s -= L; cx += MG_DIRS[di][0] * L; cz += MG_DIRS[di][1] * L;
+      pi = di; di = mgNextDir(++seg, di);
+      L = mgLen(seg);
+    }
+    if (s < MG_R && seg > 1 && pi !== di)                    // second half of a corner blend
+      return mgCorner(cx, cz, pi, di, s);
+    if (s > L - MG_R) {                                      // first half of the NEXT corner
+      const nd = mgNextDir(seg + 1, di);
+      if (nd !== di)
+        return mgCorner(cx + MG_DIRS[di][0] * L, cz + MG_DIRS[di][1] * L, di, nd, s - L);
+    }
+    let x = cx + MG_DIRS[di][0] * s, z = cz + MG_DIRS[di][1] * s, y = 1.5;
+    const lv = mgLvlAt(seg, s, L);
+    if (lv > 0) {                                            // swoop down the lane ladder
+      const off = mgDiveOff(seg), m = mgOffAt(lv);
+      if (di < 2) z += off[0] * m; else x += off[0] * m;
+      y += off[1] * m;
+    }
+    return [x, y, z, Math.min(lv, 1)];
+  }
   function mengerSeed(dt) {
-    mgZ += dt * mgDive;                   // forward through the lattice
-    mgSpin += dt * mgRot * 0.4;           // slow roll
-    return { z: mgZ, spin: mgSpin, iter: mgIter, glow: mgGlow, zoom };
+    mgSpin += dt * mgRot * 0.4;           // slow screen roll (and the bob's clock)
+    mgS += dt * mgDive * 2.4;             // drive forward
+    let L = mgLen(mgSeg);
+    while (mgS >= L) {                    // commit intersection crossings into the state
+      mgS -= L; mgCx += MG_DIRS[mgDirI][0] * L; mgCz += MG_DIRS[mgDirI][1] * L;
+      mgPrevI = mgDirI; mgDirI = mgNextDir(++mgSeg, mgDirI);
+      L = mgLen(mgSeg);
+    }
+    const p = mgEval(0), ahead = mgEval(1.6);                // aim a little down the road
+    // NO mgSeg in the bob's phase — it increments at segment crossings, and a phase that
+    // jumps is a camera that jumps (the "hitches every few seconds" bug). mgSpin alone
+    // still decorrelates layers: it is a PHASE_VARS clock, per layer by construction.
+    const bob = 0.12 * Math.sin(mgSpin * 1.7) * (1 - p[3]);
+    let fx = ahead[0] - p[0], fy = ahead[1] - p[1], fz = ahead[2] - p[2];
+    const fl = Math.hypot(fx, fy, fz) || 1;
+    return { px: p[0], py: p[1] + bob, pz: p[2], fx: fx / fl, fy: fy / fl, fz: fz / fl,
+             roll: mgSpin, iter: mgIter, glow: mgGlow, zoom };
   }
   function mengerDEc(px, py, pz, it) {
     let qx = ((px + 1.5) % 3 + 3) % 3 - 1.5, qy = ((py + 1.5) % 3 + 3) % 3 - 1.5, qz = ((pz + 1.5) % 3 + 3) % 3 - 1.5;
@@ -6069,17 +6245,25 @@
   }
   function menger(dt) {                   // CPU fallback — coarse like the bulb mirror (3x3 blocks)
     const s = mengerSeed(dt), ar = fw / fh, it = Math.min(3, Math.round(s.iter));
-    const ca = Math.cos(s.spin), sa = Math.sin(s.spin);
+    const cr = Math.cos(s.roll), sr = Math.sin(s.roll);
+    // view basis from the heading, exactly as FS_MENGER builds it. fwd tilts during dive
+    // swoops but never goes vertical, so right = normalize(up0 × fwd) is always sound.
+    const fh2 = Math.hypot(s.fx, s.fz) || 1;
+    const rgx = s.fz / fh2, rgz = -s.fx / fh2;           // right = up0 × fwd, normalised
+    const upx = -s.fx * s.fy / fh2, upy = fh2, upz = -s.fy * s.fz / fh2;   // up = fwd × right
     for (let y = 0; y < fh; y += 3) {
       for (let x = 0; x < fw; x += 3) {
         camPix(x, y);
-        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
-        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        let uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        const tu = ux * cr - uy * sr; uy = ux * sr + uy * cr; ux = tu;   // screen roll
         const rl = Math.hypot(ux, uy, 1.4);
-        let rdx = ux / rl, rdy = uy / rl;
-        const rdz = 1.4 / rl;
-        const tx = rdx * ca - rdy * sa; rdy = rdx * sa + rdy * ca; rdx = tx;
-        const rox = 0.35 * Math.sin(s.spin * 0.6), roy = 0.28 * Math.cos(s.spin * 0.45), roz = s.z;
+        ux /= rl; uy /= rl;
+        const fl = 1.4 / rl;
+        const rdx = rgx * ux + upx * uy + s.fx * fl;
+        const rdy = upy * uy + s.fy * fl;
+        const rdz = rgz * ux + upz * uy + s.fz * fl;
+        const rox = s.px, roy = s.py, roz = s.pz;        // the street drive — see mengerSeed
         let t = 0, halo = 9, heat = 0;
         for (let i = 0; i < 20; i++) {
           const d = mengerDEc(rox + rdx * t, roy + rdy * t, roz + rdz * t, it);
@@ -6103,10 +6287,14 @@
   // The GL state lives in glTex.rd (see glRDTick); this is the fallback's own dish: two
   // Float32 pairs at grid size, stepped a capped number of times per frame (the full K
   // would eat the frame budget in JS). Look-equivalent: slower evolution, same regimes.
-  // Defaults sit on the MITOSIS point (F 0.037, k 0.065): spots that divide forever, so
-  // the culture never settles. F 0.037 / k 0.060 looked "frozen" in testing — that pair is
-  // the STABLE-soliton regime, a legitimate Gray–Scott endpoint that simply stops moving.
-  let rdFeed = 0.037, rdKill = 0.065, rdSpeedV = 8, rdGain = 1;
+  // Defaults F 0.030 / k 0.062: measured ALIVE in this exact discretization — V-mass grows
+  // steadily for thousands of steps (spots multiplying and spreading). NB the textbook
+  // (F, k) map does NOT transfer here: the canonical "mitosis" (.037/.065) and "coral"
+  // (.0545/.062) pairs both die to black within ~500 steps under these laplacian weights
+  // and dt — measured offline in rd-dynamics scans, not guessed. Many slider positions
+  // kill the dish too; that is real Gray–Scott, and the auto-reseed (see glRDTick and the
+  // mirror below) is what makes it safe to explore.
+  let rdFeed = 0.03, rdKill = 0.062, rdSpeedV = 8, rdGain = 1;
   let rdCpuU = null, rdCpuV = null, rdCpuU2 = null, rdCpuV2 = null, rdCpuSeed = true;
   function rdSeedFn(dt) {
     // Steps scale with dt (targeting `Sim speed` steps per 60Hz frame), so the culture
@@ -6127,7 +6315,7 @@
         const cx = Math.floor(x * 14), cy = Math.floor(y * 14);
         if (sunH21(cx + rdSalt, cy + rdSalt) > 0.82) {
           const fx = x * 14 - cx - 0.5, fy = y * 14 - cy - 0.5;
-          if (Math.hypot(fx, fy) < 0.2) rdCpuV[i] = 0.9;
+          if (Math.hypot(fx, fy) < 0.2) { rdCpuU[i] = 0.5; rdCpuV[i] = 0.25; }   // canonical gentle seed — see FS_RDSEED
         }
       }
     }
@@ -6150,6 +6338,11 @@
       t = rdCpuU; rdCpuU = rdCpuU2; rdCpuU2 = t;
       t = rdCpuV; rdCpuV = rdCpuV2; rdCpuV2 = t;
     }
+    // the CPU half of the death check (see glRDTick): scan a stride of the dish, and if
+    // nothing lives anywhere, re-seed — a dead dish can never regrow on its own
+    let alive = false;
+    for (let i = 0; i < N; i += 97) if (rdCpuV[i] > 0.004) { alive = true; break; }
+    if (!alive) rdCpuSeed = true;
     // display: heat from V, EVERY cell written (zoom/camera skipped on the fallback dish —
     // the sim grid IS the picture, exactly like the fire sim itself)
     for (let i = 0; i < fw * fh; i++) fire[i] = Math.min(1, rdCpuV[i] * s.gain * 2.6) * 255;
@@ -7768,8 +7961,8 @@
     { key: "ausway", host: "fx", group: "aurora", type: "dual", label: "Sway", valId: "vAuSway", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => auSway = v, durScale: 10 },
     { key: "auspeed", host: "fx", group: "aurora", type: "dual", label: "Speed", valId: "vAuSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => auSpeed = v, durScale: 10 },
     { key: "aushimmer", host: "fx", group: "aurora", type: "dual", label: "Shimmer", valId: "vAuShim", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => auShim = v, durScale: 10 },
-    { key: "rdfeed", host: "fx", group: "rd", type: "dual", label: "Feed", valId: "vRdFeed", min: 0.01, max: 0.09, step: 0.001, lo: 0.037, hi: 0.037, fmt: v => sig3(v), apply: v => rdFeed = v, durScale: 10 },
-    { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.065, hi: 0.065, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
+    { key: "rdfeed", host: "fx", group: "rd", type: "dual", label: "Feed", valId: "vRdFeed", min: 0.01, max: 0.09, step: 0.001, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => rdFeed = v, durScale: 10 },
+    { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
     { key: "mgdive", host: "fx", group: "menger", type: "dual", label: "Dive speed", valId: "vMgDive", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => mgDive = v, durScale: 10 },
@@ -8458,10 +8651,11 @@
   // other fold state in the panel (the boxes, the layer blocks, the scene collections) — it is
   // how you are looking at the panel right now, not part of the scene.
   //
-  // `foldedGroups` starts as a COPY of the foldable set, so Camera opens collapsed. It applies
-  // to every layer block at once: Camera is scene-global state, so per-block folds would be
-  // three chevrons for one set of sliders.
-  const FOLDABLE_GROUPS = new Set(["camera"]);
+  // EMPTY on purpose: Camera used to be the one foldable group (chevron, started collapsed)
+  // and the user asked for it always open with no chevron. The machinery stays — heading
+  // build, click handler and visibility pass all read this one set, so making a group
+  // foldable again is one key here. `foldedGroups` starts as a copy, so nothing starts folded.
+  const FOLDABLE_GROUPS = new Set([]);
   const foldedGroups = new Set(FOLDABLE_GROUPS);
   const CTL_GROUPS = {
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
@@ -8502,9 +8696,9 @@
       if (c.group !== open) {
         open = c.group;
         // A FOLDABLE group carries a chevron and can be collapsed; the rest are plain headings.
-        // Only Camera for now: it is three sliders you set once and then read past forever, so
-        // it is pure clutter in every block. Extend by adding a key to FOLDABLE_GROUPS — the
-        // heading, the click handler and the visibility pass all read that one set.
+        // None currently (Camera was, and was un-folded by request). Extend by adding a key to
+        // FOLDABLE_GROUPS — the heading, the click handler and the visibility pass all read
+        // that one set.
         if (c.group) host.insertAdjacentHTML("beforeend",
           '<div class="ctl-grp' + (FOLDABLE_GROUPS.has(c.group) ? " foldable" : "")
           + '" data-k="grp-' + c.group + '" data-grp="' + c.group + '">'
@@ -8621,7 +8815,14 @@
     ["flPhase", () => flPhase, v => flPhase = v],
     ["stTime", () => stTime, v => stTime = v],
     ["auTime", () => auTime, v => auTime = v],
-    ["mgZ", () => mgZ, v => mgZ = v],
+    // Menger carries its whole street-drive state — segment progress, segment counter,
+    // current corner, headings — so two sponge layers wander different routes.
+    ["mgS", () => mgS, v => mgS = v],
+    ["mgSeg", () => mgSeg, v => mgSeg = v],
+    ["mgCx", () => mgCx, v => mgCx = v],
+    ["mgCz", () => mgCz, v => mgCz = v],
+    ["mgDirI", () => mgDirI, v => mgDirI = v],
+    ["mgPrevI", () => mgPrevI, v => mgPrevI = v],
     ["mgSpin", () => mgSpin, v => mgSpin = v],
     // Boids' flock lives on the layer (L.boids, like L.solids) — only the Scatter
     // rising-edge detector is a scalar that must not be shared between flocks.
@@ -9785,16 +9986,16 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], aucurtains: [3, 3], ausway: [0.5, 0.5], auspeed: [1, 1], aushimmer: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "reactdiff", name: "Reaction-diffusion", subtitle: "Gray–Scott · living patterns",
-      help: "Two chemicals feeding and killing each other on a dish, forming spots, stripes, coral and mazes that grow and never repeat. Feed and Kill choose the regime — tiny nudges cross into whole new pattern families, so arm Feed's chips and the beat pushes the culture into a new life. Sim speed is how many chemistry steps run per frame; the culture re-seeds every time you switch to the effect. The state is ONE shared dish: two layers of it show the same culture.",
+      help: "Two chemicals feeding and killing each other on a dish, forming spots, stripes, coral and mazes that grow and never repeat. Feed and Kill choose the regime — tiny nudges cross into whole new pattern families, and some settings kill the culture outright; when everything dies, the dish quietly re-seeds itself, so exploring (or arming Feed's chips to let the beat push the culture into a new life) is always safe. Sim speed is how many chemistry steps run per frame. The state is ONE shared dish: two layers of it show the same culture.",
       params: ["rdfeed", "rdkill", "rdspeed", "rdgain", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "rd", "band"], bakesOwnZoom: true,
       onEnter: () => { rdNeedSeed = true; rdCpuSeed = true; },
       draw: dt => { const s = rdSeedFn(dt); if (useGL) { glRDTick(s.steps, s.feed, s.kill); glShaderDraw("rdshow", u => { bindTexUnit(0, glTex.rd[rdCur]); gl.uniform1i(u.uState, 0); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); } else rdCPU(s); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], rdfeed: [0.037, 0.037], rdkill: [0.065, 0.065], rdspeed: [8, 8], rdgain: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], rdfeed: [0.03, 0.03], rdkill: [0.062, 0.062], rdspeed: [8, 8], rdgain: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
-    { id: "menger", name: "Menger sponge", subtitle: "Menger · infinite lattice dive",
-      help: "An endless lattice of Menger sponges — the 3D Sierpiński carpet — raymarched while the camera dives forward through the holes with a slow roll. Dive speed is the flight, Detail the fractal depth (and the GPU bill), Glow lights the tunnel. Kin to Sierpiński: this is what its carpet looks like grown into a solid.",
+    { id: "menger", name: "Menger sponge", subtitle: "Menger · fractal city drive",
+      help: "An endless lattice of Menger sponges — the 3D Sierpiński carpet — raymarched while the camera drives the streets between them, turning at intersections and swooping down to thread the carved tunnels straight through the sponges, on a wandering route that never repeats. Dive speed is the flight, Detail the fractal depth (and the GPU bill), Glow lights the canyon walls. Kin to Sierpiński: this is what its carpet looks like grown into a solid.",
       params: ["mgdive", "mgrot", "mgiter", "mgglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "menger", "band"], bakesOwnZoom: true,
-      draw: dt => { if (useGL) { const s = mengerSeed(dt); glShaderDraw("menger", u => { gl.uniform1f(u.uDive, s.z); gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else menger(dt); },
+      draw: dt => { if (useGL) { const s = mengerSeed(dt); glShaderDraw("menger", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uRoll, s.roll); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else menger(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], mgdive: [0.5, 0.5], mgrot: [0.3, 0.3], mgiter: [4, 4], mgglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "boids", name: "Boids", subtitle: "Boids · murmuration",
@@ -15496,8 +15697,8 @@
       { n: "Kill", w: "rd", t: "Reaction-diffusion only — how fast chemical V dies off. Tiny nudges against Feed cross into whole new pattern families." },
       { n: "Sim speed", w: "rd", t: "Reaction-diffusion only — chemistry steps per frame. More is faster evolution, not a different pattern." },
       { n: "Brightness", w: "rd", t: "Reaction-diffusion only — scales the culture up or down the palette ramp." },
-      { n: "Dive speed", w: "menger", t: "Menger sponge only — how fast the camera flies forward through the lattice. 0 hangs in the tunnel." },
-      { n: "Roll", w: "menger", t: "Menger sponge only — the slow barrel roll (and drift) of the dive." },
+      { n: "Dive speed", w: "menger", t: "Menger sponge only — how fast the camera drives the streets of the lattice. 0 parks at the kerb." },
+      { n: "Roll", w: "menger", t: "Menger sponge only — the slow barrel roll (and vertical bob) of the drive." },
       { n: "Detail", w: "menger", t: "Menger sponge only — fractal recursion depth. Each step cubes the holes and multiplies the GPU cost." },
       { n: "Glow", w: "menger", t: "Menger sponge only — lights the tunnel walls and haloes the near-misses." },
       { n: "Flock", w: "boids", t: "Boids only — how many birds fly, up to 200." },

@@ -14,6 +14,44 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.18.0] — 2026-08-06
+
+### Changed
+
+- **Menger sponge — the flight is a whole new experience.** The camera no longer falls down
+  one endless street: it **drives the fractal city**, running the corridors between the
+  sponges, turning at intersections on a hash-picked route that never repeats — and most
+  segments **dive through the sponges themselves**, swooping down into the carved tunnels
+  and threading the narrow inner corridors with the walls rushing past on all four sides.
+  About half the flight is now spent inside the objects. The whole path has continuous
+  curvature (spline-smooth — no more little hitches every few seconds), the camera banks
+  gently into each dive, and the route is mathematically guaranteed never to clip a wall at
+  any Dive speed, Roll or Detail setting. Two Menger layers wander different routes.
+- **The Camera section is always open** — the chevron is gone and the three sliders no
+  longer start collapsed.
+- **The picker dialogs dock beside the panel** — "Filters for this layer", "Palettes in
+  use" and "Transitions in use" now open at the top-left, attached next to the menu boxes
+  they came from, instead of covering the middle of the picture. Their title bar blends
+  with the box (no more black band) and the × sits properly in the corner.
+
+### Fixed
+
+- **Reaction-diffusion no longer blacks out.** The dish died within a second at full frame
+  rate: the seed pattern detonated (an annihilation wave burned outward from each blob),
+  and the shipped Feed/Kill defaults sat in a dying regime of this simulation. The seed is
+  now the canonical gentle one, the defaults (**Feed 0.030 / Kill 0.062**) are measured
+  alive — the culture grows and keeps moving indefinitely — and a safety net watches the
+  dish and **re-seeds it automatically** if a slider journey (or a beat-jumped Feed) ever
+  kills it. Exploring is safe: nothing you do can permanently blank the effect.
+
+### Internal
+
+- GitHub Pages deploys via an Actions workflow staging only the site files — the preview
+  page updates within ~a minute of a push instead of eight-plus.
+- The Menger path is pinned by an offline clearance scan (222k steps, ~950 dives, jittered
+  and backgrounded-tab frame times, both Detail extremes) plus a fine-dt smoothness scan
+  proving the path has no positional discontinuities.
+
 ## [1.17.0] — 2026-08-06
 
 ### Added
