@@ -793,6 +793,10 @@
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
     background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
   }
+  /* The layer's visibility eye (open = showing, closed = muted) — inline-flex so the SVG
+     centres in the same 10px-font button frame the ✕ beside it uses. */
+  #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lyr b.lyr-eye > svg { display: block; }
   #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
   #panel .lyr b.off { opacity: .3; cursor: default; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
@@ -827,13 +831,15 @@
   #panel .filter-sec.idle > summary { opacity: .62; }
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
-  /* The bypass dot: mute a filter in place, keeping its position in the chain and its
+  /* The bypass eye: mute a filter in place, keeping its position in the chain and its
      settings. ✕ beside it REMOVES; this only silences, which is what you want when you are
-     working out what a filter is contributing. Filled = acting, hollow = muted. */
+     working out what a filter is contributing. Open eye = acting, closed eye = muted. */
   #panel .filter-sec > summary .filter-by {
+    display: inline-flex; align-items: center; justify-content: center;
     flex: 0 0 auto; width: 16px; height: 16px; padding: 0; border: 0; background: none;
     color: #ffb15a; font: 13px/1 monospace; cursor: pointer; opacity: .8;
   }
+  #panel .filter-sec > summary .filter-by > svg { display: block; }
   #panel .filter-sec > summary .filter-by:hover { opacity: 1; }
   /* A muted row stays legible — it is still part of the chain and you still want to read and
      drag it — but its name is struck through, the same "off but present" language the mute

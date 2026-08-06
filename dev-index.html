@@ -811,6 +811,10 @@
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
     background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
   }
+  /* The layer's visibility eye (open = showing, closed = muted) — inline-flex so the SVG
+     centres in the same 10px-font button frame the ✕ beside it uses. */
+  #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lyr b.lyr-eye > svg { display: block; }
   #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
   #panel .lyr b.off { opacity: .3; cursor: default; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
@@ -845,13 +849,15 @@
   #panel .filter-sec.idle > summary { opacity: .62; }
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
-  /* The bypass dot: mute a filter in place, keeping its position in the chain and its
+  /* The bypass eye: mute a filter in place, keeping its position in the chain and its
      settings. ✕ beside it REMOVES; this only silences, which is what you want when you are
-     working out what a filter is contributing. Filled = acting, hollow = muted. */
+     working out what a filter is contributing. Open eye = acting, closed eye = muted. */
   #panel .filter-sec > summary .filter-by {
+    display: inline-flex; align-items: center; justify-content: center;
     flex: 0 0 auto; width: 16px; height: 16px; padding: 0; border: 0; background: none;
     color: #ffb15a; font: 13px/1 monospace; cursor: pointer; opacity: .8;
   }
+  #panel .filter-sec > summary .filter-by > svg { display: block; }
   #panel .filter-sec > summary .filter-by:hover { opacity: 1; }
   /* A muted row stays legible — it is still part of the chain and you still want to read and
      drag it — but its name is struck through, the same "off but present" language the mute
@@ -2133,6 +2139,17 @@
   // explicitly so an extra property is never serialised. installStack replaces the objects on
   // every scene load, which is exactly when the bypass should evaporate.
   const fxOffOf = L => (L && (L.fxOff || (L.fxOff = new Set()))) || new Set();
+  // Eye icons for every "is this visible?" toggle (the layer mute, the filter bypass): an
+  // OPEN eye = contributing to the picture, a CLOSED eye (lid + lashes) = muted. Inline
+  // SVG on currentColor, sized in em, so each button tints and scales them exactly like
+  // the ●/○ glyphs they replaced. Set via innerHTML at the two sync sites.
+  const EYE_OPEN = '<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor"'
+    + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg>';
+  const EYE_SHUT = '<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor"'
+    + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M2 10c2.5 3.7 6 5.5 10 5.5s7.5-1.8 10-5.5"/>'
+    + '<path d="M4.5 14 3 16.5"/><path d="M12 15.5v3"/><path d="M19.5 14l1.5 2.5"/></svg>';
   // Whichever layer is being drawn right now: renderFxOff is set per layer by the stacked
   // path, mirroring renderFilters; falling back to the selected layer covers the editor and
   // the single-layer render.
@@ -8209,7 +8226,7 @@
       rm.title = "Remove " + f.name + " from this list";
       rm.setAttribute("aria-label", "Remove " + f.name);
       rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
-      // BYPASS DOT. ✕ removes a filter, which loses its place in the chain and its settings —
+      // BYPASS EYE. ✕ removes a filter, which loses its place in the chain and its settings —
       // no good when you just want to see what it is contributing. This mutes it in place:
       // the row stays, the order stays, the sliders keep their values.
       //
@@ -8280,8 +8297,8 @@
   function renderFilterLists() {
     for (let slot = 0; slot < STACK_MAX; slot++) { renderFilterListsFor(slot); syncFilterBypass(slot); }
   }
-  // Paint one block's bypass dots from its layer's live set. Separate from renderFilterListsFor
-  // so a bypass toggle repaints the dots without re-appending every section (which would fight
+  // Paint one block's bypass eyes from its layer's live set. Separate from renderFilterListsFor
+  // so a bypass toggle repaints the eyes without re-appending every section (which would fight
   // an in-flight drag) — and so a layer reorder, which re-points the blocks, repaints them too.
   function syncFilterBypass(slot) {
     const L = stack[slot], off = (L && L.fxOff) || null;
@@ -8294,7 +8311,7 @@
       const dot = sec.querySelector(".filter-by");
       if (!dot) continue;
       const nm = (FILTER_BY_ID[id] || {}).name || id;
-      dot.textContent = muted ? "○" : "●";
+      dot.innerHTML = muted ? EYE_SHUT : EYE_OPEN;
       dot.title = muted ? "Switch " + nm + " back on" : "Mute " + nm + " without removing it";
       dot.setAttribute("aria-label", dot.title);
       dot.setAttribute("aria-pressed", muted ? "true" : "false");
@@ -11391,6 +11408,8 @@
       row.appendChild(lyrctl);
 
       const mute = document.createElement("b");
+      mute.className = "lyr-eye";
+      mute.setAttribute("aria-label", "Layer visibility");
       mute.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
@@ -11491,8 +11510,9 @@
       r.grab.classList.toggle("off", stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
-      r.mute.textContent = L.mute ? "○" : "●";
+      r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
+      r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");
       r.gn.value = L.gain;
       r.rm.classList.toggle("off", stack.length <= 1);
       const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];

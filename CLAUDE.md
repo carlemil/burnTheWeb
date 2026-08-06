@@ -305,7 +305,7 @@ pointer swap) and MAX-merges — depends on **every CPU mirror writing every cel
 (`cpuBlocked` → `filterOn()` → `activeFilters()`/`hasFeedback()`) and **never remove them from
 `activeIds`**. `cpuBlocked` is filled by the FILTERS block but declared with the render globals.
 
-**BYPASS (`.filter-by`, the dot beside each filter row)** mutes a filter *in place* — ✕ removes
+**BYPASS (`.filter-by`, the eye beside each filter row)** mutes a filter *in place* — ✕ removes
 it and loses its chain position and settings, which is useless for working out what a filter
 contributes. **Transient and deliberately outside the wire format**: a scene records its chain,
 never what you had muted while looking at it.
@@ -318,8 +318,10 @@ never what you had muted while looking at it.
 - The two per-layer chain builders read **`liveChainIds(L)`**, which strips the bypass **before
   `splitChain`** — otherwise muting a feedback filter would leave the heat/image boundary where
   it was and silently move image filters into the heat phase.
-- The dot is inside a `<summary>`, so its handler must `preventDefault()` as well as
-  `stopPropagation()`, or every A/B toggles the `<details>` open.
+- The eye is inside a `<summary>`, so its handler must `preventDefault()` as well as
+  `stopPropagation()`, or every A/B toggles the `<details>` open. Both visibility toggles
+  (this and the layer mute `b.lyr-eye`) render `EYE_OPEN`/`EYE_SHUT` (boot-globals, inline
+  SVG on currentColor) via innerHTML — open eye = visible, closed eye = muted.
 
 **Foldable control groups** — `FOLDABLE_GROUPS` is **EMPTY by request** (Camera was the one
 member; the user wants it always open, no chevron). The machinery stays: the heading build, the

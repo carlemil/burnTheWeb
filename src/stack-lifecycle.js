@@ -367,6 +367,8 @@
       row.appendChild(lyrctl);
 
       const mute = document.createElement("b");
+      mute.className = "lyr-eye";
+      mute.setAttribute("aria-label", "Layer visibility");
       mute.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
@@ -467,8 +469,9 @@
       r.grab.classList.toggle("off", stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
-      r.mute.textContent = L.mute ? "○" : "●";
+      r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
+      r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");
       r.gn.value = L.gain;
       r.rm.classList.toggle("off", stack.length <= 1);
       const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];

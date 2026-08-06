@@ -389,7 +389,7 @@
       rm.title = "Remove " + f.name + " from this list";
       rm.setAttribute("aria-label", "Remove " + f.name);
       rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
-      // BYPASS DOT. ✕ removes a filter, which loses its place in the chain and its settings —
+      // BYPASS EYE. ✕ removes a filter, which loses its place in the chain and its settings —
       // no good when you just want to see what it is contributing. This mutes it in place:
       // the row stays, the order stays, the sliders keep their values.
       //
@@ -460,8 +460,8 @@
   function renderFilterLists() {
     for (let slot = 0; slot < STACK_MAX; slot++) { renderFilterListsFor(slot); syncFilterBypass(slot); }
   }
-  // Paint one block's bypass dots from its layer's live set. Separate from renderFilterListsFor
-  // so a bypass toggle repaints the dots without re-appending every section (which would fight
+  // Paint one block's bypass eyes from its layer's live set. Separate from renderFilterListsFor
+  // so a bypass toggle repaints the eyes without re-appending every section (which would fight
   // an in-flight drag) — and so a layer reorder, which re-points the blocks, repaints them too.
   function syncFilterBypass(slot) {
     const L = stack[slot], off = (L && L.fxOff) || null;
@@ -474,7 +474,7 @@
       const dot = sec.querySelector(".filter-by");
       if (!dot) continue;
       const nm = (FILTER_BY_ID[id] || {}).name || id;
-      dot.textContent = muted ? "○" : "●";
+      dot.innerHTML = muted ? EYE_SHUT : EYE_OPEN;
       dot.title = muted ? "Switch " + nm + " back on" : "Mute " + nm + " without removing it";
       dot.setAttribute("aria-label", dot.title);
       dot.setAttribute("aria-pressed", muted ? "true" : "false");

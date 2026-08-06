@@ -193,6 +193,17 @@
   // explicitly so an extra property is never serialised. installStack replaces the objects on
   // every scene load, which is exactly when the bypass should evaporate.
   const fxOffOf = L => (L && (L.fxOff || (L.fxOff = new Set()))) || new Set();
+  // Eye icons for every "is this visible?" toggle (the layer mute, the filter bypass): an
+  // OPEN eye = contributing to the picture, a CLOSED eye (lid + lashes) = muted. Inline
+  // SVG on currentColor, sized in em, so each button tints and scales them exactly like
+  // the ●/○ glyphs they replaced. Set via innerHTML at the two sync sites.
+  const EYE_OPEN = '<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor"'
+    + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg>';
+  const EYE_SHUT = '<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor"'
+    + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M2 10c2.5 3.7 6 5.5 10 5.5s7.5-1.8 10-5.5"/>'
+    + '<path d="M4.5 14 3 16.5"/><path d="M12 15.5v3"/><path d="M19.5 14l1.5 2.5"/></svg>';
   // Whichever layer is being drawn right now: renderFxOff is set per layer by the stacked
   // path, mirroring renderFilters; falling back to the selected layer covers the editor and
   // the single-layer render.
