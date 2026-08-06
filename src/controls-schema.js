@@ -57,14 +57,16 @@
     { key: "momix", host: "fx", group: "moire", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => moMix = v, durScale: 10 },
     { key: "nwspin", host: "fx", group: "newton", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => nwSpin = v, durScale: 10 },
     { key: "nwrelax", host: "fx", group: "newton", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => nwRelax = v, durScale: 10 },
-    // Integer only. The thumbs still animate continuously — apply() rounds, so the
-    // live exponent is always a whole number. Fractional powers were never really
-    // sound: z^d uses the principal branch of the log, discontinuous across the
-    // negative real axis, so their connectedness locus is a ragged object the seed
-    // orbit can't track cleanly (measured ~40–55% of a lap inside it, vs ~20% at
-    // integer powers). Rounding also makes power−1 — the cusp count the easing keys
-    // off — a whole number, which is what makes the warp line up with the cusps.
-    { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 1, lo: 2, hi: 4, fmt: v => String(Math.round(v)), apply: v => mbPower = Math.round(v), durScale: 10 },
+    // FLOAT now — the fractal morphs continuously through fractional exponents. This used
+    // to round, for two orbit-side reasons that are both handled elsewhere today: the
+    // parametric cardioid only closes for integer d (the seed rides cardioidBlendAt, a
+    // blend of the two neighbouring integer curves — closed for every d), and the cusp
+    // easing needs an integer count (juliaEase keys off round(power)−1). The RENDER always
+    // took a float uniform; z^d at fractional d shows the principal-branch seam ray along
+    // the negative real axis, which is characteristic of every fractional multibrot and
+    // part of the look, not a bug. (The old measurement — ~40–55% of a lap inside the
+    // locus riding the RAW fractional curve — is what the blend fixes; juliaprobe pins it.)
+    { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 4, fmt: v => sig3(v), apply: v => mbPower = v, durScale: 10 },
     { key: "cbcount", host: "fx", group: "copper", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
     { key: "cbspeed", host: "fx", group: "copper", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
     { key: "cbwidth", host: "fx", group: "copper", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
@@ -124,7 +126,7 @@
     { key: "ltrate", host: "fx", group: "storm", type: "dual", label: "Rate", valId: "vLtRate", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "/s", apply: v => ltRateV = v, durScale: 10 },
     { key: "ltbolts", host: "fx", group: "storm", type: "dual", label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
     { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
-    { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => bpPower = Math.round(v), durScale: 10 },
+    { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 0.05, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bpPower = v, durScale: 10 },
     { key: "bpdetail", host: "fx", group: "bulb", type: "dual", label: "Detail", valId: "vBpDetail", min: 3, max: 12, step: 1, lo: 7, hi: 7, fmt: v => sig3(Math.round(v)), apply: v => bpDetail = Math.round(v), durScale: 10 },
     { key: "bpspin", host: "fx", group: "bulb", type: "dual", label: "Orbit speed", valId: "vBpSpin", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bpSpin = v, durScale: 10 },
     { key: "bpglow", host: "fx", group: "bulb", type: "dual", label: "Glow", valId: "vBpGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => bpGlow = v, durScale: 10 },

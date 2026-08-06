@@ -115,7 +115,7 @@
       { n: "Rate", w: "storm", t: "Lightning storm only — automatic strikes per second, for a storm that rolls without music. 0 leaves firing entirely to the Strike chips." },
       { n: "Bolts", w: "storm", t: "Lightning storm only — how many bolts each strike throws down at once, up to five." },
       { n: "Afterglow", w: "storm", t: "Lightning storm only — how much each strike lights the sky behind it, and how much ambient glow remains between strikes." },
-      { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes. Whole numbers only." },
+      { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c, continuously variable. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes, and fractional values morph between forms — drift the two thumbs apart and it never stops reshaping." },
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },

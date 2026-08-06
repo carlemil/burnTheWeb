@@ -77,12 +77,20 @@ package manager, test framework or runtime dependency. Keep `README.md` in sync.
 - `juliaSeed` = rim point on the scaled main cardioid + a riding circle of radius `juliaInnerR`
   at `ratio ×` the outer phase.
 - **The cardioid depends on the exponent**: `d=2` ⇒ Mandelbrot cardioid, else the degree-d
-  Multibrot boundary `c = z − z^d` on `|z| = d^(−1/(d−1))`. `cardioidAt(th, d)` is that curve.
-  `juliaPower` carries it; `setEffect` resets to 2; Multibrot's `draw` sets it from `mbPower`
-  **before** calling `juliaSeed`. At `d=2` the result is bit-identical to the old hardcoded form
-  — that is what keeps existing presets unchanged.
-- Easing: each step × `EASE_K · (1 + JULIA_EASE_A·cos((power−1)·θ))`. `power−1` **is the cusp
-  count**, not a knob — hence **Multibrot's Power is an integer** (`apply` rounds).
+  Multibrot boundary `c = z − z^d` on `|z| = d^(−1/(d−1))`. `cardioidAt(th, d)` is that curve
+  (integer d only — it doesn't close otherwise); fractional d rides `cardioidBlendAt`.
+  `juliaPower` carries it (fractional now); `setEffect` resets to 2; Multibrot's `draw` sets it
+  from `mbPower` **before** calling `juliaSeed`. At `d=2` the result is bit-identical to the old
+  hardcoded form — that is what keeps existing presets unchanged.
+- Easing: each step × `EASE_K · (1 + JULIA_EASE_A·cos((round(power)−1)·θ))`. The cusp count
+  **must stay whole** (a fractional `cos(nθ)` isn't periodic over a lap), so the easing
+  snaps to `round(power)−1` while **Power itself is a FLOAT now** — the render takes it raw
+  (the fractal morphs continuously; fractional exponents show the characteristic
+  principal-branch seam ray) and the orbit rides **`cardioidBlendAt`**: the blend of the two
+  neighbouring integer cardioids (closed for every d — the raw parametric curve only closes
+  at integers, the whole reason Power used to round), pushed outward by
+  **`JULIA_FRAC_BOOST` windowed by `4·f·(1−f)`** (zero at whole powers; 0.3 measured all
+  fractional powers into the integers' ~15–22%-inside band). Bit-identical at integer d.
   **`EASE_K = 1/√(1−A²)` is load-bearing** (preserves lap time `1/rpm` minutes at any power).
   Warp applies to the **outer phase only**; symmetric about θ=π.
 - `juliaPower` is declared **above `juliaEase`** (the arrow reads it at startup).

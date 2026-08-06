@@ -14,6 +14,7 @@
   // and rendered through the same palette/glow pipeline as the fire.
   const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
   const JULIA_MARGIN = CONFIG.tuning.juliaMargin;   // push the big loop this far outside the cardioid
+  const JULIA_FRAC_BOOST = CONFIG.tuning.juliaFracBoost;   // extra push at fractional powers (see config)
   const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
   const JULIA_SMALL_R = 0.03;          // reference small-circle radius (for the ratio-default calc)
   let juliaInnerR = JULIA_SMALL_R;     // small riding-circle radius (live-tunable via slider)

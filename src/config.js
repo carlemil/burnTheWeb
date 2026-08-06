@@ -101,6 +101,12 @@
       nodRate: 0.12,      // Tetrafyer's slow idle nod rate                          (NOD_RATE)
       cardPowQ: 0.05,     // Multibrot locus quantisation = the Power slider's step  (CARD_POW_Q)
       juliaMargin: 0.06,  // push the seed's big loop this far outside the cardioid  (JULIA_MARGIN)
+      // Extra outward push at FRACTIONAL Multibrot powers, peaking at half-integers and
+      // exactly 0 at whole numbers (windowed by 4·f·(1−f)). The true fractional locus is
+      // lopsided (principal branch) and bulges past the blended integer cardioids the seed
+      // rides; 0.3 measured all fractional powers into the same ~15–22%-inside band as the
+      // integers (0 gave 22–59%), while 0.4 overshot into thin, dusty Julia sets.
+      juliaFracBoost: 0.3,   //                                            (JULIA_FRAC_BOOST)
       juliaEaseA: 0.5,    // cardioid lap-speed easing amplitude; EASE_K is derived  (JULIA_EASE_A)
       // Heat every chaos-game / attractor point stamps, 0..255.                    (POINT_HEAT)
       // NOT 255, and that is the whole point. Measured over the catalog: 14 of 19 palettes

@@ -28,7 +28,7 @@ const code =
   "  set rpm(v) { juliaBigRpm = v }, get rpm() { return juliaBigRpm }," +
   "  set ratio(v) { juliaRatio = v }, get ratio() { return juliaRatio }," +
   "  set phase(v) { juliaPhase = v }, set offX(v) { juliaOffX = v }," +
-  "  set power(v) { juliaPower = v }, get power() { return juliaPower }, cardioidAt, juliaEase," +
+  "  set power(v) { juliaPower = v }, get power() { return juliaPower }, cardioidAt, cardioidBlendAt, juliaEase," +
   "  RPM, JULIA_MARGIN, JULIA_RATIO_DEFAULT };";
 const J = new Function(code)();
 
@@ -298,12 +298,39 @@ reset();
        "power " + d + ": matching the locus beats the old d=2-always orbit",
        matched.toFixed(1) + "% inside vs " + mismatched.toFixed(1) + "% before");
   }
-  // Fractional powers stay worse than integer ones — the principal branch of z^d is
-  // discontinuous across the negative real axis, so their locus is a messier object.
-  // Recorded, not asserted away: if someone later makes these clean, this is the note.
-  ok(insideFrac(3, 3) < insideFrac(2.5, 2.5),
-     "integer powers sit further outside than fractional ones (branch-cut effect)",
-     "d=3 " + insideFrac(3, 3).toFixed(1) + "% vs d=2.5 " + insideFrac(2.5, 2.5).toFixed(1) + "%");
+  // FRACTIONAL powers ride cardioidBlendAt now — the blend of the two neighbouring
+  // integer curves — which retires the old "fractional is worse" note. The contract:
+  //
+  //  a) the blend is EXACTLY cardioidAt at integer powers. This is the bit that keeps
+  //     every shipped scene, and every integer pin above, byte-identical.
+  for (const d of [2, 3, 5]) {
+    let worstB = 0;
+    for (let i = 0; i <= 360; i++) {
+      const th = i / 360 * Math.PI * 2;
+      const a = J.cardioidAt(th, d), b = J.cardioidBlendAt(th, d);
+      worstB = Math.max(worstB, Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]));
+    }
+    ok(worstB === 0, "power " + d + ": the blend IS cardioidAt at integers, bit-identical",
+       "max |Δ| = " + worstB);
+  }
+  //  b) the blend CLOSES at the lap seam for fractional powers. The raw parametric curve
+  //     does not (cos(dθ) needs whole turns) — that seam teleport is the whole reason
+  //     Power used to round, so both halves are pinned: raw open, blend closed.
+  for (const d of [2.5, 3.7]) {
+    const b0 = J.cardioidBlendAt(0, d), b1 = J.cardioidBlendAt(Math.PI * 2, d);
+    ok(near(b0[0], b1[0], 1e-12) && near(b0[1], b1[1], 1e-12),
+       "power " + d + ": the blended path closes at the lap seam",
+       "|Δ| = " + Math.hypot(b1[0] - b0[0], b1[1] - b0[1]).toExponential(2));
+    const r0 = J.cardioidAt(0, d), r1 = J.cardioidAt(Math.PI * 2, d);
+    ok(Math.hypot(r1[0] - r0[0], r1[1] - r0[1]) > 0.05,
+       "power " + d + ": the RAW fractional curve does not close (why the blend exists)",
+       "|Δ| = " + Math.hypot(r1[0] - r0[0], r1[1] - r0[1]).toFixed(3));
+  }
+  //  c) a fractional orbit on the blend stays mostly outside its own locus — the same
+  //     bound the d=2 baseline gets, where the raw curve measured 40–55% inside.
+  const frac25 = insideFrac(2.5, 2.5);
+  ok(frac25 < 30, "power 2.5 on the blended path is mostly outside its locus",
+     frac25.toFixed(1) + "% inside");
   J.power = 2;
 }
 
@@ -379,21 +406,25 @@ reset();
   ok(worst === 0, "power 2 easing is bit-identical to the original cos(θ)", "max |Δ| = " + worst);
 }
 
-// --- 10. the Power slider is integer-only ------------------------------------
-// apply() rounds, so the live exponent is whole even though the thumbs animate
-// continuously between them — which is what keeps power−1 (the cusp count) an integer.
+// --- 10. the Power slider is FLOAT; the cusp machinery snaps to integers ------
+// The render takes the raw fractional exponent (the fractal morphs continuously); the
+// orbit rides cardioidBlendAt (closed for every d — section 8) and the easing keys off
+// round(power)−1, since only a whole cusp count is periodic over a lap. These pins are
+// the inverse of the pre-float ones: apply must NOT round, or fractional morphing dies.
 {
   const i = src.indexOf('key: "mbexp"');
   if (i < 0) throw new Error("probe: no mbexp control");
   const line = src.slice(i, src.indexOf("\n", i));
-  ok(/apply:\s*v\s*=>\s*mbPower\s*=\s*Math\.round\(v\)/.test(line),
-     "mbexp apply() rounds to an integer");
-  ok(/step:\s*1\b/.test(line), "mbexp declares an integer step");
-  const dm = src.indexOf('id: "multibrot"');
-  const defs = src.slice(dm, src.indexOf("beat: {}", dm));
-  const mb = defs.match(/mbexp:\s*\[([-\d.]+),\s*([-\d.]+)\]/);
-  ok(mb && Number.isInteger(+mb[1]) && Number.isInteger(+mb[2]),
-     "the shipped mbexp default is a pair of integers", mb ? mb[0] : "not found");
+  ok(/apply:\s*v\s*=>\s*mbPower\s*=\s*v\b/.test(line),
+     "mbexp apply() passes the float straight through (no rounding)");
+  ok(/step:\s*0\.05\b/.test(line), "mbexp declares the fractional step (0.05)");
+  // the easing must still snap: a fractional cusp count would make the warp non-periodic
+  // and give the seed a speed hiccup at every lap seam
+  ok(/Math\.round\(juliaPower\)\s*-\s*1/.test(src),
+     "juliaEase keys off round(power) − 1 — the cusp count stays whole");
+  // the fractional outward push exists and is windowed to vanish at integers
+  ok(/JULIA_FRAC_BOOST\s*\*\s*4\s*\*\s*f\s*\*\s*\(1\s*-\s*f\)/.test(src),
+     "the fractional margin boost is windowed by 4·f·(1−f) (zero at whole powers)");
 }
 
 console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");

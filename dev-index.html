@@ -1876,6 +1876,12 @@
       nodRate: 0.12,      // Tetrafyer's slow idle nod rate                          (NOD_RATE)
       cardPowQ: 0.05,     // Multibrot locus quantisation = the Power slider's step  (CARD_POW_Q)
       juliaMargin: 0.06,  // push the seed's big loop this far outside the cardioid  (JULIA_MARGIN)
+      // Extra outward push at FRACTIONAL Multibrot powers, peaking at half-integers and
+      // exactly 0 at whole numbers (windowed by 4·f·(1−f)). The true fractional locus is
+      // lopsided (principal branch) and bulges past the blended integer cardioids the seed
+      // rides; 0.3 measured all fractional powers into the same ~15–22%-inside band as the
+      // integers (0 gave 22–59%), while 0.4 overshot into thin, dusty Julia sets.
+      juliaFracBoost: 0.3,   //                                            (JULIA_FRAC_BOOST)
       juliaEaseA: 0.5,    // cardioid lap-speed easing amplitude; EASE_K is derived  (JULIA_EASE_A)
       // Heat every chaos-game / attractor point stamps, 0..255.                    (POINT_HEAT)
       // NOT 255, and that is the whole point. Measured over the catalog: 14 of 19 palettes
@@ -5438,6 +5444,7 @@
   // and rendered through the same palette/glow pipeline as the fire.
   const RPM = (Math.PI * 2) / 60;      // one rpm in radians/second
   const JULIA_MARGIN = CONFIG.tuning.juliaMargin;   // push the big loop this far outside the cardioid
+  const JULIA_FRAC_BOOST = CONFIG.tuning.juliaFracBoost;   // extra push at fractional powers (see config)
   const CARDIOID_SIZE = 1.05;          // overall scale of the seed cardioid
   const JULIA_SMALL_R = 0.03;          // reference small-circle radius (for the ratio-default calc)
   let juliaInnerR = JULIA_SMALL_R;     // small riding-circle radius (live-tunable via slider)
@@ -5503,8 +5510,14 @@
   // a circle is uniform-speed at constant angular rate, and freehand is arc-length even by
   // construction — so their ease is a flat 1, which also gives a lap time of exactly 1/rpm
   // (∮dθ at rate rpm·RPM over 2π = 1/rpm min), the same as the cardioid's EASE_K path.
+  // round(): the cusp count must stay an INTEGER for the warp to be periodic over a lap
+  // (cos(nθ) with fractional n doesn't close, so the seed would get a speed hiccup at the
+  // seam). juliaPower itself may be fractional now — the render takes it raw and the path
+  // rides cardioidBlendAt — but the easing snaps to the nearest whole cusp pattern.
+  // Crossing a half-integer changes the PATTERN only (a speed modulation), never the
+  // position. At integer powers round() is the identity, so nothing shipped changes pace.
   const juliaEase = th => seedPathMode === "cardioid"
-    ? EASE_K * (1 + JULIA_EASE_A * Math.cos((juliaPower - 1) * th)) : 1;
+    ? EASE_K * (1 + JULIA_EASE_A * Math.cos((Math.round(juliaPower) - 1) * th)) : 1;
 
   // Orbit phases accumulate per frame from the live rpm/ratio, so tuning or
   // animating either never teleports the seed. reseedJulia() sets the *start*:
@@ -5535,6 +5548,26 @@
   function cardioidAt(th, d) {
     const R = Math.pow(d, -1 / (d - 1)), rd = Math.pow(R, d), a = th * d;
     return [R * Math.cos(th) - rd * Math.cos(a), R * Math.sin(th) - rd * Math.sin(a)];
+  }
+  // The parametric boundary above only CLOSES for integer d — cos(dθ) must complete whole
+  // turns over a lap, so a fractional power on the raw curve teleports the seed at the
+  // θ=0/2π seam (and the raw fractional curve measured ~40–55% of a lap inside the locus).
+  // A fractional power therefore rides the BLEND of its two neighbouring integer curves:
+  // closed for every d, continuous in θ AND in d, and EXACTLY cardioidAt at integers (the
+  // f === 0 short-circuit) — which is what keeps juliaprobe's integer pins bit-identical
+  // and every shipped scene unchanged. The true fractional locus is lopsided (principal
+  // branch); the blend plus JULIA_MARGIN — and the Outer-radius slider, the Burning Ship
+  // precedent — keep the seed outside it in practice. juliaprobe measures both properties.
+  function cardioidBlendAt(th, d) {
+    const lo = Math.floor(d), f = d - lo;
+    if (f === 0) return cardioidAt(th, d);
+    const a = cardioidAt(th, lo), b = cardioidAt(th, lo + 1);
+    // JULIA_FRAC_BOOST: the true fractional locus bulges past the blend of its integer
+    // neighbours, so the blend is pushed outward — most at half-integers, not at all at
+    // whole numbers (the f === 0 short-circuit above never even reads it). A uniform
+    // scale, so the seam closure below is unaffected.
+    const boost = 1 + JULIA_FRAC_BOOST * 4 * f * (1 - f);
+    return [(a[0] + (b[0] - a[0]) * f) * boost, (a[1] + (b[1] - a[1]) * f) * boost];
   }
   function reseedJulia() {
     juliaOuter = randSeed ? Math.random() * Math.PI * 2 : 0;
@@ -5593,7 +5626,7 @@
     // cardioid: the period-1 boundary of the connectedness locus, scaled outward by the
     // margin so the seed sits just *outside* it — which is what makes the Julia set
     // intricate rather than a blob.
-    const c0 = cardioidAt(th, juliaPower), s = (1 + JULIA_MARGIN) * juliaOuterR;
+    const c0 = cardioidBlendAt(th, juliaPower), s = (1 + JULIA_MARGIN) * juliaOuterR;
     return [c0[0] * s + juliaOffX, c0[1] * s];
   }
   function juliaSeedAt(outer, inner) {
@@ -7651,14 +7684,16 @@
     { key: "momix", host: "fx", group: "moire", type: "dual", label: "Blend", valId: "vMoMix", min: 0, max: 1, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => moMix = v, durScale: 10 },
     { key: "nwspin", host: "fx", group: "newton", type: "dual", label: "Root spin", valId: "vNwSpin", min: -1, max: 1, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => nwSpin = v, durScale: 10 },
     { key: "nwrelax", host: "fx", group: "newton", type: "dual", label: "Relaxation", valId: "vNwRelax", min: 0.4, max: 1.8, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => nwRelax = v, durScale: 10 },
-    // Integer only. The thumbs still animate continuously — apply() rounds, so the
-    // live exponent is always a whole number. Fractional powers were never really
-    // sound: z^d uses the principal branch of the log, discontinuous across the
-    // negative real axis, so their connectedness locus is a ragged object the seed
-    // orbit can't track cleanly (measured ~40–55% of a lap inside it, vs ~20% at
-    // integer powers). Rounding also makes power−1 — the cusp count the easing keys
-    // off — a whole number, which is what makes the warp line up with the cusps.
-    { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 1, lo: 2, hi: 4, fmt: v => String(Math.round(v)), apply: v => mbPower = Math.round(v), durScale: 10 },
+    // FLOAT now — the fractal morphs continuously through fractional exponents. This used
+    // to round, for two orbit-side reasons that are both handled elsewhere today: the
+    // parametric cardioid only closes for integer d (the seed rides cardioidBlendAt, a
+    // blend of the two neighbouring integer curves — closed for every d), and the cusp
+    // easing needs an integer count (juliaEase keys off round(power)−1). The RENDER always
+    // took a float uniform; z^d at fractional d shows the principal-branch seam ray along
+    // the negative real axis, which is characteristic of every fractional multibrot and
+    // part of the look, not a bug. (The old measurement — ~40–55% of a lap inside the
+    // locus riding the RAW fractional curve — is what the blend fixes; juliaprobe pins it.)
+    { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 4, fmt: v => sig3(v), apply: v => mbPower = v, durScale: 10 },
     { key: "cbcount", host: "fx", group: "copper", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
     { key: "cbspeed", host: "fx", group: "copper", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
     { key: "cbwidth", host: "fx", group: "copper", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
@@ -7718,7 +7753,7 @@
     { key: "ltrate", host: "fx", group: "storm", type: "dual", label: "Rate", valId: "vLtRate", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "/s", apply: v => ltRateV = v, durScale: 10 },
     { key: "ltbolts", host: "fx", group: "storm", type: "dual", label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
     { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
-    { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => bpPower = Math.round(v), durScale: 10 },
+    { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 0.05, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bpPower = v, durScale: 10 },
     { key: "bpdetail", host: "fx", group: "bulb", type: "dual", label: "Detail", valId: "vBpDetail", min: 3, max: 12, step: 1, lo: 7, hi: 7, fmt: v => sig3(Math.round(v)), apply: v => bpDetail = Math.round(v), durScale: 10 },
     { key: "bpspin", host: "fx", group: "bulb", type: "dual", label: "Orbit speed", valId: "vBpSpin", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bpSpin = v, durScale: 10 },
     { key: "bpglow", host: "fx", group: "bulb", type: "dual", label: "Glow", valId: "vBpGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => bpGlow = v, durScale: 10 },
@@ -9636,7 +9671,7 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], nwspin: [0.05, 0.05], nwrelax: [0.9, 0.9], zoom: [0.8, 0.8], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", subtitle: "Multibrot · power sweep",
-      help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Power is a whole number and steps 2, 3, 4… — each step adds a bulb of symmetry. The seed rides the matching degree-power cardioid, which has power−1 cusps, and the orbit sprints through every one of them and eases off in between.",
+      help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Power now sweeps CONTINUOUSLY — whole numbers give the classic sets (each adds a bulb of symmetry), and the fractions in between morph one into the next, with a characteristic straight seam ray where the fractional exponent's branch cut lies. The seed rides a blend of the two neighbouring whole-power cardioids, sprinting through the cusps and easing off between them.",
       params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // juliaPower BEFORE juliaSeed: the orbit must ride this frame's power, not the last one's.
@@ -9721,7 +9756,7 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · raymarched 3D fractal",
-      help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, slowly orbited by the camera. Power reshapes it — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it. Detail adds fractal depth (and GPU cost), Orbit speed sets the camera's lap, Glow lights the silhouette and puts a halo on near-misses. The heaviest effect in the app — it wants a real GPU.",
+      help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, slowly orbited by the camera. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping). Detail adds fractal depth (and GPU cost), Orbit speed sets the camera's lap, Glow lights the silhouette and puts a halo on near-misses. The heaviest effect in the app — it wants a real GPU.",
       params: ["bppower", "bpdetail", "bpspin", "bpglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "bulb", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = bulbSeed(dt); glShaderDraw("bulb", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uPower, s.power); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else bulb(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], bppower: [8, 8], bpdetail: [7, 7], bpspin: [0.35, 0.35], bpglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
@@ -15442,7 +15477,7 @@
       { n: "Rate", w: "storm", t: "Lightning storm only — automatic strikes per second, for a storm that rolls without music. 0 leaves firing entirely to the Strike chips." },
       { n: "Bolts", w: "storm", t: "Lightning storm only — how many bolts each strike throws down at once, up to five." },
       { n: "Afterglow", w: "storm", t: "Lightning storm only — how much each strike lights the sky behind it, and how much ambient glow remains between strikes." },
-      { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes. Whole numbers only." },
+      { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c, continuously variable. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes, and fractional values morph between forms — drift the two thumbs apart and it never stops reshaping." },
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },

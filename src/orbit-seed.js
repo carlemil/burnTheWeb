@@ -30,8 +30,14 @@
   // a circle is uniform-speed at constant angular rate, and freehand is arc-length even by
   // construction — so their ease is a flat 1, which also gives a lap time of exactly 1/rpm
   // (∮dθ at rate rpm·RPM over 2π = 1/rpm min), the same as the cardioid's EASE_K path.
+  // round(): the cusp count must stay an INTEGER for the warp to be periodic over a lap
+  // (cos(nθ) with fractional n doesn't close, so the seed would get a speed hiccup at the
+  // seam). juliaPower itself may be fractional now — the render takes it raw and the path
+  // rides cardioidBlendAt — but the easing snaps to the nearest whole cusp pattern.
+  // Crossing a half-integer changes the PATTERN only (a speed modulation), never the
+  // position. At integer powers round() is the identity, so nothing shipped changes pace.
   const juliaEase = th => seedPathMode === "cardioid"
-    ? EASE_K * (1 + JULIA_EASE_A * Math.cos((juliaPower - 1) * th)) : 1;
+    ? EASE_K * (1 + JULIA_EASE_A * Math.cos((Math.round(juliaPower) - 1) * th)) : 1;
 
   // Orbit phases accumulate per frame from the live rpm/ratio, so tuning or
   // animating either never teleports the seed. reseedJulia() sets the *start*:
@@ -62,6 +68,26 @@
   function cardioidAt(th, d) {
     const R = Math.pow(d, -1 / (d - 1)), rd = Math.pow(R, d), a = th * d;
     return [R * Math.cos(th) - rd * Math.cos(a), R * Math.sin(th) - rd * Math.sin(a)];
+  }
+  // The parametric boundary above only CLOSES for integer d — cos(dθ) must complete whole
+  // turns over a lap, so a fractional power on the raw curve teleports the seed at the
+  // θ=0/2π seam (and the raw fractional curve measured ~40–55% of a lap inside the locus).
+  // A fractional power therefore rides the BLEND of its two neighbouring integer curves:
+  // closed for every d, continuous in θ AND in d, and EXACTLY cardioidAt at integers (the
+  // f === 0 short-circuit) — which is what keeps juliaprobe's integer pins bit-identical
+  // and every shipped scene unchanged. The true fractional locus is lopsided (principal
+  // branch); the blend plus JULIA_MARGIN — and the Outer-radius slider, the Burning Ship
+  // precedent — keep the seed outside it in practice. juliaprobe measures both properties.
+  function cardioidBlendAt(th, d) {
+    const lo = Math.floor(d), f = d - lo;
+    if (f === 0) return cardioidAt(th, d);
+    const a = cardioidAt(th, lo), b = cardioidAt(th, lo + 1);
+    // JULIA_FRAC_BOOST: the true fractional locus bulges past the blend of its integer
+    // neighbours, so the blend is pushed outward — most at half-integers, not at all at
+    // whole numbers (the f === 0 short-circuit above never even reads it). A uniform
+    // scale, so the seam closure below is unaffected.
+    const boost = 1 + JULIA_FRAC_BOOST * 4 * f * (1 - f);
+    return [(a[0] + (b[0] - a[0]) * f) * boost, (a[1] + (b[1] - a[1]) * f) * boost];
   }
   function reseedJulia() {
     juliaOuter = randSeed ? Math.random() * Math.PI * 2 : 0;
@@ -120,7 +146,7 @@
     // cardioid: the period-1 boundary of the connectedness locus, scaled outward by the
     // margin so the seed sits just *outside* it — which is what makes the Julia set
     // intricate rather than a blob.
-    const c0 = cardioidAt(th, juliaPower), s = (1 + JULIA_MARGIN) * juliaOuterR;
+    const c0 = cardioidBlendAt(th, juliaPower), s = (1 + JULIA_MARGIN) * juliaOuterR;
     return [c0[0] * s + juliaOffX, c0[1] * s];
   }
   function juliaSeedAt(outer, inner) {

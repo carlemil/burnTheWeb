@@ -66,7 +66,7 @@ below:
   - **Munching Squares** — the hypnotic `(x XOR y) + t` pattern with self-similar nested squares.
   - **Copper Bars** — horizontal gradient raster bars sliding up and down on sine motion.
   - **Burning Ship** — a jagged, flame-like fractal (Julia's abs-fold cousin), sharing AnimeJulia's controls.
-  - **Multibrot** — `z^power + c`, where **Power** is a whole number stepping 2, 3, 4… and each step adds a bulb of symmetry. The seed orbits the boundary of the matching **degree-`power`** set, not the plain Mandelbrot cardioid, so the fractal keeps its delicate filigree as the exponent steps instead of flooding solid. That cardioid gains a cusp per step (`power−1` of them), and the seed sprints through every cusp and eases off in between — so raising Power adds fast-slow stretches to the orbit as well as bulbs to the fractal.
+  - **Multibrot** — `z^power + c`, where **Power** sweeps continuously from 2 to 6. Whole numbers give the classic sets — each adds a bulb of symmetry — and the fractions in between morph one into the next (with a straight seam ray where the fractional exponent's branch cut lies, a signature of every fractional multibrot). The seed orbits a blend of the two neighbouring whole-power boundaries, pushed a little further out at fractional powers so the fractal keeps its filigree, and it still sprints through every cusp and eases off in between. Drift Power's two thumbs apart and the set never stops reshaping.
   - **Newton** — the three interlocking root-basins of `z³−1` with fractal borders (Root spin / Relaxation).
   - **Attractor** — a de Jong strange attractor whose four coefficients a/b/c/d morph its delicate threads. **Point jitter** scatters each stamped point to soften them — set it to 0 for the bare, hard-edged curves.
   - **Polygon** — one rotating regular N-gon; **Sides** morphs triangle → square → … → circle, **Thickness** hollows it into an outline.
@@ -286,7 +286,7 @@ except the shared few listed above.
 | **Columns / Twist** *(ranged)* | Twister only — side-by-side columns (up to 3) and how hard the column is wrung (negative reverses). |
 | **Mode / Mode offset / Sharpness / Shimmer** *(ranged)* | Cymatics only — the standing wave's numbers (arm Mode's chips to snap figures on the beat), the skew off square, line thinness, and plate tremble. |
 | **Strike / Rate / Bolts / Afterglow** *(ranged)* | Lightning storm only — the strike itself (arm its chips and the beat fires bolts), automatic strikes per second, simultaneous bolts, and sky glow. |
-| **Power / Detail / Orbit speed / Glow** *(ranged)* | Mandelbulb only — the exponent (8 = classic), fractal iterations, camera lap speed, and silhouette/halo lighting. |
+| **Power / Detail / Orbit speed / Glow** *(ranged)* | Mandelbulb only — the exponent (8 = classic; continuously variable, so drifting it morphs the bulb), fractal iterations, camera lap speed, and silhouette/halo lighting. |
 | **Variation / Morph speed / Point glow** *(ranged)* | Fractal flames only — which nonlinear fold shapes the flame, how fast its maps morph, and how much heat each landing point adds. |
 | **Star density / Fly speed / Warp / Twinkle** *(ranged)* | Starfield only — the traffic, the flight, the beat-armable hyperspace smear, and the shimmer. |
 | **Curtains / Sway / Shimmer** *(ranged)* | Aurora only — how many light curtains hang, how far the sky bends them, how restless the light is. |
