@@ -71,6 +71,11 @@
   const dotEls = {};           // id -> {low,mid,high} : the menu row's beat dots (ditto)
   const PULSE_DROP = CONFIG.pulse.drop;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
   const PLEN_MIN = CONFIG.pulse.min, PLEN_MAX = CONFIG.pulse.max;   // bounds of the per-slider pulse-length slider (s)
+  // How far the editable "max" row under Trigger duration may raise the slider — and the
+  // ceiling plenOk VALIDATES against (not PLEN_MAX): a stored pulse length above the
+  // shipped slider max must still load, or raising the max, setting 5 s and reloading
+  // would silently snap the fall back to the default.
+  const PLEN_HARD_MAX = 30;
 
   // Beat-pulse SHAPE (per slider, per effect). On a beat an armed slider snaps to
   // its high thumb and `a.pulse` decays linearly 1→0 over PULSE_DROP; the chosen
@@ -188,6 +193,40 @@
     row.append(sl, out);
     w.plen = { inp: sl, out };
     host.append(durT, row);              // foot of the control block (above the range editor)
+    // An editable MAX below the slider, like the bounds rows on the value slider itself:
+    // the shipped 2 s ceiling is short for slow falls (Shockwave rings, long strikes).
+    // Edits apply to EVERY block's copy of this key's slider (the pulse length is a
+    // per-key singleton, so its reach should be too). Transient like a fold — the stored
+    // pulse length persists (plenOk validates against PLEN_HARD_MAX); the slider's
+    // reachable max resets to the shipped bound on reload.
+    const mrow = document.createElement("div");
+    mrow.className = "rng-cell plen-max";
+    const mlbl = document.createElement("span");
+    mlbl.className = "rng-lbl"; mlbl.textContent = "max";
+    const mf = document.createElement("input");
+    mf.type = "number"; mf.step = "any"; mf.value = String(PLEN_MAX);
+    mf.min = "0.1"; mf.max = String(PLEN_HARD_MAX);
+    mf.title = "Trigger duration max (seconds)";
+    const mline = document.createElement("span");
+    mline.className = "num-line";
+    mline.appendChild(mf);
+    mrow.append(mlbl, mline);
+    w.plenMax = mf;
+    mf.addEventListener("input", () => {
+      const v = +mf.value;
+      if (!isFinite(v) || v < 0.1 || v > PLEN_HARD_MAX) return;
+      for (let s2 = 0; s2 < STACK_MAX; s2++) {
+        const ww = W[s2] && W[s2][id];
+        if (!ww || !ww.plen) continue;
+        ww.plen.inp.max = String(v);
+        // re-clamp + repaint through the slider's own listener (guarded, so only the
+        // live block writes pulseLen)
+        ww.plen.inp.dispatchEvent(new Event("input", { bubbles: false }));
+        if (ww.plenMax && ww.plenMax !== mf) ww.plenMax.value = mf.value;   // keep the sibling fields in step
+      }
+    });
+    addNumArrows(mf, () => 0.5);
+    host.append(mrow);
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   // Wiring a control splits in two, because several open layers need one set of DOM nodes

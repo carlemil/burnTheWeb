@@ -551,7 +551,9 @@
   // Per-effect beat-pulse LENGTH, exactly parallel to pulseStates above. Seeded to
   // the descriptor's optional `plen` map, else PULSE_DROP (the old hardcoded value).
   const plenStates = {};
-  const plenOk = v => typeof v === "number" && isFinite(v) && v >= PLEN_MIN && v <= PLEN_MAX;
+  // Against PLEN_HARD_MAX, not PLEN_MAX: the Trigger-duration max row can raise the
+  // slider past the shipped bound, and the stored value must survive a reload.
+  const plenOk = v => typeof v === "number" && isFinite(v) && v >= PLEN_MIN && v <= PLEN_HARD_MAX;
   function presetPlen(e) {
     const pt = {};
     for (const id in pulseLen) pt[id] = PULSE_DROP;
