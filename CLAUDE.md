@@ -185,6 +185,12 @@ Run the fire sim, stamp via `plot()`. `simulate()` dispatches to `stamp(box)` if
   MAX stamping would flatten it to a silhouette. The white-out-at-255 concern inverts here:
   the saturated core IS the flame look. `flamesStamp` reseeds the chaos PRNG itself and
   advances `flPhase` per tick (like `nodPhase`); Strike-style beat wiring does not apply.
+  **Auto-exposure is load-bearing**: mid-morph the attractor spreads thin and the additive
+  picture faded to near-black, so pass 1 runs the orbit unstamped to measure
+  hits-per-occupied-cell (64×36 grid) and thin phases boost per-point heat up to 6×
+  (capped 220 — single hits stay colour, not white speckle); pass 2 re-runs the SAME
+  seeded sequence and stamps. Dense phases keep gain 1 (the shipped look). Both passes
+  reseed identically — determinism holds with zero per-layer state.
 - Stamping happens inside a **safe box** (heat grid less a 1px margin), shared by all three.
   Size/Rotation scale & spin the corners about the box centre.
 
