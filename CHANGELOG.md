@@ -14,6 +14,38 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.23.0] — 2026-08-07
+
+### Changed
+
+- **Sliders that pick a thing are one whole number now, not a range.** Fractal flames'
+  **Variation**, Mirror's **Axis**, Pixel sort's **Direction** and Bouncing solids' **Shape
+  mix** — plus every small count (Sides, Segments, Bars, Bolts, Columns, Curtains, Ball
+  count, Detail, States, Brush size, Sim speed …) — now show a single thumb that snaps to
+  whole values. A "Variation 2–5" used to drift across four unrelated warp functions, and a
+  fractional segment count could leave a kaleidoscope wedge that didn't close. Twenty-two
+  sliders in all; they no longer drift or take trigger chips, and your saved scenes, share
+  links and backups all keep loading — a stored range simply settles on its low value.
+- **Densities stay smooth.** Anything that scales rather than counts — Shape grid's
+  **Density**, Concentric rings' **Ring count**, Ring density, Tile density, Multibrot's
+  **Power** — keeps its two thumbs and its free-floating value, and Shape grid's Density now
+  drifts smoothly instead of stepping.
+- **Fractal flames stays lit through a morph.** The additive picture used to fade toward
+  black mid-morph, when the attractor spreads thin; it now measures how dense the orbit
+  actually is each tick and lifts thin phases back up, leaving dense ones exactly as they
+  looked.
+- **Fractal flames' Points** starts at 12 000 and runs 2 000–30 000, a range that suits an
+  additive stamper rather than the one shared with every other point effect.
+
+### Internal
+
+- Effects can declare their own bounds for a slider (`ranges` on the descriptor) instead of
+  widening the shared control for everyone; the load path validates a stored value against
+  the owning effect's bounds.
+- New `tools/singleprobe.js` (116 assertions) pins the single-value set, the whole-number
+  grid, the no-drift guarantee and the collapse of an older stored range.
+- `CLAUDE.md` compacted a second time — rationale stripped, every rule kept.
+
 ## [1.22.0] — 2026-08-07
 
 ### Added
