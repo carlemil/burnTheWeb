@@ -23,7 +23,7 @@
     return row;
   }
   function beatBandRow(label, b) {                           // name + lo Hz + – + hi Hz
-    const row = document.createElement("div"); row.className = "beat-row";
+    const row = document.createElement("div"); row.className = "beat-row beat-band";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const lo = document.createElement("input"), hi = document.createElement("input");
     for (const f of [lo, hi]) { f.type = "number"; f.className = "beat-f"; f.min = 1; f.step = 10; }
@@ -35,6 +35,7 @@
     };
     lo.addEventListener("input", commit); hi.addEventListener("input", commit);
     row.append(nm, lo, dash, hi);
+    addNumArrows(lo); addNumArrows(hi);   // side-by-side steppers, like every number field
     return row;
   }
   function beatBuild() {

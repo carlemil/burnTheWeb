@@ -270,6 +270,16 @@
     paleEdited(false);
   });
   el("pale-pos").addEventListener("change", paleCommit);
+  {
+    // Side-by-side steppers, like every number field. The label is a COLUMN (caption over
+    // field), so the field first moves into a .num-line row — otherwise the appended
+    // arrow pair would stack underneath it as a third column item.
+    const pp = el("pale-pos"), line = document.createElement("span");
+    line.className = "num-line";
+    pp.parentElement.appendChild(line);
+    line.appendChild(pp);
+    addNumArrows(pp);
+  }
   el("pale-name").addEventListener("input", () => {
     const n = el("pale-name").value.trim().slice(0, 40) || "Custom";
     if (paleIdx >= 0) { PALETTES[paleIdx].name = n; paleEdited(false); }

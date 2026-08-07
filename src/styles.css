@@ -462,10 +462,16 @@
   #beatDetails .beat-val { width: 42px; flex: none; text-align: right; color: #ffcf87; }
   #beatDetails .beat-dash { color: #7d838a; }
   #beatDetails .beat-f {
-    /* 60px, not 52: the high band's 12000 Hz is five digits and was being clipped. */
-    width: 60px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
+    /* 44px: exactly the five-digit 12000 Hz at this font, now the native spinner no
+       longer eats in-field width (.no-spin) — the freed room goes to the external ▲/▼
+       pair. Wider overflowed the panel sideways (two fields + two pairs share one row). */
+    width: 44px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
     border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
   }
+  #beatDetails .num-arrow { width: 14px; }   /* same squeeze — the pair still aims fine */
+  /* The band rows carry TWO field+pair sets each; tighter gaps keep them inside the panel. */
+  #beatDetails .beat-band { gap: 3px; }
+  #beatDetails .beat-band .num-arrows { gap: 2px; }
   /* ---- music beat reactivity ---- */
   #panel .audiorow, #menubar .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   /* Keyed on the class alone, NOT scoped to #panel/#menubar — the same trap the close-button
@@ -585,8 +591,10 @@
   /* Directly under the slider it describes, so NO top border — that rule used to separate
      the editor from the beat controls above it, and here it would only cut a slider off from
      its own bounds. The divider below it does that job now. */
+  /* 2x2, not one row of four: each cell now carries the field PLUS its ▲/▼ steppers, and
+     three of those beside each other left ~24px of input — too narrow for "12000". */
   #breakout .rng-edit {
-    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; align-items: end;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: end;
     margin-top: 7px;
   }
   /* Closes the slider + its bounds off from the Triggers section below. */
@@ -596,7 +604,7 @@
   #panel .ctl-div { display: none; }          /* boxes only, like .plen and .trig-t */
   #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
   #breakout .rng-cell input {
-    display: block; width: 100%; margin-top: 3px; padding: 3px 4px;
+    flex: 1 1 24px; min-width: 0; padding: 3px 4px;
     background: rgba(0, 0, 0, 0.4); color: #ffcf87;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 10px ui-monospace, monospace;
@@ -607,6 +615,23 @@
     font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   #breakout .rng-rst:hover { background: rgba(255, 140, 40, 0.22); }
+  /* ---- external number-field steppers ----
+     The native in-field spinner arrows are a few px wide and nearly impossible to aim at,
+     so every number field hides them (.no-spin keeps typing intact) and carries a pair of
+     SIDE-BY-SIDE ▲/▼ buttons after it — the blend row's pattern, at an aimable size.
+     Class-keyed, not container-scoped (the shared-widget rule): these live in #breakout
+     boxes, the Beat tuning box and the palette editor alike. */
+  .num-line { display: flex; align-items: center; gap: 3px; margin-top: 3px; }
+  .num-arrows { display: inline-flex; gap: 3px; flex: none; }
+  .num-arrow {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 19px; padding: 0; border-radius: 4px;
+    border: 1px solid rgba(255, 140, 40, 0.35); background: rgba(0, 0, 0, 0.3);
+    color: #ffb15a; font: 9px/1 ui-monospace, monospace; cursor: pointer; user-select: none;
+  }
+  .num-arrow:hover { background: rgba(255, 140, 40, 0.25); }
+  input.no-spin::-webkit-outer-spin-button, input.no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input.no-spin { appearance: textfield; -moz-appearance: textfield; }
   /* +/- pop button. In a pop-out box it sits in the box's left gutter (absolute);
      on a menu row it's a static chip pinned to the right of the slider's name. */
   .poppable { position: relative; }

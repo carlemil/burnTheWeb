@@ -71,6 +71,38 @@
       inp.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
+  // External ▲/▼ steppers for a number field, SIDE BY SIDE after it — the native in-field
+  // spinner arrows are a few pixels wide and nearly impossible to aim at, which is the
+  // problem the blend row's steppers already solved, so this copies that pattern. The
+  // field keeps keyboard entry (.no-spin only hides the native arrows); the buttons step
+  // by `getStep()` (default: the field's own step attribute, else 1), clamp to the
+  // field's min/max where set, and dispatch bubbling input+change so every existing
+  // listener — including the delegated onEdit — fires exactly as if the value was typed.
+  function addNumArrows(f, getStep) {
+    f.classList.add("no-spin");
+    const wrap = document.createElement("span");
+    wrap.className = "num-arrows";
+    const mk = (glyph, dir) => {
+      const b = document.createElement("b");
+      b.className = "num-arrow"; b.textContent = glyph;
+      b.title = (dir > 0 ? "Increase " : "Decrease ") + (f.title || "value");
+      b.setAttribute("aria-label", b.title);
+      b.addEventListener("click", e => {
+        e.preventDefault(); e.stopPropagation();
+        const st = getStep ? getStep() : (+f.step > 0 ? +f.step : 1);
+        let v = Math.round(((+f.value || 0) + dir * st) * 1e6) / 1e6;
+        if (f.min !== "" && v < +f.min) v = +f.min;
+        if (f.max !== "" && v > +f.max) v = +f.max;
+        f.value = String(v);
+        f.dispatchEvent(new Event("input", { bubbles: true }));
+        f.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      wrap.appendChild(b);
+    };
+    mk("▲", 1); mk("▼", -1);
+    f.after(wrap);
+    return wrap;
+  }
   function makeRangeEditor(slot, key) {
     const els = ctlRangeInputsIn(slot, key);
     if (!els.length) return null;
@@ -91,7 +123,12 @@
         ? ctlLabel(key) + " step (0 = continuous)"
         : ctlLabel(key) + " " + which;
       f.addEventListener("input", () => rngApply(els, which, +f.value));
-      cell.appendChild(f);
+      const line = document.createElement("span");
+      line.className = "num-line";
+      line.appendChild(f);
+      cell.appendChild(line);
+      // nudge by the slider's LIVE step (the step field edits it), else 1
+      addNumArrows(f, () => +els[0].step > 0 ? +els[0].step : 1);
       box.appendChild(cell);
       fields[which] = f;
     }
