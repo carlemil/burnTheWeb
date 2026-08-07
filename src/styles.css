@@ -973,12 +973,13 @@
   }
   #palpickdlg .palpick-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #palpickdlg .presetrow { margin-top: 14px; }
-  /* The "+" tile that ends the swatch strip — same size and rhythm as a ramp, so the strip
-     reads as one object with an empty slot rather than a control bolted underneath. */
+  /* The labelled tile that ends the swatch strip ("+ Choose palettes") — same size and
+     rhythm as a ramp, so the strip reads as one object with an empty slot rather than a
+     control bolted underneath. */
   .palsw-add {
     display: block; width: 100%; height: 22px; padding: 0;
     background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
-    border-radius: 4px; color: #ffcf87; font: 13px/1 ui-monospace, monospace; cursor: pointer;
+    border-radius: 4px; color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
   #panel .filter-chk { margin: 4px 0 0; }

@@ -991,12 +991,13 @@
   }
   #palpickdlg .palpick-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #palpickdlg .presetrow { margin-top: 14px; }
-  /* The "+" tile that ends the swatch strip — same size and rhythm as a ramp, so the strip
-     reads as one object with an empty slot rather than a control bolted underneath. */
+  /* The labelled tile that ends the swatch strip ("+ Choose palettes") — same size and
+     rhythm as a ramp, so the strip reads as one object with an empty slot rather than a
+     control bolted underneath. */
   .palsw-add {
     display: block; width: 100%; height: 22px; padding: 0;
     background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
-    border-radius: 4px; color: #ffcf87; font: 13px/1 ui-monospace, monospace; cursor: pointer;
+    border-radius: 4px; color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
   #panel .filter-chk { margin: 4px 0 0; }
@@ -1714,6 +1715,9 @@
     <div class="presetrow grid2">
       <button id="palpick-all" class="audbtn" type="button">Select all</button>
       <button id="palpick-none" class="audbtn" type="button">Select none</button>
+    </div>
+    <div class="presetrow">
+      <button id="palpick-new" class="audbtn" type="button" title="Create a new custom palette from a simple RGB ramp — you name it, then the editor opens">Create new</button>
     </div>
   </div>
 </div>
@@ -9512,27 +9516,30 @@
         syncPalSwatches();
       });
       w.appendChild(b);
-      const e = document.createElement("button");
-      e.type = "button"; e.className = "palsw-edit"; e.textContent = p.custom ? "✎" : "+";
-      // A built-in opens as a COPY (the shipped ramps stay pristine, so "Reset this effect"
-      // and every existing scene keep meaning what they meant); a custom opens for editing.
-      e.title = p.custom ? "Edit this palette" : "Make an editable copy of " + p.name;
-      e.setAttribute("aria-label", e.title);
-      e.addEventListener("click", ev => {
-        ev.stopPropagation();
-        if (slot !== stackSel && stack[slot]) selectStack(slot);
-        openPalEditor(i);
-      });
-      w.appendChild(e);
+      // Only CUSTOMS carry an edit button now. The old + on a built-in ("make an editable
+      // copy") moved into the picker as Create new — new palettes start from a plain RGB
+      // ramp there instead of shadow-copying whichever ramp you happened to hover.
+      if (p.custom) {
+        const e = document.createElement("button");
+        e.type = "button"; e.className = "palsw-edit"; e.textContent = "✎";
+        e.title = "Edit this palette";
+        e.setAttribute("aria-label", e.title);
+        e.addEventListener("click", ev => {
+          ev.stopPropagation();
+          if (slot !== stackSel && stack[slot]) selectStack(slot);
+          openPalEditor(i);
+        });
+        w.appendChild(e);
+      }
       host.appendChild(w);
     });
-    // A swatch-shaped "+" at the end of the strip opens the in-use picker. Deliberately the
-    // same size and rhythm as the ramps rather than a button underneath: it reads as "one
-    // more slot" and keeps the strip a single object.
+    // A labelled tile at the end of the strip opens the in-use picker — same width and
+    // rhythm as the ramps so the strip reads as one object. It used to say just "+",
+    // which read as "add a palette" when it actually chooses which ones show.
     const add = document.createElement("button");
-    add.type = "button"; add.className = "palsw-add"; add.textContent = "+";
-    add.title = "Choose which palettes are in use";
-    add.setAttribute("aria-label", "Choose which palettes are in use");
+    add.type = "button"; add.className = "palsw-add"; add.textContent = "+ Choose palettes";
+    add.title = "Choose which palettes are in use, or create a new one";
+    add.setAttribute("aria-label", add.title);
     add.addEventListener("click", openPalPick);
     host.appendChild(add);
     paletteSel.classList.add("pal-hidden");   // the swatches are the control now; keep the select for its value
@@ -9585,6 +9592,25 @@
   el("palpickdlg").addEventListener("click", e => { if (e.target === el("palpickdlg")) closePalPick(); });
   el("palpick-all").addEventListener("click", () => setPalUseAll(true));
   el("palpick-none").addEventListener("click", () => setPalUseAll(false));
+  // Create a NEW custom palette: a plain RGB ramp under a name the user must supply (no
+  // name ⇒ no palette). Replaces the old + on every built-in swatch. The custom branch of
+  // openPalEditor keeps a named palette even when it is closed without an edit — only
+  // anonymous shadow-copies were discard-on-close.
+  el("palpick-new").addEventListener("click", () => {
+    if (PALETTES.length - PAL_BUILTIN >= PAL_MAX_CUSTOM) {
+      alert("You already have " + PAL_MAX_CUSTOM + " custom palettes — delete one first.");
+      return;
+    }
+    const name = (prompt("Name the new palette:") || "").trim().slice(0, 40);
+    if (!name) return;
+    PALETTES.push(customPalEntry({ name, stops: [[0, [255, 0, 0]], [0.5, [0, 255, 0]], [1, [0, 0, 255]]] }));
+    const i = PALETTES.length - 1;
+    if (palUse) palUse.add(i);            // a materialised in-use set must include the newcomer
+    buildPalSwatches(); buildPalPick(); persist();
+    closePalPick();
+    paleSelectLive(i);                    // show it at once, and open the editor on it
+    openPalEditor(i);
+  });
   // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't

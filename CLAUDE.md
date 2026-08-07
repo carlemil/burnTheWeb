@@ -573,8 +573,13 @@ Flips indices **1..255** of the baked LUT, leaving 0 as background. Both bake ch
 **Background** (`#palbg`) — **per layer**: `paletteBg` ∈ `"palette"` (**default**) | `"black"` |
 `"white"`. Default in both deciding places: the initial global and **`bgOk`'s fallback**.
 
-**Palette editor** (`#paledlg`, `src/palette-editor.js`): `+` on a built-in copies, `✎` edits a
-custom; shipped ramps stay pristine. Floating, non-modal, hides on `m`/`Esc`.
+**Palette editor** (`#paledlg`, `src/palette-editor.js`): `✎` on a CUSTOM swatch edits it; new
+customs come from the **picker's Create new** (`#palpick-new`): a plain RGB ramp under a
+user-supplied name — `prompt`, and **no name ⇒ no palette**. The old `+`-on-a-built-in copy
+flow is gone from the strip (openPalEditor's copy branch survives for code callers; shipped
+ramps stay pristine either way). A named creation goes through the custom branch, so closing
+without an edit KEEPS it — only anonymous shadow-copies were discard-on-close. Create new must
+add the new index to a **materialised `palUse` set**. Floating, non-modal, hides on `m`/`Esc`.
 - **Edits LIVE, not as a draft** (palettes are referenced by index and re-derived every frame).
   **A fresh copy closed without an edit is removed again**; `Save & close` overrides.
 - **A stop-handle drag must not rebuild `#pale-stops`** — the capture and move/up listeners
@@ -591,7 +596,7 @@ custom; shipped ramps stay pristine. Floating, non-modal, hides on `m`/`Esc`.
 - **Deleting a custom shifts later indices down** ⇒ `palRemapDeleted` rewrites the live stack,
   per-effect `extras` and every preset. Existing share links are not rewritten.
 
-**`palUse`** (`#palpickdlg`, the `+` tile ending the strip): gates the STRIP and the CYCLE only
+**`palUse`** (`#palpickdlg`, the "+ Choose palettes" tile ending the strip): gates the STRIP and the CYCLE only
 (`pickOther` picks from it). A scene storing an unticked palette still loads and renders, and the
 strip always shows the current ramp. `null` = all (shipped, what older blobs decode to);
 `setPalUse` collapses full/empty back to `null`. Global blob field, skipped while `sharing`.
