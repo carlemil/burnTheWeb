@@ -14,6 +14,24 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.20.0] — 2026-08-07
+
+### Added
+
+- **Create new palettes by name** — the "Palettes in use" dialog (the "+ Choose palettes"
+  tile at the end of the swatch strip) has a **Create new** button: name your palette
+  (required), and the editor opens on a simple red→green→blue starting ramp, selected live.
+- **Trigger duration gets an editable max** — a `max` row under the Trigger duration
+  slider re-bounds it up to 30 s, for slow falls like Shockwave rings or long lightning
+  strikes. Values above the old ceiling now survive reloads and scene switches.
+
+### Changed
+
+- **The swatch strip is quieter** — the `+` that sat on every built-in swatch (make an
+  editable copy) is gone; only your custom palettes carry a button there (✎ to edit).
+  Creating palettes lives in the picker now, and the strip's end tile says what it does:
+  "+ Choose palettes".
+
 ## [1.19.0] — 2026-08-07
 
 ### Added
