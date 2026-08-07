@@ -480,10 +480,16 @@
   #beatDetails .beat-val { width: 42px; flex: none; text-align: right; color: #ffcf87; }
   #beatDetails .beat-dash { color: #7d838a; }
   #beatDetails .beat-f {
-    /* 60px, not 52: the high band's 12000 Hz is five digits and was being clipped. */
-    width: 60px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
+    /* 44px: exactly the five-digit 12000 Hz at this font, now the native spinner no
+       longer eats in-field width (.no-spin) — the freed room goes to the external ▲/▼
+       pair. Wider overflowed the panel sideways (two fields + two pairs share one row). */
+    width: 44px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
     border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
   }
+  #beatDetails .num-arrow { width: 14px; }   /* same squeeze — the pair still aims fine */
+  /* The band rows carry TWO field+pair sets each; tighter gaps keep them inside the panel. */
+  #beatDetails .beat-band { gap: 3px; }
+  #beatDetails .beat-band .num-arrows { gap: 2px; }
   /* ---- music beat reactivity ---- */
   #panel .audiorow, #menubar .audiorow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   /* Keyed on the class alone, NOT scoped to #panel/#menubar — the same trap the close-button
@@ -603,28 +609,52 @@
   /* Directly under the slider it describes, so NO top border — that rule used to separate
      the editor from the beat controls above it, and here it would only cut a slider off from
      its own bounds. The divider below it does that job now. */
-  #breakout .rng-edit {
-    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; align-items: end;
-    margin-top: 7px;
-  }
+  /* ONE ROW PER FIELD (label · field · ▲/▼, ↺ ending the step row): a cell now carries
+     the field PLUS its stepper pair, and any side-by-side column split left the inputs
+     ~26px — too narrow for "24000", with max spilling out of the box. */
+  #breakout .rng-edit { margin-top: 7px; }
   /* Closes the slider + its bounds off from the Triggers section below. */
   #breakout .ctl-div {
     margin: 10px 0 0; border-top: 1px solid rgba(255, 140, 40, 0.18);
   }
   #panel .ctl-div { display: none; }          /* boxes only, like .plen and .trig-t */
-  #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
+  #breakout .rng-cell {
+    /* nowrap is load-bearing: a shared label rule sets flex-wrap: wrap, and since the
+       field line grows to fill the row, the step row's ↺ wrapped onto its own line. */
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin: 3px 0;
+    opacity: .55; font-size: 9px; letter-spacing: .06em;
+  }
+  #breakout .rng-lbl { flex: none; width: 26px; }
+  #breakout .rng-cell .num-line { flex: 1 1 auto; min-width: 0; margin-top: 0; }
   #breakout .rng-cell input {
-    display: block; width: 100%; margin-top: 3px; padding: 3px 4px;
+    flex: 1 1 40px; min-width: 0; padding: 3px 4px;
     background: rgba(0, 0, 0, 0.4); color: #ffcf87;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 10px ui-monospace, monospace;
   }
   #breakout .rng-rst {
-    width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
+    flex: none; width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   #breakout .rng-rst:hover { background: rgba(255, 140, 40, 0.22); }
+  /* ---- external number-field steppers ----
+     The native in-field spinner arrows are a few px wide and nearly impossible to aim at,
+     so every number field hides them (.no-spin keeps typing intact) and carries a pair of
+     SIDE-BY-SIDE ▲/▼ buttons after it — the blend row's pattern, at an aimable size.
+     Class-keyed, not container-scoped (the shared-widget rule): these live in #breakout
+     boxes, the Beat tuning box and the palette editor alike. */
+  .num-line { display: flex; align-items: center; gap: 3px; margin-top: 3px; }
+  .num-arrows { display: inline-flex; gap: 3px; flex: none; }
+  .num-arrow {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 19px; padding: 0; border-radius: 4px;
+    border: 1px solid rgba(255, 140, 40, 0.35); background: rgba(0, 0, 0, 0.3);
+    color: #ffb15a; font: 9px/1 ui-monospace, monospace; cursor: pointer; user-select: none;
+  }
+  .num-arrow:hover { background: rgba(255, 140, 40, 0.25); }
+  input.no-spin::-webkit-outer-spin-button, input.no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input.no-spin { appearance: textfield; -moz-appearance: textfield; }
   /* +/- pop button. In a pop-out box it sits in the box's left gutter (absolute);
      on a menu row it's a static chip pinned to the right of the slider's name. */
   .poppable { position: relative; }
@@ -811,6 +841,10 @@
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
     background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
   }
+  /* The layer's visibility eye (open = showing, closed = muted) — inline-flex so the SVG
+     centres in the same 10px-font button frame the ✕ beside it uses. */
+  #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lyr b.lyr-eye > svg { display: block; }
   #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
   #panel .lyr b.off { opacity: .3; cursor: default; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
@@ -845,13 +879,15 @@
   #panel .filter-sec.idle > summary { opacity: .62; }
   #panel .filter-sec.idle > summary::before { visibility: hidden; }
   #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
-  /* The bypass dot: mute a filter in place, keeping its position in the chain and its
+  /* The bypass eye: mute a filter in place, keeping its position in the chain and its
      settings. ✕ beside it REMOVES; this only silences, which is what you want when you are
-     working out what a filter is contributing. Filled = acting, hollow = muted. */
+     working out what a filter is contributing. Open eye = acting, closed eye = muted. */
   #panel .filter-sec > summary .filter-by {
+    display: inline-flex; align-items: center; justify-content: center;
     flex: 0 0 auto; width: 16px; height: 16px; padding: 0; border: 0; background: none;
     color: #ffb15a; font: 13px/1 monospace; cursor: pointer; opacity: .8;
   }
+  #panel .filter-sec > summary .filter-by > svg { display: block; }
   #panel .filter-sec > summary .filter-by:hover { opacity: 1; }
   /* A muted row stays legible — it is still part of the chain and you still want to read and
      drag it — but its name is struck through, the same "off but present" language the mute
@@ -1439,7 +1475,10 @@
   <div class="presetrow">
     <button id="newpreset" class="audbtn" type="button" title="Save what is on screen as a new scene">New</button>
     <button id="renamepreset" class="audbtn" type="button" title="Rename the selected scene">Rename</button>
+  </div>
+  <div class="presetrow">
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected scene">Delete</button>
+    <button id="sharepreset" class="audbtn" type="button" title="Copy a link to this scene — short via your cloud profile when signed in, self-contained otherwise">Share</button>
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
@@ -1812,7 +1851,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.18.1",
+    version: "1.19.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2133,6 +2172,17 @@
   // explicitly so an extra property is never serialised. installStack replaces the objects on
   // every scene load, which is exactly when the bypass should evaporate.
   const fxOffOf = L => (L && (L.fxOff || (L.fxOff = new Set()))) || new Set();
+  // Eye icons for every "is this visible?" toggle (the layer mute, the filter bypass): an
+  // OPEN eye = contributing to the picture, a CLOSED eye (lid + lashes) = muted. Inline
+  // SVG on currentColor, sized in em, so each button tints and scales them exactly like
+  // the ●/○ glyphs they replaced. Set via innerHTML at the two sync sites.
+  const EYE_OPEN = '<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor"'
+    + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg>';
+  const EYE_SHUT = '<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="none" stroke="currentColor"'
+    + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M2 10c2.5 3.7 6 5.5 10 5.5s7.5-1.8 10-5.5"/>'
+    + '<path d="M4.5 14 3 16.5"/><path d="M12 15.5v3"/><path d="M19.5 14l1.5 2.5"/></svg>';
   // Whichever layer is being drawn right now: renderFxOff is set per layer by the stacked
   // path, mirroring renderFilters; falling back to the selected layer covers the editor and
   // the single-layer render.
@@ -3419,14 +3469,31 @@
     // a per-bolt seed. uEnv is the strike envelope (1 = fresh bolt, decaying to 0) and
     // uSeed changes per strike, so every flash is a NEW bolt — both come from stormSeed,
     // where the beat-armed Strike slider and the auto Rate clock are merged.
+    // Each bolt is an L-system-style fractal: the main channel is four octaves of
+    // LINEAR-interpolated value noise (piecewise-straight — the kinks ARE the jaggedness;
+    // smoothstep interp read as a wavy ribbon) scaled by a per-strike random roughness,
+    // and the rewrite rule grows 2–4 BRANCH channels at hash-picked fork heights, angled
+    // outward and fading toward their tips. Every parameter re-rolls per strike (all
+    // hash-derived from uSeed, so no extra uniforms carry the geometry).
+    // uFront is the STRIKE FRONT: the bolt lights top-to-bottom as the front races down
+    // (Strike speed slider), with a hot tip at the leading edge; past 1 the bolt is fully
+    // lit and only the envelope decays.
     const FS_STORM = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom;
+    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom; uniform float uFront;
     out vec4 o;
     float h1(float x){ return fract(sin(x*127.1)*43758.5453); }
-    float vn(float t, float s){
+    float vnl(float t, float s){
       float i = floor(t), f = fract(t);
-      return mix(h1(i + s), h1(i + 1.0 + s), f*f*(3.0 - 2.0*f));
+      return mix(h1(i + s), h1(i + 1.0 + s), f);
+    }
+    float chanX(float y, float sk, float ar){
+      float rough = 0.8 + 0.5*h1(sk + 51.0);
+      return (h1(sk)*0.9 - 0.45)*ar
+           + rough*(0.42*(vnl(y*3.0,  sk + 7.0)  - 0.5)
+                  + 0.22*(vnl(y*9.0,  sk + 17.0) - 0.5)
+                  + 0.11*(vnl(y*27.0, sk + 29.0) - 0.5)
+                  + 0.05*(vnl(y*81.0, sk + 43.0) - 0.5));
     }
     void main(){
       float fw = uSize.x, fh = uSize.y;
@@ -3438,14 +3505,32 @@
       for (int k = 0; k < 5; k++){
         if (k >= n) break;
         float sk = uSeed + float(k)*271.13;
-        float bx = (h1(sk)*0.9 - 0.45)*ar
-                 + 0.50*(vn(yt*3.0,  sk + 7.0)  - 0.5)
-                 + 0.24*(vn(yt*9.0,  sk + 17.0) - 0.5)
-                 + 0.10*(vn(yt*27.0, sk + 29.0) - 0.5);
-        float d = abs(q.x - bx);
-        float bright = 0.7 + 0.3*h1(sk + 3.3);
         float fl = 0.72 + 0.28*sin(uEnv*40.0 + sk*9.0);   // flicker as the envelope decays
-        heat = max(heat, uEnv*bright*fl*(exp(-d*80.0) + 0.30*exp(-d*13.0)));
+        float bright = uEnv*fl*(0.7 + 0.3*h1(sk + 3.3));
+        float lit = 1.0 - smoothstep(uFront - 0.05, uFront + 0.01, yt);
+        float bx = chanX(yt, sk, ar);
+        float d = abs(q.x - bx);
+        heat = max(heat, bright*lit*(exp(-d*90.0) + 0.30*exp(-d*14.0)));
+        if (uFront < 1.05){                       // the hot tip racing down the channel
+          vec2 tp = vec2(chanX(uFront, sk, ar), uFront);
+          float dt2 = length(vec2(q.x, yt) - tp);
+          heat = max(heat, bright*1.5*exp(-dt2*40.0));
+        }
+        int nb = 2 + int(h1(sk + 41.0)*2.99);     // the split rule: 2-4 forks per strike
+        for (int j = 0; j < 4; j++){
+          if (j >= nb) break;
+          float sj = sk + float(j)*17.71 + 5.0;
+          float yf = 0.12 + 0.62*h1(sj);
+          float len = 0.15 + 0.30*h1(sj + 2.0);
+          float t = (yt - yf)/len;
+          if (t < 0.0 || t > 1.0) continue;
+          float slope = (h1(sj + 4.0) - 0.5)*1.6;
+          float bxj = chanX(yf, sk, ar) + slope*(yt - yf)
+                    + 0.12*t*(vnl(yt*13.0, sj + 6.0) - 0.5)
+                    + 0.05*(vnl(yt*41.0, sj + 8.0) - 0.5);
+          float dj = abs(q.x - bxj);
+          heat = max(heat, bright*lit*0.55*(1.0 - 0.6*t)*exp(-dj*110.0));
+        }
       }
       // sky flash + a whisper of ambience so the frame is not dead black between strikes
       heat += uEnv*uGlow*0.22*(0.4 + 0.6*(1.0 - yt)) + uGlow*0.05;
@@ -4236,7 +4321,7 @@
     glProg.kefrens = camProg(VS_QUAD, FS_KEFRENS, ["uSize", "uTime", "uBars", "uSway", "uWidth", "uZoom"]);
     glProg.twister = camProg(VS_QUAD, FS_TWISTER, ["uSize", "uTime", "uCols", "uWidth", "uTwist", "uZoom"]);
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
-    glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom"]);
+    glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
@@ -6533,35 +6618,67 @@
   // over the Trigger duration. `stormSeed` merges that with the auto Rate clock and
   // advances the bolt seed on every NEW strike — a rising Strike edge, or the auto
   // clock wrapping — so each flash draws a different bolt.
-  let ltStrikeV = 0, ltRateV = 0.5, ltBoltsV = 2, ltGlowV = 0.5, ltTime = 0, ltSeed = 0, ltPrev = 0;
+  // Each bolt is an L-system-style fractal (see FS_STORM): four octaves of LINEAR value
+  // noise for the kinked main channel plus 2–4 hash-grown branch channels, every
+  // parameter re-rolled per strike. `ltFront` is the strike front — a fresh bolt lights
+  // top-to-bottom at Strike speed (screen-heights/s) with a hot tip; both it and
+  // `ltSeedPrev` (the fresh-bolt detector) ride PHASE_VARS so two storm layers strike
+  // independently.
+  let ltStrikeV = 0, ltRateV = 0.5, ltSpdV = 12, ltBoltsV = 2, ltGlowV = 0.5;
+  let ltTime = 0, ltSeed = 0, ltPrev = 0, ltFront = 9, ltSeedPrev = -1;
   function stormSeed(dt) {
     ltTime += dt * ltRateV;                          // auto clock, in strikes
     if (ltStrikeV > ltPrev + 0.25) ltSeed++;         // a beat (or hand) fired a fresh bolt
     ltPrev = ltStrikeV;
+    const seed = Math.floor(ltTime) * 7.31 + ltSeed * 13.7;
+    if (seed !== ltSeedPrev) { ltSeedPrev = seed; ltFront = 0; }   // fresh bolt: race down again
+    ltFront = Math.min(9, ltFront + dt * ltSpdV);
     const auto = ltRateV > 0 ? Math.pow(1 - (ltTime - Math.floor(ltTime)), 3) : 0;
-    return { env: Math.max(auto, ltStrikeV), seed: Math.floor(ltTime) * 7.31 + ltSeed * 13.7,
+    return { env: Math.max(auto, ltStrikeV), seed, front: ltFront,
              bolts: ltBoltsV, glow: ltGlowV, zoom };
   }
   const ltH1 = x => { const v = Math.sin(x * 127.1) * 43758.5453; return v - Math.floor(v); };
-  function ltVn(t, sd) {
-    const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f);
-    return ltH1(i + sd) * (1 - u) + ltH1(i + 1 + sd) * u;
+  const ltVnl = (t, sd) => {              // LINEAR value noise — the kinks are the look
+    const i = Math.floor(t), f = t - i;
+    return ltH1(i + sd) * (1 - f) + ltH1(i + 1 + sd) * f;
+  };
+  function ltChanX(y, sk, ar) {
+    const rough = 0.8 + 0.5 * ltH1(sk + 51);
+    return (ltH1(sk) * 0.9 - 0.45) * ar
+      + rough * (0.42 * (ltVnl(y * 3, sk + 7) - 0.5)
+               + 0.22 * (ltVnl(y * 9, sk + 17) - 0.5)
+               + 0.11 * (ltVnl(y * 27, sk + 29) - 0.5)
+               + 0.05 * (ltVnl(y * 81, sk + 43) - 0.5));
   }
-  let ltRow = null;
+  let ltRow = null, ltRowB = null;
   function storm(dt) {                    // CPU fallback — mirrors FS_STORM
     const s = stormSeed(dt), ar = fw / fh, n = Math.round(s.bolts);
-    // bolt x per ROW per bolt, cached once per frame (the path depends only on y)
-    if (!ltRow || ltRow.length < fh * 5) ltRow = new Float32Array(fh * 5);
-    const bright = [];
+    // channel x per ROW per bolt (and per branch), cached once per frame
+    if (!ltRow || ltRow.length < fh * 5) { ltRow = new Float32Array(fh * 5); ltRowB = new Float32Array(fh * 20); }
+    const bright = [], tipx = [], nbs = [], bfade = [];
     for (let k = 0; k < n; k++) {
       const sk = s.seed + k * 271.13;
-      bright.push((0.7 + 0.3 * ltH1(sk + 3.3)) * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)));
+      bright.push(s.env * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)) * (0.7 + 0.3 * ltH1(sk + 3.3)));
+      tipx.push(ltChanX(s.front, sk, ar));
+      const nb = 2 + Math.floor(ltH1(sk + 41) * 2.99);
+      nbs.push(nb);
       for (let r = 0; r < fh; r++) {
         const yt = (r / fh - 0.5) / s.zoom + 0.5;   // 0 at SCREEN top (buffer row 0 = top)
-        ltRow[r * 5 + k] = (ltH1(sk) * 0.9 - 0.45) * ar
-          + 0.50 * (ltVn(yt * 3, sk + 7) - 0.5)
-          + 0.24 * (ltVn(yt * 9, sk + 17) - 0.5)
-          + 0.10 * (ltVn(yt * 27, sk + 29) - 0.5);
+        ltRow[r * 5 + k] = ltChanX(yt, sk, ar);
+        for (let j = 0; j < 4; j++) {
+          const bi = (r * 5 + k) * 4 + j;
+          if (j >= nb) { ltRowB[bi] = 1e9; continue; }
+          const sj = sk + j * 17.71 + 5;
+          const yf = 0.12 + 0.62 * ltH1(sj);
+          const len = 0.15 + 0.30 * ltH1(sj + 2);
+          const t = (yt - yf) / len;
+          if (t < 0 || t > 1) { ltRowB[bi] = 1e9; continue; }
+          const slope = (ltH1(sj + 4) - 0.5) * 1.6;
+          ltRowB[bi] = ltChanX(yf, sk, ar) + slope * (yt - yf)
+            + 0.12 * t * (ltVnl(yt * 13, sj + 6) - 0.5)
+            + 0.05 * (ltVnl(yt * 41, sj + 8) - 0.5);
+          bfade[bi] = 0.55 * (1 - 0.6 * t);
+        }
       }
     }
     let idx = 0;
@@ -6572,11 +6689,26 @@
         const qy = (camPY / fh - 0.5) / s.zoom;
         const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));   // cache is by screen row
         const yt = qy + 0.5;                                          // matches FS_STORM's flip
+        const lf = (yt - (s.front - 0.05)) / 0.06;
+        const lit = lf <= 0 ? 1 : lf >= 1 ? 0 : 1 - lf * lf * (3 - 2 * lf);
         let heat = 0;
         for (let k = 0; k < n; k++) {
           const d = Math.abs(qx - ltRow[r * 5 + k]);
-          const v = s.env * bright[k] * (Math.exp(-d * 80) + 0.30 * Math.exp(-d * 13));
+          let v = bright[k] * lit * (Math.exp(-d * 90) + 0.30 * Math.exp(-d * 14));
           if (v > heat) heat = v;
+          if (s.front < 1.05) {
+            const dx = qx - tipx[k], dy = yt - s.front;
+            v = bright[k] * 1.5 * Math.exp(-Math.hypot(dx, dy) * 40);
+            if (v > heat) heat = v;
+          }
+          for (let j = 0; j < nbs[k]; j++) {
+            const bi = (r * 5 + k) * 4 + j;
+            const bx = ltRowB[bi];
+            if (bx > 1e8) continue;
+            const dj = Math.abs(qx - bx);
+            v = bright[k] * lit * bfade[bi] * Math.exp(-dj * 110);
+            if (v > heat) heat = v;
+          }
         }
         heat += s.env * s.glow * 0.22 * (0.4 + 0.6 * (1 - yt)) + s.glow * 0.05;
         fire[idx++] = Math.min(1, heat) * 255;
@@ -7944,6 +8076,7 @@
     { key: "cyshimmer", host: "fx", group: "chladni", type: "dual", label: "Shimmer", valId: "vCyShim", min: 0, max: 2, step: 0.05, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => cyShim = v, durScale: 10 },
     { key: "ltstrike", host: "fx", group: "storm", type: "dual", label: "Strike", valId: "vLtStrike", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => ltStrikeV = v, durScale: 10 },
     { key: "ltrate", host: "fx", group: "storm", type: "dual", label: "Rate", valId: "vLtRate", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "/s", apply: v => ltRateV = v, durScale: 10 },
+    { key: "ltspd", host: "fx", group: "storm", type: "dual", label: "Strike speed", valId: "vLtSpd", min: 2, max: 40, step: 0.5, lo: 12, hi: 12, fmt: v => sig3(v) + "×", apply: v => ltSpdV = v, durScale: 10 },
     { key: "ltbolts", host: "fx", group: "storm", type: "dual", label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
     { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
     { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 0.05, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bpPower = v, durScale: 10 },
@@ -7985,8 +8118,12 @@
     // random time drawn from it (like Preset TTL). Collapsed to 0 = fixed palette.
     // This replaced the old "Auto-morph palettes" checkbox — `morphing` is now
     // derived from the slider rather than stored separately.
-    { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 120, step: 1, lo: 8, hi: 8, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
-    { key: "palhold", host: "pal", group: "palette", type: "dual", label: "Palette hold", valId: "vPalHold", min: 0, max: 120, step: 1, lo: 0, hi: 0, fmt: v => v <= 0 ? "none" : sig3(v) + "s", apply: v => palHoldLive = v, durScale: 10, beat: false },
+    // Bounds 0..2 / 0..10 by request (steps shrunk to match — 0..2 at step 1 is three
+    // positions). A scene that stored a slower cycle under the old 0..120 bounds either
+    // carries its own `ranges` (custom bounds travel per scene) or clamps to the new max
+    // on load. The initial lo/hi must sit inside the new bounds (8 no longer does).
+    { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 2, step: 0.05, lo: 1, hi: 1, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
+    { key: "palhold", host: "pal", group: "palette", type: "dual", label: "Palette hold", valId: "vPalHold", min: 0, max: 10, step: 0.1, lo: 0, hi: 0, fmt: v => v <= 0 ? "none" : sig3(v) + "s", apply: v => palHoldLive = v, durScale: 10, beat: false },
     // Heat boost: remap the heat toward the palette's bright end (see heatBoost). 0 = the palette
     // as-is; per-layer (host "pal"), so each layer boosts its own palette. Animatable + beat-armable.
     { key: "heatboost", host: "pal", group: "palette", type: "dual", label: "Heat boost", valId: "vHeatBoost", min: 0, max: 4, step: 0.05, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : "+" + sig3(v), apply: v => heatBoost = v, durScale: 10 },
@@ -8209,7 +8346,7 @@
       rm.title = "Remove " + f.name + " from this list";
       rm.setAttribute("aria-label", "Remove " + f.name);
       rm.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); setFilterOn(f.id, false); });
-      // BYPASS DOT. ✕ removes a filter, which loses its place in the chain and its settings —
+      // BYPASS EYE. ✕ removes a filter, which loses its place in the chain and its settings —
       // no good when you just want to see what it is contributing. This mutes it in place:
       // the row stays, the order stays, the sliders keep their values.
       //
@@ -8280,8 +8417,8 @@
   function renderFilterLists() {
     for (let slot = 0; slot < STACK_MAX; slot++) { renderFilterListsFor(slot); syncFilterBypass(slot); }
   }
-  // Paint one block's bypass dots from its layer's live set. Separate from renderFilterListsFor
-  // so a bypass toggle repaints the dots without re-appending every section (which would fight
+  // Paint one block's bypass eyes from its layer's live set. Separate from renderFilterListsFor
+  // so a bypass toggle repaints the eyes without re-appending every section (which would fight
   // an in-flight drag) — and so a layer reorder, which re-points the blocks, repaints them too.
   function syncFilterBypass(slot) {
     const L = stack[slot], off = (L && L.fxOff) || null;
@@ -8294,7 +8431,7 @@
       const dot = sec.querySelector(".filter-by");
       if (!dot) continue;
       const nm = (FILTER_BY_ID[id] || {}).name || id;
-      dot.textContent = muted ? "○" : "●";
+      dot.innerHTML = muted ? EYE_SHUT : EYE_OPEN;
       dot.title = muted ? "Switch " + nm + " back on" : "Mute " + nm + " without removing it";
       dot.setAttribute("aria-label", dot.title);
       dot.setAttribute("aria-pressed", muted ? "true" : "false");
@@ -8806,11 +8943,14 @@
     ["kfTime", () => kfTime, v => kfTime = v],
     ["twTime", () => twTime, v => twTime = v],
     ["cyTime", () => cyTime, v => cyTime = v],
-    // Lightning carries three: the auto clock, the strike counter and the last Strike
-    // value (the rising-edge detector) — all per layer, or two storms share bolts.
+    // Lightning carries five: the auto clock, the strike counter, the last Strike value
+    // (the rising-edge detector), the racing strike front and the fresh-bolt detector —
+    // all per layer, or two storms share bolts and light up in lock-step.
     ["ltTime", () => ltTime, v => ltTime = v],
     ["ltSeed", () => ltSeed, v => ltSeed = v],
     ["ltPrev", () => ltPrev, v => ltPrev = v],
+    ["ltFront", () => ltFront, v => ltFront = v],
+    ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
     ["flPhase", () => flPhase, v => flPhase = v],
     ["stTime", () => stTime, v => stTime = v],
@@ -9756,6 +9896,16 @@
     paleEdited(false);
   });
   el("pale-pos").addEventListener("change", paleCommit);
+  {
+    // Side-by-side steppers, like every number field. The label is a COLUMN (caption over
+    // field), so the field first moves into a .num-line row — otherwise the appended
+    // arrow pair would stack underneath it as a third column item.
+    const pp = el("pale-pos"), line = document.createElement("span");
+    line.className = "num-line";
+    pp.parentElement.appendChild(line);
+    line.appendChild(pp);
+    addNumArrows(pp);
+  }
   el("pale-name").addEventListener("input", () => {
     const n = el("pale-name").value.trim().slice(0, 40) || "Custom";
     if (paleIdx >= 0) { PALETTES[paleIdx].name = n; paleEdited(false); }
@@ -9972,10 +10122,10 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], cymode: [3, 3], cymoff: [1, 1], cysharp: [5, 5], cyshimmer: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "lightning", name: "Lightning storm", subtitle: "Lightning · beat-fired bolts",
-      help: "Bolts of lightning tearing down the screen, each one a fresh shape. Rate fires them on a clock; arm Strike's L/M/H chips and the BEAT fires them instead — a kick snaps Strike to full and the bolt decays over the Trigger duration, exactly like Shockwave's ring. Bolts sets how many strike at once, Afterglow how much the sky lights up.",
-      params: ["ltstrike", "ltrate", "ltbolts", "ltglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "storm", "band"], bakesOwnZoom: true,
-      draw: dt => { if (useGL) { const s = stormSeed(dt); glShaderDraw("storm", u => { gl.uniform1f(u.uEnv, s.env); gl.uniform1f(u.uSeed, s.seed); gl.uniform1f(u.uBolts, s.bolts); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else storm(dt); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      help: "Forked fractal bolts tearing down the screen, each one a fresh shape: a jagged main channel that splits into side branches on its way down, lighting up from the cloud to the ground with a hot racing tip — Strike speed is how fast it travels. Rate fires strikes on a clock; arm Strike's L/M/H chips and the BEAT fires them instead — a kick snaps Strike to full and the bolt decays over the Trigger duration, exactly like Shockwave's ring. Bolts sets how many strike at once, Afterglow how much the sky lights up.",
+      params: ["ltstrike", "ltrate", "ltspd", "ltbolts", "ltglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "storm", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = stormSeed(dt); glShaderDraw("storm", u => { gl.uniform1f(u.uEnv, s.env); gl.uniform1f(u.uSeed, s.seed); gl.uniform1f(u.uBolts, s.bolts); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); gl.uniform1f(u.uFront, s.front); }); } else storm(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltspd: [12, 12], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · raymarched 3D fractal",
       help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, slowly orbited by the camera. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping). Detail adds fractal depth (and GPU cost), Orbit speed sets the camera's lap, Glow lights the silhouette and puts a halo on near-misses. The heaviest effect in the app — it wants a real GPU.",
@@ -11391,6 +11541,8 @@
       row.appendChild(lyrctl);
 
       const mute = document.createElement("b");
+      mute.className = "lyr-eye";
+      mute.setAttribute("aria-label", "Layer visibility");
       mute.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
@@ -11409,7 +11561,15 @@
 
       const rm = document.createElement("b");
       rm.textContent = "✕"; rm.title = "Remove this layer";
-      rm.addEventListener("click", e => { e.stopPropagation(); removeStackItem(j); persist(); autosavePreset(); });
+      rm.addEventListener("click", e => {
+        e.stopPropagation();
+        const L = stack[j]; if (!L) return;
+        // Removing a layer throws away its effect, sliders, palette and filter chain in
+        // one click (and autosaves over the scene) — same guard as the scene Delete.
+        const nm = EFFECTS[L.fx] ? EFFECTS[L.fx].name : "this layer";
+        if (!confirm("Remove the " + nm + " layer? Its settings, palette and filters go with it.")) return;
+        removeStackItem(j); persist(); autosavePreset();
+      });
       lyrctl.appendChild(rm);
 
       // Blend mode on its own row: a <select> (with the mode's tip as its title) flanked by
@@ -11491,8 +11651,9 @@
       r.grab.classList.toggle("off", stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
-      r.mute.textContent = L.mute ? "○" : "●";
+      r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
+      r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");
       r.gn.value = L.gain;
       r.rm.classList.toggle("off", stack.length <= 1);
       const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
@@ -12345,16 +12506,53 @@
       inp.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
+  // External ▲/▼ steppers for a number field, SIDE BY SIDE after it — the native in-field
+  // spinner arrows are a few pixels wide and nearly impossible to aim at, which is the
+  // problem the blend row's steppers already solved, so this copies that pattern. The
+  // field keeps keyboard entry (.no-spin only hides the native arrows); the buttons step
+  // by `getStep()` (default: the field's own step attribute, else 1), clamp to the
+  // field's min/max where set, and dispatch bubbling input+change so every existing
+  // listener — including the delegated onEdit — fires exactly as if the value was typed.
+  function addNumArrows(f, getStep) {
+    f.classList.add("no-spin");
+    const wrap = document.createElement("span");
+    wrap.className = "num-arrows";
+    const mk = (glyph, dir) => {
+      const b = document.createElement("b");
+      b.className = "num-arrow"; b.textContent = glyph;
+      b.title = (dir > 0 ? "Increase " : "Decrease ") + (f.title || "value");
+      b.setAttribute("aria-label", b.title);
+      b.addEventListener("click", e => {
+        e.preventDefault(); e.stopPropagation();
+        const st = getStep ? getStep() : (+f.step > 0 ? +f.step : 1);
+        let v = Math.round(((+f.value || 0) + dir * st) * 1e6) / 1e6;
+        if (f.min !== "" && v < +f.min) v = +f.min;
+        if (f.max !== "" && v > +f.max) v = +f.max;
+        f.value = String(v);
+        f.dispatchEvent(new Event("input", { bubbles: true }));
+        f.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      wrap.appendChild(b);
+    };
+    mk("▲", 1); mk("▼", -1);
+    f.after(wrap);
+    return wrap;
+  }
   function makeRangeEditor(slot, key) {
     const els = ctlRangeInputsIn(slot, key);
     if (!els.length) return null;
     const box = document.createElement("div");
     box.className = "rng-edit";
+    // ONE ROW PER FIELD, each starting with its title: label · field · ▲/▼, and a fourth
+    // "Reset" row for ↺. Three side-by-side columns could not hold a field plus its
+    // stepper pair — max spilled out of the box.
     const fields = {};
     for (const which of ["min", "max", "step"]) {
       const cell = document.createElement("label");
       cell.className = "rng-cell";
-      cell.appendChild(document.createTextNode(which));
+      const lbl = document.createElement("span");
+      lbl.className = "rng-lbl"; lbl.textContent = which;
+      cell.appendChild(lbl);
       const f = document.createElement("input");
       f.type = "number"; f.step = "any";
       f.value = which === "step" ? stepFieldVal(els[0].step) : els[0][which];
@@ -12365,7 +12563,12 @@
         ? ctlLabel(key) + " step (0 = continuous)"
         : ctlLabel(key) + " " + which;
       f.addEventListener("input", () => rngApply(els, which, +f.value));
-      cell.appendChild(f);
+      const line = document.createElement("span");
+      line.className = "num-line";
+      line.appendChild(f);
+      cell.appendChild(line);
+      // nudge by the slider's LIVE step (the step field edits it), else 1
+      addNumArrows(f, () => +els[0].step > 0 ? +els[0].step : 1);
       box.appendChild(cell);
       fields[which] = f;
     }
@@ -12375,8 +12578,14 @@
     rst.type = "button"; rst.className = "rng-rst"; rst.textContent = "↺";
     rst.title = "Reset this slider — value, range, beat chips and pulse — to this effect's defaults";
     rst.setAttribute("aria-label", ctlLabel(key) + ": reset to defaults");
-    rst.addEventListener("click", () => { resetControl(key); sync(); });
-    box.appendChild(rst);
+    rst.addEventListener("click", e => { e.preventDefault(); resetControl(key); sync(); });
+    const rcell = document.createElement("div");   // a div, not a label — a label would
+    rcell.className = "rng-cell";                  // re-trigger the button on text clicks
+    const rlbl = document.createElement("span");
+    rlbl.className = "rng-lbl"; rlbl.textContent = "Reset";
+    rcell.appendChild(rlbl);
+    rcell.appendChild(rst);
+    box.appendChild(rcell);
     return box;
   }
 
@@ -13760,6 +13969,30 @@
     rebuildPresetOptions();
     persist();
   });
+  // Share the CURRENT scene as a link on the clipboard. cloudShareScene stores the scene
+  // in Firestore and returns a ~30-char #c= link; signed out (or on any cloud failure) it
+  // falls back to the self-contained ?z= link, so the button always yields something that
+  // opens. The copy goes through ClipboardItem's PROMISE form where available — the write
+  // must be claimed inside the click gesture, before the async link resolves — with
+  // writeText and finally a prompt() as fallbacks, so the link is never just lost.
+  el("sharepreset").addEventListener("click", () => {
+    const btn = el("sharepreset");
+    const urlP = Promise.resolve(cloudShareScene());
+    const done = ok => {
+      btn.textContent = ok ? "Copied!" : "Share";
+      if (ok) setTimeout(() => { btn.textContent = "Share"; }, 1600);
+    };
+    if (navigator.clipboard && window.ClipboardItem) {
+      navigator.clipboard.write([new ClipboardItem({
+        "text/plain": urlP.then(u => new Blob([u], { type: "text/plain" })),
+      })]).then(() => done(true), () => urlP.then(u => { prompt("Copy this link:", u); done(false); }));
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      urlP.then(u => navigator.clipboard.writeText(u).then(() => done(true), () => { prompt("Copy this link:", u); done(false); }));
+    } else {
+      urlP.then(u => { prompt("Copy this link:", u); done(false); });
+    }
+    track("share_scene", {});
+  });
   // Delete used to drop to "— unsaved scene —" and leave the deleted scene on screen, which
   // was safe precisely because nothing was selected to autosave into. With something always
   // selected that shortcut is destructive: highlight the neighbour without applying it and the
@@ -14143,16 +14376,16 @@
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
 
-  // ---- Sending is gone; RECEIVING is not ------------------------------------------
-  // The "Share this scene" and "Share presets…" buttons, and the curation dialog behind the
-  // second one, were removed: sharing is a cloud-profile job now. Nothing that DECODES was
-  // touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=` link ever
-  // generated still opens, and still lands in the Restore dialog below.
+  // ---- Sending is mostly gone; RECEIVING is not -----------------------------------
+  // The old "Share this scene" and "Share presets…" buttons, and the curation dialog behind
+  // the second one, were removed when sharing became a cloud-profile job. Nothing that
+  // DECODES was touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=`
+  // link ever generated still opens, and still lands in the Restore dialog below.
   //
-  // `libraryUrl`, `shareUrl`, `cloudShareScene` and `shortenUrl` are consequently unreachable
-  // from the UI. They are kept, like `shareUrl` already was before this: they are pure
-  // builders with no DOM dependency, `shareUrl` is the documented partner of the still-live
-  // `?z=` decode, and re-attaching a button to any of them is a one-line change.
+  // Since then ONE sender came back by request: the Scene box's Share button
+  // (#sharepreset, wired in persist-presets.js) calls `cloudShareScene` — the short
+  // Firestore `#c=` link, ?z= fallback. `libraryUrl` and `shortenUrl` remain unreachable
+  // from the UI, kept as pure probe-pinned builders.
   //
   // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/
@@ -15495,7 +15728,7 @@
     return row;
   }
   function beatBandRow(label, b) {                           // name + lo Hz + – + hi Hz
-    const row = document.createElement("div"); row.className = "beat-row";
+    const row = document.createElement("div"); row.className = "beat-row beat-band";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const lo = document.createElement("input"), hi = document.createElement("input");
     for (const f of [lo, hi]) { f.type = "number"; f.className = "beat-f"; f.min = 1; f.step = 10; }
@@ -15507,6 +15740,7 @@
     };
     lo.addEventListener("input", commit); hi.addEventListener("input", commit);
     row.append(nm, lo, dash, hi);
+    addNumArrows(lo); addNumArrows(hi);   // side-by-side steppers, like every number field
     return row;
   }
   function beatBuild() {
@@ -15697,6 +15931,7 @@
       { n: "Shimmer", w: "chladni", t: "Cymatics only — a slow tremble in the plate, so the sand lines breathe instead of standing perfectly still." },
       { n: "Strike", w: "storm", t: "Lightning storm only — the strike itself: 1 is a fresh bolt at full brightness, decaying to darkness at 0. Arm its L/M/H chips and every beat fires a NEW bolt that fades over the Trigger duration — the storm plays the drums." },
       { n: "Rate", w: "storm", t: "Lightning storm only — automatic strikes per second, for a storm that rolls without music. 0 leaves firing entirely to the Strike chips." },
+      { n: "Strike speed", w: "storm", t: "Lightning storm only — how fast a fresh bolt races from the cloud to the ground, in screen-heights per second. Low values let you watch the hot tip crawl down and the branches catch light; high ones flash the whole bolt at once." },
       { n: "Bolts", w: "storm", t: "Lightning storm only — how many bolts each strike throws down at once, up to five." },
       { n: "Afterglow", w: "storm", t: "Lightning storm only — how much each strike lights the sky behind it, and how much ambient glow remains between strikes." },
       { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c, continuously variable. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes, and fractional values morph between forms — drift the two thumbs apart and it never stops reshaping." },

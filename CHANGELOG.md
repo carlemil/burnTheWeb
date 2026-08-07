@@ -14,6 +14,38 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.19.0] — 2026-08-07
+
+### Added
+
+- **Share is back** — the Scene box has a **Share** button again: one click copies a link
+  to the current scene. Signed in to your cloud profile it's a ~30-character short link
+  (the scene is stored in the cloud); signed out it falls back to the classic
+  self-contained link, so it always works. The recipient gets the scene filed under
+  "Shared with you", as always.
+- **Lightning storm rebuilt as fractal bolts** — each bolt is now a jagged, kinked fractal
+  channel that **splits into side branches** on its way down, and a fresh strike **lights
+  up from the cloud to the ground** behind a racing hot tip. New **Strike speed** slider
+  sets how fast the bolt travels — drop it low to watch the tip crawl and the branches
+  catch light. Every strike re-rolls its shape, roughness and forks.
+
+### Changed
+
+- **Visibility toggles are eyes now** — the layer mute button and each filter's bypass
+  show an open eye (visible) or a closed eye (muted) instead of the filled/hollow dot.
+- **Number fields got real steppers** — the tiny native up/down arrows inside min/max/step,
+  the palette stop %, and the Beat tuning Hz fields are gone; each field now has a
+  side-by-side ▲/▼ pair next to it, big enough to actually hit (the blend row's pattern).
+  The slider bounds editor is one labelled row per field — min, max, step, and a Reset
+  row.
+- **Scene box buttons on two rows** — New/Rename above, Delete/Share below.
+- **Palette cycle / Palette hold sliders re-ranged** — cycle now spans 0–2 s (step 0.05)
+  and hold 0–10 s (step 0.1), for fine control where it's actually used. A scene that
+  stored a slower cycle under the old 0–120 bounds clamps to the new max unless it saved
+  custom bounds — the min/max editor on the slider restores any span.
+- **Removing a layer asks first** — the ✕ on a layer row now confirms, naming the layer's
+  effect, before its settings, palette and filters are thrown away.
+
 ## [1.18.1] — 2026-08-06
 
 ### Fixed
