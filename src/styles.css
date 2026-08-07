@@ -464,9 +464,11 @@
   #beatDetails .beat-f {
     /* 44px: exactly the five-digit 12000 Hz at this font, now the native spinner no
        longer eats in-field width (.no-spin) — the freed room goes to the external ▲/▼
-       pair. Wider overflowed the panel sideways (two fields + two pairs share one row). */
-    width: 44px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
-    border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
+       pair. Wider overflowed the panel sideways (two fields + two pairs share one row).
+       Warm-theme chrome like every other field — the old grey #16181b/#3a3f45 read as a
+       different app inside the orange panel. */
+    width: 44px; flex: none; padding: 2px 4px; background: rgba(0, 0, 0, 0.4); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 3px; font: 11px ui-monospace, monospace;
   }
   #beatDetails .num-arrow { width: 14px; }   /* same squeeze — the pair still aims fine */
   /* The band rows carry TWO field+pair sets each; tighter gaps keep them inside the panel. */
@@ -513,7 +515,9 @@
   .bandchips button:nth-child(1).on { background: #5a9cff; border-color: #b0d0ff; color: #05101f; box-shadow: 0 0 6px rgba(90, 156, 255, 0.85); }
   .bandchips button:nth-child(2).on { background: #45cf62; border-color: #aef0bc; color: #041505; box-shadow: 0 0 6px rgba(69, 207, 98, 0.85); }
   .bandchips button:nth-child(3).on { background: #ff5f4d; border-color: #ffb4aa; color: #1f0603; box-shadow: 0 0 6px rgba(255, 95, 77, 0.85); }
-  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; }
+  /* Desaturated as well as dimmed: unarmed chips carry a band tint now, so opacity alone
+     no longer separated "audio off" from "audio on, unarmed". */
+  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; filter: saturate(.25); }
   /* Per-slider beat-pulse shape: the curve the value follows after a beat. */
   .bandchips select {
     height: 15px; padding: 0 1px; margin-left: 2px; font: 9px/13px ui-monospace, monospace;
@@ -631,8 +635,14 @@
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 10px ui-monospace, monospace;
   }
-  /* The Reset row closing a box: title left, the ↺ pushed to the right edge. */
+  /* The Reset row closing a box: title left (auto width — "reset slider" is longer than
+     the 26px field labels), the ↺ pushed to the right edge. */
+  #breakout .ctl-reset .rng-lbl { width: auto; }
   #breakout .ctl-reset .rng-rst { margin-left: auto; }
+  /* Objects: name · − value + on one row, small steppers like every number field. */
+  #panel .obj-row { display: flex; align-items: center; gap: 5px; }
+  #panel .obj-row .obj-name { flex: 1 1 auto; }
+  #panel .obj-row .obj-val { min-width: 16px; text-align: center; }
   /* Refractory rows (per armed band, under Duration): band label · slider · readout. */
   #breakout .trig-ref { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
   #breakout .trig-ref .rng-lbl { flex: none; width: 26px; opacity: .55; font-size: 9px; letter-spacing: .06em; }
@@ -695,7 +705,9 @@
   .ctl-dots { flex: none; display: flex; align-items: center; gap: 5px; }
   .ctl-dot {
     display: none; width: 12px; height: 12px; border-radius: 50%;
-    background: currentColor; opacity: .5; transition: opacity .08s;
+    /* idle .75, not .5 — the dim blue read as grey on the dark panel. Repeated in
+       flashChips's ramp (0.75 + lit*0.25) — keep the two in step. */
+    background: currentColor; opacity: .75; transition: opacity .08s;
   }
   .ctl-dot.armed { display: block; }
   .ctl-dot.d-low { color: #5a9cff; }      /* L — matches .bandchips button:nth-child(1).on */
@@ -1072,7 +1084,8 @@
   /* The eye variant (palette inspector). An emoji glyph needs more room than a "?" and
      ignores `color`, so it gets its own size and a slightly dimmer resting opacity to sit
      at the same visual weight as the amber ? buttons beside it. */
-  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; }
+  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lbl-eye > svg { display: block; }
   #panel .lbl-eye:hover { opacity: 1; }
   /* Data-structure tree inside the help modal. */
   #help .help-tree {
@@ -1090,19 +1103,22 @@
   }
   #help.hidden { display: none; }
   /* Palette inspector popup: the full 0–255 ramp as a 16×16 grid of colour cells. */
+  /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paldlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent;   /* float over the scene like the other popups, not a dark modal */
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
     position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
-    border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px; max-width: calc(100vw - 312px);
+    border-radius: 12px; padding: 18px 20px; max-height: calc(100vh - 72px); overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* No right margin — the × floats, the title wraps (the picker bleed-gap rule). */
+  #paldlg h2 { margin: 0 0 12px; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* ---- EVERY dialog's close button, in ONE rule ----------------------------------
      Top-right of its box, out of the flow, uniform across the palette inspector, the
      palette editor, the Public scenes gallery, the Orbit editor, the help panel and the
@@ -1163,7 +1179,7 @@
      screenshots lied about this one). These boxes are small, so the title simply scrolls
      with the content; the × stays sticky for closing. */
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #paledlg .pale-box > h2 {
+  #paledlg .pale-box > h2, #paldlg .pal-box > h2 {
     position: static; background: transparent;
     backdrop-filter: none; -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -1174,21 +1190,23 @@
   .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
     background: rgba(255, 122, 26, 0.25);
   }
-  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
+  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); max-width: 100%; }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
   /* ---- palette editor ---- */
   /* Same floating, translucent, non-modal treatment as the inspector and Orbit editor: you
      tune a ramp while watching the scene, so it must never take the whole screen or block a
      click on the canvas behind it. */
+  /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paledlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
   #paledlg.hidden { display: none; }
   #paledlg .pale-box {
     position: relative; pointer-events: auto;
-    width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px;
+    width: min(90vw, 460px); max-height: calc(100vh - 72px); overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);

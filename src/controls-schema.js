@@ -265,11 +265,15 @@
     const open = '<div class="ctl"' + K + 'ctl-' + c.key + '">';
     if (c.type === "check")
       return open + '<label class="check"><input type="checkbox"' + K + c.key + '" checked> ' + c.label + "</label></div>";
+    // ONE row — name · − value + — using the small side-by-side stepper buttons every
+    // number field carries, instead of the old full-width −/+ bar below the label (which
+    // read as add/remove-something and matched nothing else in the panel).
     if (c.type === "layers")
-      return open + '<label>' + c.label + ' <span class="val"' + K + 'vLayers"></span></label>' +
-        '<div class="presetrow"><button' + K + 'layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
-        '<button' + K + 'layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
-        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
+      return open + '<div class="obj-row"><span class="obj-name">' + c.label + '</span>' +
+        '<button' + K + 'layer-minus" class="num-arrow" type="button" title="Remove the smallest copy of ' + c.label + '" aria-label="Fewer">−</button>' +
+        '<span class="val obj-val"' + K + 'vLayers"></span>' +
+        '<button' + K + 'layer-plus" class="num-arrow" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button>' +
+        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div></div>';
     const lbl = "<label>" + c.label + ' <span class="val"' + K + c.valId + '"></span></label>';
     if (c.type === "plain")
       return open + lbl + '<input' + K + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
@@ -455,7 +459,7 @@
     const d = document.createElement("div");
     d.className = "filter-div";
     d.dataset.live = renderPass;
-    d.textContent = "▲ shapes the heat   ·   the effect draws here   ·   ▼ repaints the picture";
+    d.textContent = "▲ heat & trails · effect draws here · ▼ image";
     d.title = "Filters above this line run on the heat before the effect draws; filters below run on the finished picture. Drag one across to change which it does.";
     return d;
   }

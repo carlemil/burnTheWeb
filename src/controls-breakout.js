@@ -150,7 +150,9 @@
     const rcell = document.createElement("div");   // a div, not a label — a label would
     rcell.className = "rng-cell ctl-reset";        // re-trigger the button on text clicks
     const rlbl = document.createElement("span");
-    rlbl.className = "rng-lbl"; rlbl.textContent = "Reset";
+    // "reset slider" (lowercase like the other row labels) — the layer block's big
+    // "Reset this effect" button uses the same word for a much bigger scope.
+    rlbl.className = "rng-lbl"; rlbl.textContent = "reset slider";
     rcell.appendChild(rlbl);
     rcell.appendChild(rst);
     // The bounds fold into a COLLAPSIBLE "Value range" section, closed by default

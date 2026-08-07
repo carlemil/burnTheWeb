@@ -277,7 +277,7 @@
     // has run, not a state the user can reach.
     const p = presets[curPreset] || presets[0];
     if (!p) return;
-    h.textContent = p.name;
+    h.textContent = "Scene · " + p.name;   // the prefix anchors the floating name to what it is
     // Whose scene it is, when it came from someone else's collection — the same fact the
     // on-screen banner gives you, kept visible while you work rather than for four seconds.
     const from = collectionOf(p);

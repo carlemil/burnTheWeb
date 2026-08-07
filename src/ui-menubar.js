@@ -180,7 +180,7 @@
         run: () => galOpen(true) }] : []),
       { label: "Credits", sub: [{ adopt: "creditbox" }] },
       { sep: true },
-      { label: "What the controls do…", title: "Open the help panel", run: () => openHelp() },
+      { label: "Help", title: "What the controls do — the full help panel", run: () => openHelp() },
     ];
   }
 

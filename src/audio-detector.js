@@ -275,7 +275,7 @@
         const dot = dotEls[id] && dotEls[id][k];
         if (dot) {
           if (lit > 0.05) {
-            dot.style.opacity = (0.5 + lit * 0.5).toFixed(3);
+            dot.style.opacity = (0.75 + lit * 0.25).toFixed(3);   // idle figure = the .ctl-dot CSS
             dot.style.boxShadow = "0 0 " + (3 + lit * 11).toFixed(1) + "px " + BANDCOLOR[k];
           } else {
             dot.style.opacity = "";

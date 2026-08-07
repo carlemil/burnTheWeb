@@ -252,9 +252,10 @@
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- This layer's palette: ramp, cycle, reverse, background, banding. -->
-  <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
-       swatches) rather than what the button does, and read as a stop/fill icon. -->
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
+  <!-- A MAGNIFIER, not the old 👁 eye: the eye became the visibility-toggle glyph (layer
+       mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
+       currentColor, like the eye icons. -->
+  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background

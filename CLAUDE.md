@@ -491,9 +491,10 @@ close, so an adopted block must go home first or the real audio buttons, resolut
 
 **Every dialog's title + close button are STICKY.** First two children = the `.pal-close`-family
 button and an `<h2>`.
-- **The three pickers (`#fltdlg`, `#palpickdlg`, `#transpickdlg`) dock TOP-LEFT beside the
-  panel** (margin 58px/298px — the `#breakout` column line), not centered: they are panel tools
-  and attach next to the menu boxes. Their `h2` has **no right margin** (the × floats, so text
+- **The panel-tool dialogs dock TOP-LEFT beside the panel** (margin 58px/298px — the
+  `#breakout` column line), not centered: the three pickers (`#fltdlg`, `#palpickdlg`,
+  `#transpickdlg`), the Palette editor (`#paledlg`) and the Palette inspector (`#paldlg`).
+  Reading/flow dialogs (Help, Gallery, Restore) stay centered. Their `h2` has **no right margin** (the × floats, so text
   wraps; a right margin shrinks the h2 box and the header's shadow bleed stops short of the
   right edge, leaving a raw strip beside the ×), their header tone matches the box tint (the
   0.93 black of the big dialogs read as a black bar on the warm translucent picker), and the ×
@@ -640,7 +641,7 @@ UNARMED now (letter/border/faint fill — colourless-dim was too hard to see, by
 armed = the full solid fill + glow.
 
 **Beat dots** (`.ctl-dot`, `dotEls`): ≤3 per row, **12px**, chip colours, `display:none` unless
-armed, `opacity .5` idle, lit by `flashChips()` (the idle figure is repeated in `flashChips`'s
+armed, `opacity .75` idle (raised from .5 — the blue read as grey), lit by `flashChips()` (the idle figure is repeated in `flashChips`'s
 ramp — keep the two in step). `syncDots()` is called **from** `syncChips()`; dots
 are built only for keys present in `chipEls`.
 

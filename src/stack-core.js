@@ -179,7 +179,7 @@
     refWrap.className = "trig-refs";
     refWrap.style.display = "none";
     const refT = document.createElement("div");
-    refT.className = "trig-t"; refT.textContent = "Refractory";
+    refT.className = "trig-t"; refT.textContent = "Refractory (ms)";
     refT.title = "Minimum gap between beats on an armed band (ms) — the same value as Beat tuning's Refractory";
     refWrap.appendChild(refT);
     for (const k of ["low", "mid", "high"]) {
@@ -245,7 +245,10 @@
     const mrow = document.createElement("div");
     mrow.className = "rng-cell plen-max";
     const mlbl = document.createElement("span");
-    mlbl.className = "rng-lbl"; mlbl.textContent = "max";
+    // "limit", not "max" — Value range's max row (the slider bound) can be on screen a
+    // few rows up, and two visible "max" fields meaning different things confused.
+    mlbl.className = "rng-lbl"; mlbl.textContent = "limit";
+    mlbl.title = "How far the Duration slider reaches (seconds)";
     const mf = document.createElement("input");
     mf.type = "number"; mf.step = "any"; mf.value = String(PLEN_MAX);
     mf.min = "0.1"; mf.max = String(PLEN_HARD_MAX);

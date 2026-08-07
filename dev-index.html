@@ -482,9 +482,11 @@
   #beatDetails .beat-f {
     /* 44px: exactly the five-digit 12000 Hz at this font, now the native spinner no
        longer eats in-field width (.no-spin) — the freed room goes to the external ▲/▼
-       pair. Wider overflowed the panel sideways (two fields + two pairs share one row). */
-    width: 44px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
-    border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
+       pair. Wider overflowed the panel sideways (two fields + two pairs share one row).
+       Warm-theme chrome like every other field — the old grey #16181b/#3a3f45 read as a
+       different app inside the orange panel. */
+    width: 44px; flex: none; padding: 2px 4px; background: rgba(0, 0, 0, 0.4); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 3px; font: 11px ui-monospace, monospace;
   }
   #beatDetails .num-arrow { width: 14px; }   /* same squeeze — the pair still aims fine */
   /* The band rows carry TWO field+pair sets each; tighter gaps keep them inside the panel. */
@@ -531,7 +533,9 @@
   .bandchips button:nth-child(1).on { background: #5a9cff; border-color: #b0d0ff; color: #05101f; box-shadow: 0 0 6px rgba(90, 156, 255, 0.85); }
   .bandchips button:nth-child(2).on { background: #45cf62; border-color: #aef0bc; color: #041505; box-shadow: 0 0 6px rgba(69, 207, 98, 0.85); }
   .bandchips button:nth-child(3).on { background: #ff5f4d; border-color: #ffb4aa; color: #1f0603; box-shadow: 0 0 6px rgba(255, 95, 77, 0.85); }
-  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; }
+  /* Desaturated as well as dimmed: unarmed chips carry a band tint now, so opacity alone
+     no longer separated "audio off" from "audio on, unarmed". */
+  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; filter: saturate(.25); }
   /* Per-slider beat-pulse shape: the curve the value follows after a beat. */
   .bandchips select {
     height: 15px; padding: 0 1px; margin-left: 2px; font: 9px/13px ui-monospace, monospace;
@@ -649,8 +653,14 @@
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 10px ui-monospace, monospace;
   }
-  /* The Reset row closing a box: title left, the ↺ pushed to the right edge. */
+  /* The Reset row closing a box: title left (auto width — "reset slider" is longer than
+     the 26px field labels), the ↺ pushed to the right edge. */
+  #breakout .ctl-reset .rng-lbl { width: auto; }
   #breakout .ctl-reset .rng-rst { margin-left: auto; }
+  /* Objects: name · − value + on one row, small steppers like every number field. */
+  #panel .obj-row { display: flex; align-items: center; gap: 5px; }
+  #panel .obj-row .obj-name { flex: 1 1 auto; }
+  #panel .obj-row .obj-val { min-width: 16px; text-align: center; }
   /* Refractory rows (per armed band, under Duration): band label · slider · readout. */
   #breakout .trig-ref { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
   #breakout .trig-ref .rng-lbl { flex: none; width: 26px; opacity: .55; font-size: 9px; letter-spacing: .06em; }
@@ -713,7 +723,9 @@
   .ctl-dots { flex: none; display: flex; align-items: center; gap: 5px; }
   .ctl-dot {
     display: none; width: 12px; height: 12px; border-radius: 50%;
-    background: currentColor; opacity: .5; transition: opacity .08s;
+    /* idle .75, not .5 — the dim blue read as grey on the dark panel. Repeated in
+       flashChips's ramp (0.75 + lit*0.25) — keep the two in step. */
+    background: currentColor; opacity: .75; transition: opacity .08s;
   }
   .ctl-dot.armed { display: block; }
   .ctl-dot.d-low { color: #5a9cff; }      /* L — matches .bandchips button:nth-child(1).on */
@@ -1090,7 +1102,8 @@
   /* The eye variant (palette inspector). An emoji glyph needs more room than a "?" and
      ignores `color`, so it gets its own size and a slightly dimmer resting opacity to sit
      at the same visual weight as the amber ? buttons beside it. */
-  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; }
+  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lbl-eye > svg { display: block; }
   #panel .lbl-eye:hover { opacity: 1; }
   /* Data-structure tree inside the help modal. */
   #help .help-tree {
@@ -1108,19 +1121,22 @@
   }
   #help.hidden { display: none; }
   /* Palette inspector popup: the full 0–255 ramp as a 16×16 grid of colour cells. */
+  /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paldlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent;   /* float over the scene like the other popups, not a dark modal */
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
     position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
-    border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px; max-width: calc(100vw - 312px);
+    border-radius: 12px; padding: 18px 20px; max-height: calc(100vh - 72px); overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* No right margin — the × floats, the title wraps (the picker bleed-gap rule). */
+  #paldlg h2 { margin: 0 0 12px; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* ---- EVERY dialog's close button, in ONE rule ----------------------------------
      Top-right of its box, out of the flow, uniform across the palette inspector, the
      palette editor, the Public scenes gallery, the Orbit editor, the help panel and the
@@ -1181,7 +1197,7 @@
      screenshots lied about this one). These boxes are small, so the title simply scrolls
      with the content; the × stays sticky for closing. */
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #paledlg .pale-box > h2 {
+  #paledlg .pale-box > h2, #paldlg .pal-box > h2 {
     position: static; background: transparent;
     backdrop-filter: none; -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -1192,21 +1208,23 @@
   .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
     background: rgba(255, 122, 26, 0.25);
   }
-  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
+  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); max-width: 100%; }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
   /* ---- palette editor ---- */
   /* Same floating, translucent, non-modal treatment as the inspector and Orbit editor: you
      tune a ramp while watching the scene, so it must never take the whole screen or block a
      click on the canvas behind it. */
+  /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paledlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
   #paledlg.hidden { display: none; }
   #paledlg .pale-box {
     position: relative; pointer-events: auto;
-    width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px;
+    width: min(90vw, 460px); max-height: calc(100vh - 72px); overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
@@ -1627,9 +1645,10 @@
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- This layer's palette: ramp, cycle, reverse, background, banding. -->
-  <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
-       swatches) rather than what the button does, and read as a stop/fill icon. -->
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
+  <!-- A MAGNIFIER, not the old 👁 eye: the eye became the visibility-toggle glyph (layer
+       mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
+       currentColor, like the eye icons. -->
+  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -7888,7 +7907,7 @@
         const dot = dotEls[id] && dotEls[id][k];
         if (dot) {
           if (lit > 0.05) {
-            dot.style.opacity = (0.5 + lit * 0.5).toFixed(3);
+            dot.style.opacity = (0.75 + lit * 0.25).toFixed(3);   // idle figure = the .ctl-dot CSS
             dot.style.boxShadow = "0 0 " + (3 + lit * 11).toFixed(1) + "px " + BANDCOLOR[k];
           } else {
             dot.style.opacity = "";
@@ -8277,11 +8296,15 @@
     const open = '<div class="ctl"' + K + 'ctl-' + c.key + '">';
     if (c.type === "check")
       return open + '<label class="check"><input type="checkbox"' + K + c.key + '" checked> ' + c.label + "</label></div>";
+    // ONE row — name · − value + — using the small side-by-side stepper buttons every
+    // number field carries, instead of the old full-width −/+ bar below the label (which
+    // read as add/remove-something and matched nothing else in the panel).
     if (c.type === "layers")
-      return open + '<label>' + c.label + ' <span class="val"' + K + 'vLayers"></span></label>' +
-        '<div class="presetrow"><button' + K + 'layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
-        '<button' + K + 'layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
-        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
+      return open + '<div class="obj-row"><span class="obj-name">' + c.label + '</span>' +
+        '<button' + K + 'layer-minus" class="num-arrow" type="button" title="Remove the smallest copy of ' + c.label + '" aria-label="Fewer">−</button>' +
+        '<span class="val obj-val"' + K + 'vLayers"></span>' +
+        '<button' + K + 'layer-plus" class="num-arrow" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button>' +
+        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div></div>';
     const lbl = "<label>" + c.label + ' <span class="val"' + K + c.valId + '"></span></label>';
     if (c.type === "plain")
       return open + lbl + '<input' + K + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
@@ -8467,7 +8490,7 @@
     const d = document.createElement("div");
     d.className = "filter-div";
     d.dataset.live = renderPass;
-    d.textContent = "▲ shapes the heat   ·   the effect draws here   ·   ▼ repaints the picture";
+    d.textContent = "▲ heat & trails · effect draws here · ▼ image";
     d.title = "Filters above this line run on the heat before the effect draws; filters below run on the finished picture. Drag one across to change which it does.";
     return d;
   }
@@ -9217,7 +9240,7 @@
     refWrap.className = "trig-refs";
     refWrap.style.display = "none";
     const refT = document.createElement("div");
-    refT.className = "trig-t"; refT.textContent = "Refractory";
+    refT.className = "trig-t"; refT.textContent = "Refractory (ms)";
     refT.title = "Minimum gap between beats on an armed band (ms) — the same value as Beat tuning's Refractory";
     refWrap.appendChild(refT);
     for (const k of ["low", "mid", "high"]) {
@@ -9283,7 +9306,10 @@
     const mrow = document.createElement("div");
     mrow.className = "rng-cell plen-max";
     const mlbl = document.createElement("span");
-    mlbl.className = "rng-lbl"; mlbl.textContent = "max";
+    // "limit", not "max" — Value range's max row (the slider bound) can be on screen a
+    // few rows up, and two visible "max" fields meaning different things confused.
+    mlbl.className = "rng-lbl"; mlbl.textContent = "limit";
+    mlbl.title = "How far the Duration slider reaches (seconds)";
     const mf = document.createElement("input");
     mf.type = "number"; mf.step = "any"; mf.value = String(PLEN_MAX);
     mf.min = "0.1"; mf.max = String(PLEN_HARD_MAX);
@@ -12855,7 +12881,9 @@
     const rcell = document.createElement("div");   // a div, not a label — a label would
     rcell.className = "rng-cell ctl-reset";        // re-trigger the button on text clicks
     const rlbl = document.createElement("span");
-    rlbl.className = "rng-lbl"; rlbl.textContent = "Reset";
+    // "reset slider" (lowercase like the other row labels) — the layer block's big
+    // "Reset this effect" button uses the same word for a much bigger scope.
+    rlbl.className = "rng-lbl"; rlbl.textContent = "reset slider";
     rcell.appendChild(rlbl);
     rcell.appendChild(rst);
     // The bounds fold into a COLLAPSIBLE "Value range" section, closed by default
@@ -13866,7 +13894,7 @@
     // has run, not a state the user can reach.
     const p = presets[curPreset] || presets[0];
     if (!p) return;
-    h.textContent = p.name;
+    h.textContent = "Scene · " + p.name;   // the prefix anchors the floating name to what it is
     // Whose scene it is, when it came from someone else's collection — the same fact the
     // on-screen banner gives you, kept visible while you work rather than for four seconds.
     const from = collectionOf(p);
@@ -16605,7 +16633,7 @@
         run: () => galOpen(true) }] : []),
       { label: "Credits", sub: [{ adopt: "creditbox" }] },
       { sep: true },
-      { label: "What the controls do…", title: "Open the help panel", run: () => openHelp() },
+      { label: "Help", title: "What the controls do — the full help panel", run: () => openHelp() },
     ];
   }
 
