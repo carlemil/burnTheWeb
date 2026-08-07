@@ -1152,12 +1152,15 @@
   /* The docked pickers seat the × in the actual corner: pulled 12px into the side padding
      (10px off the box edge) and 12px down from the top (the float otherwise sits flush
      against the border because the box gave its top padding to the sticky header). The
-     header tone also matches the box tint here rather than the near-black of the big
-     dialogs — over a bright scene the 0.93 black header read as a black bar on a warm
-     translucent panel. blur(10) still keeps scrolled text from ghosting through. */
-  #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2 {
-    background: rgba(10, 6, 4, 0.85);
-    box-shadow: 0 -30px 0 30px rgba(10, 6, 4, 0.88);
+     header TINT is nearly nothing (the boxes are rgba(10,6,4,.8) and a header painted on
+     top ADDS to that — even .85 read as a black bar); the anti-ghosting while the list
+     scrolls under the sticky title comes from the strong backdrop blur instead. The
+     palette editor's header gets the same treatment. */
+  #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
+  #paledlg .pale-box > h2 {
+    background: rgba(10, 6, 4, 0.3);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 -30px 0 30px rgba(10, 6, 4, 0.3);
   }
   #fltdlg .pal-close, #palpickdlg .pal-close, #transpickdlg .pal-close {
     top: 12px; margin-top: 12px; margin-right: -12px;
@@ -1185,7 +1188,9 @@
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #paledlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* No right margin: the × floats and the title wraps around it — a margin only shrinks
+     the h2's box and leaves the header bleed short of the right edge (the picker bug). */
+  #paledlg h2 { margin: 0 0 12px; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* The gradient bar + its stop handles. Extra bottom padding is the handles' lane, so a
      handle at either end is fully clickable instead of half outside the box. */
   #pale-bar { position: relative; height: 46px; margin: 2px 0 6px; padding-bottom: 14px; cursor: copy; }
