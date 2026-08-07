@@ -14,6 +14,43 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.22.0] — 2026-08-07
+
+### Added
+
+- **Edit a band's refractory right where you arm its trigger** — arming an L/M/H chip in a
+  slider box unfolds the trigger kit, ending in a **Refractory (ms)** slider per armed
+  band: the minimum gap between beats, the same value Beat tuning edits (both stay in
+  sync). Sub-titles are now just Shape / Duration / Refractory.
+- **Delete shipped palettes too** — the "Palettes in use" dialog's ✕ (and Delete selected)
+  now work on the built-in ramps as well, down to a single remaining palette. Scenes and
+  share links that use a deleted shipped ramp keep rendering — it only leaves your strip,
+  picker and cycle — and **Select all brings the shipped palettes back**.
+
+### Changed
+
+- **Slider boxes reorganised**: min/max/step fold into a collapsible **Value range**
+  section (closed by default, with its own ? explaining what they do); the whole trigger
+  kit — Shape, Duration and Refractory — folds out as **one element** when a trigger is
+  armed; and the always-visible **reset slider** row closes the box behind a divider, ↺ at
+  the right edge. Duration's bound field is named **limit** (it isn't the slider max).
+- **Unarmed trigger chips are visible now** — each carries a tint of its band colour
+  (L blue, M green, H red) instead of the old colourless grey; armed keeps the full fill
+  and glow. With audio off they also desaturate, so the states stay tellable apart.
+- **A round of consistency fixes from a full UI review**: Objects is one compact
+  `− value +` row; the palette-inspect button is a magnifier (the eye now always means
+  visibility); Beat tuning wears the same warm theme as the rest of the panel; the scene
+  name heading reads "Scene · <name>"; the filter-stage divider is one short line; armed
+  beat dots are brighter; the Palette editor and inspector dock beside the panel like the
+  pickers; the menubar's help entry is simply "Help".
+
+### Fixed
+
+- **The black band behind the "Palettes in use" and Palette editor titles is really gone**
+  — the previous fix survived headless screenshots but not real GPUs (a backdrop blur
+  nested inside the box's own blur composites toward black); the titles now paint nothing
+  at all and scroll with the content, while the × stays put.
+
 ## [1.21.0] — 2026-08-07
 
 ### Added

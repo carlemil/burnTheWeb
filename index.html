@@ -482,9 +482,11 @@
   #beatDetails .beat-f {
     /* 44px: exactly the five-digit 12000 Hz at this font, now the native spinner no
        longer eats in-field width (.no-spin) — the freed room goes to the external ▲/▼
-       pair. Wider overflowed the panel sideways (two fields + two pairs share one row). */
-    width: 44px; flex: none; padding: 2px 4px; background: #16181b; color: #cfd3d8;
-    border: 1px solid #3a3f45; border-radius: 3px; font: 11px ui-monospace, monospace;
+       pair. Wider overflowed the panel sideways (two fields + two pairs share one row).
+       Warm-theme chrome like every other field — the old grey #16181b/#3a3f45 read as a
+       different app inside the orange panel. */
+    width: 44px; flex: none; padding: 2px 4px; background: rgba(0, 0, 0, 0.4); color: #ffcf87;
+    border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 3px; font: 11px ui-monospace, monospace;
   }
   #beatDetails .num-arrow { width: 14px; }   /* same squeeze — the pair still aims fine */
   /* The band rows carry TWO field+pair sets each; tighter gaps keep them inside the panel. */
@@ -507,16 +509,22 @@
   #panel .meter i, #menubar .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
   .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
-  /* Unarmed chips are deliberately colourless and dim: the band colours below
-     apply only to `.on`, so "armed" is unmistakable. A vivid outline reads as
-     enabled even when nothing is armed, which is exactly what it used to do. */
+  /* Unarmed chips used to be colourless and dim (the worry: a vivid outline reads as
+     enabled) — too dim in practice, by request. They now carry a TINT of their band
+     colour: tinted letter, border and a faint fill, clearly brighter, while armed keeps
+     the full solid fill + glow so the two states still read apart at a glance. */
   .bandchips button {
     width: 18px; height: 15px; padding: 0; font: bold 9px/13px ui-monospace, monospace;
-    background: transparent; border: 1px solid rgba(255, 220, 180, 0.18);
-    border-radius: 4px; color: rgba(255, 220, 180, 0.38); cursor: pointer;
+    background: transparent; border: 1px solid rgba(255, 220, 180, 0.3);
+    border-radius: 4px; color: rgba(255, 220, 180, 0.7); cursor: pointer;
     transition: box-shadow .08s, background .1s, color .1s, border-color .1s;
   }
-  .bandchips button:hover { color: rgba(255, 220, 180, 0.75); border-color: rgba(255, 220, 180, 0.4); }
+  .bandchips button:nth-child(1) { color: rgba(122, 175, 255, 0.85); border-color: rgba(90, 156, 255, 0.5); background: rgba(90, 156, 255, 0.12); }
+  .bandchips button:nth-child(2) { color: rgba(105, 220, 130, 0.85); border-color: rgba(69, 207, 98, 0.5); background: rgba(69, 207, 98, 0.12); }
+  .bandchips button:nth-child(3) { color: rgba(255, 128, 112, 0.85); border-color: rgba(255, 95, 77, 0.5); background: rgba(255, 95, 77, 0.12); }
+  .bandchips button:nth-child(1):hover { color: #b0d0ff; border-color: rgba(90, 156, 255, 0.85); }
+  .bandchips button:nth-child(2):hover { color: #aef0bc; border-color: rgba(69, 207, 98, 0.85); }
+  .bandchips button:nth-child(3):hover { color: #ffb4aa; border-color: rgba(255, 95, 77, 0.85); }
   .bandchips button.on {
     background: #ffb84d; color: #140a03; border-color: #ffe0a0;
     box-shadow: 0 0 5px rgba(255, 176, 77, 0.75);
@@ -525,7 +533,9 @@
   .bandchips button:nth-child(1).on { background: #5a9cff; border-color: #b0d0ff; color: #05101f; box-shadow: 0 0 6px rgba(90, 156, 255, 0.85); }
   .bandchips button:nth-child(2).on { background: #45cf62; border-color: #aef0bc; color: #041505; box-shadow: 0 0 6px rgba(69, 207, 98, 0.85); }
   .bandchips button:nth-child(3).on { background: #ff5f4d; border-color: #ffb4aa; color: #1f0603; box-shadow: 0 0 6px rgba(255, 95, 77, 0.85); }
-  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; }
+  /* Desaturated as well as dimmed: unarmed chips carry a band tint now, so opacity alone
+     no longer separated "audio off" from "audio on, unarmed". */
+  #panel.audio-off .bandchips, #breakout.audio-off .bandchips { opacity: .4; filter: saturate(.25); }
   /* Per-slider beat-pulse shape: the curve the value follows after a beat. */
   .bandchips select {
     height: 15px; padding: 0 1px; margin-left: 2px; font: 9px/13px ui-monospace, monospace;
@@ -612,7 +622,18 @@
   /* ONE ROW PER FIELD (label · field · ▲/▼, ↺ ending the step row): a cell now carries
      the field PLUS its stepper pair, and any side-by-side column split left the inputs
      ~26px — too narrow for "24000", with max spilling out of the box. */
-  #breakout .rng-edit { margin-top: 7px; }
+  #breakout .rng-edit { margin-top: 3px; }
+  /* The collapsible "Value range" section wrapping the bounds editor — closed by default,
+     titled like the trigger sections, with its own ? in the summary. */
+  #breakout .rng-sec { margin-top: 7px; }
+  #breakout .rng-sec > summary {
+    display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none;
+    color: #ffb15a; opacity: .7; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  }
+  #breakout .rng-sec > summary::-webkit-details-marker { display: none; }
+  #breakout .rng-sec > summary::before { content: "▸"; font-size: 18px; line-height: 0; }
+  #breakout .rng-sec[open] > summary::before { content: "▾"; }
+  #breakout .rng-sec > summary .ctl-help { margin-left: auto; }
   /* Closes the slider + its bounds off from the Triggers section below. */
   #breakout .ctl-div {
     margin: 10px 0 0; border-top: 1px solid rgba(255, 140, 40, 0.18);
@@ -632,6 +653,19 @@
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 10px ui-monospace, monospace;
   }
+  /* The Reset row closing a box: title left (auto width — "reset slider" is longer than
+     the 26px field labels), the ↺ pushed to the right edge. */
+  #breakout .ctl-reset .rng-lbl { width: auto; }
+  #breakout .ctl-reset .rng-rst { margin-left: auto; }
+  /* Objects: name · − value + on one row, small steppers like every number field. */
+  #panel .obj-row { display: flex; align-items: center; gap: 5px; }
+  #panel .obj-row .obj-name { flex: 1 1 auto; }
+  #panel .obj-row .obj-val { min-width: 16px; text-align: center; }
+  /* Refractory rows (per armed band, under Duration): band label · slider · readout. */
+  #breakout .trig-ref { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  #breakout .trig-ref .rng-lbl { flex: none; width: 26px; opacity: .55; font-size: 9px; letter-spacing: .06em; }
+  #breakout .trig-ref input[type=range] { flex: 1 1 auto; min-width: 0; margin: 0; }
+  #breakout .trig-ref .trig-ref-val { flex: none; width: 44px; text-align: right; font-size: 10px; color: #ffcf87; }
   #breakout .rng-rst {
     flex: none; width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
@@ -689,7 +723,9 @@
   .ctl-dots { flex: none; display: flex; align-items: center; gap: 5px; }
   .ctl-dot {
     display: none; width: 12px; height: 12px; border-radius: 50%;
-    background: currentColor; opacity: .5; transition: opacity .08s;
+    /* idle .75, not .5 — the dim blue read as grey on the dark panel. Repeated in
+       flashChips's ramp (0.75 + lit*0.25) — keep the two in step. */
+    background: currentColor; opacity: .75; transition: opacity .08s;
   }
   .ctl-dot.armed { display: block; }
   .ctl-dot.d-low { color: #5a9cff; }      /* L — matches .bandchips button:nth-child(1).on */
@@ -1066,7 +1102,8 @@
   /* The eye variant (palette inspector). An emoji glyph needs more room than a "?" and
      ignores `color`, so it gets its own size and a slightly dimmer resting opacity to sit
      at the same visual weight as the amber ? buttons beside it. */
-  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; }
+  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lbl-eye > svg { display: block; }
   #panel .lbl-eye:hover { opacity: 1; }
   /* Data-structure tree inside the help modal. */
   #help .help-tree {
@@ -1084,19 +1121,22 @@
   }
   #help.hidden { display: none; }
   /* Palette inspector popup: the full 0–255 ramp as a 16×16 grid of colour cells. */
+  /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paldlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent;   /* float over the scene like the other popups, not a dark modal */
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
     position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
-    border-radius: 12px; padding: 18px 20px; max-height: 92vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px; max-width: calc(100vw - 312px);
+    border-radius: 12px; padding: 18px 20px; max-height: calc(100vh - 72px); overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
-  #paldlg h2 { margin: 0 30px 12px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
+  /* No right margin — the × floats, the title wraps (the picker bleed-gap rule). */
+  #paldlg h2 { margin: 0 0 12px; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* ---- EVERY dialog's close button, in ONE rule ----------------------------------
      Top-right of its box, out of the flow, uniform across the palette inspector, the
      palette editor, the Public scenes gallery, the Orbit editor, the help panel and the
@@ -1149,18 +1189,18 @@
   }
   /* The × sticks level with the title, allowing for the padding the header now carries. */
   .pal-close, .card-close, .help-close, .sync-close { top: 18px; }
-  /* The docked pickers seat the × in the actual corner: pulled 12px into the side padding
-     (10px off the box edge) and 12px down from the top (the float otherwise sits flush
-     against the border because the box gave its top padding to the sticky header). The
-     header TINT is nearly nothing (the boxes are rgba(10,6,4,.8) and a header painted on
-     top ADDS to that — even .85 read as a black bar); the anti-ghosting while the list
-     scrolls under the sticky title comes from the strong backdrop blur instead. The
-     palette editor's header gets the same treatment. */
+  /* The picker and palette-editor titles are NOT sticky and paint NOTHING. Any header
+     background on these translucent boxes reads as a black bar: even a low-alpha tint
+     ADDS to the box's own rgba(.8), and the backdrop-blur route is worse — a
+     backdrop-filter nested inside the box's backdrop-filter samples an ISOLATED backdrop
+     root on real GPUs and composites toward black regardless of alpha (headless
+     screenshots lied about this one). These boxes are small, so the title simply scrolls
+     with the content; the × stays sticky for closing. */
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #paledlg .pale-box > h2 {
-    background: rgba(10, 6, 4, 0.3);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    box-shadow: 0 -30px 0 30px rgba(10, 6, 4, 0.3);
+  #paledlg .pale-box > h2, #paldlg .pal-box > h2 {
+    position: static; background: transparent;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    box-shadow: none;
   }
   #fltdlg .pal-close, #palpickdlg .pal-close, #transpickdlg .pal-close {
     top: 12px; margin-top: 12px; margin-right: -12px;
@@ -1168,21 +1208,23 @@
   .pal-close:hover, .card-close:hover, .help-close:hover, .sync-close:hover {
     background: rgba(255, 122, 26, 0.25);
   }
-  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); }
+  #pal-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; width: min(84vw, 680px); max-width: 100%; }
   #pal-grid > div { aspect-ratio: 3 / 2; border-radius: 2px; }
   #paldlg .pal-hint { margin: 12px 0 0; opacity: .6; font-size: 11px; max-width: 680px; }
   /* ---- palette editor ---- */
   /* Same floating, translucent, non-modal treatment as the inspector and Orbit editor: you
      tune a ramp while watching the scene, so it must never take the whole screen or block a
      click on the canvas behind it. */
+  /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paledlg {
-    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
   #paledlg.hidden { display: none; }
   #paledlg .pale-box {
     position: relative; pointer-events: auto;
-    width: min(90vw, 460px); max-height: 92vh; overflow-y: auto;
+    margin: 58px 14px 14px 298px;
+    width: min(90vw, 460px); max-height: calc(100vh - 72px); overflow-y: auto;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 12px; padding: 18px 20px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
@@ -1603,9 +1645,10 @@
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   <!-- This layer's palette: ramp, cycle, reverse, background, banding. -->
-  <!-- An eye, not the old ▦ grid glyph: ▦ described the dialog's LAYOUT (a grid of
-       swatches) rather than what the button does, and read as a stop/fill icon. -->
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette">👁</button></label>
+  <!-- A MAGNIFIER, not the old 👁 eye: the eye became the visibility-toggle glyph (layer
+       mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
+       currentColor, like the eye icons. -->
+  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -1728,7 +1771,7 @@
     <p class="pal-hint">Ticked palettes show in the strip and are the ones the palette cycle picks from. Untick the ones you never reach for — nothing is deleted, and the palette a scene stores always still loads.</p>
     <div id="palpick-list"></div>
     <div class="presetrow grid2">
-      <button id="palpick-all" class="audbtn" type="button">Select all</button>
+      <button id="palpick-all" class="audbtn" type="button" title="Tick every palette — and bring back any deleted shipped ones">Select all</button>
       <button id="palpick-none" class="audbtn" type="button">Select none</button>
     </div>
     <div class="presetrow grid2">
@@ -1871,7 +1914,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.21.0",
+    version: "1.22.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2577,7 +2620,23 @@
   // Global, not per-scene: the same class as auto-cycle and Preset TTL. A shared scene
   // deliberately does not carry it — it is the recipient's own library preference.
   let palUse = null;
-  const palInUse = i => !palUse || palUse.has(i);
+  // DELETED shipped palettes — a SOFT delete (tombstone Set of built-in indices). A real
+  // removal is impossible for a built-in: palette indices are the wire format and the
+  // shipped block is shared vocabulary across every browser and share link, so the entry
+  // STAYS in PALETTES (scenes that reference it keep rendering) and only disappears from
+  // the strip, the picker and the cycle — all of which gate through palInUse. Persisted
+  // beside palUse (global library preference, skipped while sharing). Customs never enter
+  // here — they really delete (deleteCustomPalette). "Select all" clears it, which is the
+  // recovery path. At least ONE palette must stay alive overall.
+  let palGone = new Set();
+  const palInUse = i => !palGone.has(i) && (!palUse || palUse.has(i));
+  const palAliveCount = () => PALETTES.length - palGone.size;
+  function palGoneOk(v) {                   // validate a stored tombstone list
+    const s = new Set();
+    if (!Array.isArray(v)) return s;
+    for (const n of v) if (Number.isInteger(n) && n >= 0 && n < PAL_BUILTIN) s.add(n);
+    return s;
+  }
   function palUseOk(v) {                    // validate a stored list
     if (!Array.isArray(v)) return null;
     const s = new Set();
@@ -7848,7 +7907,7 @@
         const dot = dotEls[id] && dotEls[id][k];
         if (dot) {
           if (lit > 0.05) {
-            dot.style.opacity = (0.5 + lit * 0.5).toFixed(3);
+            dot.style.opacity = (0.75 + lit * 0.25).toFixed(3);   // idle figure = the .ctl-dot CSS
             dot.style.boxShadow = "0 0 " + (3 + lit * 11).toFixed(1) + "px " + BANDCOLOR[k];
           } else {
             dot.style.opacity = "";
@@ -8237,11 +8296,15 @@
     const open = '<div class="ctl"' + K + 'ctl-' + c.key + '">';
     if (c.type === "check")
       return open + '<label class="check"><input type="checkbox"' + K + c.key + '" checked> ' + c.label + "</label></div>";
+    // ONE row — name · − value + — using the small side-by-side stepper buttons every
+    // number field carries, instead of the old full-width −/+ bar below the label (which
+    // read as add/remove-something and matched nothing else in the panel).
     if (c.type === "layers")
-      return open + '<label>' + c.label + ' <span class="val"' + K + 'vLayers"></span></label>' +
-        '<div class="presetrow"><button' + K + 'layer-minus" class="audbtn" type="button" title="Remove the smallest copy" aria-label="Fewer">−</button>' +
-        '<button' + K + 'layer-plus" class="audbtn" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button></div>' +
-        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div>';
+      return open + '<div class="obj-row"><span class="obj-name">' + c.label + '</span>' +
+        '<button' + K + 'layer-minus" class="num-arrow" type="button" title="Remove the smallest copy of ' + c.label + '" aria-label="Fewer">−</button>' +
+        '<span class="val obj-val"' + K + 'vLayers"></span>' +
+        '<button' + K + 'layer-plus" class="num-arrow" type="button" title="Add a smaller copy — half size, half points, new seed" aria-label="More">+</button>' +
+        '<input type="number"' + K + 'layers" min="1" max="6" step="1" value="1" style="display:none"></div></div>';
     const lbl = "<label>" + c.label + ' <span class="val"' + K + c.valId + '"></span></label>';
     if (c.type === "plain")
       return open + lbl + '<input' + K + c.key + '" type="range" min="' + c.min + '" max="' + c.max + '" step="any" value="' + c.value + '"></div>';
@@ -8427,7 +8490,7 @@
     const d = document.createElement("div");
     d.className = "filter-div";
     d.dataset.live = renderPass;
-    d.textContent = "▲ shapes the heat   ·   the effect draws here   ·   ▼ repaints the picture";
+    d.textContent = "▲ heat & trails · effect draws here · ▼ image";
     d.title = "Filters above this line run on the heat before the effect draws; filters below run on the finished picture. Drag one across to change which it does.";
     return d;
   }
@@ -9067,6 +9130,7 @@
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
   const dotEls = {};           // id -> {low,mid,high} : the menu row's beat dots (ditto)
+  const refEls = {};           // id -> {wrap,rows,fields} : the per-box refractory rows (ditto)
   const PULSE_DROP = CONFIG.pulse.drop;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
   const PLEN_MIN = CONFIG.pulse.min, PLEN_MAX = CONFIG.pulse.max;   // bounds of the per-slider pulse-length slider (s)
   // How far the editable "max" row under Trigger duration may raise the slider — and the
@@ -9129,6 +9193,7 @@
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
         syncDots();              // the menu row shows the same armed state
+        syncTrigRefs();          // ...and the refractory row for this band appears/hides
         // A <button> click fires neither input nor change, so the delegated onEdit
         // never sees it — do its job by hand, autosave included. Without the
         // autosave the chip reached localStorage but not the *selected preset*,
@@ -9164,18 +9229,60 @@
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
     trigT.title = "Which beat bands make this slider jump";
     host.append(trigT, wrap);
-    // The fall-back CURVE, titled like everything else here rather than left as an unlabelled
-    // dropdown floated to the right of the chips. Named "Trigger shape" to match "Trigger
-    // duration" — the two describe the same fall together, one its curve and one its length.
+    // Refractory for each ARMED band: the SAME per-band beatCfg.refract that Beat tuning
+    // edits (scene data, min ms between beats) — so a change here applies to every
+    // trigger on that band. Rows exist for all three bands but show only while their chip
+    // is on (syncTrigRefs); the whole block hides with nothing armed. Built here, but
+    // APPENDED at the foot of the trigger section (below Duration) — see the append after
+    // the max row.
+    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {} };
+    const refWrap = document.createElement("div");
+    refWrap.className = "trig-refs";
+    refWrap.style.display = "none";
+    const refT = document.createElement("div");
+    refT.className = "trig-t"; refT.textContent = "Refractory (ms)";
+    refT.title = "Minimum gap between beats on an armed band (ms) — the same value as Beat tuning's Refractory";
+    refWrap.appendChild(refT);
+    for (const k of ["low", "mid", "high"]) {
+      const b = { low: 0, mid: 1, high: 2 }[k];
+      const r = document.createElement("div");
+      r.className = "trig-ref";
+      r.style.display = "none";
+      const lb = document.createElement("span");
+      lb.className = "rng-lbl"; lb.textContent = k;
+      // A SLIDER with a live readout, like Duration below — same bounds as Beat tuning's
+      // Refractory rows (20–500 ms, step 5).
+      const f = document.createElement("input");
+      f.type = "range"; f.min = "20"; f.max = "500"; f.step = "5";
+      f.title = k + " band refractory (ms)";
+      f.setAttribute("aria-label", k + " band refractory");
+      const val = document.createElement("span");
+      val.className = "trig-ref-val";
+      f.addEventListener("input", () => {
+        if (refEls[id] !== refs) return;         // not the live block
+        const v = +f.value;
+        val.textContent = v + "ms";
+        beatCfg.refract[b] = v;
+        beatChanged(false);
+      });
+      // Rebuild the Beat tuning sliders once the drag settles, not per input tick.
+      f.addEventListener("change", () => { if (refEls[id] === refs) beatBuild(); });
+      r.append(lb, f, val);
+      refs.fields[k] = f; refs.rows[k] = r; refs.vals[k] = val;
+      refWrap.appendChild(r);
+    }
+    refs.wrap = refWrap;
+    // The fall-back CURVE, titled like everything else here rather than left as an
+    // unlabelled dropdown floated to the right of the chips. The section titles under
+    // "Triggers" drop the word Trigger — the heading already says it.
     const shapeT = document.createElement("div");
-    shapeT.className = "trig-t"; shapeT.textContent = "Trigger shape";
+    shapeT.className = "trig-t"; shapeT.textContent = "Shape";
     shapeT.title = "The curve this slider follows on its way back down after a trigger";
-    host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
     if (!(id in pulseLen)) pulseLen[id] = PULSE_DROP;
     const durT = document.createElement("div");
-    durT.className = "plen-name"; durT.textContent = "Trigger duration";
+    durT.className = "plen-name"; durT.textContent = "Duration";
     const row = document.createElement("div");
     row.className = "plen";
     const sl = document.createElement("input");
@@ -9190,7 +9297,6 @@
     sl.addEventListener("input", () => { if (plenEls[id] && plenEls[id].inp === sl) pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
     row.append(sl, out);
     w.plen = { inp: sl, out };
-    host.append(durT, row);              // foot of the control block (above the range editor)
     // An editable MAX below the slider, like the bounds rows on the value slider itself:
     // the shipped 2 s ceiling is short for slow falls (Shockwave rings, long strikes).
     // Edits apply to EVERY block's copy of this key's slider (the pulse length is a
@@ -9200,7 +9306,10 @@
     const mrow = document.createElement("div");
     mrow.className = "rng-cell plen-max";
     const mlbl = document.createElement("span");
-    mlbl.className = "rng-lbl"; mlbl.textContent = "max";
+    // "limit", not "max" — Value range's max row (the slider bound) can be on screen a
+    // few rows up, and two visible "max" fields meaning different things confused.
+    mlbl.className = "rng-lbl"; mlbl.textContent = "limit";
+    mlbl.title = "How far the Duration slider reaches (seconds)";
     const mf = document.createElement("input");
     mf.type = "number"; mf.step = "any"; mf.value = String(PLEN_MAX);
     mf.min = "0.1"; mf.max = String(PLEN_HARD_MAX);
@@ -9224,7 +9333,16 @@
       }
     });
     addNumArrows(mf, () => 0.5);
-    host.append(mrow);
+    // ONE folding body for everything a trigger needs: Shape, Duration (+max) and
+    // Refractory live together in .trig-body, hidden until any chip is armed and shown
+    // as one element when one is (syncTrigRefs toggles it via refs.body). Only the
+    // Triggers heading and the chips stay out — they are how you arm one.
+    const trigBody = document.createElement("div");
+    trigBody.className = "trig-body";
+    trigBody.style.display = "none";
+    trigBody.append(shapeT, psel, durT, row, mrow, refWrap);
+    refs.body = trigBody;
+    host.append(trigBody);
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   // Wiring a control splits in two, because several open layers need one set of DOM nodes
@@ -9308,8 +9426,10 @@
       if (e.dots) dotEls[id] = e.dots;
       if (e.psel) pulseEls[id] = e.psel;
       if (e.plen) plenEls[id] = e.plen;
+      if (e.refs) refEls[id] = e.refs;
       if (e.row) rows[id] = e.row;
     }
+    syncTrigRefs();              // the re-pointed boxes show THEIR armed bands' rows
   }
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
   // Wire every generated dual slider in EVERY block, then register the definition once from
@@ -9612,6 +9732,7 @@
     if (!host) return;
     host.textContent = "";
     PALETTES.forEach((p, i) => {
+      if (palGone.has(i)) return;           // tombstoned shipped ramps leave the list too
       const lab = document.createElement("label");
       lab.className = "palpick-row";
       const cb = document.createElement("input");
@@ -9622,27 +9743,40 @@
       const nm = document.createElement("span");
       nm.className = "palpick-n"; nm.textContent = p.name + (p.custom ? " (custom)" : "");
       lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(nm);
-      // CUSTOMS get a delete ✕ (built-ins are shipped and stay). Inside a <label>, so the
-      // click must preventDefault too — else it also toggles the in-use checkbox.
-      if (p.custom) {
-        const del = document.createElement("button");
-        del.type = "button"; del.className = "palpick-del"; del.textContent = "✕";
-        del.title = "Delete " + p.name;
-        del.setAttribute("aria-label", del.title);
-        del.addEventListener("click", ev => {
-          ev.preventDefault(); ev.stopPropagation();
-          if (!confirm("Delete the custom palette “" + p.name + "”? Any layer or scene using it falls back to " + PALETTES[0].name + ".")) return;
-          deleteCustomPalette(i);
-        });
-        lab.appendChild(del);
-      }
+      // EVERY row gets a delete ✕ — customs really delete, shipped ramps tombstone (see
+      // deleteAnyPalette). Inside a <label>, so the click must preventDefault too — else
+      // it also toggles the in-use checkbox.
+      const del = document.createElement("button");
+      del.type = "button"; del.className = "palpick-del"; del.textContent = "✕";
+      del.title = "Delete " + p.name;
+      del.setAttribute("aria-label", del.title);
+      del.addEventListener("click", ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        deleteAnyPalette(i);
+      });
+      lab.appendChild(del);
       host.appendChild(lab);
     });
-    // Delete selected only bites on a custom — dim it while a built-in is selected. The
-    // picker rebuilds on open and after every change, so the dimming tracks well enough;
-    // the click handler guards for real.
+    // Delete selected dims only when it cannot act — one palette left overall.
     const ds = el("palpick-delsel");
-    if (ds) ds.classList.toggle("off", +paletteSel.value < PAL_BUILTIN);
+    if (ds) ds.classList.toggle("off", palAliveCount() <= 1);
+  }
+  // ONE deletion entry for both the per-row ✕ and Delete selected, confirm included.
+  // Customs really delete (indices remap); shipped ramps SOFT-delete into palGone — the
+  // entry stays in PALETTES so every scene and share link that references it keeps
+  // rendering, and "Select all" resurrects them. The floor is one alive palette TOTAL.
+  function deleteAnyPalette(i) {
+    const p = PALETTES[i];
+    if (!p || palGone.has(i)) return;
+    if (palAliveCount() <= 1) { alert("That is the last palette — at least one must remain."); return; }
+    if (!confirm("Delete the palette “" + p.name + "”? " + (p.custom
+      ? "Any layer or scene using it falls back to " + PALETTES[0].name + "."
+      : "Scenes that use it keep rendering; it leaves the strip, the picker and the cycle. Select all brings the shipped palettes back."))) return;
+    if (p.custom) { deleteCustomPalette(i); return; }
+    palGone.add(i);
+    if (+paletteSel.value === i)            // move the selection to a survivor
+      for (let k = 0; k < PALETTES.length; k++) if (palInUse(k)) { paleSelectLive(k); break; }
+    buildPalSwatches(); buildPalPick(); persist();
   }
   // Tick / untick one ramp. `palUse` is null while everything is in use, so the first
   // untick has to materialise the full set before removing from it.
@@ -9659,6 +9793,7 @@
   }
   function setPalUseAll(on) {
     palUse = on ? null : new Set([+paletteSel.value]);   // "none" keeps the one on screen
+    if (on) palGone = new Set();            // Select all is the tombstone recovery path
     buildPalSwatches(); buildPalPick(); persist();
   }
   buildPalSwatches();
@@ -9685,18 +9820,9 @@
     paleSelectLive(i);                    // show it at once, and open the editor on it
     openPalEditor(i);
   });
-  // Delete the SELECTED palette (the highlighted swatch) — customs only, with the same
-  // confirm as the per-row ✕. Deletion itself is deleteCustomPalette, which re-points
-  // every stored index and keeps the picker open and refreshed.
-  el("palpick-delsel").addEventListener("click", () => {
-    const i = +paletteSel.value;
-    if (i < PAL_BUILTIN || !PALETTES[i]) {
-      alert("Built-in palettes can't be deleted — select one of your custom palettes first.");
-      return;
-    }
-    if (!confirm("Delete the custom palette “" + PALETTES[i].name + "”? Any layer or scene using it falls back to " + PALETTES[0].name + ".")) return;
-    deleteCustomPalette(i);
-  });
+  // Delete the SELECTED palette (the highlighted swatch) — same path as the per-row ✕:
+  // customs really delete, shipped ramps tombstone, one palette must remain.
+  el("palpick-delsel").addEventListener("click", () => deleteAnyPalette(+paletteSel.value));
   // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't
@@ -11828,6 +11954,35 @@
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
     for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
     syncDots();
+    syncTrigRefs();
+  }
+  // The per-box refractory rows (see makeChips): one per ARMED band, values from the
+  // live beatCfg, the whole block hidden with nothing armed. A focused field is never
+  // overwritten mid-edit. The try/catch is a TDZ guard, not error hiding: syncChips and
+  // pointMaps run during startup, one slice before `const beatCfg` initialises — the
+  // same split collectionsHeld documents — and in that window there is nothing to show.
+  function syncTrigRefs() {
+    try {
+      const B = { low: 0, mid: 1, high: 2 };
+      for (const id in refEls) {
+        const r = refEls[id], armed = beatReact[id] || {};
+        let any = false;
+        for (const k in r.rows) {
+          const on = !!armed[k];
+          r.rows[k].style.display = on ? "" : "none";
+          if (on) {
+            any = true;
+            const f = r.fields[k], v = beatCfg.refract[B[k]];
+            if (document.activeElement !== f) f.value = String(v);
+            if (r.vals && r.vals[k]) r.vals[k].textContent = v + "ms";
+          }
+        }
+        r.wrap.style.display = any ? "" : "none";
+        // The whole trigger body — Shape, Duration and Refractory — folds as ONE element
+        // on the same condition: something armed.
+        if (r.body) r.body.style.display = any ? "" : "none";
+      }
+    } catch (e) {}
   }
   // The menu row's dots mirror the armed chips, so the overview survives every path
   // that changes them (loadBeat, Reset, a chip click) without a second sync to forget.
@@ -12226,6 +12381,7 @@
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
+      palGone: [...palGone].sort((a, b) => a - b),   // soft-deleted shipped palettes (indices; [] = none)
       transUse: transUse ? [...transUse] : null,     // which transitions a scene change picks from (null ⇒ all)
       collections: collectionsHeld.map(c => ({ key: c.key, uid: c.uid })),   // gallery collections you have added (not their scenes — see cloudBlob)
       presets, curPreset,
@@ -12274,6 +12430,13 @@
     // Skipped while `sharing`: which ramps you keep in your strip is your own preference,
     // the same class as auto-cycle and the TTL, not part of the scene you were sent.
     if (!sharing && saved.palUse !== undefined) { palUse = palUseOk(saved.palUse); buildPalSwatches(); }
+    // Soft-deleted shipped palettes — same preference class, same sharing skip. The
+    // at-least-one-alive rule is enforced HERE (after customs installed, so the count is
+    // real): a blob that would tombstone everything is ignored rather than half-applied.
+    if (!sharing && saved.palGone !== undefined) {
+      const g = palGoneOk(saved.palGone);
+      if (PALETTES.length - g.size >= 1) { palGone = g; buildPalSwatches(); }
+    }
     // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
     // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
     if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
@@ -12712,14 +12875,33 @@
     rst.title = "Reset this slider — value, range, beat chips and pulse — to this effect's defaults";
     rst.setAttribute("aria-label", ctlLabel(key) + ": reset to defaults");
     rst.addEventListener("click", e => { e.preventDefault(); resetControl(key); sync(); });
+    // The Reset row is NOT part of the Value range section: it resets the whole control
+    // (value, range, chips, pulse), so it lives at the FOOT of the box, under the trigger
+    // section, behind its own divider — dressBox places it.
     const rcell = document.createElement("div");   // a div, not a label — a label would
-    rcell.className = "rng-cell";                  // re-trigger the button on text clicks
+    rcell.className = "rng-cell ctl-reset";        // re-trigger the button on text clicks
     const rlbl = document.createElement("span");
-    rlbl.className = "rng-lbl"; rlbl.textContent = "Reset";
+    // "reset slider" (lowercase like the other row labels) — the layer block's big
+    // "Reset this effect" button uses the same word for a much bigger scope.
+    rlbl.className = "rng-lbl"; rlbl.textContent = "reset slider";
     rcell.appendChild(rlbl);
     rcell.appendChild(rst);
-    box.appendChild(rcell);
-    return box;
+    // The bounds fold into a COLLAPSIBLE "Value range" section, closed by default
+    // (bounds are set-once knobs). Its own ? explains min/max/step — that blurb no longer
+    // rides every control's main ? (openRangeHelp vs openCtlHelp).
+    const sec = document.createElement("details");
+    sec.className = "rng-sec";
+    const sum = document.createElement("summary");
+    sum.textContent = "Value range";
+    const hq = document.createElement("button");
+    hq.type = "button"; hq.className = "ctl-help"; hq.textContent = "?";
+    hq.title = "What min / max / step do";
+    hq.setAttribute("aria-label", "Value range — help");
+    hq.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); openRangeHelp(); });
+    sum.appendChild(hq);
+    sec.appendChild(sum);
+    sec.appendChild(box);
+    return { sec, reset: rcell };
   }
 
   // Who a control belongs to, for the box title. CTL_GROUPS already carries the human
@@ -12775,12 +12957,17 @@
     const rngEd = makeRangeEditor(slot, key);
     if (rngEd) {
       const anchor = box.querySelector(".trig-t");
-      box.insertBefore(rngEd, anchor);
+      box.insertBefore(rngEd.sec, anchor);
       if (anchor) {
         const hr = document.createElement("div");
         hr.className = "ctl-div";
         box.insertBefore(hr, anchor);
       }
+      // Reset closes the box: below the trigger section, behind its own divider.
+      const hr2 = document.createElement("div");
+      hr2.className = "ctl-div";
+      box.appendChild(hr2);
+      box.appendChild(rngEd.reset);
     }
     box.appendChild(makePopBtn(slot, key));      // the box's own dock button (left gutter in #breakout)
   }
@@ -13707,7 +13894,7 @@
     // has run, not a state the user can reach.
     const p = presets[curPreset] || presets[0];
     if (!p) return;
-    h.textContent = p.name;
+    h.textContent = "Scene · " + p.name;   // the prefix anchors the floating name to what it is
     // Whose scene it is, when it came from someone else's collection — the same fact the
     // on-screen banner gives you, kept visible while you work rather than for four seconds.
     const from = collectionOf(p);
@@ -15848,6 +16035,7 @@
   var beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
+    syncTrigRefs();                              // the per-box refractory rows mirror beatCfg
     // No persist() here: these sliders carry no dev-tool opt-out, so onEdit already persisted
     // and folded the change into the selected preset. Calling it again would double-write.
   }
@@ -15971,7 +16159,7 @@
       { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
       { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or scene." },
-      { n: "Slider range (min / max / step)", w: "all", t: "The row at the foot of a slider's pop-out box retunes that slider's own bounds live, so you can push a control past its shipped limits (or make it finer). ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
+      { n: "Slider range (min / max / step)", w: "all", t: "The Value range section in a slider's pop-out box retunes that slider's own bounds live: min and max are the ends of the slider's travel, step is the drag resolution (0 = continuous), so you can push a control past its shipped limits or make it finer. ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
       { n: "Show box", w: "tetra", t: "Tetrahedron only — ON draws the wireframe box the tetrahedron bounces inside (with a burst of sparks on each wall hit). OFF hides the box and, with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead." },
       { n: "Box size", w: "tetra", t: "Tetrahedron only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
       { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
@@ -16126,6 +16314,8 @@
     return { owner: ctlOwner(-1, key), body: s ? s.t : "" };
   }
   const RANGE_BLURB = () => (HELP.sliders.find(s => s.n === "Slider range (min / max / step)") || {}).t || "";
+  // The range blurb no longer rides every control's ? — the Value range section carries
+  // its own ? (openRangeHelp below), so the per-control dialog stays about the control.
   function openCtlHelp(key) {
     const { owner, body } = ctlHelpBlurb(key);
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
@@ -16133,9 +16323,15 @@
     if (owner) html += '<p class="help-owner">' + owner + "</p>";
     if (body) html += "<p>" + body + "</p>";
     html += '<p class="help-intro">' + HELP.intro + "</p>";
-    const rb = RANGE_BLURB(); if (rb) html += '<p class="help-intro">' + rb + "</p>";
     html += "</div>";
     helpEl.innerHTML = html;
+    helpEl.classList.remove("hidden");
+  }
+  // The Value range section's own ? (see makeRangeEditor).
+  function openRangeHelp() {
+    const rb = RANGE_BLURB();
+    helpEl.innerHTML = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>'
+      + "<h2>Value range</h2>" + (rb ? "<p>" + rb + "</p>" : "") + "</div>";
     helpEl.classList.remove("hidden");
   }
   el("help-btn").addEventListener("click", openHelp);
@@ -16437,7 +16633,7 @@
         run: () => galOpen(true) }] : []),
       { label: "Credits", sub: [{ adopt: "creditbox" }] },
       { sep: true },
-      { label: "What the controls do…", title: "Open the help panel", run: () => openHelp() },
+      { label: "Help", title: "What the controls do — the full help panel", run: () => openHelp() },
     ];
   }
 
