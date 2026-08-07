@@ -325,6 +325,16 @@
   let palGone = new Set();
   const palInUse = i => !palGone.has(i) && (!palUse || palUse.has(i));
   const palAliveCount = () => PALETTES.length - palGone.size;
+  // Where a reference to palette `gone` should land when it is deleted. Prefer a palette that
+  // is actually IN USE, so a layer keeps a ramp you had ticked instead of jumping to whatever
+  // ships first; only if nothing else is in use does it fall back to the first palette in the
+  // list. Returns a PRE-splice index — a caller that removes the entry must shift a result
+  // above `gone` down by one before storing it (palRemapOne uses `back` verbatim).
+  function palFallbackFor(gone) {
+    for (let i = 0; i < PALETTES.length; i++) if (i !== gone && palInUse(i)) return i;
+    for (let i = 0; i < PALETTES.length; i++) if (i !== gone) return i;
+    return 0;
+  }
   function palGoneOk(v) {                   // validate a stored tombstone list
     const s = new Set();
     if (!Array.isArray(v)) return s;

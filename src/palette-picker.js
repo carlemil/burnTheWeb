@@ -150,13 +150,15 @@
     const p = PALETTES[i];
     if (!p || palGone.has(i)) return;
     if (palAliveCount() <= 1) { alert("That is the last palette — at least one must remain."); return; }
+    const back = palFallbackFor(i);         // an in-use survivor, named in the confirm below
     if (!confirm("Delete the palette “" + p.name + "”? " + (p.custom
-      ? "Any layer or scene using it falls back to " + PALETTES[0].name + "."
+      ? "Any layer or scene using it falls back to " + PALETTES[back].name + "."
       : "Scenes that use it keep rendering; it leaves the strip, the picker and the cycle. Select all brings the shipped palettes back."))) return;
     if (p.custom) { deleteCustomPalette(i); return; }
+    // A tombstoned built-in still renders for every scene that stores it — only the LIVE
+    // selection has to move, and it moves to the same in-use survivor.
     palGone.add(i);
-    if (+paletteSel.value === i)            // move the selection to a survivor
-      for (let k = 0; k < PALETTES.length; k++) if (palInUse(k)) { paleSelectLive(k); break; }
+    if (+paletteSel.value === i) paleSelectLive(palFallbackFor(i));
     buildPalSwatches(); buildPalPick(); persist();
   }
   // Tick / untick one ramp. `palUse` is null while everything is in use, so the first

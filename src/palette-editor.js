@@ -206,13 +206,15 @@
   // — palette references are indices everywhere, including the editor's own state.
   function deleteCustomPalette(gone) {
     if (gone < PAL_BUILTIN || !PALETTES[gone]) return;
-    const back = 0;
+    // An in-use survivor, not a blunt index 0 — see palFallbackFor. Computed BEFORE the
+    // splice and shifted after it, because palRemapOne writes `back` verbatim.
+    const back = palFallbackFor(gone);
     if (paleIdx === gone) {
       paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
       el("paledlg").classList.add("hidden");
     } else if (paleIdx > gone) paleIdx--;
     PALETTES.splice(gone, 1);
-    palRemapDeleted(gone, back);         // rewrites every stored reference AND the live select
+    palRemapDeleted(gone, back > gone ? back - 1 : back);   // rewrites every stored reference AND the live select
     buildPalSwatches();
     buildPalPick();                      // the picker stays open — refresh its rows in place
     paleSelectLive(Math.min(+paletteSel.value, PALETTES.length - 1));
@@ -225,15 +227,20 @@
   // deleting the first of three customs silently re-points scenes at the wrong ramp.
   function deletePalEditor() {
     if (paleIdx < PAL_BUILTIN) return;
-    const gone = paleIdx, back = paleFallback;
+    // The palette this copy came from, but only while it is still in use — otherwise the
+    // same in-use survivor every other delete picks. Landing on an unticked ramp would put a
+    // layer on something the strip does not even show.
+    const gone = paleIdx;
+    const back = (paleFallback !== gone && palInUse(paleFallback)) ? paleFallback : palFallbackFor(gone);
     if (!paleFresh && !confirm("Delete the custom palette “" + PALETTES[gone].name
         + "”? Any layer using it falls back to " + PALETTES[back].name + ".")) return;
+    const backLive = back > gone ? back - 1 : back;
     PALETTES.splice(gone, 1);
-    palRemapDeleted(gone, back);
+    palRemapDeleted(gone, backLive);
     paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
     el("paledlg").classList.add("hidden");
     buildPalSwatches();
-    paleSelectLive(Math.min(back, PALETTES.length - 1));
+    paleSelectLive(Math.min(backLive, PALETTES.length - 1));
     persist();
     autosavePreset();
   }
