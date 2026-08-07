@@ -14,6 +14,17 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.23.1] — 2026-08-07
+
+### Removed
+
+- **"Delete selected" is gone from the Palettes in use dialog.** Deleting a palette is the
+  ✕ on its own row, where the thing you click names the thing you lose; the button acted on
+  whichever swatch happened to be highlighted behind the open dialog, leaving the confirm as
+  the only clue what it was about to remove. Deleting itself is unchanged — custom palettes
+  go for good, shipped ramps only leave your strip and picker and come back with **Select
+  all**, and one palette always remains.
+
 ## [1.23.0] — 2026-08-07
 
 ### Changed
