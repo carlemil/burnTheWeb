@@ -314,7 +314,23 @@
   // Global, not per-scene: the same class as auto-cycle and Preset TTL. A shared scene
   // deliberately does not carry it — it is the recipient's own library preference.
   let palUse = null;
-  const palInUse = i => !palUse || palUse.has(i);
+  // DELETED shipped palettes — a SOFT delete (tombstone Set of built-in indices). A real
+  // removal is impossible for a built-in: palette indices are the wire format and the
+  // shipped block is shared vocabulary across every browser and share link, so the entry
+  // STAYS in PALETTES (scenes that reference it keep rendering) and only disappears from
+  // the strip, the picker and the cycle — all of which gate through palInUse. Persisted
+  // beside palUse (global library preference, skipped while sharing). Customs never enter
+  // here — they really delete (deleteCustomPalette). "Select all" clears it, which is the
+  // recovery path. At least ONE palette must stay alive overall.
+  let palGone = new Set();
+  const palInUse = i => !palGone.has(i) && (!palUse || palUse.has(i));
+  const palAliveCount = () => PALETTES.length - palGone.size;
+  function palGoneOk(v) {                   // validate a stored tombstone list
+    const s = new Set();
+    if (!Array.isArray(v)) return s;
+    for (const n of v) if (Number.isInteger(n) && n >= 0 && n < PAL_BUILTIN) s.add(n);
+    return s;
+  }
   function palUseOk(v) {                    // validate a stored list
     if (!Array.isArray(v)) return null;
     const s = new Set();

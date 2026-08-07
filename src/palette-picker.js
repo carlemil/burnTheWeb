@@ -116,6 +116,7 @@
     if (!host) return;
     host.textContent = "";
     PALETTES.forEach((p, i) => {
+      if (palGone.has(i)) return;           // tombstoned shipped ramps leave the list too
       const lab = document.createElement("label");
       lab.className = "palpick-row";
       const cb = document.createElement("input");
@@ -126,27 +127,40 @@
       const nm = document.createElement("span");
       nm.className = "palpick-n"; nm.textContent = p.name + (p.custom ? " (custom)" : "");
       lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(nm);
-      // CUSTOMS get a delete ✕ (built-ins are shipped and stay). Inside a <label>, so the
-      // click must preventDefault too — else it also toggles the in-use checkbox.
-      if (p.custom) {
-        const del = document.createElement("button");
-        del.type = "button"; del.className = "palpick-del"; del.textContent = "✕";
-        del.title = "Delete " + p.name;
-        del.setAttribute("aria-label", del.title);
-        del.addEventListener("click", ev => {
-          ev.preventDefault(); ev.stopPropagation();
-          if (!confirm("Delete the custom palette “" + p.name + "”? Any layer or scene using it falls back to " + PALETTES[0].name + ".")) return;
-          deleteCustomPalette(i);
-        });
-        lab.appendChild(del);
-      }
+      // EVERY row gets a delete ✕ — customs really delete, shipped ramps tombstone (see
+      // deleteAnyPalette). Inside a <label>, so the click must preventDefault too — else
+      // it also toggles the in-use checkbox.
+      const del = document.createElement("button");
+      del.type = "button"; del.className = "palpick-del"; del.textContent = "✕";
+      del.title = "Delete " + p.name;
+      del.setAttribute("aria-label", del.title);
+      del.addEventListener("click", ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        deleteAnyPalette(i);
+      });
+      lab.appendChild(del);
       host.appendChild(lab);
     });
-    // Delete selected only bites on a custom — dim it while a built-in is selected. The
-    // picker rebuilds on open and after every change, so the dimming tracks well enough;
-    // the click handler guards for real.
+    // Delete selected dims only when it cannot act — one palette left overall.
     const ds = el("palpick-delsel");
-    if (ds) ds.classList.toggle("off", +paletteSel.value < PAL_BUILTIN);
+    if (ds) ds.classList.toggle("off", palAliveCount() <= 1);
+  }
+  // ONE deletion entry for both the per-row ✕ and Delete selected, confirm included.
+  // Customs really delete (indices remap); shipped ramps SOFT-delete into palGone — the
+  // entry stays in PALETTES so every scene and share link that references it keeps
+  // rendering, and "Select all" resurrects them. The floor is one alive palette TOTAL.
+  function deleteAnyPalette(i) {
+    const p = PALETTES[i];
+    if (!p || palGone.has(i)) return;
+    if (palAliveCount() <= 1) { alert("That is the last palette — at least one must remain."); return; }
+    if (!confirm("Delete the palette “" + p.name + "”? " + (p.custom
+      ? "Any layer or scene using it falls back to " + PALETTES[0].name + "."
+      : "Scenes that use it keep rendering; it leaves the strip, the picker and the cycle. Select all brings the shipped palettes back."))) return;
+    if (p.custom) { deleteCustomPalette(i); return; }
+    palGone.add(i);
+    if (+paletteSel.value === i)            // move the selection to a survivor
+      for (let k = 0; k < PALETTES.length; k++) if (palInUse(k)) { paleSelectLive(k); break; }
+    buildPalSwatches(); buildPalPick(); persist();
   }
   // Tick / untick one ramp. `palUse` is null while everything is in use, so the first
   // untick has to materialise the full set before removing from it.
@@ -163,6 +177,7 @@
   }
   function setPalUseAll(on) {
     palUse = on ? null : new Set([+paletteSel.value]);   // "none" keeps the one on screen
+    if (on) palGone = new Set();            // Select all is the tombstone recovery path
     buildPalSwatches(); buildPalPick(); persist();
   }
   buildPalSwatches();
@@ -189,18 +204,9 @@
     paleSelectLive(i);                    // show it at once, and open the editor on it
     openPalEditor(i);
   });
-  // Delete the SELECTED palette (the highlighted swatch) — customs only, with the same
-  // confirm as the per-row ✕. Deletion itself is deleteCustomPalette, which re-points
-  // every stored index and keeps the picker open and refreshed.
-  el("palpick-delsel").addEventListener("click", () => {
-    const i = +paletteSel.value;
-    if (i < PAL_BUILTIN || !PALETTES[i]) {
-      alert("Built-in palettes can't be deleted — select one of your custom palettes first.");
-      return;
-    }
-    if (!confirm("Delete the custom palette “" + PALETTES[i].name + "”? Any layer or scene using it falls back to " + PALETTES[0].name + ".")) return;
-    deleteCustomPalette(i);
-  });
+  // Delete the SELECTED palette (the highlighted swatch) — same path as the per-row ✕:
+  // customs really delete, shipped ramps tombstone, one palette must remain.
+  el("palpick-delsel").addEventListener("click", () => deleteAnyPalette(+paletteSel.value));
   // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't

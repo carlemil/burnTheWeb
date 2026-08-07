@@ -601,6 +601,15 @@ add the new index to a **materialised `palUse` set**. Floating, non-modal, hides
 - **Deleting a custom shifts later indices down** ⇒ `palRemapDeleted` rewrites the live stack,
   per-effect `extras` and every preset. Existing share links are not rewritten.
 
+**`palGone`** — SOFT-deleted shipped palettes (a tombstone Set of built-in indices, persisted
+beside `palUse`, skipped while sharing). **A built-in can never really be removed** — indices
+are the wire format and the shipped block is shared vocabulary across every browser and link —
+so the entry stays in `PALETTES` (referencing scenes keep rendering) and `palInUse` gates it
+out of the strip/picker/cycle. `deleteAnyPalette` is the one entry (per-row ✕ + Delete
+selected): customs really delete, built-ins tombstone; **floor = one alive palette total**,
+enforced again at `applyBlob` (after customs install, when the count is real). **"Select all"
+clears the tombstones** — the recovery path.
+
 **`palUse`** (`#palpickdlg`, the "+ Choose palettes" tile ending the strip): gates the STRIP and the CYCLE only
 (`pickOther` picks from it). A scene storing an unticked palette still loads and renders, and the
 strip always shows the current ramp. `null` = all (shipped, what older blobs decode to);

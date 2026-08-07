@@ -69,6 +69,7 @@
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
       palUse: palUse ? [...palUse].sort((a, b) => a - b) : null,   // which ramps the strip shows / the cycle picks (null ⇒ all)
+      palGone: [...palGone].sort((a, b) => a - b),   // soft-deleted shipped palettes (indices; [] = none)
       transUse: transUse ? [...transUse] : null,     // which transitions a scene change picks from (null ⇒ all)
       collections: collectionsHeld.map(c => ({ key: c.key, uid: c.uid })),   // gallery collections you have added (not their scenes — see cloudBlob)
       presets, curPreset,
@@ -117,6 +118,13 @@
     // Skipped while `sharing`: which ramps you keep in your strip is your own preference,
     // the same class as auto-cycle and the TTL, not part of the scene you were sent.
     if (!sharing && saved.palUse !== undefined) { palUse = palUseOk(saved.palUse); buildPalSwatches(); }
+    // Soft-deleted shipped palettes — same preference class, same sharing skip. The
+    // at-least-one-alive rule is enforced HERE (after customs installed, so the count is
+    // real): a blob that would tombstone everything is ignored rather than half-applied.
+    if (!sharing && saved.palGone !== undefined) {
+      const g = palGoneOk(saved.palGone);
+      if (PALETTES.length - g.size >= 1) { palGone = g; buildPalSwatches(); }
+    }
     // Same class as palUse and auto-cycle: the recipient's own preference, so it is skipped
     // while `sharing`. Absent (every blob predating the picker) ⇒ null ⇒ all in use.
     if (!sharing && saved.transUse !== undefined) transUse = transUseOk(saved.transUse);
