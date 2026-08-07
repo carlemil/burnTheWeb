@@ -421,10 +421,15 @@ top→down in click order. A thumb is only ever visible in the column.
   attached to `#breakout` too; its **own capture-phase `pointerdown` + `focusin`** selecting
   `box.dataset.slot`'s layer.
 - Box order top→bottom: `.ctl-owner`, label+value, slider, `.rng-edit`, `.ctl-div`, **Triggers**
-  (`.trig-t`) over the chips, **Trigger shape** over the `PULSE_SHAPES` picker, **Trigger
-  duration** (`.plen-name`) over `.plen`. `makeChips` **appends** (append order = display order).
-  The range editor is built later (POPPABLE pass) and must **`insertBefore` `.trig-t`**, not
-  append. It carries no `border-top`. The last five exist only in a box.
+  (`.trig-t`) over the chips, **Shape** over the `PULSE_SHAPES` picker, **Duration**
+  (`.plen-name`) over `.plen` + its max row, **Refractory** (`.trig-refs`) closing the section —
+  per-band sliders (Beat tuning's `beatCfg.refract`, 20–500 ms) shown only while that band's
+  chip is armed; whole block hidden with nothing armed (`syncTrigRefs`, re-pointed like the
+  chips via `refEls`). The sub-titles deliberately drop the word "Trigger" — the heading says
+  it. `makeChips` **appends** (append order = display order). The range editor is built later
+  (POPPABLE pass) and must **`insertBefore` `.trig-t`** — the FIRST `.trig-t` is still the
+  Triggers heading (the Refractory block carries its own). It carries no `border-top`. The
+  trigger section exists only in a box.
 - `.ctl-owner` = `ctlOwner(key)` → `CTL_GROUPS[control.group]`, `"Filter · "` prefix for `f_*`.
   Added in `POPPABLE.forEach`, not `ctlHTML`.
 

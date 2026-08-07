@@ -541,8 +541,9 @@
           r.rows[k].style.display = on ? "" : "none";
           if (on) {
             any = true;
-            const f = r.fields[k];
-            if (document.activeElement !== f) f.value = String(beatCfg.refract[B[k]]);
+            const f = r.fields[k], v = beatCfg.refract[B[k]];
+            if (document.activeElement !== f) f.value = String(v);
+            if (r.vals && r.vals[k]) r.vals[k].textContent = v + "ms";
           }
         }
         r.wrap.style.display = any ? "" : "none";

@@ -168,59 +168,61 @@
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
     trigT.title = "Which beat bands make this slider jump";
     host.append(trigT, wrap);
-    // Refractory for each ARMED band, right where the trigger was armed: the SAME
-    // per-band beatCfg.refract that Beat tuning edits (scene data, min ms between beats)
-    // — so a change here applies to every trigger on that band. Rows exist for all three
-    // bands but show only while their chip is on (syncTrigRefs); the whole block hides
-    // with nothing armed.
-    const refs = w.refs = { wrap: null, fields: {}, rows: {} };
+    // Refractory for each ARMED band: the SAME per-band beatCfg.refract that Beat tuning
+    // edits (scene data, min ms between beats) — so a change here applies to every
+    // trigger on that band. Rows exist for all three bands but show only while their chip
+    // is on (syncTrigRefs); the whole block hides with nothing armed. Built here, but
+    // APPENDED at the foot of the trigger section (below Duration) — see the append after
+    // the max row.
+    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {} };
     const refWrap = document.createElement("div");
     refWrap.className = "trig-refs";
     refWrap.style.display = "none";
     const refT = document.createElement("div");
-    refT.className = "trig-t"; refT.textContent = "Trigger refractory";
+    refT.className = "trig-t"; refT.textContent = "Refractory";
     refT.title = "Minimum gap between beats on an armed band (ms) — the same value as Beat tuning's Refractory";
     refWrap.appendChild(refT);
     for (const k of ["low", "mid", "high"]) {
       const b = { low: 0, mid: 1, high: 2 }[k];
       const r = document.createElement("div");
-      r.className = "rng-cell trig-ref";
+      r.className = "trig-ref";
       r.style.display = "none";
       const lb = document.createElement("span");
       lb.className = "rng-lbl"; lb.textContent = k;
+      // A SLIDER with a live readout, like Duration below — same bounds as Beat tuning's
+      // Refractory rows (20–500 ms, step 5).
       const f = document.createElement("input");
-      f.type = "number"; f.min = "20"; f.max = "500"; f.step = "5";
+      f.type = "range"; f.min = "20"; f.max = "500"; f.step = "5";
       f.title = k + " band refractory (ms)";
-      const line = document.createElement("span");
-      line.className = "num-line";
-      line.appendChild(f);
-      r.append(lb, line);
+      f.setAttribute("aria-label", k + " band refractory");
+      const val = document.createElement("span");
+      val.className = "trig-ref-val";
       f.addEventListener("input", () => {
         if (refEls[id] !== refs) return;         // not the live block
         const v = +f.value;
-        if (!isFinite(v) || v < 20 || v > 500) return;
+        val.textContent = v + "ms";
         beatCfg.refract[b] = v;
         beatChanged(false);
-        beatBuild();                             // keep the Beat tuning sliders in step
       });
-      addNumArrows(f, () => 5);
-      refs.fields[k] = f; refs.rows[k] = r;
+      // Rebuild the Beat tuning sliders once the drag settles, not per input tick.
+      f.addEventListener("change", () => { if (refEls[id] === refs) beatBuild(); });
+      r.append(lb, f, val);
+      refs.fields[k] = f; refs.rows[k] = r; refs.vals[k] = val;
       refWrap.appendChild(r);
     }
     refs.wrap = refWrap;
-    host.append(refWrap);
-    // The fall-back CURVE, titled like everything else here rather than left as an unlabelled
-    // dropdown floated to the right of the chips. Named "Trigger shape" to match "Trigger
-    // duration" — the two describe the same fall together, one its curve and one its length.
+    // The fall-back CURVE, titled like everything else here rather than left as an
+    // unlabelled dropdown floated to the right of the chips. The section titles under
+    // "Triggers" drop the word Trigger — the heading already says it.
     const shapeT = document.createElement("div");
-    shapeT.className = "trig-t"; shapeT.textContent = "Trigger shape";
+    shapeT.className = "trig-t"; shapeT.textContent = "Shape";
     shapeT.title = "The curve this slider follows on its way back down after a trigger";
     host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
     if (!(id in pulseLen)) pulseLen[id] = PULSE_DROP;
     const durT = document.createElement("div");
-    durT.className = "plen-name"; durT.textContent = "Trigger duration";
+    durT.className = "plen-name"; durT.textContent = "Duration";
     const row = document.createElement("div");
     row.className = "plen";
     const sl = document.createElement("input");
@@ -270,6 +272,7 @@
     });
     addNumArrows(mf, () => 0.5);
     host.append(mrow);
+    host.append(refWrap);        // Refractory closes the trigger section, below Duration
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   // Wiring a control splits in two, because several open layers need one set of DOM nodes
