@@ -108,11 +108,17 @@
     if (!els.length) return null;
     const box = document.createElement("div");
     box.className = "rng-edit";
+    // ONE ROW PER FIELD, each starting with its title: label · field · ▲/▼ (and ↺ ends
+    // the step row). Three side-by-side columns could not hold a field plus its stepper
+    // pair — max spilled out of the box.
     const fields = {};
+    let lastCell = null;
     for (const which of ["min", "max", "step"]) {
       const cell = document.createElement("label");
       cell.className = "rng-cell";
-      cell.appendChild(document.createTextNode(which));
+      const lbl = document.createElement("span");
+      lbl.className = "rng-lbl"; lbl.textContent = which;
+      cell.appendChild(lbl);
       const f = document.createElement("input");
       f.type = "number"; f.step = "any";
       f.value = which === "step" ? stepFieldVal(els[0].step) : els[0][which];
@@ -131,6 +137,7 @@
       addNumArrows(f, () => +els[0].step > 0 ? +els[0].step : 1);
       box.appendChild(cell);
       fields[which] = f;
+      lastCell = cell;
     }
     const sync = () => { for (const w in fields) fields[w].value = w === "step" ? stepFieldVal(els[0].step) : els[0][w]; };
     rngSyncs.push(sync);
@@ -138,8 +145,8 @@
     rst.type = "button"; rst.className = "rng-rst"; rst.textContent = "↺";
     rst.title = "Reset this slider — value, range, beat chips and pulse — to this effect's defaults";
     rst.setAttribute("aria-label", ctlLabel(key) + ": reset to defaults");
-    rst.addEventListener("click", () => { resetControl(key); sync(); });
-    box.appendChild(rst);
+    rst.addEventListener("click", e => { e.preventDefault(); resetControl(key); sync(); });
+    lastCell.appendChild(rst);            // rides the step row rather than a lone fourth row
     return box;
   }
 

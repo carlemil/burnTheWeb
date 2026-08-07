@@ -609,26 +609,31 @@
   /* Directly under the slider it describes, so NO top border — that rule used to separate
      the editor from the beat controls above it, and here it would only cut a slider off from
      its own bounds. The divider below it does that job now. */
-  /* 2x2, not one row of four: each cell now carries the field PLUS its ▲/▼ steppers, and
-     three of those beside each other left ~24px of input — too narrow for "12000". */
-  #breakout .rng-edit {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: end;
-    margin-top: 7px;
-  }
+  /* ONE ROW PER FIELD (label · field · ▲/▼, ↺ ending the step row): a cell now carries
+     the field PLUS its stepper pair, and any side-by-side column split left the inputs
+     ~26px — too narrow for "24000", with max spilling out of the box. */
+  #breakout .rng-edit { margin-top: 7px; }
   /* Closes the slider + its bounds off from the Triggers section below. */
   #breakout .ctl-div {
     margin: 10px 0 0; border-top: 1px solid rgba(255, 140, 40, 0.18);
   }
   #panel .ctl-div { display: none; }          /* boxes only, like .plen and .trig-t */
-  #breakout .rng-cell { display: block; margin: 0; opacity: .55; font-size: 9px; letter-spacing: .06em; }
+  #breakout .rng-cell {
+    /* nowrap is load-bearing: a shared label rule sets flex-wrap: wrap, and since the
+       field line grows to fill the row, the step row's ↺ wrapped onto its own line. */
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin: 3px 0;
+    opacity: .55; font-size: 9px; letter-spacing: .06em;
+  }
+  #breakout .rng-lbl { flex: none; width: 26px; }
+  #breakout .rng-cell .num-line { flex: 1 1 auto; min-width: 0; margin-top: 0; }
   #breakout .rng-cell input {
-    flex: 1 1 24px; min-width: 0; padding: 3px 4px;
+    flex: 1 1 40px; min-width: 0; padding: 3px 4px;
     background: rgba(0, 0, 0, 0.4); color: #ffcf87;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 10px ui-monospace, monospace;
   }
   #breakout .rng-rst {
-    width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
+    flex: none; width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
     font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
@@ -12527,11 +12532,17 @@
     if (!els.length) return null;
     const box = document.createElement("div");
     box.className = "rng-edit";
+    // ONE ROW PER FIELD, each starting with its title: label · field · ▲/▼ (and ↺ ends
+    // the step row). Three side-by-side columns could not hold a field plus its stepper
+    // pair — max spilled out of the box.
     const fields = {};
+    let lastCell = null;
     for (const which of ["min", "max", "step"]) {
       const cell = document.createElement("label");
       cell.className = "rng-cell";
-      cell.appendChild(document.createTextNode(which));
+      const lbl = document.createElement("span");
+      lbl.className = "rng-lbl"; lbl.textContent = which;
+      cell.appendChild(lbl);
       const f = document.createElement("input");
       f.type = "number"; f.step = "any";
       f.value = which === "step" ? stepFieldVal(els[0].step) : els[0][which];
@@ -12550,6 +12561,7 @@
       addNumArrows(f, () => +els[0].step > 0 ? +els[0].step : 1);
       box.appendChild(cell);
       fields[which] = f;
+      lastCell = cell;
     }
     const sync = () => { for (const w in fields) fields[w].value = w === "step" ? stepFieldVal(els[0].step) : els[0][w]; };
     rngSyncs.push(sync);
@@ -12557,8 +12569,8 @@
     rst.type = "button"; rst.className = "rng-rst"; rst.textContent = "↺";
     rst.title = "Reset this slider — value, range, beat chips and pulse — to this effect's defaults";
     rst.setAttribute("aria-label", ctlLabel(key) + ": reset to defaults");
-    rst.addEventListener("click", () => { resetControl(key); sync(); });
-    box.appendChild(rst);
+    rst.addEventListener("click", e => { e.preventDefault(); resetControl(key); sync(); });
+    lastCell.appendChild(rst);            // rides the step row rather than a lone fourth row
     return box;
   }
 
