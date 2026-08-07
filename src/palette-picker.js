@@ -142,6 +142,11 @@
       }
       host.appendChild(lab);
     });
+    // Delete selected only bites on a custom — dim it while a built-in is selected. The
+    // picker rebuilds on open and after every change, so the dimming tracks well enough;
+    // the click handler guards for real.
+    const ds = el("palpick-delsel");
+    if (ds) ds.classList.toggle("off", +paletteSel.value < PAL_BUILTIN);
   }
   // Tick / untick one ramp. `palUse` is null while everything is in use, so the first
   // untick has to materialise the full set before removing from it.
@@ -183,6 +188,18 @@
     closePalPick();
     paleSelectLive(i);                    // show it at once, and open the editor on it
     openPalEditor(i);
+  });
+  // Delete the SELECTED palette (the highlighted swatch) — customs only, with the same
+  // confirm as the per-row ✕. Deletion itself is deleteCustomPalette, which re-points
+  // every stored index and keeps the picker open and refreshed.
+  el("palpick-delsel").addEventListener("click", () => {
+    const i = +paletteSel.value;
+    if (i < PAL_BUILTIN || !PALETTES[i]) {
+      alert("Built-in palettes can't be deleted — select one of your custom palettes first.");
+      return;
+    }
+    if (!confirm("Delete the custom palette “" + PALETTES[i].name + "”? Any layer or scene using it falls back to " + PALETTES[0].name + ".")) return;
+    deleteCustomPalette(i);
   });
   // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw

@@ -979,6 +979,9 @@
     color: #ffb15a; font: 11px/1 ui-monospace, monospace; cursor: pointer; opacity: .55;
   }
   #palpickdlg .palpick-del:hover { opacity: 1; background: rgba(255, 80, 40, 0.25); }
+  /* Delete selected dims while a built-in is selected — pointer events stay ON so the
+     click can explain itself (the handler alerts why). */
+  #palpickdlg .audbtn.off { opacity: .4; }
   #palpickdlg .presetrow { margin-top: 14px; }
   /* The labelled tile that ends the swatch strip ("+ Choose palettes") — same size and
      rhythm as a ramp, so the strip reads as one object with an empty slot rather than a
