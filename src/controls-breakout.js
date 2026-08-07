@@ -151,7 +151,22 @@
     rcell.appendChild(rlbl);
     rcell.appendChild(rst);
     box.appendChild(rcell);
-    return box;
+    // The whole editor folds into a COLLAPSIBLE "Value range" section, closed by default
+    // (bounds are set-once knobs). Its own ? explains min/max/step — that blurb no longer
+    // rides every control's main ? (openRangeHelp vs openCtlHelp).
+    const sec = document.createElement("details");
+    sec.className = "rng-sec";
+    const sum = document.createElement("summary");
+    sum.textContent = "Value range";
+    const hq = document.createElement("button");
+    hq.type = "button"; hq.className = "ctl-help"; hq.textContent = "?";
+    hq.title = "What min / max / step do";
+    hq.setAttribute("aria-label", "Value range — help");
+    hq.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); openRangeHelp(); });
+    sum.appendChild(hq);
+    sec.appendChild(sum);
+    sec.appendChild(box);
+    return sec;
   }
 
   // Who a control belongs to, for the box title. CTL_GROUPS already carries the human

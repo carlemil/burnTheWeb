@@ -20,7 +20,7 @@
       { n: "Pulse shape", w: "all", t: "The little dropdown beside each slider's L/M/H chips picks the curve the value follows back down after a beat: Snap (linear, the classic), Pluck (fast percussive drop), Sustain (holds high then falls), Ease (smooth S-curve), Bounce (a few decaying bounces), or Steps (retro quantized). Saved per slider, per effect." },
       { n: "Pulse", w: "all", t: "In a slider's pop-out box: how long that slider's beat kick lasts — the time it takes to fall from its high end back to its low end after a beat (0.2s by default). Short is a tight flick, long is a swell. Saved per slider, per effect." },
       { n: "Pop-out boxes", w: "all", t: "The + beside a slider's name breaks it out into its own box to the right of the menu, with room for its value, beat chips, pulse shape, pulse length and range editor; − puts it back. Each box is titled with what it belongs to — the effect or the filter — so a stack of them stays readable. Pop out several and they queue top-down. The layout is per-session, and clears when you change effect or scene." },
-      { n: "Slider range (min / max / step)", w: "all", t: "The row at the foot of a slider's pop-out box retunes that slider's own bounds live, so you can push a control past its shipped limits (or make it finer). ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
+      { n: "Slider range (min / max / step)", w: "all", t: "The Value range section in a slider's pop-out box retunes that slider's own bounds live: min and max are the ends of the slider's travel, step is the drag resolution (0 = continuous), so you can push a control past its shipped limits or make it finer. ↺ restores the shipped range. Custom bounds are saved in your browser, ride along in Share links and go into Backups." },
       { n: "Show box", w: "tetra", t: "Tetrahedron only — ON draws the wireframe box the tetrahedron bounces inside (with a burst of sparks on each wall hit). OFF hides the box and, with no walls to ricochet in, the tetrahedron orbits the centre of the screen instead." },
       { n: "Box size", w: "tetra", t: "Tetrahedron only — zooms the whole scene (box and tetrahedra together). Bigger fills more of the frame; past 1× the box corners run off the edges." },
       { n: "Banding", w: "band", t: "Strength of a filter that posterises the palette into hard light/dark contour stripes." },
@@ -175,6 +175,8 @@
     return { owner: ctlOwner(-1, key), body: s ? s.t : "" };
   }
   const RANGE_BLURB = () => (HELP.sliders.find(s => s.n === "Slider range (min / max / step)") || {}).t || "";
+  // The range blurb no longer rides every control's ? — the Value range section carries
+  // its own ? (openRangeHelp below), so the per-control dialog stays about the control.
   function openCtlHelp(key) {
     const { owner, body } = ctlHelpBlurb(key);
     let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
@@ -182,9 +184,15 @@
     if (owner) html += '<p class="help-owner">' + owner + "</p>";
     if (body) html += "<p>" + body + "</p>";
     html += '<p class="help-intro">' + HELP.intro + "</p>";
-    const rb = RANGE_BLURB(); if (rb) html += '<p class="help-intro">' + rb + "</p>";
     html += "</div>";
     helpEl.innerHTML = html;
+    helpEl.classList.remove("hidden");
+  }
+  // The Value range section's own ? (see makeRangeEditor).
+  function openRangeHelp() {
+    const rb = RANGE_BLURB();
+    helpEl.innerHTML = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>'
+      + "<h2>Value range</h2>" + (rb ? "<p>" + rb + "</p>" : "") + "</div>";
     helpEl.classList.remove("hidden");
   }
   el("help-btn").addEventListener("click", openHelp);

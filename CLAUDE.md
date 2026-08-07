@@ -420,7 +420,9 @@ top→down in click order. A thumb is only ever visible in the column.
 - `#breakout` is **outside** `#panel`, so: control CSS scoped `#panel …, #breakout …`; `onEdit`
   attached to `#breakout` too; its **own capture-phase `pointerdown` + `focusin`** selecting
   `box.dataset.slot`'s layer.
-- Box order top→bottom: `.ctl-owner`, label+value, slider, `.rng-edit`, `.ctl-div`, **Triggers**
+- Box order top→bottom: `.ctl-owner`, label+value, slider, **`.rng-sec` — the collapsible
+  "Value range" section wrapping `.rng-edit`, closed by default, its summary `?` opening
+  `openRangeHelp` (that blurb no longer rides every control's main `?`)**, `.ctl-div`, **Triggers**
   (`.trig-t`) over the chips, then **`.trig-body` — ONE folding element holding the whole
   trigger kit**: **Shape** over the `PULSE_SHAPES` picker, **Duration** (`.plen-name`) over
   `.plen` + its max row, **Refractory** (`.trig-refs`) closing it — per-band sliders (Beat

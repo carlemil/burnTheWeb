@@ -600,7 +600,18 @@
   /* ONE ROW PER FIELD (label · field · ▲/▼, ↺ ending the step row): a cell now carries
      the field PLUS its stepper pair, and any side-by-side column split left the inputs
      ~26px — too narrow for "24000", with max spilling out of the box. */
-  #breakout .rng-edit { margin-top: 7px; }
+  #breakout .rng-edit { margin-top: 3px; }
+  /* The collapsible "Value range" section wrapping the bounds editor — closed by default,
+     titled like the trigger sections, with its own ? in the summary. */
+  #breakout .rng-sec { margin-top: 7px; }
+  #breakout .rng-sec > summary {
+    display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none;
+    color: #ffb15a; opacity: .7; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  }
+  #breakout .rng-sec > summary::-webkit-details-marker { display: none; }
+  #breakout .rng-sec > summary::before { content: "▸"; font-size: 18px; line-height: 0; }
+  #breakout .rng-sec[open] > summary::before { content: "▾"; }
+  #breakout .rng-sec > summary .ctl-help { margin-left: auto; }
   /* Closes the slider + its bounds off from the Triggers section below. */
   #breakout .ctl-div {
     margin: 10px 0 0; border-top: 1px solid rgba(255, 140, 40, 0.18);
