@@ -523,6 +523,31 @@
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
     for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
     syncDots();
+    syncTrigRefs();
+  }
+  // The per-box refractory rows (see makeChips): one per ARMED band, values from the
+  // live beatCfg, the whole block hidden with nothing armed. A focused field is never
+  // overwritten mid-edit. The try/catch is a TDZ guard, not error hiding: syncChips and
+  // pointMaps run during startup, one slice before `const beatCfg` initialises — the
+  // same split collectionsHeld documents — and in that window there is nothing to show.
+  function syncTrigRefs() {
+    try {
+      const B = { low: 0, mid: 1, high: 2 };
+      for (const id in refEls) {
+        const r = refEls[id], armed = beatReact[id] || {};
+        let any = false;
+        for (const k in r.rows) {
+          const on = !!armed[k];
+          r.rows[k].style.display = on ? "" : "none";
+          if (on) {
+            any = true;
+            const f = r.fields[k];
+            if (document.activeElement !== f) f.value = String(beatCfg.refract[B[k]]);
+          }
+        }
+        r.wrap.style.display = any ? "" : "none";
+      }
+    } catch (e) {}
   }
   // The menu row's dots mirror the armed chips, so the overview survives every path
   // that changes them (loadBeat, Reset, a chip click) without a second sync to forget.

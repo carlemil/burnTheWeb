@@ -69,6 +69,7 @@
   const beatReact = {};        // id -> {low,mid,high} : which bands kick this slider (per-effect)
   const chipEls = {};          // id -> {low,mid,high} : the chip <button>s (never persisted)
   const dotEls = {};           // id -> {low,mid,high} : the menu row's beat dots (ditto)
+  const refEls = {};           // id -> {wrap,rows,fields} : the per-box refractory rows (ditto)
   const PULSE_DROP = CONFIG.pulse.drop;   // s for a beat pulse to fall from the high thumb back to the low — now only the DEFAULT
   const PLEN_MIN = CONFIG.pulse.min, PLEN_MAX = CONFIG.pulse.max;   // bounds of the per-slider pulse-length slider (s)
   // How far the editable "max" row under Trigger duration may raise the slider — and the
@@ -131,6 +132,7 @@
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
         syncDots();              // the menu row shows the same armed state
+        syncTrigRefs();          // ...and the refractory row for this band appears/hides
         // A <button> click fires neither input nor change, so the delegated onEdit
         // never sees it — do its job by hand, autosave included. Without the
         // autosave the chip reached localStorage but not the *selected preset*,
@@ -166,6 +168,47 @@
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
     trigT.title = "Which beat bands make this slider jump";
     host.append(trigT, wrap);
+    // Refractory for each ARMED band, right where the trigger was armed: the SAME
+    // per-band beatCfg.refract that Beat tuning edits (scene data, min ms between beats)
+    // — so a change here applies to every trigger on that band. Rows exist for all three
+    // bands but show only while their chip is on (syncTrigRefs); the whole block hides
+    // with nothing armed.
+    const refs = w.refs = { wrap: null, fields: {}, rows: {} };
+    const refWrap = document.createElement("div");
+    refWrap.className = "trig-refs";
+    refWrap.style.display = "none";
+    const refT = document.createElement("div");
+    refT.className = "trig-t"; refT.textContent = "Trigger refractory";
+    refT.title = "Minimum gap between beats on an armed band (ms) — the same value as Beat tuning's Refractory";
+    refWrap.appendChild(refT);
+    for (const k of ["low", "mid", "high"]) {
+      const b = { low: 0, mid: 1, high: 2 }[k];
+      const r = document.createElement("div");
+      r.className = "rng-cell trig-ref";
+      r.style.display = "none";
+      const lb = document.createElement("span");
+      lb.className = "rng-lbl"; lb.textContent = k;
+      const f = document.createElement("input");
+      f.type = "number"; f.min = "20"; f.max = "500"; f.step = "5";
+      f.title = k + " band refractory (ms)";
+      const line = document.createElement("span");
+      line.className = "num-line";
+      line.appendChild(f);
+      r.append(lb, line);
+      f.addEventListener("input", () => {
+        if (refEls[id] !== refs) return;         // not the live block
+        const v = +f.value;
+        if (!isFinite(v) || v < 20 || v > 500) return;
+        beatCfg.refract[b] = v;
+        beatChanged(false);
+        beatBuild();                             // keep the Beat tuning sliders in step
+      });
+      addNumArrows(f, () => 5);
+      refs.fields[k] = f; refs.rows[k] = r;
+      refWrap.appendChild(r);
+    }
+    refs.wrap = refWrap;
+    host.append(refWrap);
     // The fall-back CURVE, titled like everything else here rather than left as an unlabelled
     // dropdown floated to the right of the chips. Named "Trigger shape" to match "Trigger
     // duration" — the two describe the same fall together, one its curve and one its length.
@@ -310,8 +353,10 @@
       if (e.dots) dotEls[id] = e.dots;
       if (e.psel) pulseEls[id] = e.psel;
       if (e.plen) plenEls[id] = e.plen;
+      if (e.refs) refEls[id] = e.refs;
       if (e.row) rows[id] = e.row;
     }
+    syncTrigRefs();              // the re-pointed boxes show THEIR armed bands' rows
   }
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
   // Wire every generated dual slider in EVERY block, then register the definition once from
