@@ -156,8 +156,8 @@ its centre.
   hits-per-occupied-cell (64×36 grid); thin phases boost per-point heat up to 6× (capped 220);
   pass 2 re-runs the SAME seeded sequence and stamps. Dense phases keep gain 1. Both passes reseed
   identically — determinism holds with zero per-layer state.
-- **Flames owns its Points range**: `ranges: { points: { min: 10000, max: 200000 } }`, default
-  30000. See per-effect ranges under *Effects & per-effect state*.
+- **Flames owns its Points range**: `ranges: { points: { min: 2000, max: 30000 } }`, default 12000.
+  See per-effect ranges under *Effects & per-effect state*.
 
 ### Credits overlay + scene banner
 Credits draw on **their own canvas** (`#creditcv`, `z-index: 4`, `pointer-events: none`) via
