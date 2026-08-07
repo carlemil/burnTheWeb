@@ -60,15 +60,17 @@ const by = k => P.CONTROLS.find(c => c.key === k);
 // it is that someone adds `points` to it and quietly kills a ranged, beat-armable
 // control that ships advertising both. Changing this list should be a deliberate edit.
 const EXPECT = [
-  "mbcount", "ksegments", "cbcount", "pgsides", "sgcells", "cosides", "bncount", "sdcount",
+  "mbcount", "ksegments", "cbcount", "pgsides", "cosides", "bncount", "sdcount",
   "sdmix", "kfbars", "twcols", "ltbolts", "bpdetail", "flvar", "aucurtains", "rdspeed",
   "mgiter", "wedgeseg", "poster", "mirror", "pxdir", "cellstates", "kuwrad",
 ].sort();
 const got = [...P.SINGLE_KEYS].sort();
 ok(got.length === EXPECT.length && got.every((k, i) => k === EXPECT[i]),
    "SINGLE_KEYS is exactly the " + EXPECT.length + " intended keys", got.join(","));
-// The ones deliberately left ranged: a spread or a fraction is meaningful on each.
-["points", "bdcount", "xormask", "bandsize", "cocount", "mbexp", "scancount", "pixel"]
+// The ones deliberately left ranged: a spread or a fraction is meaningful on each. sgcells is
+// here rather than above because Shape grid's Density scales the grid rather than counting
+// anything — the same family as cocount, mofreq and rztile.
+["points", "bdcount", "xormask", "bandsize", "cocount", "sgcells", "mbexp", "scancount", "pixel"]
   .forEach(k => ok(!P.SINGLE_KEYS.has(k), k + " is NOT single (its range or its float matters)"));
 
 // --- 2. every single entry sits on a whole grid --------------------------------

@@ -368,9 +368,10 @@ shared schema entry instead would raise every other point effect's floor and re-
   raising a `min` is a scene-visible change.
 
 **SINGLE controls** — `single: true` on a `dual` entry: one integer, one thumb. Used by the four
-enums (`flvar`, `mirror`, `pxdir`, `sdmix`) and the small-domain counts (sides, segments, cells,
-bars, bolts, iterations, …). Not `points`/`bdcount`/`xormask`/`bandsize`/`cocount`, whose range or
-float is meaningful.
+enums (`flvar`, `mirror`, `pxdir`, `sdmix`) and the small-domain counts (sides, segments, bars,
+bolts, iterations, …). Not `points`/`bdcount`/`xormask`/`bandsize`, nor anything that scales
+rather than counts — `cocount` and `sgcells` are densities the shader multiplies by, so a
+fraction renders correctly and a spread is worth drifting.
 - **It stays `type: "dual"`.** The store is still the `[lo,hi]` pair and the wire keys are still
   `<key>-lo`/`<key>-hi`, so no scene, link or backup needed migrating. `type: "plain"` would have
   changed both — and nothing wires `plain` (the loop filters `type === "dual"`), so its `apply`
