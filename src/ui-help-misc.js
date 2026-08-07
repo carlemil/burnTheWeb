@@ -113,6 +113,7 @@
       { n: "Shimmer", w: "chladni", t: "Cymatics only — a slow tremble in the plate, so the sand lines breathe instead of standing perfectly still." },
       { n: "Strike", w: "storm", t: "Lightning storm only — the strike itself: 1 is a fresh bolt at full brightness, decaying to darkness at 0. Arm its L/M/H chips and every beat fires a NEW bolt that fades over the Trigger duration — the storm plays the drums." },
       { n: "Rate", w: "storm", t: "Lightning storm only — automatic strikes per second, for a storm that rolls without music. 0 leaves firing entirely to the Strike chips." },
+      { n: "Strike speed", w: "storm", t: "Lightning storm only — how fast a fresh bolt races from the cloud to the ground, in screen-heights per second. Low values let you watch the hot tip crawl down and the branches catch light; high ones flash the whole bolt at once." },
       { n: "Bolts", w: "storm", t: "Lightning storm only — how many bolts each strike throws down at once, up to five." },
       { n: "Afterglow", w: "storm", t: "Lightning storm only — how much each strike lights the sky behind it, and how much ambient glow remains between strikes." },
       { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c, continuously variable. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes, and fractional values morph between forms — drift the two thumbs apart and it never stops reshaping." },

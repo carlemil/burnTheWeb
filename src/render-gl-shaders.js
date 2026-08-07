@@ -808,14 +808,31 @@
     // a per-bolt seed. uEnv is the strike envelope (1 = fresh bolt, decaying to 0) and
     // uSeed changes per strike, so every flash is a NEW bolt — both come from stormSeed,
     // where the beat-armed Strike slider and the auto Rate clock are merged.
+    // Each bolt is an L-system-style fractal: the main channel is four octaves of
+    // LINEAR-interpolated value noise (piecewise-straight — the kinks ARE the jaggedness;
+    // smoothstep interp read as a wavy ribbon) scaled by a per-strike random roughness,
+    // and the rewrite rule grows 2–4 BRANCH channels at hash-picked fork heights, angled
+    // outward and fading toward their tips. Every parameter re-rolls per strike (all
+    // hash-derived from uSeed, so no extra uniforms carry the geometry).
+    // uFront is the STRIKE FRONT: the bolt lights top-to-bottom as the front races down
+    // (Strike speed slider), with a hot tip at the leading edge; past 1 the bolt is fully
+    // lit and only the envelope decays.
     const FS_STORM = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom;
+    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom; uniform float uFront;
     out vec4 o;
     float h1(float x){ return fract(sin(x*127.1)*43758.5453); }
-    float vn(float t, float s){
+    float vnl(float t, float s){
       float i = floor(t), f = fract(t);
-      return mix(h1(i + s), h1(i + 1.0 + s), f*f*(3.0 - 2.0*f));
+      return mix(h1(i + s), h1(i + 1.0 + s), f);
+    }
+    float chanX(float y, float sk, float ar){
+      float rough = 0.8 + 0.5*h1(sk + 51.0);
+      return (h1(sk)*0.9 - 0.45)*ar
+           + rough*(0.42*(vnl(y*3.0,  sk + 7.0)  - 0.5)
+                  + 0.22*(vnl(y*9.0,  sk + 17.0) - 0.5)
+                  + 0.11*(vnl(y*27.0, sk + 29.0) - 0.5)
+                  + 0.05*(vnl(y*81.0, sk + 43.0) - 0.5));
     }
     void main(){
       float fw = uSize.x, fh = uSize.y;
@@ -827,14 +844,32 @@
       for (int k = 0; k < 5; k++){
         if (k >= n) break;
         float sk = uSeed + float(k)*271.13;
-        float bx = (h1(sk)*0.9 - 0.45)*ar
-                 + 0.50*(vn(yt*3.0,  sk + 7.0)  - 0.5)
-                 + 0.24*(vn(yt*9.0,  sk + 17.0) - 0.5)
-                 + 0.10*(vn(yt*27.0, sk + 29.0) - 0.5);
-        float d = abs(q.x - bx);
-        float bright = 0.7 + 0.3*h1(sk + 3.3);
         float fl = 0.72 + 0.28*sin(uEnv*40.0 + sk*9.0);   // flicker as the envelope decays
-        heat = max(heat, uEnv*bright*fl*(exp(-d*80.0) + 0.30*exp(-d*13.0)));
+        float bright = uEnv*fl*(0.7 + 0.3*h1(sk + 3.3));
+        float lit = 1.0 - smoothstep(uFront - 0.05, uFront + 0.01, yt);
+        float bx = chanX(yt, sk, ar);
+        float d = abs(q.x - bx);
+        heat = max(heat, bright*lit*(exp(-d*90.0) + 0.30*exp(-d*14.0)));
+        if (uFront < 1.05){                       // the hot tip racing down the channel
+          vec2 tp = vec2(chanX(uFront, sk, ar), uFront);
+          float dt2 = length(vec2(q.x, yt) - tp);
+          heat = max(heat, bright*1.5*exp(-dt2*40.0));
+        }
+        int nb = 2 + int(h1(sk + 41.0)*2.99);     // the split rule: 2-4 forks per strike
+        for (int j = 0; j < 4; j++){
+          if (j >= nb) break;
+          float sj = sk + float(j)*17.71 + 5.0;
+          float yf = 0.12 + 0.62*h1(sj);
+          float len = 0.15 + 0.30*h1(sj + 2.0);
+          float t = (yt - yf)/len;
+          if (t < 0.0 || t > 1.0) continue;
+          float slope = (h1(sj + 4.0) - 0.5)*1.6;
+          float bxj = chanX(yf, sk, ar) + slope*(yt - yf)
+                    + 0.12*t*(vnl(yt*13.0, sj + 6.0) - 0.5)
+                    + 0.05*(vnl(yt*41.0, sj + 8.0) - 0.5);
+          float dj = abs(q.x - bxj);
+          heat = max(heat, bright*lit*0.55*(1.0 - 0.6*t)*exp(-dj*110.0));
+        }
       }
       // sky flash + a whisper of ambience so the frame is not dead black between strikes
       heat += uEnv*uGlow*0.22*(0.4 + 0.6*(1.0 - yt)) + uGlow*0.05;

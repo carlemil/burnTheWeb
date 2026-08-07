@@ -124,6 +124,7 @@
     { key: "cyshimmer", host: "fx", group: "chladni", type: "dual", label: "Shimmer", valId: "vCyShim", min: 0, max: 2, step: 0.05, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => cyShim = v, durScale: 10 },
     { key: "ltstrike", host: "fx", group: "storm", type: "dual", label: "Strike", valId: "vLtStrike", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => ltStrikeV = v, durScale: 10 },
     { key: "ltrate", host: "fx", group: "storm", type: "dual", label: "Rate", valId: "vLtRate", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "/s", apply: v => ltRateV = v, durScale: 10 },
+    { key: "ltspd", host: "fx", group: "storm", type: "dual", label: "Strike speed", valId: "vLtSpd", min: 2, max: 40, step: 0.5, lo: 12, hi: 12, fmt: v => sig3(v) + "×", apply: v => ltSpdV = v, durScale: 10 },
     { key: "ltbolts", host: "fx", group: "storm", type: "dual", label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
     { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
     { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 0.05, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bpPower = v, durScale: 10 },
@@ -986,11 +987,14 @@
     ["kfTime", () => kfTime, v => kfTime = v],
     ["twTime", () => twTime, v => twTime = v],
     ["cyTime", () => cyTime, v => cyTime = v],
-    // Lightning carries three: the auto clock, the strike counter and the last Strike
-    // value (the rising-edge detector) — all per layer, or two storms share bolts.
+    // Lightning carries five: the auto clock, the strike counter, the last Strike value
+    // (the rising-edge detector), the racing strike front and the fresh-bolt detector —
+    // all per layer, or two storms share bolts and light up in lock-step.
     ["ltTime", () => ltTime, v => ltTime = v],
     ["ltSeed", () => ltSeed, v => ltSeed = v],
     ["ltPrev", () => ltPrev, v => ltPrev = v],
+    ["ltFront", () => ltFront, v => ltFront = v],
+    ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
     ["flPhase", () => flPhase, v => flPhase = v],
     ["stTime", () => stTime, v => stTime = v],

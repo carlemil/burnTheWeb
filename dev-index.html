@@ -3436,14 +3436,31 @@
     // a per-bolt seed. uEnv is the strike envelope (1 = fresh bolt, decaying to 0) and
     // uSeed changes per strike, so every flash is a NEW bolt — both come from stormSeed,
     // where the beat-armed Strike slider and the auto Rate clock are merged.
+    // Each bolt is an L-system-style fractal: the main channel is four octaves of
+    // LINEAR-interpolated value noise (piecewise-straight — the kinks ARE the jaggedness;
+    // smoothstep interp read as a wavy ribbon) scaled by a per-strike random roughness,
+    // and the rewrite rule grows 2–4 BRANCH channels at hash-picked fork heights, angled
+    // outward and fading toward their tips. Every parameter re-rolls per strike (all
+    // hash-derived from uSeed, so no extra uniforms carry the geometry).
+    // uFront is the STRIKE FRONT: the bolt lights top-to-bottom as the front races down
+    // (Strike speed slider), with a hot tip at the leading edge; past 1 the bolt is fully
+    // lit and only the envelope decays.
     const FS_STORM = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom;
+    uniform vec2 uSize; uniform float uEnv; uniform float uSeed; uniform float uBolts; uniform float uGlow; uniform float uZoom; uniform float uFront;
     out vec4 o;
     float h1(float x){ return fract(sin(x*127.1)*43758.5453); }
-    float vn(float t, float s){
+    float vnl(float t, float s){
       float i = floor(t), f = fract(t);
-      return mix(h1(i + s), h1(i + 1.0 + s), f*f*(3.0 - 2.0*f));
+      return mix(h1(i + s), h1(i + 1.0 + s), f);
+    }
+    float chanX(float y, float sk, float ar){
+      float rough = 0.8 + 0.5*h1(sk + 51.0);
+      return (h1(sk)*0.9 - 0.45)*ar
+           + rough*(0.42*(vnl(y*3.0,  sk + 7.0)  - 0.5)
+                  + 0.22*(vnl(y*9.0,  sk + 17.0) - 0.5)
+                  + 0.11*(vnl(y*27.0, sk + 29.0) - 0.5)
+                  + 0.05*(vnl(y*81.0, sk + 43.0) - 0.5));
     }
     void main(){
       float fw = uSize.x, fh = uSize.y;
@@ -3455,14 +3472,32 @@
       for (int k = 0; k < 5; k++){
         if (k >= n) break;
         float sk = uSeed + float(k)*271.13;
-        float bx = (h1(sk)*0.9 - 0.45)*ar
-                 + 0.50*(vn(yt*3.0,  sk + 7.0)  - 0.5)
-                 + 0.24*(vn(yt*9.0,  sk + 17.0) - 0.5)
-                 + 0.10*(vn(yt*27.0, sk + 29.0) - 0.5);
-        float d = abs(q.x - bx);
-        float bright = 0.7 + 0.3*h1(sk + 3.3);
         float fl = 0.72 + 0.28*sin(uEnv*40.0 + sk*9.0);   // flicker as the envelope decays
-        heat = max(heat, uEnv*bright*fl*(exp(-d*80.0) + 0.30*exp(-d*13.0)));
+        float bright = uEnv*fl*(0.7 + 0.3*h1(sk + 3.3));
+        float lit = 1.0 - smoothstep(uFront - 0.05, uFront + 0.01, yt);
+        float bx = chanX(yt, sk, ar);
+        float d = abs(q.x - bx);
+        heat = max(heat, bright*lit*(exp(-d*90.0) + 0.30*exp(-d*14.0)));
+        if (uFront < 1.05){                       // the hot tip racing down the channel
+          vec2 tp = vec2(chanX(uFront, sk, ar), uFront);
+          float dt2 = length(vec2(q.x, yt) - tp);
+          heat = max(heat, bright*1.5*exp(-dt2*40.0));
+        }
+        int nb = 2 + int(h1(sk + 41.0)*2.99);     // the split rule: 2-4 forks per strike
+        for (int j = 0; j < 4; j++){
+          if (j >= nb) break;
+          float sj = sk + float(j)*17.71 + 5.0;
+          float yf = 0.12 + 0.62*h1(sj);
+          float len = 0.15 + 0.30*h1(sj + 2.0);
+          float t = (yt - yf)/len;
+          if (t < 0.0 || t > 1.0) continue;
+          float slope = (h1(sj + 4.0) - 0.5)*1.6;
+          float bxj = chanX(yf, sk, ar) + slope*(yt - yf)
+                    + 0.12*t*(vnl(yt*13.0, sj + 6.0) - 0.5)
+                    + 0.05*(vnl(yt*41.0, sj + 8.0) - 0.5);
+          float dj = abs(q.x - bxj);
+          heat = max(heat, bright*lit*0.55*(1.0 - 0.6*t)*exp(-dj*110.0));
+        }
       }
       // sky flash + a whisper of ambience so the frame is not dead black between strikes
       heat += uEnv*uGlow*0.22*(0.4 + 0.6*(1.0 - yt)) + uGlow*0.05;
@@ -4253,7 +4288,7 @@
     glProg.kefrens = camProg(VS_QUAD, FS_KEFRENS, ["uSize", "uTime", "uBars", "uSway", "uWidth", "uZoom"]);
     glProg.twister = camProg(VS_QUAD, FS_TWISTER, ["uSize", "uTime", "uCols", "uWidth", "uTwist", "uZoom"]);
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
-    glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom"]);
+    glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
@@ -6550,35 +6585,67 @@
   // over the Trigger duration. `stormSeed` merges that with the auto Rate clock and
   // advances the bolt seed on every NEW strike — a rising Strike edge, or the auto
   // clock wrapping — so each flash draws a different bolt.
-  let ltStrikeV = 0, ltRateV = 0.5, ltBoltsV = 2, ltGlowV = 0.5, ltTime = 0, ltSeed = 0, ltPrev = 0;
+  // Each bolt is an L-system-style fractal (see FS_STORM): four octaves of LINEAR value
+  // noise for the kinked main channel plus 2–4 hash-grown branch channels, every
+  // parameter re-rolled per strike. `ltFront` is the strike front — a fresh bolt lights
+  // top-to-bottom at Strike speed (screen-heights/s) with a hot tip; both it and
+  // `ltSeedPrev` (the fresh-bolt detector) ride PHASE_VARS so two storm layers strike
+  // independently.
+  let ltStrikeV = 0, ltRateV = 0.5, ltSpdV = 12, ltBoltsV = 2, ltGlowV = 0.5;
+  let ltTime = 0, ltSeed = 0, ltPrev = 0, ltFront = 9, ltSeedPrev = -1;
   function stormSeed(dt) {
     ltTime += dt * ltRateV;                          // auto clock, in strikes
     if (ltStrikeV > ltPrev + 0.25) ltSeed++;         // a beat (or hand) fired a fresh bolt
     ltPrev = ltStrikeV;
+    const seed = Math.floor(ltTime) * 7.31 + ltSeed * 13.7;
+    if (seed !== ltSeedPrev) { ltSeedPrev = seed; ltFront = 0; }   // fresh bolt: race down again
+    ltFront = Math.min(9, ltFront + dt * ltSpdV);
     const auto = ltRateV > 0 ? Math.pow(1 - (ltTime - Math.floor(ltTime)), 3) : 0;
-    return { env: Math.max(auto, ltStrikeV), seed: Math.floor(ltTime) * 7.31 + ltSeed * 13.7,
+    return { env: Math.max(auto, ltStrikeV), seed, front: ltFront,
              bolts: ltBoltsV, glow: ltGlowV, zoom };
   }
   const ltH1 = x => { const v = Math.sin(x * 127.1) * 43758.5453; return v - Math.floor(v); };
-  function ltVn(t, sd) {
-    const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f);
-    return ltH1(i + sd) * (1 - u) + ltH1(i + 1 + sd) * u;
+  const ltVnl = (t, sd) => {              // LINEAR value noise — the kinks are the look
+    const i = Math.floor(t), f = t - i;
+    return ltH1(i + sd) * (1 - f) + ltH1(i + 1 + sd) * f;
+  };
+  function ltChanX(y, sk, ar) {
+    const rough = 0.8 + 0.5 * ltH1(sk + 51);
+    return (ltH1(sk) * 0.9 - 0.45) * ar
+      + rough * (0.42 * (ltVnl(y * 3, sk + 7) - 0.5)
+               + 0.22 * (ltVnl(y * 9, sk + 17) - 0.5)
+               + 0.11 * (ltVnl(y * 27, sk + 29) - 0.5)
+               + 0.05 * (ltVnl(y * 81, sk + 43) - 0.5));
   }
-  let ltRow = null;
+  let ltRow = null, ltRowB = null;
   function storm(dt) {                    // CPU fallback — mirrors FS_STORM
     const s = stormSeed(dt), ar = fw / fh, n = Math.round(s.bolts);
-    // bolt x per ROW per bolt, cached once per frame (the path depends only on y)
-    if (!ltRow || ltRow.length < fh * 5) ltRow = new Float32Array(fh * 5);
-    const bright = [];
+    // channel x per ROW per bolt (and per branch), cached once per frame
+    if (!ltRow || ltRow.length < fh * 5) { ltRow = new Float32Array(fh * 5); ltRowB = new Float32Array(fh * 20); }
+    const bright = [], tipx = [], nbs = [], bfade = [];
     for (let k = 0; k < n; k++) {
       const sk = s.seed + k * 271.13;
-      bright.push((0.7 + 0.3 * ltH1(sk + 3.3)) * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)));
+      bright.push(s.env * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)) * (0.7 + 0.3 * ltH1(sk + 3.3)));
+      tipx.push(ltChanX(s.front, sk, ar));
+      const nb = 2 + Math.floor(ltH1(sk + 41) * 2.99);
+      nbs.push(nb);
       for (let r = 0; r < fh; r++) {
         const yt = (r / fh - 0.5) / s.zoom + 0.5;   // 0 at SCREEN top (buffer row 0 = top)
-        ltRow[r * 5 + k] = (ltH1(sk) * 0.9 - 0.45) * ar
-          + 0.50 * (ltVn(yt * 3, sk + 7) - 0.5)
-          + 0.24 * (ltVn(yt * 9, sk + 17) - 0.5)
-          + 0.10 * (ltVn(yt * 27, sk + 29) - 0.5);
+        ltRow[r * 5 + k] = ltChanX(yt, sk, ar);
+        for (let j = 0; j < 4; j++) {
+          const bi = (r * 5 + k) * 4 + j;
+          if (j >= nb) { ltRowB[bi] = 1e9; continue; }
+          const sj = sk + j * 17.71 + 5;
+          const yf = 0.12 + 0.62 * ltH1(sj);
+          const len = 0.15 + 0.30 * ltH1(sj + 2);
+          const t = (yt - yf) / len;
+          if (t < 0 || t > 1) { ltRowB[bi] = 1e9; continue; }
+          const slope = (ltH1(sj + 4) - 0.5) * 1.6;
+          ltRowB[bi] = ltChanX(yf, sk, ar) + slope * (yt - yf)
+            + 0.12 * t * (ltVnl(yt * 13, sj + 6) - 0.5)
+            + 0.05 * (ltVnl(yt * 41, sj + 8) - 0.5);
+          bfade[bi] = 0.55 * (1 - 0.6 * t);
+        }
       }
     }
     let idx = 0;
@@ -6589,11 +6656,26 @@
         const qy = (camPY / fh - 0.5) / s.zoom;
         const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));   // cache is by screen row
         const yt = qy + 0.5;                                          // matches FS_STORM's flip
+        const lf = (yt - (s.front - 0.05)) / 0.06;
+        const lit = lf <= 0 ? 1 : lf >= 1 ? 0 : 1 - lf * lf * (3 - 2 * lf);
         let heat = 0;
         for (let k = 0; k < n; k++) {
           const d = Math.abs(qx - ltRow[r * 5 + k]);
-          const v = s.env * bright[k] * (Math.exp(-d * 80) + 0.30 * Math.exp(-d * 13));
+          let v = bright[k] * lit * (Math.exp(-d * 90) + 0.30 * Math.exp(-d * 14));
           if (v > heat) heat = v;
+          if (s.front < 1.05) {
+            const dx = qx - tipx[k], dy = yt - s.front;
+            v = bright[k] * 1.5 * Math.exp(-Math.hypot(dx, dy) * 40);
+            if (v > heat) heat = v;
+          }
+          for (let j = 0; j < nbs[k]; j++) {
+            const bi = (r * 5 + k) * 4 + j;
+            const bx = ltRowB[bi];
+            if (bx > 1e8) continue;
+            const dj = Math.abs(qx - bx);
+            v = bright[k] * lit * bfade[bi] * Math.exp(-dj * 110);
+            if (v > heat) heat = v;
+          }
         }
         heat += s.env * s.glow * 0.22 * (0.4 + 0.6 * (1 - yt)) + s.glow * 0.05;
         fire[idx++] = Math.min(1, heat) * 255;
@@ -7961,6 +8043,7 @@
     { key: "cyshimmer", host: "fx", group: "chladni", type: "dual", label: "Shimmer", valId: "vCyShim", min: 0, max: 2, step: 0.05, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => cyShim = v, durScale: 10 },
     { key: "ltstrike", host: "fx", group: "storm", type: "dual", label: "Strike", valId: "vLtStrike", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => ltStrikeV = v, durScale: 10 },
     { key: "ltrate", host: "fx", group: "storm", type: "dual", label: "Rate", valId: "vLtRate", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "/s", apply: v => ltRateV = v, durScale: 10 },
+    { key: "ltspd", host: "fx", group: "storm", type: "dual", label: "Strike speed", valId: "vLtSpd", min: 2, max: 40, step: 0.5, lo: 12, hi: 12, fmt: v => sig3(v) + "×", apply: v => ltSpdV = v, durScale: 10 },
     { key: "ltbolts", host: "fx", group: "storm", type: "dual", label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
     { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
     { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 0.05, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bpPower = v, durScale: 10 },
@@ -8823,11 +8906,14 @@
     ["kfTime", () => kfTime, v => kfTime = v],
     ["twTime", () => twTime, v => twTime = v],
     ["cyTime", () => cyTime, v => cyTime = v],
-    // Lightning carries three: the auto clock, the strike counter and the last Strike
-    // value (the rising-edge detector) — all per layer, or two storms share bolts.
+    // Lightning carries five: the auto clock, the strike counter, the last Strike value
+    // (the rising-edge detector), the racing strike front and the fresh-bolt detector —
+    // all per layer, or two storms share bolts and light up in lock-step.
     ["ltTime", () => ltTime, v => ltTime = v],
     ["ltSeed", () => ltSeed, v => ltSeed = v],
     ["ltPrev", () => ltPrev, v => ltPrev = v],
+    ["ltFront", () => ltFront, v => ltFront = v],
+    ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
     ["flPhase", () => flPhase, v => flPhase = v],
     ["stTime", () => stTime, v => stTime = v],
@@ -9989,10 +10075,10 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], cymode: [3, 3], cymoff: [1, 1], cysharp: [5, 5], cyshimmer: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "lightning", name: "Lightning storm", subtitle: "Lightning · beat-fired bolts",
-      help: "Bolts of lightning tearing down the screen, each one a fresh shape. Rate fires them on a clock; arm Strike's L/M/H chips and the BEAT fires them instead — a kick snaps Strike to full and the bolt decays over the Trigger duration, exactly like Shockwave's ring. Bolts sets how many strike at once, Afterglow how much the sky lights up.",
-      params: ["ltstrike", "ltrate", "ltbolts", "ltglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "storm", "band"], bakesOwnZoom: true,
-      draw: dt => { if (useGL) { const s = stormSeed(dt); glShaderDraw("storm", u => { gl.uniform1f(u.uEnv, s.env); gl.uniform1f(u.uSeed, s.seed); gl.uniform1f(u.uBolts, s.bolts); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else storm(dt); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      help: "Forked fractal bolts tearing down the screen, each one a fresh shape: a jagged main channel that splits into side branches on its way down, lighting up from the cloud to the ground with a hot racing tip — Strike speed is how fast it travels. Rate fires strikes on a clock; arm Strike's L/M/H chips and the BEAT fires them instead — a kick snaps Strike to full and the bolt decays over the Trigger duration, exactly like Shockwave's ring. Bolts sets how many strike at once, Afterglow how much the sky lights up.",
+      params: ["ltstrike", "ltrate", "ltspd", "ltbolts", "ltglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "storm", "band"], bakesOwnZoom: true,
+      draw: dt => { if (useGL) { const s = stormSeed(dt); glShaderDraw("storm", u => { gl.uniform1f(u.uEnv, s.env); gl.uniform1f(u.uSeed, s.seed); gl.uniform1f(u.uBolts, s.bolts); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); gl.uniform1f(u.uFront, s.front); }); } else storm(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltspd: [12, 12], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · raymarched 3D fractal",
       help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, slowly orbited by the camera. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping). Detail adds fractal depth (and GPU cost), Orbit speed sets the camera's lap, Glow lights the silhouette and puts a halo on near-misses. The heaviest effect in the app — it wants a real GPU.",
@@ -15717,6 +15803,7 @@
       { n: "Shimmer", w: "chladni", t: "Cymatics only — a slow tremble in the plate, so the sand lines breathe instead of standing perfectly still." },
       { n: "Strike", w: "storm", t: "Lightning storm only — the strike itself: 1 is a fresh bolt at full brightness, decaying to darkness at 0. Arm its L/M/H chips and every beat fires a NEW bolt that fades over the Trigger duration — the storm plays the drums." },
       { n: "Rate", w: "storm", t: "Lightning storm only — automatic strikes per second, for a storm that rolls without music. 0 leaves firing entirely to the Strike chips." },
+      { n: "Strike speed", w: "storm", t: "Lightning storm only — how fast a fresh bolt races from the cloud to the ground, in screen-heights per second. Low values let you watch the hot tip crawl down and the branches catch light; high ones flash the whole bolt at once." },
       { n: "Bolts", w: "storm", t: "Lightning storm only — how many bolts each strike throws down at once, up to five." },
       { n: "Afterglow", w: "storm", t: "Lightning storm only — how much each strike lights the sky behind it, and how much ambient glow remains between strikes." },
       { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c, continuously variable. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes, and fractional values morph between forms — drift the two thumbs apart and it never stops reshaping." },

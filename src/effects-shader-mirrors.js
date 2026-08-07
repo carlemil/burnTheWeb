@@ -761,35 +761,67 @@
   // over the Trigger duration. `stormSeed` merges that with the auto Rate clock and
   // advances the bolt seed on every NEW strike — a rising Strike edge, or the auto
   // clock wrapping — so each flash draws a different bolt.
-  let ltStrikeV = 0, ltRateV = 0.5, ltBoltsV = 2, ltGlowV = 0.5, ltTime = 0, ltSeed = 0, ltPrev = 0;
+  // Each bolt is an L-system-style fractal (see FS_STORM): four octaves of LINEAR value
+  // noise for the kinked main channel plus 2–4 hash-grown branch channels, every
+  // parameter re-rolled per strike. `ltFront` is the strike front — a fresh bolt lights
+  // top-to-bottom at Strike speed (screen-heights/s) with a hot tip; both it and
+  // `ltSeedPrev` (the fresh-bolt detector) ride PHASE_VARS so two storm layers strike
+  // independently.
+  let ltStrikeV = 0, ltRateV = 0.5, ltSpdV = 12, ltBoltsV = 2, ltGlowV = 0.5;
+  let ltTime = 0, ltSeed = 0, ltPrev = 0, ltFront = 9, ltSeedPrev = -1;
   function stormSeed(dt) {
     ltTime += dt * ltRateV;                          // auto clock, in strikes
     if (ltStrikeV > ltPrev + 0.25) ltSeed++;         // a beat (or hand) fired a fresh bolt
     ltPrev = ltStrikeV;
+    const seed = Math.floor(ltTime) * 7.31 + ltSeed * 13.7;
+    if (seed !== ltSeedPrev) { ltSeedPrev = seed; ltFront = 0; }   // fresh bolt: race down again
+    ltFront = Math.min(9, ltFront + dt * ltSpdV);
     const auto = ltRateV > 0 ? Math.pow(1 - (ltTime - Math.floor(ltTime)), 3) : 0;
-    return { env: Math.max(auto, ltStrikeV), seed: Math.floor(ltTime) * 7.31 + ltSeed * 13.7,
+    return { env: Math.max(auto, ltStrikeV), seed, front: ltFront,
              bolts: ltBoltsV, glow: ltGlowV, zoom };
   }
   const ltH1 = x => { const v = Math.sin(x * 127.1) * 43758.5453; return v - Math.floor(v); };
-  function ltVn(t, sd) {
-    const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f);
-    return ltH1(i + sd) * (1 - u) + ltH1(i + 1 + sd) * u;
+  const ltVnl = (t, sd) => {              // LINEAR value noise — the kinks are the look
+    const i = Math.floor(t), f = t - i;
+    return ltH1(i + sd) * (1 - f) + ltH1(i + 1 + sd) * f;
+  };
+  function ltChanX(y, sk, ar) {
+    const rough = 0.8 + 0.5 * ltH1(sk + 51);
+    return (ltH1(sk) * 0.9 - 0.45) * ar
+      + rough * (0.42 * (ltVnl(y * 3, sk + 7) - 0.5)
+               + 0.22 * (ltVnl(y * 9, sk + 17) - 0.5)
+               + 0.11 * (ltVnl(y * 27, sk + 29) - 0.5)
+               + 0.05 * (ltVnl(y * 81, sk + 43) - 0.5));
   }
-  let ltRow = null;
+  let ltRow = null, ltRowB = null;
   function storm(dt) {                    // CPU fallback — mirrors FS_STORM
     const s = stormSeed(dt), ar = fw / fh, n = Math.round(s.bolts);
-    // bolt x per ROW per bolt, cached once per frame (the path depends only on y)
-    if (!ltRow || ltRow.length < fh * 5) ltRow = new Float32Array(fh * 5);
-    const bright = [];
+    // channel x per ROW per bolt (and per branch), cached once per frame
+    if (!ltRow || ltRow.length < fh * 5) { ltRow = new Float32Array(fh * 5); ltRowB = new Float32Array(fh * 20); }
+    const bright = [], tipx = [], nbs = [], bfade = [];
     for (let k = 0; k < n; k++) {
       const sk = s.seed + k * 271.13;
-      bright.push((0.7 + 0.3 * ltH1(sk + 3.3)) * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)));
+      bright.push(s.env * (0.72 + 0.28 * Math.sin(s.env * 40 + sk * 9)) * (0.7 + 0.3 * ltH1(sk + 3.3)));
+      tipx.push(ltChanX(s.front, sk, ar));
+      const nb = 2 + Math.floor(ltH1(sk + 41) * 2.99);
+      nbs.push(nb);
       for (let r = 0; r < fh; r++) {
         const yt = (r / fh - 0.5) / s.zoom + 0.5;   // 0 at SCREEN top (buffer row 0 = top)
-        ltRow[r * 5 + k] = (ltH1(sk) * 0.9 - 0.45) * ar
-          + 0.50 * (ltVn(yt * 3, sk + 7) - 0.5)
-          + 0.24 * (ltVn(yt * 9, sk + 17) - 0.5)
-          + 0.10 * (ltVn(yt * 27, sk + 29) - 0.5);
+        ltRow[r * 5 + k] = ltChanX(yt, sk, ar);
+        for (let j = 0; j < 4; j++) {
+          const bi = (r * 5 + k) * 4 + j;
+          if (j >= nb) { ltRowB[bi] = 1e9; continue; }
+          const sj = sk + j * 17.71 + 5;
+          const yf = 0.12 + 0.62 * ltH1(sj);
+          const len = 0.15 + 0.30 * ltH1(sj + 2);
+          const t = (yt - yf) / len;
+          if (t < 0 || t > 1) { ltRowB[bi] = 1e9; continue; }
+          const slope = (ltH1(sj + 4) - 0.5) * 1.6;
+          ltRowB[bi] = ltChanX(yf, sk, ar) + slope * (yt - yf)
+            + 0.12 * t * (ltVnl(yt * 13, sj + 6) - 0.5)
+            + 0.05 * (ltVnl(yt * 41, sj + 8) - 0.5);
+          bfade[bi] = 0.55 * (1 - 0.6 * t);
+        }
       }
     }
     let idx = 0;
@@ -800,11 +832,26 @@
         const qy = (camPY / fh - 0.5) / s.zoom;
         const r = Math.max(0, Math.min(fh - 1, Math.round(camPY)));   // cache is by screen row
         const yt = qy + 0.5;                                          // matches FS_STORM's flip
+        const lf = (yt - (s.front - 0.05)) / 0.06;
+        const lit = lf <= 0 ? 1 : lf >= 1 ? 0 : 1 - lf * lf * (3 - 2 * lf);
         let heat = 0;
         for (let k = 0; k < n; k++) {
           const d = Math.abs(qx - ltRow[r * 5 + k]);
-          const v = s.env * bright[k] * (Math.exp(-d * 80) + 0.30 * Math.exp(-d * 13));
+          let v = bright[k] * lit * (Math.exp(-d * 90) + 0.30 * Math.exp(-d * 14));
           if (v > heat) heat = v;
+          if (s.front < 1.05) {
+            const dx = qx - tipx[k], dy = yt - s.front;
+            v = bright[k] * 1.5 * Math.exp(-Math.hypot(dx, dy) * 40);
+            if (v > heat) heat = v;
+          }
+          for (let j = 0; j < nbs[k]; j++) {
+            const bi = (r * 5 + k) * 4 + j;
+            const bx = ltRowB[bi];
+            if (bx > 1e8) continue;
+            const dj = Math.abs(qx - bx);
+            v = bright[k] * lit * bfade[bi] * Math.exp(-dj * 110);
+            if (v > heat) heat = v;
+          }
         }
         heat += s.env * s.glow * 0.22 * (0.4 + 0.6 * (1 - yt)) + s.glow * 0.05;
         fire[idx++] = Math.min(1, heat) * 255;
