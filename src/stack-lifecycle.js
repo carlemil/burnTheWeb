@@ -387,7 +387,15 @@
 
       const rm = document.createElement("b");
       rm.textContent = "✕"; rm.title = "Remove this layer";
-      rm.addEventListener("click", e => { e.stopPropagation(); removeStackItem(j); persist(); autosavePreset(); });
+      rm.addEventListener("click", e => {
+        e.stopPropagation();
+        const L = stack[j]; if (!L) return;
+        // Removing a layer throws away its effect, sliders, palette and filter chain in
+        // one click (and autosaves over the scene) — same guard as the scene Delete.
+        const nm = EFFECTS[L.fx] ? EFFECTS[L.fx].name : "this layer";
+        if (!confirm("Remove the " + nm + " layer? Its settings, palette and filters go with it.")) return;
+        removeStackItem(j); persist(); autosavePreset();
+      });
       lyrctl.appendChild(rm);
 
       // Blend mode on its own row: a <select> (with the mode's tip as its title) flanked by
