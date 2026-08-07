@@ -14,6 +14,23 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.21.0] — 2026-08-07
+
+### Added
+
+- **Delete custom palettes from "Palettes in use"** — every custom palette's row carries a
+  ✕, and a **Delete selected** button sits beside Create new for the currently highlighted
+  palette. Both ask for confirmation first, naming the palette and what scenes using it
+  fall back to; built-ins can't be deleted (Delete selected dims and explains instead).
+  Scenes and layers that used the deleted ramp are safely re-pointed.
+
+### Fixed
+
+- **Dialog title bars are translucent again** — the sticky titles of "Palettes in use",
+  the Palette editor and the other picker dialogs painted a near-opaque band that read as
+  a black bar over a bright scene. They now match their box's transparency, with a strong
+  blur keeping the title legible while a list scrolls beneath it.
+
 ## [1.20.0] — 2026-08-07
 
 ### Added
