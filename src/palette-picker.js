@@ -141,11 +141,8 @@
       lab.appendChild(del);
       host.appendChild(lab);
     });
-    // Delete selected dims only when it cannot act — one palette left overall.
-    const ds = el("palpick-delsel");
-    if (ds) ds.classList.toggle("off", palAliveCount() <= 1);
   }
-  // ONE deletion entry for both the per-row ✕ and Delete selected, confirm included.
+  // The ONE deletion entry, confirm included — the per-row ✕ is its only caller now.
   // Customs really delete (indices remap); shipped ramps SOFT-delete into palGone — the
   // entry stays in PALETTES so every scene and share link that references it keeps
   // rendering, and "Select all" resurrects them. The floor is one alive palette TOTAL.
@@ -204,9 +201,9 @@
     paleSelectLive(i);                    // show it at once, and open the editor on it
     openPalEditor(i);
   });
-  // Delete the SELECTED palette (the highlighted swatch) — same path as the per-row ✕:
-  // customs really delete, shipped ramps tombstone, one palette must remain.
-  el("palpick-delsel").addEventListener("click", () => deleteAnyPalette(+paletteSel.value));
+  // There is no "Delete selected" button: deleting is the per-row ✕ in the list, where the
+  // row says which palette you are about to lose. A button acting on the swatch highlighted
+  // behind the open dialog was a second, less obvious way into the same destructive path.
   // Palette inspector (the 👁 button beside the Palette label): the selected palette's full 0–255
   // ramp as a 16×16 grid of colour cells, so every colour is easy to pick out. Shows the raw
   // ramp (each palette's own fn), not the on-screen bake, so banding/reverse/background don't

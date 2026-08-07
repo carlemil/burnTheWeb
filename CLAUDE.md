@@ -585,9 +585,10 @@ custom branch, so closing without an edit KEEPS it. Create new must add the new 
 **`palGone`** — SOFT-deleted shipped palettes (a tombstone Set of built-in indices, persisted beside
 `palUse`, skipped while sharing). **A built-in can never really be removed** — indices are the wire
 format — so the entry stays in `PALETTES` and `palInUse` gates it out of the strip/picker/cycle.
-`deleteAnyPalette` is the one entry (per-row ✕ + Delete selected): customs really delete, built-ins
-tombstone; **floor = one alive palette total**, enforced again at `applyBlob`. **"Select all" clears
-the tombstones** — the recovery path.
+`deleteAnyPalette` is the one entry and the **per-row ✕ is its only caller** (a "Delete selected"
+button acting on the swatch highlighted behind the dialog was a second, blinder way into the same
+destructive path — removed): customs really delete, built-ins tombstone; **floor = one alive palette
+total**, enforced again at `applyBlob`. **"Select all" clears the tombstones** — the recovery path.
 
 **`palUse`** (`#palpickdlg`, the "+ Choose palettes" tile ending the strip): gates the STRIP and the
 CYCLE only (`pickOther` picks from it). A scene storing an unticked palette still loads and renders.
