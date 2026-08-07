@@ -166,8 +166,12 @@
     // random time drawn from it (like Preset TTL). Collapsed to 0 = fixed palette.
     // This replaced the old "Auto-morph palettes" checkbox — `morphing` is now
     // derived from the slider rather than stored separately.
-    { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 120, step: 1, lo: 8, hi: 8, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
-    { key: "palhold", host: "pal", group: "palette", type: "dual", label: "Palette hold", valId: "vPalHold", min: 0, max: 120, step: 1, lo: 0, hi: 0, fmt: v => v <= 0 ? "none" : sig3(v) + "s", apply: v => palHoldLive = v, durScale: 10, beat: false },
+    // Bounds 0..2 / 0..10 by request (steps shrunk to match — 0..2 at step 1 is three
+    // positions). A scene that stored a slower cycle under the old 0..120 bounds either
+    // carries its own `ranges` (custom bounds travel per scene) or clamps to the new max
+    // on load. The initial lo/hi must sit inside the new bounds (8 no longer does).
+    { key: "palcycle", host: "pal", group: "palette", type: "dual", label: "Palette cycle", valId: "vPalCycle", min: 0, max: 2, step: 0.05, lo: 1, hi: 1, fmt: v => v <= 0 ? "fixed" : sig3(v) + "s", apply: v => palCycleLive = v, durScale: 10 },
+    { key: "palhold", host: "pal", group: "palette", type: "dual", label: "Palette hold", valId: "vPalHold", min: 0, max: 10, step: 0.1, lo: 0, hi: 0, fmt: v => v <= 0 ? "none" : sig3(v) + "s", apply: v => palHoldLive = v, durScale: 10, beat: false },
     // Heat boost: remap the heat toward the palette's bright end (see heatBoost). 0 = the palette
     // as-is; per-layer (host "pal"), so each layer boosts its own palette. Animatable + beat-armable.
     { key: "heatboost", host: "pal", group: "palette", type: "dual", label: "Heat boost", valId: "vHeatBoost", min: 0, max: 4, step: 0.05, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : "+" + sig3(v), apply: v => heatBoost = v, durScale: 10 },
