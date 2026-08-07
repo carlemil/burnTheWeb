@@ -213,8 +213,10 @@
       paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
       el("paledlg").classList.add("hidden");
     } else if (paleIdx > gone) paleIdx--;
+    const backLive = back > gone ? back - 1 : back;
     PALETTES.splice(gone, 1);
-    palRemapDeleted(gone, back > gone ? back - 1 : back);   // rewrites every stored reference AND the live select
+    palRemapDeleted(gone, backLive);     // rewrites every stored reference AND the live select
+    palKeepInUse(backLive);              // ...after the remap, which shifts palUse's indices too
     buildPalSwatches();
     buildPalPick();                      // the picker stays open — refresh its rows in place
     paleSelectLive(Math.min(+paletteSel.value, PALETTES.length - 1));
@@ -237,6 +239,7 @@
     const backLive = back > gone ? back - 1 : back;
     PALETTES.splice(gone, 1);
     palRemapDeleted(gone, backLive);
+    palKeepInUse(backLive);
     paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
     el("paledlg").classList.add("hidden");
     buildPalSwatches();

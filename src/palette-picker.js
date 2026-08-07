@@ -160,7 +160,11 @@
     // A tombstoned built-in still renders for every scene that stores it — only the LIVE
     // selection has to move, and it moves to the same in-use survivor.
     palGone.add(i);
-    if (+paletteSel.value === i) paleSelectLive(palFallbackFor(i));
+    if (+paletteSel.value === i) {
+      const land = palFallbackFor(i);       // computed AFTER the tombstone, so it can't pick i
+      palKeepInUse(land);
+      paleSelectLive(land);
+    }
     buildPalSwatches(); buildPalPick(); persist();
   }
   // Tick / untick one ramp. `palUse` is null while everything is in use, so the first

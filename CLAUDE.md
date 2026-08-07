@@ -595,12 +595,19 @@ format — so the entry stays in `PALETTES` and `palInUse` gates it out of the s
 button acting on the swatch highlighted behind the dialog was a second, blinder way into the same
 destructive path — removed): customs really delete, built-ins tombstone; **floor = one alive palette
 total**, enforced again at `applyBlob`. **"Select all" clears the tombstones** — the recovery path.
-- **Deleting falls back to an IN-USE palette** — `palFallbackFor(gone)` (beside `palInUse`): the
-  first other palette `palInUse` allows, else the first in the list. Landing on index 0 regardless
-  put layers on a ramp the strip might not even show. It returns a **pre-splice** index, so
-  `deleteCustomPalette`/`deletePalEditor` shift a result above `gone` down by one before handing it
-  to `palRemapDeleted` — `palRemapOne` writes `back` verbatim. The editor's own Delete still prefers
-  the palette the copy came from, but only while that one is in use.
+- **Deleting falls back to an IN-USE palette** — `palFallbackFor(gone)` (beside `palInUse`) walks
+  **display order** (`palByName`) from just after `gone`, wrapping, and takes the first palette
+  `palInUse` allows; if nothing else is in use, the first that is merely **ALIVE**. It must
+  **never return a tombstoned palette** — the first version fell through to `PALETTES[0]`, so
+  deleting Fire and then deleting the palette you were on landed straight back on Fire.
+  `tools/palprobe.js` pins exactly that case.
+- It returns a **pre-splice** index, so `deleteCustomPalette`/`deletePalEditor` shift a result
+  above `gone` down by one before handing it to `palRemapDeleted` — `palRemapOne` writes `back`
+  verbatim. The editor's own Delete still prefers the palette the copy came from, but only while
+  that one is in use.
+- **`palKeepInUse(land)`** runs after every delete (after `palRemapDeleted`, which shifts
+  `palUse`'s indices): if you had narrowed the in-use set to the palette you just deleted, the
+  landing one joins it, so the strip never goes empty and the cycle always has somewhere to go.
 
 **`palUse`** (`#palpickdlg`, the "+ Choose palettes" tile ending the strip): gates the STRIP and the
 CYCLE only (`pickOther` picks from it). A scene storing an unticked palette still loads and renders.
@@ -1260,6 +1267,13 @@ All slice real source out of the built file by **markers — keep them**.
   and `mergeState` collapse a stored spread/fraction and leave ranged float keys alone. Markers:
   `const sig3 =` … `// A control belongs to the SCENE`; `function snapStep(` …
   `function stepAnim(` … `// The loop is KEY-major`; `function mergeState(` … `function mergeBeat(`.
+- **`palprobe.js`** — palette DELETION: `palByName` orders by name while `PALETTES` stays put;
+  `palFallbackFor` takes the next in-use palette in display order (wrapping), prefers an in-use
+  one over a nearer unticked one, **never returns a tombstoned palette** (the Fire case) and skips
+  a whole run of them; `palKeepInUse` re-ticks when the set would be left empty; and `palRemapOne`
+  shifts references (and the fallback itself) around the deleted index. Markers:
+  `let palGone = new Set();` … `function palGoneOk(`; `function palRemapOne(` …
+  `function palRemapDeleted(`.
 - **`shareprobe.js`** — the share codec round trip.
 - **`cloudprobe.js`** — the cloud path structurally shares `serializeBlob` + the codec with `#zp=`
   bundles; an empty `CONFIG.cloud.apiKey` makes zero network requests at startup.

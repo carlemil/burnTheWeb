@@ -325,21 +325,39 @@
   let palGone = new Set();
   const palInUse = i => !palGone.has(i) && (!palUse || palUse.has(i));
   const palAliveCount = () => PALETTES.length - palGone.size;
-  // Where a reference to palette `gone` should land when it is deleted. Prefer a palette that
-  // is actually IN USE, so a layer keeps a ramp you had ticked instead of jumping to whatever
-  // ships first; only if nothing else is in use does it fall back to the first palette in the
-  // list. Returns a PRE-splice index — a caller that removes the entry must shift a result
-  // above `gone` down by one before storing it (palRemapOne uses `back` verbatim).
   // DISPLAY order only: the strip, the picker and the hidden <select> list palettes by name.
   // PALETTES itself never moves — indices are the wire format, so sorting the array would
   // silently repoint every saved scene, share link and backup at a different ramp. Everything
   // downstream keeps using the real index; only the order they are appended in changes.
   const palByName = () => PALETTES.map((_, i) => i)
     .sort((a, b) => PALETTES[a].name.localeCompare(PALETTES[b].name) || a - b);
+  // Where a reference to palette `gone` should land when it is deleted.
+  //
+  // Walk the DISPLAY order — what the strip actually shows — starting just AFTER `gone` and
+  // wrapping, and take the first palette that is IN USE. That is the neighbour you were
+  // looking at, not whatever happens to sit at index 0. If nothing else is in use, take the
+  // first that is merely ALIVE.
+  //
+  // A TOMBSTONED palette is NEVER returned, and that is the whole point: the first version of
+  // this fell through to `PALETTES[0]` when nothing was in use, so deleting Fire and then
+  // deleting the palette you were on landed straight back on Fire — a palette you had already
+  // deleted and which the strip no longer shows. The one-alive-palette floor (enforced by
+  // every caller before it deletes) guarantees there is something left to return.
+  //
+  // Returns a PRE-splice index — a caller that removes the entry must shift a result above
+  // `gone` down by one before storing it (palRemapOne writes `back` verbatim).
   function palFallbackFor(gone) {
-    for (let i = 0; i < PALETTES.length; i++) if (i !== gone && palInUse(i)) return i;
-    for (let i = 0; i < PALETTES.length; i++) if (i !== gone) return i;
-    return 0;
+    const order = palByName(), at = order.indexOf(gone), ring = [];
+    for (let k = 1; k <= order.length; k++) ring.push(order[(at + k) % order.length]);
+    for (const i of ring) if (i !== gone && palInUse(i)) return i;
+    for (const i of ring) if (i !== gone && !palGone.has(i)) return i;
+    return gone;                            // unreachable while one palette must stay alive
+  }
+  // Deleting can empty the in-use set — you narrowed it to the very palette you just deleted.
+  // The landing palette then joins the set, so the strip never goes empty and the cycle always
+  // has somewhere to go: the same "never leave it empty" rule setPalUse follows.
+  function palKeepInUse(i) {
+    if (palUse && !palGone.has(i) && !palUse.has(i)) palUse.add(i);
   }
   function palGoneOk(v) {                   // validate a stored tombstone list
     const s = new Set();
