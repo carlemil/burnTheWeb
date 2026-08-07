@@ -507,16 +507,22 @@
   #panel .meter i, #menubar .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
   .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
-  /* Unarmed chips are deliberately colourless and dim: the band colours below
-     apply only to `.on`, so "armed" is unmistakable. A vivid outline reads as
-     enabled even when nothing is armed, which is exactly what it used to do. */
+  /* Unarmed chips used to be colourless and dim (the worry: a vivid outline reads as
+     enabled) — too dim in practice, by request. They now carry a TINT of their band
+     colour: tinted letter, border and a faint fill, clearly brighter, while armed keeps
+     the full solid fill + glow so the two states still read apart at a glance. */
   .bandchips button {
     width: 18px; height: 15px; padding: 0; font: bold 9px/13px ui-monospace, monospace;
-    background: transparent; border: 1px solid rgba(255, 220, 180, 0.18);
-    border-radius: 4px; color: rgba(255, 220, 180, 0.38); cursor: pointer;
+    background: transparent; border: 1px solid rgba(255, 220, 180, 0.3);
+    border-radius: 4px; color: rgba(255, 220, 180, 0.7); cursor: pointer;
     transition: box-shadow .08s, background .1s, color .1s, border-color .1s;
   }
-  .bandchips button:hover { color: rgba(255, 220, 180, 0.75); border-color: rgba(255, 220, 180, 0.4); }
+  .bandchips button:nth-child(1) { color: rgba(122, 175, 255, 0.85); border-color: rgba(90, 156, 255, 0.5); background: rgba(90, 156, 255, 0.12); }
+  .bandchips button:nth-child(2) { color: rgba(105, 220, 130, 0.85); border-color: rgba(69, 207, 98, 0.5); background: rgba(69, 207, 98, 0.12); }
+  .bandchips button:nth-child(3) { color: rgba(255, 128, 112, 0.85); border-color: rgba(255, 95, 77, 0.5); background: rgba(255, 95, 77, 0.12); }
+  .bandchips button:nth-child(1):hover { color: #b0d0ff; border-color: rgba(90, 156, 255, 0.85); }
+  .bandchips button:nth-child(2):hover { color: #aef0bc; border-color: rgba(69, 207, 98, 0.85); }
+  .bandchips button:nth-child(3):hover { color: #ffb4aa; border-color: rgba(255, 95, 77, 0.85); }
   .bandchips button.on {
     background: #ffb84d; color: #140a03; border-color: #ffe0a0;
     box-shadow: 0 0 5px rgba(255, 176, 77, 0.75);
@@ -9236,7 +9242,6 @@
     const shapeT = document.createElement("div");
     shapeT.className = "trig-t"; shapeT.textContent = "Shape";
     shapeT.title = "The curve this slider follows on its way back down after a trigger";
-    host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
     if (!(id in pulseLen)) pulseLen[id] = PULSE_DROP;
@@ -9256,7 +9261,6 @@
     sl.addEventListener("input", () => { if (plenEls[id] && plenEls[id].inp === sl) pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
     row.append(sl, out);
     w.plen = { inp: sl, out };
-    host.append(durT, row);              // foot of the control block (above the range editor)
     // An editable MAX below the slider, like the bounds rows on the value slider itself:
     // the shipped 2 s ceiling is short for slow falls (Shockwave rings, long strikes).
     // Edits apply to EVERY block's copy of this key's slider (the pulse length is a
@@ -9290,8 +9294,16 @@
       }
     });
     addNumArrows(mf, () => 0.5);
-    host.append(mrow);
-    host.append(refWrap);        // Refractory closes the trigger section, below Duration
+    // ONE folding body for everything a trigger needs: Shape, Duration (+max) and
+    // Refractory live together in .trig-body, hidden until any chip is armed and shown
+    // as one element when one is (syncTrigRefs toggles it via refs.body). Only the
+    // Triggers heading and the chips stay out — they are how you arm one.
+    const trigBody = document.createElement("div");
+    trigBody.className = "trig-body";
+    trigBody.style.display = "none";
+    trigBody.append(shapeT, psel, durT, row, mrow, refWrap);
+    refs.body = trigBody;
+    host.append(trigBody);
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   // Wiring a control splits in two, because several open layers need one set of DOM nodes
@@ -11927,6 +11939,9 @@
           }
         }
         r.wrap.style.display = any ? "" : "none";
+        // The whole trigger body — Shape, Duration and Refractory — folds as ONE element
+        // on the same condition: something armed.
+        if (r.body) r.body.style.display = any ? "" : "none";
       }
     } catch (e) {}
   }

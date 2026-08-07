@@ -217,7 +217,6 @@
     const shapeT = document.createElement("div");
     shapeT.className = "trig-t"; shapeT.textContent = "Shape";
     shapeT.title = "The curve this slider follows on its way back down after a trigger";
-    host.append(shapeT, psel);
     // How long that jump takes to fall back, for THIS slider. Title above its own slider
     // rather than inline, to match the control it belongs to.
     if (!(id in pulseLen)) pulseLen[id] = PULSE_DROP;
@@ -237,7 +236,6 @@
     sl.addEventListener("input", () => { if (plenEls[id] && plenEls[id].inp === sl) pulseLen[id] = +sl.value; out.textContent = plenFmt(+sl.value); });
     row.append(sl, out);
     w.plen = { inp: sl, out };
-    host.append(durT, row);              // foot of the control block (above the range editor)
     // An editable MAX below the slider, like the bounds rows on the value slider itself:
     // the shipped 2 s ceiling is short for slow falls (Shockwave rings, long strikes).
     // Edits apply to EVERY block's copy of this key's slider (the pulse length is a
@@ -271,8 +269,16 @@
       }
     });
     addNumArrows(mf, () => 0.5);
-    host.append(mrow);
-    host.append(refWrap);        // Refractory closes the trigger section, below Duration
+    // ONE folding body for everything a trigger needs: Shape, Duration (+max) and
+    // Refractory live together in .trig-body, hidden until any chip is armed and shown
+    // as one element when one is (syncTrigRefs toggles it via refs.body). Only the
+    // Triggers heading and the chips stay out — they are how you arm one.
+    const trigBody = document.createElement("div");
+    trigBody.className = "trig-body";
+    trigBody.style.display = "none";
+    trigBody.append(shapeT, psel, durT, row, mrow, refWrap);
+    refs.body = trigBody;
+    host.append(trigBody);
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");
   // Wiring a control splits in two, because several open layers need one set of DOM nodes

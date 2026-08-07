@@ -489,16 +489,22 @@
   #panel .meter i, #menubar .meter i { width: 5px; height: 2px; background: #ffcf87; border-radius: 1px; display: block; }
   #panel #audMsg { margin-top: 4px; color: #ff9a5a; display: none; }
   .bandchips { display: flex; gap: 3px; float: right; margin: -1px 0 0 8px; }
-  /* Unarmed chips are deliberately colourless and dim: the band colours below
-     apply only to `.on`, so "armed" is unmistakable. A vivid outline reads as
-     enabled even when nothing is armed, which is exactly what it used to do. */
+  /* Unarmed chips used to be colourless and dim (the worry: a vivid outline reads as
+     enabled) — too dim in practice, by request. They now carry a TINT of their band
+     colour: tinted letter, border and a faint fill, clearly brighter, while armed keeps
+     the full solid fill + glow so the two states still read apart at a glance. */
   .bandchips button {
     width: 18px; height: 15px; padding: 0; font: bold 9px/13px ui-monospace, monospace;
-    background: transparent; border: 1px solid rgba(255, 220, 180, 0.18);
-    border-radius: 4px; color: rgba(255, 220, 180, 0.38); cursor: pointer;
+    background: transparent; border: 1px solid rgba(255, 220, 180, 0.3);
+    border-radius: 4px; color: rgba(255, 220, 180, 0.7); cursor: pointer;
     transition: box-shadow .08s, background .1s, color .1s, border-color .1s;
   }
-  .bandchips button:hover { color: rgba(255, 220, 180, 0.75); border-color: rgba(255, 220, 180, 0.4); }
+  .bandchips button:nth-child(1) { color: rgba(122, 175, 255, 0.85); border-color: rgba(90, 156, 255, 0.5); background: rgba(90, 156, 255, 0.12); }
+  .bandchips button:nth-child(2) { color: rgba(105, 220, 130, 0.85); border-color: rgba(69, 207, 98, 0.5); background: rgba(69, 207, 98, 0.12); }
+  .bandchips button:nth-child(3) { color: rgba(255, 128, 112, 0.85); border-color: rgba(255, 95, 77, 0.5); background: rgba(255, 95, 77, 0.12); }
+  .bandchips button:nth-child(1):hover { color: #b0d0ff; border-color: rgba(90, 156, 255, 0.85); }
+  .bandchips button:nth-child(2):hover { color: #aef0bc; border-color: rgba(69, 207, 98, 0.85); }
+  .bandchips button:nth-child(3):hover { color: #ffb4aa; border-color: rgba(255, 95, 77, 0.85); }
   .bandchips button.on {
     background: #ffb84d; color: #140a03; border-color: #ffe0a0;
     box-shadow: 0 0 5px rgba(255, 176, 77, 0.75);

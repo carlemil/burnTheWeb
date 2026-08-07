@@ -421,15 +421,16 @@ top→down in click order. A thumb is only ever visible in the column.
   attached to `#breakout` too; its **own capture-phase `pointerdown` + `focusin`** selecting
   `box.dataset.slot`'s layer.
 - Box order top→bottom: `.ctl-owner`, label+value, slider, `.rng-edit`, `.ctl-div`, **Triggers**
-  (`.trig-t`) over the chips, **Shape** over the `PULSE_SHAPES` picker, **Duration**
-  (`.plen-name`) over `.plen` + its max row, **Refractory** (`.trig-refs`) closing the section —
-  per-band sliders (Beat tuning's `beatCfg.refract`, 20–500 ms) shown only while that band's
-  chip is armed; whole block hidden with nothing armed (`syncTrigRefs`, re-pointed like the
-  chips via `refEls`). The sub-titles deliberately drop the word "Trigger" — the heading says
-  it. `makeChips` **appends** (append order = display order). The range editor is built later
-  (POPPABLE pass) and must **`insertBefore` `.trig-t`** — the FIRST `.trig-t` is still the
-  Triggers heading (the Refractory block carries its own). It carries no `border-top`. The
-  trigger section exists only in a box.
+  (`.trig-t`) over the chips, then **`.trig-body` — ONE folding element holding the whole
+  trigger kit**: **Shape** over the `PULSE_SHAPES` picker, **Duration** (`.plen-name`) over
+  `.plen` + its max row, **Refractory** (`.trig-refs`) closing it — per-band sliders (Beat
+  tuning's `beatCfg.refract`, 20–500 ms) shown only for armed bands. The body is hidden until
+  ANY chip is armed and shows as one element when one is (`syncTrigRefs` via `refs.body`,
+  re-pointed like the chips via `refEls`). The sub-titles deliberately drop the word
+  "Trigger" — the heading says it. `makeChips` **appends** (append order = display order). The
+  range editor is built later (POPPABLE pass) and must **`insertBefore` `.trig-t`** — the FIRST
+  `.trig-t` is still the Triggers heading (Shape's and Refractory's live inside the body). It
+  carries no `border-top`. The trigger section exists only in a box.
 - `.ctl-owner` = `ctlOwner(key)` → `CTL_GROUPS[control.group]`, `"Filter · "` prefix for `f_*`.
   Added in `POPPABLE.forEach`, not `ctlHTML`.
 
@@ -630,7 +631,9 @@ programmatic changes. Keep the select in the DOM.
 **`setEffect` does not clear the heat buffer** (clearing blinked black on every switch). `acc = 0`
 still resets.
 
-**Beat chips ship unarmed**; per-band colours (L blue, M green, H red) apply only to `.on`.
+**Beat chips ship unarmed**; per-band colours (L blue, M green, H red) tint the chips even
+UNARMED now (letter/border/faint fill — colourless-dim was too hard to see, by request);
+armed = the full solid fill + glow.
 
 **Beat dots** (`.ctl-dot`, `dotEls`): ≤3 per row, **12px**, chip colours, `display:none` unless
 armed, `opacity .5` idle, lit by `flashChips()` (the idle figure is repeated in `flashChips`'s

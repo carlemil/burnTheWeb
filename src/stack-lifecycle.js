@@ -547,6 +547,9 @@
           }
         }
         r.wrap.style.display = any ? "" : "none";
+        // The whole trigger body — Shape, Duration and Refractory — folds as ONE element
+        // on the same condition: something armed.
+        if (r.body) r.body.style.display = any ? "" : "none";
       }
     } catch (e) {}
   }
