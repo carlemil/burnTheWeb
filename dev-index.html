@@ -1149,18 +1149,18 @@
   }
   /* The × sticks level with the title, allowing for the padding the header now carries. */
   .pal-close, .card-close, .help-close, .sync-close { top: 18px; }
-  /* The docked pickers seat the × in the actual corner: pulled 12px into the side padding
-     (10px off the box edge) and 12px down from the top (the float otherwise sits flush
-     against the border because the box gave its top padding to the sticky header). The
-     header TINT is nearly nothing (the boxes are rgba(10,6,4,.8) and a header painted on
-     top ADDS to that — even .85 read as a black bar); the anti-ghosting while the list
-     scrolls under the sticky title comes from the strong backdrop blur instead. The
-     palette editor's header gets the same treatment. */
+  /* The picker and palette-editor titles are NOT sticky and paint NOTHING. Any header
+     background on these translucent boxes reads as a black bar: even a low-alpha tint
+     ADDS to the box's own rgba(.8), and the backdrop-blur route is worse — a
+     backdrop-filter nested inside the box's backdrop-filter samples an ISOLATED backdrop
+     root on real GPUs and composites toward black regardless of alpha (headless
+     screenshots lied about this one). These boxes are small, so the title simply scrolls
+     with the content; the × stays sticky for closing. */
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
   #paledlg .pale-box > h2 {
-    background: rgba(10, 6, 4, 0.3);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    box-shadow: 0 -30px 0 30px rgba(10, 6, 4, 0.3);
+    position: static; background: transparent;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    box-shadow: none;
   }
   #fltdlg .pal-close, #palpickdlg .pal-close, #transpickdlg .pal-close {
     top: 12px; margin-top: 12px; margin-right: -12px;
