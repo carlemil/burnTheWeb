@@ -126,6 +126,20 @@
       const nm = document.createElement("span");
       nm.className = "palpick-n"; nm.textContent = p.name + (p.custom ? " (custom)" : "");
       lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(nm);
+      // CUSTOMS get a delete ✕ (built-ins are shipped and stay). Inside a <label>, so the
+      // click must preventDefault too — else it also toggles the in-use checkbox.
+      if (p.custom) {
+        const del = document.createElement("button");
+        del.type = "button"; del.className = "palpick-del"; del.textContent = "✕";
+        del.title = "Delete " + p.name;
+        del.setAttribute("aria-label", del.title);
+        del.addEventListener("click", ev => {
+          ev.preventDefault(); ev.stopPropagation();
+          if (!confirm("Delete the custom palette “" + p.name + "”? Any layer or scene using it falls back to " + PALETTES[0].name + ".")) return;
+          deleteCustomPalette(i);
+        });
+        lab.appendChild(del);
+      }
       host.appendChild(lab);
     });
   }

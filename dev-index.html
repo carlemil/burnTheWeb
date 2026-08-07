@@ -990,6 +990,13 @@
     border: 1px solid rgba(255, 255, 255, 0.14);
   }
   #palpickdlg .palpick-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The per-custom delete ✕ at the row's right edge. Dim until you mean it. */
+  #palpickdlg .palpick-del {
+    flex: none; width: 20px; height: 18px; padding: 0; margin-left: auto;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.3); border-radius: 4px;
+    color: #ffb15a; font: 11px/1 ui-monospace, monospace; cursor: pointer; opacity: .55;
+  }
+  #palpickdlg .palpick-del:hover { opacity: 1; background: rgba(255, 80, 40, 0.25); }
   #palpickdlg .presetrow { margin-top: 14px; }
   /* The labelled tile that ends the swatch strip ("+ Choose palettes") — same size and
      rhythm as a ramp, so the strip reads as one object with an empty slot rather than a
@@ -9606,6 +9613,20 @@
       const nm = document.createElement("span");
       nm.className = "palpick-n"; nm.textContent = p.name + (p.custom ? " (custom)" : "");
       lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(nm);
+      // CUSTOMS get a delete ✕ (built-ins are shipped and stay). Inside a <label>, so the
+      // click must preventDefault too — else it also toggles the in-use checkbox.
+      if (p.custom) {
+        const del = document.createElement("button");
+        del.type = "button"; del.className = "palpick-del"; del.textContent = "✕";
+        del.title = "Delete " + p.name;
+        del.setAttribute("aria-label", del.title);
+        del.addEventListener("click", ev => {
+          ev.preventDefault(); ev.stopPropagation();
+          if (!confirm("Delete the custom palette “" + p.name + "”? Any layer or scene using it falls back to " + PALETTES[0].name + ".")) return;
+          deleteCustomPalette(i);
+        });
+        lab.appendChild(del);
+      }
       host.appendChild(lab);
     });
   }
@@ -9891,6 +9912,25 @@
     el("paledlg").classList.add("hidden");
   }
 
+  // Delete custom palette `gone` from ANYWHERE (the picker's per-row ✕ calls this; the
+  // editor's own button keeps its source-palette fallback below). Closes the editor if it
+  // is open on the doomed palette, and shifts paleIdx down when it is open on a later one
+  // — palette references are indices everywhere, including the editor's own state.
+  function deleteCustomPalette(gone) {
+    if (gone < PAL_BUILTIN || !PALETTES[gone]) return;
+    const back = 0;
+    if (paleIdx === gone) {
+      paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
+      el("paledlg").classList.add("hidden");
+    } else if (paleIdx > gone) paleIdx--;
+    PALETTES.splice(gone, 1);
+    palRemapDeleted(gone, back);         // rewrites every stored reference AND the live select
+    buildPalSwatches();
+    buildPalPick();                      // the picker stays open — refresh its rows in place
+    paleSelectLive(Math.min(+paletteSel.value, PALETTES.length - 1));
+    persist();
+    autosavePreset();
+  }
   // Delete the custom being edited. Palette references are INDICES, so removing one from the
   // middle of the custom tail shifts every later custom down — `palRemapDeleted` rewrites the
   // stored references (live stack, per-effect extras, and every preset) to match. Without it,

@@ -200,6 +200,25 @@
     el("paledlg").classList.add("hidden");
   }
 
+  // Delete custom palette `gone` from ANYWHERE (the picker's per-row ✕ calls this; the
+  // editor's own button keeps its source-palette fallback below). Closes the editor if it
+  // is open on the doomed palette, and shifts paleIdx down when it is open on a later one
+  // — palette references are indices everywhere, including the editor's own state.
+  function deleteCustomPalette(gone) {
+    if (gone < PAL_BUILTIN || !PALETTES[gone]) return;
+    const back = 0;
+    if (paleIdx === gone) {
+      paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
+      el("paledlg").classList.add("hidden");
+    } else if (paleIdx > gone) paleIdx--;
+    PALETTES.splice(gone, 1);
+    palRemapDeleted(gone, back);         // rewrites every stored reference AND the live select
+    buildPalSwatches();
+    buildPalPick();                      // the picker stays open — refresh its rows in place
+    paleSelectLive(Math.min(+paletteSel.value, PALETTES.length - 1));
+    persist();
+    autosavePreset();
+  }
   // Delete the custom being edited. Palette references are INDICES, so removing one from the
   // middle of the custom tail shifts every later custom down — `palRemapDeleted` rewrites the
   // stored references (live stack, per-effect extras, and every preset) to match. Without it,

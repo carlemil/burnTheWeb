@@ -972,6 +972,13 @@
     border: 1px solid rgba(255, 255, 255, 0.14);
   }
   #palpickdlg .palpick-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The per-custom delete ✕ at the row's right edge. Dim until you mean it. */
+  #palpickdlg .palpick-del {
+    flex: none; width: 20px; height: 18px; padding: 0; margin-left: auto;
+    background: transparent; border: 1px solid rgba(255, 140, 40, 0.3); border-radius: 4px;
+    color: #ffb15a; font: 11px/1 ui-monospace, monospace; cursor: pointer; opacity: .55;
+  }
+  #palpickdlg .palpick-del:hover { opacity: 1; background: rgba(255, 80, 40, 0.25); }
   #palpickdlg .presetrow { margin-top: 14px; }
   /* The labelled tile that ends the swatch strip ("+ Choose palettes") — same size and
      rhythm as a ramp, so the strip reads as one object with an empty slot rather than a
