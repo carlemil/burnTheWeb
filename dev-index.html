@@ -2638,6 +2638,12 @@
   // ships first; only if nothing else is in use does it fall back to the first palette in the
   // list. Returns a PRE-splice index — a caller that removes the entry must shift a result
   // above `gone` down by one before storing it (palRemapOne uses `back` verbatim).
+  // DISPLAY order only: the strip, the picker and the hidden <select> list palettes by name.
+  // PALETTES itself never moves — indices are the wire format, so sorting the array would
+  // silently repoint every saved scene, share link and backup at a different ramp. Everything
+  // downstream keeps using the real index; only the order they are appended in changes.
+  const palByName = () => PALETTES.map((_, i) => i)
+    .sort((a, b) => PALETTES[a].name.localeCompare(PALETTES[b].name) || a - b);
   function palFallbackFor(gone) {
     for (let i = 0; i < PALETTES.length; i++) if (i !== gone && palInUse(i)) return i;
     for (let i = 0; i < PALETTES.length; i++) if (i !== gone) return i;
@@ -8766,17 +8772,24 @@
     const host = el("flt-pick");
     if (!host) return;
     host.textContent = "";
-    let stage = null;
+    // Collect first, render second: the sub-captions keep REGISTRY order because they mirror
+    // the pipeline (heat and trails, then the image), but the filters INSIDE each are listed
+    // by name — a catalogue is for finding one, and registry order is a pipeline concern.
+    // Only this dialog sorts: the menu's own list is the CHAIN, whose order is the run order.
+    const groups = [];
     FILTERS.forEach(f => {
       if (filterListOf(f).key !== filterPickKey) return;
       // Sub-captions inside the picker only — the menu list itself is one flat chain.
       const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
-      if (s !== stage) {
-        stage = s;
-        const h = document.createElement("div");
-        h.className = "flt-stage"; h.textContent = s;
-        host.appendChild(h);
-      }
+      let g = groups.find(x => x.s === s);
+      if (!g) groups.push(g = { s, items: [] });
+      g.items.push(f);
+    });
+    groups.forEach(g => {
+      const h = document.createElement("div");
+      h.className = "flt-stage"; h.textContent = g.s;
+      host.appendChild(h);
+      g.items.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
       const lab = document.createElement("label");
       lab.className = "flt-opt";
       const cb = document.createElement("input");
@@ -8794,6 +8807,7 @@
       }
       if (cb.disabled) lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
       host.appendChild(lab);
+      });
     });
   }
   // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
@@ -9740,9 +9754,9 @@
   function buildPalSwatches() {
     const cur = paletteSel.value;
     paletteSel.innerHTML = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {              // by name for the reader; `value` is still the index
       const o = document.createElement("option");
-      o.value = String(i); o.textContent = p.name;
+      o.value = String(i); o.textContent = PALETTES[i].name;
       paletteSel.appendChild(o);
     });
     if (cur) paletteSel.value = cur;
@@ -9753,7 +9767,8 @@
     const host = ctlIn(slot, "palswatches");
     if (!host) return;
     host.innerHTML = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {
+      const p = PALETTES[i];
       // Only the palettes in use — plus whichever is selected, always, or picking a scene
       // that stores an unticked ramp would leave the strip with no highlight at all.
       if (!palInUse(i) && String(i) !== paletteSel.value) return;
@@ -9818,7 +9833,8 @@
     const host = el("palpick-list");
     if (!host) return;
     host.textContent = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {
+      const p = PALETTES[i];
       if (palGone.has(i)) return;           // tombstoned shipped ramps leave the list too
       const lab = document.createElement("label");
       lab.className = "palpick-row";
@@ -10533,7 +10549,12 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
   ];
-  EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
+  // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
+  // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime
+  // `effect` is an index into it, and each option carries that index as its value.
+  const effectsByName = () => EFFECTS.map((_, i) => i)
+    .sort((a, b) => EFFECTS[a].name.localeCompare(EFFECTS[b].name) || a - b);
+  effectsByName().forEach(i => effectSel.appendChild(new Option(EFFECTS[i].name, String(i))));
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
   // isn't a real control) at load instead of as a silent runtime break. Warns only.
   (function assertRegistry() {
@@ -11888,9 +11909,9 @@
       // rather than the pick that caused it.
       const nm = document.createElement("select");
       nm.className = "lyr-name";
-      EFFECTS.forEach((f, i) => {
+      effectsByName().forEach(i => {        // by name, like #effect; the value is still the index
         const o = document.createElement("option");
-        o.value = String(i); o.textContent = f.name; o.title = f.subtitle;
+        o.value = String(i); o.textContent = EFFECTS[i].name; o.title = EFFECTS[i].subtitle;
         nm.appendChild(o);
       });
       nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row

@@ -699,17 +699,24 @@
     const host = el("flt-pick");
     if (!host) return;
     host.textContent = "";
-    let stage = null;
+    // Collect first, render second: the sub-captions keep REGISTRY order because they mirror
+    // the pipeline (heat and trails, then the image), but the filters INSIDE each are listed
+    // by name — a catalogue is for finding one, and registry order is a pipeline concern.
+    // Only this dialog sorts: the menu's own list is the CHAIN, whose order is the run order.
+    const groups = [];
     FILTERS.forEach(f => {
       if (filterListOf(f).key !== filterPickKey) return;
       // Sub-captions inside the picker only — the menu list itself is one flat chain.
       const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
-      if (s !== stage) {
-        stage = s;
-        const h = document.createElement("div");
-        h.className = "flt-stage"; h.textContent = s;
-        host.appendChild(h);
-      }
+      let g = groups.find(x => x.s === s);
+      if (!g) groups.push(g = { s, items: [] });
+      g.items.push(f);
+    });
+    groups.forEach(g => {
+      const h = document.createElement("div");
+      h.className = "flt-stage"; h.textContent = g.s;
+      host.appendChild(h);
+      g.items.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
       const lab = document.createElement("label");
       lab.className = "flt-opt";
       const cb = document.createElement("input");
@@ -727,6 +734,7 @@
       }
       if (cb.disabled) lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
       host.appendChild(lab);
+      });
     });
   }
   // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's

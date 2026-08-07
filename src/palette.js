@@ -330,6 +330,12 @@
   // ships first; only if nothing else is in use does it fall back to the first palette in the
   // list. Returns a PRE-splice index — a caller that removes the entry must shift a result
   // above `gone` down by one before storing it (palRemapOne uses `back` verbatim).
+  // DISPLAY order only: the strip, the picker and the hidden <select> list palettes by name.
+  // PALETTES itself never moves — indices are the wire format, so sorting the array would
+  // silently repoint every saved scene, share link and backup at a different ramp. Everything
+  // downstream keeps using the real index; only the order they are appended in changes.
+  const palByName = () => PALETTES.map((_, i) => i)
+    .sort((a, b) => PALETTES[a].name.localeCompare(PALETTES[b].name) || a - b);
   function palFallbackFor(gone) {
     for (let i = 0; i < PALETTES.length; i++) if (i !== gone && palInUse(i)) return i;
     for (let i = 0; i < PALETTES.length; i++) if (i !== gone) return i;

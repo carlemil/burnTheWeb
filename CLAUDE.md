@@ -290,7 +290,10 @@ never the fold**. The heading click is delegated on `#panel`. Folds apply to eve
 **The list shows only the filters you have ADDED, in run order.** `+ Add filter` → `#fltdlg` is the
 only place the full catalogue appears; rows carry `⠿` and `✕`. `buildFilterUI` builds one
 `<details>` per filter (body adopted out of `#filterctl`); `renderFilterLists()` re-appends the
-added ones in chain order.
+added ones in chain order. **Only the catalogue sorts**: `buildFilterPicker` collects into caption
+groups first, keeps the captions in REGISTRY order (they mirror the pipeline) and lists the
+filters inside each **by name**. The menu's own list is the chain — its order IS the run order and
+must never be sorted.
 - **Every section stays in the DOM forever**, hidden not removed (`el()` is `getElementById`).
   **Order is expressed by re-appending** — DOM order *is* the order. **`#flt-<id>` survives as a
   hidden checkbox** (the value store); `setFilterOn(id, on)` is the single toggle path.
@@ -338,6 +341,9 @@ TDZ: the registry block sits **above `presetState`**; `buildFilterUI()` **after*
 helpTags, draw?/fractal2d, bakesOwnZoom?, cardioid?, onEnter?, defaults, ranges?, beat, extras}`.
 Adding an effect = append one descriptor (`assertRegistry()` warns on dup id and on unknown
 `params`/`defaults`/`ranges` keys).
+- **The dropdowns list effects BY NAME** via **`effectsByName()`** (declared with the registry) —
+  `#effect` and every row's `select.lyr-name`. Display only: `EFFECTS` keeps registry order
+  because the runtime `effect` is an index into it, and each option's `value` is that index.
 - **Controls** generate from `CONTROLS` (type, label, range, `fmt`, `apply`, `durScale`, host).
   `buildControls()` → `#fxctl`/`#bandctl`; `setEffect` shows only the descriptor's ordered
   `params`. No hand-written control HTML.
@@ -601,7 +607,11 @@ CYCLE only (`pickOther` picks from it). A scene storing an unticked palette stil
 `null` = all; `setPalUse` collapses full/empty back to `null`. Global blob field, skipped while
 `sharing`. **Indices ⇒ `palRemapDeleted` must remap it.**
 
-**Palette names may change; the ORDER may not** — everything references palettes by index.
+**Palette names may change; the ORDER may not** — everything references palettes by index. The
+UI nevertheless lists them **by name** through **`palByName()`** (beside `palInUse`): the strip,
+the picker rows and the hidden `#palette` options are appended in name order while `PALETTES`
+itself never moves, and every option/swatch still carries the real index (`value`, `data-pal`).
+Sorting the array instead would repoint every saved scene, link and backup.
 
 **Palette picker**: `#palette <select>` is the hidden value store; `#palswatches` is visible (one
 gradient per in-use entry via `palGradientCss(i)`). A swatch sets `paletteSel.value` and dispatches

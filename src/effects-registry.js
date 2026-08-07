@@ -223,7 +223,12 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
   ];
-  EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
+  // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
+  // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime
+  // `effect` is an index into it, and each option carries that index as its value.
+  const effectsByName = () => EFFECTS.map((_, i) => i)
+    .sort((a, b) => EFFECTS[a].name.localeCompare(EFFECTS[b].name) || a - b);
+  effectsByName().forEach(i => effectSel.appendChild(new Option(EFFECTS[i].name, String(i))));
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
   // isn't a real control) at load instead of as a silent runtime break. Warns only.
   (function assertRegistry() {

@@ -37,9 +37,9 @@
   function buildPalSwatches() {
     const cur = paletteSel.value;
     paletteSel.innerHTML = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {              // by name for the reader; `value` is still the index
       const o = document.createElement("option");
-      o.value = String(i); o.textContent = p.name;
+      o.value = String(i); o.textContent = PALETTES[i].name;
       paletteSel.appendChild(o);
     });
     if (cur) paletteSel.value = cur;
@@ -50,7 +50,8 @@
     const host = ctlIn(slot, "palswatches");
     if (!host) return;
     host.innerHTML = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {
+      const p = PALETTES[i];
       // Only the palettes in use — plus whichever is selected, always, or picking a scene
       // that stores an unticked ramp would leave the strip with no highlight at all.
       if (!palInUse(i) && String(i) !== paletteSel.value) return;
@@ -115,7 +116,8 @@
     const host = el("palpick-list");
     if (!host) return;
     host.textContent = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {
+      const p = PALETTES[i];
       if (palGone.has(i)) return;           // tombstoned shipped ramps leave the list too
       const lab = document.createElement("label");
       lab.className = "palpick-row";
