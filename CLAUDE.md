@@ -421,8 +421,10 @@ top→down in click order. A thumb is only ever visible in the column.
   attached to `#breakout` too; its **own capture-phase `pointerdown` + `focusin`** selecting
   `box.dataset.slot`'s layer.
 - Box order top→bottom: `.ctl-owner`, label+value, slider, **`.rng-sec` — the collapsible
-  "Value range" section wrapping `.rng-edit`, closed by default, its summary `?` opening
-  `openRangeHelp` (that blurb no longer rides every control's main `?`)**, `.ctl-div`, **Triggers**
+  "Value range" section wrapping `.rng-edit` (min/max/step only), closed by default, its
+  summary `?` opening `openRangeHelp` (that blurb no longer rides every control's main
+  `?`)**, `.ctl-div`, **Triggers**, then the trigger body, then **a `.ctl-div` + the Reset
+  row (`.ctl-reset`) CLOSING the box — outside both foldables, always visible**
   (`.trig-t`) over the chips, then **`.trig-body` — ONE folding element holding the whole
   trigger kit**: **Shape** over the `PULSE_SHAPES` picker, **Duration** (`.plen-name`) over
   `.plen` + its max row, **Refractory** (`.trig-refs`) closing it — per-band sliders (Beat

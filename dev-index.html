@@ -12847,14 +12847,16 @@
     rst.title = "Reset this slider — value, range, beat chips and pulse — to this effect's defaults";
     rst.setAttribute("aria-label", ctlLabel(key) + ": reset to defaults");
     rst.addEventListener("click", e => { e.preventDefault(); resetControl(key); sync(); });
+    // The Reset row is NOT part of the Value range section: it resets the whole control
+    // (value, range, chips, pulse), so it lives at the FOOT of the box, under the trigger
+    // section, behind its own divider — dressBox places it.
     const rcell = document.createElement("div");   // a div, not a label — a label would
-    rcell.className = "rng-cell";                  // re-trigger the button on text clicks
+    rcell.className = "rng-cell ctl-reset";        // re-trigger the button on text clicks
     const rlbl = document.createElement("span");
     rlbl.className = "rng-lbl"; rlbl.textContent = "Reset";
     rcell.appendChild(rlbl);
     rcell.appendChild(rst);
-    box.appendChild(rcell);
-    // The whole editor folds into a COLLAPSIBLE "Value range" section, closed by default
+    // The bounds fold into a COLLAPSIBLE "Value range" section, closed by default
     // (bounds are set-once knobs). Its own ? explains min/max/step — that blurb no longer
     // rides every control's main ? (openRangeHelp vs openCtlHelp).
     const sec = document.createElement("details");
@@ -12869,7 +12871,7 @@
     sum.appendChild(hq);
     sec.appendChild(sum);
     sec.appendChild(box);
-    return sec;
+    return { sec, reset: rcell };
   }
 
   // Who a control belongs to, for the box title. CTL_GROUPS already carries the human
@@ -12925,12 +12927,17 @@
     const rngEd = makeRangeEditor(slot, key);
     if (rngEd) {
       const anchor = box.querySelector(".trig-t");
-      box.insertBefore(rngEd, anchor);
+      box.insertBefore(rngEd.sec, anchor);
       if (anchor) {
         const hr = document.createElement("div");
         hr.className = "ctl-div";
         box.insertBefore(hr, anchor);
       }
+      // Reset closes the box: below the trigger section, behind its own divider.
+      const hr2 = document.createElement("div");
+      hr2.className = "ctl-div";
+      box.appendChild(hr2);
+      box.appendChild(rngEd.reset);
     }
     box.appendChild(makePopBtn(slot, key));      // the box's own dock button (left gutter in #breakout)
   }
