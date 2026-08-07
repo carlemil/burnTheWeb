@@ -1916,7 +1916,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.23.1",
+    version: "1.23.2",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2633,6 +2633,22 @@
   let palGone = new Set();
   const palInUse = i => !palGone.has(i) && (!palUse || palUse.has(i));
   const palAliveCount = () => PALETTES.length - palGone.size;
+  // Where a reference to palette `gone` should land when it is deleted. Prefer a palette that
+  // is actually IN USE, so a layer keeps a ramp you had ticked instead of jumping to whatever
+  // ships first; only if nothing else is in use does it fall back to the first palette in the
+  // list. Returns a PRE-splice index — a caller that removes the entry must shift a result
+  // above `gone` down by one before storing it (palRemapOne uses `back` verbatim).
+  // DISPLAY order only: the strip, the picker and the hidden <select> list palettes by name.
+  // PALETTES itself never moves — indices are the wire format, so sorting the array would
+  // silently repoint every saved scene, share link and backup at a different ramp. Everything
+  // downstream keeps using the real index; only the order they are appended in changes.
+  const palByName = () => PALETTES.map((_, i) => i)
+    .sort((a, b) => PALETTES[a].name.localeCompare(PALETTES[b].name) || a - b);
+  function palFallbackFor(gone) {
+    for (let i = 0; i < PALETTES.length; i++) if (i !== gone && palInUse(i)) return i;
+    for (let i = 0; i < PALETTES.length; i++) if (i !== gone) return i;
+    return 0;
+  }
   function palGoneOk(v) {                   // validate a stored tombstone list
     const s = new Set();
     if (!Array.isArray(v)) return s;
@@ -8756,17 +8772,24 @@
     const host = el("flt-pick");
     if (!host) return;
     host.textContent = "";
-    let stage = null;
+    // Collect first, render second: the sub-captions keep REGISTRY order because they mirror
+    // the pipeline (heat and trails, then the image), but the filters INSIDE each are listed
+    // by name — a catalogue is for finding one, and registry order is a pipeline concern.
+    // Only this dialog sorts: the menu's own list is the CHAIN, whose order is the run order.
+    const groups = [];
     FILTERS.forEach(f => {
       if (filterListOf(f).key !== filterPickKey) return;
       // Sub-captions inside the picker only — the menu list itself is one flat chain.
       const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
-      if (s !== stage) {
-        stage = s;
-        const h = document.createElement("div");
-        h.className = "flt-stage"; h.textContent = s;
-        host.appendChild(h);
-      }
+      let g = groups.find(x => x.s === s);
+      if (!g) groups.push(g = { s, items: [] });
+      g.items.push(f);
+    });
+    groups.forEach(g => {
+      const h = document.createElement("div");
+      h.className = "flt-stage"; h.textContent = g.s;
+      host.appendChild(h);
+      g.items.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
       const lab = document.createElement("label");
       lab.className = "flt-opt";
       const cb = document.createElement("input");
@@ -8784,6 +8807,7 @@
       }
       if (cb.disabled) lab.title = f.name + " needs WebGL — unavailable on this device's fallback renderer.";
       host.appendChild(lab);
+      });
     });
   }
   // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
@@ -9730,9 +9754,9 @@
   function buildPalSwatches() {
     const cur = paletteSel.value;
     paletteSel.innerHTML = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {              // by name for the reader; `value` is still the index
       const o = document.createElement("option");
-      o.value = String(i); o.textContent = p.name;
+      o.value = String(i); o.textContent = PALETTES[i].name;
       paletteSel.appendChild(o);
     });
     if (cur) paletteSel.value = cur;
@@ -9743,7 +9767,8 @@
     const host = ctlIn(slot, "palswatches");
     if (!host) return;
     host.innerHTML = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {
+      const p = PALETTES[i];
       // Only the palettes in use — plus whichever is selected, always, or picking a scene
       // that stores an unticked ramp would leave the strip with no highlight at all.
       if (!palInUse(i) && String(i) !== paletteSel.value) return;
@@ -9808,7 +9833,8 @@
     const host = el("palpick-list");
     if (!host) return;
     host.textContent = "";
-    PALETTES.forEach((p, i) => {
+    palByName().forEach(i => {
+      const p = PALETTES[i];
       if (palGone.has(i)) return;           // tombstoned shipped ramps leave the list too
       const lab = document.createElement("label");
       lab.className = "palpick-row";
@@ -9843,13 +9869,15 @@
     const p = PALETTES[i];
     if (!p || palGone.has(i)) return;
     if (palAliveCount() <= 1) { alert("That is the last palette — at least one must remain."); return; }
+    const back = palFallbackFor(i);         // an in-use survivor, named in the confirm below
     if (!confirm("Delete the palette “" + p.name + "”? " + (p.custom
-      ? "Any layer or scene using it falls back to " + PALETTES[0].name + "."
+      ? "Any layer or scene using it falls back to " + PALETTES[back].name + "."
       : "Scenes that use it keep rendering; it leaves the strip, the picker and the cycle. Select all brings the shipped palettes back."))) return;
     if (p.custom) { deleteCustomPalette(i); return; }
+    // A tombstoned built-in still renders for every scene that stores it — only the LIVE
+    // selection has to move, and it moves to the same in-use survivor.
     palGone.add(i);
-    if (+paletteSel.value === i)            // move the selection to a survivor
-      for (let k = 0; k < PALETTES.length; k++) if (palInUse(k)) { paleSelectLive(k); break; }
+    if (+paletteSel.value === i) paleSelectLive(palFallbackFor(i));
     buildPalSwatches(); buildPalPick(); persist();
   }
   // Tick / untick one ramp. `palUse` is null while everything is in use, so the first
@@ -10144,13 +10172,15 @@
   // — palette references are indices everywhere, including the editor's own state.
   function deleteCustomPalette(gone) {
     if (gone < PAL_BUILTIN || !PALETTES[gone]) return;
-    const back = 0;
+    // An in-use survivor, not a blunt index 0 — see palFallbackFor. Computed BEFORE the
+    // splice and shifted after it, because palRemapOne writes `back` verbatim.
+    const back = palFallbackFor(gone);
     if (paleIdx === gone) {
       paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
       el("paledlg").classList.add("hidden");
     } else if (paleIdx > gone) paleIdx--;
     PALETTES.splice(gone, 1);
-    palRemapDeleted(gone, back);         // rewrites every stored reference AND the live select
+    palRemapDeleted(gone, back > gone ? back - 1 : back);   // rewrites every stored reference AND the live select
     buildPalSwatches();
     buildPalPick();                      // the picker stays open — refresh its rows in place
     paleSelectLive(Math.min(+paletteSel.value, PALETTES.length - 1));
@@ -10163,15 +10193,20 @@
   // deleting the first of three customs silently re-points scenes at the wrong ramp.
   function deletePalEditor() {
     if (paleIdx < PAL_BUILTIN) return;
-    const gone = paleIdx, back = paleFallback;
+    // The palette this copy came from, but only while it is still in use — otherwise the
+    // same in-use survivor every other delete picks. Landing on an unticked ramp would put a
+    // layer on something the strip does not even show.
+    const gone = paleIdx;
+    const back = (paleFallback !== gone && palInUse(paleFallback)) ? paleFallback : palFallbackFor(gone);
     if (!paleFresh && !confirm("Delete the custom palette “" + PALETTES[gone].name
         + "”? Any layer using it falls back to " + PALETTES[back].name + ".")) return;
+    const backLive = back > gone ? back - 1 : back;
     PALETTES.splice(gone, 1);
-    palRemapDeleted(gone, back);
+    palRemapDeleted(gone, backLive);
     paleIdx = -1; paleFresh = false; paleDirty = false; paleSel = null;
     el("paledlg").classList.add("hidden");
     buildPalSwatches();
-    paleSelectLive(Math.min(back, PALETTES.length - 1));
+    paleSelectLive(Math.min(backLive, PALETTES.length - 1));
     persist();
     autosavePreset();
   }
@@ -10514,7 +10549,12 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
   ];
-  EFFECTS.forEach((f, i) => effectSel.appendChild(new Option(f.name, String(i))));   // build the dropdown from the registry
+  // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
+  // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime
+  // `effect` is an index into it, and each option carries that index as its value.
+  const effectsByName = () => EFFECTS.map((_, i) => i)
+    .sort((a, b) => EFFECTS[a].name.localeCompare(EFFECTS[b].name) || a - b);
+  effectsByName().forEach(i => effectSel.appendChild(new Option(EFFECTS[i].name, String(i))));
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
   // isn't a real control) at load instead of as a silent runtime break. Warns only.
   (function assertRegistry() {
@@ -11869,9 +11909,9 @@
       // rather than the pick that caused it.
       const nm = document.createElement("select");
       nm.className = "lyr-name";
-      EFFECTS.forEach((f, i) => {
+      effectsByName().forEach(i => {        // by name, like #effect; the value is still the index
         const o = document.createElement("option");
-        o.value = String(i); o.textContent = f.name; o.title = f.subtitle;
+        o.value = String(i); o.textContent = EFFECTS[i].name; o.title = EFFECTS[i].subtitle;
         nm.appendChild(o);
       });
       nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row

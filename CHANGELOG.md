@@ -14,6 +14,26 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.23.2] — 2026-08-07
+
+### Changed
+
+- **Palettes, effects and the filter catalogue read alphabetically now.** The swatch strip
+  and the **Palettes in use** dialog, the effect dropdown on every layer, and the **+ Add
+  filter** catalogue are all listed by name instead of in whatever order they were built in
+  — with two dozen effects and thirty-odd filters, hunting through a fixed order was the
+  slow part of building a scene. The catalogue keeps its **Heat & trails** / **Image**
+  captions in pipeline order and sorts inside each, and **the filters you have added stay in
+  chain order** — that list is the running order, so it is never re-sorted.
+
+### Fixed
+
+- **Deleting a palette lands on one you actually use.** Any layer or scene pointing at the
+  deleted ramp fell back to the first shipped palette, even if you had unticked it — so it
+  could land on something the strip does not even show. It now falls back to another palette
+  that is in use, and only to the first in the list if none is; the confirm names the one
+  you will get.
+
 ## [1.23.1] — 2026-08-07
 
 ### Removed
