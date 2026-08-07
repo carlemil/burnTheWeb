@@ -672,6 +672,30 @@
     rebuildPresetOptions();
     persist();
   });
+  // Share the CURRENT scene as a link on the clipboard. cloudShareScene stores the scene
+  // in Firestore and returns a ~30-char #c= link; signed out (or on any cloud failure) it
+  // falls back to the self-contained ?z= link, so the button always yields something that
+  // opens. The copy goes through ClipboardItem's PROMISE form where available — the write
+  // must be claimed inside the click gesture, before the async link resolves — with
+  // writeText and finally a prompt() as fallbacks, so the link is never just lost.
+  el("sharepreset").addEventListener("click", () => {
+    const btn = el("sharepreset");
+    const urlP = Promise.resolve(cloudShareScene());
+    const done = ok => {
+      btn.textContent = ok ? "Copied!" : "Share";
+      if (ok) setTimeout(() => { btn.textContent = "Share"; }, 1600);
+    };
+    if (navigator.clipboard && window.ClipboardItem) {
+      navigator.clipboard.write([new ClipboardItem({
+        "text/plain": urlP.then(u => new Blob([u], { type: "text/plain" })),
+      })]).then(() => done(true), () => urlP.then(u => { prompt("Copy this link:", u); done(false); }));
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      urlP.then(u => navigator.clipboard.writeText(u).then(() => done(true), () => { prompt("Copy this link:", u); done(false); }));
+    } else {
+      urlP.then(u => { prompt("Copy this link:", u); done(false); });
+    }
+    track("share_scene", {});
+  });
   // Delete used to drop to "— unsaved scene —" and leave the deleted scene on screen, which
   // was safe precisely because nothing was selected to autosave into. With something always
   // selected that shortcut is destructive: highlight the neighbour without applying it and the

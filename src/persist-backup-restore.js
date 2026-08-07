@@ -322,16 +322,16 @@
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
 
-  // ---- Sending is gone; RECEIVING is not ------------------------------------------
-  // The "Share this scene" and "Share presets…" buttons, and the curation dialog behind the
-  // second one, were removed: sharing is a cloud-profile job now. Nothing that DECODES was
-  // touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=` link ever
-  // generated still opens, and still lands in the Restore dialog below.
+  // ---- Sending is mostly gone; RECEIVING is not -----------------------------------
+  // The old "Share this scene" and "Share presets…" buttons, and the curation dialog behind
+  // the second one, were removed when sharing became a cloud-profile job. Nothing that
+  // DECODES was touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=`
+  // link ever generated still opens, and still lands in the Restore dialog below.
   //
-  // `libraryUrl`, `shareUrl`, `cloudShareScene` and `shortenUrl` are consequently unreachable
-  // from the UI. They are kept, like `shareUrl` already was before this: they are pure
-  // builders with no DOM dependency, `shareUrl` is the documented partner of the still-live
-  // `?z=` decode, and re-attaching a button to any of them is a one-line change.
+  // Since then ONE sender came back by request: the Scene box's Share button
+  // (#sharepreset, wired in persist-presets.js) calls `cloudShareScene` — the short
+  // Firestore `#c=` link, ?z= fallback. `libraryUrl` and `shortenUrl` remain unreachable
+  // from the UI, kept as pure probe-pinned builders.
   //
   // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/

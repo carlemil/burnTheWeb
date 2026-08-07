@@ -1476,6 +1476,7 @@
     <button id="newpreset" class="audbtn" type="button" title="Save what is on screen as a new scene">New</button>
     <button id="renamepreset" class="audbtn" type="button" title="Rename the selected scene">Rename</button>
     <button id="delpreset" class="audbtn" type="button" title="Delete the selected scene">Delete</button>
+    <button id="sharepreset" class="audbtn" type="button" title="Copy a link to this scene — short via your cloud profile when signed in, self-contained otherwise">Share</button>
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
@@ -13954,6 +13955,30 @@
     rebuildPresetOptions();
     persist();
   });
+  // Share the CURRENT scene as a link on the clipboard. cloudShareScene stores the scene
+  // in Firestore and returns a ~30-char #c= link; signed out (or on any cloud failure) it
+  // falls back to the self-contained ?z= link, so the button always yields something that
+  // opens. The copy goes through ClipboardItem's PROMISE form where available — the write
+  // must be claimed inside the click gesture, before the async link resolves — with
+  // writeText and finally a prompt() as fallbacks, so the link is never just lost.
+  el("sharepreset").addEventListener("click", () => {
+    const btn = el("sharepreset");
+    const urlP = Promise.resolve(cloudShareScene());
+    const done = ok => {
+      btn.textContent = ok ? "Copied!" : "Share";
+      if (ok) setTimeout(() => { btn.textContent = "Share"; }, 1600);
+    };
+    if (navigator.clipboard && window.ClipboardItem) {
+      navigator.clipboard.write([new ClipboardItem({
+        "text/plain": urlP.then(u => new Blob([u], { type: "text/plain" })),
+      })]).then(() => done(true), () => urlP.then(u => { prompt("Copy this link:", u); done(false); }));
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      urlP.then(u => navigator.clipboard.writeText(u).then(() => done(true), () => { prompt("Copy this link:", u); done(false); }));
+    } else {
+      urlP.then(u => { prompt("Copy this link:", u); done(false); });
+    }
+    track("share_scene", {});
+  });
   // Delete used to drop to "— unsaved scene —" and leave the deleted scene on screen, which
   // was safe precisely because nothing was selected to autosave into. With something always
   // selected that shortcut is destructive: highlight the neighbour without applying it and the
@@ -14337,16 +14362,16 @@
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
 
-  // ---- Sending is gone; RECEIVING is not ------------------------------------------
-  // The "Share this scene" and "Share presets…" buttons, and the curation dialog behind the
-  // second one, were removed: sharing is a cloud-profile job now. Nothing that DECODES was
-  // touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=` link ever
-  // generated still opens, and still lands in the Restore dialog below.
+  // ---- Sending is mostly gone; RECEIVING is not -----------------------------------
+  // The old "Share this scene" and "Share presets…" buttons, and the curation dialog behind
+  // the second one, were removed when sharing became a cloud-profile job. Nothing that
+  // DECODES was touched, which is the standing rule — every `?z=`, `#zp=`/`#sp=` and `#c=`
+  // link ever generated still opens, and still lands in the Restore dialog below.
   //
-  // `libraryUrl`, `shareUrl`, `cloudShareScene` and `shortenUrl` are consequently unreachable
-  // from the UI. They are kept, like `shareUrl` already was before this: they are pure
-  // builders with no DOM dependency, `shareUrl` is the documented partner of the still-live
-  // `?z=` decode, and re-attaching a button to any of them is a one-line change.
+  // Since then ONE sender came back by request: the Scene box's Share button
+  // (#sharepreset, wired in persist-presets.js) calls `cloudShareScene` — the short
+  // Firestore `#c=` link, ?z= fallback. `libraryUrl` and `shortenUrl` remain unreachable
+  // from the UI, kept as pure probe-pinned builders.
   //
   // Recipient side of a preset-bundle link (#zp=/#sp=), called (deferred) from applyShared:
   // decode → validate → the Restore dialog. `parsed` carries only presets (no states/ranges/

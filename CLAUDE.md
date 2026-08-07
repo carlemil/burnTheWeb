@@ -921,10 +921,15 @@ open, landing in the **Restore dialog**.
   `localStorage`, **reloads**. (`location.reload` is non-configurable in Chromium — tests read
   `localStorage` synchronously and stash the verdict in `sessionStorage`.)
 
-**Backup / Restore / Share buttons are gone from the menu**; the cloud profile is the way in and
-out. Only the file/link *creating* half was removed. `libraryUrl`, `shortenUrl`, `backupFiles`,
+**Backup / Restore buttons are gone from the menu**; the cloud profile is the way in and out.
+Only the file/link *creating* half was removed. `libraryUrl`, `shortenUrl`, `backupFiles`,
 `safeFileName` and the IndexedDB helpers are **deliberately kept** (pure builders, probe-pinned).
 `validatePresetList` and `normalizeBackup` are live — the cloud path uses them.
+**Share came back by request as `#sharepreset`** in the Scene box's button row (wired in
+`persist-presets.js`): `cloudShareScene()` → the ~30-char Firestore `#c=` link, `?z=` fallback
+when signed out or on any cloud failure. The copy uses **`ClipboardItem`'s promise form**
+(claim the clipboard inside the click gesture, before the async link resolves), then
+`writeText`, then `prompt()` — the link is never silently lost.
 
 ### Cloud profiles (Firebase Auth + Firestore, over REST)
 `src/cloud-profile.js` is the whole client; `firestore.rules` is the whole security boundary.
