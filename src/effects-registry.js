@@ -182,7 +182,12 @@
       // dense heart of the orbit stacks toward white while the wisps stay faint. Without
       // retention each tick starts from black and the picture is a sparse dust.
       filters: ["fade", "diffuse"],
-      defaults: { palcycle: [0, 0], palhold: [0, 0], flvar: [3, 3], flmorph: [0.3, 0.3], flglow: [30, 30], points: [16000, 16000], fade: [0.975, 0.975], diffuse: [0.8, 0.8], diffkeep: [0.985, 0.985], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      // Points is the density budget of an ADDITIVE stamper, so it wants a range of its own:
+      // the shared schema tops out at 24000, which is where flames only starts to fill in.
+      // Per-effect bounds (see rngShipped) instead of widening the schema — a 10k floor on the
+      // shared slider would clamp every other point effect's shipped default upward.
+      ranges: { points: { min: 10000, max: 200000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], flvar: [3, 3], flmorph: [0.3, 0.3], flglow: [30, 30], points: [30000, 30000], fade: [0.975, 0.975], diffuse: [0.8, 0.8], diffkeep: [0.985, 0.985], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "starfield", name: "Starfield", subtitle: "Starfield · hyperspace",
       help: "A 3D starfield flying past — six parallax depths of hash-placed stars, each twinkling on its own phase. Warp smears every star into a radial streak: arm its L/M/H chips and the kick punches to hyperspace, easing back as the pulse decays. Star density and Fly speed set the traffic, Twinkle the shimmer.",
@@ -228,6 +233,7 @@
       seen.add(f.id);
       (f.params || []).forEach(k => { if (!ctlKeys.has(k)) console.warn(f.id + ": params references unknown control '" + k + "'"); });
       for (const k in (f.defaults || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": defaults references unknown control '" + k + "'");
+      for (const k in (f.ranges || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": ranges references unknown control '" + k + "'");
     });
   })();
 

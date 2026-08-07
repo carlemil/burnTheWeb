@@ -131,15 +131,26 @@
     // Which gallery collections you hold. Browser-local like the presets themselves, so it is
     // skipped while `sharing` — a scene link says nothing about whose sets the sender collects.
     if (!sharing && saved.collections !== undefined) collectionsHeld = collectionsOk(saved.collections);
-    const ok = (id, x) => { const n = ctl(id); if (!n) return false; const mn = +n.min, mx = +n.max; return typeof x === "number" && x >= mn && x <= mx; };
+    // Values validate against the LIVE bounds (custom ranges were applied above). The optional
+    // third argument names the EFFECT a value belongs to: a per-effect shipped range (Fractal
+    // flames' Points) belongs to an effect that is usually NOT the one on screen while this
+    // runs, so widen by that effect's own bounds before testing — otherwise a flames scene
+    // saved at 120k points is hard-rejected here and silently falls back to the default.
+    const ok = (id, x, e) => {
+      const n = ctl(id); if (!n) return false;
+      let mn = +n.min, mx = +n.max;
+      const r = e === undefined ? null : effectRange(id, e);
+      if (r) { if (r.min !== undefined) mn = Math.min(mn, +r.min); if (r.max !== undefined) mx = Math.max(mx, +r.max); }
+      return typeof x === "number" && x >= mn && x <= mx;
+    };
     if (saved.states) {
       for (const k in states) {
         const ss = saved.states[k]; if (!ss) continue;
         for (const id in states[k]) {
           const v = ss[id]; if (v === undefined) continue;
           if (Array.isArray(states[k][id])) {                 // ranged: both thumbs in bounds
-            if (Array.isArray(v) && ok(id + "-lo", v[0]) && ok(id + "-lo", v[1])) states[k][id] = [v[0], v[1]];
-          } else if (ok(id, v)) states[k][id] = v;             // simple: in bounds
+            if (Array.isArray(v) && ok(id + "-lo", v[0], k) && ok(id + "-lo", v[1], k)) states[k][id] = [v[0], v[1]];
+          } else if (ok(id, v, k)) states[k][id] = v;          // simple: in bounds
         }
       }
     }

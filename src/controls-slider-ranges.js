@@ -36,11 +36,38 @@
     const c = CONTROLS.find(x => x.key === id.replace(/-(lo|hi)$/, ""));
     return !!c && !isSceneCtl(c);
   }
+  // A shipped bound can be PER EFFECT. Fractal flames wants a Points slider an order of
+  // magnitude longer than Tetrafyer's, and the schema carries exactly one range per key, so
+  // a descriptor may name its own bounds for a per-LAYER slider it declares:
+  //   ranges: { points: { min: 10000, max: 200000 } }
+  // Widening the schema entry instead would drag every other point effect's floor up with
+  // it and silently re-clamp their saved values on load — the "a saved scene stops loading
+  // identically" break. Scene-wide sliders are excluded: one palette/camera/TTL bound is
+  // shared by the whole scene, so no single effect can own it.
+  function effectRange(id, fx) {
+    if (!rangeIsLayer(id)) return null;
+    const f = EFFECTS[fx === undefined ? effect : fx];
+    return (f && f.ranges && f.ranges[id.replace(/-(lo|hi)$/, "")]) || null;
+  }
+  // The bounds a slider SHIPS with for a given effect: RNG_ORIG with that effect's override
+  // laid over it. Every "put it back the way it ships" and "is this one the user retuned?"
+  // path reads THIS rather than RNG_ORIG, so an effect's own bounds are never mistaken for a
+  // user widening (which would store them in `ranges` on every scene) and ↺ / Reset put back
+  // the effect's range instead of the schema's.
+  function rngShipped(id, fx) {
+    const o = RNG_ORIG[id]; if (!o) return o;
+    const r = effectRange(id, fx); if (!r) return o;
+    return {
+      min: r.min !== undefined ? String(r.min) : o.min,
+      max: r.max !== undefined ? String(r.max) : o.max,
+      step: r.step !== undefined ? String(r.step) : o.step
+    };
+  }
   function rangesDiffering(want) {         // { id: {min,max,step} } for bounds ≠ shipped, filtered by want(id)
     const out = {};
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = ctl(id), o = RNG_ORIG[id];
+      const inp = ctl(id), o = rngShipped(id);
       if (inp && (inp.min !== o.min || inp.max !== o.max || inp.step !== o.step))
         out[id] = { min: inp.min, max: inp.max, step: inp.step };
     }
@@ -80,7 +107,7 @@
   function resetControl(key) {
     const els = ctlRangeInputs(key);
     for (const inp of els) {
-      const o = RNG_ORIG[rngKeyOf(inp)]; if (!o) continue;
+      const o = rngShipped(rngKeyOf(inp)); if (!o) continue;
       inp.min = o.min; inp.max = o.max; inp.step = o.step;
     }
     // presetState merges the filter + camera defaults, so their params reset too — but it
@@ -118,14 +145,19 @@
   // a preset that widened nothing must narrow the previous preset's widening back.
   function applyRangesFor(r, want, slot) {      // reset the wanted sliders to shipped, then apply r's bounds for them
     const g = id => (slot === undefined ? ctl(id) : (ctlIn(slot, id) || (slot === 0 ? el(id) : null)));
+    // "Shipped" is per effect for a layer slider, so this needs the effect whose block we are
+    // painting: the selected one for the live sliders, that slot's for any other block. It is
+    // also what re-widens the slider on an effect SWITCH — setEffect calls applyLayerRanges
+    // after assigning `effect`, so entering flames stretches Points to its own bounds.
+    const fx = slot === undefined ? effect : (stack[slot] ? stack[slot].fx : effect);
     for (const id in RNG_ORIG) {
       if (!want(id)) continue;
-      const inp = g(id), o = RNG_ORIG[id];
+      const inp = g(id), o = rngShipped(id, fx);
       if (inp) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
     }
     if (r && typeof r === "object") for (const id in r) {
       if (!want(id)) continue;
-      const inp = g(id), o = RNG_ORIG[id], v = r[id]; if (!inp || !o || !v) continue;
+      const inp = g(id), o = rngShipped(id, fx), v = r[id]; if (!inp || !o || !v) continue;
       const mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
       inp.min = String(mn); inp.max = String(mx);

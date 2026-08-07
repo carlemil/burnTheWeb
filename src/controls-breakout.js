@@ -626,7 +626,7 @@
     // values validate against them rather than the custom ones.
     for (const key in states[effect])
       for (const inp of ctlRangeInputs(key)) {
-        const o = RNG_ORIG[rngKeyOf(inp)];
+        const o = rngShipped(rngKeyOf(inp));    // this effect's own bounds where it declares them
         if (o) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
       }
     loadState(effect);                // apply to the live sliders
