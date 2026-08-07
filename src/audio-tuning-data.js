@@ -149,7 +149,9 @@
         for (const id in states[k]) {
           const v = ss[id]; if (v === undefined) continue;
           if (Array.isArray(states[k][id])) {                 // ranged: both thumbs in bounds
-            if (Array.isArray(v) && ok(id + "-lo", v[0], k) && ok(id + "-lo", v[1], k)) states[k][id] = [v[0], v[1]];
+            // singlePair: this loop writes states[k][id] directly, bypassing mergeState, so a
+            // blob saved before a control became single would land as a live spread.
+            if (Array.isArray(v) && ok(id + "-lo", v[0], k) && ok(id + "-lo", v[1], k)) states[k][id] = singlePair(id, [v[0], v[1]]);
           } else if (ok(id, v, k)) states[k][id] = v;          // simple: in bounds
         }
       }

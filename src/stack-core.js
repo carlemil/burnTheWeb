@@ -301,18 +301,25 @@
     const hi = ctlIn(slot, id + "-hi") || ctl(id + "-hi");
     const out = ctlIn(slot, valId) || ctl(valId);
     const fill = lo.closest(".dual").querySelector(".fill");
-    // a11y: each dual slider is two anonymous inputs — name the low/high thumbs.
+    // A SINGLE control (see SINGLE_KEYS) is this same dual with its thumbs pinned together:
+    // one visible thumb, the hidden one mirrored so the store stays [v,v], and no triggers.
+    const single = SINGLE_KEYS.has(id);
+    // a11y: each dual slider is two anonymous inputs — name the low/high thumbs. A single
+    // control is ONE value, so it gets the plain name; its hi thumb is display:none and so
+    // is out of the tab order and the a11y tree already.
     const lbl = lo.closest(".dual").previousElementSibling;
     const nm = (lbl && lbl.childNodes[0] ? lbl.childNodes[0].nodeValue : id).trim();
-    lo.setAttribute("aria-label", nm + " (low)");
-    hi.setAttribute("aria-label", nm + " (high)");
+    lo.setAttribute("aria-label", single ? nm : nm + " (low)");
+    if (!single) hi.setAttribute("aria-label", nm + " (high)");
     function ui() {
       // min/max are read live, not closed over: each box's range editor
       // rewrites them at runtime and the fill must follow.
       const mn = +lo.min, mx = +lo.max, span = (mx - mn) || 1;
       const A = Math.min(+lo.value, +hi.value), B = Math.max(+lo.value, +hi.value);
-      fill.style.left = (A - mn) / span * 100 + "%";
-      fill.style.width = (B - A) / span * 100 + "%";
+      // A single control's band is always zero-wide, so the ordinary [A,B] fill would be a
+      // 0px sliver. Paint min→value instead and it reads as an ordinary slider.
+      fill.style.left = single ? "0%" : (A - mn) / span * 100 + "%";
+      fill.style.width = (single ? (A - mn) : (B - A)) / span * 100 + "%";
       // READOUT ONLY — never the applied value, which stays a free float (see stepAnim).
       // A slider whose range spans more than 1 gets at most one decimal: three significant
       // digits is right for a 0–1 knob but absurd on a wider one, where it produced readouts
@@ -322,11 +329,16 @@
       const show = v => fmt(mx - mn > 1 ? Math.round(v * 10) / 10 : v);
       out.textContent = A === B ? show(A) : show(A) + "–" + show(B);
     }
-    lo.addEventListener("input", () => { if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
-    hi.addEventListener("input", () => { if (+hi.value < +lo.value) lo.value = hi.value; ui(); });
+    // Single ⇒ MIRROR (both ways, so no site has to know which thumb moved); otherwise the
+    // usual cross-clamp that stops the thumbs crossing over.
+    lo.addEventListener("input", () => { if (single) hi.value = lo.value; else if (+lo.value > +hi.value) hi.value = lo.value; ui(); });
+    hi.addEventListener("input", () => { if (single) lo.value = hi.value; else if (+hi.value < +lo.value) lo.value = hi.value; ui(); });
     const w = { lo, hi, out, ui, name: nm, chips: null, dots: null, psel: null, plen: null, row: null };
     (W[slot] || (W[slot] = {}))[id] = w;
-    if (beat !== false) makeChips(id, lbl, w);
+    // THE one place triggers are suppressed for a single control — not a per-entry
+    // `beat: false`, which can be forgotten and would describe it as a per-key choice
+    // rather than as part of what `single` means.
+    if (beat !== false && !single) makeChips(id, lbl, w);
     ui();                                // ...and no apply(): see the note above
     return w;
   }

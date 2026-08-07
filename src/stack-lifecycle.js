@@ -50,7 +50,9 @@
     applyLayerRangesTo(slot, L.ranges);
     const st = L.state || {};
     for (const id in W[slot]) {
-      const w = W[slot][id], v = st[id];
+      // singlePair here as well as in mergeState: this is the one site that writes slider
+      // values WITHOUT dispatching `input`, so wireRange's mirror listener never runs.
+      const w = W[slot][id], v = singlePair(id, st[id]);
       if (Array.isArray(v)) { w.lo.value = String(v[0]); w.hi.value = String(v[1]); }
       else if (v !== undefined && v !== null) { w.lo.value = String(v); w.hi.value = String(v); }
       w.ui();

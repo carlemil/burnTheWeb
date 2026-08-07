@@ -367,6 +367,37 @@ shared schema entry instead would raise every other point effect's floor and re-
 - A stored value below a newly-declared floor clamps up when that effect goes live — declaring or
   raising a `min` is a scene-visible change.
 
+**SINGLE controls** — `single: true` on a `dual` entry: one integer, one thumb. Used by the four
+enums (`flvar`, `mirror`, `pxdir`, `sdmix`) and the small-domain counts (sides, segments, cells,
+bars, bolts, iterations, …). Not `points`/`bdcount`/`xormask`/`bandsize`/`cocount`, whose range or
+float is meaningful.
+- **It stays `type: "dual"`.** The store is still the `[lo,hi]` pair and the wire keys are still
+  `<key>-lo`/`<key>-hi`, so no scene, link or backup needed migrating. `type: "plain"` would have
+  changed both — and nothing wires `plain` (the loop filters `type === "dual"`), so its `apply`
+  would never run.
+- `SINGLE_KEYS` + **`singlePair(id, v)`** live in `controls-schema.js` (first slice — `ctlHTML`,
+  `wireRange`, `RNG_ORIG`, `applyBlob`, `mergeState` and `paintBlock` all read them).
+  **`singlePair` is a function declaration**, not a const arrow (TDZ, same rule as `blendOk`). It
+  collapses a stored pair **lo-then-round**, which reproduces what these controls' own
+  `Math.round(v)` applies already computed — a scene that *rendered* N still renders N.
+- `ctlHTML` emits the real `step` (not `"any"`) and a `.dual.single` wrapper + `.thumb-hi` class;
+  the browser then snaps every `.value =` write onto the grid, and **`snapStep` becomes live**
+  (it short-circuits on the `NaN` that `"any"` gives it).
+- **`RNG_ORIG` must carry that step too**, and `applyRangesFor` must ignore a stored `step` for
+  these keys — it resets every slider's step from `rngShipped` on every scene load and effect
+  switch, so an `"any"` there silently un-quantises the lot on the first load.
+- `wireRange` mirrors the hidden thumb and is **the one place triggers are suppressed**
+  (`beat !== false && !single`). No chips ⇒ the key never enters
+  `beatReact`/`pulseShape`/`pulseLen`, so every `merge*`/`prune*`/`sync*` that iterates those maps
+  skips it and a saved scene's stale `beat` entry is simply never visited.
+- **No drift comes free**: with `lo === hi`, `stepAnim` takes its `mx - mn < 1e-9` branch and
+  draws no `Math.random`. The readout is free too — `ui()` already prints one number when `A === B`.
+- Collapse sites are `mergeState` (the funnel, and the only fix for a non-selected layer —
+  `bandOf` reads `L.state` directly), `applyBlob`'s states loop (it bypasses `mergeState`) and
+  `paintBlock` (the one site that writes values without dispatching `input`).
+- The range editor drops its step row for these keys and rounds typed bounds; `tools/singleprobe.js`
+  pins the set and the behaviour.
+
 **Break-out boxes.** Every `dual`/`plain` slider appears in the menu as a name + `+`/`−` launcher
 (`.ctl-row`); the `#ctl-<key>` node lives in `#breakout`, a `position:fixed` column filling top→down
 in click order. A thumb is only ever visible in the column.
@@ -1204,6 +1235,13 @@ All slice real source out of the built file by **markers — keep them**.
   silence and a sustained tone (no false positives), a double-time fill (refractory holds).
   Markers: `const HOP_MS` … `const meterBars`; `const medBuf` … `function audioMsg`;
   `function audioTick` … `function clearBeats`.
+- **`singleprobe.js`** — `SINGLE_KEYS` is exactly the intended 23 (hard-coded, so nobody quietly
+  adds `points`); every single entry is a `dual` on a whole grid with `lo === hi`; each enum's
+  `fmt` names every integer it can now hold; `snapStep` quantises with step 1 and still passes
+  through with `"any"`; `stepAnim` on a pinned pair draws **zero** `Math.random`; `singlePair`
+  and `mergeState` collapse a stored spread/fraction and leave ranged float keys alone. Markers:
+  `const sig3 =` … `// A control belongs to the SCENE`; `function snapStep(` …
+  `function stepAnim(` … `// The loop is KEY-major`; `function mergeState(` … `function mergeBeat(`.
 - **`shareprobe.js`** — the share codec round trip.
 - **`cloudprobe.js`** — the cloud path structurally shares `serializeBlob` + the codec with `#zp=`
   bundles; an empty `CONFIG.cloud.apiKey` makes zero network requests at startup.

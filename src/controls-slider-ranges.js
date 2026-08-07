@@ -18,10 +18,15 @@
   // RESTORE became a no-op — ↺ and "Reset this effect" reset the value and left the widened
   // range. Nothing warned, because RNG_ORIG[""] is just undefined and the loops skip it.
   const rngKeyOf = inp => inp.id || (inp.dataset && inp.dataset.k) || "";
+  // A SINGLE control ships its real step, not "any". This is load-bearing rather than
+  // cosmetic: applyRangesFor resets every slider's step from rngShipped on every scene load
+  // and every effect switch, so an "any" here silently un-quantises all of them the moment
+  // the first scene lands — the change would look like it worked and then evaporate.
   const RNG_ORIG = {};
   CONTROLS.forEach(c => {
-    if (c.type === "dual") { for (const t of ["lo", "hi"]) RNG_ORIG[c.key + "-" + t] = { min: String(c.min), max: String(c.max), step: "any" }; }
-    else if (c.type === "plain") RNG_ORIG[c.key] = { min: String(c.min), max: String(c.max), step: "any" };
+    const step = c.single ? String(c.step) : "any";
+    if (c.type === "dual") { for (const t of ["lo", "hi"]) RNG_ORIG[c.key + "-" + t] = { min: String(c.min), max: String(c.max), step }; }
+    else if (c.type === "plain") RNG_ORIG[c.key] = { min: String(c.min), max: String(c.max), step };
   });
   // ...plus the two scene ranges authored in the markup rather than generated (TTL, transition).
   ["ttl-lo", "ttl-hi", "tdur-lo", "tdur-hi"].forEach(id => {
@@ -54,13 +59,15 @@
   // path reads THIS rather than RNG_ORIG, so an effect's own bounds are never mistaken for a
   // user widening (which would store them in `ranges` on every scene) and ↺ / Reset put back
   // the effect's range instead of the schema's.
+  // A single control's step is never overridable — an effect that widened its bounds must not
+  // be able to un-quantise it (assertRegistry warns if one ever names a single key at all).
   function rngShipped(id, fx) {
     const o = RNG_ORIG[id]; if (!o) return o;
     const r = effectRange(id, fx); if (!r) return o;
     return {
       min: r.min !== undefined ? String(r.min) : o.min,
       max: r.max !== undefined ? String(r.max) : o.max,
-      step: r.step !== undefined ? String(r.step) : o.step
+      step: SINGLE_KEYS.has(id.replace(/-(lo|hi)$/, "")) ? o.step : (r.step !== undefined ? String(r.step) : o.step)
     };
   }
   function rangesDiffering(want) {         // { id: {min,max,step} } for bounds ≠ shipped, filtered by want(id)
@@ -158,13 +165,20 @@
     if (r && typeof r === "object") for (const id in r) {
       if (!want(id)) continue;
       const inp = g(id), o = rngShipped(id, fx), v = r[id]; if (!inp || !o || !v) continue;
-      const mn = +v.min, mx = +v.max;
+      const single = SINGLE_KEYS.has(id.replace(/-(lo|hi)$/, ""));
+      let mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
+      // Widen a single control's stored bounds out to the integers so the grid stays whole.
+      // FLOOR/CEIL, never round: widening can never re-clamp a value the scene already
+      // stored, where rounding inward could.
+      if (single) { mn = Math.floor(mn); mx = Math.ceil(mx); }
       inp.min = String(mn); inp.max = String(mx);
       // Honour a saved step; a blob that omits it (older ones, and every non-stepped
       // scene) keeps the shipped step set in the reset loop above. A saved 0 means the
-      // author made the slider continuous, so it overrides a shipped integer step.
-      if (v.step !== undefined) { const sp = +v.step; inp.step = isFinite(sp) && sp > 0 ? String(sp) : "any"; }
+      // author made the slider continuous, so it overrides a shipped integer step —
+      // except on a single control, whose whole point is that it cannot be un-quantised.
+      // (The shipped library really does carry both "step":"1" and "step":"any" entries.)
+      if (v.step !== undefined && !single) { const sp = +v.step; inp.step = isFinite(sp) && sp > 0 ? String(sp) : "any"; }
     }
     rngSyncAll();                         // the in-box min/max/step fields follow
   }

@@ -74,6 +74,12 @@
     pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
     background: #ffcf87; border: 1px solid #ff7a1a; cursor: pointer;
   }
+  /* A SINGLE control (CONTROLS `single: true`) is this same dual with its thumbs pinned:
+     one integer, so the mirrored high thumb is hidden and the fill is painted min→value.
+     display:none, not opacity/visibility — the rules above re-enable pointer-events on the
+     thumb pseudo-element, so a merely invisible thumb would still be draggable, and this
+     also takes it out of the tab order and the a11y tree. */
+  #panel .dual.single .thumb-hi, #breakout .dual.single .thumb-hi { display: none; }
   #panel select, #menubar select {
     width: 100%;
     margin: 0;

@@ -234,6 +234,17 @@
       (f.params || []).forEach(k => { if (!ctlKeys.has(k)) console.warn(f.id + ": params references unknown control '" + k + "'"); });
       for (const k in (f.defaults || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": defaults references unknown control '" + k + "'");
       for (const k in (f.ranges || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": ranges references unknown control '" + k + "'");
+      for (const k in (f.ranges || {})) if (SINGLE_KEYS.has(k)) console.warn(f.id + ": ranges overrides single control '" + k + "' — its bounds must stay whole");
+    });
+    // A single control is a dual with its thumbs pinned, so it only makes sense on an integer
+    // grid: a fractional step, bound or default would put every snapped value off it.
+    const whole = n => typeof n === "number" && n === Math.round(n);
+    CONTROLS.forEach(c => {
+      if (!c.single) return;
+      if (c.type !== "dual") console.warn(c.key + ": single needs type 'dual' — the [lo,hi] pair IS the wire format");
+      if (!whole(c.step) || !(c.step > 0)) console.warn(c.key + ": single needs a whole positive step");
+      if (!whole(c.min) || !whole(c.max)) console.warn(c.key + ": single needs whole bounds");
+      if (c.lo !== c.hi || !whole(c.lo)) console.warn(c.key + ": single needs lo === hi, whole");
     });
   })();
 

@@ -39,11 +39,11 @@
     { key: "tunspeed", host: "fx", group: "tunnel", type: "dual", label: "Fly speed", valId: "vTunSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => tunSpeed = v, durScale: 10 },
     { key: "tuntwist", host: "fx", group: "tunnel", type: "dual", label: "Twist", valId: "vTunTwist", min: -2, max: 2, step: 0.05, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => tunTwist = v, durScale: 10 },
     { key: "tunrings", host: "fx", group: "tunnel", type: "dual", label: "Ring density", valId: "vTunRings", min: 1, max: 30, step: 0.5, lo: 10, hi: 10, fmt: v => sig3(v), apply: v => tunRings = v, durScale: 10 },
-    { key: "mbcount", host: "fx", group: "metaball", type: "dual", label: "Ball count", valId: "vMbCount", min: 2, max: 16, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => mbCount = Math.round(v), durScale: 10 },   // max must stay <= the FS_METABALL loop bound (its hard ceiling)
+    { key: "mbcount", host: "fx", group: "metaball", type: "dual", single: true, label: "Ball count", valId: "vMbCount", min: 2, max: 16, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => mbCount = Math.round(v), durScale: 10 },   // max must stay <= the FS_METABALL loop bound (its hard ceiling)
     { key: "mbradius", host: "fx", group: "metaball", type: "dual", label: "Ball size", valId: "vMbRadius", min: 0.04, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => mbRadius = v, durScale: 10 },
     { key: "mbspeed", host: "fx", group: "metaball", type: "dual", label: "Ball speed", valId: "vMbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => mbSpeed = v, durScale: 10 },
     { key: "mbgain", host: "fx", group: "metaball", type: "dual", label: "Gain", valId: "vMbGain", min: 0.3, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => mbGain = v, durScale: 10 },
-    { key: "ksegments", host: "fx", group: "kaleido", type: "dual", label: "Segments", valId: "vKSeg", min: 3, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => kSeg = Math.round(v), durScale: 10 },
+    { key: "ksegments", host: "fx", group: "kaleido", type: "dual", single: true, label: "Segments", valId: "vKSeg", min: 3, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => kSeg = Math.round(v), durScale: 10 },
     { key: "krotspeed", host: "fx", group: "kaleido", type: "dual", label: "Spin", valId: "vKRot", min: -1, max: 1, step: 0.02, lo: 0.2, hi: 0.2, fmt: v => sig3(v), apply: v => kRotSpeed = v, durScale: 10 },
     { key: "knoisespeed", host: "fx", group: "kaleido", type: "dual", label: "Flow", valId: "vKFlow", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => kNoiseSpeed = v, durScale: 10 },
     { key: "rzrot", host: "fx", group: "rotozoom", type: "dual", label: "Rotation", valId: "vRzRot", min: -2, max: 2, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => rzRot = v, durScale: 10 },
@@ -67,36 +67,36 @@
     // part of the look, not a bug. (The old measurement — ~40–55% of a lap inside the
     // locus riding the RAW fractional curve — is what the blend fixes; juliaprobe pins it.)
     { key: "mbexp", host: "fx", group: "multibrot", type: "dual", label: "Power", valId: "vMbExp", min: 2, max: 6, step: 0.05, lo: 2, hi: 4, fmt: v => sig3(v), apply: v => mbPower = v, durScale: 10 },
-    { key: "cbcount", host: "fx", group: "copper", type: "dual", label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
+    { key: "cbcount", host: "fx", group: "copper", type: "dual", single: true, label: "Bar count", valId: "vCbCount", min: 1, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => cbCount = Math.round(v), durScale: 10 },
     { key: "cbspeed", host: "fx", group: "copper", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
     { key: "cbwidth", host: "fx", group: "copper", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
     // Geometric shapes — Polygon
-    { key: "pgsides", host: "fx", group: "polygon", type: "dual", label: "Sides", valId: "vPgSides", min: 3, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => pgSides = Math.round(v), durScale: 10 },
+    { key: "pgsides", host: "fx", group: "polygon", type: "dual", single: true, label: "Sides", valId: "vPgSides", min: 3, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => pgSides = Math.round(v), durScale: 10 },
     { key: "pgrad", host: "fx", group: "polygon", type: "dual", label: "Size", valId: "vPgRad", min: 0.1, max: 0.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => pgRad = v, durScale: 10 },
     { key: "pgthick", host: "fx", group: "polygon", type: "dual", label: "Thickness", valId: "vPgThick", min: 0, max: 1, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => pgThick = v, durScale: 10 },
     { key: "pgspin", host: "fx", group: "polygon", type: "dual", label: "Spin", valId: "vPgSpin", min: -2, max: 2, step: 0.05, lo: 0.4, hi: 0.4, fmt: v => sig3(v) + "×", apply: v => pgSpinSpeed = v, durScale: 10 },
     // Shape grid
-    { key: "sgcells", host: "fx", group: "shapegrid", type: "dual", label: "Density", valId: "vSgCells", min: 2, max: 24, step: 1, lo: 9, hi: 9, fmt: v => sig3(v), apply: v => sgCells = Math.round(v), durScale: 10 },
+    { key: "sgcells", host: "fx", group: "shapegrid", type: "dual", single: true, label: "Density", valId: "vSgCells", min: 2, max: 24, step: 1, lo: 9, hi: 9, fmt: v => sig3(v), apply: v => sgCells = Math.round(v), durScale: 10 },
     { key: "sgdot", host: "fx", group: "shapegrid", type: "dual", label: "Size", valId: "vSgDot", min: 0.05, max: 0.6, step: 0.01, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => sgDot = v, durScale: 10 },
     { key: "sgsquare", host: "fx", group: "shapegrid", type: "dual", label: "Squareness", valId: "vSgSquare", min: 0, max: 1, step: 0.02, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => sgSquare = v, durScale: 10 },
     { key: "sgpulse", host: "fx", group: "shapegrid", type: "dual", label: "Pulse", valId: "vSgPulse", min: 0, max: 1, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => sgPulse = v, durScale: 10 },
     { key: "sgspeed", host: "fx", group: "shapegrid", type: "dual", label: "Pulse speed", valId: "vSgSpeed", min: 0, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => sgSpeed = v, durScale: 10 },
     // Concentric rings
-    { key: "cosides", host: "fx", group: "concentric", type: "dual", label: "Sides", valId: "vCoSides", min: 3, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coSides = Math.round(v), durScale: 10 },
+    { key: "cosides", host: "fx", group: "concentric", type: "dual", single: true, label: "Sides", valId: "vCoSides", min: 3, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coSides = Math.round(v), durScale: 10 },
     { key: "cocount", host: "fx", group: "concentric", type: "dual", label: "Ring count", valId: "vCoCount", min: 1, max: 20, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => coCount = v, durScale: 10 },
     { key: "cothick", host: "fx", group: "concentric", type: "dual", label: "Thickness", valId: "vCoThick", min: 0.02, max: 0.98, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => coThick = v, durScale: 10 },
     { key: "cospeed", host: "fx", group: "concentric", type: "dual", label: "March speed", valId: "vCoSpeed", min: -3, max: 3, step: 0.05, lo: 0.6, hi: 0.6, fmt: v => sig3(v) + "×", apply: v => coSpeed = v, durScale: 10 },
     { key: "cospin", host: "fx", group: "concentric", type: "dual", label: "Spin", valId: "vCoSpin", min: -2, max: 2, step: 0.05, lo: 0.1, hi: 0.1, fmt: v => sig3(v) + "×", apply: v => coSpinSpeed = v, durScale: 10 },
     // Bouncing shapes
-    { key: "bncount", host: "fx", group: "bounce", type: "dual", label: "Count", valId: "vBnCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => bnCount = Math.round(v), durScale: 10 },
+    { key: "bncount", host: "fx", group: "bounce", type: "dual", single: true, label: "Count", valId: "vBnCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => bnCount = Math.round(v), durScale: 10 },
     { key: "bnrad", host: "fx", group: "bounce", type: "dual", label: "Size", valId: "vBnRad", min: 0.02, max: 0.25, step: 0.005, lo: 0.09, hi: 0.09, fmt: v => sig3(v), apply: v => bnRad = v, durScale: 10 },
     { key: "bnsquare", host: "fx", group: "bounce", type: "dual", label: "Squareness", valId: "vBnSquare", min: 0, max: 1, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => bnSquare = v, durScale: 10 },
     { key: "bnspeed", host: "fx", group: "bounce", type: "dual", label: "Speed", valId: "vBnSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bnSpeed = v, durScale: 10 },
     // Bouncing solids (3D). Count/Size feed the physics as well as the shader — Size IS the
     // bounding radius every wall test uses, so widening it makes them bounce sooner too.
-    { key: "sdcount", host: "fx", group: "solids", type: "dual", label: "Count", valId: "vSdCount", min: 1, max: 8, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => sdCount = Math.round(v), durScale: 10 },
+    { key: "sdcount", host: "fx", group: "solids", type: "dual", single: true, label: "Count", valId: "vSdCount", min: 1, max: 8, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => sdCount = Math.round(v), durScale: 10 },
     { key: "sdsize", host: "fx", group: "solids", type: "dual", label: "Size", valId: "vSdSize", min: 0.08, max: 0.5, step: 0.005, lo: 0.26, hi: 0.26, fmt: v => sig3(v), apply: v => sdSize = v, durScale: 10 },
-    { key: "sdmix", host: "fx", group: "solids", type: "dual", label: "Shape mix", valId: "vSdMix", min: 1, max: 6, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => sdMix = Math.round(v), durScale: 10 },
+    { key: "sdmix", host: "fx", group: "solids", type: "dual", single: true, label: "Shape mix", valId: "vSdMix", min: 1, max: 6, step: 1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => sdMix = Math.round(v), durScale: 10 },
     { key: "sdspeed", host: "fx", group: "solids", type: "dual", label: "Speed", valId: "vSdSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sdSpeed = v, durScale: 10 },
     { key: "sdspin", host: "fx", group: "solids", type: "dual", label: "Tumble", valId: "vSdSpin", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sdSpin = v, durScale: 10 },
     { key: "sdrim", host: "fx", group: "solids", type: "dual", label: "Edge glow", valId: "vSdRim", min: 0, max: 1.5, step: 0.02, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => sdRim = v, durScale: 10 },
@@ -110,11 +110,11 @@
     { key: "sunlane", host: "fx", group: "sun", type: "dual", label: "Lane width", valId: "vSunLane", min: 0.1, max: 1.2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => sunLaneW = v, durScale: 10 },
     { key: "sunglow", host: "fx", group: "sun", type: "dual", label: "Brightness", valId: "vSunGlow", min: 0.5, max: 1.4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => sunGlow = v, durScale: 10 },
     { key: "sunspot", host: "fx", group: "sun", type: "dual", label: "Sunspot", valId: "vSunSpot", min: 0, max: 1, step: 0.02, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : sig3(v), apply: v => sunSpotAmt = v, durScale: 10 },
-    { key: "kfbars", host: "fx", group: "kefrens", type: "dual", label: "Bars", valId: "vKfBars", min: 1, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => kfBars = Math.round(v), durScale: 10 },
+    { key: "kfbars", host: "fx", group: "kefrens", type: "dual", single: true, label: "Bars", valId: "vKfBars", min: 1, max: 12, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => kfBars = Math.round(v), durScale: 10 },
     { key: "kfsway", host: "fx", group: "kefrens", type: "dual", label: "Sway", valId: "vKfSway", min: 0, max: 0.45, step: 0.01, lo: 0.25, hi: 0.25, fmt: v => sig3(v), apply: v => kfSway = v, durScale: 10 },
     { key: "kfspeed", host: "fx", group: "kefrens", type: "dual", label: "Speed", valId: "vKfSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => kfSpeed = v, durScale: 10 },
     { key: "kfwidth", host: "fx", group: "kefrens", type: "dual", label: "Bar width", valId: "vKfWidth", min: 0.01, max: 0.15, step: 0.005, lo: 0.045, hi: 0.045, fmt: v => sig3(v), apply: v => kfWidth = v, durScale: 10 },
-    { key: "twcols", host: "fx", group: "twister", type: "dual", label: "Columns", valId: "vTwCols", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => sig3(Math.round(v)), apply: v => twCols = Math.round(v), durScale: 10 },
+    { key: "twcols", host: "fx", group: "twister", type: "dual", single: true, label: "Columns", valId: "vTwCols", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => sig3(Math.round(v)), apply: v => twCols = Math.round(v), durScale: 10 },
     { key: "twwidth", host: "fx", group: "twister", type: "dual", label: "Width", valId: "vTwWidth", min: 0.05, max: 0.4, step: 0.01, lo: 0.22, hi: 0.22, fmt: v => sig3(v), apply: v => twWidth = v, durScale: 10 },
     { key: "twtwist", host: "fx", group: "twister", type: "dual", label: "Twist", valId: "vTwTwist", min: -6, max: 6, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v), apply: v => twTwist = v, durScale: 10 },
     { key: "twspeed", host: "fx", group: "twister", type: "dual", label: "Speed", valId: "vTwSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => twSpeed = v, durScale: 10 },
@@ -125,30 +125,30 @@
     { key: "ltstrike", host: "fx", group: "storm", type: "dual", label: "Strike", valId: "vLtStrike", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => ltStrikeV = v, durScale: 10 },
     { key: "ltrate", host: "fx", group: "storm", type: "dual", label: "Rate", valId: "vLtRate", min: 0, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "/s", apply: v => ltRateV = v, durScale: 10 },
     { key: "ltspd", host: "fx", group: "storm", type: "dual", label: "Strike speed", valId: "vLtSpd", min: 2, max: 40, step: 0.5, lo: 12, hi: 12, fmt: v => sig3(v) + "×", apply: v => ltSpdV = v, durScale: 10 },
-    { key: "ltbolts", host: "fx", group: "storm", type: "dual", label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
+    { key: "ltbolts", host: "fx", group: "storm", type: "dual", single: true, label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
     { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
     { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 0.05, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bpPower = v, durScale: 10 },
-    { key: "bpdetail", host: "fx", group: "bulb", type: "dual", label: "Detail", valId: "vBpDetail", min: 3, max: 12, step: 1, lo: 7, hi: 7, fmt: v => sig3(Math.round(v)), apply: v => bpDetail = Math.round(v), durScale: 10 },
+    { key: "bpdetail", host: "fx", group: "bulb", type: "dual", single: true, label: "Detail", valId: "vBpDetail", min: 3, max: 12, step: 1, lo: 7, hi: 7, fmt: v => sig3(Math.round(v)), apply: v => bpDetail = Math.round(v), durScale: 10 },
     { key: "bpspin", host: "fx", group: "bulb", type: "dual", label: "Orbit speed", valId: "vBpSpin", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bpSpin = v, durScale: 10 },
     { key: "bpglow", host: "fx", group: "bulb", type: "dual", label: "Glow", valId: "vBpGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => bpGlow = v, durScale: 10 },
-    { key: "flvar", host: "fx", group: "flames", type: "dual", label: "Variation", valId: "vFlVar", min: 1, max: 6, step: 1, lo: 3, hi: 3, fmt: v => ["", "Sinusoidal", "Spherical", "Swirl", "Horseshoe", "Polar", "Disc"][Math.round(v)] || "?", apply: v => flVar = Math.round(v), durScale: 10 },
+    { key: "flvar", host: "fx", group: "flames", type: "dual", single: true, label: "Variation", valId: "vFlVar", min: 1, max: 6, step: 1, lo: 3, hi: 3, fmt: v => ["", "Sinusoidal", "Spherical", "Swirl", "Horseshoe", "Polar", "Disc"][Math.round(v)] || "?", apply: v => flVar = Math.round(v), durScale: 10 },
     { key: "flmorph", host: "fx", group: "flames", type: "dual", label: "Morph speed", valId: "vFlMorph", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => flMorph = v, durScale: 10 },
     { key: "flglow", host: "fx", group: "flames", type: "dual", label: "Point glow", valId: "vFlGlow", min: 2, max: 120, step: 1, lo: 30, hi: 30, fmt: v => sig3(Math.round(v)), apply: v => flGlow = v, durScale: 10 },
     { key: "stdensity", host: "fx", group: "stars", type: "dual", label: "Star density", valId: "vStDensity", min: 0.4, max: 3, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => stDensity = v, durScale: 10 },
     { key: "stspeed", host: "fx", group: "stars", type: "dual", label: "Fly speed", valId: "vStSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => stSpeed = v, durScale: 10 },
     { key: "stwarp", host: "fx", group: "stars", type: "dual", label: "Warp", valId: "vStWarp", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => stWarp = v, durScale: 10 },
     { key: "sttwinkle", host: "fx", group: "stars", type: "dual", label: "Twinkle", valId: "vStTwinkle", min: 0, max: 2, step: 0.05, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => stTwinkle = v, durScale: 10 },
-    { key: "aucurtains", host: "fx", group: "aurora", type: "dual", label: "Curtains", valId: "vAuCurtains", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => auCurtains = Math.round(v), durScale: 10 },
+    { key: "aucurtains", host: "fx", group: "aurora", type: "dual", single: true, label: "Curtains", valId: "vAuCurtains", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => auCurtains = Math.round(v), durScale: 10 },
     { key: "ausway", host: "fx", group: "aurora", type: "dual", label: "Sway", valId: "vAuSway", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => auSway = v, durScale: 10 },
     { key: "auspeed", host: "fx", group: "aurora", type: "dual", label: "Speed", valId: "vAuSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => auSpeed = v, durScale: 10 },
     { key: "aushimmer", host: "fx", group: "aurora", type: "dual", label: "Shimmer", valId: "vAuShim", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => auShim = v, durScale: 10 },
     { key: "rdfeed", host: "fx", group: "rd", type: "dual", label: "Feed", valId: "vRdFeed", min: 0.01, max: 0.09, step: 0.001, lo: 0.03, hi: 0.03, fmt: v => sig3(v), apply: v => rdFeed = v, durScale: 10 },
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
-    { key: "rdspeed", host: "fx", group: "rd", type: "dual", label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
+    { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
     { key: "mgdive", host: "fx", group: "menger", type: "dual", label: "Dive speed", valId: "vMgDive", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => mgDive = v, durScale: 10 },
     { key: "mgrot", host: "fx", group: "menger", type: "dual", label: "Roll", valId: "vMgRot", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => mgRot = v, durScale: 10 },
-    { key: "mgiter", host: "fx", group: "menger", type: "dual", label: "Detail", valId: "vMgIter", min: 2, max: 5, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => mgIter = Math.round(v), durScale: 10 },
+    { key: "mgiter", host: "fx", group: "menger", type: "dual", single: true, label: "Detail", valId: "vMgIter", min: 2, max: 5, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => mgIter = Math.round(v), durScale: 10 },
     { key: "mgglow", host: "fx", group: "menger", type: "dual", label: "Glow", valId: "vMgGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => mgGlow = v, durScale: 10 },
     { key: "bdcount", host: "fx", group: "boids", type: "dual", label: "Flock", valId: "vBdCount", min: 10, max: 200, step: 5, lo: 80, hi: 80, fmt: v => sig3(Math.round(v)), apply: v => bdCount = Math.round(v), durScale: 10 },
     { key: "bdspeed", host: "fx", group: "boids", type: "dual", label: "Speed", valId: "vBdSpeed", min: 0.2, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bdSpeedV = v, durScale: 10 },
@@ -190,7 +190,7 @@
     { key: "swirl", host: "filter", group: "f_swirl", type: "dual", label: "Spin", valId: "vSwirl", min: -15, max: 15, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v) + "°", apply: v => swirlSpin = v, durScale: 10 },
     { key: "swirlkeep", host: "filter", group: "f_swirl", type: "dual", label: "Lifetime", valId: "vSwirlKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => swirlKeep = v, durScale: 10 },
     { key: "twist", host: "filter", group: "f_twist", type: "dual", label: "Amount", valId: "vTwist", min: -4, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v), apply: v => twistAmt = v, durScale: 10 },
-    { key: "wedgeseg", host: "filter", group: "f_wedge", type: "dual", label: "Segments", valId: "vWedgeSeg", min: 2, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => wedgeSeg = v, durScale: 10 },
+    { key: "wedgeseg", host: "filter", group: "f_wedge", type: "dual", single: true, label: "Segments", valId: "vWedgeSeg", min: 2, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => wedgeSeg = Math.round(v), durScale: 10 },
     { key: "wedgerot", host: "filter", group: "f_wedge", type: "dual", label: "Spin", valId: "vWedgeRot", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => wedgeRot = v, durScale: 10 },
     { key: "glitch", host: "filter", group: "f_glitch", type: "dual", label: "Amount", valId: "vGlitch", min: 0, max: 0.5, step: 0.005, lo: 0.05, hi: 0.05, fmt: v => sig3(v * 100) + "%", apply: v => glitchAmt = v, durScale: 10 },
     { key: "glitchrows", host: "filter", group: "f_glitch", type: "dual", label: "Slice height", valId: "vGlitchRows", min: 1, max: 40, step: 1, lo: 8, hi: 8, fmt: v => sig3(v) + "px", apply: v => glitchRows = v, durScale: 10 },
@@ -198,20 +198,20 @@
     { key: "soften", host: "filter", group: "f_soften", type: "dual", label: "Amount", valId: "vSoften", min: -1, max: 2, step: 0.01, lo: -0.6, hi: -0.6, fmt: v => v < 0 ? "blur " + sig3(-v) : "sharp " + sig3(v), apply: v => softenAmt = v, durScale: 10 },
     { key: "softrad", host: "filter", group: "f_soften", type: "dual", label: "Radius", valId: "vSoftRad", min: 0.5, max: 6, step: 0.1, lo: 1.5, hi: 1.5, fmt: v => sig3(v) + "px", apply: v => softenRad = v, durScale: 10 },
     { key: "edge", host: "filter", group: "f_edge", type: "dual", label: "Amount", valId: "vEdge", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => edgeAmt = v, durScale: 10 },
-    { key: "poster", host: "filter", group: "f_poster", type: "dual", label: "Levels", valId: "vPoster", min: 2, max: 16, step: 1, lo: 5, hi: 5, fmt: v => sig3(Math.round(v)), apply: v => posterLevels = v, durScale: 10 },
+    { key: "poster", host: "filter", group: "f_poster", type: "dual", single: true, label: "Levels", valId: "vPoster", min: 2, max: 16, step: 1, lo: 5, hi: 5, fmt: v => sig3(Math.round(v)), apply: v => posterLevels = Math.round(v), durScale: 10 },
     { key: "halfdot", host: "filter", group: "f_halftone", type: "dual", label: "Dot size", valId: "vHalfDot", min: 2, max: 20, step: 0.5, lo: 4, hi: 4, fmt: v => sig3(v) + "px", apply: v => halfDot = v, durScale: 10 },
     { key: "halfamt", host: "filter", group: "f_halftone", type: "dual", label: "Amount", valId: "vHalfAmt", min: 0, max: 1, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => halfAmt = v, durScale: 10 },
     { key: "threshlvl", host: "filter", group: "f_thresh", type: "dual", label: "Level", valId: "vThreshLvl", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => threshLevel = v, durScale: 10 },
     { key: "threshamt", host: "filter", group: "f_thresh", type: "dual", label: "Amount", valId: "vThreshAmt", min: 0, max: 1, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => threshAmt = v, durScale: 10 },
     { key: "chroma", host: "filter", group: "f_chroma", type: "dual", label: "Amount", valId: "vChroma", min: 0, max: 6, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => chromaAmt = v, durScale: 10 },
-    { key: "mirror", host: "filter", group: "f_mirror", type: "dual", label: "Axis", valId: "vMirror", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["", "X", "Y", "Both"][Math.round(v)] || "X", apply: v => mirrorMode = Math.round(v), durScale: 10 },
+    { key: "mirror", host: "filter", group: "f_mirror", type: "dual", single: true, label: "Axis", valId: "vMirror", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["", "X", "Y", "Both"][Math.round(v)] || "X", apply: v => mirrorMode = Math.round(v), durScale: 10 },
     { key: "shock", host: "filter", group: "f_shock", type: "dual", label: "Shock", valId: "vShock", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => shockAmt = v, durScale: 10 },
     { key: "shockamp", host: "filter", group: "f_shock", type: "dual", label: "Push", valId: "vShockAmp", min: 0, max: 0.2, step: 0.005, lo: 0.06, hi: 0.06, fmt: v => sig3(v), apply: v => shockAmp = v, durScale: 10 },
     { key: "shockwidth", host: "filter", group: "f_shock", type: "dual", label: "Ring width", valId: "vShockWidth", min: 0.02, max: 0.4, step: 0.01, lo: 0.1, hi: 0.1, fmt: v => sig3(v), apply: v => shockWidth = v, durScale: 10 },
     { key: "pxthresh", host: "filter", group: "f_pixsort", type: "dual", label: "Threshold", valId: "vPxThresh", min: 0, max: 1, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => pxThresh = v, durScale: 10 },
     { key: "pxstreak", host: "filter", group: "f_pixsort", type: "dual", label: "Streak", valId: "vPxStreak", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => pxStreak = v, durScale: 10 },
-    { key: "pxdir", host: "filter", group: "f_pixsort", type: "dual", label: "Direction", valId: "vPxDir", min: 0, max: 3, step: 1, lo: 0, hi: 0, fmt: v => ["Down", "Up", "Right", "Left"][Math.round(v)] || "Down", apply: v => pxDir = Math.round(v), durScale: 10 },
-    { key: "cellstates", host: "filter", group: "f_cell", type: "dual", label: "States", valId: "vCellStates", min: 3, max: 24, step: 1, lo: 12, hi: 12, fmt: v => sig3(Math.round(v)), apply: v => cellStates = Math.round(v), durScale: 10 },
+    { key: "pxdir", host: "filter", group: "f_pixsort", type: "dual", single: true, label: "Direction", valId: "vPxDir", min: 0, max: 3, step: 1, lo: 0, hi: 0, fmt: v => ["Down", "Up", "Right", "Left"][Math.round(v)] || "Down", apply: v => pxDir = Math.round(v), durScale: 10 },
+    { key: "cellstates", host: "filter", group: "f_cell", type: "dual", single: true, label: "States", valId: "vCellStates", min: 3, max: 24, step: 1, lo: 12, hi: 12, fmt: v => sig3(Math.round(v)), apply: v => cellStates = Math.round(v), durScale: 10 },
     { key: "cellmix", host: "filter", group: "f_cell", type: "dual", label: "Blend", valId: "vCellMix", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cellMix = v, durScale: 10 },
     { key: "cellkeep", host: "filter", group: "f_cell", type: "dual", label: "Lifetime", valId: "vCellKeep", min: 0.85, max: 1, step: 0.002, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cellKeep = v, durScale: 10 },
     { key: "lenssize", host: "filter", group: "f_lens", type: "dual", label: "Lens size", valId: "vLensSize", min: 0.1, max: 0.5, step: 0.01, lo: 0.28, hi: 0.28, fmt: v => sig3(v), apply: v => lensSize = v, durScale: 10 },
@@ -219,7 +219,7 @@
     { key: "lensspeed", host: "filter", group: "f_lens", type: "dual", label: "Wander", valId: "vLensSpeed", min: 0, max: 2, step: 0.05, lo: 0.6, hi: 0.6, fmt: v => sig3(v) + "×", apply: v => lensSpeed = v, durScale: 10 },
     { key: "drdepth", host: "filter", group: "f_droste", type: "dual", label: "Depth", valId: "vDrDepth", min: 1.3, max: 4, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v), apply: v => drosteDepth = v, durScale: 10 },
     { key: "drtwist", host: "filter", group: "f_droste", type: "dual", label: "Spiral", valId: "vDrTwist", min: -1.5, max: 1.5, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => drosteTwist = v, durScale: 10 },
-    { key: "kuwrad", host: "filter", group: "f_kuwahara", type: "dual", label: "Brush size", valId: "vKuwRad", min: 1, max: 4, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)) + "px", apply: v => kuwRad = Math.round(v), durScale: 10 },
+    { key: "kuwrad", host: "filter", group: "f_kuwahara", type: "dual", single: true, label: "Brush size", valId: "vKuwRad", min: 1, max: 4, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)) + "px", apply: v => kuwRad = Math.round(v), durScale: 10 },
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
@@ -230,6 +230,35 @@
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
     { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
   ];
+  // ---- SINGLE controls: one integer, still a `dual` underneath ----------------------------
+  // A `single` control names one thing (Variation, Axis, Direction) or counts a small number
+  // of them (sides, segments, bolts, iterations), so a float is meaningless and a RANGE is
+  // worse — "Variation 2–5" drifts across four unrelated warp functions.
+  //
+  // It stays `type: "dual"` on purpose. The STORE is still the [lo,hi] pair and the wire keys
+  // are still <key>-lo/<key>-hi, so every saved scene, share link and backup keeps loading
+  // with no migration; the second thumb is simply mirrored to the first and hidden. Switching
+  // these to `type: "plain"` would change both the stored shape and the wire keys — and the
+  // plain path is dormant anyway (nothing wires it, so its apply would never run).
+  //
+  // Three consequences fall out of the pinned pair, none of them special-cased:
+  //   * no drift — stepAnim's `mx - mn < 1e-9` branch parks it and draws no Math.random;
+  //   * one number in the readout — ui() already prints A when A === B;
+  //   * no triggers — wireRange skips makeChips, so the key never enters beatReact /
+  //     pulseShape / pulseLen, and every merge*/prune*/sync* that iterates those maps skips
+  //     it for free (a saved scene's stale beat entry is simply never visited).
+  const SINGLE_KEYS = new Set(CONTROLS.filter(c => c.single).map(c => c.key));
+  // Collapse a stored pair to the one integer a single control holds. LO wins, then round:
+  // lo is the canonical thumb everywhere already (registerAnim seeds newPhase(+w.lo.value),
+  // ctlDefault returns [c.lo, c.hi]), and rounding reproduces what these controls' own
+  // Math.round(v) applies already computed — so a scene that RENDERED as N still renders as N.
+  // A function DECLARATION, not a const arrow: mergeState, applyBlob and paintBlock all call
+  // it from later slices, and a const would leave it in the TDZ there.
+  function singlePair(id, v) {
+    if (!SINGLE_KEYS.has(id) || !Array.isArray(v)) return v;
+    const n = Math.round(+v[0]);
+    return (n === +v[0] && n === +v[1]) ? v : [n, n];      // already collapsed ⇒ untouched
+  }
   // A control belongs to the SCENE rather than to one effect when it is not an effect
   // control (palette, banding) or the shared camera/display zoom. Everything else — every
   // effect param, AND now most filter params — is owned per stacked LAYER, so each effect
@@ -280,8 +309,15 @@
     // step="any": sliders are continuous. A quantised step made the readout lie
     // (a 0.001-step control formatted to 2dp looked like it jumped 0.01 -> 0.02),
     // and every value is shown to 3 significant digits by sig3() instead.
-    const inp = t => '<input type="range"' + K + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="any" value="' + (t === "lo" ? c.lo : c.hi) + '">';
-    return open + lbl + '<div class="dual"><div class="track"></div><div class="fill"></div>' + inp("lo") + inp("hi") + "</div></div>";
+    // A SINGLE control is the exception and emits its real step, which is what makes the
+    // browser's own value sanitisation snap every `.value =` write onto the min + n·step
+    // grid — loadState, paintBlock, rngApply and a manual drag all quantise for free — and
+    // what makes snapStep (which short-circuits on a NaN step) finally quantise the animated
+    // output too. Both thumbs are still emitted: wireRange, saveState, loadState, freezeItem
+    // and RNG_ORIG all require the pair to exist. The hi one is hidden by CSS, not omitted.
+    const st = c.single ? String(c.step) : "any";
+    const inp = t => '<input type="range" class="thumb-' + t + '"' + K + c.key + "-" + t + '" min="' + c.min + '" max="' + c.max + '" step="' + st + '" value="' + (t === "lo" ? c.lo : c.hi) + '">';
+    return open + lbl + '<div class="dual' + (c.single ? " single" : "") + '"><div class="track"></div><div class="fill"></div>' + inp("lo") + inp("hi") + "</div></div>";
   }
   // The Filters checkbox list. Ticking one reveals its parameter group (see the
   // dynamic `shown` set in setEffect) and re-derives the live chain. Built once —

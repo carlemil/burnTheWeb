@@ -54,8 +54,11 @@
   // A slider's `step` attribute as a NUMBER for the editor field: "any" (continuous) and
   // any non-numeric read back as 0, so the field's "0 = continuous" convention is total.
   const stepFieldVal = s => { const n = +s; return isFinite(n) && n > 0 ? String(n) : "0"; };
-  function rngApply(els, which, v) {
+  function rngApply(els, which, v, key) {
     if (!isFinite(v)) return;
+    // A single control has no step row at all, and its bounds stay whole — a fractional min
+    // typed into the field would put the whole grid off the integers.
+    if (key !== undefined && SINGLE_KEYS.has(key)) { if (which === "step") return; v = Math.round(v); }
     for (const inp of els) {
       if (which === "step") {
         // 0 (or empty/negative) ⇒ continuous, i.e. step="any"; otherwise snap to v.
@@ -112,14 +115,18 @@
     // "Reset" row for ↺. Three side-by-side columns could not hold a field plus its
     // stepper pair — max spilled out of the box.
     const fields = {};
-    for (const which of ["min", "max", "step"]) {
+    // A SINGLE control gets min and max only. Its step is not the user's to edit — the field's
+    // own "0 = continuous" convention would otherwise be a one-keystroke way to un-quantise a
+    // control whose entire point is whole numbers.
+    const single = SINGLE_KEYS.has(key);
+    for (const which of (single ? ["min", "max"] : ["min", "max", "step"])) {
       const cell = document.createElement("label");
       cell.className = "rng-cell";
       const lbl = document.createElement("span");
       lbl.className = "rng-lbl"; lbl.textContent = which;
       cell.appendChild(lbl);
       const f = document.createElement("input");
-      f.type = "number"; f.step = "any";
+      f.type = "number"; f.step = single ? "1" : "any";
       f.value = which === "step" ? stepFieldVal(els[0].step) : els[0][which];
       // "step" 0 leaves the slider continuous; any positive value snaps its thumbs to
       // that increment. It only affects manual dragging — the animation drives the value
@@ -127,7 +134,7 @@
       f.title = which === "step"
         ? ctlLabel(key) + " step (0 = continuous)"
         : ctlLabel(key) + " " + which;
-      f.addEventListener("input", () => rngApply(els, which, +f.value));
+      f.addEventListener("input", () => rngApply(els, which, +f.value, key));
       const line = document.createElement("span");
       line.className = "num-line";
       line.appendChild(f);

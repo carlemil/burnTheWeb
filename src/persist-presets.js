@@ -409,11 +409,16 @@
   }
   // Normalize a saved state to the current slider set: keep only keys that still
   // exist (drops retired ones like `radius`) and default any newly-added keys.
+  // singlePair also runs here, and this is the ONE site that cannot be skipped: it is the
+  // funnel every load path passes through (applyPreset, mergeLayers, thawItem, addStackItem),
+  // and it is the only fix for a NON-selected layer — bandOf reads that layer's stored pair
+  // straight out of L.state, never through the DOM, so a scene saved before a control became
+  // single would go on drifting there.
   function mergeState(e, saved) {
     const base = presetState(e);
     if (saved) for (const id in base) {
       const v = saved[id]; if (v === undefined) continue;
-      base[id] = Array.isArray(base[id]) ? (Array.isArray(v) ? v.slice() : base[id]) : v;
+      base[id] = Array.isArray(base[id]) ? (Array.isArray(v) ? singlePair(id, v.slice()) : base[id]) : v;
     }
     return base;
   }
