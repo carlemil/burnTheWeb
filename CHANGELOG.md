@@ -14,6 +14,61 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.24.0] — 2026-08-08
+
+### Added
+
+- **The ☰ menu works from the keyboard.** Opening it steps into the first item; ↑/↓ move,
+  Home/End jump to the ends, ▸ opens a submenu and steps into it, ◂ comes back out, and Esc
+  closes and returns you to the button. ◂ is left alone inside a submenu's own controls — on
+  the Resolution dropdown the arrows still change the resolution.
+- **Dialogs behave like dialogs.** The four that dim the page behind them — Help, Restore,
+  **Public scenes** and the music-sync nudge — now take the keyboard with them, keep Tab
+  inside, and hand focus back to whatever you opened them from. The floating tool panels
+  (**Orbit editor**, **Palette editor**, the palette inspector and the pickers) deliberately
+  do not: they exist to be used while the scene keeps running.
+- **The Orbit editor is 30% bigger** (and its Mandelbrot backdrop is drawn at full resolution
+  for AnimeJulia and Burning Ship, so the boundary is sharp instead of soft). The extra size
+  is drawing precision — a freehand loop gets more control points across the same curve.
+- **"Hide all UI" now tells you how to undo it.** Stripping the chrome also stripped the line
+  naming the **H** key, so a brief note says it and fades out — and it never appears on the
+  `?hideui` URL, which exists for clean captures.
+- **Restore from backup has a × like every other dialog**, instead of only Cancel.
+
+### Changed
+
+- **The panel tools fit a narrow window.** The filter, palette and transition pickers, the
+  palette editor and the palette inspector used to be pinned beside the controls panel
+  whatever the screen width, which squeezed them to a strip on a phone; below ~760px they now
+  centre. Pop-out slider boxes become a row along the bottom instead of a column running off
+  the edge.
+
+### Fixed
+
+- **Esc now closes every dialog.** **Public scenes** and the music-sync nudge could only be
+  dismissed with the mouse.
+- **H (hide all UI) no longer leaves the Help panel or the Restore dialog on screen.**
+- **The Orbit editor keeps working while the scene is paused.** Switching between Cardioid,
+  Circle and Freehand, editing points, Undo and Clear all changed the orbit but left the
+  picture frozen, so the whole panel looked broken. It now repaints as you use it — including
+  following the pointer while you draw a freehand loop, which is exactly when you would pause.
+- **Removing the only layer no longer asks first and then does nothing.** A scene always keeps
+  one layer, so the ✕ on the last one is properly greyed out rather than raising a
+  confirmation for something that cannot happen.
+- **Buttons that look unavailable now really are.** Greyed-out controls — **+ Add layer** at
+  four layers, the Orbit editor's freehand-only buttons, the palette editor's stop buttons —
+  ignored the mouse but still responded to the keyboard.
+- **The Orbit editor's title sits flat on the panel again** instead of on a black bar, and the
+  Orbit editor and music-sync titles no longer scroll away from their own close button.
+
+### Internal
+
+- New `tools/uiprobe.js` (143 assertions): every dialog is checked from one table against each
+  of the lists it has to appear in — Esc, hide-all-UI, the sticky-header rules and the header
+  padding — because each of those had silently lost a dialog. Every fix above was confirmed by
+  reintroducing the bug and watching the probe go red.
+- `/deploy` runs every probe in `tools/`; its hand-kept list had drifted five behind.
+
 ## [1.23.3] — 2026-08-08
 
 ### Fixed

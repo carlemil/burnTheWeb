@@ -280,7 +280,7 @@
   /* keyboard focus rings (a11y) */
   #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute, #uihint { transition: none !important; } }
   #frames {
     position: fixed;
     top: 14px;
@@ -300,14 +300,19 @@
   }
   #frames.hidden { display: none; }
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
-     clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
+     clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge.
+     EVERY dialog belongs here. #galdlg used to have its own copy of this rule 130 lines
+     further down and #help and #restoredlg had none at all, so "hide all UI" left the help
+     panel and the restore dialog sitting on the capture. One list, so there is one place to
+     add the tenth dialog; tools/uiprobe.js asserts none is missing. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
   body.ui-hidden #scenebanner,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
   body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg,
-  body.ui-hidden #transpickdlg { display: none !important; }
+  body.ui-hidden #transpickdlg, body.ui-hidden #galdlg,
+  body.ui-hidden #help, body.ui-hidden #restoredlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -316,6 +321,21 @@
     backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
   }
   #paused.hidden { display: none; }
+  /* The way back out of "Hide all UI". Same frame as #paused but parked at the bottom, so if
+     you pause while hidden the two do not sit on top of each other. It fades rather than
+     vanishing, and is NOT in the body.ui-hidden list above — it is the one thing that has to
+     survive that class, which is why it times itself out instead. */
+  #uihint {
+    position: fixed; z-index: 15; left: 50%; bottom: 48px; transform: translateX(-50%);
+    padding: 9px 16px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 10px; color: #ffdcb0; font: 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em; user-select: none; pointer-events: none;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    opacity: 1; transition: opacity .5s;
+  }
+  #uihint b { color: #ffcf87; font-weight: 600; }
+  #uihint.fading { opacity: 0; }
+  #uihint.hidden { display: none; }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
   /* Version / release-notes line at the foot of the panel. Quieter than the key hints
      above it (it is reference, not instruction) and brightens on hover like a link should. */
@@ -435,7 +455,8 @@
      one — same specificity, and it needs the opposite margin (space below, not above). */
   #galdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
   #galdlg .gal-help b { color: #ffcf87; font-weight: 600; }
-  body.ui-hidden #galdlg { display: none !important; }
+  /* body.ui-hidden #galdlg lived here, apart from the list every other dialog is in. It is
+     folded into that list now — see the hide-all-UI block up by #frames. */
   #panel .presetrow, #menubar .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn, #menubar .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
@@ -888,7 +909,12 @@
   #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
   #panel .lyr b.lyr-eye > svg { display: block; }
   #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
-  #panel .lyr b.off { opacity: .3; cursor: default; }
+  /* The row's ✕ and grab handle are <b>, not <button>, so the `disabled` property setOff()
+     writes does nothing here and pointer-events has to do the blocking. It is exactly what
+     was missing: a dimmed ✕ stayed clickable and confirmed a layer removal that the
+     one-layer floor then refused. :hover is suppressed too, or a dead control still lights
+     up under the cursor. */
+  #panel .lyr b.off { opacity: .3; cursor: default; pointer-events: none; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
   #panel .lyr input[type=range] { width: 38px; margin: 0; }
   /* Blend row: label · dropdown (grows) · ▲/▼ steppers. */
@@ -897,7 +923,9 @@
   #panel .lyr-blend select { flex: 1 1 auto; min-width: 0; }
   #panel .lyr-arrow { font-size: 8px; line-height: 1; padding: 3px 4px; }
   #panel #addlayer { margin: 0 0 6px; }
-  #panel #addlayer.off { opacity: .4; pointer-events: none; }
+  /* No pointer-events: none — setOff() sets the real `disabled`, which blocks the keyboard
+     as well and drops the tab stop. Same for .cardmode.off and #paledlg .audbtn.off. */
+  #panel #addlayer.off { opacity: .4; cursor: default; }
   /* One column. Two columns fitted the checkboxes but not their names, and once each
      filter grew a foldable body there was nowhere sensible for it to open into. */
   #panel .lyrblock [data-k="filterlist"] { margin: 2px 0 4px; }
@@ -1169,16 +1197,26 @@
     background: rgba(14, 8, 5, 0.92); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 6px; color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
   }
-  /* The titles. Same treatment in every dialog. */
-  /* The BOX gives up its top padding and the sticky header carries it. Without that there is
-     a padding-height gap above the header that scrolling content passes through in full view
-     — the header sticks to the scrollport's top edge, not to the padding edge. */
-  #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
-  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
-  #help .help-box, #syncpop, #carddlg, #restoredlg .rst-box { padding-top: 0; }
+  /* The titles. Same treatment in every dialog.
+     The BOX gives up its top padding and the sticky header carries it — that waiver is the
+     LAST rule in this file, because half the dialogs declare a `padding` shorthand further
+     down and a shorthand reinstates the top. See "DIALOG TOP PADDING" at the foot.
+
+     NAME THE ELEMENT THE <h2> IS ACTUALLY A CHILD OF. Every dialog wraps its content in an
+     inner box, so the h2 is a GRANDCHILD of the id — `#syncpop > h2` and `#carddlg > h2`
+     matched nothing at all for several releases, and those two titles scrolled away under
+     the content while their × stayed put. The scrolling element differs between the two:
+     #carddlg is itself the scroller (its .card-box is a deliberately static wrapper), while
+     #syncpop is a full-screen flex backdrop whose .sync-box scrolls.
+
+     WHICH DIALOGS BELONG HERE is decided by the BOX, not by taste: only the near-opaque ones
+     with no backdrop-filter of their own can carry a painted header. Everything translucent
+     opts out below — see that rule for why. #syncpop qualifies (rgba .97, no filter);
+     #carddlg does NOT (rgba .8 with its own blur). */
   #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #help .help-box > h2, #syncpop > h2, #carddlg > h2, #restoredlg .rst-box > h2 {
+  #help .help-box > h2, #syncpop .sync-box > h2,
+  #restoredlg .rst-box > h2 {
     position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;
     /* Near-opaque AND backdrop-blurred: at 0.97 alone the line of text passing underneath
        still ghosted through legibly. The blur matches the box's own, so the header reads as
@@ -1192,15 +1230,21 @@
   }
   /* The × sticks level with the title, allowing for the padding the header now carries. */
   .pal-close, .card-close, .help-close, .sync-close { top: 18px; }
-  /* The picker and palette-editor titles are NOT sticky and paint NOTHING. Any header
-     background on these translucent boxes reads as a black bar: even a low-alpha tint
+  /* The picker, palette-editor and ORBIT EDITOR titles are NOT sticky and paint NOTHING. Any
+     header background on these translucent boxes reads as a black bar: even a low-alpha tint
      ADDS to the box's own rgba(.8), and the backdrop-blur route is worse — a
      backdrop-filter nested inside the box's backdrop-filter samples an ISOLATED backdrop
      root on real GPUs and composites toward black regardless of alpha (headless
      screenshots lied about this one). These boxes are small, so the title simply scrolls
-     with the content; the × stays sticky for closing. */
+     with the content; the × stays sticky for closing.
+
+     #carddlg was moved here after being added to the sticky list above: it is rgba(10,6,4,.8)
+     with its own blur(6px), so it is precisely the case this rule describes — and the headless
+     screenshot taken to check the change showed a clean header, exactly as warned. THE ONLY
+     RELIABLE CHECK FOR THIS ONE IS A REAL BROWSER. tools/uiprobe.js pins which list each
+     dialog is in, but it cannot see the compositing. */
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #paledlg .pale-box > h2, #paldlg .pal-box > h2 {
+  #paledlg .pale-box > h2, #paldlg .pal-box > h2, #carddlg .card-box > h2 {
     position: static; background: transparent;
     backdrop-filter: none; -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -1269,7 +1313,7 @@
   #paledlg .pale-actions .audbtn { flex: 1 1 auto; }
   #paledlg #pale-save { border-color: rgba(255, 140, 40, 0.75); background: rgba(255, 122, 26, 0.28); }
   #paledlg .pal-hint { margin: 10px 0 0; opacity: .6; font-size: 10.5px; }
-  #paledlg .audbtn.off { opacity: .35; pointer-events: none; }
+  #paledlg .audbtn.off { opacity: .35; cursor: default; }
   /* The + on a swatch. The swatch is itself a <button>, and a button cannot nest one, so the
      two are siblings in a wrapper and the + is positioned over the swatch's right edge. */
   .palsw-wrap { position: relative; display: block; }
@@ -1370,7 +1414,8 @@
   }
   #carddlg .cardmode:hover { background: rgba(255, 122, 26, 0.22); }
   #carddlg .cardmode.on { background: #ff7a1a; color: #1a0f08; }
-  #carddlg .cardmode.off { opacity: .35; pointer-events: none; }
+  #carddlg .cardmode.off { opacity: .35; cursor: default; }
+  #carddlg .cardmode.off:hover { background: rgba(0, 0, 0, 0.3); }
   #carddlg .card-ride { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px; }
   #carddlg .card-ride input { accent-color: #ff7a1a; cursor: pointer; }
   #carddlg canvas.draw { cursor: crosshair; touch-action: none; }
@@ -1412,6 +1457,57 @@
   #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
   /* The preset-picker styles went with the "Share presets…" dialog. #restoredlg keeps the
      .rst-* rules above, which it no longer shares with anything. */
+
+  /* ---- DIALOG TOP PADDING — KEEP THIS LAST ------------------------------------------
+     Every dialog is a scrolling box, and every dialog's title carries the top padding
+     instead of the box (the h2's own `padding: 18px 0 9px`, up in the sticky-header
+     block). The box must therefore have NO padding-top of its own: the header sticks to
+     the SCROLLPORT's top edge, not to the padding edge, so any padding left on the box is
+     a band at the top of the dialog that scrolling content slides through in full view.
+
+     This has to be the last rule in the file. It used to sit with the sticky-header block
+     ~200 lines up, where it was overridden on four of the five sticky dialogs (#help,
+     #syncpop, #carddlg, #restoredlg) by a plain `padding:` shorthand declared later —
+     equal specificity, later wins, and a shorthand always reinstates the top. The palette
+     editor got the opposite half of the same bug: its padding survived AND its title kept
+     the header padding, so it sat 36px down while the otherwise identical palette
+     inspector sat 18px. Moving it here settles all ten from one place.
+
+     Adding a dialog? Add it here too. tools/uiprobe.js fails if a dialog box is missing,
+     and fails if any dialog's `padding` shorthand is declared below this rule. */
+  #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
+  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
+  #help .help-box, #syncpop .sync-box, #carddlg, #restoredlg .rst-box { padding-top: 0; }
+
+  /* ---- NARROW VIEWPORTS — KEEP THIS LAST TOO ----------------------------------------
+     Five dialogs dock top-left at the #breakout column's 298px line, and the column itself
+     starts there. That is the right place whenever there is room for it and nowhere near it
+     when there is not: 298px of margin plus a 430px box needs ~742px of window, so below
+     that the pickers, the palette editor and the palette inspector were laid out off the
+     right-hand edge — on a phone their content came out about 78px wide.
+
+     760px, not the 1160px #help uses further up. The two breakpoints answer different
+     questions and are deliberately different numbers: #help is a multi-column reading box
+     that wants to stop sitting beside the pop-out column while there is still plenty of
+     window, whereas these dock at a fixed 298px and only break when that dock cannot fit.
+     Undocking them at 1160px would slide them over a panel with 600px of clear space beside
+     it. */
+  @media (max-width: 760px) {
+    /* Undock: same 14px gutter as the panel, centred in what is left. */
+    #fltdlg, #palpickdlg, #transpickdlg { justify-content: center; }
+    #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
+    #paledlg .pale-box, #paldlg .pal-box {
+      margin: 58px 14px 14px; width: min(92vw, 430px); max-width: calc(100vw - 28px);
+    }
+    /* The pop-out column has nowhere to be beside a panel that already fills the width, so
+       it becomes a bottom sheet: boxes lie in a row and scroll sideways, the panel stays
+       readable above them. Without this a popped-out slider was simply off-screen. */
+    #breakout {
+      top: auto; left: 14px; right: 14px; bottom: 14px; width: auto;
+      flex-direction: row; max-height: 46vh; overflow-x: auto;
+    }
+    #breakout .ctl { flex: 0 0 auto; width: 244px; }
+  }
 </style>
 </head>
 <body>
@@ -1706,11 +1802,20 @@
 <div id="scenebanner" class="hidden" aria-live="polite"></div>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
+<!-- The only thing on screen after "Hide all UI" — which otherwise strips the very hint line
+     that names the key to get back. It fades itself out after a couple of seconds so the
+     clean capture stays clean, is pointer-events:none, and is deliberately NOT shown on the
+     ?hideui startup path: that one exists for headless screenshots, which must render nothing
+     but the visual. Aria-live so it is announced rather than only seen. -->
+<div id="uihint" class="hidden" aria-live="polite">Press <b>H</b> to bring the UI back</div>
 <div id="help" class="hidden"></div>
 
 <!-- Palette inspector: the selected palette's full 0–255 ramp as a 16×16 grid of colour cells -->
 <div id="paldlg" class="hidden">
-  <div class="pal-box">
+  <!-- role="dialog" WITHOUT aria-modal, and nothing steals focus when it opens: this is one of
+       the floating tool panels you read while the scene keeps running behind it, not a modal.
+       The four with a backdrop (#galdlg, #restoredlg, #syncpop, #help) are the modal ones. -->
+  <div class="pal-box" role="dialog" aria-labelledby="pal-title">
     <button type="button" class="pal-close" id="pal-close" aria-label="Close">×</button>
     <h2 id="pal-title">Palette</h2>
     <div id="pal-grid"></div>
@@ -1723,9 +1828,9 @@
      ask merge-vs-replace a second time, having already been asked here. (That dialog is
      still live for `#zp=` links and Load from cloud, where the answer isn't in the click.) -->
 <div id="galdlg" class="hidden">
-  <div class="gal-box">
+  <div class="gal-box" role="dialog" aria-modal="true" aria-labelledby="gal-title">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
-    <h2>Public scenes</h2>
+    <h2 id="gal-title">Public scenes</h2>
     <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
@@ -1743,7 +1848,7 @@
      non-modal like the palette editor — you tick a filter and watch it land. Serves BOTH
      lists (per-layer and whole-scene); openFilterPicker(key) sets which. -->
 <div id="fltdlg" class="hidden">
-  <div class="flt-box">
+  <div class="flt-box" role="dialog" aria-labelledby="flt-title">
     <button type="button" class="pal-close" id="flt-close" aria-label="Close">×</button>
     <h2 id="flt-title">Filters</h2>
     <p class="pal-hint" id="flt-hint"></p>
@@ -1753,9 +1858,9 @@
 
 <!-- Which transitions the auto-pick may use. Same shape as the filter and palette pickers. -->
 <div id="transpickdlg" class="hidden">
-  <div class="flt-box">
+  <div class="flt-box" role="dialog" aria-labelledby="transpick-title">
     <button type="button" class="pal-close" id="transpick-close" aria-label="Close">×</button>
-    <h2>Transitions in use</h2>
+    <h2 id="transpick-title">Transitions in use</h2>
     <p class="pal-hint">Ticked transitions are the ones a scene change picks from. Each still only turns up where it suits the two scenes — a crossfade between a sparse point cloud and a full-screen shader just reads as a double exposure, so the pick is weighted rather than uniform. Untick everything and scene changes cut straight over.</p>
     <div id="transpick-list"></div>
     <div class="presetrow grid2">
@@ -1768,9 +1873,9 @@
 <!-- Which palettes are in play: the swatch strip shows only these, and the palette cycle
      draws only from them. Same shape as the filter picker. -->
 <div id="palpickdlg" class="hidden">
-  <div class="flt-box">
+  <div class="flt-box" role="dialog" aria-labelledby="palpick-title">
     <button type="button" class="pal-close" id="palpick-close" aria-label="Close">×</button>
-    <h2>Palettes in use</h2>
+    <h2 id="palpick-title">Palettes in use</h2>
     <p class="pal-hint">Ticked palettes show in the strip and are the ones the palette cycle picks from. Untick the ones you never reach for — nothing is deleted, and the palette a scene stores always still loads.</p>
     <div id="palpick-list"></div>
     <div class="presetrow grid2">
@@ -1784,7 +1889,7 @@
 </div>
 
 <div id="paledlg" class="hidden">
-  <div class="pale-box">
+  <div class="pale-box" role="dialog" aria-labelledby="pale-title">
     <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>
     <h2 id="pale-title">Palette editor</h2>
     <!-- The bar IS the editor: the gradient shows the ramp, the handles under it are the
@@ -1819,9 +1924,13 @@
 
 <!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
 <div id="carddlg" class="hidden">
-  <div class="card-box">
-    <h2>Orbit editor</h2>
+  <div class="card-box" role="dialog" aria-labelledby="card-title">
+    <!-- Close button FIRST, then the title — the invariant every dialog here follows. The
+         shared .pal-close/.card-close rule is `float: right`, so it has to precede the h2 to
+         float alongside it; with the h2 first it floated into the line below and only landed
+         near the title by accident of its -30px bottom margin. -->
     <button type="button" class="card-close" id="card-close" aria-label="Close">×</button>
+    <h2 id="card-title">Orbit editor</h2>
     <div class="card-tools">
       <span class="card-seg" role="group" aria-label="Seed path shape">
         <button type="button" class="cardmode" data-mode="cardioid">Cardioid</button>
@@ -1834,7 +1943,11 @@
       <button type="button" class="cardmode" id="cardUndo" title="Undo the last change">Undo</button>
       <button type="button" class="cardmode" id="cardClear" title="Clear the freehand loop">Clear</button>
     </div>
-    <canvas id="cardcv" width="630" height="495"></canvas>
+    <!-- 819x644 = 630x495 + 30%. Freehand loops are drawn straight onto this canvas, so its
+         size IS the drawing precision: a stroke is thinned by a minimum spacing measured in
+         c-units, and a bigger view means more of them per loop. cardEventToC reads the live
+         bounding rect, so a CSS-scaled canvas still maps the pointer correctly. -->
+    <canvas id="cardcv" width="819" height="644"></canvas>
     <p class="card-hint" id="cardHint">Drag on the canvas to draw a loop — it snaps to a smooth closed spline the seed then follows.</p>
     <div class="card-key">
       <span><i style="background:#ff7a1a"></i>base path</span>
@@ -1847,8 +1960,12 @@
 </div>
 
 <div id="restoredlg" class="hidden">
-  <div class="rst-box">
-    <h2>Restore from backup</h2>
+  <div class="rst-box" role="dialog" aria-modal="true" aria-labelledby="rst-title">
+    <!-- Cancel is the considered "no", but this was the only dialog in the app with no ×,
+         and a dialog you can only leave by finding the right button among four reads as a
+         trap. Same .pal-close as everywhere else, wired to the same closeRestore(). -->
+    <button type="button" class="pal-close" id="rst-close" aria-label="Close">×</button>
+    <h2 id="rst-title">Restore from backup</h2>
     <p class="rst-sub" id="rst-sub"></p>
     <div class="rst-grp">What to restore</div>
     <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Scenes <small id="rst-presets-n"></small></span></label>
@@ -1872,9 +1989,9 @@
      generated #zp= / ?z= / #c= link still land. -->
 
 <div id="syncpop" class="hidden">
-  <div class="sync-box">
+  <div class="sync-box" role="dialog" aria-modal="true" aria-labelledby="sync-title">
     <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
-    <h2>🔊 Sync with your music</h2>
+    <h2 id="sync-title">🔊 Sync with your music</h2>
     <p>burnTheWeb can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
     <dl>
       <dt>Capture</dt>
@@ -1916,7 +2033,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.23.3",
+    version: "1.24.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2248,6 +2365,73 @@
     + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<path d="M2 10c2.5 3.7 6 5.5 10 5.5s7.5-1.8 10-5.5"/>'
     + '<path d="M4.5 14 3 16.5"/><path d="M12 15.5v3"/><path d="M19.5 14l1.5 2.5"/></svg>';
+  // "This control is not available right now" — the ONE way to say it. The `.off` class dims
+  // it, and `disabled` is what actually stops it: the class used to be paired with
+  // `pointer-events: none` in the CSS, which blocks the MOUSE ONLY. A dimmed button kept its
+  // tab stop and still fired on Enter, so every handler needed a guard of its own to make the
+  // press a silent no-op, and the layer ✕ (dimmed with no pointer-events rule at all) got as
+  // far as raising a confirm() for a removal that could never happen.
+  // `disabled` also takes the node out of the a11y tree, which is the honest announcement.
+  // Not for #mute: that one is dimmed but deliberately still live.
+  function setOff(node, off) {
+    if (!node) return;
+    node.classList.toggle("off", !!off);
+    node.disabled = !!off;                 // a no-op on <b>/<span>, hence aria-disabled too
+    node.setAttribute("aria-disabled", off ? "true" : "false");
+  }
+  // ---- modal dialog focus -------------------------------------------------------------
+  // For the FOUR dialogs that darken the page behind them: #help, #restoredlg, #galdlg and
+  // #syncpop. They already trap the mouse (a full-screen backdrop that closes on click); this
+  // is the same containment for the keyboard, which they had none of — Tab walked straight out
+  // of an "open" dialog and into the panel behind it, and closing left focus wherever it had
+  // wandered to.
+  //
+  // NOT for the floating tool panels (#carddlg, #paledlg, #paldlg and the three pickers). Those
+  // are deliberately non-modal — you drag a slider and watch the scene change through them — so
+  // they carry role="dialog" for the announcement and nothing else. Trapping focus in the Orbit
+  // editor would break the one thing it exists to let you do.
+  //
+  // `var`, not `let`: these are called from slices that load EARLIER than wherever the dialogs
+  // are wired, the same hoisting the app relies on for `card` and `beatUi`.
+  var dlgTrap = null;
+  function dlgFocusable(box) {
+    return [...box.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),'
+      + 'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+      .filter(n => n.offsetWidth || n.offsetHeight || n === document.activeElement);
+  }
+  function dlgModal(box) {
+    if (!box) return;
+    dlgRelease();                                  // never stack two traps
+    const prev = document.activeElement;
+    const onKey = e => {
+      if (e.key !== "Tab") return;
+      const f = dlgFocusable(box);
+      if (!f.length) { e.preventDefault(); box.focus(); return; }
+      const first = f[0], last = f[f.length - 1];
+      // Wrap at both ends, and pull focus back in if it has escaped (a click on the backdrop
+      // leaves document.activeElement outside the box while the dialog is still open).
+      if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !box.contains(document.activeElement))) {
+        e.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    dlgTrap = { box, prev, onKey };
+    if (!box.hasAttribute("tabindex")) box.setAttribute("tabindex", "-1");
+    const f = dlgFocusable(box);
+    (f[0] || box).focus();
+  }
+  // Pass the box: the close paths are called unconditionally (Escape closes every dialog
+  // whether or not it was open), so releasing a trap that belongs to a DIFFERENT dialog would
+  // yank focus somewhere the user never was.
+  function dlgRelease(box) {
+    if (!dlgTrap || (box && dlgTrap.box !== box)) return;
+    document.removeEventListener("keydown", dlgTrap.onKey, true);
+    const prev = dlgTrap.prev;
+    dlgTrap = null;
+    if (prev && prev.isConnected && typeof prev.focus === "function") prev.focus();
+  }
   // Whichever layer is being drawn right now: renderFxOff is set per layer by the stacked
   // path, mirroring renderFilters; falling back to the selected layer covers the editor and
   // the single-layer render.
@@ -7494,7 +7678,12 @@
     // When paused we still re-present the last GPU frame (WebGL clears the
     // drawing buffer after compositing, so a skipped frame would flash black);
     // the Canvas2D path retains its pixels, so it just freezes.
-    if (paused) { if (useGL && glReady) glRender(); return; }
+    // The Orbit editor is a TOOL, not part of the frozen picture: it draws on its own canvas
+    // and has to answer a click while the scene is paused. cardDrawPaused spends one draw and
+    // only when something actually changed (cardDirty) — without it, switching path mode or
+    // drawing a freehand loop with the canvas paused left the editor showing the old orbit,
+    // which reads as every button in it being broken.
+    if (paused) { if (useGL && glReady) glRender(); cardDrawPaused(); return; }
 
     if (useGL && !glReady) return;    // context lost / not yet restored
 
@@ -10069,8 +10258,8 @@
       el("pale-pos").value = Math.round(paleSel[0] * 100);
     }
     // The two ends are what make the ramp span 0..1, so keep at least PAL_MIN_STOPS.
-    el("pale-del").classList.toggle("off", st.length <= PAL_MIN_STOPS);
-    el("pale-add").classList.toggle("off", st.length >= PAL_MAX_STOPS);
+    setOff(el("pale-del"), st.length <= PAL_MIN_STOPS);
+    setOff(el("pale-add"), st.length >= PAL_MAX_STOPS);
     el("pale-title").textContent = "Palette editor · " + PALETTES[paleIdx].name;
     el("pale-hint").textContent = st.length + " stops · the scene updates as you edit. "
       + "Index 0 always shows the layer's Background, and the darkest few steps are eased "
@@ -11979,6 +12168,10 @@
       rm.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
+        // The SAME guard removeStackItem applies, checked BEFORE the confirm rather than
+        // after it. A scene always keeps one layer, so on a single-layer scene the old order
+        // asked "Remove the Plasma layer?", took your OK, and then silently did nothing.
+        if (stack.length <= 1) return;
         // Removing a layer throws away its effect, sliders, palette and filter chain in
         // one click (and autosaves over the scene) — same guard as the scene Delete.
         const nm = EFFECTS[L.fx] ? EFFECTS[L.fx].name : "this layer";
@@ -12063,14 +12256,14 @@
       r.row.classList.toggle("sel", slot === stackSel);
       r.row.classList.toggle("muted", !!L.mute);
       r.row.classList.toggle("folded", !open);
-      r.grab.classList.toggle("off", stack.length < 2);
+      setOff(r.grab, stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
       r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
       r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");
       r.gn.value = L.gain;
-      r.rm.classList.toggle("off", stack.length <= 1);
+      setOff(r.rm, stack.length <= 1);
       const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
       r.sel.value = bm.id; r.sel.title = bm.tip;
       r.chev.textContent = open ? "▾" : "▸";
@@ -12082,8 +12275,7 @@
       // it is coloured. The block lives here permanently.
       adoptLayerCtl(slot, r.row);
     }
-    const add = el("addlayer");
-    if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
+    setOff(el("addlayer"), stack.length >= STACK_MAX);
     // The old box is empty now — hide the chrome rather than showing a stray heading over
     // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
     // first syncStackUI moves it into a row.
@@ -14817,8 +15009,14 @@
     el("rst-merge").checked = true;
     el("rst-mode").classList.toggle("disabled", !valid.length);
     el("restoredlg").classList.remove("hidden");
+    dlgModal(el("restoredlg").querySelector(".rst-box"));
   }
-  function closeRestore() { el("restoredlg").classList.add("hidden"); pendingRestore = null; }
+  function closeRestore() {
+    const box = el("restoredlg").querySelector(".rst-box");
+    el("restoredlg").classList.add("hidden");
+    pendingRestore = null;
+    dlgRelease(box);
+  }
   function applyRestore() {
     const p = pendingRestore; if (!p) return;
     autosavePreset();                          // fold pending live edits before snapshotting
@@ -14921,6 +15119,7 @@
   }
   el("rst-go").addEventListener("click", applyRestore);
   el("rst-cancel").addEventListener("click", closeRestore);
+  el("rst-close").addEventListener("click", closeRestore);
   el("restoredlg").addEventListener("click", e => { if (e.target === el("restoredlg")) closeRestore(); });   // backdrop
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
@@ -15064,6 +15263,19 @@
     else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
   }
   el("fs").addEventListener("click", toggleFullscreen);
+  // Same treatment the ♪ gets (setAudioUI): a toggle has to SAY which state it is in, and the
+  // glyph alone does not — ⛶ looks identical either way. Driven off `fullscreenchange` rather
+  // than off the click, so it also tracks F11, the Esc that leaves fullscreen, and a request
+  // the browser refuses; the request is async, so reading it back after the click would lie.
+  function syncFsUI() {
+    const on = !!document.fullscreenElement;
+    const b = el("fs"); if (!b) return;
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.setAttribute("aria-label", on ? "Exit fullscreen (F)" : "Enter fullscreen (F)");
+    b.title = on ? "Leave fullscreen (F)" : "Fill the screen (F)";
+  }
+  document.addEventListener("fullscreenchange", syncFsUI);
+  syncFsUI();
   const pausedEl = el("paused");
   function setPaused(p) { paused = p; pausedEl.classList.toggle("hidden", !paused); }
   canvas.addEventListener("click", () => setPaused(!paused));
@@ -15661,7 +15873,9 @@
     const dlg = el("galdlg");
     if (!dlg) return;
     dlg.classList.toggle("hidden", !show);
-    if (!show) return;
+    const box = dlg.querySelector(".gal-box");
+    if (!show) { dlgRelease(box); return; }
+    dlgModal(box);
     const cached = force ? null : galCached();
     if (cached) { galRender(cached); return; }
     el("gal-list").textContent = "";
@@ -15911,6 +16125,24 @@
   // evaluated, and calls cardOpen() — a const would still be in its temporal dead
   // zone and throw (same reason the old range editor's state was a `var`).
   var card = { on: false, cv: null, ctx: null, bg: null, bgPow: 0 };
+  // "The editor needs a repaint." frame() draws it once per rendered frame, but a PAUSED
+  // scene returns from frame() before it gets there — so with the canvas paused, switching
+  // Cardioid/Circle/Freehand, editing, undoing or clearing all changed the state and left the
+  // picture frozen, which reads as the whole editor being dead. Every interaction sets this,
+  // and the paused branch of frame() spends exactly one draw on it. `var` for the same TDZ
+  // reason as `card` itself.
+  var cardDirty = false;
+  function cardTouch() { cardDirty = true; }
+  // The paused-frame entry point. It repeats the render epilogue's install (the editor draws
+  // the SELECTED layer's orbit, and nothing else has installed it on a paused frame) and then
+  // draws once. Cheap: the locus backdrop is cached, so this is the overlay only.
+  function cardDrawPaused() {
+    if (!card || !card.on || !cardDirty) return;
+    installStackItem(stack[stackSel]);
+    installPhase(stack[stackSel]);
+    juliaPower = EFFECTS[stack[stackSel].fx].id === "multibrot" ? mbPower : 2;
+    cardDraw();
+  }
   var cardWanted = false;                      // the user's intent to have the Orbit editor open (see setEffect); var for the same TDZ reason as `card`
   var seedDrawing = null;                     // the in-progress freehand stroke (base-plane pts)
   var seedEdit = false;                        // freehand sub-mode: false = draw, true = drag points
@@ -15922,9 +16154,10 @@
   // Mandelbrot under a Multibrot orbit made the view lie: the seed looked safely
   // outside the set while really sitting deep inside the locus that governs it.
   //
-  // Power drifts continuously, so this is quantised to CARD_POW_Q and rendered at
-  // half resolution into an offscreen canvas (drawImage scales it back up). A full-res
-  // repaint every frame at 120 iterations is far too slow for a debug overlay.
+  // Power drifts continuously, so this is quantised to CARD_POW_Q and cached in an offscreen
+  // canvas. A repaint every frame at 120 iterations is far too slow for an overlay; the
+  // resolution it is cached AT now depends on the power (see cardDraw) — full at d=2, half
+  // where each pixel costs a pow/atan2 and the Power slider re-renders it as it drifts.
   const CARD_POW_Q = CONFIG.tuning.cardPowQ;   // = the Power slider's own step
   const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
   // Auto-frame the c-plane view per power: a cheap low-res scan finds the inside (black)
@@ -15997,12 +16230,23 @@
   }
   function cardDraw() {
     if (!card || !card.on || !card.ctx) return;
+    cardDirty = false;                        // whoever asked for this repaint has had it
     const w = card.cv.width, h = card.cv.height, ctx = card.ctx, aspect = w / h;
     const pq = cardPowQ();
     const win = cardWindow(pq, aspect);       // centre + size the view on the locus for this power
-    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) { card.bg = cardLocus(w >> 1, h >> 1, pq, win); card.bgPow = pq; card.bgAspect = aspect; }
+    // Backdrop resolution is set by what a pixel COSTS, not by one blanket halving. At d=2 the
+    // inner loop is three multiplies (`sq`, the integer-2 fast path), so full resolution is
+    // affordable and the locus edge is actually sharp — which is the whole point of drawing it.
+    // Every other power goes through pow/atan2/cos/sin per iteration, ~10x dearer, AND the
+    // Power slider re-renders on each CARD_POW_Q (0.05) step as it drifts, so a 2→8 sweep is
+    // ~120 repaints: that path stays halved. AnimeJulia and Burning Ship are both d=2.
+    const ss = pq === 2 ? 1 : 2;
+    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) {
+      card.bg = cardLocus(Math.ceil(w / ss), Math.ceil(h / ss), pq, win);
+      card.bgPow = pq; card.bgAspect = aspect;
+    }
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(card.bg, 0, 0, w, h);       // half-res locus, scaled up
+    ctx.drawImage(card.bg, 0, 0, w, h);       // full-res at d=2, half-res (scaled up) otherwise
     const spanX = win.x1 - win.x0, spanY = spanX * (h / w);
     const X = cx => (cx - win.x0) / spanX * w;               // complex → canvas
     const Y = cy => (cy + spanY / 2) / spanY * h;
@@ -16076,12 +16320,13 @@
   // scene/layer switch updates the buttons) and on open; safe before the DOM exists.
   function syncOrbitUI() {
     const ride = el("cardRide"); if (!ride) return;
+    cardTouch();                              // mode / edit / history changed ⇒ repaint even if paused
     ride.checked = seedRideOn;
     document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === seedPathMode));
     const fh = seedPathMode === "freehand";
-    const clr = el("cardClear"); if (clr) clr.classList.toggle("off", !fh);
-    const ed = el("cardEdit"); if (ed) { ed.classList.toggle("off", !fh); ed.classList.toggle("on", fh && seedEdit); }
-    const un = el("cardUndo"); if (un) un.classList.toggle("off", !fh || !seedHistory.length);
+    setOff(el("cardClear"), !fh);
+    const ed = el("cardEdit"); if (ed) { setOff(ed, !fh); ed.classList.toggle("on", fh && seedEdit); }
+    setOff(el("cardUndo"), !fh || !seedHistory.length);
     const cv = el("cardcv"); if (cv) { cv.classList.toggle("draw", fh && !seedEdit); cv.classList.toggle("editpts", fh && seedEdit); }
     const hint = el("cardHint");
     if (hint) {
@@ -16106,6 +16351,7 @@
     card.on = on;
     el("carddlg").classList.toggle("hidden", !on);
     if (!on) { setOrbitPaused(false); return; }   // closing resumes the motion
+    cardTouch();                                  // opening onto a paused scene must still paint
     if (!card.ctx) { card.cv = el("cardcv"); card.ctx = card.cv.getContext("2d"); }
     syncOrbitUI();
     cardDraw();                    // paint immediately; frame() keeps it live after
@@ -16154,7 +16400,7 @@
   const cardSpanX = () => cardWin ? cardWin.x1 - cardWin.x0 : CARD_X1 - CARD_X0;
   // Commit a seed-path edit: mirror the live globals into the selected effect's extras and
   // fold it into the scene, exactly like a slider — the seed-path is per-effect scene data.
-  function commitSeedPath() { captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
+  function commitSeedPath() { cardTouch(); captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
   // Resample a raw stroke to N evenly (arc-length) spaced control points, so the spline snaps
   // to a clean loop regardless of how fast the pointer moved. buildSeedSpline then closes it.
   function resampleClosed(stroke) {
@@ -16212,7 +16458,7 @@
     };
     cv.addEventListener("pointerdown", e => {
       if (seedPathMode !== "freehand") return;
-      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      e.preventDefault(); cv.setPointerCapture(e.pointerId); cardTouch();
       if (seedEdit) {
         const idx = nearestPt(cardEventToC(e));
         if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }
@@ -16222,6 +16468,9 @@
     });
     cv.addEventListener("pointermove", e => {
       const c = cardEventToC(e);
+      // Drawing and dragging are LIVE — the stroke has to follow the pointer while the scene
+      // is paused, which is exactly when you would sit down to draw one carefully.
+      if (seedDragIdx >= 0 || seedDrawing || seedEdit) cardTouch();
       if (seedDragIdx >= 0) {
         // New array (not in-place) so the per-layer spline cache invalidates; capture into
         // the layer each move so the render loop's installSeedPath can't clobber the drag.
@@ -16348,10 +16597,36 @@
   // Hide-all-UI mode: strip every button, the fps counter and the whole menu for a clean
   // capture — from ?hideui in the URL, or the "h" key. Transient (never persisted); the menu's
   // own open/closed state is untouched, so bringing the UI back restores it exactly.
-  const setUiHidden = h => document.body.classList.toggle("ui-hidden", h);
+  // `quiet` suppresses the way-back hint. Hiding the UI removes the panel footer that names
+  // the H key, so an interactive hide has to say how to undo itself or it reads as a crash —
+  // but ?hideui exists for headless screenshots, where anything drawn over the visual is the
+  // bug. Hence: hint on H and on the menu item, silence on the URL.
+  const uiHint = el("uihint");
+  var uiHintTimer = 0;
+  function flashUiHint() {
+    if (!uiHint) return;
+    clearTimeout(uiHintTimer);
+    uiHint.classList.remove("hidden", "fading");
+    // Two stages: hold, then fade, then take it out of the layout entirely so it can never
+    // catch a late screenshot.
+    uiHintTimer = setTimeout(() => {
+      uiHint.classList.add("fading");
+      uiHintTimer = setTimeout(() => uiHint.classList.add("hidden"), 600);
+    }, 2200);
+  }
+  function hideUiHint() {
+    if (!uiHint) return;
+    clearTimeout(uiHintTimer);
+    uiHint.classList.add("hidden");
+    uiHint.classList.remove("fading");
+  }
+  function setUiHidden(h, quiet) {
+    document.body.classList.toggle("ui-hidden", h);
+    if (h && !quiet) flashUiHint(); else hideUiHint();
+  }
   {
     const v = new URLSearchParams(location.search).get("hideui");
-    if (v !== null && !/^(0|false|off|no)$/i.test(v)) setUiHidden(true);
+    if (v !== null && !/^(0|false|off|no)$/i.test(v)) setUiHidden(true, true);
   }
 
   window.addEventListener("keydown", e => {
@@ -16363,7 +16638,11 @@
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); cardWanted = false; cardOpen(false); }
+    // Escape closes EVERY dialog. Keep this list complete — the gallery and the sync nudge
+    // were both missing from it for a release, closable by mouse only, which is the same way
+    // the .pal-close and ui-hidden selector lists have each rotted. tools/uiprobe.js now
+    // asserts that every dialog id turns up here.
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
@@ -16515,18 +16794,34 @@
     ],
   };
   const helpEl = el("help");
+  // The help panel is rebuilt from scratch on every open (four different openers below), so
+  // its wrapper and close button are one string rather than four copies that drift. It is a
+  // MODAL dialog — backdrop, click-outside-closes — hence aria-modal and the focus trap that
+  // showHelp arms. The h2 carries the id aria-labelledby points at; every opener writes one.
+  const HELP_HEAD = '<div class="help-box" role="dialog" aria-modal="true" aria-labelledby="help-title">'
+    + '<button class="help-close" type="button" aria-label="Close">×</button>';
+  // The one place the help panel becomes visible, so the trap can never be armed by three
+  // openers out of four.
+  function showHelp() {
+    helpEl.classList.remove("hidden");
+    dlgModal(helpEl.querySelector(".help-box"));
+  }
   function renderHelp() {
     const e = EFFECTS[effect];
     const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
-    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.help + "</p>";
+    let html = HELP_HEAD;
+    html += '<h2 id="help-title">burnTheWeb — ' + e.name + "</h2><p>" + e.help + "</p>";
     html += '<p class="help-intro">' + HELP.intro + '</p><dl class="help-cols">';
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
     helpEl.innerHTML = html;
   }
-  function openHelp() { renderHelp(); helpEl.classList.remove("hidden"); }
-  function closeHelp() { helpEl.classList.add("hidden"); }
+  function openHelp() { renderHelp(); showHelp(); }
+  function closeHelp() {
+    const box = helpEl.querySelector(".help-box");
+    helpEl.classList.add("hidden");
+    dlgRelease(box);
+  }
   // The per-box ? — reuses the same modal as the panel help, but focused on one slider:
   // its own blurb (a filter param uses the filter's description; an effect control matches
   // its HELP entry, disambiguated by the live effect's tags — "Drift speed" and "Rotation"
@@ -16547,21 +16842,21 @@
   // its own ? (openRangeHelp below), so the per-control dialog stays about the control.
   function openCtlHelp(key) {
     const { owner, body } = ctlHelpBlurb(key);
-    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>" + ctlLabel(key) + "</h2>";
+    let html = HELP_HEAD;
+    html += '<h2 id="help-title">' + ctlLabel(key) + "</h2>";
     if (owner) html += '<p class="help-owner">' + owner + "</p>";
     if (body) html += "<p>" + body + "</p>";
     html += '<p class="help-intro">' + HELP.intro + "</p>";
     html += "</div>";
     helpEl.innerHTML = html;
-    helpEl.classList.remove("hidden");
+    showHelp();
   }
   // The Value range section's own ? (see makeRangeEditor).
   function openRangeHelp() {
     const rb = RANGE_BLURB();
-    helpEl.innerHTML = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>'
-      + "<h2>Value range</h2>" + (rb ? "<p>" + rb + "</p>" : "") + "</div>";
-    helpEl.classList.remove("hidden");
+    helpEl.innerHTML = HELP_HEAD
+      + '<h2 id="help-title">Value range</h2>' + (rb ? "<p>" + rb + "</p>" : "") + "</div>";
+    showHelp();
   }
   el("help-btn").addEventListener("click", openHelp);
   // The Scenes ? — what a saved scene actually stores. It is a COMPLETE snapshot
@@ -16583,8 +16878,8 @@
       "               palette, paletteRev, paletteBg,\n" +
       "               seedPath, seedRide, seedPts,\n" +
       "               ranges, filters, blend, gain, mute }";
-    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>What a scene saves</h2>";
+    let html = HELP_HEAD;
+    html += '<h2 id="help-title">What a scene saves</h2>';
     html += "<p>A saved scene is a <b>complete snapshot of what is on screen</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
     html += '<pre class="help-tree">' + tree + "</pre>";
     html += "<dl>";
@@ -16595,7 +16890,7 @@
     html += '<p class="help-intro">Effects are stored as stable names, not positions, so reordering or removing one never corrupts a saved scene. Deliberately <b>not</b> saved: the render resolution, audio on/off, and the running animation phase — a saved scene is the same <em>configuration</em>, not the same <em>frame</em>. Your cloud profile carries the whole library of them; a share link carries just the one.</p>';
     html += "</div>";
     helpEl.innerHTML = html;
-    helpEl.classList.remove("hidden");
+    showHelp();
   }
   el("preset-help-btn").addEventListener("click", openPresetHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
@@ -16650,10 +16945,21 @@
   function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); } catch (e) {} }
 
   const syncPop = el("syncpop");
-  function hideSyncPopup() { syncPop.classList.add("hidden"); }
+  function hideSyncPopup() {
+    syncPop.classList.add("hidden");
+    dlgRelease(syncPop.querySelector(".sync-box"));
+  }
   function dismissSync() { hideSyncPopup(); track("sync_popup_dismiss"); }
+  // Escape's route in. Guarded on being open, because the key handler fires on every Escape
+  // press whether or not the nudge is up, and an unguarded dismissSync would post a
+  // sync_popup_dismiss event each time — analytics for a popup nobody was shown.
+  function dismissSyncIfOpen() { if (!syncPop.classList.contains("hidden")) dismissSync(); }
   function showSyncPopup() {
     syncPop.classList.remove("hidden");
+    // This one opens on a TIMER, not on a click, so taking focus is a real interruption — but
+    // it is a full-screen modal that has already taken the pointer, and leaving the keyboard
+    // behind the backdrop is worse: you would be tabbing through controls you cannot see.
+    dlgModal(syncPop.querySelector(".sync-box"));
     track("sync_popup_shown", { shows: syncState.shows + 1 });
   }
   function markAudioUsed() {          // a source is live — satisfy the nudge permanently
@@ -16732,11 +17038,16 @@
   }
 
   function menubarClose() {
+    // Where focus is has to be read BEFORE the panels are torn out from under it, or the
+    // node it is on is already detached and document.activeElement has fallen back to <body>.
+    const hadFocus = menubar.contains(document.activeElement);
     menuCloseFrom(0);
     menubar.classList.add("hidden");
     returnAdopted(menubar);        // belt and braces: nothing should be left, but if a panel
     menubar.textContent = "";      // ever escapes menuPath this stops it taking the DOM with it
     el("toggle").setAttribute("aria-expanded", "false");
+    el("toggle").setAttribute("aria-label", "Open the menu");
+    if (hadFocus) el("toggle").focus();     // ...back to the button that opened it
   }
 
   // Build one panel of items and place it. `anchor` is the element it hangs off: the ☰ for
@@ -16809,14 +17120,26 @@
       b.appendChild(c);
       // Open on hover as well as click — the hover is what makes it feel like a menubar,
       // and the click is what makes it work on a touchscreen.
-      const open = () => {
-        if (b.classList.contains("open")) return;
-        [...panel.querySelectorAll(".mb-item.open")].forEach(o => o.classList.remove("open"));
-        b.classList.add("open");
-        menuPanel(typeof it.sub === "function" ? it.sub() : it.sub, b, depth + 1);
+      // `focusFirst` separates the two: a hover must NOT move focus (the pointer is doing the
+      // navigating), while a click or an Enter/▸ press must, or a keyboard user opens a
+      // submenu and is left standing outside it. It is applied whether or not the panel was
+      // already open, so ▸ on an open submenu still steps into it.
+      const open = focusFirst => {
+        if (!b.classList.contains("open")) {
+          [...panel.querySelectorAll(".mb-item.open")].forEach(o => o.classList.remove("open"));
+          b.classList.add("open");
+          menuPanel(typeof it.sub === "function" ? it.sub() : it.sub, b, depth + 1);
+        }
+        if (!focusFirst) return;
+        // A panel built at depth d lives at menuPath[d] — menuPanel closes back to d, then
+        // pushes. The first focusable is a menu item, or the first control of an adopted
+        // block for a leaf like Audio.
+        const p = menuPath[depth + 1];
+        const first = p && p.el.querySelector('.mb-item, button, select, input, [tabindex]:not([tabindex="-1"])');
+        if (first) first.focus();
       };
-      b.addEventListener("mouseenter", open);
-      b.addEventListener("click", e => { e.stopPropagation(); open(); });
+      b.addEventListener("mouseenter", () => open(false));
+      b.addEventListener("click", e => { e.stopPropagation(); open(true); });
     } else {
       // A leaf closes everything deeper on hover, so moving from an open submenu onto a
       // plain sibling collapses it rather than leaving two panels open at once.
@@ -16843,8 +17166,11 @@
         run: () => setPanel(!panel.classList.contains("hidden")) },
       { label: "Fullscreen", title: "Toggle fullscreen (also the F key)",
         check: () => !!document.fullscreenElement, run: () => toggleFullscreen() },
+      // Through setUiHidden, not a bare classList.add: that route also raises the "press H to
+      // bring the UI back" hint, and this menu item is the one place you can strip the chrome
+      // without already knowing the key — the menu is the first thing to disappear.
       { label: "Hide all UI", title: "Strip every button and the menu for a clean capture (also the H key)",
-        run: () => document.body.classList.add("ui-hidden") },
+        run: () => setUiHidden(true) },
       { sep: true },
       // Audio and Resolution are ROOT items. They were under a "System" parent, which bought
       // one more hover to reach the two settings anyone actually opens this menu for, and
@@ -16871,9 +17197,65 @@
     menubar.classList.remove("hidden");
     menubar.textContent = "";
     menuPath = [];
-    menuPanel(menuModel(), el("toggle"), 0);
+    const root = menuPanel(menuModel(), el("toggle"), 0);
     el("toggle").setAttribute("aria-expanded", "true");
+    el("toggle").setAttribute("aria-label", "Close the menu");
+    // Step into the menu. Without this the ☰ is openable from the keyboard but its contents
+    // are not reachable without tabbing past everything behind it.
+    const first = root.querySelector(".mb-item");
+    if (first) first.focus();
   }
+
+  // Arrow-key navigation. The menu declares role="menu" / role="menuitem", so it has to
+  // behave like one — announcing a menu widget that only responds to the mouse is worse than
+  // not announcing it at all. Delegated on #menubar, because the panels are created and
+  // destroyed as you move between levels.
+  //
+  // Items are left in the natural tab order rather than given a roving tabindex: the leaf
+  // panels here are not menu items at all but whole adopted control blocks (the audio
+  // buttons, the resolution select, the cloud sign-in form), and those have to stay tabbable.
+  // Arrow keys are an addition to Tab here, not a replacement for it.
+  menubar.addEventListener("keydown", e => {
+    if (!e.target.closest) return;
+    const item = e.target.closest(".mb-item");
+    if (!item || !menubar.contains(item)) {
+      // Focus is inside an adopted block — the audio buttons, the resolution select, the
+      // cloud form. Those are ordinary controls and the arrow keys belong to THEM: ◂ and ▸
+      // move a select's option and a range's value, so hijacking them here would break the
+      // resolution picker. The one exception is ◂ off a plain button, which is the only way
+      // back up a level; Escape otherwise closes the whole menu and loses your place.
+      if (e.key !== "ArrowLeft") return;
+      if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      const host = e.target.closest(".mb-panel");
+      const hd = menuPath.findIndex(p => p.el === host);
+      if (hd <= 0) return;
+      e.preventDefault();
+      const back = menuPath[hd].owner;
+      menuCloseFrom(hd);
+      if (back) back.focus();
+      return;
+    }
+    const panelEl = item.parentElement;
+    const items = [...panelEl.querySelectorAll(":scope > .mb-item")];
+    const i = items.indexOf(item);
+    const go = j => { const t = items[(j + items.length) % items.length]; if (t) t.focus(); };
+    if (e.key === "ArrowDown") { e.preventDefault(); go(i + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); go(i - 1); }
+    else if (e.key === "Home") { e.preventDefault(); go(0); }
+    else if (e.key === "End") { e.preventDefault(); go(items.length - 1); }
+    else if (e.key === "ArrowRight") {
+      if (!item.classList.contains("mb-sub")) return;
+      e.preventDefault();
+      item.click();                                  // the same open(true) the mouse uses
+    } else if (e.key === "ArrowLeft") {
+      const d = menuPath.findIndex(p => p.el === panelEl);
+      if (d <= 0) return;                            // already at the root: nothing to go back to
+      e.preventDefault();
+      const owner = menuPath[d].owner;
+      menuCloseFrom(d);
+      if (owner) owner.focus();
+    }
+  });
 
   // #menubar is a full-screen overlay that CATCHES clicks while open, so clicking away
   // closes the menu instead of falling through to the canvas and pausing the animation.
