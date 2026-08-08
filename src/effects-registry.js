@@ -48,7 +48,12 @@
     { id: "burningship", name: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
-      bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
+      // `locus: "ship"` — the Orbit editor's backdrop. This effect folds Re·Im to its absolute
+      // value, so the set of seeds that give a connected fractal is the Burning Ship set, not
+      // the Mandelbrot set the other two cardioid effects share. Without this the editor drew
+      // the seed comfortably outside a set it was in fact well inside. It does NOT change the
+      // seed path, which still rides the Mandelbrot main cardioid on purpose (see CLAUDE.md).
+      bakesOwnZoom: true, cardioid: true, locus: "ship", onEnter: () => reseedJulia(),
       draw: dt => { const s = juliaSeed(dt); if (useGL) glShaderDraw("burning", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); else burningShip(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [0.5, 0.5], rpm: [0.2, 0.2], ratio: [8.5, 8.5], inrad: [0.15, 0.15], outrad: [1.4, 1.4], phase: [0, 0], cardx: [0, 0] },
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },

@@ -427,5 +427,111 @@ reset();
      "the fractional margin boost is windowed by 4·f·(1−f) (zero at whole powers)");
 }
 
+// --- 8. THE ORBIT EDITOR'S BACKDROP IS THE LOCUS THAT GOVERNS THIS EFFECT --------
+// The editor exists to show where the seed sits relative to the set that decides whether
+// the fractal comes out connected. Draw the wrong set and it lies confidently: that is
+// already recorded for Multibrot ("the seed looked safely outside the set while really
+// sitting deep inside the locus that governs it"), and Burning Ship had the same bug —
+// it folds Re·Im to |Re·Im|, so its locus is neither the Mandelbrot set nor any Multibrot.
+//
+// Slices by source markers, so keep them: `function locusEsc(` … `function cardLocus(`.
+{
+  const L = new Function(
+    "const CARD_X0 = -2.2, CARD_X1 = 1.0;\n" +
+    "const CONFIG = { tuning: { cardPowQ: 0.05 } };\n" +
+    "let juliaPower = 2;\n" +
+    cut("  function locusEsc(", "  function cardLocus(") +
+    "\nreturn { locusEsc, cardWindow, cardSpanY, cardY0 };")();
+
+  // Reference implementations, written from the SHIPPED shaders rather than from the probe
+  // target — FS_BURNING / burningShip() for the ship, the textbook map for the Mandelbrot.
+  const refMandel = (cx, cy, n) => {
+    let zx = 0, zy = 0, m = 0;
+    for (let i = 0; i < n && m <= 4; i++) { const t = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = t; m = zx * zx + zy * zy; }
+    return m <= 4;
+  };
+  const refShip = (cx, cy, n) => {
+    let zx = 0, zy = 0, zx2 = 0, zy2 = 0;
+    for (let i = 0; i < n && zx2 + zy2 <= 4; i++) {
+      zy = 2 * Math.abs(zx * zy) + cy;
+      zx = zx2 - zy2 + cx;
+      zx2 = zx * zx; zy2 = zy * zy;
+    }
+    return zx2 + zy2 <= 4;
+  };
+
+  // 8a. each family matches its reference over a grid, and the two genuinely differ
+  let bad = 0, badShip = 0, differ = 0, cells = 0;
+  for (let iy = 0; iy < 60; iy++) for (let ix = 0; ix < 60; ix++) {
+    const cx = -2.4 + (ix / 60) * 4.8, cy = -2.0 + (iy / 60) * 4.0;
+    const m = L.locusEsc(cx, cy, 2, false, 120).inside, s = L.locusEsc(cx, cy, 2, true, 120).inside;
+    if (m !== refMandel(cx, cy, 120)) bad++;
+    if (s !== refShip(cx, cy, 120)) badShip++;
+    if (m !== s) differ++;
+    cells++;
+  }
+  ok(bad === 0, "locusEsc(ship=false) is the Mandelbrot set", bad + " mismatches");
+  ok(badShip === 0, "locusEsc(ship=true) is the shader's Burning Ship recurrence", badShip + " mismatches");
+  ok(differ > cells * 0.02, "...and the two sets really are different", differ + "/" + cells + " cells differ");
+
+  // 8b. THE REPORTED BUG: on the shipped seed path, the two disagree — so drawing the
+  // Mandelbrot under a Burning Ship orbit puts the seed on the wrong side of the boundary.
+  const cardRim = th => {
+    const zx = 0.5 * Math.cos(th), zy = 0.5 * Math.sin(th);
+    return [zx - (zx * zx - zy * zy), zy - 2 * zx * zy];
+  };
+  let mism = 0, insideShip = 0;
+  for (let k = 0; k < 72; k++) {
+    const p = cardRim((k / 72) * Math.PI * 2);
+    const cx = p[0] * 1.4, cy = p[1] * 1.4;                 // outrad 1.4 = Burning Ship's shipped default
+    const m = L.locusEsc(cx, cy, 2, false, 200).inside, s = L.locusEsc(cx, cy, 2, true, 200).inside;
+    if (m !== s) mism++;
+    if (s) insideShip++;
+  }
+  ok(mism > 0, "on the shipped seed path the two sets disagree — the old backdrop misplaced the seed",
+     mism + " of 72 points");
+  ok(insideShip > 0, "...and the seed really does enter the Burning Ship locus", insideShip + " of 72");
+
+  // 8c. framing. The Multibrot path must be untouched: yc is 0 for a y-symmetric locus, so
+  // the window is exactly what it always was.
+  const wm = L.cardWindow(2, 819 / 644, false);
+  ok(wm.yc === 0, "a y-symmetric locus frames on the real axis, as before", String(wm.yc));
+  const ws = L.cardWindow(2, 819 / 644, true);
+  ok(ws.ship === true, "the window is cached per family");
+  ok(ws.yc < -0.1, "the Burning Ship locus is NOT y-symmetric, so the view centres off-axis",
+     "yc " + ws.yc.toFixed(3));
+  // The shift is worth having: an off-axis centre of ~16% of the view height is the
+  // difference between the ship sitting in the frame and sitting half out of the bottom.
+  const spanYs = L.cardSpanY(ws, 819, 644);
+  ok(Math.abs(ws.yc) > spanYs * 0.1, "...by a visible fraction of the view height",
+     (100 * Math.abs(ws.yc) / spanYs).toFixed(1) + "% of " + spanYs.toFixed(2));
+  // Horizontally the two agree, and that is correct, not a bug: the 1.45 floor that keeps the
+  // seed path in frame dominates the half-width for both loci at the scan's resolution. Pinned
+  // so that a change to the floor has to be a deliberate one.
+  ok(Math.abs(ws.x0 - wm.x0) < 1e-9 && Math.abs(ws.x1 - wm.x1) < 1e-9,
+     "the width is set by the seed-path floor, so it is the same for both",
+     "[" + wm.x0.toFixed(3) + "," + wm.x1.toFixed(3) + "]");
+
+  // 8d. the y mapping is derived in ONE place — cardLocus, the overlay and the pointer
+  // inverse all go through cardY0, so a view centred off-axis cannot shift the seed dot
+  // away from the set it is drawn over.
+  const win = ws, w = 819, h = 644;
+  const y0 = L.cardY0(win, w, h), spanY = L.cardSpanY(win, w, h);
+  ok(Math.abs((y0 + spanY / 2) - win.yc) < 1e-12, "cardY0 centres the view on the locus", String(y0));
+  const roundTrip = cy => y0 + (((cy - y0) / spanY * h) / h) * spanY;   // Y() then its inverse
+  ok(Math.abs(roundTrip(-0.7) - (-0.7)) < 1e-12, "the y mapping round-trips");
+  ok(/cardY0\(win, w, h\)/.test(src) && !/spanY \/ 2\]/.test(src),
+     "no site still hard-codes a y-centred view");
+
+  // 8e. the descriptor is what selects the family, and only Burning Ship claims it
+  // The declaration form (trailing comma), not the prose — this string is quoted in two
+  // explanatory comments as well.
+  const shipDecl = (src.match(/locus: "ship",/g) || []).length;
+  ok(shipDecl === 1, "exactly one effect declares locus: \"ship\"", String(shipDecl));
+  ok(/id: "burningship"[\s\S]{0,900}?locus: "ship"/.test(src), "...and it is Burning Ship");
+  ok(/card\.bgShip !== ship/.test(src),
+     "the cached backdrop is keyed on the family (both effects are d=2)");
+}
+
 console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");
 process.exit(fail ? 1 : 0);

@@ -88,6 +88,12 @@ package manager, test framework or runtime dependency. Keep `README.md` in sync.
   **integrates** `dφ = ratio·dθ/ease(θ)`.
 - **Burning Ship rides the "wrong" cardioid deliberately — do not "fix" it.** Shipped `outrad`
   **[1.4, 1.9]** compensates; washed out ⇒ check that slider first.
+  - **That rule is about the seed PATH, and nothing else.** It is *not* a licence to draw the
+    Mandelbrot set behind it, which is a separate decision and was simply wrong: Burning Ship's
+    connectedness locus is its own set (`locus: "ship"` on the descriptor). On the shipped path
+    at `outrad` 1.4, **17 of 72 sampled seeds fall inside one set and outside the other** — the
+    editor drew the seed comfortably clear of a set it was well inside. Same failure the
+    Multibrot backdrop already fixed.
 - `tools/juliaprobe.js` locks this down.
 
 ### Bouncing solids (the one 3D shader effect)
@@ -449,8 +455,21 @@ not the animated value. `refreshBlocked` runs from `refreshControlVisibility` **
 bottom-right, `z-index: 5` — **never add a backdrop or click-outside-closes**. Hides on `m`/`Esc`.
 - Samples **`juliaSeedAt(outer, inner)`** so opening never advances the animation; `frame()` redraws
   while open.
-- Backdrop **`cardLocus(w, h, d)`**: Mandelbrot at power 2, degree-d Multibrot otherwise. Quantised
-  to `CARD_POW_Q`. **Resolution is set by what a pixel COSTS**: full res on the integer-2 fast path
+- Backdrop **`cardLocus(w, h, d, win, ship)`**: Mandelbrot at power 2, degree-d Multibrot
+  otherwise — **or the Burning Ship set**, which is a THIRD family, not a power of the first.
+  **`locusEsc` is the single escape test** shared by the render and the framing scan; two copies
+  is how the window ends up framing a different set from the one it draws. The family comes from
+  the selected layer's descriptor (`locus: "ship"`) via `locusShip()`, and **`card.bgShip` is part
+  of the backdrop cache key** — AnimeJulia and Burning Ship are both `d=2`, so without it
+  selecting one keeps showing the other's set.
+- **The view centres on the locus in BOTH axes** (`cardWin.yc`). It tracked x only, on the
+  grounds that the locus is symmetric about the real axis — true of every Multibrot, false of
+  Burning Ship (y ∈ [−1.53, +0.45]). `yc` **snaps to 0 below 1e-9** and the half-height is
+  measured about `yc`, so the Multibrot framing is bit-identical to before (verified: the
+  AnimeJulia backdrop hashes the same either side of the change). **`cardY0`/`cardSpanY` are the
+  only place the y mapping is written** — `cardLocus`, the overlay's `Y()` and `cardEventToC`
+  each used to spell out `-spanY / 2` and would silently re-assume a y-centred view.
+  Quantised to `CARD_POW_Q`. **Resolution is set by what a pixel COSTS**: full res on the integer-2 fast path
   (`sq`, three multiplies — AnimeJulia and Burning Ship both live here), **half res everywhere
   else**, where each iteration is a `pow`/`atan2`/`cos`/`sin` *and* the Power slider re-renders the
   cache every `CARD_POW_Q` (0.05) step as it drifts — a 2→8 sweep is ~120 repaints.
@@ -1302,7 +1321,11 @@ All slice real source out of the built file by **markers — keep them**.
 - **`juliaprobe.js`** — rim point matches the cardioid formula; the seed sits exactly `juliaInnerR`
   off it; the inner phase advances at `ratio ×` the outer, `ratio` epicycles per lap; `juliaOffX`
   shifts only the real axis; each of the three descriptors advances the orbit **once** per frame.
-  Markers: `const RPM` … `function julia(`.
+  Also the **Orbit editor's backdrop**: `locusEsc` reproduces the Mandelbrot map and the shipped
+  Burning Ship recurrence (checked against references written from `FS_BURNING`), the two sets
+  genuinely differ, they disagree on the shipped seed path, `yc` is exactly 0 for a y-symmetric
+  locus and off-axis for the ship, and only one effect declares `locus: "ship"`.
+  Markers: `const RPM` … `function julia(`; `function locusEsc(` … `function cardLocus(`.
 - **`solidsprobe.js`** — containment (6000 steps, a 9.5s frame, every slider extreme), quaternion
   normality, `Shape mix` never naming a primitive the shader lacks, `Count` clamped to the shader
   array size, per-layer ownership, determinism, per-axis spread. **Two tolerance traps**: assert
