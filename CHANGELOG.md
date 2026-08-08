@@ -14,6 +14,45 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.25.0] — 2026-08-08
+
+### Added
+
+- **Every slider with a trigger armed detects its own beats now.** Open a slider's box, arm an
+  **L/M/H** chip, and a **Tuning** section appears at the foot of it with that slider's own
+  **Sensitivity**, **Floor** and **Refractory**. So a kick can hammer one parameter while a
+  slower, choosier trigger swells another off the same band — which was not previously
+  possible, because every armed slider shared one set of thresholds.
+- **Rows follow the global settings until you move one.** Each row shows the inherited value
+  marked **global**; moving it makes it that slider's own and the mark clears. It is per
+  setting, so giving a slider its own Refractory leaves its Sensitivity following the global.
+  The **↺** on the Tuning heading hands the whole section back.
+
+### Changed
+
+- **Beat tuning is now called Global beat tuning**, because it is no longer the only beat
+  tuning there is — it is the set of defaults every un-tuned slider follows.
+
+### Fixed
+
+- **A slider's Refractory only affects that slider.** It used to write into the scene-wide
+  value, so tuning the gap between beats for one slider silently retuned every other armed
+  slider in the scene — the one control that looked most obviously local was the least.
+- Chips light on the beats their own slider actually reacted to, rather than on every beat in
+  the band, so a slider you have deliberately made choosy no longer flashes as though it had
+  fired.
+
+Scenes saved before this load exactly as they did, with every slider following the global
+settings; nothing about an existing scene, share link or backup changes.
+
+### Internal
+
+- `beatprobe` gains 14 assertions driving the real detector on a fake clock, headed by the
+  property everything rests on: with nothing overridden, a slider's beats are the scene-wide
+  beats tick for tick. Eight reintroduced bugs were each confirmed to turn it red.
+- `presetprobe` now also checks that every field a scene *saves* is one it *reads back* — the
+  silent direction, where the data is stored and quietly discarded on every scene switch.
+
 ## [1.24.1] — 2026-08-08
 
 ### Fixed
