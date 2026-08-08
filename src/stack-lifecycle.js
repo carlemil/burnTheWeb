@@ -392,6 +392,10 @@
       rm.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
+        // The SAME guard removeStackItem applies, checked BEFORE the confirm rather than
+        // after it. A scene always keeps one layer, so on a single-layer scene the old order
+        // asked "Remove the Plasma layer?", took your OK, and then silently did nothing.
+        if (stack.length <= 1) return;
         // Removing a layer throws away its effect, sliders, palette and filter chain in
         // one click (and autosaves over the scene) — same guard as the scene Delete.
         const nm = EFFECTS[L.fx] ? EFFECTS[L.fx].name : "this layer";
@@ -476,14 +480,14 @@
       r.row.classList.toggle("sel", slot === stackSel);
       r.row.classList.toggle("muted", !!L.mute);
       r.row.classList.toggle("folded", !open);
-      r.grab.classList.toggle("off", stack.length < 2);
+      setOff(r.grab, stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
       r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
       r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");
       r.gn.value = L.gain;
-      r.rm.classList.toggle("off", stack.length <= 1);
+      setOff(r.rm, stack.length <= 1);
       const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
       r.sel.value = bm.id; r.sel.title = bm.tip;
       r.chev.textContent = open ? "▾" : "▸";
@@ -495,8 +499,7 @@
       // it is coloured. The block lives here permanently.
       adoptLayerCtl(slot, r.row);
     }
-    const add = el("addlayer");
-    if (add) add.classList.toggle("off", stack.length >= STACK_MAX);
+    setOff(el("addlayer"), stack.length >= STACK_MAX);
     // The old box is empty now — hide the chrome rather than showing a stray heading over
     // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
     // first syncStackUI moves it into a row.

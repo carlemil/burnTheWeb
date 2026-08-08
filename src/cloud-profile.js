@@ -586,7 +586,9 @@
     const dlg = el("galdlg");
     if (!dlg) return;
     dlg.classList.toggle("hidden", !show);
-    if (!show) return;
+    const box = dlg.querySelector(".gal-box");
+    if (!show) { dlgRelease(box); return; }
+    dlgModal(box);
     const cached = force ? null : galCached();
     if (cached) { galRender(cached); return; }
     el("gal-list").textContent = "";

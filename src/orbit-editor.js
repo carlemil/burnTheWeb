@@ -183,9 +183,9 @@
     ride.checked = seedRideOn;
     document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === seedPathMode));
     const fh = seedPathMode === "freehand";
-    const clr = el("cardClear"); if (clr) clr.classList.toggle("off", !fh);
-    const ed = el("cardEdit"); if (ed) { ed.classList.toggle("off", !fh); ed.classList.toggle("on", fh && seedEdit); }
-    const un = el("cardUndo"); if (un) un.classList.toggle("off", !fh || !seedHistory.length);
+    setOff(el("cardClear"), !fh);
+    const ed = el("cardEdit"); if (ed) { setOff(ed, !fh); ed.classList.toggle("on", fh && seedEdit); }
+    setOff(el("cardUndo"), !fh || !seedHistory.length);
     const cv = el("cardcv"); if (cv) { cv.classList.toggle("draw", fh && !seedEdit); cv.classList.toggle("editpts", fh && seedEdit); }
     const hint = el("cardHint");
     if (hint) {

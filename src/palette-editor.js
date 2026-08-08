@@ -81,8 +81,8 @@
       el("pale-pos").value = Math.round(paleSel[0] * 100);
     }
     // The two ends are what make the ramp span 0..1, so keep at least PAL_MIN_STOPS.
-    el("pale-del").classList.toggle("off", st.length <= PAL_MIN_STOPS);
-    el("pale-add").classList.toggle("off", st.length >= PAL_MAX_STOPS);
+    setOff(el("pale-del"), st.length <= PAL_MIN_STOPS);
+    setOff(el("pale-add"), st.length >= PAL_MAX_STOPS);
     el("pale-title").textContent = "Palette editor · " + PALETTES[paleIdx].name;
     el("pale-hint").textContent = st.length + " stops · the scene updates as you edit. "
       + "Index 0 always shows the layer's Background, and the darkest few steps are eased "

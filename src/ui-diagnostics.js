@@ -13,10 +13,36 @@
   // Hide-all-UI mode: strip every button, the fps counter and the whole menu for a clean
   // capture — from ?hideui in the URL, or the "h" key. Transient (never persisted); the menu's
   // own open/closed state is untouched, so bringing the UI back restores it exactly.
-  const setUiHidden = h => document.body.classList.toggle("ui-hidden", h);
+  // `quiet` suppresses the way-back hint. Hiding the UI removes the panel footer that names
+  // the H key, so an interactive hide has to say how to undo itself or it reads as a crash —
+  // but ?hideui exists for headless screenshots, where anything drawn over the visual is the
+  // bug. Hence: hint on H and on the menu item, silence on the URL.
+  const uiHint = el("uihint");
+  var uiHintTimer = 0;
+  function flashUiHint() {
+    if (!uiHint) return;
+    clearTimeout(uiHintTimer);
+    uiHint.classList.remove("hidden", "fading");
+    // Two stages: hold, then fade, then take it out of the layout entirely so it can never
+    // catch a late screenshot.
+    uiHintTimer = setTimeout(() => {
+      uiHint.classList.add("fading");
+      uiHintTimer = setTimeout(() => uiHint.classList.add("hidden"), 600);
+    }, 2200);
+  }
+  function hideUiHint() {
+    if (!uiHint) return;
+    clearTimeout(uiHintTimer);
+    uiHint.classList.add("hidden");
+    uiHint.classList.remove("fading");
+  }
+  function setUiHidden(h, quiet) {
+    document.body.classList.toggle("ui-hidden", h);
+    if (h && !quiet) flashUiHint(); else hideUiHint();
+  }
   {
     const v = new URLSearchParams(location.search).get("hideui");
-    if (v !== null && !/^(0|false|off|no)$/i.test(v)) setUiHidden(true);
+    if (v !== null && !/^(0|false|off|no)$/i.test(v)) setUiHidden(true, true);
   }
 
   window.addEventListener("keydown", e => {
@@ -28,6 +54,10 @@
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); cardWanted = false; cardOpen(false); }
+    // Escape closes EVERY dialog. Keep this list complete — the gallery and the sync nudge
+    // were both missing from it for a release, closable by mouse only, which is the same way
+    // the .pal-close and ui-hidden selector lists have each rotted. tools/uiprobe.js now
+    // asserts that every dialog id turns up here.
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); cardWanted = false; cardOpen(false); }
   });
 

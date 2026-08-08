@@ -204,6 +204,73 @@
     + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<path d="M2 10c2.5 3.7 6 5.5 10 5.5s7.5-1.8 10-5.5"/>'
     + '<path d="M4.5 14 3 16.5"/><path d="M12 15.5v3"/><path d="M19.5 14l1.5 2.5"/></svg>';
+  // "This control is not available right now" — the ONE way to say it. The `.off` class dims
+  // it, and `disabled` is what actually stops it: the class used to be paired with
+  // `pointer-events: none` in the CSS, which blocks the MOUSE ONLY. A dimmed button kept its
+  // tab stop and still fired on Enter, so every handler needed a guard of its own to make the
+  // press a silent no-op, and the layer ✕ (dimmed with no pointer-events rule at all) got as
+  // far as raising a confirm() for a removal that could never happen.
+  // `disabled` also takes the node out of the a11y tree, which is the honest announcement.
+  // Not for #mute: that one is dimmed but deliberately still live.
+  function setOff(node, off) {
+    if (!node) return;
+    node.classList.toggle("off", !!off);
+    node.disabled = !!off;                 // a no-op on <b>/<span>, hence aria-disabled too
+    node.setAttribute("aria-disabled", off ? "true" : "false");
+  }
+  // ---- modal dialog focus -------------------------------------------------------------
+  // For the FOUR dialogs that darken the page behind them: #help, #restoredlg, #galdlg and
+  // #syncpop. They already trap the mouse (a full-screen backdrop that closes on click); this
+  // is the same containment for the keyboard, which they had none of — Tab walked straight out
+  // of an "open" dialog and into the panel behind it, and closing left focus wherever it had
+  // wandered to.
+  //
+  // NOT for the floating tool panels (#carddlg, #paledlg, #paldlg and the three pickers). Those
+  // are deliberately non-modal — you drag a slider and watch the scene change through them — so
+  // they carry role="dialog" for the announcement and nothing else. Trapping focus in the Orbit
+  // editor would break the one thing it exists to let you do.
+  //
+  // `var`, not `let`: these are called from slices that load EARLIER than wherever the dialogs
+  // are wired, the same hoisting the app relies on for `card` and `beatUi`.
+  var dlgTrap = null;
+  function dlgFocusable(box) {
+    return [...box.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),'
+      + 'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+      .filter(n => n.offsetWidth || n.offsetHeight || n === document.activeElement);
+  }
+  function dlgModal(box) {
+    if (!box) return;
+    dlgRelease();                                  // never stack two traps
+    const prev = document.activeElement;
+    const onKey = e => {
+      if (e.key !== "Tab") return;
+      const f = dlgFocusable(box);
+      if (!f.length) { e.preventDefault(); box.focus(); return; }
+      const first = f[0], last = f[f.length - 1];
+      // Wrap at both ends, and pull focus back in if it has escaped (a click on the backdrop
+      // leaves document.activeElement outside the box while the dialog is still open).
+      if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !box.contains(document.activeElement))) {
+        e.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    dlgTrap = { box, prev, onKey };
+    if (!box.hasAttribute("tabindex")) box.setAttribute("tabindex", "-1");
+    const f = dlgFocusable(box);
+    (f[0] || box).focus();
+  }
+  // Pass the box: the close paths are called unconditionally (Escape closes every dialog
+  // whether or not it was open), so releasing a trap that belongs to a DIFFERENT dialog would
+  // yank focus somewhere the user never was.
+  function dlgRelease(box) {
+    if (!dlgTrap || (box && dlgTrap.box !== box)) return;
+    document.removeEventListener("keydown", dlgTrap.onKey, true);
+    const prev = dlgTrap.prev;
+    dlgTrap = null;
+    if (prev && prev.isConnected && typeof prev.focus === "function") prev.focus();
+  }
   // Whichever layer is being drawn right now: renderFxOff is set per layer by the stacked
   // path, mirroring renderFilters; falling back to the selected layer covers the editor and
   // the single-layer render.

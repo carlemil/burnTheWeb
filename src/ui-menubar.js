@@ -50,11 +50,16 @@
   }
 
   function menubarClose() {
+    // Where focus is has to be read BEFORE the panels are torn out from under it, or the
+    // node it is on is already detached and document.activeElement has fallen back to <body>.
+    const hadFocus = menubar.contains(document.activeElement);
     menuCloseFrom(0);
     menubar.classList.add("hidden");
     returnAdopted(menubar);        // belt and braces: nothing should be left, but if a panel
     menubar.textContent = "";      // ever escapes menuPath this stops it taking the DOM with it
     el("toggle").setAttribute("aria-expanded", "false");
+    el("toggle").setAttribute("aria-label", "Open the menu");
+    if (hadFocus) el("toggle").focus();     // ...back to the button that opened it
   }
 
   // Build one panel of items and place it. `anchor` is the element it hangs off: the ☰ for
@@ -127,14 +132,26 @@
       b.appendChild(c);
       // Open on hover as well as click — the hover is what makes it feel like a menubar,
       // and the click is what makes it work on a touchscreen.
-      const open = () => {
-        if (b.classList.contains("open")) return;
-        [...panel.querySelectorAll(".mb-item.open")].forEach(o => o.classList.remove("open"));
-        b.classList.add("open");
-        menuPanel(typeof it.sub === "function" ? it.sub() : it.sub, b, depth + 1);
+      // `focusFirst` separates the two: a hover must NOT move focus (the pointer is doing the
+      // navigating), while a click or an Enter/▸ press must, or a keyboard user opens a
+      // submenu and is left standing outside it. It is applied whether or not the panel was
+      // already open, so ▸ on an open submenu still steps into it.
+      const open = focusFirst => {
+        if (!b.classList.contains("open")) {
+          [...panel.querySelectorAll(".mb-item.open")].forEach(o => o.classList.remove("open"));
+          b.classList.add("open");
+          menuPanel(typeof it.sub === "function" ? it.sub() : it.sub, b, depth + 1);
+        }
+        if (!focusFirst) return;
+        // A panel built at depth d lives at menuPath[d] — menuPanel closes back to d, then
+        // pushes. The first focusable is a menu item, or the first control of an adopted
+        // block for a leaf like Audio.
+        const p = menuPath[depth + 1];
+        const first = p && p.el.querySelector('.mb-item, button, select, input, [tabindex]:not([tabindex="-1"])');
+        if (first) first.focus();
       };
-      b.addEventListener("mouseenter", open);
-      b.addEventListener("click", e => { e.stopPropagation(); open(); });
+      b.addEventListener("mouseenter", () => open(false));
+      b.addEventListener("click", e => { e.stopPropagation(); open(true); });
     } else {
       // A leaf closes everything deeper on hover, so moving from an open submenu onto a
       // plain sibling collapses it rather than leaving two panels open at once.
@@ -161,8 +178,11 @@
         run: () => setPanel(!panel.classList.contains("hidden")) },
       { label: "Fullscreen", title: "Toggle fullscreen (also the F key)",
         check: () => !!document.fullscreenElement, run: () => toggleFullscreen() },
+      // Through setUiHidden, not a bare classList.add: that route also raises the "press H to
+      // bring the UI back" hint, and this menu item is the one place you can strip the chrome
+      // without already knowing the key — the menu is the first thing to disappear.
       { label: "Hide all UI", title: "Strip every button and the menu for a clean capture (also the H key)",
-        run: () => document.body.classList.add("ui-hidden") },
+        run: () => setUiHidden(true) },
       { sep: true },
       // Audio and Resolution are ROOT items. They were under a "System" parent, which bought
       // one more hover to reach the two settings anyone actually opens this menu for, and
@@ -189,9 +209,65 @@
     menubar.classList.remove("hidden");
     menubar.textContent = "";
     menuPath = [];
-    menuPanel(menuModel(), el("toggle"), 0);
+    const root = menuPanel(menuModel(), el("toggle"), 0);
     el("toggle").setAttribute("aria-expanded", "true");
+    el("toggle").setAttribute("aria-label", "Close the menu");
+    // Step into the menu. Without this the ☰ is openable from the keyboard but its contents
+    // are not reachable without tabbing past everything behind it.
+    const first = root.querySelector(".mb-item");
+    if (first) first.focus();
   }
+
+  // Arrow-key navigation. The menu declares role="menu" / role="menuitem", so it has to
+  // behave like one — announcing a menu widget that only responds to the mouse is worse than
+  // not announcing it at all. Delegated on #menubar, because the panels are created and
+  // destroyed as you move between levels.
+  //
+  // Items are left in the natural tab order rather than given a roving tabindex: the leaf
+  // panels here are not menu items at all but whole adopted control blocks (the audio
+  // buttons, the resolution select, the cloud sign-in form), and those have to stay tabbable.
+  // Arrow keys are an addition to Tab here, not a replacement for it.
+  menubar.addEventListener("keydown", e => {
+    if (!e.target.closest) return;
+    const item = e.target.closest(".mb-item");
+    if (!item || !menubar.contains(item)) {
+      // Focus is inside an adopted block — the audio buttons, the resolution select, the
+      // cloud form. Those are ordinary controls and the arrow keys belong to THEM: ◂ and ▸
+      // move a select's option and a range's value, so hijacking them here would break the
+      // resolution picker. The one exception is ◂ off a plain button, which is the only way
+      // back up a level; Escape otherwise closes the whole menu and loses your place.
+      if (e.key !== "ArrowLeft") return;
+      if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      const host = e.target.closest(".mb-panel");
+      const hd = menuPath.findIndex(p => p.el === host);
+      if (hd <= 0) return;
+      e.preventDefault();
+      const back = menuPath[hd].owner;
+      menuCloseFrom(hd);
+      if (back) back.focus();
+      return;
+    }
+    const panelEl = item.parentElement;
+    const items = [...panelEl.querySelectorAll(":scope > .mb-item")];
+    const i = items.indexOf(item);
+    const go = j => { const t = items[(j + items.length) % items.length]; if (t) t.focus(); };
+    if (e.key === "ArrowDown") { e.preventDefault(); go(i + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); go(i - 1); }
+    else if (e.key === "Home") { e.preventDefault(); go(0); }
+    else if (e.key === "End") { e.preventDefault(); go(items.length - 1); }
+    else if (e.key === "ArrowRight") {
+      if (!item.classList.contains("mb-sub")) return;
+      e.preventDefault();
+      item.click();                                  // the same open(true) the mouse uses
+    } else if (e.key === "ArrowLeft") {
+      const d = menuPath.findIndex(p => p.el === panelEl);
+      if (d <= 0) return;                            // already at the root: nothing to go back to
+      e.preventDefault();
+      const owner = menuPath[d].owner;
+      menuCloseFrom(d);
+      if (owner) owner.focus();
+    }
+  });
 
   // #menubar is a full-screen overlay that CATCHES clicks while open, so clicking away
   // closes the menu instead of falling through to the canvas and pausing the animation.

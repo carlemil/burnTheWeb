@@ -262,7 +262,7 @@
   /* keyboard focus rings (a11y) */
   #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute, #uihint { transition: none !important; } }
   #frames {
     position: fixed;
     top: 14px;
@@ -282,14 +282,19 @@
   }
   #frames.hidden { display: none; }
   /* Hide-all-UI mode (?hideui in the URL, or the "h" key): drop every bit of chrome for a
-     clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge. */
+     clean capture — buttons, fps counter, the menu and its pop-outs, the sync nudge.
+     EVERY dialog belongs here. #galdlg used to have its own copy of this rule 130 lines
+     further down and #help and #restoredlg had none at all, so "hide all UI" left the help
+     panel and the restore dialog sitting on the capture. One list, so there is one place to
+     add the tenth dialog; tools/uiprobe.js asserts none is missing. */
   body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
   body.ui-hidden #scenebanner,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
   body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg,
-  body.ui-hidden #transpickdlg { display: none !important; }
+  body.ui-hidden #transpickdlg, body.ui-hidden #galdlg,
+  body.ui-hidden #help, body.ui-hidden #restoredlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -298,6 +303,21 @@
     backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
   }
   #paused.hidden { display: none; }
+  /* The way back out of "Hide all UI". Same frame as #paused but parked at the bottom, so if
+     you pause while hidden the two do not sit on top of each other. It fades rather than
+     vanishing, and is NOT in the body.ui-hidden list above — it is the one thing that has to
+     survive that class, which is why it times itself out instead. */
+  #uihint {
+    position: fixed; z-index: 15; left: 50%; bottom: 48px; transform: translateX(-50%);
+    padding: 9px 16px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 10px; color: #ffdcb0; font: 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em; user-select: none; pointer-events: none;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    opacity: 1; transition: opacity .5s;
+  }
+  #uihint b { color: #ffcf87; font-weight: 600; }
+  #uihint.fading { opacity: 0; }
+  #uihint.hidden { display: none; }
   .hint { margin-top: 12px; opacity: .5; font-size: 10.5px; }
   /* Version / release-notes line at the foot of the panel. Quieter than the key hints
      above it (it is reference, not instruction) and brightens on hover like a link should. */
@@ -417,7 +437,8 @@
      one — same specificity, and it needs the opposite margin (space below, not above). */
   #galdlg .gal-help { margin: 0 0 16px; line-height: 1.5; opacity: .75; }
   #galdlg .gal-help b { color: #ffcf87; font-weight: 600; }
-  body.ui-hidden #galdlg { display: none !important; }
+  /* body.ui-hidden #galdlg lived here, apart from the list every other dialog is in. It is
+     folded into that list now — see the hide-all-UI block up by #frames. */
   #panel .presetrow, #menubar .presetrow { display: flex; gap: 6px; margin-top: 6px; }
   #panel .presetrow .audbtn, #menubar .presetrow .audbtn { flex: 1; text-align: center; }
   /* 2x2 button array (Backup/Restore over Share/Short link) instead of one 1x4 row */
@@ -870,7 +891,12 @@
   #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
   #panel .lyr b.lyr-eye > svg { display: block; }
   #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
-  #panel .lyr b.off { opacity: .3; cursor: default; }
+  /* The row's ✕ and grab handle are <b>, not <button>, so the `disabled` property setOff()
+     writes does nothing here and pointer-events has to do the blocking. It is exactly what
+     was missing: a dimmed ✕ stayed clickable and confirmed a layer removal that the
+     one-layer floor then refused. :hover is suppressed too, or a dead control still lights
+     up under the cursor. */
+  #panel .lyr b.off { opacity: .3; cursor: default; pointer-events: none; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
   #panel .lyr input[type=range] { width: 38px; margin: 0; }
   /* Blend row: label · dropdown (grows) · ▲/▼ steppers. */
@@ -879,7 +905,9 @@
   #panel .lyr-blend select { flex: 1 1 auto; min-width: 0; }
   #panel .lyr-arrow { font-size: 8px; line-height: 1; padding: 3px 4px; }
   #panel #addlayer { margin: 0 0 6px; }
-  #panel #addlayer.off { opacity: .4; pointer-events: none; }
+  /* No pointer-events: none — setOff() sets the real `disabled`, which blocks the keyboard
+     as well and drops the tab stop. Same for .cardmode.off and #paledlg .audbtn.off. */
+  #panel #addlayer.off { opacity: .4; cursor: default; }
   /* One column. Two columns fitted the checkboxes but not their names, and once each
      filter grew a foldable body there was nowhere sensible for it to open into. */
   #panel .lyrblock [data-k="filterlist"] { margin: 2px 0 4px; }
@@ -1151,16 +1179,21 @@
     background: rgba(14, 8, 5, 0.92); border: 1px solid rgba(255, 140, 40, 0.4);
     border-radius: 6px; color: #ffb15a; font: 16px/1 monospace; cursor: pointer;
   }
-  /* The titles. Same treatment in every dialog. */
-  /* The BOX gives up its top padding and the sticky header carries it. Without that there is
-     a padding-height gap above the header that scrolling content passes through in full view
-     — the header sticks to the scrollport's top edge, not to the padding edge. */
-  #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
-  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
-  #help .help-box, #syncpop, #carddlg, #restoredlg .rst-box { padding-top: 0; }
+  /* The titles. Same treatment in every dialog.
+     The BOX gives up its top padding and the sticky header carries it — that waiver is the
+     LAST rule in this file, because half the dialogs declare a `padding` shorthand further
+     down and a shorthand reinstates the top. See "DIALOG TOP PADDING" at the foot.
+
+     NAME THE ELEMENT THE <h2> IS ACTUALLY A CHILD OF. Every dialog wraps its content in an
+     inner box, so the h2 is a GRANDCHILD of the id — `#syncpop > h2` and `#carddlg > h2`
+     matched nothing at all for several releases, and those two titles scrolled away under
+     the content while their × stayed put. The scrolling element differs between the two:
+     #carddlg is itself the scroller (its .card-box is a deliberately static wrapper), while
+     #syncpop is a full-screen flex backdrop whose .sync-box scrolls. */
   #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #help .help-box > h2, #syncpop > h2, #carddlg > h2, #restoredlg .rst-box > h2 {
+  #help .help-box > h2, #syncpop .sync-box > h2, #carddlg .card-box > h2,
+  #restoredlg .rst-box > h2 {
     position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;
     /* Near-opaque AND backdrop-blurred: at 0.97 alone the line of text passing underneath
        still ghosted through legibly. The blur matches the box's own, so the header reads as
@@ -1251,7 +1284,7 @@
   #paledlg .pale-actions .audbtn { flex: 1 1 auto; }
   #paledlg #pale-save { border-color: rgba(255, 140, 40, 0.75); background: rgba(255, 122, 26, 0.28); }
   #paledlg .pal-hint { margin: 10px 0 0; opacity: .6; font-size: 10.5px; }
-  #paledlg .audbtn.off { opacity: .35; pointer-events: none; }
+  #paledlg .audbtn.off { opacity: .35; cursor: default; }
   /* The + on a swatch. The swatch is itself a <button>, and a button cannot nest one, so the
      two are siblings in a wrapper and the + is positioned over the swatch's right edge. */
   .palsw-wrap { position: relative; display: block; }
@@ -1352,7 +1385,8 @@
   }
   #carddlg .cardmode:hover { background: rgba(255, 122, 26, 0.22); }
   #carddlg .cardmode.on { background: #ff7a1a; color: #1a0f08; }
-  #carddlg .cardmode.off { opacity: .35; pointer-events: none; }
+  #carddlg .cardmode.off { opacity: .35; cursor: default; }
+  #carddlg .cardmode.off:hover { background: rgba(0, 0, 0, 0.3); }
   #carddlg .card-ride { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 11px; }
   #carddlg .card-ride input { accent-color: #ff7a1a; cursor: pointer; }
   #carddlg canvas.draw { cursor: crosshair; touch-action: none; }
@@ -1394,3 +1428,54 @@
   #restoredlg .rst-actions #rst-go { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
   /* The preset-picker styles went with the "Share presets…" dialog. #restoredlg keeps the
      .rst-* rules above, which it no longer shares with anything. */
+
+  /* ---- DIALOG TOP PADDING — KEEP THIS LAST ------------------------------------------
+     Every dialog is a scrolling box, and every dialog's title carries the top padding
+     instead of the box (the h2's own `padding: 18px 0 9px`, up in the sticky-header
+     block). The box must therefore have NO padding-top of its own: the header sticks to
+     the SCROLLPORT's top edge, not to the padding edge, so any padding left on the box is
+     a band at the top of the dialog that scrolling content slides through in full view.
+
+     This has to be the last rule in the file. It used to sit with the sticky-header block
+     ~200 lines up, where it was overridden on four of the five sticky dialogs (#help,
+     #syncpop, #carddlg, #restoredlg) by a plain `padding:` shorthand declared later —
+     equal specificity, later wins, and a shorthand always reinstates the top. The palette
+     editor got the opposite half of the same bug: its padding survived AND its title kept
+     the header padding, so it sat 36px down while the otherwise identical palette
+     inspector sat 18px. Moving it here settles all ten from one place.
+
+     Adding a dialog? Add it here too. tools/uiprobe.js fails if a dialog box is missing,
+     and fails if any dialog's `padding` shorthand is declared below this rule. */
+  #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
+  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
+  #help .help-box, #syncpop .sync-box, #carddlg, #restoredlg .rst-box { padding-top: 0; }
+
+  /* ---- NARROW VIEWPORTS — KEEP THIS LAST TOO ----------------------------------------
+     Five dialogs dock top-left at the #breakout column's 298px line, and the column itself
+     starts there. That is the right place whenever there is room for it and nowhere near it
+     when there is not: 298px of margin plus a 430px box needs ~742px of window, so below
+     that the pickers, the palette editor and the palette inspector were laid out off the
+     right-hand edge — on a phone their content came out about 78px wide.
+
+     760px, not the 1160px #help uses further up. The two breakpoints answer different
+     questions and are deliberately different numbers: #help is a multi-column reading box
+     that wants to stop sitting beside the pop-out column while there is still plenty of
+     window, whereas these dock at a fixed 298px and only break when that dock cannot fit.
+     Undocking them at 1160px would slide them over a panel with 600px of clear space beside
+     it. */
+  @media (max-width: 760px) {
+    /* Undock: same 14px gutter as the panel, centred in what is left. */
+    #fltdlg, #palpickdlg, #transpickdlg { justify-content: center; }
+    #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
+    #paledlg .pale-box, #paldlg .pal-box {
+      margin: 58px 14px 14px; width: min(92vw, 430px); max-width: calc(100vw - 28px);
+    }
+    /* The pop-out column has nowhere to be beside a panel that already fills the width, so
+       it becomes a bottom sheet: boxes lie in a row and scroll sideways, the panel stays
+       readable above them. Without this a popped-out slider was simply off-screen. */
+    #breakout {
+      top: auto; left: 14px; right: 14px; bottom: 14px; width: auto;
+      flex-direction: row; max-height: 46vh; overflow-x: auto;
+    }
+    #breakout .ctl { flex: 0 0 auto; width: 244px; }
+  }

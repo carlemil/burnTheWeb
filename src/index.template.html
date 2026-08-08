@@ -310,11 +310,20 @@
 <div id="scenebanner" class="hidden" aria-live="polite"></div>
 <div id="frames">0</div>
 <div id="paused" class="hidden">⏸ paused · click to resume</div>
+<!-- The only thing on screen after "Hide all UI" — which otherwise strips the very hint line
+     that names the key to get back. It fades itself out after a couple of seconds so the
+     clean capture stays clean, is pointer-events:none, and is deliberately NOT shown on the
+     ?hideui startup path: that one exists for headless screenshots, which must render nothing
+     but the visual. Aria-live so it is announced rather than only seen. -->
+<div id="uihint" class="hidden" aria-live="polite">Press <b>H</b> to bring the UI back</div>
 <div id="help" class="hidden"></div>
 
 <!-- Palette inspector: the selected palette's full 0–255 ramp as a 16×16 grid of colour cells -->
 <div id="paldlg" class="hidden">
-  <div class="pal-box">
+  <!-- role="dialog" WITHOUT aria-modal, and nothing steals focus when it opens: this is one of
+       the floating tool panels you read while the scene keeps running behind it, not a modal.
+       The four with a backdrop (#galdlg, #restoredlg, #syncpop, #help) are the modal ones. -->
+  <div class="pal-box" role="dialog" aria-labelledby="pal-title">
     <button type="button" class="pal-close" id="pal-close" aria-label="Close">×</button>
     <h2 id="pal-title">Palette</h2>
     <div id="pal-grid"></div>
@@ -327,9 +336,9 @@
      ask merge-vs-replace a second time, having already been asked here. (That dialog is
      still live for `#zp=` links and Load from cloud, where the answer isn't in the click.) -->
 <div id="galdlg" class="hidden">
-  <div class="gal-box">
+  <div class="gal-box" role="dialog" aria-modal="true" aria-labelledby="gal-title">
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
-    <h2>Public scenes</h2>
+    <h2 id="gal-title">Public scenes</h2>
     <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
@@ -347,7 +356,7 @@
      non-modal like the palette editor — you tick a filter and watch it land. Serves BOTH
      lists (per-layer and whole-scene); openFilterPicker(key) sets which. -->
 <div id="fltdlg" class="hidden">
-  <div class="flt-box">
+  <div class="flt-box" role="dialog" aria-labelledby="flt-title">
     <button type="button" class="pal-close" id="flt-close" aria-label="Close">×</button>
     <h2 id="flt-title">Filters</h2>
     <p class="pal-hint" id="flt-hint"></p>
@@ -357,9 +366,9 @@
 
 <!-- Which transitions the auto-pick may use. Same shape as the filter and palette pickers. -->
 <div id="transpickdlg" class="hidden">
-  <div class="flt-box">
+  <div class="flt-box" role="dialog" aria-labelledby="transpick-title">
     <button type="button" class="pal-close" id="transpick-close" aria-label="Close">×</button>
-    <h2>Transitions in use</h2>
+    <h2 id="transpick-title">Transitions in use</h2>
     <p class="pal-hint">Ticked transitions are the ones a scene change picks from. Each still only turns up where it suits the two scenes — a crossfade between a sparse point cloud and a full-screen shader just reads as a double exposure, so the pick is weighted rather than uniform. Untick everything and scene changes cut straight over.</p>
     <div id="transpick-list"></div>
     <div class="presetrow grid2">
@@ -372,9 +381,9 @@
 <!-- Which palettes are in play: the swatch strip shows only these, and the palette cycle
      draws only from them. Same shape as the filter picker. -->
 <div id="palpickdlg" class="hidden">
-  <div class="flt-box">
+  <div class="flt-box" role="dialog" aria-labelledby="palpick-title">
     <button type="button" class="pal-close" id="palpick-close" aria-label="Close">×</button>
-    <h2>Palettes in use</h2>
+    <h2 id="palpick-title">Palettes in use</h2>
     <p class="pal-hint">Ticked palettes show in the strip and are the ones the palette cycle picks from. Untick the ones you never reach for — nothing is deleted, and the palette a scene stores always still loads.</p>
     <div id="palpick-list"></div>
     <div class="presetrow grid2">
@@ -388,7 +397,7 @@
 </div>
 
 <div id="paledlg" class="hidden">
-  <div class="pale-box">
+  <div class="pale-box" role="dialog" aria-labelledby="pale-title">
     <button type="button" class="pal-close" id="pale-close" aria-label="Close">×</button>
     <h2 id="pale-title">Palette editor</h2>
     <!-- The bar IS the editor: the gradient shows the ramp, the handles under it are the
@@ -423,9 +432,13 @@
 
 <!-- Cardioid debug: the Mandelbrot set with this effect's seed orbit drawn over it -->
 <div id="carddlg" class="hidden">
-  <div class="card-box">
-    <h2>Orbit editor</h2>
+  <div class="card-box" role="dialog" aria-labelledby="card-title">
+    <!-- Close button FIRST, then the title — the invariant every dialog here follows. The
+         shared .pal-close/.card-close rule is `float: right`, so it has to precede the h2 to
+         float alongside it; with the h2 first it floated into the line below and only landed
+         near the title by accident of its -30px bottom margin. -->
     <button type="button" class="card-close" id="card-close" aria-label="Close">×</button>
+    <h2 id="card-title">Orbit editor</h2>
     <div class="card-tools">
       <span class="card-seg" role="group" aria-label="Seed path shape">
         <button type="button" class="cardmode" data-mode="cardioid">Cardioid</button>
@@ -451,8 +464,12 @@
 </div>
 
 <div id="restoredlg" class="hidden">
-  <div class="rst-box">
-    <h2>Restore from backup</h2>
+  <div class="rst-box" role="dialog" aria-modal="true" aria-labelledby="rst-title">
+    <!-- Cancel is the considered "no", but this was the only dialog in the app with no ×,
+         and a dialog you can only leave by finding the right button among four reads as a
+         trap. Same .pal-close as everywhere else, wired to the same closeRestore(). -->
+    <button type="button" class="pal-close" id="rst-close" aria-label="Close">×</button>
+    <h2 id="rst-title">Restore from backup</h2>
     <p class="rst-sub" id="rst-sub"></p>
     <div class="rst-grp">What to restore</div>
     <label class="rst-opt" id="rst-opt-presets"><input type="checkbox" id="rst-presets" checked><span>Scenes <small id="rst-presets-n"></small></span></label>
@@ -476,9 +493,9 @@
      generated #zp= / ?z= / #c= link still land. -->
 
 <div id="syncpop" class="hidden">
-  <div class="sync-box">
+  <div class="sync-box" role="dialog" aria-modal="true" aria-labelledby="sync-title">
     <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
-    <h2>🔊 Sync with your music</h2>
+    <h2 id="sync-title">🔊 Sync with your music</h2>
     <p>burnTheWeb can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
     <dl>
       <dt>Capture</dt>

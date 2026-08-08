@@ -101,6 +101,10 @@ cp dev-index.html index.html
 
 Run the probes before committing — a release is the wrong moment to ship a red one:
 
+**Every** probe in `tools/`, not a hand-kept subset — this list had drifted five behind the
+directory, so `palprobe`, `shareprobe`, `cloudprobe` and `singleprobe` could all have gone red
+without a deploy noticing:
+
 ```
 node tools/build.js --check
 node tools/filterprobe.js dev-index.html
@@ -109,6 +113,17 @@ node tools/juliaprobe.js dev-index.html
 node tools/presetprobe.js dev-index.html
 node tools/beatprobe.js dev-index.html
 node tools/solidsprobe.js dev-index.html
+node tools/palprobe.js dev-index.html
+node tools/singleprobe.js dev-index.html
+node tools/uiprobe.js dev-index.html
+node tools/shareprobe.js dev-index.html
+node tools/cloudprobe.js dev-index.html
+```
+
+Or in one go, so a new probe is picked up automatically:
+
+```
+for f in tools/*probe.js; do node "$f" dev-index.html >/dev/null || echo "RED: $f"; done
 ```
 
 If any probe fails, **stop and report it** rather than deploying.

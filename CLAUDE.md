@@ -486,7 +486,12 @@ audio buttons, resolution select, `#cloudrow` and credits list are **deleted fro
 `box.dataset.adopt` names home.
 
 **Every dialog's title + close button are STICKY.** First two children = the `.pal-close`-family
-button and an `<h2>`.
+button and an `<h2>` — **in that order**, because the button is `float: right` and only floats
+alongside a title that follows it. **Every dialog appears in FOUR separate lists**, and each has
+been missed at least once; `tools/uiprobe.js` now asserts all four from one table:
+the Escape branch (`ui-diagnostics.js`), the `body.ui-hidden` selector (ONE list — a stray
+second copy for `#galdlg` is what hid the problem), the sticky-header selectors, and the
+`padding-top` waiver.
 - **The panel-tool dialogs dock TOP-LEFT beside the panel** (margin 58px/298px, the `#breakout`
   column line): the three pickers (`#fltdlg`, `#palpickdlg`, `#transpickdlg`), the Palette editor
   (`#paledlg`), the Palette inspector (`#paldlg`). Reading/flow dialogs (Help, Gallery, Restore)
@@ -495,8 +500,39 @@ button and an `<h2>`.
 - Button is `position: sticky` + `float: right`, **not `absolute`**. **The box gives up its
   `padding-top`; the header carries it.** Header background bleeds over side padding via
   `box-shadow: 0 -30px 0 30px` (18–26px per dialog) plus a `backdrop-filter`.
+- **Name the element the `<h2>` is really a child of.** Every dialog wraps its body in an inner
+  box, so the h2 is a GRANDCHILD of the id: `#carddlg .card-box > h2`, never `#carddlg > h2`.
+  Those two selectors matched nothing for several releases and both titles scrolled away.
+- **The `padding-top: 0` waiver is the LAST rule in `styles.css` and must stay there** — half the
+  dialogs declare a `padding` shorthand further down, equal specificity, and a shorthand always
+  reinstates the top. It was defeated on four of the five sticky dialogs.
+- **`role="dialog"` on the BOX, and `aria-modal` only on the four with a backdrop** (`#help`,
+  `#restoredlg`, `#galdlg`, `#syncpop`). Those four call **`dlgModal`/`dlgRelease`** (in
+  `boot-globals.js`, `var` state) for focus-in / trap / focus-restore. **The floating tool panels
+  must NEVER trap focus** — `#carddlg`, `#paledlg`, `#paldlg` and the pickers exist to be used
+  *while* the scene runs. `dlgRelease(box)` is box-scoped, because Escape closes every dialog
+  unconditionally and an unscoped release yanks focus out of a different one.
 - **A probe that opens a dialog by un-hiding it proves nothing** — content is built on open. Click
   the real opener (`#transpick-open`, `#pal-detail-btn`).
+
+**Narrow viewports — two breakpoints, deliberately different numbers.** `1160px` centres `#help`
+(a wide multi-column reading box that should stop sitting beside the pop-out column while there is
+still room). **`760px`** undocks the five 298px-docked dialogs and turns `#breakout` into a bottom
+sheet — 298 + a 430px box needs ~742px, and undocking at 1160 would slide them over a panel with
+600px of clear space beside it. They are in a flex row, so a docked box does not overflow: it gets
+**squeezed** (~180px), which is why the probe asserts WIDTH, not just position.
+
+**`setOff(node, off)`** (`boot-globals.js`) is the one way to switch a control off: `.off` class +
+the real `disabled` + `aria-disabled`. **`pointer-events: none` blocks the mouse only** — a dimmed
+button kept its tab stop and fired on Enter, and the layer ✕ got as far as raising a `confirm()`
+for a removal the one-layer floor then refused. The `<b>` row controls (`.lyr b.off`) still need
+`pointer-events: none`, since `disabled` does nothing on a `<b>`. `#mute` is the one deliberate
+exception: dimmed but live.
+
+**`#uihint`** is the way back out of "Hide all UI" — the only element NOT in the `body.ui-hidden`
+list, since hiding the chrome also hides the footer line naming the `H` key. It times itself out
+instead (2.2s + fade), and **`setUiHidden(h, quiet)` passes `quiet` on the `?hideui` path**, which
+exists for headless screenshots that must render nothing but the visual.
 
 **Shared widget CSS is keyed on the CLASS, never scoped to a container** (bitten three times).
 `.pal-close, .card-close, .help-close, .sync-close` and `.audbtn` are single unscoped rules; a
@@ -1274,6 +1310,15 @@ All slice real source out of the built file by **markers — keep them**.
   shifts references (and the fallback itself) around the deleted index. Markers:
   `let palGone = new Set();` … `function palGoneOk(`; `function palRemapOne(` …
   `function palRemapDeleted(`.
+- **`uiprobe.js`** — the DIALOG INVARIANTS, from **one table of dialogs** checked against every
+  list each one has to appear in: the Escape branch, the single `body.ui-hidden` selector, the
+  sticky-header selectors (and that each names the box the `<h2>` is really a child of, not the
+  id), the `padding-top` waiver (and that **no dialog's `padding` shorthand is declared below
+  it**), `role="dialog"` with `aria-modal` on exactly the four backdrop dialogs, and close-button-
+  before-`<h2>`. Also pins `setOff` as the only way a control is disabled and the one-layer floor
+  being checked BEFORE the ✕'s `confirm`. Reads the built markup/CSS/JS as text rather than
+  slicing functions — these are all *lists*, and every one of them rotted by omission.
+  Adding a dialog and forgetting a list fails here.
 - **`shareprobe.js`** — the share codec round trip.
 - **`cloudprobe.js`** — the cloud path structurally shares `serializeBlob` + the codec with `#zp=`
   bundles; an empty `CONFIG.cloud.apiKey` makes zero network requests at startup.

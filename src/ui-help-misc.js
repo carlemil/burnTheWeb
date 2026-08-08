@@ -147,18 +147,34 @@
     ],
   };
   const helpEl = el("help");
+  // The help panel is rebuilt from scratch on every open (four different openers below), so
+  // its wrapper and close button are one string rather than four copies that drift. It is a
+  // MODAL dialog — backdrop, click-outside-closes — hence aria-modal and the focus trap that
+  // showHelp arms. The h2 carries the id aria-labelledby points at; every opener writes one.
+  const HELP_HEAD = '<div class="help-box" role="dialog" aria-modal="true" aria-labelledby="help-title">'
+    + '<button class="help-close" type="button" aria-label="Close">×</button>';
+  // The one place the help panel becomes visible, so the trap can never be armed by three
+  // openers out of four.
+  function showHelp() {
+    helpEl.classList.remove("hidden");
+    dlgModal(helpEl.querySelector(".help-box"));
+  }
   function renderHelp() {
     const e = EFFECTS[effect];
     const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
-    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>burnTheWeb — " + e.name + "</h2><p>" + e.help + "</p>";
+    let html = HELP_HEAD;
+    html += '<h2 id="help-title">burnTheWeb — ' + e.name + "</h2><p>" + e.help + "</p>";
     html += '<p class="help-intro">' + HELP.intro + '</p><dl class="help-cols">';
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
     helpEl.innerHTML = html;
   }
-  function openHelp() { renderHelp(); helpEl.classList.remove("hidden"); }
-  function closeHelp() { helpEl.classList.add("hidden"); }
+  function openHelp() { renderHelp(); showHelp(); }
+  function closeHelp() {
+    const box = helpEl.querySelector(".help-box");
+    helpEl.classList.add("hidden");
+    dlgRelease(box);
+  }
   // The per-box ? — reuses the same modal as the panel help, but focused on one slider:
   // its own blurb (a filter param uses the filter's description; an effect control matches
   // its HELP entry, disambiguated by the live effect's tags — "Drift speed" and "Rotation"
@@ -179,21 +195,21 @@
   // its own ? (openRangeHelp below), so the per-control dialog stays about the control.
   function openCtlHelp(key) {
     const { owner, body } = ctlHelpBlurb(key);
-    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>" + ctlLabel(key) + "</h2>";
+    let html = HELP_HEAD;
+    html += '<h2 id="help-title">' + ctlLabel(key) + "</h2>";
     if (owner) html += '<p class="help-owner">' + owner + "</p>";
     if (body) html += "<p>" + body + "</p>";
     html += '<p class="help-intro">' + HELP.intro + "</p>";
     html += "</div>";
     helpEl.innerHTML = html;
-    helpEl.classList.remove("hidden");
+    showHelp();
   }
   // The Value range section's own ? (see makeRangeEditor).
   function openRangeHelp() {
     const rb = RANGE_BLURB();
-    helpEl.innerHTML = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>'
-      + "<h2>Value range</h2>" + (rb ? "<p>" + rb + "</p>" : "") + "</div>";
-    helpEl.classList.remove("hidden");
+    helpEl.innerHTML = HELP_HEAD
+      + '<h2 id="help-title">Value range</h2>' + (rb ? "<p>" + rb + "</p>" : "") + "</div>";
+    showHelp();
   }
   el("help-btn").addEventListener("click", openHelp);
   // The Scenes ? — what a saved scene actually stores. It is a COMPLETE snapshot
@@ -215,8 +231,8 @@
       "               palette, paletteRev, paletteBg,\n" +
       "               seedPath, seedRide, seedPts,\n" +
       "               ranges, filters, blend, gain, mute }";
-    let html = '<div class="help-box"><button class="help-close" type="button" aria-label="Close">×</button>';
-    html += "<h2>What a scene saves</h2>";
+    let html = HELP_HEAD;
+    html += '<h2 id="help-title">What a scene saves</h2>';
     html += "<p>A saved scene is a <b>complete snapshot of what is on screen</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
     html += '<pre class="help-tree">' + tree + "</pre>";
     html += "<dl>";
@@ -227,7 +243,7 @@
     html += '<p class="help-intro">Effects are stored as stable names, not positions, so reordering or removing one never corrupts a saved scene. Deliberately <b>not</b> saved: the render resolution, audio on/off, and the running animation phase — a saved scene is the same <em>configuration</em>, not the same <em>frame</em>. Your cloud profile carries the whole library of them; a share link carries just the one.</p>';
     html += "</div>";
     helpEl.innerHTML = html;
-    helpEl.classList.remove("hidden");
+    showHelp();
   }
   el("preset-help-btn").addEventListener("click", openPresetHelp);
   helpEl.addEventListener("click", e => { if (e.target === helpEl || e.target.classList.contains("help-close")) closeHelp(); });
@@ -282,10 +298,21 @@
   function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); } catch (e) {} }
 
   const syncPop = el("syncpop");
-  function hideSyncPopup() { syncPop.classList.add("hidden"); }
+  function hideSyncPopup() {
+    syncPop.classList.add("hidden");
+    dlgRelease(syncPop.querySelector(".sync-box"));
+  }
   function dismissSync() { hideSyncPopup(); track("sync_popup_dismiss"); }
+  // Escape's route in. Guarded on being open, because the key handler fires on every Escape
+  // press whether or not the nudge is up, and an unguarded dismissSync would post a
+  // sync_popup_dismiss event each time — analytics for a popup nobody was shown.
+  function dismissSyncIfOpen() { if (!syncPop.classList.contains("hidden")) dismissSync(); }
   function showSyncPopup() {
     syncPop.classList.remove("hidden");
+    // This one opens on a TIMER, not on a click, so taking focus is a real interruption — but
+    // it is a full-screen modal that has already taken the pointer, and leaving the keyboard
+    // behind the backdrop is worse: you would be tabbing through controls you cannot see.
+    dlgModal(syncPop.querySelector(".sync-box"));
     track("sync_popup_shown", { shows: syncState.shows + 1 });
   }
   function markAudioUsed() {          // a source is live — satisfy the nudge permanently

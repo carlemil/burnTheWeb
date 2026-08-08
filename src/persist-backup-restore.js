@@ -214,8 +214,14 @@
     el("rst-merge").checked = true;
     el("rst-mode").classList.toggle("disabled", !valid.length);
     el("restoredlg").classList.remove("hidden");
+    dlgModal(el("restoredlg").querySelector(".rst-box"));
   }
-  function closeRestore() { el("restoredlg").classList.add("hidden"); pendingRestore = null; }
+  function closeRestore() {
+    const box = el("restoredlg").querySelector(".rst-box");
+    el("restoredlg").classList.add("hidden");
+    pendingRestore = null;
+    dlgRelease(box);
+  }
   function applyRestore() {
     const p = pendingRestore; if (!p) return;
     autosavePreset();                          // fold pending live edits before snapshotting
@@ -318,6 +324,7 @@
   }
   el("rst-go").addEventListener("click", applyRestore);
   el("rst-cancel").addEventListener("click", closeRestore);
+  el("rst-close").addEventListener("click", closeRestore);
   el("restoredlg").addEventListener("click", e => { if (e.target === el("restoredlg")) closeRestore(); });   // backdrop
   // Merge/Replace only matters when Presets is being restored — dim it otherwise.
   el("rst-presets").addEventListener("change", () => el("rst-mode").classList.toggle("disabled", !el("rst-presets").checked));
@@ -461,6 +468,19 @@
     else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
   }
   el("fs").addEventListener("click", toggleFullscreen);
+  // Same treatment the ♪ gets (setAudioUI): a toggle has to SAY which state it is in, and the
+  // glyph alone does not — ⛶ looks identical either way. Driven off `fullscreenchange` rather
+  // than off the click, so it also tracks F11, the Esc that leaves fullscreen, and a request
+  // the browser refuses; the request is async, so reading it back after the click would lie.
+  function syncFsUI() {
+    const on = !!document.fullscreenElement;
+    const b = el("fs"); if (!b) return;
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.setAttribute("aria-label", on ? "Exit fullscreen (F)" : "Enter fullscreen (F)");
+    b.title = on ? "Leave fullscreen (F)" : "Fill the screen (F)";
+  }
+  document.addEventListener("fullscreenchange", syncFsUI);
+  syncFsUI();
   const pausedEl = el("paused");
   function setPaused(p) { paused = p; pausedEl.classList.toggle("hidden", !paused); }
   canvas.addEventListener("click", () => setPaused(!paused));
