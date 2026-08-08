@@ -14,6 +14,31 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.24.1] — 2026-08-08
+
+### Fixed
+
+- **The Orbit editor now draws the Burning Ship's own set behind the seed.** Burning Ship
+  folds each step to its absolute value, so the seeds that give a connected, intricate
+  fractal are a different set from the Mandelbrot one the editor was showing — it reaches
+  further right, and unlike every Julia/Multibrot locus it is not symmetric about the
+  horizontal axis. Over the seed path this effect actually ships with, roughly a quarter of
+  the loop sat on the wrong side of the boundary the picture drew, so the editor showed the
+  seed sailing clear of the set at exactly the moments it was deepest inside it — which is
+  what makes the fractal go solid. The view is also centred on the set in both directions
+  now, so the ship sits in the frame instead of low in it. **AnimeJulia and Multibrot are
+  unchanged**, down to the pixel.
+- The seed's **path** is untouched: it still traces the Mandelbrot cardioid, which is
+  deliberate and is what **Outer radius** (shipped high, 1.4–1.9, for this effect) is tuned
+  around. Only the set drawn underneath it was wrong.
+
+### Internal
+
+- `tools/juliaprobe.js` gains 16 assertions covering the editor backdrop: the escape test is
+  checked against references written from the shipped shaders, the two loci are shown to
+  differ and to disagree along the seed path, and the framing is pinned to be exactly
+  unchanged for symmetric loci.
+
 ## [1.24.0] — 2026-08-08
 
 ### Added
