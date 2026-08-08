@@ -1207,10 +1207,15 @@
      matched nothing at all for several releases, and those two titles scrolled away under
      the content while their × stayed put. The scrolling element differs between the two:
      #carddlg is itself the scroller (its .card-box is a deliberately static wrapper), while
-     #syncpop is a full-screen flex backdrop whose .sync-box scrolls. */
+     #syncpop is a full-screen flex backdrop whose .sync-box scrolls.
+
+     WHICH DIALOGS BELONG HERE is decided by the BOX, not by taste: only the near-opaque ones
+     with no backdrop-filter of their own can carry a painted header. Everything translucent
+     opts out below — see that rule for why. #syncpop qualifies (rgba .97, no filter);
+     #carddlg does NOT (rgba .8 with its own blur). */
   #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #help .help-box > h2, #syncpop .sync-box > h2, #carddlg .card-box > h2,
+  #help .help-box > h2, #syncpop .sync-box > h2,
   #restoredlg .rst-box > h2 {
     position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;
     /* Near-opaque AND backdrop-blurred: at 0.97 alone the line of text passing underneath
@@ -1225,15 +1230,21 @@
   }
   /* The × sticks level with the title, allowing for the padding the header now carries. */
   .pal-close, .card-close, .help-close, .sync-close { top: 18px; }
-  /* The picker and palette-editor titles are NOT sticky and paint NOTHING. Any header
-     background on these translucent boxes reads as a black bar: even a low-alpha tint
+  /* The picker, palette-editor and ORBIT EDITOR titles are NOT sticky and paint NOTHING. Any
+     header background on these translucent boxes reads as a black bar: even a low-alpha tint
      ADDS to the box's own rgba(.8), and the backdrop-blur route is worse — a
      backdrop-filter nested inside the box's backdrop-filter samples an ISOLATED backdrop
      root on real GPUs and composites toward black regardless of alpha (headless
      screenshots lied about this one). These boxes are small, so the title simply scrolls
-     with the content; the × stays sticky for closing. */
+     with the content; the × stays sticky for closing.
+
+     #carddlg was moved here after being added to the sticky list above: it is rgba(10,6,4,.8)
+     with its own blur(6px), so it is precisely the case this rule describes — and the headless
+     screenshot taken to check the change showed a clean header, exactly as warned. THE ONLY
+     RELIABLE CHECK FOR THIS ONE IS A REAL BROWSER. tools/uiprobe.js pins which list each
+     dialog is in, but it cannot see the compositing. */
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #paledlg .pale-box > h2, #paldlg .pal-box > h2 {
+  #paledlg .pale-box > h2, #paldlg .pal-box > h2, #carddlg .card-box > h2 {
     position: static; background: transparent;
     backdrop-filter: none; -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -1932,7 +1943,11 @@
       <button type="button" class="cardmode" id="cardUndo" title="Undo the last change">Undo</button>
       <button type="button" class="cardmode" id="cardClear" title="Clear the freehand loop">Clear</button>
     </div>
-    <canvas id="cardcv" width="630" height="495"></canvas>
+    <!-- 819x644 = 630x495 + 30%. Freehand loops are drawn straight onto this canvas, so its
+         size IS the drawing precision: a stroke is thinned by a minimum spacing measured in
+         c-units, and a bigger view means more of them per loop. cardEventToC reads the live
+         bounding rect, so a CSS-scaled canvas still maps the pointer correctly. -->
+    <canvas id="cardcv" width="819" height="644"></canvas>
     <p class="card-hint" id="cardHint">Drag on the canvas to draw a loop — it snaps to a smooth closed spline the seed then follows.</p>
     <div class="card-key">
       <span><i style="background:#ff7a1a"></i>base path</span>
@@ -7663,7 +7678,12 @@
     // When paused we still re-present the last GPU frame (WebGL clears the
     // drawing buffer after compositing, so a skipped frame would flash black);
     // the Canvas2D path retains its pixels, so it just freezes.
-    if (paused) { if (useGL && glReady) glRender(); return; }
+    // The Orbit editor is a TOOL, not part of the frozen picture: it draws on its own canvas
+    // and has to answer a click while the scene is paused. cardDrawPaused spends one draw and
+    // only when something actually changed (cardDirty) — without it, switching path mode or
+    // drawing a freehand loop with the canvas paused left the editor showing the old orbit,
+    // which reads as every button in it being broken.
+    if (paused) { if (useGL && glReady) glRender(); cardDrawPaused(); return; }
 
     if (useGL && !glReady) return;    // context lost / not yet restored
 
@@ -16105,6 +16125,24 @@
   // evaluated, and calls cardOpen() — a const would still be in its temporal dead
   // zone and throw (same reason the old range editor's state was a `var`).
   var card = { on: false, cv: null, ctx: null, bg: null, bgPow: 0 };
+  // "The editor needs a repaint." frame() draws it once per rendered frame, but a PAUSED
+  // scene returns from frame() before it gets there — so with the canvas paused, switching
+  // Cardioid/Circle/Freehand, editing, undoing or clearing all changed the state and left the
+  // picture frozen, which reads as the whole editor being dead. Every interaction sets this,
+  // and the paused branch of frame() spends exactly one draw on it. `var` for the same TDZ
+  // reason as `card` itself.
+  var cardDirty = false;
+  function cardTouch() { cardDirty = true; }
+  // The paused-frame entry point. It repeats the render epilogue's install (the editor draws
+  // the SELECTED layer's orbit, and nothing else has installed it on a paused frame) and then
+  // draws once. Cheap: the locus backdrop is cached, so this is the overlay only.
+  function cardDrawPaused() {
+    if (!card || !card.on || !cardDirty) return;
+    installStackItem(stack[stackSel]);
+    installPhase(stack[stackSel]);
+    juliaPower = EFFECTS[stack[stackSel].fx].id === "multibrot" ? mbPower : 2;
+    cardDraw();
+  }
   var cardWanted = false;                      // the user's intent to have the Orbit editor open (see setEffect); var for the same TDZ reason as `card`
   var seedDrawing = null;                     // the in-progress freehand stroke (base-plane pts)
   var seedEdit = false;                        // freehand sub-mode: false = draw, true = drag points
@@ -16116,9 +16154,10 @@
   // Mandelbrot under a Multibrot orbit made the view lie: the seed looked safely
   // outside the set while really sitting deep inside the locus that governs it.
   //
-  // Power drifts continuously, so this is quantised to CARD_POW_Q and rendered at
-  // half resolution into an offscreen canvas (drawImage scales it back up). A full-res
-  // repaint every frame at 120 iterations is far too slow for a debug overlay.
+  // Power drifts continuously, so this is quantised to CARD_POW_Q and cached in an offscreen
+  // canvas. A repaint every frame at 120 iterations is far too slow for an overlay; the
+  // resolution it is cached AT now depends on the power (see cardDraw) — full at d=2, half
+  // where each pixel costs a pow/atan2 and the Power slider re-renders it as it drifts.
   const CARD_POW_Q = CONFIG.tuning.cardPowQ;   // = the Power slider's own step
   const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
   // Auto-frame the c-plane view per power: a cheap low-res scan finds the inside (black)
@@ -16191,12 +16230,23 @@
   }
   function cardDraw() {
     if (!card || !card.on || !card.ctx) return;
+    cardDirty = false;                        // whoever asked for this repaint has had it
     const w = card.cv.width, h = card.cv.height, ctx = card.ctx, aspect = w / h;
     const pq = cardPowQ();
     const win = cardWindow(pq, aspect);       // centre + size the view on the locus for this power
-    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) { card.bg = cardLocus(w >> 1, h >> 1, pq, win); card.bgPow = pq; card.bgAspect = aspect; }
+    // Backdrop resolution is set by what a pixel COSTS, not by one blanket halving. At d=2 the
+    // inner loop is three multiplies (`sq`, the integer-2 fast path), so full resolution is
+    // affordable and the locus edge is actually sharp — which is the whole point of drawing it.
+    // Every other power goes through pow/atan2/cos/sin per iteration, ~10x dearer, AND the
+    // Power slider re-renders on each CARD_POW_Q (0.05) step as it drifts, so a 2→8 sweep is
+    // ~120 repaints: that path stays halved. AnimeJulia and Burning Ship are both d=2.
+    const ss = pq === 2 ? 1 : 2;
+    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) {
+      card.bg = cardLocus(Math.ceil(w / ss), Math.ceil(h / ss), pq, win);
+      card.bgPow = pq; card.bgAspect = aspect;
+    }
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(card.bg, 0, 0, w, h);       // half-res locus, scaled up
+    ctx.drawImage(card.bg, 0, 0, w, h);       // full-res at d=2, half-res (scaled up) otherwise
     const spanX = win.x1 - win.x0, spanY = spanX * (h / w);
     const X = cx => (cx - win.x0) / spanX * w;               // complex → canvas
     const Y = cy => (cy + spanY / 2) / spanY * h;
@@ -16270,6 +16320,7 @@
   // scene/layer switch updates the buttons) and on open; safe before the DOM exists.
   function syncOrbitUI() {
     const ride = el("cardRide"); if (!ride) return;
+    cardTouch();                              // mode / edit / history changed ⇒ repaint even if paused
     ride.checked = seedRideOn;
     document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === seedPathMode));
     const fh = seedPathMode === "freehand";
@@ -16300,6 +16351,7 @@
     card.on = on;
     el("carddlg").classList.toggle("hidden", !on);
     if (!on) { setOrbitPaused(false); return; }   // closing resumes the motion
+    cardTouch();                                  // opening onto a paused scene must still paint
     if (!card.ctx) { card.cv = el("cardcv"); card.ctx = card.cv.getContext("2d"); }
     syncOrbitUI();
     cardDraw();                    // paint immediately; frame() keeps it live after
@@ -16348,7 +16400,7 @@
   const cardSpanX = () => cardWin ? cardWin.x1 - cardWin.x0 : CARD_X1 - CARD_X0;
   // Commit a seed-path edit: mirror the live globals into the selected effect's extras and
   // fold it into the scene, exactly like a slider — the seed-path is per-effect scene data.
-  function commitSeedPath() { captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
+  function commitSeedPath() { cardTouch(); captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
   // Resample a raw stroke to N evenly (arc-length) spaced control points, so the spline snaps
   // to a clean loop regardless of how fast the pointer moved. buildSeedSpline then closes it.
   function resampleClosed(stroke) {
@@ -16406,7 +16458,7 @@
     };
     cv.addEventListener("pointerdown", e => {
       if (seedPathMode !== "freehand") return;
-      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      e.preventDefault(); cv.setPointerCapture(e.pointerId); cardTouch();
       if (seedEdit) {
         const idx = nearestPt(cardEventToC(e));
         if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }
@@ -16416,6 +16468,9 @@
     });
     cv.addEventListener("pointermove", e => {
       const c = cardEventToC(e);
+      // Drawing and dragging are LIVE — the stroke has to follow the pointer while the scene
+      // is paused, which is exactly when you would sit down to draw one carefully.
+      if (seedDragIdx >= 0 || seedDrawing || seedEdit) cardTouch();
       if (seedDragIdx >= 0) {
         // New array (not in-place) so the per-layer spline cache invalidates; capture into
         // the layer each move so the render loop's installSeedPath can't clobber the drag.

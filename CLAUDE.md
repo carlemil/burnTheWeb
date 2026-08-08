@@ -450,8 +450,26 @@ bottom-right, `z-index: 5` — **never add a backdrop or click-outside-closes**.
 - Samples **`juliaSeedAt(outer, inner)`** so opening never advances the animation; `frame()` redraws
   while open.
 - Backdrop **`cardLocus(w, h, d)`**: Mandelbrot at power 2, degree-d Multibrot otherwise. Quantised
-  to `CARD_POW_Q`, half-res offscreen, integer-2 fast path.
-- `card` is a **`var`**; `cardOpen`/`cardDraw` early-return on falsy `card`.
+  to `CARD_POW_Q`. **Resolution is set by what a pixel COSTS**: full res on the integer-2 fast path
+  (`sq`, three multiplies — AnimeJulia and Burning Ship both live here), **half res everywhere
+  else**, where each iteration is a `pow`/`atan2`/`cos`/`sin` *and* the Power slider re-renders the
+  cache every `CARD_POW_Q` (0.05) step as it drifts — a 2→8 sweep is ~120 repaints.
+- **The canvas is 819×644** and its size IS the freehand drawing precision (strokes are thinned by
+  a minimum spacing in c-units). `cardEventToC` reads the live bounding rect, so CSS-scaling it is
+  safe.
+- **The title is in the paints-NOTHING list**, with the pickers and the palette editor — `#carddlg`
+  is `rgba(10,6,4,.8)` with its own `blur(6px)`, so a nested backdrop-filtered header composites
+  toward black on a real GPU. It was briefly moved to the sticky list and shipped a black bar
+  under the title; **the headless screenshot taken to check that change showed a clean header.**
+  Assert `getComputedStyle` for this, never a screenshot.
+- **The editor stays live while the SCENE is paused.** `frame()` returns early when `paused`, which
+  froze the editor canvas: switching path mode, editing, undo and clear all changed state and
+  redrew nothing, so the whole panel read as broken. **`cardTouch()` sets `cardDirty`** (from
+  `syncOrbitUI`, `commitSeedPath`, `cardOpen(true)` and the canvas pointer handlers) and the paused
+  branch calls **`cardDrawPaused()`**, which repeats the render epilogue's
+  `installStackItem`/`installPhase`/`juliaPower` install and draws once. `cardDraw` clears the flag.
+- `card` is a **`var`** (and so are `cardDirty`/`cardWanted`); `cardOpen`/`cardDraw` early-return on
+  falsy `card`.
 
 **Seed path**: `seedPathMode` (`"cardioid"`|`"circle"`|`"freehand"`), per-path `seedRideOn`,
 freehand `seedPts` → arc-length LUT `seedSpline`. **`basePathAt(th)`** is the fork; freehand is a

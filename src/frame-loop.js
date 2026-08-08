@@ -114,7 +114,12 @@
     // When paused we still re-present the last GPU frame (WebGL clears the
     // drawing buffer after compositing, so a skipped frame would flash black);
     // the Canvas2D path retains its pixels, so it just freezes.
-    if (paused) { if (useGL && glReady) glRender(); return; }
+    // The Orbit editor is a TOOL, not part of the frozen picture: it draws on its own canvas
+    // and has to answer a click while the scene is paused. cardDrawPaused spends one draw and
+    // only when something actually changed (cardDirty) — without it, switching path mode or
+    // drawing a freehand loop with the canvas paused left the editor showing the old orbit,
+    // which reads as every button in it being broken.
+    if (paused) { if (useGL && glReady) glRender(); cardDrawPaused(); return; }
 
     if (useGL && !glReady) return;    // context lost / not yet restored
 

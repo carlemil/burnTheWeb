@@ -40,6 +40,13 @@ const ok = (cond, name, detail) => {
 // selector has to name, and the thing three of these rules got wrong by addressing the id.
 // `modal` = has a backdrop and takes the keyboard; the rest are floating tool panels you use
 // WHILE the scene runs, which must never trap focus. `closer` is what the Escape branch calls.
+//
+// `sticky` = the title paints a background and pins to the top. It is a property of the BOX,
+// not a preference: only a near-opaque box with no backdrop-filter of its own can carry one.
+// A translucent box (rgba .8 + its own blur) composites a nested backdrop-filter toward BLACK
+// on real GPUs, so its title must paint nothing and simply scroll — #carddlg was put in the
+// sticky list and turned up with a black bar under its title. A headless screenshot does NOT
+// show this; the probe can only pin which list each dialog is in.
 const DIALOGS = [
   { id: "paldlg",       box: "pal-box",  title: "pal-title",       modal: false, closer: "closePalDetail",   sticky: false },
   { id: "galdlg",       box: "gal-box",  title: "gal-title",       modal: true,  closer: "galOpen(false)",   sticky: true  },
@@ -47,7 +54,7 @@ const DIALOGS = [
   { id: "transpickdlg", box: "flt-box",  title: "transpick-title", modal: false, closer: "closeTransPick",   sticky: false },
   { id: "palpickdlg",   box: "flt-box",  title: "palpick-title",   modal: false, closer: "closePalPick",     sticky: false },
   { id: "paledlg",      box: "pale-box", title: "pale-title",      modal: false, closer: "closePalEditor",   sticky: false },
-  { id: "carddlg",      box: "card-box", title: "card-title",      modal: false, closer: "cardOpen(false)",  sticky: true  },
+  { id: "carddlg",      box: "card-box", title: "card-title",      modal: false, closer: "cardOpen(false)",  sticky: false },
   { id: "restoredlg",   box: "rst-box",  title: "rst-title",       modal: true,  closer: "closeRestore",     sticky: true  },
   { id: "syncpop",      box: "sync-box", title: "sync-title",      modal: true,  closer: "dismissSyncIfOpen",sticky: true  },
   // #help alone is built by JS on every open (four different openers), so its markup is
@@ -115,12 +122,27 @@ for (const d of DIALOGS) {
 // combinator against the wrong parent matches nothing and fails silently.
 const stickyRule = (cssNoComments.match(/([^{}]*)\{\s*position:\s*sticky;\s*top:\s*0;[^}]*box-shadow:\s*0 -30px[^}]*\}/) || [])[1] || "";
 ok(stickyRule.length > 0, "the sticky dialog-title rule is present");
+// ...and its counterpart: the titles that must paint NOTHING, because their box is translucent
+// and a nested backdrop-filter composites toward black on a real GPU.
+const flatRule = (cssNoComments.match(/([^{}]*)\{\s*position:\s*static;\s*background:\s*transparent;[^}]*\}/) || [])[1] || "";
+ok(flatRule.length > 0, "the paints-nothing title override is present");
 for (const d of DIALOGS) {
-  if (!d.sticky) continue;
-  ok(stickyRule.includes("#" + d.id + " ." + d.box + " > h2"),
-     "sticky title selector names #" + d.id + " ." + d.box + " > h2");
-  ok(!new RegExp("#" + d.id + "\\s*>\\s*h2").test(stickyRule),
-     "...and NOT the id directly (the h2 is a grandchild)");
+  const sel = "#" + d.id + " ." + d.box + " > h2";
+  // Whichever list it belongs to, it must name the box — never the id, which is the h2's
+  // GRANDparent and matches nothing.
+  ok(!new RegExp("#" + d.id + "\\s*>\\s*h2").test(stickyRule + " " + flatRule),
+     "#" + d.id + " title selector does not address the id directly");
+  if (d.sticky) {
+    ok(stickyRule.includes(sel), "sticky title selector names " + sel);
+    ok(!flatRule.includes(sel), "...and it is not also opted out");
+  } else {
+    // A non-sticky title is in BOTH rules on purpose: the sticky one supplies the header's
+    // `padding: 18px 0 9px`, which is what replaces the top padding the box gives up, and the
+    // override then resets only position/background/blur/shadow. So the test is that it is
+    // opted out at all — absent from both lists would look fine until someone adds it to the
+    // sticky one "for consistency" and gets a black bar.
+    ok(flatRule.includes(sel), "translucent box ⇒ " + sel + " is explicitly opted out of painting");
+  }
 }
 
 // ---- 5. the padding waiver has to WIN --------------------------------------------------

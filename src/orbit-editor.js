@@ -15,6 +15,24 @@
   // evaluated, and calls cardOpen() — a const would still be in its temporal dead
   // zone and throw (same reason the old range editor's state was a `var`).
   var card = { on: false, cv: null, ctx: null, bg: null, bgPow: 0 };
+  // "The editor needs a repaint." frame() draws it once per rendered frame, but a PAUSED
+  // scene returns from frame() before it gets there — so with the canvas paused, switching
+  // Cardioid/Circle/Freehand, editing, undoing or clearing all changed the state and left the
+  // picture frozen, which reads as the whole editor being dead. Every interaction sets this,
+  // and the paused branch of frame() spends exactly one draw on it. `var` for the same TDZ
+  // reason as `card` itself.
+  var cardDirty = false;
+  function cardTouch() { cardDirty = true; }
+  // The paused-frame entry point. It repeats the render epilogue's install (the editor draws
+  // the SELECTED layer's orbit, and nothing else has installed it on a paused frame) and then
+  // draws once. Cheap: the locus backdrop is cached, so this is the overlay only.
+  function cardDrawPaused() {
+    if (!card || !card.on || !cardDirty) return;
+    installStackItem(stack[stackSel]);
+    installPhase(stack[stackSel]);
+    juliaPower = EFFECTS[stack[stackSel].fx].id === "multibrot" ? mbPower : 2;
+    cardDraw();
+  }
   var cardWanted = false;                      // the user's intent to have the Orbit editor open (see setEffect); var for the same TDZ reason as `card`
   var seedDrawing = null;                     // the in-progress freehand stroke (base-plane pts)
   var seedEdit = false;                        // freehand sub-mode: false = draw, true = drag points
@@ -26,9 +44,10 @@
   // Mandelbrot under a Multibrot orbit made the view lie: the seed looked safely
   // outside the set while really sitting deep inside the locus that governs it.
   //
-  // Power drifts continuously, so this is quantised to CARD_POW_Q and rendered at
-  // half resolution into an offscreen canvas (drawImage scales it back up). A full-res
-  // repaint every frame at 120 iterations is far too slow for a debug overlay.
+  // Power drifts continuously, so this is quantised to CARD_POW_Q and cached in an offscreen
+  // canvas. A repaint every frame at 120 iterations is far too slow for an overlay; the
+  // resolution it is cached AT now depends on the power (see cardDraw) — full at d=2, half
+  // where each pixel costs a pow/atan2 and the Power slider re-renders it as it drifts.
   const CARD_POW_Q = CONFIG.tuning.cardPowQ;   // = the Power slider's own step
   const cardPowQ = () => Math.round(juliaPower / CARD_POW_Q) * CARD_POW_Q;
   // Auto-frame the c-plane view per power: a cheap low-res scan finds the inside (black)
@@ -101,12 +120,23 @@
   }
   function cardDraw() {
     if (!card || !card.on || !card.ctx) return;
+    cardDirty = false;                        // whoever asked for this repaint has had it
     const w = card.cv.width, h = card.cv.height, ctx = card.ctx, aspect = w / h;
     const pq = cardPowQ();
     const win = cardWindow(pq, aspect);       // centre + size the view on the locus for this power
-    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) { card.bg = cardLocus(w >> 1, h >> 1, pq, win); card.bgPow = pq; card.bgAspect = aspect; }
+    // Backdrop resolution is set by what a pixel COSTS, not by one blanket halving. At d=2 the
+    // inner loop is three multiplies (`sq`, the integer-2 fast path), so full resolution is
+    // affordable and the locus edge is actually sharp — which is the whole point of drawing it.
+    // Every other power goes through pow/atan2/cos/sin per iteration, ~10x dearer, AND the
+    // Power slider re-renders on each CARD_POW_Q (0.05) step as it drifts, so a 2→8 sweep is
+    // ~120 repaints: that path stays halved. AnimeJulia and Burning Ship are both d=2.
+    const ss = pq === 2 ? 1 : 2;
+    if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect) {
+      card.bg = cardLocus(Math.ceil(w / ss), Math.ceil(h / ss), pq, win);
+      card.bgPow = pq; card.bgAspect = aspect;
+    }
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(card.bg, 0, 0, w, h);       // half-res locus, scaled up
+    ctx.drawImage(card.bg, 0, 0, w, h);       // full-res at d=2, half-res (scaled up) otherwise
     const spanX = win.x1 - win.x0, spanY = spanX * (h / w);
     const X = cx => (cx - win.x0) / spanX * w;               // complex → canvas
     const Y = cy => (cy + spanY / 2) / spanY * h;
@@ -180,6 +210,7 @@
   // scene/layer switch updates the buttons) and on open; safe before the DOM exists.
   function syncOrbitUI() {
     const ride = el("cardRide"); if (!ride) return;
+    cardTouch();                              // mode / edit / history changed ⇒ repaint even if paused
     ride.checked = seedRideOn;
     document.querySelectorAll("#carddlg .cardmode[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === seedPathMode));
     const fh = seedPathMode === "freehand";
@@ -210,6 +241,7 @@
     card.on = on;
     el("carddlg").classList.toggle("hidden", !on);
     if (!on) { setOrbitPaused(false); return; }   // closing resumes the motion
+    cardTouch();                                  // opening onto a paused scene must still paint
     if (!card.ctx) { card.cv = el("cardcv"); card.ctx = card.cv.getContext("2d"); }
     syncOrbitUI();
     cardDraw();                    // paint immediately; frame() keeps it live after
@@ -258,7 +290,7 @@
   const cardSpanX = () => cardWin ? cardWin.x1 - cardWin.x0 : CARD_X1 - CARD_X0;
   // Commit a seed-path edit: mirror the live globals into the selected effect's extras and
   // fold it into the scene, exactly like a slider — the seed-path is per-effect scene data.
-  function commitSeedPath() { captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
+  function commitSeedPath() { cardTouch(); captureSeed(stack[stackSel]); saveExtra(effect); persist(); autosavePreset(); }
   // Resample a raw stroke to N evenly (arc-length) spaced control points, so the spline snaps
   // to a clean loop regardless of how fast the pointer moved. buildSeedSpline then closes it.
   function resampleClosed(stroke) {
@@ -316,7 +348,7 @@
     };
     cv.addEventListener("pointerdown", e => {
       if (seedPathMode !== "freehand") return;
-      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      e.preventDefault(); cv.setPointerCapture(e.pointerId); cardTouch();
       if (seedEdit) {
         const idx = nearestPt(cardEventToC(e));
         if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }
@@ -326,6 +358,9 @@
     });
     cv.addEventListener("pointermove", e => {
       const c = cardEventToC(e);
+      // Drawing and dragging are LIVE — the stroke has to follow the pointer while the scene
+      // is paused, which is exactly when you would sit down to draw one carefully.
+      if (seedDragIdx >= 0 || seedDrawing || seedEdit) cardTouch();
       if (seedDragIdx >= 0) {
         // New array (not in-place) so the per-layer spline cache invalidates; capture into
         // the layer each move so the render loop's installSeedPath can't clobber the drag.

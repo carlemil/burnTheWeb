@@ -451,7 +451,11 @@
       <button type="button" class="cardmode" id="cardUndo" title="Undo the last change">Undo</button>
       <button type="button" class="cardmode" id="cardClear" title="Clear the freehand loop">Clear</button>
     </div>
-    <canvas id="cardcv" width="630" height="495"></canvas>
+    <!-- 819x644 = 630x495 + 30%. Freehand loops are drawn straight onto this canvas, so its
+         size IS the drawing precision: a stroke is thinned by a minimum spacing measured in
+         c-units, and a bigger view means more of them per loop. cardEventToC reads the live
+         bounding rect, so a CSS-scaled canvas still maps the pointer correctly. -->
+    <canvas id="cardcv" width="819" height="644"></canvas>
     <p class="card-hint" id="cardHint">Drag on the canvas to draw a loop — it snaps to a smooth closed spline the seed then follows.</p>
     <div class="card-key">
       <span><i style="background:#ff7a1a"></i>base path</span>
