@@ -10,7 +10,11 @@
   var beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
-    syncTrigRefs();                              // the per-box refractory rows mirror beatCfg
+    // Every trigger still INHERITING one of these values is now using a stale copy — the
+    // armed-trigger list caches the resolved tuning, so editing the global box has to
+    // invalidate it or the global sliders would appear to do nothing until the next re-arm.
+    trigDirty = true;
+    syncTrigTune();                              // the per-box rows re-read what they inherit
     // No persist() here: these sliders carry no dev-tool opt-out, so onEdit already persisted
     // and folded the change into the selected preset. Calling it again would double-write.
   }

@@ -693,6 +693,22 @@
   #breakout .trig-ref .rng-lbl { flex: none; width: 26px; opacity: .55; font-size: 9px; letter-spacing: .06em; }
   #breakout .trig-ref input[type=range] { flex: 1 1 auto; min-width: 0; margin: 0; }
   #breakout .trig-ref .trig-ref-val { flex: none; width: 44px; text-align: right; font-size: 10px; color: #ffcf87; }
+  /* The three groups inside Tuning — Sensitivity / Floor / Refractory. A quieter, tighter
+     heading than .trig-t: those name a SECTION of the box, these name a group inside one. */
+  #panel .trig-sub { display: none; }
+  #breakout .trig-sub {
+    margin: 7px 0 1px; color: #ffb15a; opacity: .5;
+    font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
+  }
+  /* "global" — this row is still following Global beat tuning. Hidden the moment the row
+     carries this slider's own value, so the tag's presence IS the override state. */
+  #breakout .trig-ref-tag {
+    flex: none; opacity: .38; font-size: 8.5px; letter-spacing: .05em;
+    text-transform: uppercase; min-width: 34px;
+  }
+  /* The ↺ sits on the Tuning heading, which is a plain block — float it right rather than
+     turning the heading into a flex row, so the uppercase tracking is untouched. */
+  #breakout .trig-t .trig-rst { float: right; margin: -2px 0 0; }
   #breakout .rng-rst {
     flex: none; width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;
@@ -1686,7 +1702,11 @@
        like them. The beat-trace toggle below is the one thing in here that must NOT autosave,
        which is what data-nopersist marks. -->
   <details class="box" id="beatDetails">
-  <summary class="box-t">Beat tuning</summary>
+  <!-- "GLOBAL beat tuning", because it is no longer the only beat tuning there is: every
+       slider with a trigger armed can override these thresholds in its own pop-out box, and
+       this box is what an un-overridden one inherits. The name is the only thing that says
+       which of the two you are editing. -->
+  <summary class="box-t">Global beat tuning</summary>
   <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
   <!-- The trace lives here, beside the thresholds it exists to help you set, rather than in a
        separate Diagnostics section. data-nopersist is load-bearing: everything else in this
@@ -1694,7 +1714,7 @@
        explicit opt-out this dev-tool toggle would be folded into the selected scene too. -->
   <label class="check" data-nopersist title="Show the scrolling flux + threshold graph per band — the tool for diagnosing a missed beat"><input type="checkbox" id="diagTrace" data-nopersist> Beat-detection trace</label>
   <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
-  <p id="beatMsg">Saved with this scene, so each one can react to music its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
+  <p id="beatMsg">The defaults every armed slider follows, saved with this scene. Any slider with a trigger can override these in its own box — open it and look under <b>Tuning</b>. The trace above shows what the detector is hearing at these global settings.</p>
   </details>
 
   <!-- Layers: the effect stack (up to 4 effects composited into one scene, in list order).
@@ -7936,7 +7956,46 @@
     f1: [0, 0, 0], f2: [0, 0, 0],           // flux at t-1 / t-2, for local-max peak picking
     hist: [null, null, null], hi: 0,        // ring buffer of flux per band
     beatNow: [false, false, false], lastBeat: [0, 0, 0], bpm: [0, 0, 0],
+    // The tuning-free INGREDIENTS of a beat, published per tick so each armed trigger can
+    // apply its OWN thresholds to them. `cand` is the whole peak-picking test that carries no
+    // tuning (warm, local max, not silent); `med` is the adaptive median. Everything above
+    // stays exactly as it was and still drives the meter, the trace and the chip glow.
+    cand: [false, false, false], med: [0, 0, 0], candFlux: [0, 0, 0],
   };
+  // ---- per-trigger beats -------------------------------------------------------------
+  // A TRIGGER is one (layer slot, control key) pair — not just a key, because beatOf() is
+  // per layer, so two layers can arm the same slider with different tuning. Each keeps its own
+  // refractory clock and its own latch, so one slider's Refractory can no longer reach across
+  // and retune every other armed slider (which is exactly what the shared beatCfg.refract did).
+  //
+  // The expensive half of detection — the bin loop, the flux, the median — is computed ONCE
+  // per band in audioTick and shared. This is only the three comparisons that read tuning.
+  const trigState = {};          // "<slot>/<key>" -> { lastBeat:[3], now:[3], pulse:[3] }
+  let trigList = [];             // the armed triggers, rebuilt when arming or tuning changes
+  var trigDirty = true;          // var: loadBtune runs from restore(), slices before this one
+  const trigKey = (slot, id) => slot + "/" + id;
+  function trigFor(slot, id) {
+    const k = trigKey(slot, id);
+    return trigState[k] || (trigState[k] = { lastBeat: [0, 0, 0], now: [false, false, false], pulse: [0, 0, 0] });
+  }
+  // Rebuilt lazily rather than scanned every 10ms tick: `stack × anims` is ~240 pairs and
+  // almost none of them are armed.
+  function rebuildTriggers() {
+    trigDirty = false;
+    trigList = [];
+    for (let s = 0; s < stack.length; s++) {
+      const L = stack[s];
+      if (!L) continue;
+      for (const id in anims) {
+        const br = beatOf(L, id);
+        if (!br || !(br.low || br.mid || br.high)) continue;
+        trigList.push({ st: trigFor(s, id), br, tune: tuneEff(tuneOf(L, id)) });
+      }
+    }
+  }
+  // Consumed by stepAnim exactly like audio.beatNow used to be, but per trigger.
+  function trigBeat(slot, id, band) { const t = trigState[trigKey(slot, id)]; return !!(t && t.now[band]); }
+  function trigPulse(slot, id, band) { const t = trigState[trigKey(slot, id)]; return t ? t.pulse[band] : 0; }
   // "A source is running AND it is reaching the visual" — the predicate every REACTION site
   // wants, as opposed to `audio.on`, which means only "a stream is open". The two differ
   // exactly while muted. Kept separate rather than clearing `audio.on`, because `audio.on`
@@ -7993,6 +8052,7 @@
       // nothing refills these; flashChips() once on the way down clears the inline lit
       // styles back to the CSS default, exactly as stopAudio does.
       for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
+      clearTrigState();
       updateMeter(); flashChips();
     }
     setAudioUI();
@@ -8011,7 +8071,9 @@
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
       audio.flux[b] = audio.thr[b] = audio.peak[b] = audio.f1[b] = audio.f2[b] = audio.bpm[b] = 0;
+      audio.cand[b] = false; audio.med[b] = audio.candFlux[b] = 0;
     }
+    clearTrigState();
     updateMeter(); flashChips(); setAudioUI(); persist();
   }
   async function startAudio(kind) {
@@ -8096,7 +8158,10 @@
       sum /= n; lvl /= n; flux /= n;                     // per-bin means: bands stay comparable
       audio.energy[b] += (lvl - audio.energy[b]) * AVG_ALPHA;
       audio.peak[b] = Math.max(flux, audio.peak[b] * PEAK_DECAY);
-      const thr = median(audio.hist[b]) * beatCfg.fluxK[b];
+      // The adaptive median is the expensive shared ingredient — computed ONCE and handed to
+      // both the scene-wide test below and every per-trigger test after it.
+      const med = median(audio.hist[b]);
+      const thr = med * beatCfg.fluxK[b];
       audio.thr[b] = thr;
 
       // Peak-pick the *previous* tick: it's a beat if it was a local maximum of
@@ -8104,8 +8169,13 @@
       // isn't silent, and we're past its refractory period. Costs one tick (10ms)
       // of latency — far less than the ~2 frames the old analyser smoothing added.
       const f2 = audio.f2[b], f1 = audio.f1[b];
-      if (audio.warm >= WARMUP && f1 >= flux && f1 > f2 && f1 > thr &&
-          f1 > audio.peak[b] * beatCfg.floor && sum > SILENCE &&
+      // Publish the tuning-free half of that test for the per-trigger pass below. Split out
+      // rather than duplicated: the candidate, the median and the peak are what every trigger
+      // shares, and computing them twice is how the two would drift apart.
+      const cand = audio.warm >= WARMUP && f1 >= flux && f1 > f2 && sum > SILENCE;
+      audio.cand[b] = cand; audio.med[b] = med; audio.candFlux[b] = f1;
+      if (cand && f1 > thr &&
+          f1 > audio.peak[b] * beatCfg.floor &&
           now - audio.lastBeat[b] > beatCfg.refract[b]) {
         if (audio.lastBeat[b]) {
           const ibi = now - audio.lastBeat[b];           // inter-beat interval → rough BPM (debug readout)
@@ -8118,13 +8188,51 @@
       audio.hist[b][audio.hi] = flux;
       audio.pulse[b] *= Math.exp(-dt / PULSE_TAU);
     }
+    // ---- the same test again, once per armed trigger, with ITS thresholds ----------
+    // Has to run here and not at frame time: the candidate exists for exactly one 10ms tick,
+    // so a 60Hz consumer would miss beats between frames. That is why beats are latched at
+    // all, and per-trigger beats need latching for the same reason.
+    //
+    // With no overrides this reproduces the scene-wide result exactly — same candidate, same
+    // median, same thresholds — and each trigger's own lastBeat tracks the global one because
+    // they fire together. That equivalence is the whole safety property, and beatprobe asserts
+    // it tick by tick rather than by counting.
+    if (trigDirty) rebuildTriggers();
+    for (let i = 0; i < trigList.length; i++) {
+      const T = trigList[i], st = T.st, tu = T.tune;
+      for (let b = 0; b < 3; b++) {
+        if (!(b === 0 ? T.br.low : b === 1 ? T.br.mid : T.br.high)) continue;
+        if (audio.cand[b] && audio.candFlux[b] > audio.med[b] * tu.fluxK[b] &&
+            audio.candFlux[b] > audio.peak[b] * tu.floor &&
+            now - st.lastBeat[b] > tu.refract[b]) {
+          st.now[b] = true; st.pulse[b] = 1; st.lastBeat[b] = now;
+        }
+        st.pulse[b] *= Math.exp(-dt / PULSE_TAU);
+      }
+    }
     audio.hi = (audio.hi + 1) % FLUX_HIST;
     prev.set(mag);
     if (dbg.on) dbgPush(now);
   }
   // Called by frame() *after* updateAnims() has read them, so a beat detected
   // between two frames still drives its sliders exactly once.
-  function clearBeats() { audio.beatNow[0] = audio.beatNow[1] = audio.beatNow[2] = false; }
+  function clearBeats() {
+    audio.beatNow[0] = audio.beatNow[1] = audio.beatNow[2] = false;
+    // Every per-trigger latch too, and for the same reason: frame() has just read them, so a
+    // beat drives its slider exactly once. Missing this would leave a trigger stuck "beating"
+    // and its slider pinned at the high thumb.
+    for (const k in trigState) { const t = trigState[k]; t.now[0] = t.now[1] = t.now[2] = false; }
+  }
+  // Zero the per-trigger clocks. Called wherever the scene-wide ones are zeroed (mute, stop):
+  // leaving a stale lastBeat behind would swallow the first beat after audio comes back.
+  function clearTrigState() {
+    for (const k in trigState) {
+      const t = trigState[k];
+      t.now[0] = t.now[1] = t.now[2] = false;
+      t.pulse[0] = t.pulse[1] = t.pulse[2] = 0;
+      t.lastBeat[0] = t.lastBeat[1] = t.lastBeat[2] = 0;
+    }
+  }
   function updateMeter() {
     for (let b = 0; b < 3; b++) {
       meterBars[b].style.height = (2 + audio.energy[b] * 16).toFixed(1) + "px";
@@ -8139,7 +8247,11 @@
     for (const id in chipEls) {
       for (const k in chipEls[id]) {
         const el = chipEls[id][k];
-        const lit = audioLive() && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
+        // THIS slider's trigger pulse, not the band's. A slider given a long refractory of its
+        // own ignores beats the band still reports, and a chip that kept flashing on them
+        // would say the tuning had not taken. chipEls is the SELECTED layer's block, so the
+        // trigger is filed under stackSel.
+        const lit = audioLive() && beatReact[id][k] ? trigPulse(stackSel, id, BANDIDX[k]) : 0;
         if (lit > 0.05) {
           // punchy flash: a bright halo that snaps on the beat and a quick scale pop,
           // both riding the band's decaying pulse.
@@ -9374,7 +9486,7 @@
     // effect can look different. null means "not captured yet" — applyLayerExtras fills
     // them from the effect's stored/default extras on first use. They can't be seeded
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
-    return { fx, state: null, beat: null, pulse: null, plen: null,
+    return { fx, state: null, beat: null, pulse: null, plen: null, btune: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
       seedPath: null, seedRide: null, seedPts: null, showBox: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
@@ -9406,6 +9518,7 @@
   }
   const beatOf = (L, id) => L === stack[stackSel] ? beatReact[id] : (L.beat && L.beat[id]);
   const shapeOf = (L, id) => L === stack[stackSel] ? pulseShape[id] : (L.pulse && L.pulse[id]);
+  const tuneOf = (L, id) => L === stack[stackSel] ? beatTune[id] : (L.btune && L.btune[id]);
   const plenOf = (L, id) => L === stack[stackSel] ? pulseLen[id] : (L.plen && L.plen[id]);
   // The selected item's animation phase IS the singleton animPhase record — not a copy
   // seeded from it. Seeding lazily from the DOM instead would diverge on the first
@@ -9459,6 +9572,31 @@
   // swell another. PULSE_DROP stays the default, so untouched scenes are unchanged.
   const pulseLen = {};         // id -> seconds : live per-effect value (drives updateAnims)
   const plenEls = {};          // id -> {inp,out} : the length slider + readout (never persisted)
+  // Beat DETECTOR TUNING, per slider (per effect, per layer) — the same shape as pulseLen
+  // above and stored the same way. Each field is OPTIONAL and absent means "inherit the
+  // scene-wide beatCfg": a slider that has never been tuned behaves exactly as it did before
+  // this map existed, which is the property beatprobe pins.
+  //
+  // It exists because the Refractory rows in a slider's box used to write straight into
+  // beatCfg.refract[band] — the SCENE-WIDE value — so a control presented as belonging to one
+  // slider silently retuned every armed slider in the scene.
+  //
+  // `bands` is deliberately NOT here: the L/M/H Hz edges say what "low" MEANS for the meter,
+  // the chip colours and the trace, and per-slider ranges would need their own FFT band pass.
+  const beatTune = {};         // id -> {fluxK?:[l,m,h], floor?:n, refract?:[l,m,h]} : live per-effect
+  const tuneEls = {};          // id -> the row nodes in the pop-out box (never persisted)
+  // The effective tuning for one trigger: this slider's overrides laid over the scene-wide
+  // beatCfg. The ONE place inheritance is resolved — the detector, the UI's "(global)" tag
+  // and the ↺ all go through it, so they cannot disagree about what a slider is actually using.
+  function tuneEff(t) {
+    const fluxK = beatCfg.fluxK, refract = beatCfg.refract;
+    if (!t) return { fluxK, floor: beatCfg.floor, refract };
+    return {
+      fluxK: Array.isArray(t.fluxK) ? t.fluxK : fluxK,
+      floor: typeof t.floor === "number" ? t.floor : beatCfg.floor,
+      refract: Array.isArray(t.refract) ? t.refract : refract,
+    };
+  }
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
   //
   // Built once PER BLOCK, so it hangs its nodes on that block's wiring record `w` rather
@@ -9489,7 +9627,7 @@
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
         syncDots();              // the menu row shows the same armed state
-        syncTrigRefs();          // ...and the refractory row for this band appears/hides
+        syncTrigTune();          // ...and this band's tuning rows appear/hide
         // A <button> click fires neither input nor change, so the delegated onEdit
         // never sees it — do its job by hand, autosave included. Without the
         // autosave the chip reached localStorage but not the *selected preset*,
@@ -9525,47 +9663,115 @@
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
     trigT.title = "Which beat bands make this slider jump";
     host.append(trigT, wrap);
-    // Refractory for each ARMED band: the SAME per-band beatCfg.refract that Beat tuning
-    // edits (scene data, min ms between beats) — so a change here applies to every
-    // trigger on that band. Rows exist for all three bands but show only while their chip
-    // is on (syncTrigRefs); the whole block hides with nothing armed. Built here, but
-    // APPENDED at the foot of the trigger section (below Duration) — see the append after
-    // the max row.
-    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {} };
+    // THIS SLIDER'S OWN detector thresholds — Sensitivity, Floor and Refractory. They used to
+    // be one Refractory group writing straight into beatCfg.refract[band], i.e. into the
+    // SCENE-WIDE tuning, so a control sitting in one slider's box silently retuned every armed
+    // slider in the scene. Each row now writes into beatTune[id] instead.
+    //
+    // INHERIT UNTIL TOUCHED: a row shows the global value with a "global" tag until you move
+    // it, at which point it becomes this slider's own; the ↺ on the heading gives every row in
+    // the section back. So an untouched slider behaves exactly as it did before this existed.
+    //
+    // Rows exist for all three bands but show only while their chip is armed (syncTrigTune);
+    // the whole block hides with nothing armed. Built here, APPENDED at the foot of the trigger
+    // section (below Duration) — see the append after the max row.
+    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {}, tags: {}, floor: null };
     const refWrap = document.createElement("div");
     refWrap.className = "trig-refs";
     refWrap.style.display = "none";
     const refT = document.createElement("div");
-    refT.className = "trig-t"; refT.textContent = "Refractory (ms)";
-    refT.title = "Minimum gap between beats on an armed band (ms) — the same value as Beat tuning's Refractory";
+    refT.className = "trig-t"; refT.textContent = "Tuning";
+    refT.title = "How this slider decides what counts as a beat. Untouched rows follow Global beat tuning.";
+    // ↺ — drop every override in this section and go back to inheriting. Same affordance and
+    // placement as the Value range editor's reset.
+    const refRst = document.createElement("button");
+    refRst.type = "button"; refRst.className = "rng-rst trig-rst"; refRst.textContent = "↺";
+    refRst.title = "Follow Global beat tuning again — clears this slider's own thresholds";
+    // NOT ctlLabel(id): that is a `const` arrow in controls-breakout.js, ten slices below
+    // this one, and makeChips runs while the controls are being BUILT — reading it here is a
+    // TDZ abort that surfaces as an unrelated "nextSwitch before initialization" at startup.
+    // The box's own .ctl-owner line already names the control this belongs to.
+    refRst.setAttribute("aria-label", "Follow global beat tuning");
+    refRst.addEventListener("click", e => {
+      e.preventDefault();
+      if (refEls[id] !== refs) return;
+      delete beatTune[id];
+      trigDirty = true;
+      paintTuneRows(id);
+      tuneEdited();
+    });
+    refT.appendChild(refRst);
     refWrap.appendChild(refT);
-    for (const k of ["low", "mid", "high"]) {
-      const b = { low: 0, mid: 1, high: 2 }[k];
+    // One row builder for all three groups: label, range, readout, and a "global" tag that
+    // clears the moment the row carries an override.
+    const tuneRow = (cls, name, lo, hi, st, fmt, onSet) => {
       const r = document.createElement("div");
-      r.className = "trig-ref";
-      r.style.display = "none";
+      r.className = "trig-ref " + cls;
       const lb = document.createElement("span");
-      lb.className = "rng-lbl"; lb.textContent = k;
-      // A SLIDER with a live readout, like Duration below — same bounds as Beat tuning's
-      // Refractory rows (20–500 ms, step 5).
+      lb.className = "rng-lbl"; lb.textContent = name;
       const f = document.createElement("input");
-      f.type = "range"; f.min = "20"; f.max = "500"; f.step = "5";
-      f.title = k + " band refractory (ms)";
-      f.setAttribute("aria-label", k + " band refractory");
+      f.type = "range"; f.min = String(lo); f.max = String(hi); f.step = String(st);
       const val = document.createElement("span");
       val.className = "trig-ref-val";
+      const tag = document.createElement("span");
+      tag.className = "trig-ref-tag"; tag.textContent = "global";
+      tag.title = "Following Global beat tuning — move this to give the slider its own";
       f.addEventListener("input", () => {
         if (refEls[id] !== refs) return;         // not the live block
-        const v = +f.value;
-        val.textContent = v + "ms";
-        beatCfg.refract[b] = v;
-        beatChanged(false);
+        onSet(+f.value);
+        trigDirty = true;
+        paintTuneRows(id);
+        tuneEdited();
       });
-      // Rebuild the Beat tuning sliders once the drag settles, not per input tick.
-      f.addEventListener("change", () => { if (refEls[id] === refs) beatBuild(); });
-      r.append(lb, f, val);
-      refs.fields[k] = f; refs.rows[k] = r; refs.vals[k] = val;
-      refWrap.appendChild(r);
+      r.append(lb, f, val, tag);
+      return { row: r, field: f, val, tag, fmt };
+    };
+    const own = () => beatTune[id] || (beatTune[id] = {});
+    // Sensitivity — how far above the running median the flux has to jump. Per band.
+    const senT = document.createElement("div");
+    senT.className = "trig-sub"; senT.textContent = "Sensitivity";
+    senT.title = "How much louder than usual a rise must be to count as a beat, per band";
+    refWrap.appendChild(senT);
+    for (const k of ["low", "mid", "high"]) {
+      const b = { low: 0, mid: 1, high: 2 }[k];
+      const R = tuneRow("trig-sen", k, 0.5, 6, 0.1, null, v => {
+        const t = own(); t.fluxK = (t.fluxK || beatCfg.fluxK).slice(); t.fluxK[b] = v;
+      });
+      R.fmt = v => v.toFixed(1) + "×";
+      R.field.title = k + " band sensitivity"; R.field.setAttribute("aria-label", k + " band sensitivity");
+      refs.fields["sen-" + k] = R.field; refs.rows["sen-" + k] = R.row;
+      refs.vals["sen-" + k] = R.val; refs.tags["sen-" + k] = R.tag;
+      refWrap.appendChild(R.row);
+    }
+    // Floor — one value, not per band: it gates against the band's own recent peak.
+    const flrT = document.createElement("div");
+    flrT.className = "trig-sub"; flrT.textContent = "Floor";
+    flrT.title = "How strong a beat must be relative to this slider's recent loudest, across all bands";
+    refWrap.appendChild(flrT);
+    {
+      const R = tuneRow("trig-flr", "all", 0, 1, 0.01, null, v => { own().floor = v; });
+      R.fmt = v => v.toFixed(2);
+      R.field.title = "beat floor"; R.field.setAttribute("aria-label", "beat floor");
+      refs.floor = R;
+      refs.fields.floor = R.field; refs.rows.floor = R.row;
+      refs.vals.floor = R.val; refs.tags.floor = R.tag;
+      refWrap.appendChild(R.row);
+    }
+    // Refractory — the one that started this: minimum gap between this slider's own beats.
+    const refSub = document.createElement("div");
+    refSub.className = "trig-sub"; refSub.textContent = "Refractory (ms)";
+    refSub.title = "Minimum gap between beats on an armed band, for THIS slider only";
+    refWrap.appendChild(refSub);
+    for (const k of ["low", "mid", "high"]) {
+      const b = { low: 0, mid: 1, high: 2 }[k];
+      const R = tuneRow("trig-ref-ms", k, 20, 500, 5, null, v => {
+        const t = own(); t.refract = (t.refract || beatCfg.refract).slice(); t.refract[b] = v;
+      });
+      R.fmt = v => v + "ms";
+      R.field.title = k + " band refractory (ms)"; R.field.setAttribute("aria-label", k + " band refractory");
+      refs.fields[k] = R.field; refs.rows[k] = R.row;
+      refs.vals[k] = R.val; refs.tags[k] = R.tag;
+      refWrap.appendChild(R.row);
     }
     refs.wrap = refWrap;
     // The fall-back CURVE, titled like everything else here rather than left as an
@@ -9631,7 +9837,7 @@
     addNumArrows(mf, () => 0.5);
     // ONE folding body for everything a trigger needs: Shape, Duration (+max) and
     // Refractory live together in .trig-body, hidden until any chip is armed and shown
-    // as one element when one is (syncTrigRefs toggles it via refs.body). Only the
+    // as one element when one is (syncTrigTune toggles it via refs.body). Only the
     // Triggers heading and the chips stay out — they are how you arm one.
     const trigBody = document.createElement("div");
     trigBody.className = "trig-body";
@@ -9737,7 +9943,7 @@
       if (e.refs) refEls[id] = e.refs;
       if (e.row) rows[id] = e.row;
     }
-    syncTrigRefs();              // the re-pointed boxes show THEIR armed bands' rows
+    syncTrigTune();              // the re-pointed boxes show THEIR armed bands' rows
   }
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
   // Wire every generated dual slider in EVERY block, then register the definition once from
@@ -9778,7 +9984,9 @@
     const q = base + Math.round((v - base) / step) * step;
     return q < mn ? mn : q > mx ? mx : q;
   }
-  function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply) {
+  // `slot`/`id` name the TRIGGER whose beats this slider follows — its own, with its own
+  // thresholds, rather than the one scene-wide beatNow[] every armed slider used to share.
+  function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply, slot, id) {
     // Armed: audio reaching the visual and at least one L/M/H chip selected. Armed sliders
     // stop drifting and only move on a beat — snap to the high thumb, drop back to
     // the low thumb over this slider's own pulse length (default PULSE_DROP).
@@ -9787,7 +9995,7 @@
     const armed = audioLive() && br && (br.low || br.mid || br.high);
 
     if (armed) {
-      const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
+      const beat = (br.low && trigBeat(slot, id, 0)) || (br.mid && trigBeat(slot, id, 1)) || (br.high && trigBeat(slot, id, 2));
       const drop = plen > 0 ? plen : PULSE_DROP;
       if (beat) st.pulse = 1;                                    // immediate, significant
       else st.pulse = st.pulse - dt / drop > 0 ? st.pulse - dt / drop : 0;
@@ -9831,14 +10039,17 @@
       const a = anims[id];
       if (a.scene) {
         const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
-        stepAnim(a, animPhase[id], mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true);
+        // A scene control belongs to no layer, so its trigger is filed under the SELECTED
+        // slot — the same slot its tuning is edited from and stored under.
+        stepAnim(a, animPhase[id], mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true, stackSel, id);
         continue;
       }
-      for (const L of stack) {
+      for (let s = 0; s < stack.length; s++) {
+        const L = stack[s];
         const b = bandOf(L, id);
         if (!b) continue;                 // this item's effect doesn't carry the key
         stepAnim(a, itemAnim(L, id), Math.min(b[0], b[1]), Math.max(b[0], b[1]),
-          beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false);
+          beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false, s, id);
       }
     }
   }
@@ -10814,7 +11025,7 @@
   // scene to whichever effect now sits at that index, in localStorage, Backups and
   // share links alike. Presets were already safe (their `effect` is an id); these maps
   // were the hole in that guarantee, and the failure is invisible until someone reorders.
-  const EFFECT_MAPS = ["states", "beats", "pulses", "plens", "extras"];
+  const EFFECT_MAPS = ["states", "beats", "pulses", "plens", "btunes", "extras"];
   function keysToIds(m) {                          // { 3: {...} } → { plasma: {...} }
     const out = {};
     for (const k in m) { const f = EFFECTS[+k]; if (f) out[f.id] = m[k]; }
@@ -11787,7 +11998,7 @@
   // edit — the failure class the chipEdited() history in CLAUDE.md documents.
   function freezeItem(L) {
     const st = states[L.fx] || {};
-    L.state = {}; L.beat = {}; L.pulse = {}; L.plen = {};
+    L.state = {}; L.beat = {}; L.pulse = {}; L.plen = {}; L.btune = {};
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global, not per-layer
       L.state[id] = Array.isArray(st[id])
@@ -11797,6 +12008,9 @@
     for (const id in beatReact) L.beat[id] = Object.assign({}, beatReact[id]);
     for (const id in pulseShape) L.pulse[id] = pulseShape[id];
     for (const id in pulseLen) L.plen[id] = pulseLen[id];
+    // Deep-copied: the arrays are handed to the detector every tick, so a shared reference
+    // would let one layer's ↺ retune another's triggers.
+    for (const id in beatTune) { const t = btuneOk(beatTune[id]); if (t) L.btune[id] = t; }
     L.anim = {};
     for (const id in animPhase) L.anim[id] = Object.assign({}, animPhase[id]);
     capturePhase(L);
@@ -11808,10 +12022,11 @@
     if (L.beat) beatStates[L.fx] = mergeBeat(L.fx, L.beat);
     if (L.pulse) pulseStates[L.fx] = mergePulse(L.fx, L.pulse);
     if (L.plen) plenStates[L.fx] = mergePlen(L.fx, L.plen);
+    if (L.btune) btuneStates[L.fx] = mergeBtune(L.btune);
     // The selected item's phase records ARE the singletons from here on.
     for (const id in L.anim) if (animPhase[id]) Object.assign(animPhase[id], L.anim[id]);
     installPhase(L);
-    L.state = L.beat = L.pulse = L.plen = null;
+    L.state = L.beat = L.pulse = L.plen = L.btune = null;
     L.anim = {};
   }
   // The ORDER here is load-bearing and any other one loses the user's last edit in silence:
@@ -11874,6 +12089,7 @@
     const prev = stackSel;
     freezeItem(stack[stackSel]);
     stackSel = j;
+    trigDirty = true;                // the triggers are keyed by slot, and the slots just moved
     pointMaps(j);
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
@@ -11894,6 +12110,7 @@
     L.beat = mergeBeat(L.fx, presetBeat(L.fx));
     L.pulse = mergePulse(L.fx, presetPulse(L.fx));
     L.plen = mergePlen(L.fx, presetPlen(L.fx));
+    L.btune = {};                            // a fresh layer inherits every threshold
     L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
     L.paletteRev = presetExtra(L.fx).paletteRev;
     L.paletteBg = presetExtra(L.fx).paletteBg;
@@ -12100,7 +12317,7 @@
             stackSel = stack.indexOf(sel);
             pointMaps(stackSel);     // the wiring follows it to its new block
             thawItem(sel);
-            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx);   // ...and that block's DOM
+            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx); loadBtune(sel.fx);   // ...and that block's DOM
             repaintAllBlocks();      // every other slot holds a different layer now
             syncPopOwners();
           }
@@ -12251,6 +12468,10 @@
   function syncStackUI() {
     const host = el("stacklist");
     if (!host) return;
+    // The single choke point for a STRUCTURAL stack change — add, remove, reorder, mute — and
+    // triggers are keyed by slot, so any of those repoints them. Cheaper to invalidate here
+    // than to remember it at four call sites.
+    trigDirty = true;
     buildStackRows();
     for (let slot = 0; slot < STACK_MAX; slot++) {
       const r = lyrRows[slot], L = stack[slot];
@@ -12309,35 +12530,54 @@
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
     for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
     syncDots();
-    syncTrigRefs();
+    syncTrigTune();
   }
-  // The per-box refractory rows (see makeChips): one per ARMED band, values from the
-  // live beatCfg, the whole block hidden with nothing armed. A focused field is never
-  // overwritten mid-edit. The try/catch is a TDZ guard, not error hiding: syncChips and
-  // pointMaps run during startup, one slice before `const beatCfg` initialises — the
-  // same split collectionsHeld documents — and in that window there is nothing to show.
-  function syncTrigRefs() {
-    try {
-      const B = { low: 0, mid: 1, high: 2 };
-      for (const id in refEls) {
-        const r = refEls[id], armed = beatReact[id] || {};
-        let any = false;
-        for (const k in r.rows) {
-          const on = !!armed[k];
-          r.rows[k].style.display = on ? "" : "none";
-          if (on) {
-            any = true;
-            const f = r.fields[k], v = beatCfg.refract[B[k]];
-            if (document.activeElement !== f) f.value = String(v);
-            if (r.vals && r.vals[k]) r.vals[k].textContent = v + "ms";
-          }
-        }
-        r.wrap.style.display = any ? "" : "none";
-        // The whole trigger body — Shape, Duration and Refractory — folds as ONE element
-        // on the same condition: something armed.
-        if (r.body) r.body.style.display = any ? "" : "none";
-      }
-    } catch (e) {}
+  // The per-box TUNING rows (see makeChips): Sensitivity and Refractory per ARMED band, Floor
+  // once, the whole block hidden with nothing armed. Each row shows this slider's own value if
+  // it has one and the inherited global otherwise, with the "global" tag saying which. A
+  // focused field is never overwritten mid-edit.
+  //
+  // The try/catch is a TDZ guard, not error hiding: syncChips and pointMaps run during startup,
+  // one slice before `const beatCfg` initialises — the same split collectionsHeld documents —
+  // and in that window there is nothing to show.
+  function paintTuneRows(id) {
+    const r = refEls[id]; if (!r) return;
+    const B = { low: 0, mid: 1, high: 2 };
+    const armed = beatReact[id] || {};
+    const own = beatTune[id] || {};
+    const eff = tuneEff(own);            // the ONE resolver — what the detector will actually use
+    let any = false;
+    const put = (rowKey, v, fmt, isOwn, show) => {
+      const row = r.rows[rowKey]; if (!row) return;
+      row.style.display = show ? "" : "none";
+      if (!show) return;
+      const f = r.fields[rowKey];
+      if (document.activeElement !== f) f.value = String(v);
+      if (r.vals[rowKey]) r.vals[rowKey].textContent = fmt(v);
+      if (r.tags[rowKey]) r.tags[rowKey].style.display = isOwn ? "none" : "";
+    };
+    for (const k in B) {
+      const on = !!armed[k]; if (on) any = true;
+      const b = B[k];
+      put("sen-" + k, eff.fluxK[b], v => (+v).toFixed(1) + "×", Array.isArray(own.fluxK), on);
+      put(k, eff.refract[b], v => v + "ms", Array.isArray(own.refract), on);
+    }
+    put("floor", eff.floor, v => (+v).toFixed(2), typeof own.floor === "number", any);
+    r.wrap.style.display = any ? "" : "none";
+    // The whole trigger body — Shape, Duration and Tuning — folds as ONE element on the
+    // same condition: something armed.
+    if (r.body) r.body.style.display = any ? "" : "none";
+  }
+  function syncTrigTune() {
+    try { for (const id in refEls) paintTuneRows(id); } catch (e) {}
+  }
+  // A tuning row was moved: fold it into the scene like any other edit. The rows are plain
+  // DOM nodes inside #breakout, so the delegated onEdit would fire for them too — but it
+  // persists the SLIDER's value, not this map, so the write has to be explicit. Guarded
+  // exactly as chipEdited is.
+  function tuneEdited() {
+    if (persistReady && !applyingPreset) autosavePreset();
+    persist();
   }
   // The menu row's dots mirror the armed chips, so the overview survives every path
   // that changes them (loadBeat, Reset, a chip click) without a second sync to forget.
@@ -12383,6 +12623,42 @@
   function syncPlen() {
     for (const id in plenEls) { plenEls[id].inp.value = pulseLen[id]; plenEls[id].out.textContent = plenFmt(pulseLen[id]); }
   }
+
+  // Per-effect DETECTOR TUNING per slider, exactly parallel to plenStates above. Seeded EMPTY
+  // — an absent entry, and an absent field within one, both mean "inherit the global Beat
+  // tuning". That is what keeps every scene written before this feature rendering identically,
+  // and it is why there is no descriptor default to seed from.
+  const btuneStates = {};
+  const BTUNE_LIMITS = { fluxK: [0.5, 6], floor: [0, 1], refract: [20, 500] };
+  const inRange = (v, r) => typeof v === "number" && isFinite(v) && v >= r[0] && v <= r[1];
+  const triadOk = (v, r) => Array.isArray(v) && v.length === 3 && v.every(x => inRange(x, r));
+  // Validate field by field and DROP anything unrecognised, so a hand-edited or malformed
+  // blob degrades to inheritance rather than feeding NaN into the detector's comparisons
+  // (where every test would silently go false and the slider would simply stop beating).
+  function btuneOk(t) {
+    if (!t || typeof t !== "object" || Array.isArray(t)) return null;
+    const out = {};
+    if (triadOk(t.fluxK, BTUNE_LIMITS.fluxK)) out.fluxK = t.fluxK.slice();
+    if (inRange(t.floor, BTUNE_LIMITS.floor)) out.floor = t.floor;
+    if (triadOk(t.refract, BTUNE_LIMITS.refract)) out.refract = t.refract.slice();
+    return Object.keys(out).length ? out : null;      // nothing valid ⇒ inherit
+  }
+  function presetBtune() { return {}; }               // shipped state is "everything inherits"
+  function initBtuneStates() { EFFECTS.forEach((_, k) => btuneStates[k] = presetBtune()); }
+  initBtuneStates();
+  function saveBtune(e) {
+    const out = {};
+    for (const id in beatTune) { const t = btuneOk(beatTune[id]); if (t) out[id] = t; }
+    btuneStates[e] = out;                             // rebuilt, not merged: a cleared ↺ must not linger
+  }
+  function loadBtune(e) {
+    for (const id in beatTune) delete beatTune[id];
+    const st = btuneStates[e] || {};
+    for (const id in st) { const t = btuneOk(st[id]); if (t) beatTune[id] = t; }
+    trigDirty = true;                                 // the detector's armed-trigger list is stale
+    syncBtune();
+  }
+  function syncBtune() { for (const id in tuneEls) paintTuneRows(id); }
 
   // Per-effect "extras": palette, auto-morph, show-box and Effect TTL are also
   // remembered per effect, so each effect is a fully independent scene.
@@ -12773,9 +13049,10 @@
     saveBeat(effect);                 // ...the live beat toggles
     savePulse(effect);                // ...the live beat-pulse shapes
     savePlen(effect);                 // ...their lengths
+    saveBtune(effect);                // ...their own detector thresholds
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
     return {
-      states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
+      states, beats: beatStates, pulses: pulseStates, plens: plenStates, btunes: btuneStates, extras, effect,
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted); each item carries its own `cam`
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
@@ -12905,6 +13182,13 @@
         const ps = saved.plens[k]; if (!ps) continue;
         for (const id in plenStates[k]) if (plenOk(ps[id])) plenStates[k][id] = ps[id];
       }
+    }
+    // ...and each slider's own detector thresholds. REPLACED per effect, not merged into the
+    // existing map: an override is a thing you can also take AWAY, and merging would make a
+    // cleared one immortal. Absent (every pre-feature blob) ⇒ the initBtuneStates() empties
+    // stand and every slider inherits the global tuning.
+    if (saved.btunes) {
+      for (const k in btuneStates) if (saved.btunes[k]) btuneStates[k] = mergeBtune(saved.btunes[k]);
     }
     // Per-effect extras (palette / morph / show-box / TTL). Migrate a legacy blob
     // that stored these once at the root into every effect's extras.
@@ -13099,7 +13383,7 @@
   // time. Merely RE-SELECTING an existing stack layer to edit it passes enter=false: the
   // layer keeps running exactly as it was, so selecting a layer never changes the render.
   function setEffect(i, save = true, enter = true) {
-    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect); }  // remember outgoing
+    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
     // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
     // editor-side use of it (shownKeys, refreshBreakout, resetControl, ctlOwner, the
@@ -13128,6 +13412,7 @@
     loadBeat(i);                      // ...its beat-toggle selection
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
     loadPlen(i);                      // ...and their lengths
+    loadBtune(i);                     // ...and each slider's own detector thresholds
     loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
     if (enter && fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry — but NOT on a layer re-select
     if (enter) acc = 0;               // don't carry banked sim time across a switch (kept on a re-select)
@@ -13751,6 +14036,7 @@
   // Beat chips are <button>s, so they never fire input/change and the delegated
   // listener above can't see them. Same body, minus the target-based guards.
   function chipEdited() {
+    trigDirty = true;                  // arming/disarming changes which triggers the detector runs
     if (persistReady && !applyingPreset) autosavePreset();
     persist();
   }
@@ -13770,6 +14056,7 @@
     beatStates[effect] = presetBeat(effect);
     pulseStates[effect] = presetPulse(effect);
     plenStates[effect] = presetPlen(effect);
+    btuneStates[effect] = presetBtune();
     extras[effect] = presetExtra(effect);
     // Shipped BOUNDS too, matching the per-slider ↺ — this used to reset every value
     // and leave a slider you had widened still widened, so "reset" left the control
@@ -13785,6 +14072,7 @@
     loadBeat(effect);                 // ...the live chips
     loadPulse(effect);                // ...the live pulse shapes
     loadPlen(effect);                 // ...and their lengths
+    loadBtune(effect);                // ...and their detector thresholds, back to inheriting
     loadExtra(effect);                // ...and palette/morph/show-box/TTL
     rngSyncAll();                     // the in-box min/max fields follow the restored bounds
     refreshControlVisibility();       // clear the modified-from-default dots (and blocked state) now everything is back to shipped
@@ -13832,6 +14120,14 @@
       for (const id in all[e]) if (all[e][id] !== (def[id] || PULSE_DROP)) keep[id] = all[e][id];
       if (Object.keys(keep).length) out[e] = keep;
     }
+    return out;
+  }
+  // ...and for the per-slider detector thresholds. The map is already sparse — only an
+  // OVERRIDDEN slider has an entry at all — so this just drops the empty effects rather than
+  // comparing against a default. Same job as the two above: keep the share URL short.
+  function pruneBtunes(all) {
+    const out = {};
+    for (const e in all) if (all[e] && Object.keys(all[e]).length) out[e] = all[e];
     return out;
   }
 
@@ -13927,13 +14223,14 @@
   // (which stores this same payload in Firestore instead of in a URL) cannot drift from it —
   // one definition of "what a shared scene is", two transports.
   function sceneBlob() {
-    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
+    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect);
     const only = m => ({ [effect]: m[effect] });
     const blob = {
       states: { [effect]: roundMap(states[effect]) },
       beats: pruneBeats(only(beatStates)),
       pulses: prunePulses(only(pulseStates)),
       plens: prunePlens(only(plenStates)),
+      btunes: pruneBtunes(only(btuneStates)),
       extras: only(extras),
       effect,
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with a share link
@@ -14038,13 +14335,16 @@
 
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
   function snapshotScene() {
-    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
+    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect);
     return {
       effect,
       state: JSON.parse(JSON.stringify(states[effect])),
       beat: JSON.parse(JSON.stringify(beatStates[effect])),
       pulse: JSON.parse(JSON.stringify(pulseStates[effect])),
       plen: JSON.parse(JSON.stringify(plenStates[effect])),
+      // Per-slider detector thresholds. Usually `{}` (everything inherits) and cheap to carry;
+      // it has to travel or a shared scene beats differently on the recipient's machine.
+      btune: JSON.parse(JSON.stringify(btuneStates[effect])),
       // beatTune + ranges are globals, remembered per preset so a scene is a COMPLETE copy of
       // what is on screen — the point of the exercise, since a preset is now something you hand
       // to someone else. beatTune: different thresholds mean different beats mean a different
@@ -14090,7 +14390,7 @@
   // fallback above, kept so a DEFAULT_LIBRARY naming a retired effect cannot leave a visitor
   // with nothing at all.
   function perEffectPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), btune: presetBtune(), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -14487,6 +14787,18 @@
     if (saved) for (const id in base) if (plenOk(saved[id])) base[id] = saved[id];
     return base;
   }
+  // ...and for the per-slider detector tuning. Unlike the four above this starts EMPTY and is
+  // built only from what validates: an unknown key, a malformed entry or no `btune` at all all
+  // land on the same answer — inherit the global Beat tuning — which is why a scene saved
+  // before this existed renders identically. Takes no effect index for that reason: there is
+  // no per-effect default to merge against.
+  function mergeBtune(saved) {
+    const out = {};
+    if (saved && typeof saved === "object") {
+      for (const id in saved) { const t = btuneOk(saved[id]); if (t) out[id] = t; }
+    }
+    return out;
+  }
   // ---- the stack in a preset / blob ------------------------------------------
   // A stack rides as an OPTIONAL `layers` array. When it holds one item nothing is
   // emitted at all (see stackOut), so every scene saved, shared or backed up before
@@ -14506,7 +14818,7 @@
   function stackItemOut(L) {
     const { state, cam } = splitLayerCam(L.state || {});   // camera → its own per-layer `cam` node
     return { effect: effectId(L.fx), state, cam, beat: L.beat, pulse: L.pulse,
-      plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
+      plen: L.plen, btune: L.btune, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
       showBox: L.showBox, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
@@ -14536,6 +14848,7 @@
       L.beat = mergeBeat(e, r.beat);
       L.pulse = mergePulse(e, r.pulse);
       L.plen = mergePlen(e, r.plen);
+      L.btune = mergeBtune(r.btune);             // absent ⇒ this layer inherits every threshold
       // Per-layer palette + filters. Absent (a scene saved before this) ⇒ fall back to
       // the scene's top-level extra, which is what every layer shared before — so an old
       // stacked scene still loads looking the way it did. null ⇒ applyLayerExtras defaults
@@ -14570,7 +14883,7 @@
       const e = EFFECTS[p.effect] ? p.effect : 0;
       const L = newStackItem(e);
       L.state = mergeState(e, p.state); L.beat = mergeBeat(e, p.beat);
-      L.pulse = mergePulse(e, p.pulse); L.plen = mergePlen(e, p.plen);
+      L.pulse = mergePulse(e, p.pulse); L.plen = mergePlen(e, p.plen); L.btune = mergeBtune(p.btune);
       const tex = p.extra || {};                 // the single layer takes the scene's palette + filters
       L.palette = tex.palette != null ? tex.palette : null;
       L.paletteRev = tex.paletteRev != null ? !!tex.paletteRev : null;
@@ -14596,6 +14909,7 @@
     for (const L of items) L.phase = Object.assign({}, now);
     stack = items;
     stackSel = 0;
+    trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed
     pointMaps(0);
     thawItem(stack[0]);
     // Every slot holds a DIFFERENT layer now, so every block has to be repainted. Missing
@@ -14626,6 +14940,7 @@
     beatStates[p.effect] = mergeBeat(p.effect, p.beat);      // p.beat may predate a control → default it
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
+    btuneStates[p.effect] = mergeBtune(p.btune);             // ...and p.btune → every slider inherits
     if (p.sceneFx) writeSceneFx(sceneFxOk(p.sceneFx));       // scene-global Scene filters (absent ⇒ keep current)
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     // The stack, after applyRanges for the same reason the four maps are: every item's
@@ -14982,6 +15297,7 @@
       .map(p => ({ name: String(p.name || "Scene"), collection: p.collection,
                    rotate: p.rotate === false ? false : undefined, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
+                   btune: mergeBtune(p.btune),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    layers: Array.isArray(p.layers) ? p.layers : undefined }));
   }
@@ -15095,6 +15411,7 @@
       out.states = s.states; out.beats = s.beats; out.extras = s.extras;
       if (s.pulses) out.pulses = s.pulses;         // per-effect beat-pulse shapes (absent in pre-feature backups)
       if (s.plens) out.plens = s.plens;            // ...and their lengths
+      if (s.btunes) out.btunes = s.btunes;         // ...and each slider's own detector thresholds
       if (s.cam) out.cam = s.cam;                  // the global camera
       if (Number.isInteger(s.effect)) out.effect = s.effect;
       if (typeof s.cycle === "boolean") out.cycle = s.cycle;
@@ -16568,7 +16885,11 @@
   var beatUi = { on: false, wired: false };
   function beatChanged(bandsMoved) {
     if (bandsMoved && audio.on) computeBins();   // new Hz edges take effect without an audio restart
-    syncTrigRefs();                              // the per-box refractory rows mirror beatCfg
+    // Every trigger still INHERITING one of these values is now using a stale copy — the
+    // armed-trigger list caches the resolved tuning, so editing the global box has to
+    // invalidate it or the global sliders would appear to do nothing until the next re-arm.
+    trigDirty = true;
+    syncTrigTune();                              // the per-box rows re-read what they inherit
     // No persist() here: these sliders carry no dev-tool opt-out, so onEdit already persisted
     // and folded the change into the selected preset. Calling it again would double-write.
   }

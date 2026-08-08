@@ -60,9 +60,10 @@
     saveBeat(effect);                 // ...the live beat toggles
     savePulse(effect);                // ...the live beat-pulse shapes
     savePlen(effect);                 // ...their lengths
+    saveBtune(effect);                // ...their own detector thresholds
     saveExtra(effect);                // ...and palette/morph/show-box/TTL
     return {
-      states, beats: beatStates, pulses: pulseStates, plens: plenStates, extras, effect,
+      states, beats: beatStates, pulses: pulseStates, plens: plenStates, btunes: btuneStates, extras, effect,
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted); each item carries its own `cam`
       sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
@@ -192,6 +193,13 @@
         const ps = saved.plens[k]; if (!ps) continue;
         for (const id in plenStates[k]) if (plenOk(ps[id])) plenStates[k][id] = ps[id];
       }
+    }
+    // ...and each slider's own detector thresholds. REPLACED per effect, not merged into the
+    // existing map: an override is a thing you can also take AWAY, and merging would make a
+    // cleared one immortal. Absent (every pre-feature blob) ⇒ the initBtuneStates() empties
+    // stand and every slider inherits the global tuning.
+    if (saved.btunes) {
+      for (const k in btuneStates) if (saved.btunes[k]) btuneStates[k] = mergeBtune(saved.btunes[k]);
     }
     // Per-effect extras (palette / morph / show-box / TTL). Migrate a legacy blob
     // that stored these once at the root into every effect's extras.
@@ -386,7 +394,7 @@
   // time. Merely RE-SELECTING an existing stack layer to edit it passes enter=false: the
   // layer keeps running exactly as it was, so selecting a layer never changes the render.
   function setEffect(i, save = true, enter = true) {
-    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect); }  // remember outgoing
+    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect); }  // remember outgoing
     effect = i;
     // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
     // editor-side use of it (shownKeys, refreshBreakout, resetControl, ctlOwner, the
@@ -415,6 +423,7 @@
     loadBeat(i);                      // ...its beat-toggle selection
     loadPulse(i);                     // ...its per-slider beat-pulse shapes
     loadPlen(i);                      // ...and their lengths
+    loadBtune(i);                     // ...and each slider's own detector thresholds
     loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
     if (enter && fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry — but NOT on a layer re-select
     if (enter) acc = 0;               // don't carry banked sim time across a switch (kept on a re-select)

@@ -606,6 +606,7 @@
   // Beat chips are <button>s, so they never fire input/change and the delegated
   // listener above can't see them. Same body, minus the target-based guards.
   function chipEdited() {
+    trigDirty = true;                  // arming/disarming changes which triggers the detector runs
     if (persistReady && !applyingPreset) autosavePreset();
     persist();
   }
@@ -625,6 +626,7 @@
     beatStates[effect] = presetBeat(effect);
     pulseStates[effect] = presetPulse(effect);
     plenStates[effect] = presetPlen(effect);
+    btuneStates[effect] = presetBtune();
     extras[effect] = presetExtra(effect);
     // Shipped BOUNDS too, matching the per-slider ↺ — this used to reset every value
     // and leave a slider you had widened still widened, so "reset" left the control
@@ -640,6 +642,7 @@
     loadBeat(effect);                 // ...the live chips
     loadPulse(effect);                // ...the live pulse shapes
     loadPlen(effect);                 // ...and their lengths
+    loadBtune(effect);                // ...and their detector thresholds, back to inheriting
     loadExtra(effect);                // ...and palette/morph/show-box/TTL
     rngSyncAll();                     // the in-box min/max fields follow the restored bounds
     refreshControlVisibility();       // clear the modified-from-default dots (and blocked state) now everything is back to shipped
@@ -687,6 +690,14 @@
       for (const id in all[e]) if (all[e][id] !== (def[id] || PULSE_DROP)) keep[id] = all[e][id];
       if (Object.keys(keep).length) out[e] = keep;
     }
+    return out;
+  }
+  // ...and for the per-slider detector thresholds. The map is already sparse — only an
+  // OVERRIDDEN slider has an entry at all — so this just drops the empty effects rather than
+  // comparing against a default. Same job as the two above: keep the share URL short.
+  function pruneBtunes(all) {
+    const out = {};
+    for (const e in all) if (all[e] && Object.keys(all[e]).length) out[e] = all[e];
     return out;
   }
 

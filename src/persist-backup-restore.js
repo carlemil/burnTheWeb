@@ -182,6 +182,7 @@
       .map(p => ({ name: String(p.name || "Scene"), collection: p.collection,
                    rotate: p.rotate === false ? false : undefined, effect: p.effect,
                    state: mergeState(p.effect, p.state), beat: p.beat, pulse: mergePulse(p.effect, p.pulse), plen: mergePlen(p.effect, p.plen),
+                   btune: mergeBtune(p.btune),
                    cam: p.cam, sceneFx: p.sceneFx, beatTune: mergeBeatTune(p.beatTune), ranges: p.ranges, extra: p.extra,
                    layers: Array.isArray(p.layers) ? p.layers : undefined }));
   }
@@ -295,6 +296,7 @@
       out.states = s.states; out.beats = s.beats; out.extras = s.extras;
       if (s.pulses) out.pulses = s.pulses;         // per-effect beat-pulse shapes (absent in pre-feature backups)
       if (s.plens) out.plens = s.plens;            // ...and their lengths
+      if (s.btunes) out.btunes = s.btunes;         // ...and each slider's own detector thresholds
       if (s.cam) out.cam = s.cam;                  // the global camera
       if (Number.isInteger(s.effect)) out.effect = s.effect;
       if (typeof s.cycle === "boolean") out.cycle = s.cycle;

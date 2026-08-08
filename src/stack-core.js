@@ -17,7 +17,7 @@
     // effect can look different. null means "not captured yet" — applyLayerExtras fills
     // them from the effect's stored/default extras on first use. They can't be seeded
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
-    return { fx, state: null, beat: null, pulse: null, plen: null,
+    return { fx, state: null, beat: null, pulse: null, plen: null, btune: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
       seedPath: null, seedRide: null, seedPts: null, showBox: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
@@ -49,6 +49,7 @@
   }
   const beatOf = (L, id) => L === stack[stackSel] ? beatReact[id] : (L.beat && L.beat[id]);
   const shapeOf = (L, id) => L === stack[stackSel] ? pulseShape[id] : (L.pulse && L.pulse[id]);
+  const tuneOf = (L, id) => L === stack[stackSel] ? beatTune[id] : (L.btune && L.btune[id]);
   const plenOf = (L, id) => L === stack[stackSel] ? pulseLen[id] : (L.plen && L.plen[id]);
   // The selected item's animation phase IS the singleton animPhase record — not a copy
   // seeded from it. Seeding lazily from the DOM instead would diverge on the first
@@ -102,6 +103,31 @@
   // swell another. PULSE_DROP stays the default, so untouched scenes are unchanged.
   const pulseLen = {};         // id -> seconds : live per-effect value (drives updateAnims)
   const plenEls = {};          // id -> {inp,out} : the length slider + readout (never persisted)
+  // Beat DETECTOR TUNING, per slider (per effect, per layer) — the same shape as pulseLen
+  // above and stored the same way. Each field is OPTIONAL and absent means "inherit the
+  // scene-wide beatCfg": a slider that has never been tuned behaves exactly as it did before
+  // this map existed, which is the property beatprobe pins.
+  //
+  // It exists because the Refractory rows in a slider's box used to write straight into
+  // beatCfg.refract[band] — the SCENE-WIDE value — so a control presented as belonging to one
+  // slider silently retuned every armed slider in the scene.
+  //
+  // `bands` is deliberately NOT here: the L/M/H Hz edges say what "low" MEANS for the meter,
+  // the chip colours and the trace, and per-slider ranges would need their own FFT band pass.
+  const beatTune = {};         // id -> {fluxK?:[l,m,h], floor?:n, refract?:[l,m,h]} : live per-effect
+  const tuneEls = {};          // id -> the row nodes in the pop-out box (never persisted)
+  // The effective tuning for one trigger: this slider's overrides laid over the scene-wide
+  // beatCfg. The ONE place inheritance is resolved — the detector, the UI's "(global)" tag
+  // and the ↺ all go through it, so they cannot disagree about what a slider is actually using.
+  function tuneEff(t) {
+    const fluxK = beatCfg.fluxK, refract = beatCfg.refract;
+    if (!t) return { fluxK, floor: beatCfg.floor, refract };
+    return {
+      fluxK: Array.isArray(t.fluxK) ? t.fluxK : fluxK,
+      floor: typeof t.floor === "number" ? t.floor : beatCfg.floor,
+      refract: Array.isArray(t.refract) ? t.refract : refract,
+    };
+  }
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
   //
   // Built once PER BLOCK, so it hangs its nodes on that block's wiring record `w` rather
@@ -132,7 +158,7 @@
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
         syncDots();              // the menu row shows the same armed state
-        syncTrigRefs();          // ...and the refractory row for this band appears/hides
+        syncTrigTune();          // ...and this band's tuning rows appear/hide
         // A <button> click fires neither input nor change, so the delegated onEdit
         // never sees it — do its job by hand, autosave included. Without the
         // autosave the chip reached localStorage but not the *selected preset*,
@@ -168,47 +194,115 @@
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
     trigT.title = "Which beat bands make this slider jump";
     host.append(trigT, wrap);
-    // Refractory for each ARMED band: the SAME per-band beatCfg.refract that Beat tuning
-    // edits (scene data, min ms between beats) — so a change here applies to every
-    // trigger on that band. Rows exist for all three bands but show only while their chip
-    // is on (syncTrigRefs); the whole block hides with nothing armed. Built here, but
-    // APPENDED at the foot of the trigger section (below Duration) — see the append after
-    // the max row.
-    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {} };
+    // THIS SLIDER'S OWN detector thresholds — Sensitivity, Floor and Refractory. They used to
+    // be one Refractory group writing straight into beatCfg.refract[band], i.e. into the
+    // SCENE-WIDE tuning, so a control sitting in one slider's box silently retuned every armed
+    // slider in the scene. Each row now writes into beatTune[id] instead.
+    //
+    // INHERIT UNTIL TOUCHED: a row shows the global value with a "global" tag until you move
+    // it, at which point it becomes this slider's own; the ↺ on the heading gives every row in
+    // the section back. So an untouched slider behaves exactly as it did before this existed.
+    //
+    // Rows exist for all three bands but show only while their chip is armed (syncTrigTune);
+    // the whole block hides with nothing armed. Built here, APPENDED at the foot of the trigger
+    // section (below Duration) — see the append after the max row.
+    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {}, tags: {}, floor: null };
     const refWrap = document.createElement("div");
     refWrap.className = "trig-refs";
     refWrap.style.display = "none";
     const refT = document.createElement("div");
-    refT.className = "trig-t"; refT.textContent = "Refractory (ms)";
-    refT.title = "Minimum gap between beats on an armed band (ms) — the same value as Beat tuning's Refractory";
+    refT.className = "trig-t"; refT.textContent = "Tuning";
+    refT.title = "How this slider decides what counts as a beat. Untouched rows follow Global beat tuning.";
+    // ↺ — drop every override in this section and go back to inheriting. Same affordance and
+    // placement as the Value range editor's reset.
+    const refRst = document.createElement("button");
+    refRst.type = "button"; refRst.className = "rng-rst trig-rst"; refRst.textContent = "↺";
+    refRst.title = "Follow Global beat tuning again — clears this slider's own thresholds";
+    // NOT ctlLabel(id): that is a `const` arrow in controls-breakout.js, ten slices below
+    // this one, and makeChips runs while the controls are being BUILT — reading it here is a
+    // TDZ abort that surfaces as an unrelated "nextSwitch before initialization" at startup.
+    // The box's own .ctl-owner line already names the control this belongs to.
+    refRst.setAttribute("aria-label", "Follow global beat tuning");
+    refRst.addEventListener("click", e => {
+      e.preventDefault();
+      if (refEls[id] !== refs) return;
+      delete beatTune[id];
+      trigDirty = true;
+      paintTuneRows(id);
+      tuneEdited();
+    });
+    refT.appendChild(refRst);
     refWrap.appendChild(refT);
-    for (const k of ["low", "mid", "high"]) {
-      const b = { low: 0, mid: 1, high: 2 }[k];
+    // One row builder for all three groups: label, range, readout, and a "global" tag that
+    // clears the moment the row carries an override.
+    const tuneRow = (cls, name, lo, hi, st, fmt, onSet) => {
       const r = document.createElement("div");
-      r.className = "trig-ref";
-      r.style.display = "none";
+      r.className = "trig-ref " + cls;
       const lb = document.createElement("span");
-      lb.className = "rng-lbl"; lb.textContent = k;
-      // A SLIDER with a live readout, like Duration below — same bounds as Beat tuning's
-      // Refractory rows (20–500 ms, step 5).
+      lb.className = "rng-lbl"; lb.textContent = name;
       const f = document.createElement("input");
-      f.type = "range"; f.min = "20"; f.max = "500"; f.step = "5";
-      f.title = k + " band refractory (ms)";
-      f.setAttribute("aria-label", k + " band refractory");
+      f.type = "range"; f.min = String(lo); f.max = String(hi); f.step = String(st);
       const val = document.createElement("span");
       val.className = "trig-ref-val";
+      const tag = document.createElement("span");
+      tag.className = "trig-ref-tag"; tag.textContent = "global";
+      tag.title = "Following Global beat tuning — move this to give the slider its own";
       f.addEventListener("input", () => {
         if (refEls[id] !== refs) return;         // not the live block
-        const v = +f.value;
-        val.textContent = v + "ms";
-        beatCfg.refract[b] = v;
-        beatChanged(false);
+        onSet(+f.value);
+        trigDirty = true;
+        paintTuneRows(id);
+        tuneEdited();
       });
-      // Rebuild the Beat tuning sliders once the drag settles, not per input tick.
-      f.addEventListener("change", () => { if (refEls[id] === refs) beatBuild(); });
-      r.append(lb, f, val);
-      refs.fields[k] = f; refs.rows[k] = r; refs.vals[k] = val;
-      refWrap.appendChild(r);
+      r.append(lb, f, val, tag);
+      return { row: r, field: f, val, tag, fmt };
+    };
+    const own = () => beatTune[id] || (beatTune[id] = {});
+    // Sensitivity — how far above the running median the flux has to jump. Per band.
+    const senT = document.createElement("div");
+    senT.className = "trig-sub"; senT.textContent = "Sensitivity";
+    senT.title = "How much louder than usual a rise must be to count as a beat, per band";
+    refWrap.appendChild(senT);
+    for (const k of ["low", "mid", "high"]) {
+      const b = { low: 0, mid: 1, high: 2 }[k];
+      const R = tuneRow("trig-sen", k, 0.5, 6, 0.1, null, v => {
+        const t = own(); t.fluxK = (t.fluxK || beatCfg.fluxK).slice(); t.fluxK[b] = v;
+      });
+      R.fmt = v => v.toFixed(1) + "×";
+      R.field.title = k + " band sensitivity"; R.field.setAttribute("aria-label", k + " band sensitivity");
+      refs.fields["sen-" + k] = R.field; refs.rows["sen-" + k] = R.row;
+      refs.vals["sen-" + k] = R.val; refs.tags["sen-" + k] = R.tag;
+      refWrap.appendChild(R.row);
+    }
+    // Floor — one value, not per band: it gates against the band's own recent peak.
+    const flrT = document.createElement("div");
+    flrT.className = "trig-sub"; flrT.textContent = "Floor";
+    flrT.title = "How strong a beat must be relative to this slider's recent loudest, across all bands";
+    refWrap.appendChild(flrT);
+    {
+      const R = tuneRow("trig-flr", "all", 0, 1, 0.01, null, v => { own().floor = v; });
+      R.fmt = v => v.toFixed(2);
+      R.field.title = "beat floor"; R.field.setAttribute("aria-label", "beat floor");
+      refs.floor = R;
+      refs.fields.floor = R.field; refs.rows.floor = R.row;
+      refs.vals.floor = R.val; refs.tags.floor = R.tag;
+      refWrap.appendChild(R.row);
+    }
+    // Refractory — the one that started this: minimum gap between this slider's own beats.
+    const refSub = document.createElement("div");
+    refSub.className = "trig-sub"; refSub.textContent = "Refractory (ms)";
+    refSub.title = "Minimum gap between beats on an armed band, for THIS slider only";
+    refWrap.appendChild(refSub);
+    for (const k of ["low", "mid", "high"]) {
+      const b = { low: 0, mid: 1, high: 2 }[k];
+      const R = tuneRow("trig-ref-ms", k, 20, 500, 5, null, v => {
+        const t = own(); t.refract = (t.refract || beatCfg.refract).slice(); t.refract[b] = v;
+      });
+      R.fmt = v => v + "ms";
+      R.field.title = k + " band refractory (ms)"; R.field.setAttribute("aria-label", k + " band refractory");
+      refs.fields[k] = R.field; refs.rows[k] = R.row;
+      refs.vals[k] = R.val; refs.tags[k] = R.tag;
+      refWrap.appendChild(R.row);
     }
     refs.wrap = refWrap;
     // The fall-back CURVE, titled like everything else here rather than left as an
@@ -274,7 +368,7 @@
     addNumArrows(mf, () => 0.5);
     // ONE folding body for everything a trigger needs: Shape, Duration (+max) and
     // Refractory live together in .trig-body, hidden until any chip is armed and shown
-    // as one element when one is (syncTrigRefs toggles it via refs.body). Only the
+    // as one element when one is (syncTrigTune toggles it via refs.body). Only the
     // Triggers heading and the chips stay out — they are how you arm one.
     const trigBody = document.createElement("div");
     trigBody.className = "trig-body";
@@ -380,7 +474,7 @@
       if (e.refs) refEls[id] = e.refs;
       if (e.row) rows[id] = e.row;
     }
-    syncTrigRefs();              // the re-pointed boxes show THEIR armed bands' rows
+    syncTrigTune();              // the re-pointed boxes show THEIR armed bands' rows
   }
   // Wire every generated dual slider from the schema (fmt/apply/durScale live in CONTROLS).
   // Wire every generated dual slider in EVERY block, then register the definition once from
@@ -421,7 +515,9 @@
     const q = base + Math.round((v - base) / step) * step;
     return q < mn ? mn : q > mx ? mx : q;
   }
-  function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply) {
+  // `slot`/`id` name the TRIGGER whose beats this slider follows — its own, with its own
+  // thresholds, rather than the one scene-wide beatNow[] every armed slider used to share.
+  function stepAnim(a, st, mn, mx, br, shape, plen, now, dt, doApply, slot, id) {
     // Armed: audio reaching the visual and at least one L/M/H chip selected. Armed sliders
     // stop drifting and only move on a beat — snap to the high thumb, drop back to
     // the low thumb over this slider's own pulse length (default PULSE_DROP).
@@ -430,7 +526,7 @@
     const armed = audioLive() && br && (br.low || br.mid || br.high);
 
     if (armed) {
-      const beat = (br.low && audio.beatNow[0]) || (br.mid && audio.beatNow[1]) || (br.high && audio.beatNow[2]);
+      const beat = (br.low && trigBeat(slot, id, 0)) || (br.mid && trigBeat(slot, id, 1)) || (br.high && trigBeat(slot, id, 2));
       const drop = plen > 0 ? plen : PULSE_DROP;
       if (beat) st.pulse = 1;                                    // immediate, significant
       else st.pulse = st.pulse - dt / drop > 0 ? st.pulse - dt / drop : 0;
@@ -474,14 +570,17 @@
       const a = anims[id];
       if (a.scene) {
         const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
-        stepAnim(a, animPhase[id], mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true);
+        // A scene control belongs to no layer, so its trigger is filed under the SELECTED
+        // slot — the same slot its tuning is edited from and stored under.
+        stepAnim(a, animPhase[id], mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true, stackSel, id);
         continue;
       }
-      for (const L of stack) {
+      for (let s = 0; s < stack.length; s++) {
+        const L = stack[s];
         const b = bandOf(L, id);
         if (!b) continue;                 // this item's effect doesn't carry the key
         stepAnim(a, itemAnim(L, id), Math.min(b[0], b[1]), Math.max(b[0], b[1]),
-          beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false);
+          beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false, s, id);
       }
     }
   }

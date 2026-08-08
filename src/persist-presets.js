@@ -1,12 +1,15 @@
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
   function snapshotScene() {
-    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
+    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect);
     return {
       effect,
       state: JSON.parse(JSON.stringify(states[effect])),
       beat: JSON.parse(JSON.stringify(beatStates[effect])),
       pulse: JSON.parse(JSON.stringify(pulseStates[effect])),
       plen: JSON.parse(JSON.stringify(plenStates[effect])),
+      // Per-slider detector thresholds. Usually `{}` (everything inherits) and cheap to carry;
+      // it has to travel or a shared scene beats differently on the recipient's machine.
+      btune: JSON.parse(JSON.stringify(btuneStates[effect])),
       // beatTune + ranges are globals, remembered per preset so a scene is a COMPLETE copy of
       // what is on screen — the point of the exercise, since a preset is now something you hand
       // to someone else. beatTune: different thresholds mean different beats mean a different
@@ -52,7 +55,7 @@
   // fallback above, kept so a DEFAULT_LIBRARY naming a retired effect cannot leave a visitor
   // with nothing at all.
   function perEffectPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
+    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), btune: presetBtune(), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -449,6 +452,18 @@
     if (saved) for (const id in base) if (plenOk(saved[id])) base[id] = saved[id];
     return base;
   }
+  // ...and for the per-slider detector tuning. Unlike the four above this starts EMPTY and is
+  // built only from what validates: an unknown key, a malformed entry or no `btune` at all all
+  // land on the same answer — inherit the global Beat tuning — which is why a scene saved
+  // before this existed renders identically. Takes no effect index for that reason: there is
+  // no per-effect default to merge against.
+  function mergeBtune(saved) {
+    const out = {};
+    if (saved && typeof saved === "object") {
+      for (const id in saved) { const t = btuneOk(saved[id]); if (t) out[id] = t; }
+    }
+    return out;
+  }
   // ---- the stack in a preset / blob ------------------------------------------
   // A stack rides as an OPTIONAL `layers` array. When it holds one item nothing is
   // emitted at all (see stackOut), so every scene saved, shared or backed up before
@@ -468,7 +483,7 @@
   function stackItemOut(L) {
     const { state, cam } = splitLayerCam(L.state || {});   // camera → its own per-layer `cam` node
     return { effect: effectId(L.fx), state, cam, beat: L.beat, pulse: L.pulse,
-      plen: L.plen, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
+      plen: L.plen, btune: L.btune, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
       showBox: L.showBox, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
@@ -498,6 +513,7 @@
       L.beat = mergeBeat(e, r.beat);
       L.pulse = mergePulse(e, r.pulse);
       L.plen = mergePlen(e, r.plen);
+      L.btune = mergeBtune(r.btune);             // absent ⇒ this layer inherits every threshold
       // Per-layer palette + filters. Absent (a scene saved before this) ⇒ fall back to
       // the scene's top-level extra, which is what every layer shared before — so an old
       // stacked scene still loads looking the way it did. null ⇒ applyLayerExtras defaults
@@ -532,7 +548,7 @@
       const e = EFFECTS[p.effect] ? p.effect : 0;
       const L = newStackItem(e);
       L.state = mergeState(e, p.state); L.beat = mergeBeat(e, p.beat);
-      L.pulse = mergePulse(e, p.pulse); L.plen = mergePlen(e, p.plen);
+      L.pulse = mergePulse(e, p.pulse); L.plen = mergePlen(e, p.plen); L.btune = mergeBtune(p.btune);
       const tex = p.extra || {};                 // the single layer takes the scene's palette + filters
       L.palette = tex.palette != null ? tex.palette : null;
       L.paletteRev = tex.paletteRev != null ? !!tex.paletteRev : null;
@@ -558,6 +574,7 @@
     for (const L of items) L.phase = Object.assign({}, now);
     stack = items;
     stackSel = 0;
+    trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed
     pointMaps(0);
     thawItem(stack[0]);
     // Every slot holds a DIFFERENT layer now, so every block has to be repainted. Missing
@@ -588,6 +605,7 @@
     beatStates[p.effect] = mergeBeat(p.effect, p.beat);      // p.beat may predate a control → default it
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
+    btuneStates[p.effect] = mergeBtune(p.btune);             // ...and p.btune → every slider inherits
     if (p.sceneFx) writeSceneFx(sceneFxOk(p.sceneFx));       // scene-global Scene filters (absent ⇒ keep current)
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     // The stack, after applyRanges for the same reason the four maps are: every item's

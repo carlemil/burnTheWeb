@@ -675,6 +675,22 @@
   #breakout .trig-ref .rng-lbl { flex: none; width: 26px; opacity: .55; font-size: 9px; letter-spacing: .06em; }
   #breakout .trig-ref input[type=range] { flex: 1 1 auto; min-width: 0; margin: 0; }
   #breakout .trig-ref .trig-ref-val { flex: none; width: 44px; text-align: right; font-size: 10px; color: #ffcf87; }
+  /* The three groups inside Tuning — Sensitivity / Floor / Refractory. A quieter, tighter
+     heading than .trig-t: those name a SECTION of the box, these name a group inside one. */
+  #panel .trig-sub { display: none; }
+  #breakout .trig-sub {
+    margin: 7px 0 1px; color: #ffb15a; opacity: .5;
+    font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
+  }
+  /* "global" — this row is still following Global beat tuning. Hidden the moment the row
+     carries this slider's own value, so the tag's presence IS the override state. */
+  #breakout .trig-ref-tag {
+    flex: none; opacity: .38; font-size: 8.5px; letter-spacing: .05em;
+    text-transform: uppercase; min-width: 34px;
+  }
+  /* The ↺ sits on the Tuning heading, which is a plain block — float it right rather than
+     turning the heading into a flex row, so the uppercase tracking is untouched. */
+  #breakout .trig-t .trig-rst { float: right; margin: -2px 0 0; }
   #breakout .rng-rst {
     flex: none; width: 22px; height: 21px; padding: 0; background: transparent; color: #ffb15a;
     border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 4px;

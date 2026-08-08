@@ -432,11 +432,13 @@ in click order. A thumb is only ever visible in the column.
   wrapping `.rng-edit` — min/max/step only, closed by default, summary `?` opens `openRangeHelp`);
   `.ctl-div`; **Triggers** (`.trig-t`) over the chips; **`.trig-body` — ONE folding element holding
   the whole trigger kit** (**Shape** over the `PULSE_SHAPES` picker, **Duration** (`.plen-name`)
-  over `.plen` + its max row, **Refractory** (`.trig-refs`) closing it — per-band sliders,
-  `beatCfg.refract` 20–500 ms, shown only for armed bands); then **a `.ctl-div` + the Reset row
-  (`.ctl-reset`) CLOSING the box, outside both foldables, always visible**.
+  over `.plen` + its max row, **Tuning** (`.trig-refs`) closing it — **this slider's OWN detector
+  thresholds**: `.trig-sub` groups for Sensitivity (per band, 0.5–6×), Floor (one row, 0–1) and
+  Refractory (per band, 20–500 ms), shown only for armed bands, with a `↺` on the heading); then
+  **a `.ctl-div` + the Reset row (`.ctl-reset`) CLOSING the box, outside both foldables, always
+  visible**.
   The trigger body is hidden until ANY chip is armed and shows as one element when one is
-  (`syncTrigRefs` via `refs.body`, re-pointed like the chips via `refEls`). Sub-titles drop the word
+  (`syncTrigTune` via `refs.body`, re-pointed like the chips via `refEls`). Sub-titles drop the word
   "Trigger". `makeChips` **appends** (append order = display order). The range editor is built later
   (POPPABLE pass) and must **`insertBefore` `.trig-t`** — the FIRST `.trig-t` is the Triggers
   heading. It carries no `border-top`. The trigger section exists only in a box.
@@ -1117,7 +1119,8 @@ computes **spectral flux** (sum of positive bin-to-bin changes since the previou
   refractory. Causal — inspects the *previous* tick (one 10ms hop of latency).
 - **Bands are narrow on purpose**: 30–150 / 150–2500 / 2500–12000 Hz, mapped by `computeBins`.
 - **Thresholds are per-preset scene data.** `beatCfg` (defaults `BEAT_DEFAULTS`, both in the detector
-  constants block) holds per-band `fluxK`, global `floor`, per-band `refract`, `bands`.
+  constants block) holds per-band `fluxK`, global `floor`, per-band `refract`, `bands`. This is the
+  **GLOBAL** tuning — the box is named that — and it is what an un-overridden slider inherits.
   **`mergeBeatTune(saved)` has replace semantics.** **`installBeatTune` writes fields in place,
   never replacing the object** (`audioTick` closes over it; `beatprobe` slices it out). It re-runs
   `beatBuild()` and `computeBins()` (the latter only when `audio.on` — it throws before audio
@@ -1127,8 +1130,39 @@ computes **spectral flux** (sum of positive bin-to-bin changes since the previou
 `frame()` calls `updateAnims()` then `clearBeats()`. `audioTick(t)` takes an optional timestamp for
 fake clocks.
 
-**Beat tuning** lives in `<details class="box" id="beatDetails">` (per-preset scene data, must
-autosave). CSS scoped to `#beatDetails`.
+### Per-slider beat tuning
+**Every armed slider detects its own beats.** The Refractory rows in a slider's box used to write
+into `beatCfg.refract[band]` — the SCENE-WIDE value — so a control presented as belonging to one
+slider silently retuned every armed slider in the scene.
+- **A TRIGGER is `(layer slot, control key)`**, not just a key: `beatOf(L, id)` is per layer, so two
+  layers can arm the same slider differently. `trigState["<slot>/<id>"]` keeps its own `lastBeat`,
+  latch and pulse. **`clearBeats` must drain the per-trigger latches too**, or a slider stays pinned
+  at its high thumb forever.
+- **The expensive half is computed ONCE per band and shared** — the bin loop, `flux`, `peak` and the
+  adaptive median, plus the tuning-free part of the peak-pick (warm, local max, not silent),
+  published as `audio.cand/med/candFlux`. The per-trigger pass is only the three comparisons that
+  read tuning. **It has to run in `audioTick`, not at frame time**: the candidate exists for exactly
+  one 10ms tick, which is why beats are latched at all.
+- **`trigList` is cached behind `trigDirty`** (a `var` — `loadBtune` runs from `restore()`, slices
+  earlier). Set it from `chipEdited`, `selectStack`, `syncStackUI`, `installStack`, `loadBtune`,
+  **`beatChanged`** (the global box changes what everyone inheriting resolves to) and every tuning
+  row edit.
+- **`tuneEff(t)` is the ONE inheritance resolver** — the slider's overrides laid over `beatCfg`,
+  field by field. The detector, the `(global)` tags and the `↺` all go through it.
+- **Storage mirrors `pulseLen` exactly**: live `beatTune[id]`, per-effect `btuneStates[e]`,
+  per-layer `L.btune`, `presetBtune`/`saveBtune`/`loadBtune`/`mergeBtune`/`pruneBtunes`, `"btunes"`
+  in **`EFFECT_MAPS`**, `btune` in `snapshotScene`/`applyPreset`/`validatePresetList`/`stackItemOut`.
+  Unlike the other four it starts **EMPTY** and `mergeBtune` builds only what validates — so an
+  absent, unknown or malformed entry all mean *inherit*, which is why every scene written before
+  this renders identically. `applyBlob` **replaces** per effect rather than merging: an override is
+  something you can take away, and merging would make a cleared one immortal.
+- `bands` is deliberately NOT per slider — the Hz edges define what "low" means for the meter, the
+  chip colours and the trace, and per-slider ranges need their own FFT band pass.
+- **`flashChips` lights from the slider's own trigger pulse**, not the band's.
+
+**Global beat tuning** lives in `<details class="box" id="beatDetails">` (per-preset scene data,
+must autosave). CSS scoped to `#beatDetails`. The name carries weight now that a slider can
+override it — it is the defaults, not the only tuning there is.
 - `beatChanged` must **not** `persist()` (the delegated `onEdit` already does). `beatReset` is a
   click, so it persists + autosaves by hand.
 - **`RNG_ORIG` and `refreshRangeUI` skip `#beatDetails`** — the generated sliders have no `id`, so a
@@ -1306,8 +1340,15 @@ All slice real source out of the built file by **markers — keep them**.
   `presetState`'s seeded arrays are per-effect **copies**; an **empty** stored list is honoured
   (only a *missing* key falls back). Markers: `// ---- FILTERS: stackable post-FX` …
   `function initStates(`; `function presetExtra(` … `function initExtras(`.
-- **`presetprobe.js`** — structural: every `p.<field>` `applyPreset` restores is one `snapshotScene`
-  captures *and* one the import mapping rebuilds. Behavioural: `mergeBeatTune` replace semantics +
+- **`presetprobe.js`** — structural, and **BOTH directions**: every `p.<field>` `applyPreset`
+  restores is one `snapshotScene` captures *and* one the import mapping rebuilds, **and every field
+  `snapshotScene` captures is one `applyPreset` restores** (`layers` exempt — it goes through
+  `mergeLayers`). The second direction is the silent one: the scene carries the data, every switch
+  discards it, nothing errors. **It strips comments before matching `p.<key>`** — this source names
+  its own fields in prose, so a deleted line whose comment survived kept the key in the set and the
+  check passed straight over the regression. Also asserts every per-effect map is in `EFFECT_MAPS`
+  (missing ⇒ the map keys stay effect INDICES and silently reattach on any registry reorder).
+  Behavioural: `mergeBeatTune` replace semantics +
   junk rejection. Also pins `safeFileName`, `normalizeBackup`. Markers: `const BEAT_DEFAULTS` …
   `const beatCfg`; `function mergeBeatTune(` … `function installBeatTune(`;
   `function snapshotScene()` … `function defaultPresets(`; `function applyPreset(` …
@@ -1335,8 +1376,18 @@ All slice real source out of the built file by **markers — keep them**.
 - **`beatprobe.js`** — runs the real detector against a stub analyser fed synthetic dB spectra on a
   fake clock: kick over sustained bass, hi-hats on 8ths (no low-band leak), a 20dB quiet verse,
   silence and a sustained tone (no false positives), a double-time fill (refractory holds).
+  Also **per-slider tuning**: with nothing overridden a trigger's beats equal the scene-wide ones
+  **tick for tick** (the safety property everything rests on); a slider's own refractory throttles
+  only itself and leaves its neighbour's sequence byte-identical; sensitivity and floor likewise;
+  clearing an override restores the global sequence exactly; a trigger is keyed by slot as well as
+  key. **The fixture is tuned, not guessed**: sparse onsets give a median flux of exactly 0, so no
+  `fluxK` can gate anything, and a clean synthetic hit measures ~57× the median — outside the 0.5–6
+  a user can store. The varied scene carries a rising carrier for a non-zero median and lands a min
+  flux/median ratio of ~3.7, between the shipped 2.0 and the max 6.0. **The probe drains latches via
+  the real `clearBeats`**, not by hand, or "the latch is cleared" would be a property of the probe.
   Markers: `const HOP_MS` … `const meterBars`; `const medBuf` … `function audioMsg`;
-  `function audioTick` … `function clearBeats`.
+  `function audioTick` … `function updateMeter`; `function tuneEff(` …
+  `// Three L/M/H toggle chips`.
 - **`singleprobe.js`** — `SINGLE_KEYS` is exactly the intended 23 (hard-coded, so nobody quietly
   adds `points`); every single entry is a `dual` on a whole grid with `lo === hi`; each enum's
   `fmt` names every integer it can now hold; `snapStep` quantises with step 1 and still passes

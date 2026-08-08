@@ -55,7 +55,46 @@
     f1: [0, 0, 0], f2: [0, 0, 0],           // flux at t-1 / t-2, for local-max peak picking
     hist: [null, null, null], hi: 0,        // ring buffer of flux per band
     beatNow: [false, false, false], lastBeat: [0, 0, 0], bpm: [0, 0, 0],
+    // The tuning-free INGREDIENTS of a beat, published per tick so each armed trigger can
+    // apply its OWN thresholds to them. `cand` is the whole peak-picking test that carries no
+    // tuning (warm, local max, not silent); `med` is the adaptive median. Everything above
+    // stays exactly as it was and still drives the meter, the trace and the chip glow.
+    cand: [false, false, false], med: [0, 0, 0], candFlux: [0, 0, 0],
   };
+  // ---- per-trigger beats -------------------------------------------------------------
+  // A TRIGGER is one (layer slot, control key) pair — not just a key, because beatOf() is
+  // per layer, so two layers can arm the same slider with different tuning. Each keeps its own
+  // refractory clock and its own latch, so one slider's Refractory can no longer reach across
+  // and retune every other armed slider (which is exactly what the shared beatCfg.refract did).
+  //
+  // The expensive half of detection — the bin loop, the flux, the median — is computed ONCE
+  // per band in audioTick and shared. This is only the three comparisons that read tuning.
+  const trigState = {};          // "<slot>/<key>" -> { lastBeat:[3], now:[3], pulse:[3] }
+  let trigList = [];             // the armed triggers, rebuilt when arming or tuning changes
+  var trigDirty = true;          // var: loadBtune runs from restore(), slices before this one
+  const trigKey = (slot, id) => slot + "/" + id;
+  function trigFor(slot, id) {
+    const k = trigKey(slot, id);
+    return trigState[k] || (trigState[k] = { lastBeat: [0, 0, 0], now: [false, false, false], pulse: [0, 0, 0] });
+  }
+  // Rebuilt lazily rather than scanned every 10ms tick: `stack × anims` is ~240 pairs and
+  // almost none of them are armed.
+  function rebuildTriggers() {
+    trigDirty = false;
+    trigList = [];
+    for (let s = 0; s < stack.length; s++) {
+      const L = stack[s];
+      if (!L) continue;
+      for (const id in anims) {
+        const br = beatOf(L, id);
+        if (!br || !(br.low || br.mid || br.high)) continue;
+        trigList.push({ st: trigFor(s, id), br, tune: tuneEff(tuneOf(L, id)) });
+      }
+    }
+  }
+  // Consumed by stepAnim exactly like audio.beatNow used to be, but per trigger.
+  function trigBeat(slot, id, band) { const t = trigState[trigKey(slot, id)]; return !!(t && t.now[band]); }
+  function trigPulse(slot, id, band) { const t = trigState[trigKey(slot, id)]; return t ? t.pulse[band] : 0; }
   // "A source is running AND it is reaching the visual" — the predicate every REACTION site
   // wants, as opposed to `audio.on`, which means only "a stream is open". The two differ
   // exactly while muted. Kept separate rather than clearing `audio.on`, because `audio.on`
@@ -112,6 +151,7 @@
       // nothing refills these; flashChips() once on the way down clears the inline lit
       // styles back to the CSS default, exactly as stopAudio does.
       for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
+      clearTrigState();
       updateMeter(); flashChips();
     }
     setAudioUI();
@@ -130,7 +170,9 @@
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
       audio.flux[b] = audio.thr[b] = audio.peak[b] = audio.f1[b] = audio.f2[b] = audio.bpm[b] = 0;
+      audio.cand[b] = false; audio.med[b] = audio.candFlux[b] = 0;
     }
+    clearTrigState();
     updateMeter(); flashChips(); setAudioUI(); persist();
   }
   async function startAudio(kind) {
@@ -215,7 +257,10 @@
       sum /= n; lvl /= n; flux /= n;                     // per-bin means: bands stay comparable
       audio.energy[b] += (lvl - audio.energy[b]) * AVG_ALPHA;
       audio.peak[b] = Math.max(flux, audio.peak[b] * PEAK_DECAY);
-      const thr = median(audio.hist[b]) * beatCfg.fluxK[b];
+      // The adaptive median is the expensive shared ingredient — computed ONCE and handed to
+      // both the scene-wide test below and every per-trigger test after it.
+      const med = median(audio.hist[b]);
+      const thr = med * beatCfg.fluxK[b];
       audio.thr[b] = thr;
 
       // Peak-pick the *previous* tick: it's a beat if it was a local maximum of
@@ -223,8 +268,13 @@
       // isn't silent, and we're past its refractory period. Costs one tick (10ms)
       // of latency — far less than the ~2 frames the old analyser smoothing added.
       const f2 = audio.f2[b], f1 = audio.f1[b];
-      if (audio.warm >= WARMUP && f1 >= flux && f1 > f2 && f1 > thr &&
-          f1 > audio.peak[b] * beatCfg.floor && sum > SILENCE &&
+      // Publish the tuning-free half of that test for the per-trigger pass below. Split out
+      // rather than duplicated: the candidate, the median and the peak are what every trigger
+      // shares, and computing them twice is how the two would drift apart.
+      const cand = audio.warm >= WARMUP && f1 >= flux && f1 > f2 && sum > SILENCE;
+      audio.cand[b] = cand; audio.med[b] = med; audio.candFlux[b] = f1;
+      if (cand && f1 > thr &&
+          f1 > audio.peak[b] * beatCfg.floor &&
           now - audio.lastBeat[b] > beatCfg.refract[b]) {
         if (audio.lastBeat[b]) {
           const ibi = now - audio.lastBeat[b];           // inter-beat interval → rough BPM (debug readout)
@@ -237,13 +287,51 @@
       audio.hist[b][audio.hi] = flux;
       audio.pulse[b] *= Math.exp(-dt / PULSE_TAU);
     }
+    // ---- the same test again, once per armed trigger, with ITS thresholds ----------
+    // Has to run here and not at frame time: the candidate exists for exactly one 10ms tick,
+    // so a 60Hz consumer would miss beats between frames. That is why beats are latched at
+    // all, and per-trigger beats need latching for the same reason.
+    //
+    // With no overrides this reproduces the scene-wide result exactly — same candidate, same
+    // median, same thresholds — and each trigger's own lastBeat tracks the global one because
+    // they fire together. That equivalence is the whole safety property, and beatprobe asserts
+    // it tick by tick rather than by counting.
+    if (trigDirty) rebuildTriggers();
+    for (let i = 0; i < trigList.length; i++) {
+      const T = trigList[i], st = T.st, tu = T.tune;
+      for (let b = 0; b < 3; b++) {
+        if (!(b === 0 ? T.br.low : b === 1 ? T.br.mid : T.br.high)) continue;
+        if (audio.cand[b] && audio.candFlux[b] > audio.med[b] * tu.fluxK[b] &&
+            audio.candFlux[b] > audio.peak[b] * tu.floor &&
+            now - st.lastBeat[b] > tu.refract[b]) {
+          st.now[b] = true; st.pulse[b] = 1; st.lastBeat[b] = now;
+        }
+        st.pulse[b] *= Math.exp(-dt / PULSE_TAU);
+      }
+    }
     audio.hi = (audio.hi + 1) % FLUX_HIST;
     prev.set(mag);
     if (dbg.on) dbgPush(now);
   }
   // Called by frame() *after* updateAnims() has read them, so a beat detected
   // between two frames still drives its sliders exactly once.
-  function clearBeats() { audio.beatNow[0] = audio.beatNow[1] = audio.beatNow[2] = false; }
+  function clearBeats() {
+    audio.beatNow[0] = audio.beatNow[1] = audio.beatNow[2] = false;
+    // Every per-trigger latch too, and for the same reason: frame() has just read them, so a
+    // beat drives its slider exactly once. Missing this would leave a trigger stuck "beating"
+    // and its slider pinned at the high thumb.
+    for (const k in trigState) { const t = trigState[k]; t.now[0] = t.now[1] = t.now[2] = false; }
+  }
+  // Zero the per-trigger clocks. Called wherever the scene-wide ones are zeroed (mute, stop):
+  // leaving a stale lastBeat behind would swallow the first beat after audio comes back.
+  function clearTrigState() {
+    for (const k in trigState) {
+      const t = trigState[k];
+      t.now[0] = t.now[1] = t.now[2] = false;
+      t.pulse[0] = t.pulse[1] = t.pulse[2] = 0;
+      t.lastBeat[0] = t.lastBeat[1] = t.lastBeat[2] = 0;
+    }
+  }
   function updateMeter() {
     for (let b = 0; b < 3; b++) {
       meterBars[b].style.height = (2 + audio.energy[b] * 16).toFixed(1) + "px";
@@ -258,7 +346,11 @@
     for (const id in chipEls) {
       for (const k in chipEls[id]) {
         const el = chipEls[id][k];
-        const lit = audioLive() && beatReact[id][k] ? audio.pulse[BANDIDX[k]] : 0;
+        // THIS slider's trigger pulse, not the band's. A slider given a long refractory of its
+        // own ignores beats the band still reports, and a chip that kept flashing on them
+        // would say the tuning had not taken. chipEls is the SELECTED layer's block, so the
+        // trigger is filed under stackSel.
+        const lit = audioLive() && beatReact[id][k] ? trigPulse(stackSel, id, BANDIDX[k]) : 0;
         if (lit > 0.05) {
           // punchy flash: a bright halo that snaps on the beat and a quick scale pop,
           // both riding the band's decaying pulse.

@@ -194,7 +194,11 @@
        like them. The beat-trace toggle below is the one thing in here that must NOT autosave,
        which is what data-nopersist marks. -->
   <details class="box" id="beatDetails">
-  <summary class="box-t">Beat tuning</summary>
+  <!-- "GLOBAL beat tuning", because it is no longer the only beat tuning there is: every
+       slider with a trigger armed can override these thresholds in its own pop-out box, and
+       this box is what an un-overridden one inherits. The name is the only thing that says
+       which of the two you are editing. -->
+  <summary class="box-t">Global beat tuning</summary>
   <div id="beatBody"><!-- sliders generated from beatCfg by beatBuild() --></div>
   <!-- The trace lives here, beside the thresholds it exists to help you set, rather than in a
        separate Diagnostics section. data-nopersist is load-bearing: everything else in this
@@ -202,7 +206,7 @@
        explicit opt-out this dev-tool toggle would be folded into the selected scene too. -->
   <label class="check" data-nopersist title="Show the scrolling flux + threshold graph per band — the tool for diagnosing a missed beat"><input type="checkbox" id="diagTrace" data-nopersist> Beat-detection trace</label>
   <div class="rng-btns"><button type="button" id="beatReset">Reset</button></div>
-  <p id="beatMsg">Saved with this scene, so each one can react to music its own way. Turn on the trace above to see what the detector is hearing while you tune.</p>
+  <p id="beatMsg">The defaults every armed slider follows, saved with this scene. Any slider with a trigger can override these in its own box — open it and look under <b>Tuning</b>. The trace above shows what the detector is hearing at these global settings.</p>
   </details>
 
   <!-- Layers: the effect stack (up to 4 effects composited into one scene, in list order).

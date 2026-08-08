@@ -53,14 +53,28 @@ for (const line of snapSrc.slice(snapSrc.indexOf("return {")).split("\n")) {
   const m = line.match(/^\s{6}(\w+)\s*[:,]/);
   if (m) snapKeys.add(m[1]);
 }
-// Every `p.<key>` applyPreset reads off the stored preset.
-const readKeys = new Set([...applySrc.matchAll(/\bp\.(\w+)/g)].map(m => m[1]));
+// Every `p.<key>` applyPreset reads off the stored preset. COMMENTS STRIPPED FIRST — this
+// source is heavily commented and the comments name the very fields being matched, so a
+// deleted line whose comment survived would keep its key in the set and the check would pass
+// over the regression. (Exactly what happened the first time the reverse check below was
+// tried.) Same precaution solidsprobe takes before grepping for Math.random.
+const noComments = s => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+const readKeys = new Set([...noComments(applySrc).matchAll(/\bp\.(\w+)/g)].map(m => m[1]));
 // Keys the import mapping rebuilds each preset with.
 const importKeys = new Set([...importSrc.matchAll(/(\w+):/g)].map(m => m[1]));
 
 ok(snapKeys.size >= 9, "snapshotScene returns a populated object", [...snapKeys].join(","));
-for (const k of ["effect", "state", "beat", "pulse", "plen", "beatTune", "ranges", "extra"])
+for (const k of ["effect", "state", "beat", "pulse", "plen", "btune", "beatTune", "ranges", "extra"])
   ok(snapKeys.has(k), "snapshotScene captures `" + k + "`");
+{
+  // EVERY per-effect map has to be in EFFECT_MAPS, which is what converts its effect-index
+  // keys to stable ids at the storage edge. A map left out of it still saves and still
+  // loads — until someone reorders or removes an effect, at which point every stored entry
+  // silently reattaches to whichever effect now sits at that index. Invisible until it bites.
+  const maps = (src.match(/const EFFECT_MAPS = \[([^\]]*)\]/) || [])[1] || "";
+  for (const m of ["states", "beats", "pulses", "plens", "btunes", "extras"])
+    ok(maps.includes('"' + m + '"'), "EFFECT_MAPS carries `" + m + "` across the storage edge", maps.trim());
+}
 // The camera moved OUT of the preset root: it is per-layer state now, so snapshotScene must
 // NOT emit a root `cam` (that field was a redundant mirror, and its presence at root is the
 // thing the user asked to remove). Locked in so it can't quietly come back.
@@ -71,6 +85,20 @@ ok(!snapKeys.has("cam"), "snapshotScene no longer emits a root `cam` (camera is 
   ok(!missing.length,
      "every field applyPreset restores is one snapshotScene captures",
      missing.length ? "applyPreset reads p." + missing.join(", p.") + " — never saved" : [...readKeys].join(","));
+}
+{
+  // ...AND THE OTHER WAY ROUND. The check above only caught "restores something never saved";
+  // the costlier direction is a field that IS saved and never read back, because that one is
+  // silent — the scene carries the data, every switch discards it, and the user's setting
+  // evaporates with no error. (Caught adding `btune`: dropping its applyPreset line left
+  // every other assertion green.)
+  // `layers` is the one legitimate exemption: applyPreset hands the whole preset to
+  // mergeLayers/installStack rather than reading p.layers itself.
+  const EXEMPT = new Set(["layers"]);
+  const unread = [...snapKeys].filter(k => !readKeys.has(k) && !EXEMPT.has(k));
+  ok(!unread.length,
+     "every field snapshotScene captures is one applyPreset restores",
+     unread.length ? "saved but never read back: " + unread.join(", ") : [...snapKeys].join(","));
 }
 {
   // `name` is added by the caller, not by snapshotScene.

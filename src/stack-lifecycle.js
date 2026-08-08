@@ -6,7 +6,7 @@
   // edit — the failure class the chipEdited() history in CLAUDE.md documents.
   function freezeItem(L) {
     const st = states[L.fx] || {};
-    L.state = {}; L.beat = {}; L.pulse = {}; L.plen = {};
+    L.state = {}; L.beat = {}; L.pulse = {}; L.plen = {}; L.btune = {};
     for (const id in st) {
       if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global, not per-layer
       L.state[id] = Array.isArray(st[id])
@@ -16,6 +16,9 @@
     for (const id in beatReact) L.beat[id] = Object.assign({}, beatReact[id]);
     for (const id in pulseShape) L.pulse[id] = pulseShape[id];
     for (const id in pulseLen) L.plen[id] = pulseLen[id];
+    // Deep-copied: the arrays are handed to the detector every tick, so a shared reference
+    // would let one layer's ↺ retune another's triggers.
+    for (const id in beatTune) { const t = btuneOk(beatTune[id]); if (t) L.btune[id] = t; }
     L.anim = {};
     for (const id in animPhase) L.anim[id] = Object.assign({}, animPhase[id]);
     capturePhase(L);
@@ -27,10 +30,11 @@
     if (L.beat) beatStates[L.fx] = mergeBeat(L.fx, L.beat);
     if (L.pulse) pulseStates[L.fx] = mergePulse(L.fx, L.pulse);
     if (L.plen) plenStates[L.fx] = mergePlen(L.fx, L.plen);
+    if (L.btune) btuneStates[L.fx] = mergeBtune(L.btune);
     // The selected item's phase records ARE the singletons from here on.
     for (const id in L.anim) if (animPhase[id]) Object.assign(animPhase[id], L.anim[id]);
     installPhase(L);
-    L.state = L.beat = L.pulse = L.plen = null;
+    L.state = L.beat = L.pulse = L.plen = L.btune = null;
     L.anim = {};
   }
   // The ORDER here is load-bearing and any other one loses the user's last edit in silence:
@@ -93,6 +97,7 @@
     const prev = stackSel;
     freezeItem(stack[stackSel]);
     stackSel = j;
+    trigDirty = true;                // the triggers are keyed by slot, and the slots just moved
     pointMaps(j);
     thawItem(stack[j]);
     stageLayerExtras(stack[j]);      // live palette/filters = this layer's, before setEffect's persist
@@ -113,6 +118,7 @@
     L.beat = mergeBeat(L.fx, presetBeat(L.fx));
     L.pulse = mergePulse(L.fx, presetPulse(L.fx));
     L.plen = mergePlen(L.fx, presetPlen(L.fx));
+    L.btune = {};                            // a fresh layer inherits every threshold
     L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
     L.paletteRev = presetExtra(L.fx).paletteRev;
     L.paletteBg = presetExtra(L.fx).paletteBg;
@@ -319,7 +325,7 @@
             stackSel = stack.indexOf(sel);
             pointMaps(stackSel);     // the wiring follows it to its new block
             thawItem(sel);
-            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx);   // ...and that block's DOM
+            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx); loadBtune(sel.fx);   // ...and that block's DOM
             repaintAllBlocks();      // every other slot holds a different layer now
             syncPopOwners();
           }
@@ -470,6 +476,10 @@
   function syncStackUI() {
     const host = el("stacklist");
     if (!host) return;
+    // The single choke point for a STRUCTURAL stack change — add, remove, reorder, mute — and
+    // triggers are keyed by slot, so any of those repoints them. Cheaper to invalidate here
+    // than to remember it at four call sites.
+    trigDirty = true;
     buildStackRows();
     for (let slot = 0; slot < STACK_MAX; slot++) {
       const r = lyrRows[slot], L = stack[slot];
@@ -528,35 +538,54 @@
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
     for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
     syncDots();
-    syncTrigRefs();
+    syncTrigTune();
   }
-  // The per-box refractory rows (see makeChips): one per ARMED band, values from the
-  // live beatCfg, the whole block hidden with nothing armed. A focused field is never
-  // overwritten mid-edit. The try/catch is a TDZ guard, not error hiding: syncChips and
-  // pointMaps run during startup, one slice before `const beatCfg` initialises — the
-  // same split collectionsHeld documents — and in that window there is nothing to show.
-  function syncTrigRefs() {
-    try {
-      const B = { low: 0, mid: 1, high: 2 };
-      for (const id in refEls) {
-        const r = refEls[id], armed = beatReact[id] || {};
-        let any = false;
-        for (const k in r.rows) {
-          const on = !!armed[k];
-          r.rows[k].style.display = on ? "" : "none";
-          if (on) {
-            any = true;
-            const f = r.fields[k], v = beatCfg.refract[B[k]];
-            if (document.activeElement !== f) f.value = String(v);
-            if (r.vals && r.vals[k]) r.vals[k].textContent = v + "ms";
-          }
-        }
-        r.wrap.style.display = any ? "" : "none";
-        // The whole trigger body — Shape, Duration and Refractory — folds as ONE element
-        // on the same condition: something armed.
-        if (r.body) r.body.style.display = any ? "" : "none";
-      }
-    } catch (e) {}
+  // The per-box TUNING rows (see makeChips): Sensitivity and Refractory per ARMED band, Floor
+  // once, the whole block hidden with nothing armed. Each row shows this slider's own value if
+  // it has one and the inherited global otherwise, with the "global" tag saying which. A
+  // focused field is never overwritten mid-edit.
+  //
+  // The try/catch is a TDZ guard, not error hiding: syncChips and pointMaps run during startup,
+  // one slice before `const beatCfg` initialises — the same split collectionsHeld documents —
+  // and in that window there is nothing to show.
+  function paintTuneRows(id) {
+    const r = refEls[id]; if (!r) return;
+    const B = { low: 0, mid: 1, high: 2 };
+    const armed = beatReact[id] || {};
+    const own = beatTune[id] || {};
+    const eff = tuneEff(own);            // the ONE resolver — what the detector will actually use
+    let any = false;
+    const put = (rowKey, v, fmt, isOwn, show) => {
+      const row = r.rows[rowKey]; if (!row) return;
+      row.style.display = show ? "" : "none";
+      if (!show) return;
+      const f = r.fields[rowKey];
+      if (document.activeElement !== f) f.value = String(v);
+      if (r.vals[rowKey]) r.vals[rowKey].textContent = fmt(v);
+      if (r.tags[rowKey]) r.tags[rowKey].style.display = isOwn ? "none" : "";
+    };
+    for (const k in B) {
+      const on = !!armed[k]; if (on) any = true;
+      const b = B[k];
+      put("sen-" + k, eff.fluxK[b], v => (+v).toFixed(1) + "×", Array.isArray(own.fluxK), on);
+      put(k, eff.refract[b], v => v + "ms", Array.isArray(own.refract), on);
+    }
+    put("floor", eff.floor, v => (+v).toFixed(2), typeof own.floor === "number", any);
+    r.wrap.style.display = any ? "" : "none";
+    // The whole trigger body — Shape, Duration and Tuning — folds as ONE element on the
+    // same condition: something armed.
+    if (r.body) r.body.style.display = any ? "" : "none";
+  }
+  function syncTrigTune() {
+    try { for (const id in refEls) paintTuneRows(id); } catch (e) {}
+  }
+  // A tuning row was moved: fold it into the scene like any other edit. The rows are plain
+  // DOM nodes inside #breakout, so the delegated onEdit would fire for them too — but it
+  // persists the SLIDER's value, not this map, so the write has to be explicit. Guarded
+  // exactly as chipEdited is.
+  function tuneEdited() {
+    if (persistReady && !applyingPreset) autosavePreset();
+    persist();
   }
   // The menu row's dots mirror the armed chips, so the overview survives every path
   // that changes them (loadBeat, Reset, a chip click) without a second sync to forget.
@@ -602,6 +631,42 @@
   function syncPlen() {
     for (const id in plenEls) { plenEls[id].inp.value = pulseLen[id]; plenEls[id].out.textContent = plenFmt(pulseLen[id]); }
   }
+
+  // Per-effect DETECTOR TUNING per slider, exactly parallel to plenStates above. Seeded EMPTY
+  // — an absent entry, and an absent field within one, both mean "inherit the global Beat
+  // tuning". That is what keeps every scene written before this feature rendering identically,
+  // and it is why there is no descriptor default to seed from.
+  const btuneStates = {};
+  const BTUNE_LIMITS = { fluxK: [0.5, 6], floor: [0, 1], refract: [20, 500] };
+  const inRange = (v, r) => typeof v === "number" && isFinite(v) && v >= r[0] && v <= r[1];
+  const triadOk = (v, r) => Array.isArray(v) && v.length === 3 && v.every(x => inRange(x, r));
+  // Validate field by field and DROP anything unrecognised, so a hand-edited or malformed
+  // blob degrades to inheritance rather than feeding NaN into the detector's comparisons
+  // (where every test would silently go false and the slider would simply stop beating).
+  function btuneOk(t) {
+    if (!t || typeof t !== "object" || Array.isArray(t)) return null;
+    const out = {};
+    if (triadOk(t.fluxK, BTUNE_LIMITS.fluxK)) out.fluxK = t.fluxK.slice();
+    if (inRange(t.floor, BTUNE_LIMITS.floor)) out.floor = t.floor;
+    if (triadOk(t.refract, BTUNE_LIMITS.refract)) out.refract = t.refract.slice();
+    return Object.keys(out).length ? out : null;      // nothing valid ⇒ inherit
+  }
+  function presetBtune() { return {}; }               // shipped state is "everything inherits"
+  function initBtuneStates() { EFFECTS.forEach((_, k) => btuneStates[k] = presetBtune()); }
+  initBtuneStates();
+  function saveBtune(e) {
+    const out = {};
+    for (const id in beatTune) { const t = btuneOk(beatTune[id]); if (t) out[id] = t; }
+    btuneStates[e] = out;                             // rebuilt, not merged: a cleared ↺ must not linger
+  }
+  function loadBtune(e) {
+    for (const id in beatTune) delete beatTune[id];
+    const st = btuneStates[e] || {};
+    for (const id in st) { const t = btuneOk(st[id]); if (t) beatTune[id] = t; }
+    trigDirty = true;                                 // the detector's armed-trigger list is stale
+    syncBtune();
+  }
+  function syncBtune() { for (const id in tuneEls) paintTuneRows(id); }
 
   // Per-effect "extras": palette, auto-morph, show-box and Effect TTL are also
   // remembered per effect, so each effect is a fully independent scene.

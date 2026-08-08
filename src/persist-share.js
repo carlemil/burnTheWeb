@@ -90,13 +90,14 @@
   // (which stores this same payload in Firestore instead of in a URL) cannot drift from it —
   // one definition of "what a shared scene is", two transports.
   function sceneBlob() {
-    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveExtra(effect);
+    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect);
     const only = m => ({ [effect]: m[effect] });
     const blob = {
       states: { [effect]: roundMap(states[effect]) },
       beats: pruneBeats(only(beatStates)),
       pulses: prunePulses(only(pulseStates)),
       plens: prunePlens(only(plenStates)),
+      btunes: pruneBtunes(only(btuneStates)),
       extras: only(extras),
       effect,
       sceneFx: readSceneFx(),         // the scene-global Scene filters travel with a share link

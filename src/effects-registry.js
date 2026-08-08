@@ -274,7 +274,7 @@
   // scene to whichever effect now sits at that index, in localStorage, Backups and
   // share links alike. Presets were already safe (their `effect` is an id); these maps
   // were the hole in that guarantee, and the failure is invisible until someone reorders.
-  const EFFECT_MAPS = ["states", "beats", "pulses", "plens", "extras"];
+  const EFFECT_MAPS = ["states", "beats", "pulses", "plens", "btunes", "extras"];
   function keysToIds(m) {                          // { 3: {...} } → { plasma: {...} }
     const out = {};
     for (const k in m) { const f = EFFECTS[+k]; if (f) out[f.id] = m[k]; }
