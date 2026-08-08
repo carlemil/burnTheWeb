@@ -14,6 +14,25 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.23.3] — 2026-08-08
+
+### Fixed
+
+- **Deleting a palette no longer lands on one you had already deleted.** Removing a shipped
+  ramp from your strip and then deleting the palette you were actually using could drop you
+  straight back onto the removed one — gone from the swatch strip and from **Palettes in
+  use**, but selected. The fallback now walks the strip in the order you see it, starting
+  from the palette you deleted, and takes the next one that is still there: the neighbour you
+  were looking at, never a deleted ramp and never whatever happened to be first in the list.
+  If that leaves your in-use set empty, the palette you land on is ticked back on, so the
+  strip always shows something and the palette cycle always has somewhere to go.
+
+### Internal
+
+- New `tools/palprobe.js` pins palette deletion — display order versus array order, the
+  neighbour rule, the preference for a palette in use, the never-empty in-use set, and the
+  index shifting after a custom palette is removed.
+
 ## [1.23.2] — 2026-08-07
 
 ### Changed
