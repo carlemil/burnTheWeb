@@ -227,6 +227,16 @@
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",
+      help: "An accretion disk seen through the hole's own gravity. The photons are integrated rather than drawn straight, so light from the FAR side of the disk is bent up over the top of the shadow and back under the bottom — those arcs closing round the dark centre are the whole point, and a straight-ray version would just be an ellipse. Tilt is the camera's height above the disk plane: low is the iconic nearly-edge-on view, high looks down on a plain ring. Beaming is the relativistic boost that makes the limb coming toward you far brighter than the one going away; wind it to 0 for an evenly lit disk. The disk orbits Keplerian, so the inside shears past the outside and the turbulence never repeats. Heavy: it wants a real GPU.",
+      params: ["bhtilt", "bhouter", "bhspin", "bhbeam", "bhorbit", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "bhole", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = bholeSeed(dt);
+        if (useGL) glShaderDraw("bhole", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uOrbit, s.orbit); gl.uniform1f(u.uTilt, s.tilt); gl.uniform1f(u.uOuter, s.outer); gl.uniform1f(u.uBeam, s.beam); gl.uniform1f(u.uZoom, s.zoom); });
+        else bholeCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bhtilt: [12, 12], bhouter: [8, 8], bhspin: [1, 1], bhbeam: [0.8, 0.8], bhorbit: [0.08, 0.08],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
       help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
       params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],

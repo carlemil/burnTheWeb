@@ -859,6 +859,92 @@
     }
   }
 
+  // ---- Black hole: lensed accretion disk (shader effect) ----
+  // Photon integration, not a raymarch — see FS_BHOLE for the physics. The mirror keeps the
+  // deflection (without it the picture is just an ellipse and the effect is pointless) and
+  // gives up everything else: every 4th pixel into a 4x4 block, 56 steps instead of 160,
+  // one noise octave.
+  let bhOrbSpd = 0.08, bhTilt = 12, bhOuter = 8, bhBeam = 0.8, bhSpin = 1;
+  let bhTime = 0, bhOrbit = 0;
+  function bholeSeed(dt) {
+    bhTime += dt * bhSpin;
+    bhOrbit += dt * bhOrbSpd;
+    return { t: bhTime, orbit: bhOrbit, tilt: bhTilt * Math.PI / 180, outer: bhOuter, beam: bhBeam, zoom };
+  }
+  const bhHash = (x, y) => { const v = Math.sin(x + y * 57) * 43758.5453; return v - Math.floor(v); };
+  function bhNoise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    let fx = x - ix, fy = y - iy;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const a = bhHash(ix, iy), b = bhHash(ix + 1, iy), c = bhHash(ix, iy + 1), d = bhHash(ix + 1, iy + 1);
+    return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
+  }
+  // Takes the seed the descriptor already advanced this frame — it must NOT call
+  // bholeSeed() itself, or the Canvas2D path runs the disk and the camera at double speed
+  // (the same trap the cardioid mirrors carry a comment about).
+  function bholeCPU(s) {                  // CPU fallback — mirrors FS_BHOLE, coarsely
+    const ar = fw / fh;
+    const ca = Math.cos(s.orbit), sa = Math.sin(s.orbit);
+    const ct = Math.cos(s.tilt), st = Math.sin(s.tilt);
+    const rox = sa * 22 * ct, roy = 22 * st, roz = -ca * 22 * ct;
+    const fl = Math.hypot(rox, roy, roz);
+    const fx = -rox / fl, fy = -roy / fl, fz = -roz / fl;
+    // right = normalize(cross(up, fwd)) with up = (0,1,0)
+    let rx = 1 * fz - 0 * fy, ry = 0 * fx - 0 * fz, rz = 0 * fy - 1 * fx;
+    const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+    const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+    const rIn = 2.3, rOut = Math.max(rIn + 1.2, s.outer);
+    for (let y = 0; y < fh; y += 4) {
+      for (let x = 0; x < fw; x += 4) {
+        camPix(x, y);
+        const vx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const vy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let dx = fx * 1.9 + rx * vx + ux * vy;
+        let dy = fy * 1.9 + ry * vx + uy * vy;
+        let dz = fz * 1.9 + rz * vx + uz * vy;
+        const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+        // h = |p x d|, conserved
+        const hx = roy * dz - roz * dy, hy = roz * dx - rox * dz, hz = rox * dy - roy * dx;
+        const h2 = hx * hx + hy * hy + hz * hz;
+        let px = rox, py = roy, pz = roz, prevY = py, heat = 0;
+        for (let i = 0; i < 56; i++) {
+          const r = Math.hypot(px, py, pz);
+          if (r < 1) break;               // keep what was collected — see FS_BHOLE
+          if (r > 26 && px * dx + py * dy + pz * dz > 0) break;
+          const dtS = 0.10 + 0.055 * r;
+          const nx = px + dx * dtS, ny = py + dy * dtS, nz = pz + dz * dtS;
+          if (prevY * ny < 0) {
+            const k = prevY / (prevY - ny);
+            const qx = px + (nx - px) * k, qz = pz + (nz - pz) * k;
+            const rr = Math.hypot(qx, qz);
+            if (rr > rIn && rr < rOut) {
+              const ang = Math.atan2(qz, qx);
+              const kep = s.t * 6 / Math.pow(rr, 1.5);
+              const n = 0.55 + 0.45 * bhNoise(ang * 2.6 / 6.2831853 * 14 + kep, rr * 1.7);
+              const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };
+              const e1 = 1 - ss((rr - rOut * 0.55) / (rOut - rOut * 0.55));   // mirrors the shader's inverted ramp
+              const e2 = ss((rr - rIn) / (rIn * 0.30));
+              const vl = 1 / Math.sqrt(rr), vlen = Math.hypot(-qz, qx) || 1;
+              const dop = Math.max(0.05, Math.min(3.2,
+                1 + s.beam * 3 * ((-qz / vlen) * -dx + (qx / vlen) * -dz) * vl));
+              heat += e1 * e2 * n * dop * (5.5 / rr);
+            }
+          }
+          const p2 = px * px + py * py + pz * pz, k2 = -1.5 * h2 / Math.pow(p2, 2.5) * dtS;
+          dx += px * k2; dy += py * k2; dz += pz * k2;
+          const nl = Math.hypot(dx, dy, dz) || 1; dx /= nl; dy /= nl; dz /= nl;
+          prevY = ny; px = nx; py = ny; pz = nz;
+        }
+        const bx = roy * dz - roz * dy, by = roz * dx - rox * dz, bz = rox * dy - roy * dx;
+        const bb = Math.hypot(bx, by, bz);
+        heat += 0.55 * Math.exp(-Math.pow((bb - 2.6) / 0.16, 2));
+        const v = Math.min(1, heat) * 255;
+        for (let by2 = y; by2 < Math.min(y + 4, fh); by2++)
+          for (let bx2 = x; bx2 < Math.min(x + 4, fw); bx2++) fire[by2 * fw + bx2] = v;
+      }
+    }
+  }
+
   // ---- Quaternion Julia: raymarched 4D Julia slice (shader effect) ----
   // Same coarse-mirror bargain as the Mandelbulb below: every 3rd pixel into a 3x3 block,
   // a third of the shader's steps, iterations capped, flat shading. The seed `c` is handed

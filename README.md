@@ -1,6 +1,6 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **thirty-three effects** in four families,
+A GPU demoscene visual: a collection of **thirty-four effects** in four families,
 all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, a de
@@ -26,7 +26,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 ## Effects
 
 Every row in the panel's **Layers** box carries an **Effect** chooser, switching that layer
-between thirty-three visuals that share the same palette, glow and music-reactivity pipeline —
+between thirty-four visuals that share the same palette, glow and music-reactivity pipeline —
 but each is an independent "scene" that remembers its own settings (see Controls). You can
 **stack up to four of them at once**, each with its own palette and filters — see Layers
 below:
@@ -81,6 +81,7 @@ below:
   - **Cymatics** — sand on a vibrating plate: bright lines trace a standing wave's nodes, snapping into a new symmetry as **Mode** changes — drift its thumbs for continuous morphing or arm its chips so the figure jumps on the beat. **Sharpness** engraves the lines, **Shimmer** makes them tremble.
   - **Lightning storm** — bolts tearing down the screen, every strike a new shape. **Rate** fires them on a clock; arm **Strike**'s chips and the beat fires them instead, each bolt decaying over the Trigger duration. **Bolts** strikes several at once, **Afterglow** lights the sky.
   - **Mandelbulb** — the 3D Mandelbrot, raymarched and slowly orbited. **Power** reshapes it (8 is the classic), **Detail** adds fractal depth, **Glow** lights the silhouette and haloes near-misses. The heaviest effect in the app — it wants a real GPU.
+  - **Black hole** — an accretion disk seen through the hole's own gravity. The photons are **integrated, not drawn straight**: light from the far side of the disk is bent up over the top of the shadow and back under the bottom, closing those arcs round the darkness — a straight-ray version is just an ellipse. **Tilt** is the camera's height above the disk plane (low is the iconic nearly-edge-on view), **Disk size** how far it extends, **Disk speed** how fast it turns (Keplerian, so the inside shears past the outside and the turbulence never repeats), **Beaming** the relativistic boost that makes the limb coming toward you far brighter than the one going away, and **Orbit speed** the camera's lap. Also wants a real GPU.
   - **Quaternion Julia** — the Julia set done in **four** dimensions: `z → z² + c` iterated in the quaternions and raymarched as a solid. A 4D object cannot be shown, only cut, so the two slice controls are where the shapes live: **Slice** is where the cut falls, **Cut angle** rotates the cutting plane itself, and between them the solid walks through cross-sections nothing in 3D can hold. Leave both at 0 and you get the ordinary Julia set spun about its axis. The seed rides the **same cardioid orbit as AnimeJulia**, so the Orbit editor drives it too — sit just outside the Mandelbrot set for filigree, well inside for a blob. **Detail** and **Glow** as on the Mandelbulb. Also wants a real GPU.
   - **Fractal flames** — an Apophysis-style iterated function system: the chaos game bounces between two slowly-morphing maps with a nonlinear **Variation** folding every step, and each landing **adds** heat — dense orbits burn white, wisps stay faint. The only point effect that accumulates density rather than stamping a fixed heat.
   - **Starfield** — a 3D starfield flying past on six parallax depths. Arm **Warp**'s beat chips and the kick punches to hyperspace, every star smearing into a radial streak.

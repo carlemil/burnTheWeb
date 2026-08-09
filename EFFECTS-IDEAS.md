@@ -38,7 +38,7 @@ that are inherently "one animated scalar field" rank above ones that need real R
 | ~~**Menger sponge flythrough**~~ ✅ | SHIPPED post-1.16.0 | infinite periodic lattice, dive + roll |
 | ~~**Quaternion Julia (4D)**~~ ✅ | SHIPPED post-1.25.0 | seed rides `juliaSeed` + the Orbit editor; Slice / Cut angle are the 4D knobs — a `c` component is NOT (see below) |
 | **Kleinian limit set** | Wada-basin sphere packings — the exotic showpiece | Raymarch; niche but jaw-dropping |
-| **Black hole** | Accretion disk with gravitational lensing and doppler shading | The one most likely to read as "how is this in a browser" |
+| ~~**Black hole**~~ ✅ | SHIPPED post-1.25.0 | photon INTEGRATION (weak-field deflection), disk collected on plane crossings, Keplerian shear + Doppler beaming |
 | **3D metaball goo** | Smooth-min blobs merging in 3D (the lava lamp done properly) | Raymarch; reuse the solids physics for blob centres |
 
 ## D. Point-accumulation (the underused family — 3 of 21 effects)
@@ -76,14 +76,12 @@ that are inherently "one animated scalar field" rank above ones that need real R
 
 What remains, strongest first:
 
-1. **Black hole** (effect) — accretion disk with lensing; the remaining "how is this in a
-   browser" showpiece.
-2. **Gerstner ocean** (effect) — rolling sea heightfield; sunset ramps.
-3. **Glenz / vector balls** (effect) — the last big Amiga classic; Tetrafyer's 3D infra.
-4. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
-5. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
-6. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
-7. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
+1. **Gerstner ocean** (effect) — rolling sea heightfield; sunset ramps.
+2. **Glenz / vector balls** (effect) — the last big Amiga classic; Tetrafyer's 3D infra.
+3. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
+4. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
+5. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
+6. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
 
 Also still open: Sine scroller (needs a glyph source), Crystal growth (reaction–diffusion's
 state-texture machinery now exists to build on), Volumetric nebula, 3D metaball goo,

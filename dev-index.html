@@ -4096,6 +4096,100 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Black hole: an accretion disk seen through its own gravitational lensing.
+    //
+    // NOT a raymarch — there is no surface to hit. Photons are INTEGRATED: each ray is
+    // stepped through the hole's field with the standard weak-field deflection
+    //   a = -1.5 · h² · p / |p|⁵      (h = |p × d|, the conserved angular momentum)
+    // which is the Schwarzschild null geodesic to the order that matters at this scale, and
+    // is what bends the far side of the disk up over the top of the hole and back under the
+    // bottom. That arc IS the effect; a straight-ray version just draws an ellipse.
+    //
+    // Units put the horizon at r = 1. A ray that falls inside it is swallowed and stays
+    // black; one that crosses the disk plane between the inner and outer radius picks up
+    // emission there and keeps going, so the disk can be collected MORE THAN ONCE — that
+    // second, thinner arc above the first is the lensed underside, not a bug.
+    //
+    // Doppler beaming (uBeam) is why one side is brighter: the disk orbits, and the limb
+    // coming toward the camera is boosted. Keplerian, so the inner disk shears past the
+    // outer one and the turbulence never repeats.
+    const FS_BHOLE = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uOrbit; uniform float uTilt;
+    uniform float uOuter; uniform float uBeam; uniform float uZoom;
+    out vec4 o;
+    float bhN(vec2 p){
+      // cheap value noise — two octaves is plenty once it is smeared round the disk
+      vec2 i = floor(p), f = fract(p);
+      f = f*f*(3.0 - 2.0*f);
+      vec4 h = vec4(0.0, 1.0, 57.0, 58.0) + dot(i, vec2(1.0, 57.0));
+      vec4 r = fract(sin(h)*43758.5453);
+      return mix(mix(r.x, r.y, f.x), mix(r.z, r.w, f.x), f.y);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uOrbit), sa = sin(uOrbit);
+      float ct = cos(uTilt), st = sin(uTilt);
+      // Camera on a circle, raised by the tilt. A LOW tilt is the iconic view: the disk is
+      // nearly edge-on, so the lensed far side stands right up over the hole.
+      // Far enough back that the widest disk still fits: the frame's half-extent at the
+      // origin plane is dist/1.9, so 22 gives ~11.6 against a disk radius of 4..14.
+      vec3 ro = vec3(sa*22.0*ct, 22.0*st, -ca*22.0*ct);
+      vec3 fwd = normalize(-ro);
+      vec3 rgt = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
+      vec3 up = cross(fwd, rgt);
+      vec3 rd = normalize(fwd*1.9 + rgt*uv.x + up*uv.y);
+      vec3 p = ro, d = rd;
+      vec3 hv = cross(p, d);
+      float h2 = dot(hv, hv);
+      float rIn = 2.3, rOut = max(rIn + 1.2, uOuter);
+      float heat = 0.0, prevY = p.y;
+      for (int i = 0; i < 160; i++){
+        float r = length(p);
+        // Through the horizon: stop collecting, but KEEP what is already collected. The
+        // march runs backwards from the camera, so emission picked up in front of the hole
+        // has already reached the eye — the ray falling in afterwards only means there is no
+        // background behind it. Zeroing here erased the entire near half of the disk (every
+        // ray that crosses the disk and then goes down the hole) and left just the photon
+        // ring on a black field.
+        if (r < 1.0) break;
+        if (r > 26.0 && dot(p, d) > 0.0) break;       // escaped, heading away
+        float dt = 0.10 + 0.055*r;
+        vec3 np = p + d*dt;
+        // Disk crossing, found by the sign change of y and placed by linear interpolation —
+        // stepping is far too coarse to just test "am I near the plane".
+        if (prevY*np.y < 0.0){
+          float k = prevY/(prevY - np.y);
+          vec3 q = mix(p, np, k);
+          float rr = length(q.xz);
+          if (rr > rIn && rr < rOut){
+            float ang = atan(q.z, q.x);
+            float kep = uTime*6.0/pow(rr, 1.5);       // Keplerian: the inside shears past
+            float n = 0.55 + 0.45*bhN(vec2(ang*2.6/6.2831853*14.0 + kep, rr*1.7));
+            n *= 0.6 + 0.4*bhN(vec2(ang/6.2831853*38.0 + kep*1.7, rr*4.1));
+            // NOT smoothstep(rOut, rOut*0.55, rr): GLSL leaves smoothstep UNDEFINED when
+            // edge0 >= edge1, and this GPU returns 0 for it — which silently zeroed the
+            // entire disk and left only the photon ring on a black field. Take the rising
+            // ramp and invert it.
+            float edge = (1.0 - smoothstep(rOut*0.55, rOut, rr))*smoothstep(rIn, rIn*1.30, rr);
+            // Doppler beaming: orbital velocity against the view direction.
+            vec3 vel = normalize(vec3(-q.z, 0.0, q.x))/sqrt(rr);
+            float dop = clamp(1.0 + uBeam*3.0*dot(vel, -d), 0.05, 3.2);
+            heat += edge*n*dop*(5.5/rr);
+          }
+        }
+        // deflect, then advance — the whole point of the effect
+        d = normalize(d + (-1.5*h2*p/pow(dot(p, p), 2.5))*dt);
+        prevY = np.y;
+        p = np;
+      }
+      // The photon ring: light that orbited close to r = 1.5 and got out. Approximated by
+      // the impact parameter, which is cheap and lands in the right place.
+      float b = length(cross(ro, rd));
+      heat += 0.55*exp(-pow((b - 2.6)/0.16, 2.0));
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Starfield / hyperspace: 6 depth layers of cell-hashed stars flying outward; uWarp
     // re-samples the whole field at radially squeezed coordinates so every star smears
     // into a streak — beat-arm Warp and the kick punches to hyperspace. The field lives
@@ -4823,6 +4917,7 @@
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
+    glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
     glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uPos", "uFwd", "uRoll", "uIter", "uGlow", "uZoom"]);
@@ -7216,6 +7311,92 @@
     }
   }
 
+  // ---- Black hole: lensed accretion disk (shader effect) ----
+  // Photon integration, not a raymarch — see FS_BHOLE for the physics. The mirror keeps the
+  // deflection (without it the picture is just an ellipse and the effect is pointless) and
+  // gives up everything else: every 4th pixel into a 4x4 block, 56 steps instead of 160,
+  // one noise octave.
+  let bhOrbSpd = 0.08, bhTilt = 12, bhOuter = 8, bhBeam = 0.8, bhSpin = 1;
+  let bhTime = 0, bhOrbit = 0;
+  function bholeSeed(dt) {
+    bhTime += dt * bhSpin;
+    bhOrbit += dt * bhOrbSpd;
+    return { t: bhTime, orbit: bhOrbit, tilt: bhTilt * Math.PI / 180, outer: bhOuter, beam: bhBeam, zoom };
+  }
+  const bhHash = (x, y) => { const v = Math.sin(x + y * 57) * 43758.5453; return v - Math.floor(v); };
+  function bhNoise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    let fx = x - ix, fy = y - iy;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const a = bhHash(ix, iy), b = bhHash(ix + 1, iy), c = bhHash(ix, iy + 1), d = bhHash(ix + 1, iy + 1);
+    return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
+  }
+  // Takes the seed the descriptor already advanced this frame — it must NOT call
+  // bholeSeed() itself, or the Canvas2D path runs the disk and the camera at double speed
+  // (the same trap the cardioid mirrors carry a comment about).
+  function bholeCPU(s) {                  // CPU fallback — mirrors FS_BHOLE, coarsely
+    const ar = fw / fh;
+    const ca = Math.cos(s.orbit), sa = Math.sin(s.orbit);
+    const ct = Math.cos(s.tilt), st = Math.sin(s.tilt);
+    const rox = sa * 22 * ct, roy = 22 * st, roz = -ca * 22 * ct;
+    const fl = Math.hypot(rox, roy, roz);
+    const fx = -rox / fl, fy = -roy / fl, fz = -roz / fl;
+    // right = normalize(cross(up, fwd)) with up = (0,1,0)
+    let rx = 1 * fz - 0 * fy, ry = 0 * fx - 0 * fz, rz = 0 * fy - 1 * fx;
+    const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+    const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+    const rIn = 2.3, rOut = Math.max(rIn + 1.2, s.outer);
+    for (let y = 0; y < fh; y += 4) {
+      for (let x = 0; x < fw; x += 4) {
+        camPix(x, y);
+        const vx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const vy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let dx = fx * 1.9 + rx * vx + ux * vy;
+        let dy = fy * 1.9 + ry * vx + uy * vy;
+        let dz = fz * 1.9 + rz * vx + uz * vy;
+        const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+        // h = |p x d|, conserved
+        const hx = roy * dz - roz * dy, hy = roz * dx - rox * dz, hz = rox * dy - roy * dx;
+        const h2 = hx * hx + hy * hy + hz * hz;
+        let px = rox, py = roy, pz = roz, prevY = py, heat = 0;
+        for (let i = 0; i < 56; i++) {
+          const r = Math.hypot(px, py, pz);
+          if (r < 1) break;               // keep what was collected — see FS_BHOLE
+          if (r > 26 && px * dx + py * dy + pz * dz > 0) break;
+          const dtS = 0.10 + 0.055 * r;
+          const nx = px + dx * dtS, ny = py + dy * dtS, nz = pz + dz * dtS;
+          if (prevY * ny < 0) {
+            const k = prevY / (prevY - ny);
+            const qx = px + (nx - px) * k, qz = pz + (nz - pz) * k;
+            const rr = Math.hypot(qx, qz);
+            if (rr > rIn && rr < rOut) {
+              const ang = Math.atan2(qz, qx);
+              const kep = s.t * 6 / Math.pow(rr, 1.5);
+              const n = 0.55 + 0.45 * bhNoise(ang * 2.6 / 6.2831853 * 14 + kep, rr * 1.7);
+              const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };
+              const e1 = 1 - ss((rr - rOut * 0.55) / (rOut - rOut * 0.55));   // mirrors the shader's inverted ramp
+              const e2 = ss((rr - rIn) / (rIn * 0.30));
+              const vl = 1 / Math.sqrt(rr), vlen = Math.hypot(-qz, qx) || 1;
+              const dop = Math.max(0.05, Math.min(3.2,
+                1 + s.beam * 3 * ((-qz / vlen) * -dx + (qx / vlen) * -dz) * vl));
+              heat += e1 * e2 * n * dop * (5.5 / rr);
+            }
+          }
+          const p2 = px * px + py * py + pz * pz, k2 = -1.5 * h2 / Math.pow(p2, 2.5) * dtS;
+          dx += px * k2; dy += py * k2; dz += pz * k2;
+          const nl = Math.hypot(dx, dy, dz) || 1; dx /= nl; dy /= nl; dz /= nl;
+          prevY = ny; px = nx; py = ny; pz = nz;
+        }
+        const bx = roy * dz - roz * dy, by = roz * dx - rox * dz, bz = rox * dy - roy * dx;
+        const bb = Math.hypot(bx, by, bz);
+        heat += 0.55 * Math.exp(-Math.pow((bb - 2.6) / 0.16, 2));
+        const v = Math.min(1, heat) * 255;
+        for (let by2 = y; by2 < Math.min(y + 4, fh); by2++)
+          for (let bx2 = x; bx2 < Math.min(x + 4, fw); bx2++) fire[by2 * fw + bx2] = v;
+      }
+    }
+  }
+
   // ---- Quaternion Julia: raymarched 4D Julia slice (shader effect) ----
   // Same coarse-mirror bargain as the Mandelbulb below: every 3rd pixel into a 3x3 block,
   // a third of the shader's steps, iterations capped, flat shading. The seed `c` is handed
@@ -8811,6 +8992,11 @@
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "bhtilt", host: "fx", group: "bhole", type: "dual", label: "Tilt", valId: "vBhTilt", min: 2, max: 80, step: 1, lo: 12, hi: 12, fmt: v => sig3(v) + "°", apply: v => bhTilt = v, durScale: 10 },
+    { key: "bhouter", host: "fx", group: "bhole", type: "dual", label: "Disk size", valId: "vBhOuter", min: 4, max: 14, step: 0.1, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bhOuter = v, durScale: 10 },
+    { key: "bhspin", host: "fx", group: "bhole", type: "dual", label: "Disk speed", valId: "vBhSpin", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bhSpin = v, durScale: 10 },
+    { key: "bhbeam", host: "fx", group: "bhole", type: "dual", label: "Beaming", valId: "vBhBeam", min: 0, max: 1.5, step: 0.02, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => bhBeam = v, durScale: 10 },
+    { key: "bhorbit", host: "fx", group: "bhole", type: "dual", label: "Orbit speed", valId: "vBhOrbit", min: 0, max: 1, step: 0.01, lo: 0.08, hi: 0.08, fmt: v => sig3(v) + "×", apply: v => bhOrbSpd = v, durScale: 10 },
     { key: "qjslice", host: "fx", group: "qjulia", type: "dual", label: "Slice", valId: "vQjSlice", min: -1, max: 1, step: 0.005, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => qjSlice = v, durScale: 10 },
     { key: "qjcut", host: "fx", group: "qjulia", type: "dual", label: "Cut angle", valId: "vQjCut", min: 0, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => qjCut = v, durScale: 10 },
     { key: "qjdetail", host: "fx", group: "qjulia", type: "dual", single: true, label: "Detail", valId: "vQjDetail", min: 4, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => qjDetail = Math.round(v), durScale: 10 },
@@ -9719,6 +9905,9 @@
     ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
+    // The black hole carries two: the disk's own rotation and the camera's lap round it.
+    ["bhTime", () => bhTime, v => bhTime = v],
+    ["bhOrbit", () => bhOrbit, v => bhOrbit = v],
     ["flPhase", () => flPhase, v => flPhase = v],
     ["stTime", () => stTime, v => stTime = v],
     ["auTime", () => auTime, v => auTime = v],
@@ -11254,6 +11443,16 @@
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",
+      help: "An accretion disk seen through the hole's own gravity. The photons are integrated rather than drawn straight, so light from the FAR side of the disk is bent up over the top of the shadow and back under the bottom — those arcs closing round the dark centre are the whole point, and a straight-ray version would just be an ellipse. Tilt is the camera's height above the disk plane: low is the iconic nearly-edge-on view, high looks down on a plain ring. Beaming is the relativistic boost that makes the limb coming toward you far brighter than the one going away; wind it to 0 for an evenly lit disk. The disk orbits Keplerian, so the inside shears past the outside and the turbulence never repeats. Heavy: it wants a real GPU.",
+      params: ["bhtilt", "bhouter", "bhspin", "bhbeam", "bhorbit", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "bhole", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = bholeSeed(dt);
+        if (useGL) glShaderDraw("bhole", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uOrbit, s.orbit); gl.uniform1f(u.uTilt, s.tilt); gl.uniform1f(u.uOuter, s.outer); gl.uniform1f(u.uBeam, s.beam); gl.uniform1f(u.uZoom, s.zoom); });
+        else bholeCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bhtilt: [12, 12], bhouter: [8, 8], bhspin: [1, 1], bhbeam: [0.8, 0.8], bhorbit: [0.08, 0.08],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
       help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
       params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
@@ -17456,6 +17655,11 @@
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Tilt", w: "bhole", t: "Black hole only — how high above the disk plane the camera sits. Low angles are the iconic view: the disk is nearly edge-on, so the light from its far side is bent up over the top of the shadow and back under the bottom, closing a ring round the darkness. Wind it high and you are looking down on a plain flat ring with the lensing barely visible." },
+      { n: "Disk size", w: "bhole", t: "Black hole only — how far out the accretion disk extends. Small keeps a tight bright annulus hugging the shadow; large spreads a broad faint disk across the frame. The inner edge is fixed where the last stable orbit is." },
+      { n: "Disk speed", w: "bhole", t: "Black hole only — how fast the disk turns. It orbits Keplerian, so the inner ring always shears past the outer one and the turbulence never repeats however long you watch. 0 freezes the pattern (the lensing and the beaming stay)." },
+      { n: "Beaming", w: "bhole", t: "Black hole only — relativistic Doppler beaming: the side of the disk rotating toward you is boosted and the side going away is dimmed, which is why one limb is far brighter than the other. 0 gives an evenly lit disk, which reads as wrong once you have seen the real thing." },
+      { n: "Orbit speed", w: "bhole", t: "Black hole only — how fast the camera circles the hole. 0 parks it. Slow is best: the lensed arcs change shape as the viewing angle turns." },
       { n: "Slice", w: "qjulia", t: "Quaternion Julia only — the 4D set is cut to a 3D solid before it can be drawn, and this is where that cut falls along the fourth axis. 0 is the natural slice; move it either way and the solid melts through a continuous family of shapes, shedding and growing whole limbs. Spread the two thumbs and it never stops changing; arm its L/M/H chips and the beat jumps it to a new form." },
       { n: "Cut angle", w: "qjulia", t: "Quaternion Julia only — rotates the cutting plane itself, rather than sliding it. At 0° the solid is cut the usual way; wind it round and the real axis is traded for the fourth one, so the same 4D object is sighted along a different direction entirely and shows cross-sections the Slice slider alone never reaches. Pairs well with Slice: spread one and pin the other." },
       { n: "Detail", w: "qjulia", t: "Quaternion Julia only — how many iterations the distance estimate runs. More is crisper and more filigreed, and costs GPU directly." },

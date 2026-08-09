@@ -1028,6 +1028,100 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Black hole: an accretion disk seen through its own gravitational lensing.
+    //
+    // NOT a raymarch — there is no surface to hit. Photons are INTEGRATED: each ray is
+    // stepped through the hole's field with the standard weak-field deflection
+    //   a = -1.5 · h² · p / |p|⁵      (h = |p × d|, the conserved angular momentum)
+    // which is the Schwarzschild null geodesic to the order that matters at this scale, and
+    // is what bends the far side of the disk up over the top of the hole and back under the
+    // bottom. That arc IS the effect; a straight-ray version just draws an ellipse.
+    //
+    // Units put the horizon at r = 1. A ray that falls inside it is swallowed and stays
+    // black; one that crosses the disk plane between the inner and outer radius picks up
+    // emission there and keeps going, so the disk can be collected MORE THAN ONCE — that
+    // second, thinner arc above the first is the lensed underside, not a bug.
+    //
+    // Doppler beaming (uBeam) is why one side is brighter: the disk orbits, and the limb
+    // coming toward the camera is boosted. Keplerian, so the inner disk shears past the
+    // outer one and the turbulence never repeats.
+    const FS_BHOLE = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uOrbit; uniform float uTilt;
+    uniform float uOuter; uniform float uBeam; uniform float uZoom;
+    out vec4 o;
+    float bhN(vec2 p){
+      // cheap value noise — two octaves is plenty once it is smeared round the disk
+      vec2 i = floor(p), f = fract(p);
+      f = f*f*(3.0 - 2.0*f);
+      vec4 h = vec4(0.0, 1.0, 57.0, 58.0) + dot(i, vec2(1.0, 57.0));
+      vec4 r = fract(sin(h)*43758.5453);
+      return mix(mix(r.x, r.y, f.x), mix(r.z, r.w, f.x), f.y);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uOrbit), sa = sin(uOrbit);
+      float ct = cos(uTilt), st = sin(uTilt);
+      // Camera on a circle, raised by the tilt. A LOW tilt is the iconic view: the disk is
+      // nearly edge-on, so the lensed far side stands right up over the hole.
+      // Far enough back that the widest disk still fits: the frame's half-extent at the
+      // origin plane is dist/1.9, so 22 gives ~11.6 against a disk radius of 4..14.
+      vec3 ro = vec3(sa*22.0*ct, 22.0*st, -ca*22.0*ct);
+      vec3 fwd = normalize(-ro);
+      vec3 rgt = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
+      vec3 up = cross(fwd, rgt);
+      vec3 rd = normalize(fwd*1.9 + rgt*uv.x + up*uv.y);
+      vec3 p = ro, d = rd;
+      vec3 hv = cross(p, d);
+      float h2 = dot(hv, hv);
+      float rIn = 2.3, rOut = max(rIn + 1.2, uOuter);
+      float heat = 0.0, prevY = p.y;
+      for (int i = 0; i < 160; i++){
+        float r = length(p);
+        // Through the horizon: stop collecting, but KEEP what is already collected. The
+        // march runs backwards from the camera, so emission picked up in front of the hole
+        // has already reached the eye — the ray falling in afterwards only means there is no
+        // background behind it. Zeroing here erased the entire near half of the disk (every
+        // ray that crosses the disk and then goes down the hole) and left just the photon
+        // ring on a black field.
+        if (r < 1.0) break;
+        if (r > 26.0 && dot(p, d) > 0.0) break;       // escaped, heading away
+        float dt = 0.10 + 0.055*r;
+        vec3 np = p + d*dt;
+        // Disk crossing, found by the sign change of y and placed by linear interpolation —
+        // stepping is far too coarse to just test "am I near the plane".
+        if (prevY*np.y < 0.0){
+          float k = prevY/(prevY - np.y);
+          vec3 q = mix(p, np, k);
+          float rr = length(q.xz);
+          if (rr > rIn && rr < rOut){
+            float ang = atan(q.z, q.x);
+            float kep = uTime*6.0/pow(rr, 1.5);       // Keplerian: the inside shears past
+            float n = 0.55 + 0.45*bhN(vec2(ang*2.6/6.2831853*14.0 + kep, rr*1.7));
+            n *= 0.6 + 0.4*bhN(vec2(ang/6.2831853*38.0 + kep*1.7, rr*4.1));
+            // NOT smoothstep(rOut, rOut*0.55, rr): GLSL leaves smoothstep UNDEFINED when
+            // edge0 >= edge1, and this GPU returns 0 for it — which silently zeroed the
+            // entire disk and left only the photon ring on a black field. Take the rising
+            // ramp and invert it.
+            float edge = (1.0 - smoothstep(rOut*0.55, rOut, rr))*smoothstep(rIn, rIn*1.30, rr);
+            // Doppler beaming: orbital velocity against the view direction.
+            vec3 vel = normalize(vec3(-q.z, 0.0, q.x))/sqrt(rr);
+            float dop = clamp(1.0 + uBeam*3.0*dot(vel, -d), 0.05, 3.2);
+            heat += edge*n*dop*(5.5/rr);
+          }
+        }
+        // deflect, then advance — the whole point of the effect
+        d = normalize(d + (-1.5*h2*p/pow(dot(p, p), 2.5))*dt);
+        prevY = np.y;
+        p = np;
+      }
+      // The photon ring: light that orbited close to r = 1.5 and got out. Approximated by
+      // the impact parameter, which is cheap and lands in the right place.
+      float b = length(cross(ro, rd));
+      heat += 0.55*exp(-pow((b - 2.6)/0.16, 2.0));
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Starfield / hyperspace: 6 depth layers of cell-hashed stars flying outward; uWarp
     // re-samples the whole field at radially squeezed coordinates so every star smears
     // into a streak — beat-arm Warp and the kick punches to hyperspace. The field lives

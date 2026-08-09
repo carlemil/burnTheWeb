@@ -132,6 +132,14 @@ the steps.
   clearance zero. Scan-verified: min DE 0.107, ~940 dives over 6000 s at max sliders.
 
 ### Effect-shader gotchas
+- **`smoothstep(hi, lo, x)` is UNDEFINED in GLSL** when `edge0 >= edge1`, and this GPU
+  returns **0**. Use `1.0 - smoothstep(lo, hi, x)` for a falling ramp. It silently zeroed the
+  whole Black hole disk and left only the photon ring — the shader compiled, the geometry was
+  provably right, and the picture was still black.
+- **Name collisions inside one `main()` are a LINK failure, and a link failure is silent** —
+  `useProgram(null)` just draws nothing. The Black hole/Quaternion Julia camera basis owns
+  `ca`/`sa`; a second cosine pair in the same scope has to be called something else. Assert a
+  console-error count of 0 (`glCompile`/`glLink` throw, which surfaces as an uncaught error).
 - **The heat buffer is Y-FLIPPED against the screen** — buffer row 0 renders at the screen TOP
   (`fire[]` row 0 too). An orientation-sensitive shader (Aurora, Lightning) must treat
   `gl_FragCoord.y/fh − 0.5` as pointing DOWN, or negate it at construction.
@@ -1331,6 +1339,21 @@ node and read `getComputedStyle`. Prove the check is sensitive by re-appending t
 watching it go red.
 
 **Five traps when screenshotting ONE effect** (each produced a confident wrong reading):
+- **STRIP THE LAYER'S FILTERS FIRST.** Changing a layer's effect deliberately KEEPS its
+  filter chain, and the shipped `Fetingen` starter carries **twelve** — Fire feedback
+  included. A brand-new effect selected onto it is fed through a fire sim and comes out a
+  smeared radial haze that reads exactly like a broken shader. Click every `.filter-rm`.
+- **Set the Transition slider to 0 (both thumbs) before selecting a scene.** `trans.t`
+  advances in RENDERED time and headless produces few frames, so a half-second blend is
+  still half-drawn at screenshot time: the `bars` mode puts vertical stripes across the
+  effect, and a black outgoing frame reads as "renders nothing".
+- **A WebGL canvas cannot be sampled after compositing** — `drawImage(#fire, …)` comes back
+  empty however good the frame looked. The screenshot is the pixel evidence; use the fps
+  counter for liveness.
+- **The layer rows are a fixed pool with the spares HIDDEN**, so `querySelectorAll(".lyr")`
+  always says 4. Filter on `offsetParent !== null`.
+- **Reaching one layer via the row ✕ raises a `confirm()`**, which headless auto-dismisses.
+  Select the single-layer starter scene instead (or stub `window.confirm`).
 - **Turn auto-cycle off first** (`#cycle`), and assert the effect is *still* the one under test at
   screenshot time.
 - **`gl.getError()` must be sampled inside a real frame** (afterwards it returns a spurious `0x502`
