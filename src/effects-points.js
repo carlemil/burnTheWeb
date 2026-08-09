@@ -110,6 +110,61 @@
     }
   }
 
+  // ---- Particle galaxy: log-spiral arms (point effect) ----
+  // A disc of stars whose density follows LOG SPIRALS, which is the shape real galaxies
+  // make: an arm is a straight line in (log r, θ), so the winding tightens toward the core
+  // on its own rather than being drawn tighter by hand.
+  //
+  // The stars DIFFERENTIALLY rotate — inner orbits are faster (θ += t·spin/(r+ε)), which is
+  // the other thing real galaxies do, and it is what keeps the arms shearing and re-forming
+  // instead of turning as a rigid pinwheel.
+  //
+  // Reseeds the chaos PRNG itself so the star field is the SAME set of stars every frame
+  // and only the rotation moves them — the same bargain flamesStamp makes, and the reason
+  // this needs no per-layer state beyond one clock. Its own salt, so it can never step on
+  // another point effect's sequence.
+  // Stamped ADDITIVELY (`stampAdd` on the descriptor), which is the whole reason the core
+  // reads as a core: point effects are MAX-stamped by default, so a thousand stars in one
+  // pixel are exactly as bright as one and the bulge came out no brighter than the arms.
+  // Additive makes DENSITY the picture, as it is in the sky. GX_HEAT is per-STAR, so it has
+  // to be small — around eight overlapping stars should reach white, not one.
+  const GX_HEAT = 26;
+  let gxArms = 2, gxTwist = 0.55, gxSpin = 0.5, gxCore = 0.35, gxScatter = 0.30, gxTime = 0;
+  function galaxyStamp(xL, xR, yT, yB, n) {
+    gxTime += gxSpin * 2 / cfg.burn;             // per TICK, like flPhase
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.46, sy = (yB - yT) * 0.46;
+    rngState = (SEED + 0x9e37) >>> 0;
+    const arms = Math.max(1, Math.round(gxArms)), armStep = 6.2831853 / arms;
+    const t = gxTime, tw = Math.max(0.05, gxTwist), sc = gxScatter;
+    for (let i = 0; i < n; i++) {
+      // Exponential disc: most stars near the centre, a thin population far out.
+      let r = -Math.log(1 - rnd() * 0.99) * 0.26;
+      if (r > 1) r = 1 - (r - 1) * 0.35;         // fold the tail back rather than clipping a hard rim
+      if (r < 0.012) r = 0.012;
+      // The arm: a log spiral, plus a scatter that widens outward so the core stays tight.
+      const arm = Math.floor(rnd() * arms) * armStep;
+      const spiral = Math.log(r) / tw;
+      const jitter = (rnd() + rnd() + rnd() - 1.5) * sc * (0.35 + r);
+      // Differential rotation — inner stars sweep round faster, but BOUNDED. A true 1/r
+      // curve is what real galaxies have and it runs into the real winding problem: within
+      // a minute the inner disc has turned many more times than the rim, the arms are wound
+      // out of existence and the two-fold symmetry is gone. Nature answers that with density
+      // waves; here it is enough to cap the spread at about 2:1 centre-to-rim, which still
+      // shears the arms visibly while keeping them arms.
+      const th = arm + spiral + jitter + t * (0.35 + 0.65 / (r + 0.45));
+      const rr = r * (1 + (rnd() - 0.5) * 0.10);
+      plot(cx + Math.cos(th) * rr * sx, cy + Math.sin(th) * rr * sy, GX_HEAT, true);
+    }
+    // The core: a separate tight bulge, otherwise the disc's own falloff leaves the middle
+    // no brighter than the arms and the galaxy has no centre.
+    const bulge = Math.round(n * gxCore * 0.5);
+    for (let i = 0; i < bulge; i++) {
+      const r = Math.pow(rnd(), 2.2) * 0.22, th = rnd() * 6.2831853;
+      plot(cx + Math.cos(th) * r * sx, cy + Math.sin(th) * r * sy, GX_HEAT, true);
+    }
+  }
+
   // ---- Harmonograph: decaying pendulum ribbons (point effect) ----
   // The Victorian drawing machine: two pendulums per axis, each a damped sine, their sum
   // traced by a pen. x and y are therefore each a beat between two nearly-equal frequencies,

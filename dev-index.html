@@ -7908,6 +7908,61 @@
     }
   }
 
+  // ---- Particle galaxy: log-spiral arms (point effect) ----
+  // A disc of stars whose density follows LOG SPIRALS, which is the shape real galaxies
+  // make: an arm is a straight line in (log r, θ), so the winding tightens toward the core
+  // on its own rather than being drawn tighter by hand.
+  //
+  // The stars DIFFERENTIALLY rotate — inner orbits are faster (θ += t·spin/(r+ε)), which is
+  // the other thing real galaxies do, and it is what keeps the arms shearing and re-forming
+  // instead of turning as a rigid pinwheel.
+  //
+  // Reseeds the chaos PRNG itself so the star field is the SAME set of stars every frame
+  // and only the rotation moves them — the same bargain flamesStamp makes, and the reason
+  // this needs no per-layer state beyond one clock. Its own salt, so it can never step on
+  // another point effect's sequence.
+  // Stamped ADDITIVELY (`stampAdd` on the descriptor), which is the whole reason the core
+  // reads as a core: point effects are MAX-stamped by default, so a thousand stars in one
+  // pixel are exactly as bright as one and the bulge came out no brighter than the arms.
+  // Additive makes DENSITY the picture, as it is in the sky. GX_HEAT is per-STAR, so it has
+  // to be small — around eight overlapping stars should reach white, not one.
+  const GX_HEAT = 26;
+  let gxArms = 2, gxTwist = 0.55, gxSpin = 0.5, gxCore = 0.35, gxScatter = 0.30, gxTime = 0;
+  function galaxyStamp(xL, xR, yT, yB, n) {
+    gxTime += gxSpin * 2 / cfg.burn;             // per TICK, like flPhase
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.46, sy = (yB - yT) * 0.46;
+    rngState = (SEED + 0x9e37) >>> 0;
+    const arms = Math.max(1, Math.round(gxArms)), armStep = 6.2831853 / arms;
+    const t = gxTime, tw = Math.max(0.05, gxTwist), sc = gxScatter;
+    for (let i = 0; i < n; i++) {
+      // Exponential disc: most stars near the centre, a thin population far out.
+      let r = -Math.log(1 - rnd() * 0.99) * 0.26;
+      if (r > 1) r = 1 - (r - 1) * 0.35;         // fold the tail back rather than clipping a hard rim
+      if (r < 0.012) r = 0.012;
+      // The arm: a log spiral, plus a scatter that widens outward so the core stays tight.
+      const arm = Math.floor(rnd() * arms) * armStep;
+      const spiral = Math.log(r) / tw;
+      const jitter = (rnd() + rnd() + rnd() - 1.5) * sc * (0.35 + r);
+      // Differential rotation — inner stars sweep round faster, but BOUNDED. A true 1/r
+      // curve is what real galaxies have and it runs into the real winding problem: within
+      // a minute the inner disc has turned many more times than the rim, the arms are wound
+      // out of existence and the two-fold symmetry is gone. Nature answers that with density
+      // waves; here it is enough to cap the spread at about 2:1 centre-to-rim, which still
+      // shears the arms visibly while keeping them arms.
+      const th = arm + spiral + jitter + t * (0.35 + 0.65 / (r + 0.45));
+      const rr = r * (1 + (rnd() - 0.5) * 0.10);
+      plot(cx + Math.cos(th) * rr * sx, cy + Math.sin(th) * rr * sy, GX_HEAT, true);
+    }
+    // The core: a separate tight bulge, otherwise the disc's own falloff leaves the middle
+    // no brighter than the arms and the galaxy has no centre.
+    const bulge = Math.round(n * gxCore * 0.5);
+    for (let i = 0; i < bulge; i++) {
+      const r = Math.pow(rnd(), 2.2) * 0.22, th = rnd() * 6.2831853;
+      plot(cx + Math.cos(th) * r * sx, cy + Math.sin(th) * r * sy, GX_HEAT, true);
+    }
+  }
+
   // ---- Harmonograph: decaying pendulum ribbons (point effect) ----
   // The Victorian drawing machine: two pendulums per axis, each a damped sine, their sum
   // traced by a pen. x and y are therefore each a beat between two nearly-equal frequencies,
@@ -9306,6 +9361,11 @@
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "gxarms", host: "fx", group: "galaxy", type: "dual", single: true, label: "Arms", valId: "vGxArms", min: 1, max: 6, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => gxArms = Math.round(v), durScale: 10 },
+    { key: "gxtwist", host: "fx", group: "galaxy", type: "dual", label: "Twist", valId: "vGxTwist", min: 0.15, max: 1.6, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => gxTwist = v, durScale: 10 },
+    { key: "gxspin", host: "fx", group: "galaxy", type: "dual", label: "Spin", valId: "vGxSpin", min: -2, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => gxSpin = v, durScale: 10 },
+    { key: "gxcore", host: "fx", group: "galaxy", type: "dual", label: "Core", valId: "vGxCore", min: 0, max: 1.5, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => gxCore = v, durScale: 10 },
+    { key: "gxscatter", host: "fx", group: "galaxy", type: "dual", label: "Scatter", valId: "vGxScat", min: 0, max: 1.2, step: 0.01, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => gxScatter = v, durScale: 10 },
     { key: "hgratio", host: "fx", group: "harmo", type: "dual", label: "Frequency ratio", valId: "vHgRatio", min: 1, max: 7, step: 0.001, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => hgRatio = v, durScale: 10 },
     { key: "hgdetune", host: "fx", group: "harmo", type: "dual", label: "Detune", valId: "vHgDet", min: 0, max: 0.06, step: 0.0005, lo: 0.012, hi: 0.012, fmt: v => sig3(v), apply: v => hgDetune = v, durScale: 10 },
     { key: "hgdecay", host: "fx", group: "harmo", type: "dual", label: "Damping", valId: "vHgDecay", min: 0.004, max: 0.09, step: 0.001, lo: 0.022, hi: 0.022, fmt: v => sig3(v), apply: v => hgDecay = v, durScale: 10 },
@@ -10236,6 +10296,7 @@
     ["goTime", () => goTime, v => goTime = v],
     ["vbPhase", () => vbPhase, v => vbPhase = v],
     ["hgPhase", () => hgPhase, v => hgPhase = v],
+    ["gxTime", () => gxTime, v => gxTime = v],
     // The black hole carries two: the disk's own rotation and the camera's lap round it.
     ["bhTime", () => bhTime, v => bhTime = v],
     ["bhOrbit", () => bhOrbit, v => bhOrbit = v],
@@ -11774,6 +11835,15 @@
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "galaxy", name: "Galaxy", subtitle: "Galaxy · log-spiral star disc",
+      help: "A disc of stars whose density follows log spirals — the shape real galaxies make, where an arm is a straight line in log-radius so the winding tightens toward the core by itself rather than being drawn tighter by hand. The stars differentially rotate too: inner orbits sweep round faster, so the arms shear and re-form instead of turning like a rigid pinwheel. Arms sets how many, Twist how tightly they wind (low is a barred spiral, high a nearly circular ring), Scatter how sharply defined they are against the disc, Core how bright the central bulge burns. Arm Core or Scatter to the beat and the galaxy flares.",
+      params: ["gxarms", "gxtwist", "gxspin", "gxcore", "gxscatter", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      helpTags: ["all", "galaxy"], bakesOwnZoom: true, stampAdd: true,
+      stamp: (xL, xR, yT, yB, n) => galaxyStamp(xL, xR, yT, yB, n),
+      ranges: { points: { min: 3000, max: 40000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], gxarms: [2, 2], gxtwist: [0.55, 0.55], gxspin: [0.5, 0.5], gxcore: [0.35, 0.35], gxscatter: [0.30, 0.30],
+        points: [16000, 16000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "harmonograph", name: "Harmonograph", subtitle: "Harmonograph · damped pendulum ribbons",
       help: "The Victorian drawing machine: two pendulums per axis, each a dying sine, their sum traced by a pen. Frequency ratio is the figure — whole numbers give the closed classical forms, and the values between them the open weaving ones. Detune is the trick: at exactly 0 the curve closes and retraces itself forever, and a hair off it each lap misses by a little and the whole figure precesses into a ribbon. Damping is how fast the pendulums die, so low values spiral a long way in and high ones draw a tight knot. Points is how finely the pen is sampled; add a Fade or Fire filter and the ribbons trail.",
       params: ["hgratio", "hgdetune", "hgdecay", "hgmorph", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
@@ -18018,6 +18088,11 @@
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Arms", w: "galaxy", t: "Galaxy only — how many spiral arms the disc has. 2 is the common grand-design spiral, 1 gives a single sweeping arm, and higher counts give the flocculent many-armed look. Arm its L/M/H chips and the galaxy restructures on the beat." },
+      { n: "Twist", w: "galaxy", t: "Galaxy only — how tightly the arms wind. An arm is a straight line in log-radius, so this is that line's slope: low values sweep the arms out into a barred, open spiral, high values wind them into a nearly circular ring. It is the single biggest change to the galaxy's character." },
+      { n: "Spin", w: "galaxy", t: "Galaxy only — how fast the disc turns; negative winds it the other way. The rotation is DIFFERENTIAL — inner stars sweep round faster than outer ones — so the arms shear and re-form as they go rather than turning as one rigid pinwheel. 0 holds the disc still." },
+      { n: "Core", w: "galaxy", t: "Galaxy only — how bright and dense the central bulge burns. 0 leaves a bare disc with no centre to it; higher values pile a tight ball of stars into the middle that blows out to white through the palette." },
+      { n: "Scatter", w: "galaxy", t: "Galaxy only — how far stars stray from their arm. Low values give hard, almost drawn-on arms; high values dissolve them into a general disc where the spiral is only just readable. The scatter widens outward, so the core stays tight either way." },
       { n: "Frequency ratio", w: "harmo", t: "Harmonograph only — how many times the fast pendulum swings per swing of the slow one, and so which figure the pen draws. Whole numbers give the closed classical forms (2 a figure-of-eight, 3 a trefoil, and so on); the values in between give the open weaving ones. Drift the two thumbs and it walks through the whole family." },
       { n: "Detune", w: "harmo", t: "Harmonograph only — how far the paired pendulums are out of tune with each other, and the trick the whole machine rests on. At exactly 0 the curve closes and retraces its own line forever, so you get a bare wire figure; a hair off zero and each lap misses the last by a little, the figure precesses, and the accumulated near-misses are what make it a woven ribbon rather than a line." },
       { n: "Damping", w: "harmo", t: "Harmonograph only — how fast the pendulums die away. Low values let the pen spiral a long way inward, filling a broad figure; high values kill the swing quickly and draw a small tight knot. Real harmonographs ran down in a minute or two — this is that dial." },

@@ -1,11 +1,11 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **thirty-seven effects** in four families,
+A GPU demoscene visual: a collection of **thirty-eight effects** in four families,
 all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, a de
-  Jong strange attractor, an Apophysis-style fractal flame, a Victorian harmonograph
-  or a wheeling boids murmuration stamped as fresh heat into a classic rising-fire buffer.
+  Jong strange attractor, an Apophysis-style fractal flame, a Victorian harmonograph,
+  a log-spiral galaxy or a wheeling boids murmuration stamped as fresh heat into a classic rising-fire buffer.
 - **Shader fractals** — animated Julia, Burning Ship, Multibrot and Newton.
 - **Coordinate / pattern classics** — plasma, tunnel, metaballs, kaleidoscope,
   rotozoomer, moiré, munching squares, copper bars, Kefrens bars, a twister
@@ -26,7 +26,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 ## Effects
 
 Every row in the panel's **Layers** box carries an **Effect** chooser, switching that layer
-between thirty-seven visuals that share the same palette, glow and music-reactivity pipeline —
+between thirty-eight visuals that share the same palette, glow and music-reactivity pipeline —
 but each is an independent "scene" that remembers its own settings (see Controls). You can
 **stack up to four of them at once**, each with its own palette and filters — see Layers
 below:
@@ -81,6 +81,7 @@ below:
   - **Cymatics** — sand on a vibrating plate: bright lines trace a standing wave's nodes, snapping into a new symmetry as **Mode** changes — drift its thumbs for continuous morphing or arm its chips so the figure jumps on the beat. **Sharpness** engraves the lines, **Shimmer** makes them tremble.
   - **Lightning storm** — bolts tearing down the screen, every strike a new shape. **Rate** fires them on a clock; arm **Strike**'s chips and the beat fires them instead, each bolt decaying over the Trigger duration. **Bolts** strikes several at once, **Afterglow** lights the sky.
   - **Mandelbulb** — the 3D Mandelbrot, raymarched and slowly orbited. **Power** reshapes it (8 is the classic), **Detail** adds fractal depth, **Glow** lights the silhouette and haloes near-misses. The heaviest effect in the app — it wants a real GPU.
+  - **Galaxy** — a disc of stars whose density follows **log spirals**, the shape real galaxies make: an arm is a straight line in log-radius, so the winding tightens toward the core by itself. The stars **differentially rotate** — inner orbits sweep faster — so the arms shear and re-form instead of turning like a rigid pinwheel. Stamped **additively**, so density is brightness and the bulge burns white. **Arms** how many, **Twist** how tightly they wind, **Scatter** how sharply they read against the disc, **Core** how hot the centre, **Spin** which way and how fast.
   - **Harmonograph** — the Victorian drawing machine: two pendulums per axis, each a dying sine, their sum traced by a pen. **Frequency ratio** picks the figure (whole numbers give the closed classical forms, the values between them the open weaving ones). **Detune** is the trick — at exactly 0 the curve closes and retraces itself forever, and a hair off it each lap misses by a little and the figure precesses into a woven ribbon. **Damping** is how fast the pendulums die, so low spirals a long way in and high draws a tight knot. Points is the pen’s resolution, sampled by arc length so the fast outer loops stay solid.
   - **Vector balls** — the Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. **Formation** arranges them as a Lattice, an even Fibonacci **Sphere** shell, a tilted **Ring** or a double **Helix**; the set turns as one body, so the shape reads only from how the balls occlude and shade each other — which is exactly how the original worked. **Balls** sets how many (up to 48), **Ball size** how fat (wind it up and they merge into one lumpy solid), **Tumble** how fast, **Edge glow** how hard the silhouettes are lit.
   - **Ocean** — a rolling sea running out to a horizon. Six wave trains are summed and each is **sharpened** so troughs stay round and crests come to a point — that is **Chop**, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. **Swell** scales the surface normals (so the glint sharpens and the foam breaks earlier), **Foam** is how high and steep a crest must be before it breaks white, **Speed** how fast the trains run, **Wind** which way the sea is going. Amber and Ember make it a sunset; the cold palettes make it the North Sea.

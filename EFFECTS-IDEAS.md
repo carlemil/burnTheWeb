@@ -47,7 +47,7 @@ that are inherently "one animated scalar field" rank above ones that need real R
 |---|---|---|
 | ~~**Fractal flames**~~ ✅ | SHIPPED in 1.16.0 | additive `stampAdd` + shipped Fade/Diffuse retention turned out to be the density model — no log-normalise pass needed |
 | **Lorenz / Thomas / Aizawa** | 3D strange attractors through the Tetrafyer spin+projection — butterfly curves in fire | `stamp()` + existing 3D projection; an Attractor picker |
-| **Particle galaxy** | Log-spiral arms, differential rotation, core bloom, beat-pulsed star bursts | `stamp()`; Arms / Twist / Core |
+| ~~**Particle galaxy**~~ ✅ | SHIPPED post-1.25.0 as "Galaxy" | `stampAdd` (density IS brightness — MAX stamping gave the bulge no core), BOUNDED differential rotation |
 | ~~**Harmonograph**~~ ✅ | SHIPPED post-1.25.0 | `stamp()`, whole curve per frame; ARC-LENGTH sampling and unequal pendulum amplitudes are what make it work |
 | ~~**Boids murmuration**~~ ✅ | SHIPPED post-1.16.0 | per-layer flock (L.boids), beat-armed Scatter |
 
@@ -76,9 +76,8 @@ that are inherently "one animated scalar field" rank above ones that need real R
 
 What remains, strongest first:
 
-1. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
-2. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
-3. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
+1. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
+2. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
 
 Also still open: Sine scroller (needs a glyph source), Crystal growth (reaction–diffusion's
 state-texture machinery now exists to build on), Volumetric nebula, 3D metaball goo,
