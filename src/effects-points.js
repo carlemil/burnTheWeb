@@ -115,9 +115,18 @@
   // make: an arm is a straight line in (log r, θ), so the winding tightens toward the core
   // on its own rather than being drawn tighter by hand.
   //
-  // The stars DIFFERENTIALLY rotate — inner orbits are faster (θ += t·spin/(r+ε)), which is
-  // the other thing real galaxies do, and it is what keeps the arms shearing and re-forming
-  // instead of turning as a rigid pinwheel.
+  // THE ARMS TRAIL. Going outward along an arm the angle DECREASES while the disc turns the
+  // other way, so the tips lag behind the rotation — which is what every real spiral galaxy
+  // does and the first version of this got exactly backwards (arms leading, so it read as
+  // spinning the wrong way). The sign of the log term is the whole of it.
+  //
+  // The pattern turns RIGIDLY and the differential motion is a BOUNDED shear on top. A 1/r
+  // rotation curve is what the stars really do and it runs straight into the real winding
+  // problem: the inner disc laps the rim and the arms wind out of existence. Capping the
+  // ratio at 2:1 was not enough — both terms still grew with t, so the absolute lead kept
+  // accumulating and the arms wound up within a minute anyway, just more slowly. Nature
+  // answers this with density waves: the PATTERN is what rotates, not the material. So does
+  // this, with an oscillating shear for the life the differential term was there to give.
   //
   // Reseeds the chaos PRNG itself so the star field is the SAME set of stars every frame
   // and only the rotation moves them — the same bargain flamesStamp makes, and the reason
@@ -144,15 +153,14 @@
       if (r < 0.012) r = 0.012;
       // The arm: a log spiral, plus a scatter that widens outward so the core stays tight.
       const arm = Math.floor(rnd() * arms) * armStep;
-      const spiral = Math.log(r) / tw;
+      // NEGATED: θ falls as r rises, so the arm sweeps backwards against a forward-turning
+      // disc. Flip this sign and the arms lead, which is the bug this effect shipped with.
+      const spiral = -Math.log(r) / tw;
       const jitter = (rnd() + rnd() + rnd() - 1.5) * sc * (0.35 + r);
-      // Differential rotation — inner stars sweep round faster, but BOUNDED. A true 1/r
-      // curve is what real galaxies have and it runs into the real winding problem: within
-      // a minute the inner disc has turned many more times than the rim, the arms are wound
-      // out of existence and the two-fold symmetry is gone. Nature answers that with density
-      // waves; here it is enough to cap the spread at about 2:1 centre-to-rim, which still
-      // shears the arms visibly while keeping them arms.
-      const th = arm + spiral + jitter + t * (0.35 + 0.65 / (r + 0.45));
+      // Rigid pattern rotation (+t) plus a bounded shear that varies with radius, so the
+      // arms breathe and ripple without ever winding up.
+      const shear = 0.55 * Math.sin(t * 0.27 + Math.log(r + 0.05) * 1.6);
+      const th = arm + spiral + jitter + t + shear;
       const rr = r * (1 + (rnd() - 0.5) * 0.10);
       plot(cx + Math.cos(th) * rr * sx, cy + Math.sin(th) * rr * sy, GX_HEAT, true);
     }

@@ -1464,6 +1464,16 @@ All slice real source out of the built file by **markers — keep them**.
   and `mergeState` collapse a stored spread/fraction and leave ranged float keys alone. Markers:
   `const sig3 =` … `// A control belongs to the SCENE`; `function snapStep(` …
   `function stepAnim(` … `// The loop is KEY-major`; `function mergeState(` … `function mergeBeat(`.
+- **`galaxyprobe.js`** — the two GALAXY properties a still frame cannot show, both of which
+  shipped wrong: the arms must **trail** (angle falls as radius rises, against a
+  forward-turning disc — the log term's sign), and they must **stay arms** (the pattern
+  rotates rigidly with a bounded shear; a 1/r curve winds them out of existence, and merely
+  capping the centre-to-rim ratio does NOT fix that — both terms still grow with the clock).
+  Winding is measured as **arm sharpness**, the circular concentration of the folded angle in
+  a radius bin, NOT as a swept angle: the ±5% per-star radius jitter smears a steep spiral
+  across a whole arm spacing, so a sweep degenerates into noise and any fold-and-compare
+  aliases past half an arm. Two earlier versions of the check passed the very bug they were
+  written for. Markers: `function galaxyStamp(` … `// ---- Harmonograph`.
 - **`palprobe.js`** — palette DELETION: `palByName` orders by name while `PALETTES` stays put;
   `palFallbackFor` takes the next in-use palette in display order (wrapping), prefers an in-use
   one over a nearer unticked one, **never returns a tombstoned palette** (the Fire case) and skips
