@@ -177,14 +177,21 @@ wired to the music without opening a single box.
 **There are two menus, and they hold different kinds of thing.**
 
 **☰ opens the application menu** — a fold-out, multi-level menu for everything that is
-*not* part of a scene. Items with a **▸** open a submenu beside them, which can open
-another: **System ▸ Audio** gets you the Capture/Mic buttons and the level meter, and
-**System ▸ Resolution** the render resolution; **Cloud profile ▸** the whole sign-in, save
-and publish block; **Credits ▸** the credit list and the two overlay switches.
+*not* part of a scene. Items with a **▸** open a submenu beside them: **Audio ▸** gets you
+the Capture/Mic buttons and the level meter, **Resolution ▸** the render resolution,
+**Cloud profile ▸** the whole sign-in, save and publish block, and **Credits ▸** the credit
+list and the two overlay switches.
 **Public scenes** sits at the root, because browsing what other people have published needs
 no account. At the top sit **Controls panel**, **Fullscreen** and **Hide all UI** (the same
-things **M**, **F** and **H** do), and at the bottom a link to the help panel. Click away or
-press **Esc** to close it.
+things **M**, **F** and **H** do), and at the bottom **Tutorial** and **Help**. Click away
+or press **Esc** to close it.
+
+**Tutorial** is an eight-step tour of the whole app — what it is, the two menus, scenes,
+layers, ranged sliders, filters, music reactivity and sharing. It opens **by itself the
+first time you visit**, once the startup credits have burned away and before anything asks
+you for audio, and after that it lives in the ☰ menu for whenever you want it back. **Help**
+is the other half: a reference that explains every single control of whatever effect is
+selected.
 
 **The controls panel is everything that edits the scene** — five foldable sections, click
 a heading's chevron to collapse one: **Scene** (which scene, how long each is held and how

@@ -520,6 +520,28 @@
   </div>
 </div>
 
+<!-- First-run tutorial: an eight-step tour, shown once and then reachable at ☰ → Tutorial.
+     It opens BEFORE the sync nudge above (which holds its counter while this is up), so a
+     first-time visitor is told what the app is before being asked to share their audio.
+     Modal — backdrop, focus trap — and everything inside it bar the shell is written by
+     ui-tutorial.js: the <h2> deliberately stays constant across steps so the sticky header
+     never reflows, and the step's own title is the <h3>. -->
+<div id="tutdlg" class="hidden">
+  <div class="tut-box" role="dialog" aria-modal="true" aria-labelledby="tut-title">
+    <button id="tut-close" class="pal-close" type="button" aria-label="Close">×</button>
+    <h2 id="tut-title">Welcome to burnTheWeb <span id="tut-count"></span></h2>
+    <div id="tut-art" aria-hidden="true"></div>
+    <h3 id="tut-head"></h3>
+    <div id="tut-body"></div>
+    <div id="tut-dots" aria-hidden="true"></div>
+    <div class="tut-actions">
+      <button id="tut-skip" type="button" class="ghost">Skip</button>
+      <button id="tut-back" type="button">Back</button>
+      <button id="tut-next" type="button">Next →</button>
+    </div>
+  </div>
+</div>
+
 <!-- Pop-out column: sliders "broken out" of the menu dock here (see the break-out
      module in the script). Sits to the right of #panel; empty/hidden by default. -->
 <div id="breakout" class="empty"></div>

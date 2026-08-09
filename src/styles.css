@@ -294,7 +294,8 @@
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
   body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg,
   body.ui-hidden #transpickdlg, body.ui-hidden #galdlg,
-  body.ui-hidden #help, body.ui-hidden #restoredlg { display: none !important; }
+  body.ui-hidden #help, body.ui-hidden #restoredlg,
+  body.ui-hidden #tutdlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -1213,7 +1214,7 @@
      #carddlg does NOT (rgba .8 with its own blur). */
   #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #help .help-box > h2, #syncpop .sync-box > h2,
+  #help .help-box > h2, #syncpop .sync-box > h2, #tutdlg .tut-box > h2,
   #restoredlg .rst-box > h2 {
     position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;
     /* Near-opaque AND backdrop-blurred: at 0.97 alone the line of text passing underneath
@@ -1383,6 +1384,70 @@
   #syncpop .sync-actions #sync-capture { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
   #syncpop .sync-actions .ghost { flex: 0 0 auto; background: transparent; opacity: .75; }
 
+  /* First-run tutorial — the eight-step tour (ui-tutorial.js).
+     Built on #syncpop's shape: a full-screen flex backdrop with a scrolling box centred in
+     it, so it needs none of the 298px docking the panel-tool dialogs use and nothing in the
+     760px block below. The box is near-opaque and carries NO backdrop-filter of its own,
+     which is precisely what qualifies its title for the painted sticky header up above — a
+     translucent box with its own blur composites a nested backdrop-filter toward black on a
+     real GPU (the #carddlg lesson). Don't add one. */
+  #tutdlg {
+    position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #tutdlg.hidden { display: none; }
+  #tutdlg .tut-box {
+    /* Sized like the sync nudge: a cap plus a margin, and flex-shrink does the narrow case —
+       measured down to a 320px viewport (a `vw` fraction here would only duplicate what the
+       margin already says). Headless clamps the top-level viewport at 492px, so check this
+       one in an iframe of a real width, not with --window-size. */
+    position: relative; width: 100%; max-width: 500px; max-height: 88vh; overflow-y: auto; margin: 16px;
+    padding: 20px 22px 18px; background: rgba(14, 8, 5, 0.97);
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  /* Explicit margin: the sticky-header rule supplies the padding, not the margin, and a
+     default <h2> margin would push the title away from the header background it paints. */
+  #tutdlg h2 { margin: 0 0 10px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  /* The step counter rides in the title so the header says where you are without a second
+     line of chrome. Pushed to the right of the h2's own box, clear of the floated ×. */
+  #tut-count { float: right; margin-right: 34px; opacity: .5; font-size: 11.5px; font-weight: 400; letter-spacing: .06em; }
+  /* The art is a fixed-height stage, so stepping through the tour never jumps the layout by
+     the difference between two drawings. */
+  #tut-art {
+    display: flex; align-items: center; justify-content: center;
+    height: 118px; margin: 2px 0 14px; color: #ff9a3c;
+    background: rgba(255, 110, 30, 0.07); border: 1px solid rgba(255, 140, 40, 0.18); border-radius: 10px;
+  }
+  #tut-art svg { width: min(100%, 300px); height: 100%; filter: drop-shadow(0 0 8px rgba(255, 110, 20, 0.45)); }
+  #tut-head { margin: 0 0 6px; color: #ffcf87; font-size: 13px; font-weight: 600; }
+  #tut-body { margin: 0; opacity: .88; }
+  #tut-body b { color: #ffcf87; font-weight: 600; }
+  .tut-keys {
+    display: inline-block; padding: 0 5px; border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 4px; background: rgba(255, 110, 30, 0.14); color: #ffce9a;
+  }
+  #tut-dots { display: flex; gap: 6px; margin: 16px 0 0; }
+  .tut-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    border: 1px solid rgba(255, 140, 40, 0.55); background: transparent;
+  }
+  .tut-dot.on { background: #ff9a3c; box-shadow: 0 0 6px rgba(255, 122, 26, 0.8); }
+  /* Same button treatment as the sync nudge's row — Skip hangs left, Back/Next sit right. */
+  #tutdlg .tut-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #tutdlg .tut-actions button {
+    padding: 9px 14px; background: rgba(255, 110, 30, 0.16);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
+    font: 12px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #tutdlg .tut-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #tutdlg .tut-actions #tut-next { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  #tutdlg .tut-actions #tut-back { margin-left: auto; }
+  #tutdlg .tut-actions .ghost { background: transparent; opacity: .7; }
+  /* .off is setOff's dim; `disabled` is what actually stops Back on step 1. */
+  #tutdlg .tut-actions button.off { opacity: .3; }
+
   /* Cardioid debug view: the Mandelbrot set with the seed's orbit drawn on top.
      Deliberately NOT a modal — it's a floating panel at the same depth as the
      rest of the menu (below #panel, like #breakout), with no backdrop, so you can
@@ -1475,7 +1540,8 @@
      and fails if any dialog's `padding` shorthand is declared below this rule. */
   #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
   #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
-  #help .help-box, #syncpop .sync-box, #carddlg, #restoredlg .rst-box { padding-top: 0; }
+  #help .help-box, #syncpop .sync-box, #tutdlg .tut-box,
+  #carddlg, #restoredlg .rst-box { padding-top: 0; }
 
   /* ---- NARROW VIEWPORTS — KEEP THIS LAST TOO ----------------------------------------
      Five dialogs dock top-left at the #breakout column's 298px line, and the column itself

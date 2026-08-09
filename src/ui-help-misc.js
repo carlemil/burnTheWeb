@@ -296,6 +296,11 @@
     if (s && typeof s === "object") syncState = { shows: s.shows | 0, sinceLast: s.sinceLast | 0, used: !!s.used };
   } catch (e) {}
   function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); } catch (e) {} }
+  // Put the first nudge a full delay away again. Called by the tutorial when it closes, so
+  // reading the tour never eats into the thirty seconds of scene that is supposed to come
+  // before anyone is asked to share their audio. A function declaration, because the caller
+  // is in a LATER slice and this must not be reached through the tutorial's own state.
+  function syncResetDelay() { syncState.sinceLast = 0; saveSync(); }
 
   const syncPop = el("syncpop");
   function hideSyncPopup() {
@@ -307,13 +312,23 @@
   // press whether or not the nudge is up, and an unguarded dismissSync would post a
   // sync_popup_dismiss event each time — analytics for a popup nobody was shown.
   function dismissSyncIfOpen() { if (!syncPop.classList.contains("hidden")) dismissSync(); }
+  // Returns whether it actually opened, and the caller only spends one of the three
+  // allowed showings when it did. That is not pedantry: a refusal that still incremented
+  // `shows` would silently use up a nudge nobody saw, and with only three ever, two
+  // refusals leave one.
   function showSyncPopup() {
+    // Never over the tutorial. The interval below already holds its counter while the tour
+    // is up, so this is belt and braces — but it is the important half: dlgModal
+    // deliberately releases any existing trap before arming its own, so a nudge opening on
+    // top would take the keyboard and leave the tutorial visible underneath and dead.
+    if (tutorialOpen()) return false;
     syncPop.classList.remove("hidden");
     // This one opens on a TIMER, not on a click, so taking focus is a real interruption — but
     // it is a full-screen modal that has already taken the pointer, and leaving the keyboard
     // behind the backdrop is worse: you would be tabbing through controls you cannot see.
     dlgModal(syncPop.querySelector(".sync-box"));
     track("sync_popup_shown", { shows: syncState.shows + 1 });
+    return true;
   }
   function markAudioUsed() {          // a source is live — satisfy the nudge permanently
     if (!syncState.used) { syncState.used = true; saveSync(); }
@@ -329,9 +344,9 @@
     const syncTimer = setInterval(() => {
       if (syncState.used || syncState.shows >= 3) { clearInterval(syncTimer); return; }
       if (document.hidden) return;              // only count time while the tab is visible
+      if (tutorialOpen()) return;               // ...and not while the tutorial has the screen
       syncState.sinceLast += 1000;
-      if (syncState.sinceLast >= SYNC_DELAYS[syncState.shows]) {
-        showSyncPopup();
+      if (syncState.sinceLast >= SYNC_DELAYS[syncState.shows] && showSyncPopup()) {
         syncState.shows += 1;
         syncState.sinceLast = 0;
         if (syncState.shows >= 3) clearInterval(syncTimer);

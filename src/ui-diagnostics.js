@@ -58,6 +58,6 @@
     // were both missing from it for a release, closable by mouse only, which is the same way
     // the .pal-close and ui-hidden selector lists have each rotted. tools/uiprobe.js now
     // asserts that every dialog id turns up here.
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial(); cardWanted = false; cardOpen(false); }
   });
 

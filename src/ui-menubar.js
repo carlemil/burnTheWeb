@@ -200,6 +200,17 @@
         run: () => galOpen(true) }] : []),
       { label: "Credits", sub: [{ adopt: "creditbox" }] },
       { sep: true },
+      // Above Help deliberately: the tour is the thing you want when you do not yet know
+      // what to look up, and Help is the reference you reach for once you do.
+      //
+      // Opened in a MICROTASK, not inline. A leaf's click handler runs `run()` and *then*
+      // menubarClose(), which destroys the panel this button lives in — so opening a modal
+      // inline has dlgModal record a menu item that is detached a moment later as the place
+      // to put focus back. dlgRelease skips a disconnected node, and Escape then leaves
+      // focus nowhere. Deferring lets the menu tear down first, so focus is already back on
+      // the ☰ when the trap arms and Escape returns it there.
+      { label: "Tutorial", title: "The eight-step tour of what everything here does",
+        run: () => Promise.resolve().then(() => openTutorial(false)) },
       { label: "Help", title: "What the controls do — the full help panel", run: () => openHelp() },
     ];
   }

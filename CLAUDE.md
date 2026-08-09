@@ -1184,9 +1184,33 @@ in the Beat tuning box. The frame/FPS counter has no toggle — `H` drives it vi
 ### Sync nudge + analytics
 `#syncpop` shows to users who haven't started audio at growing gaps of active (tab-visible) time
 (`SYNC_DELAYS` = 30s, 5min, 1h), capped at 3 showings ever; state in
-`localStorage["burnTheWeb.sync.v1"]`, satisfied for good once any source goes live. `track(name,
-params)` is provider-agnostic; the GA4 gtag scaffold is **live** (`GA_MEASUREMENT_ID` is a real
-`G-…` id) — clearing it to `""` makes it inert.
+`localStorage["burnTheWeb.sync.v1"]`, satisfied for good once any source goes live.
+**`showSyncPopup()` returns whether it opened and the caller only spends a showing when it did** —
+a refusal that still incremented `shows` would burn one of the three on a popup nobody saw.
+`track(name, params)` is provider-agnostic; the GA4 gtag scaffold is **live**
+(`GA_MEASUREMENT_ID` is a real `G-…` id) — clearing it to `""` makes it inert.
+
+### First-run tutorial
+`#tutdlg` (`src/ui-tutorial.js`, manifest slice **before `ui-menubar.js`** so the menubar stays
+last) — an eight-step modal tour, `TUT_STEPS` × `{head, body, art}`, `art` an inline SVG string
+on `currentColor` like `EYE_OPEN`. Also at **☰ → Tutorial**, above Help.
+- **Seen-once flag is its OWN key** `burnTheWeb.tutorial.v1`, like the credits and banner
+  preferences — **not** in `fullSnapshot()`, so it never rides a share link or a backup. Written
+  when it OPENS, so a dismissal still counts.
+- **It opens after the CREDITS**: a 250 ms interval skipping `document.hidden`, waiting for
+  `creditLeft <= 0` (rendered time). **`TUT_MAX_WAIT` (20s of visible time) is the backstop** —
+  `?credits=<big>` and a scene paused on arrival both stop that clock dead.
+- **It HOLDS the sync nudge**, and both halves are needed: the 1s interval returns early on
+  `tutorialOpen()` so the counter does not advance, and `showSyncPopup` refuses outright —
+  `dlgModal` releases any existing trap, so a nudge opening over the tour would take the
+  keyboard and leave it visible but dead. `closeTutorial` calls **`syncResetDelay()`** so
+  reading the tour does not eat into the nudge's first 30s.
+- **`tutorialOpen` and `syncResetDelay` are function DECLARATIONS** — they are called across
+  slices in both directions (the sync block is earlier, the tutorial later), and only
+  declarations hoist across the one IIFE.
+- Only the step body is re-rendered; the `<h2>`, dots and buttons are permanent nodes updated in
+  place, so the sticky title never reflows and the modal trap's focus survives a Next. The `<h2>`
+  text is CONSTANT — the step's own title is the `<h3>`.
 
 ### Timing
 `frame()` runs every rAF. **The fire sim is decoupled**: a fixed accumulator tick (`cfg.burn`
