@@ -110,6 +110,51 @@
     }
   }
 
+  // ---- Harmonograph: decaying pendulum ribbons (point effect) ----
+  // The Victorian drawing machine: two pendulums per axis, each a damped sine, their sum
+  // traced by a pen. x and y are therefore each a beat between two nearly-equal frequencies,
+  // and the DETUNE between them is the whole trick — at exactly 0 the figure is a closed
+  // Lissajous that retraces itself forever, and a hair off it the loop fails to close by a
+  // little each lap and the curve precesses into a ribbon.
+  //
+  // The whole curve is redrawn every frame, like the chaos game: the point sequence is
+  // deterministic, and only the slowly-drifting phases reshape it. hgPhase advances per TICK
+  // (not per frame and not off the wall clock), so the morph tracks the sim speed like
+  // flPhase and nodPhase.
+  let hgRatio = 3, hgDetune = 0.012, hgDecay = 0.022, hgMorph = 0.35, hgPhase = 0;
+  function harmonographStamp(xL, xR, yT, yB, n) {
+    hgPhase += hgMorph * 2 / cfg.burn;
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.34, sy = (yB - yT) * 0.34;
+    const p = hgPhase;
+    // Four pendulum phases, drifting apart at incommensurate rates so the figure never
+    // returns to a pose it has held before.
+    const p1 = p * 0.31, p2 = p * 0.23 + 1.9, p3 = p * 0.17 + 3.4, p4 = p * 0.41 + 5.1;
+    const f1 = hgRatio, f2 = hgRatio + hgDetune, f3 = 1, f4 = 1 + hgDetune * 1.37;
+    const d = hgDecay;
+    // Run the pen until the swing has decayed to a few percent — past that it is all ink in
+    // one pixel. Falls back to a fixed span when damping is off, or the loop never ends.
+    const tMax = d > 1e-4 ? Math.min(200, 4.6 / d) : 200;
+    // Sample by ARC LENGTH, not uniformly in t. The pen's speed falls off as exp(-d·t), so
+    // even time steps put the samples furthest apart exactly where the swing is widest —
+    // the outer loops came out as dotted lines while the dead centre got a solid blob.
+    // Inverting the integral of exp(-d·t) spreads the ink evenly along the curve instead.
+    const useArc = d > 1e-4;
+    const span = useArc ? 1 - Math.exp(-d * tMax) : 0;
+    const step = tMax / n;
+    // UNEQUAL amplitudes, 0.6/0.4 rather than half each. Two equal pendulums drifting into
+    // antiphase cancel to nothing, and the figure collapsed to a flat squashed ribbon at
+    // whatever phase the drift happened to be passing through. Unequal ones can only ever
+    // beat down to 0.2, so the figure breathes instead of dying.
+    for (let i = 0; i < n; i++) {
+      const t = useArc ? -Math.log(1 - (i / n) * span) / d : i * step;
+      const e = Math.exp(-d * t);
+      const x = (0.6 * Math.sin(f1 * t + p1) + 0.4 * Math.sin(f2 * t + p2)) * e;
+      const y = (0.6 * Math.sin(f3 * t + p3) + 0.4 * Math.sin(f4 * t + p4)) * e;
+      plot(cx + x * sx, cy + y * sy, POINT_HEAT);
+    }
+  }
+
   // ---- Fractal flames: IFS chaos game with nonlinear variations (point effect) ----
   // Two affine transforms whose coefficients orbit slowly (flPhase), then one of six
   // classic flame variations applied after each affine step. Stamped ADDITIVELY

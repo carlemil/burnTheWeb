@@ -227,6 +227,18 @@
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "harmonograph", name: "Harmonograph", subtitle: "Harmonograph · damped pendulum ribbons",
+      help: "The Victorian drawing machine: two pendulums per axis, each a dying sine, their sum traced by a pen. Frequency ratio is the figure — whole numbers give the closed classical forms, and the values between them the open weaving ones. Detune is the trick: at exactly 0 the curve closes and retraces itself forever, and a hair off it each lap misses by a little and the whole figure precesses into a ribbon. Damping is how fast the pendulums die, so low values spiral a long way in and high ones draw a tight knot. Points is how finely the pen is sampled; add a Fade or Fire filter and the ribbons trail.",
+      params: ["hgratio", "hgdetune", "hgdecay", "hgmorph", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      helpTags: ["all", "harmo"], bakesOwnZoom: true,
+      stamp: (xL, xR, yT, yB, n) => harmonographStamp(xL, xR, yT, yB, n),
+      // Its own Points range, like Flames. This effect samples ONE continuous curve rather
+      // than scattering a cloud, so the count is the pen's resolution: below ~10k the line
+      // breaks into visible dots, and the shared floor of 500 would only ever look broken.
+      ranges: { points: { min: 4000, max: 60000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], hgratio: [3, 3], hgdetune: [0.012, 0.012], hgdecay: [0.022, 0.022], hgmorph: [0.35, 0.35],
+        points: [24000, 24000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "vballs", name: "Vector balls", subtitle: "Vector balls · Amiga bobs in formation",
       help: "The Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. Formation picks how they are arranged — Lattice (a cube of them), Sphere (an even shell), Ring or Helix — and the whole set turns as one body, so the shape reads only from how the balls occlude and shade each other. Balls sets how many, Ball size how fat (wind it up and they merge into a solid), Tumble how fast, Edge glow how hard the silhouettes are lit. Nearer balls are brighter, which is what separates the formation in depth.",
       params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],

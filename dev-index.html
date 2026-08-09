@@ -7908,6 +7908,51 @@
     }
   }
 
+  // ---- Harmonograph: decaying pendulum ribbons (point effect) ----
+  // The Victorian drawing machine: two pendulums per axis, each a damped sine, their sum
+  // traced by a pen. x and y are therefore each a beat between two nearly-equal frequencies,
+  // and the DETUNE between them is the whole trick — at exactly 0 the figure is a closed
+  // Lissajous that retraces itself forever, and a hair off it the loop fails to close by a
+  // little each lap and the curve precesses into a ribbon.
+  //
+  // The whole curve is redrawn every frame, like the chaos game: the point sequence is
+  // deterministic, and only the slowly-drifting phases reshape it. hgPhase advances per TICK
+  // (not per frame and not off the wall clock), so the morph tracks the sim speed like
+  // flPhase and nodPhase.
+  let hgRatio = 3, hgDetune = 0.012, hgDecay = 0.022, hgMorph = 0.35, hgPhase = 0;
+  function harmonographStamp(xL, xR, yT, yB, n) {
+    hgPhase += hgMorph * 2 / cfg.burn;
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.34, sy = (yB - yT) * 0.34;
+    const p = hgPhase;
+    // Four pendulum phases, drifting apart at incommensurate rates so the figure never
+    // returns to a pose it has held before.
+    const p1 = p * 0.31, p2 = p * 0.23 + 1.9, p3 = p * 0.17 + 3.4, p4 = p * 0.41 + 5.1;
+    const f1 = hgRatio, f2 = hgRatio + hgDetune, f3 = 1, f4 = 1 + hgDetune * 1.37;
+    const d = hgDecay;
+    // Run the pen until the swing has decayed to a few percent — past that it is all ink in
+    // one pixel. Falls back to a fixed span when damping is off, or the loop never ends.
+    const tMax = d > 1e-4 ? Math.min(200, 4.6 / d) : 200;
+    // Sample by ARC LENGTH, not uniformly in t. The pen's speed falls off as exp(-d·t), so
+    // even time steps put the samples furthest apart exactly where the swing is widest —
+    // the outer loops came out as dotted lines while the dead centre got a solid blob.
+    // Inverting the integral of exp(-d·t) spreads the ink evenly along the curve instead.
+    const useArc = d > 1e-4;
+    const span = useArc ? 1 - Math.exp(-d * tMax) : 0;
+    const step = tMax / n;
+    // UNEQUAL amplitudes, 0.6/0.4 rather than half each. Two equal pendulums drifting into
+    // antiphase cancel to nothing, and the figure collapsed to a flat squashed ribbon at
+    // whatever phase the drift happened to be passing through. Unequal ones can only ever
+    // beat down to 0.2, so the figure breathes instead of dying.
+    for (let i = 0; i < n; i++) {
+      const t = useArc ? -Math.log(1 - (i / n) * span) / d : i * step;
+      const e = Math.exp(-d * t);
+      const x = (0.6 * Math.sin(f1 * t + p1) + 0.4 * Math.sin(f2 * t + p2)) * e;
+      const y = (0.6 * Math.sin(f3 * t + p3) + 0.4 * Math.sin(f4 * t + p4)) * e;
+      plot(cx + x * sx, cy + y * sy, POINT_HEAT);
+    }
+  }
+
   // ---- Fractal flames: IFS chaos game with nonlinear variations (point effect) ----
   // Two affine transforms whose coefficients orbit slowly (flPhase), then one of six
   // classic flame variations applied after each affine step. Stamped ADDITIVELY
@@ -9261,6 +9306,10 @@
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "hgratio", host: "fx", group: "harmo", type: "dual", label: "Frequency ratio", valId: "vHgRatio", min: 1, max: 7, step: 0.001, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => hgRatio = v, durScale: 10 },
+    { key: "hgdetune", host: "fx", group: "harmo", type: "dual", label: "Detune", valId: "vHgDet", min: 0, max: 0.06, step: 0.0005, lo: 0.012, hi: 0.012, fmt: v => sig3(v), apply: v => hgDetune = v, durScale: 10 },
+    { key: "hgdecay", host: "fx", group: "harmo", type: "dual", label: "Damping", valId: "vHgDecay", min: 0.004, max: 0.09, step: 0.001, lo: 0.022, hi: 0.022, fmt: v => sig3(v), apply: v => hgDecay = v, durScale: 10 },
+    { key: "hgmorph", host: "fx", group: "harmo", type: "dual", label: "Morph speed", valId: "vHgMorph", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => hgMorph = v, durScale: 10 },
     { key: "vbcount", host: "fx", group: "vballs", type: "dual", single: true, label: "Balls", valId: "vVbCount", min: 6, max: 48, step: 1, lo: 24, hi: 24, fmt: v => sig3(Math.round(v)), apply: v => vbCount = Math.round(v), durScale: 10 },
     { key: "vbshape", host: "fx", group: "vballs", type: "dual", single: true, label: "Formation", valId: "vVbShape", min: 0, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["Lattice", "Sphere", "Ring", "Helix"][Math.round(v)] || "", apply: v => vbShape = Math.round(v), durScale: 10 },
     { key: "vbsize", host: "fx", group: "vballs", type: "dual", label: "Ball size", valId: "vVbSize", min: 0.08, max: 0.6, step: 0.005, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => vbRad = v, durScale: 10 },
@@ -10186,6 +10235,7 @@
     ["qjPhase", () => qjPhase, v => qjPhase = v],
     ["goTime", () => goTime, v => goTime = v],
     ["vbPhase", () => vbPhase, v => vbPhase = v],
+    ["hgPhase", () => hgPhase, v => hgPhase = v],
     // The black hole carries two: the disk's own rotation and the camera's lap round it.
     ["bhTime", () => bhTime, v => bhTime = v],
     ["bhOrbit", () => bhOrbit, v => bhOrbit = v],
@@ -11724,6 +11774,18 @@
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "harmonograph", name: "Harmonograph", subtitle: "Harmonograph · damped pendulum ribbons",
+      help: "The Victorian drawing machine: two pendulums per axis, each a dying sine, their sum traced by a pen. Frequency ratio is the figure — whole numbers give the closed classical forms, and the values between them the open weaving ones. Detune is the trick: at exactly 0 the curve closes and retraces itself forever, and a hair off it each lap misses by a little and the whole figure precesses into a ribbon. Damping is how fast the pendulums die, so low values spiral a long way in and high ones draw a tight knot. Points is how finely the pen is sampled; add a Fade or Fire filter and the ribbons trail.",
+      params: ["hgratio", "hgdetune", "hgdecay", "hgmorph", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      helpTags: ["all", "harmo"], bakesOwnZoom: true,
+      stamp: (xL, xR, yT, yB, n) => harmonographStamp(xL, xR, yT, yB, n),
+      // Its own Points range, like Flames. This effect samples ONE continuous curve rather
+      // than scattering a cloud, so the count is the pen's resolution: below ~10k the line
+      // breaks into visible dots, and the shared floor of 500 would only ever look broken.
+      ranges: { points: { min: 4000, max: 60000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], hgratio: [3, 3], hgdetune: [0.012, 0.012], hgdecay: [0.022, 0.022], hgmorph: [0.35, 0.35],
+        points: [24000, 24000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "vballs", name: "Vector balls", subtitle: "Vector balls · Amiga bobs in formation",
       help: "The Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. Formation picks how they are arranged — Lattice (a cube of them), Sphere (an even shell), Ring or Helix — and the whole set turns as one body, so the shape reads only from how the balls occlude and shade each other. Balls sets how many, Ball size how fat (wind it up and they merge into a solid), Tumble how fast, Edge glow how hard the silhouettes are lit. Nearer balls are brighter, which is what separates the formation in depth.",
       params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -17956,6 +18018,10 @@
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Frequency ratio", w: "harmo", t: "Harmonograph only — how many times the fast pendulum swings per swing of the slow one, and so which figure the pen draws. Whole numbers give the closed classical forms (2 a figure-of-eight, 3 a trefoil, and so on); the values in between give the open weaving ones. Drift the two thumbs and it walks through the whole family." },
+      { n: "Detune", w: "harmo", t: "Harmonograph only — how far the paired pendulums are out of tune with each other, and the trick the whole machine rests on. At exactly 0 the curve closes and retraces its own line forever, so you get a bare wire figure; a hair off zero and each lap misses the last by a little, the figure precesses, and the accumulated near-misses are what make it a woven ribbon rather than a line." },
+      { n: "Damping", w: "harmo", t: "Harmonograph only — how fast the pendulums die away. Low values let the pen spiral a long way inward, filling a broad figure; high values kill the swing quickly and draw a small tight knot. Real harmonographs ran down in a minute or two — this is that dial." },
+      { n: "Morph speed", w: "harmo", t: "Harmonograph only — how fast the four pendulum phases drift apart. They move at unrelated rates, so the figure never returns to a pose it has held before. 0 freezes one drawing." },
       { n: "Balls", w: "vballs", t: "Vector balls only — how many spheres are in the formation, up to 48. The arrangement rebuilds around the count, so changing it is not just adding: a Lattice re-sizes its cube, a Sphere re-spaces its shell. Arm its L/M/H chips and the whole constellation rebuilds on the beat." },
       { n: "Formation", w: "vballs", t: "Vector balls only — how the balls are arranged: Lattice (a cube of them), Sphere (an even Fibonacci-spaced shell), Ring (a tilted circle) or Helix (a double strand). The set is rigid and turns as one body, so the shape only reads from how the balls occlude and shade one another — which is exactly how the Amiga original worked." },
       { n: "Ball size", w: "vballs", t: "Vector balls only — how fat each sphere is. Small keeps them clearly separate points of light; wind it up and neighbours overlap until the formation reads as one lumpy solid." },

@@ -149,6 +149,10 @@
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "hgratio", host: "fx", group: "harmo", type: "dual", label: "Frequency ratio", valId: "vHgRatio", min: 1, max: 7, step: 0.001, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => hgRatio = v, durScale: 10 },
+    { key: "hgdetune", host: "fx", group: "harmo", type: "dual", label: "Detune", valId: "vHgDet", min: 0, max: 0.06, step: 0.0005, lo: 0.012, hi: 0.012, fmt: v => sig3(v), apply: v => hgDetune = v, durScale: 10 },
+    { key: "hgdecay", host: "fx", group: "harmo", type: "dual", label: "Damping", valId: "vHgDecay", min: 0.004, max: 0.09, step: 0.001, lo: 0.022, hi: 0.022, fmt: v => sig3(v), apply: v => hgDecay = v, durScale: 10 },
+    { key: "hgmorph", host: "fx", group: "harmo", type: "dual", label: "Morph speed", valId: "vHgMorph", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => hgMorph = v, durScale: 10 },
     { key: "vbcount", host: "fx", group: "vballs", type: "dual", single: true, label: "Balls", valId: "vVbCount", min: 6, max: 48, step: 1, lo: 24, hi: 24, fmt: v => sig3(Math.round(v)), apply: v => vbCount = Math.round(v), durScale: 10 },
     { key: "vbshape", host: "fx", group: "vballs", type: "dual", single: true, label: "Formation", valId: "vVbShape", min: 0, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["Lattice", "Sphere", "Ring", "Helix"][Math.round(v)] || "", apply: v => vbShape = Math.round(v), durScale: 10 },
     { key: "vbsize", host: "fx", group: "vballs", type: "dual", label: "Ball size", valId: "vVbSize", min: 0.08, max: 0.6, step: 0.005, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => vbRad = v, durScale: 10 },
@@ -1074,6 +1078,7 @@
     ["qjPhase", () => qjPhase, v => qjPhase = v],
     ["goTime", () => goTime, v => goTime = v],
     ["vbPhase", () => vbPhase, v => vbPhase = v],
+    ["hgPhase", () => hgPhase, v => hgPhase = v],
     // The black hole carries two: the disk's own rotation and the camera's lap round it.
     ["bhTime", () => bhTime, v => bhTime = v],
     ["bhOrbit", () => bhOrbit, v => bhOrbit = v],
