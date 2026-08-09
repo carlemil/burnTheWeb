@@ -1028,6 +1028,84 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Vector balls: the Amiga "bobs in formation" effect — a rigid constellation of shaded
+    // spheres tumbling in 3D.
+    //
+    // Deliberately NOT a raymarch and NOT a distance field. The original was a painter's
+    // algorithm over projected sprites, and the modern equivalent of that is a per-pixel
+    // z-test: loop every ball, project its centre, and if this pixel lands inside the
+    // projected disc work out the depth of the sphere's FRONT surface there and keep the
+    // nearest. That gives exact mutual occlusion (a ball in front really does hide the one
+    // behind, edge for edge) for a fraction of a marcher's cost, and the ball count is the
+    // loop bound rather than a scene-complexity multiplier.
+    //
+    // The formation is computed IN HERE from the ball index, not passed in as an array, so
+    // the effect carries no per-layer state at all beyond its two tumble angles.
+    const FS_VBALLS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uPhase; uniform float uCount; uniform float uShape;
+    uniform float uRad; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    vec3 vbForm(float fi, float fn, int shape){
+      if (shape == 0){                       // cube lattice
+        float side = ceil(pow(fn, 1.0/3.0));
+        float ix = mod(fi, side);
+        float iy = mod(floor(fi/side), side);
+        float iz = floor(fi/(side*side));
+        return (vec3(ix, iy, iz) - (side - 1.0)*0.5)*(2.4/max(1.0, side - 1.0));
+      }
+      if (shape == 1){                       // sphere shell, Fibonacci-spaced so it is even
+        float k = (fi + 0.5)/fn;
+        float ph = acos(clamp(1.0 - 2.0*k, -1.0, 1.0));
+        float th = 2.399963*fi;              // golden angle
+        return vec3(sin(ph)*cos(th), sin(ph)*sin(th), cos(ph))*1.45;
+      }
+      if (shape == 2){                       // tilted ring
+        float a = fi/fn*6.2831853;
+        return vec3(cos(a)*1.5, sin(a*2.0)*0.45, sin(a)*1.5);
+      }
+      float u = fi/fn;                       // double helix
+      float a = u*12.0 + (mod(fi, 2.0) < 0.5 ? 0.0 : 3.1415927);
+      return vec3(cos(a)*0.95, (u - 0.5)*3.0, sin(a)*0.95);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ay = uPhase, ax = uPhase*0.63;
+      float cy = cos(ay), sy = sin(ay), cx = cos(ax), sx = sin(ax);
+      int n = int(uCount), shape = int(uShape);
+      float focal = 2.6, camZ = 6.5;
+      float bestZ = 1e9, heat = 0.0;
+      for (int i = 0; i < 48; i++){
+        if (i >= n) break;
+        vec3 c = vbForm(float(i), uCount, shape);
+        c = vec3(c.x*cy + c.z*sy, c.y, -c.x*sy + c.z*cy);      // yaw
+        c = vec3(c.x, c.y*cx - c.z*sx, c.y*sx + c.z*cx);       // then pitch
+        float zc = c.z + camZ;
+        if (zc < 0.35) continue;
+        float k = focal/zc;
+        vec2 sp = c.xy*k;
+        float rad = uRad*k;
+        vec2 d = uv - sp;
+        float r2 = dot(d, d), rr = rad*rad;
+        if (r2 >= rr) continue;
+        // Depth of the sphere's front surface at this pixel, back in world z.
+        float zz = sqrt(rr - r2);
+        float depth = zc - (zz/k);
+        if (depth >= bestZ) continue;
+        bestZ = depth;
+        vec3 nrm = vec3(d/rad, -zz/rad);
+        float dif = max(0.0, dot(nrm, normalize(vec3(0.45, 0.6, -0.66))));
+        float rim = pow(1.0 - abs(nrm.z), 3.0);
+        // Nearer balls read brighter, which is what separates the formation in depth.
+        // A RELATIVE fade across the formation's own depth range, not an inverse-square on
+        // absolute distance: the whole cluster sits around z = camZ, so 9.5/zc^2 was a flat
+        // ~0.22 multiplier on every ball and the effect came out near-black.
+        float dep = mix(1.0, 0.36, clamp((zc - 4.6)/4.2, 0.0, 1.0));
+        heat = (0.14 + 0.78*dif + uGlow*0.7*rim)*dep;
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Gerstner ocean: a rolling sea to the horizon.
     //
     // Not a raymarch and not a mesh — the screen ray is intersected with the flat y=0 plane

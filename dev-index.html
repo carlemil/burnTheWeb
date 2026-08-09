@@ -4096,6 +4096,84 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Vector balls: the Amiga "bobs in formation" effect — a rigid constellation of shaded
+    // spheres tumbling in 3D.
+    //
+    // Deliberately NOT a raymarch and NOT a distance field. The original was a painter's
+    // algorithm over projected sprites, and the modern equivalent of that is a per-pixel
+    // z-test: loop every ball, project its centre, and if this pixel lands inside the
+    // projected disc work out the depth of the sphere's FRONT surface there and keep the
+    // nearest. That gives exact mutual occlusion (a ball in front really does hide the one
+    // behind, edge for edge) for a fraction of a marcher's cost, and the ball count is the
+    // loop bound rather than a scene-complexity multiplier.
+    //
+    // The formation is computed IN HERE from the ball index, not passed in as an array, so
+    // the effect carries no per-layer state at all beyond its two tumble angles.
+    const FS_VBALLS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uPhase; uniform float uCount; uniform float uShape;
+    uniform float uRad; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    vec3 vbForm(float fi, float fn, int shape){
+      if (shape == 0){                       // cube lattice
+        float side = ceil(pow(fn, 1.0/3.0));
+        float ix = mod(fi, side);
+        float iy = mod(floor(fi/side), side);
+        float iz = floor(fi/(side*side));
+        return (vec3(ix, iy, iz) - (side - 1.0)*0.5)*(2.4/max(1.0, side - 1.0));
+      }
+      if (shape == 1){                       // sphere shell, Fibonacci-spaced so it is even
+        float k = (fi + 0.5)/fn;
+        float ph = acos(clamp(1.0 - 2.0*k, -1.0, 1.0));
+        float th = 2.399963*fi;              // golden angle
+        return vec3(sin(ph)*cos(th), sin(ph)*sin(th), cos(ph))*1.45;
+      }
+      if (shape == 2){                       // tilted ring
+        float a = fi/fn*6.2831853;
+        return vec3(cos(a)*1.5, sin(a*2.0)*0.45, sin(a)*1.5);
+      }
+      float u = fi/fn;                       // double helix
+      float a = u*12.0 + (mod(fi, 2.0) < 0.5 ? 0.0 : 3.1415927);
+      return vec3(cos(a)*0.95, (u - 0.5)*3.0, sin(a)*0.95);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ay = uPhase, ax = uPhase*0.63;
+      float cy = cos(ay), sy = sin(ay), cx = cos(ax), sx = sin(ax);
+      int n = int(uCount), shape = int(uShape);
+      float focal = 2.6, camZ = 6.5;
+      float bestZ = 1e9, heat = 0.0;
+      for (int i = 0; i < 48; i++){
+        if (i >= n) break;
+        vec3 c = vbForm(float(i), uCount, shape);
+        c = vec3(c.x*cy + c.z*sy, c.y, -c.x*sy + c.z*cy);      // yaw
+        c = vec3(c.x, c.y*cx - c.z*sx, c.y*sx + c.z*cx);       // then pitch
+        float zc = c.z + camZ;
+        if (zc < 0.35) continue;
+        float k = focal/zc;
+        vec2 sp = c.xy*k;
+        float rad = uRad*k;
+        vec2 d = uv - sp;
+        float r2 = dot(d, d), rr = rad*rad;
+        if (r2 >= rr) continue;
+        // Depth of the sphere's front surface at this pixel, back in world z.
+        float zz = sqrt(rr - r2);
+        float depth = zc - (zz/k);
+        if (depth >= bestZ) continue;
+        bestZ = depth;
+        vec3 nrm = vec3(d/rad, -zz/rad);
+        float dif = max(0.0, dot(nrm, normalize(vec3(0.45, 0.6, -0.66))));
+        float rim = pow(1.0 - abs(nrm.z), 3.0);
+        // Nearer balls read brighter, which is what separates the formation in depth.
+        // A RELATIVE fade across the formation's own depth range, not an inverse-square on
+        // absolute distance: the whole cluster sits around z = camZ, so 9.5/zc^2 was a flat
+        // ~0.22 multiplier on every ball and the effect came out near-black.
+        float dep = mix(1.0, 0.36, clamp((zc - 4.6)/4.2, 0.0, 1.0));
+        heat = (0.14 + 0.78*dif + uGlow*0.7*rim)*dep;
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Gerstner ocean: a rolling sea to the horizon.
     //
     // Not a raymarch and not a mesh — the screen ray is intersected with the flat y=0 plane
@@ -4980,6 +5058,7 @@
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);
+    glProg.vballs = camProg(VS_QUAD, FS_VBALLS, ["uSize", "uPhase", "uCount", "uShape", "uRad", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
     glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uPos", "uFwd", "uRoll", "uIter", "uGlow", "uZoom"]);
@@ -7373,6 +7452,79 @@
     }
   }
 
+  // ---- Vector balls: Amiga bobs in formation (shader effect) ----
+  // Same per-pixel z-test as FS_VBALLS, every 2nd pixel into a 2x2 block. The formation is
+  // recomputed per pixel in the shader (it is free there); on the CPU that would be 48
+  // trig-heavy calls per pixel, so the rotated centres are hoisted OUT of the pixel loop —
+  // they do not depend on the pixel, and this is the whole reason the mirror is affordable.
+  const VB_MAX = 48;
+  let vbCount = 24, vbShape = 1, vbRad = 0.30, vbSpin = 0.5, vbGlow = 0.5, vbPhase = 0;
+  function vballsSeed(dt) {
+    vbPhase += dt * vbSpin;
+    return { phase: vbPhase, count: vbCount, shape: vbShape, rad: vbRad, glow: vbGlow, zoom };
+  }
+  function vbForm(fi, fn, shape, out) {
+    if (shape === 0) {
+      const side = Math.ceil(Math.pow(fn, 1 / 3));
+      const ix = fi % side, iy = Math.floor(fi / side) % side, iz = Math.floor(fi / (side * side));
+      const k = 2.4 / Math.max(1, side - 1), c = (side - 1) * 0.5;
+      out[0] = (ix - c) * k; out[1] = (iy - c) * k; out[2] = (iz - c) * k;
+    } else if (shape === 1) {
+      const k = (fi + 0.5) / fn;
+      const ph = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * k))), th = 2.399963 * fi;
+      out[0] = Math.sin(ph) * Math.cos(th) * 1.45;
+      out[1] = Math.sin(ph) * Math.sin(th) * 1.45;
+      out[2] = Math.cos(ph) * 1.45;
+    } else if (shape === 2) {
+      const a = fi / fn * 6.2831853;
+      out[0] = Math.cos(a) * 1.5; out[1] = Math.sin(a * 2) * 0.45; out[2] = Math.sin(a) * 1.5;
+    } else {
+      const u = fi / fn, a = u * 12 + (fi % 2 < 0.5 ? 0 : Math.PI);
+      out[0] = Math.cos(a) * 0.95; out[1] = (u - 0.5) * 3; out[2] = Math.sin(a) * 0.95;
+    }
+  }
+  const vbCx = new Float64Array(VB_MAX), vbCy = new Float64Array(VB_MAX), vbCz = new Float64Array(VB_MAX);
+  const vbTmp = [0, 0, 0];
+  function vballsCPU(s) {                 // CPU fallback — mirrors FS_VBALLS
+    const ar = fw / fh, focal = 2.6, camZ = 6.5;
+    const n = Math.min(VB_MAX, Math.round(s.count)), shape = Math.round(s.shape);
+    const ay = s.phase, ax = s.phase * 0.63;
+    const cy = Math.cos(ay), sy = Math.sin(ay), cx = Math.cos(ax), sx = Math.sin(ax);
+    for (let i = 0; i < n; i++) {
+      vbForm(i, s.count, shape, vbTmp);
+      const x = vbTmp[0], y = vbTmp[1], z = vbTmp[2];
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      vbCx[i] = x1; vbCy[i] = y * cx - z1 * sx; vbCz[i] = y * sx + z1 * cx;
+    }
+    for (let py = 0; py < fh; py += 2) {
+      for (let px = 0; px < fw; px += 2) {
+        camPix(px, py);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let bestZ = 1e9, heat = 0;
+        for (let i = 0; i < n; i++) {
+          const zc = vbCz[i] + camZ;
+          if (zc < 0.35) continue;
+          const k = focal / zc;
+          const dx = ux - vbCx[i] * k, dy = uy - vbCy[i] * k;
+          const rad = s.rad * k, rr = rad * rad, r2 = dx * dx + dy * dy;
+          if (r2 >= rr) continue;
+          const zz = Math.sqrt(rr - r2), depth = zc - zz / k;
+          if (depth >= bestZ) continue;
+          bestZ = depth;
+          const nx = dx / rad, ny = dy / rad, nz = -zz / rad;
+          const dif = Math.max(0, nx * 0.45 + ny * 0.6 + nz * -0.66);
+          const rim = Math.pow(1 - Math.abs(nz), 3);
+          const dep = 1 + (0.36 - 1) * Math.max(0, Math.min(1, (zc - 4.6) / 4.2));
+          heat = (0.14 + 0.78 * dif + s.glow * 0.7 * rim) * dep;
+        }
+        const v = Math.max(0, Math.min(1, heat)) * 255;
+        for (let by = py; by < Math.min(py + 2, fh); by++)
+          for (let bx = px; bx < Math.min(px + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Gerstner ocean: rolling sea heightfield (shader effect) ----
   // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
   // 2x2 block and four octaves instead of six.
@@ -9109,6 +9261,11 @@
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "vbcount", host: "fx", group: "vballs", type: "dual", single: true, label: "Balls", valId: "vVbCount", min: 6, max: 48, step: 1, lo: 24, hi: 24, fmt: v => sig3(Math.round(v)), apply: v => vbCount = Math.round(v), durScale: 10 },
+    { key: "vbshape", host: "fx", group: "vballs", type: "dual", single: true, label: "Formation", valId: "vVbShape", min: 0, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["Lattice", "Sphere", "Ring", "Helix"][Math.round(v)] || "", apply: v => vbShape = Math.round(v), durScale: 10 },
+    { key: "vbsize", host: "fx", group: "vballs", type: "dual", label: "Ball size", valId: "vVbSize", min: 0.08, max: 0.6, step: 0.005, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => vbRad = v, durScale: 10 },
+    { key: "vbspin", host: "fx", group: "vballs", type: "dual", label: "Tumble", valId: "vVbSpin", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => vbSpin = v, durScale: 10 },
+    { key: "vbglow", host: "fx", group: "vballs", type: "dual", label: "Edge glow", valId: "vVbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => vbGlow = v, durScale: 10 },
     { key: "goswell", host: "fx", group: "ocean", type: "dual", label: "Swell", valId: "vGoSwell", min: 0, max: 2.5, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSwell = v, durScale: 10 },
     { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
@@ -10028,6 +10185,7 @@
     ["bpPhase", () => bpPhase, v => bpPhase = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
     ["goTime", () => goTime, v => goTime = v],
+    ["vbPhase", () => vbPhase, v => vbPhase = v],
     // The black hole carries two: the disk's own rotation and the camera's lap round it.
     ["bhTime", () => bhTime, v => bhTime = v],
     ["bhOrbit", () => bhOrbit, v => bhOrbit = v],
@@ -11566,6 +11724,16 @@
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "vballs", name: "Vector balls", subtitle: "Vector balls · Amiga bobs in formation",
+      help: "The Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. Formation picks how they are arranged — Lattice (a cube of them), Sphere (an even shell), Ring or Helix — and the whole set turns as one body, so the shape reads only from how the balls occlude and shade each other. Balls sets how many, Ball size how fat (wind it up and they merge into a solid), Tumble how fast, Edge glow how hard the silhouettes are lit. Nearer balls are brighter, which is what separates the formation in depth.",
+      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "vballs", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = vballsSeed(dt);
+        if (useGL) glShaderDraw("vballs", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uShape, s.shape); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
+        else vballsCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], vbcount: [24, 24], vbshape: [1, 1], vbsize: [0.30, 0.30], vbspin: [0.5, 0.5], vbglow: [0.5, 0.5],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
       help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
       params: ["goswell", "gochop", "gospeed", "gofoam", "gowind", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -17788,6 +17956,11 @@
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Balls", w: "vballs", t: "Vector balls only — how many spheres are in the formation, up to 48. The arrangement rebuilds around the count, so changing it is not just adding: a Lattice re-sizes its cube, a Sphere re-spaces its shell. Arm its L/M/H chips and the whole constellation rebuilds on the beat." },
+      { n: "Formation", w: "vballs", t: "Vector balls only — how the balls are arranged: Lattice (a cube of them), Sphere (an even Fibonacci-spaced shell), Ring (a tilted circle) or Helix (a double strand). The set is rigid and turns as one body, so the shape only reads from how the balls occlude and shade one another — which is exactly how the Amiga original worked." },
+      { n: "Ball size", w: "vballs", t: "Vector balls only — how fat each sphere is. Small keeps them clearly separate points of light; wind it up and neighbours overlap until the formation reads as one lumpy solid." },
+      { n: "Tumble", w: "vballs", t: "Vector balls only — how fast the constellation turns. It yaws and pitches at different rates, so it never repeats a pose. 0 holds it still." },
+      { n: "Edge glow", w: "vballs", t: "Vector balls only — lights the rim of each sphere where its surface turns away from you. Low is flat shading, high outlines every ball and the formation reads as a cloud of bright shells." },
       { n: "Swell", w: "ocean", t: "Ocean only — how big the sea is. It scales the surface normals rather than the height, so raising it steepens every face at once: the glint gets sharper, the foam breaks earlier, and the water goes from a lazy roll to a heavy sea." },
       { n: "Chop", w: "ocean", t: "Ocean only — how peaked the crests are. Each wave train is a sine raised to this power, so 1 is a bland sine swell with rounded tops, and higher values keep the troughs round while drawing the crests up to a point — which is what real water does. Drift the two thumbs and the sea builds and lays down again." },
       { n: "Speed", w: "ocean", t: "Ocean only — how fast the waves travel. Each octave runs a little faster than the one below, so the small chop skitters across the big swell. 0 freezes the surface mid-wave." },

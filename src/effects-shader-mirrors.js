@@ -859,6 +859,79 @@
     }
   }
 
+  // ---- Vector balls: Amiga bobs in formation (shader effect) ----
+  // Same per-pixel z-test as FS_VBALLS, every 2nd pixel into a 2x2 block. The formation is
+  // recomputed per pixel in the shader (it is free there); on the CPU that would be 48
+  // trig-heavy calls per pixel, so the rotated centres are hoisted OUT of the pixel loop —
+  // they do not depend on the pixel, and this is the whole reason the mirror is affordable.
+  const VB_MAX = 48;
+  let vbCount = 24, vbShape = 1, vbRad = 0.30, vbSpin = 0.5, vbGlow = 0.5, vbPhase = 0;
+  function vballsSeed(dt) {
+    vbPhase += dt * vbSpin;
+    return { phase: vbPhase, count: vbCount, shape: vbShape, rad: vbRad, glow: vbGlow, zoom };
+  }
+  function vbForm(fi, fn, shape, out) {
+    if (shape === 0) {
+      const side = Math.ceil(Math.pow(fn, 1 / 3));
+      const ix = fi % side, iy = Math.floor(fi / side) % side, iz = Math.floor(fi / (side * side));
+      const k = 2.4 / Math.max(1, side - 1), c = (side - 1) * 0.5;
+      out[0] = (ix - c) * k; out[1] = (iy - c) * k; out[2] = (iz - c) * k;
+    } else if (shape === 1) {
+      const k = (fi + 0.5) / fn;
+      const ph = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * k))), th = 2.399963 * fi;
+      out[0] = Math.sin(ph) * Math.cos(th) * 1.45;
+      out[1] = Math.sin(ph) * Math.sin(th) * 1.45;
+      out[2] = Math.cos(ph) * 1.45;
+    } else if (shape === 2) {
+      const a = fi / fn * 6.2831853;
+      out[0] = Math.cos(a) * 1.5; out[1] = Math.sin(a * 2) * 0.45; out[2] = Math.sin(a) * 1.5;
+    } else {
+      const u = fi / fn, a = u * 12 + (fi % 2 < 0.5 ? 0 : Math.PI);
+      out[0] = Math.cos(a) * 0.95; out[1] = (u - 0.5) * 3; out[2] = Math.sin(a) * 0.95;
+    }
+  }
+  const vbCx = new Float64Array(VB_MAX), vbCy = new Float64Array(VB_MAX), vbCz = new Float64Array(VB_MAX);
+  const vbTmp = [0, 0, 0];
+  function vballsCPU(s) {                 // CPU fallback — mirrors FS_VBALLS
+    const ar = fw / fh, focal = 2.6, camZ = 6.5;
+    const n = Math.min(VB_MAX, Math.round(s.count)), shape = Math.round(s.shape);
+    const ay = s.phase, ax = s.phase * 0.63;
+    const cy = Math.cos(ay), sy = Math.sin(ay), cx = Math.cos(ax), sx = Math.sin(ax);
+    for (let i = 0; i < n; i++) {
+      vbForm(i, s.count, shape, vbTmp);
+      const x = vbTmp[0], y = vbTmp[1], z = vbTmp[2];
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      vbCx[i] = x1; vbCy[i] = y * cx - z1 * sx; vbCz[i] = y * sx + z1 * cx;
+    }
+    for (let py = 0; py < fh; py += 2) {
+      for (let px = 0; px < fw; px += 2) {
+        camPix(px, py);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let bestZ = 1e9, heat = 0;
+        for (let i = 0; i < n; i++) {
+          const zc = vbCz[i] + camZ;
+          if (zc < 0.35) continue;
+          const k = focal / zc;
+          const dx = ux - vbCx[i] * k, dy = uy - vbCy[i] * k;
+          const rad = s.rad * k, rr = rad * rad, r2 = dx * dx + dy * dy;
+          if (r2 >= rr) continue;
+          const zz = Math.sqrt(rr - r2), depth = zc - zz / k;
+          if (depth >= bestZ) continue;
+          bestZ = depth;
+          const nx = dx / rad, ny = dy / rad, nz = -zz / rad;
+          const dif = Math.max(0, nx * 0.45 + ny * 0.6 + nz * -0.66);
+          const rim = Math.pow(1 - Math.abs(nz), 3);
+          const dep = 1 + (0.36 - 1) * Math.max(0, Math.min(1, (zc - 4.6) / 4.2));
+          heat = (0.14 + 0.78 * dif + s.glow * 0.7 * rim) * dep;
+        }
+        const v = Math.max(0, Math.min(1, heat)) * 255;
+        for (let by = py; by < Math.min(py + 2, fh); by++)
+          for (let bx = px; bx < Math.min(px + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Gerstner ocean: rolling sea heightfield (shader effect) ----
   // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
   // 2x2 block and four octaves instead of six.

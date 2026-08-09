@@ -16,7 +16,7 @@ that are inherently "one animated scalar field" rank above ones that need real R
 | ~~**Starfield / hyperspace**~~ ✅ | SHIPPED post-1.16.0 | 6 parallax depths, beat-armed Warp streaks |
 | **Sine scroller** | Marquee text riding a sine wave. Needs a text source (procedural glyph SDFs, or a fixed string; user text is a wire-format question) | Pattern shader; medium effort for the font |
 | **Shadebobs** | Additive blobs orbiting Lissajous paths, trailing via the existing Fade filter | Nearly covered by Metaballs+Fade; only worth it as a distinct look |
-| **Glenz / vector balls** | Classic Amiga: transparent polyhedra or a grid of shaded balls tumbling in 3D | Point-stamp on the Tetrafyer 3D infra, or an SDF shader |
+| ~~**Glenz / vector balls**~~ ✅ | SHIPPED post-1.25.0 as "Vector balls" | per-pixel z-test over projected discs (a painter's algorithm done per fragment), 4 formations, no per-layer state |
 
 ## B. Organic / natural fields (palette-native beauty)
 
@@ -76,11 +76,10 @@ that are inherently "one animated scalar field" rank above ones that need real R
 
 What remains, strongest first:
 
-1. **Glenz / vector balls** (effect) — the last big Amiga classic; Tetrafyer's 3D infra.
-2. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
-3. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
-4. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
-5. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
+1. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
+2. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
+3. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
+4. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
 
 Also still open: Sine scroller (needs a glyph source), Crystal growth (reaction–diffusion's
 state-texture machinery now exists to build on), Volumetric nebula, 3D metaball goo,
