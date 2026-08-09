@@ -59,10 +59,10 @@ that are inherently "one animated scalar field" rank above ones that need real R
 | ~~**Pixel sort**~~ ✅ | SHIPPED in 1.16.0 | 32-tap directional max-smear |
 | ~~**Droste zoom**~~ ✅ | SHIPPED post-1.16.0 | log-polar tiling, endless inward crawl |
 | ~~**Kuwahara oil-paint**~~ ✅ | SHIPPED post-1.16.0 as "Oil paint" | 4-quadrant, Brush size 1–4 |
-| **Hex pixelate** | Hexagonal mosaic (Pixelate covers squares) | Post filter; Size |
+| ~~**Hex pixelate**~~ ✅ | SHIPPED post-1.25.0 | two offset lattices, nearer candidate centre — no axial round trip |
 | ~~**Lens bubble**~~ ✅ | SHIPPED post-1.16.0 | Lissajous wander on postTime |
 | ~~**Cellular automaton**~~ ✅ | SHIPPED in 1.16.0 | cyclic CA over retained heat, feedback stage |
-| **CRT phosphor + mask** | Shadow-mask RGB triads and phosphor persistence, completing the Scanlines/Barrel set | Post filter; Mask / Persistence |
+| ~~**CRT phosphor + mask**~~ ✅ | SHIPPED post-1.25.0 as "CRT phosphor" | shadow mask + asymmetric beam bleed; PERSISTENCE deliberately omitted (a post pass has no memory — Fade pixel already is it) |
 | **Anaglyph split** | Red/cyan stereo offset breathing with the beat | Post filter; cheap novelty |
 
 ## Considered and rejected (poor fit for this engine)
@@ -76,8 +76,8 @@ that are inherently "one animated scalar field" rank above ones that need real R
 
 What remains, strongest first:
 
-1. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
-2. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
+**The recommended build order is now empty — all eight shipped.** What is left is the
+"also open" list below, which was never ranked.
 
 Also still open: Sine scroller (needs a glyph source), Crystal growth (reaction–diffusion's
 state-texture machinery now exists to build on), Volumetric nebula, 3D metaball goo,

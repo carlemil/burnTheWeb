@@ -448,7 +448,7 @@ stacking is a GPU feature, and each extra layer there would be a full software r
 
 ## Filters
 
-There are twenty-two post-processing effects you can stack on top of whatever is
+There are twenty-four post-processing effects you can stack on top of whatever is
 running. The menu lists only the ones you've **added**, in the order they run: press
 **+ Add filter** to open the full catalogue and tick what you want, drag a row's **⠿**
 handle to move it up or down the chain, and press **✕** to drop it. Each row folds open
@@ -505,6 +505,8 @@ the layers blend together.
 - **Slice glitch** — tear horizontal slices sideways at random. Arm **Amount** to
   a beat and the picture rips on the hit.
 - **Pixelate** — snap the picture to a coarse grid. **Block** is the cell size.
+- **Hex pixelate** — the same idea on a honeycomb: the picture snaps to hexagons instead
+  of squares. **Cell** is the hex size.
 - **Blur / sharpen** — one knob: negative blurs, positive sharpens (unsharp mask),
   with its own **Radius**.
 - **Edge** — a Sobel outline that traces the shapes instead of filling them.
@@ -520,6 +522,11 @@ the layers blend together.
   dripping light.
 - **Lens bubble** — a wandering fisheye magnifier drifting over the picture — the classic
   demo lens. **Wander** at 0 parks it in the middle.
+- **CRT phosphor** — the rest of the television, beside Scanlines and Barrel: RGB
+  shadow-mask triads (**Mask**) and the electron beam’s horizontal smear (**Beam bleed**),
+  which trails to the right the way a real sweep does. Phosphor *persistence* is
+  deliberately not here — a post pass has no memory of the last frame; stack **Fade pixel**
+  above the line for that.
 - **Droste zoom** — the picture swallows itself: every ring inward is the whole image
   again, **Depth** times smaller, crawling endlessly toward the centre. **Spiral** shears
   it into a vortex — try it over Wedge fold.

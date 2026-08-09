@@ -10,6 +10,53 @@
       vec2 px = floor(vUv * uSize / b) * b + b * 0.5;   // snap to block centres
       o = vec4(texture(uSrc, px / uSize).rgb, 1.0);
     }`;
+    // Hexagonal mosaic — Pixelate's cousin. The plane is covered by two offset rectangular
+    // lattices whose centres interleave into a hex packing: for any point, the nearer of the
+    // two candidate centres IS its hexagon's centre. That is the whole trick, and it costs
+    // two mods and a comparison rather than an axial-coordinate round trip.
+    const FS_HEXPIX = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uSize2;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float s = max(2.0, uSize2);
+      vec2 p = vUv*uSize/s;
+      vec2 r = vec2(1.0, 1.7320508), h = r*0.5;
+      vec2 a = mod(p, r) - h;
+      vec2 b = mod(p - h, r) - h;
+      vec2 c = dot(a, a) < dot(b, b) ? p - a : p - b;      // nearer candidate = this hex's centre
+      o = vec4(texture(uSrc, c*s/uSize).rgb, 1.0);
+    }`;
+    // CRT phosphor: the shadow mask and the beam's bandwidth limit — the two things
+    // Scanlines and Barrel leave out of the retro set.
+    //
+    // Persistence is deliberately NOT here. A post pass sees one finished frame and has no
+    // memory, so a real phosphor decay would need the feedback stage; Fade pixel already IS
+    // that, and duplicating it badly here would be worse than pointing at it.
+    const FS_CRT = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uMask; uniform float uBleed;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      if (uBleed > 0.0){
+        // Horizontal only, and ASYMMETRIC: the beam sweeps left to right and smears its
+        // trail behind it, so weighting the two sides equally reads as a plain blur.
+        vec2 px = 1.0/uSize;
+        vec3 l = texture(uSrc, vUv - vec2(px.x*1.5, 0.0)).rgb;
+        vec3 r = texture(uSrc, vUv + vec2(px.x*1.5, 0.0)).rgb;
+        c = mix(c, c*0.46 + l*0.36 + r*0.18, uBleed);
+      }
+      // Shadow mask: RGB phosphor triads on a 3-pixel pitch. The off-channels keep a FLOOR
+      // rather than going to zero — a hard triad (0 or 2x) turned every highlight into a
+      // pale wash of separated primaries instead of white, because nothing was left of the
+      // other two channels to recombine. 0.30/1.60 costs a little luminance and keeps the
+      // picture a picture.
+      float ph = mod(floor(vUv.x*uSize.x), 3.0);
+      vec3 tri = vec3(step(ph, 0.5), step(abs(ph - 1.0), 0.5), step(2.5, ph + 0.5));
+      vec3 m = mix(vec3(1.0), 0.30 + 1.30*tri, uMask);
+      o = vec4(clamp(c*m, 0.0, 1.0), 1.0);
+    }`;
     const FS_POSTERIZE = `#version 300 es
     precision highp float;
     uniform sampler2D uSrc; uniform float uLevels;
@@ -555,6 +602,8 @@
     glProg.rdshow = camProg(VS_QUAD, FS_RDSHOW, ["uState", "uSize", "uGain", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
+    glProg.hexpix = makeProg(VS_QUAD, FS_HEXPIX, ["uSrc", "uSize", "uSize2"]);
+    glProg.crt = makeProg(VS_QUAD, FS_CRT, ["uSrc", "uSize", "uMask", "uBleed"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
     glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
     glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);

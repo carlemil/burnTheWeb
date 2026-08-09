@@ -124,7 +124,7 @@
   // through a hoisted function) because bindRange runs a slider's apply() during
   // wiring, long before the FILTERS registry block is evaluated.
   let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
-    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1;
+    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10;
   // Feedback warps (Echo / Zoom feedback / Swirl / Diffuse). Each carries its own
   // Keep, so it decays standalone instead of saturating to white when it is the only
   // feedback filter ticked — Fade is a separate filter you may or may not stack.
@@ -136,6 +136,7 @@
     halfDot = 4, halfAmt = 0.8, threshLevel = 0.5, threshAmt = 0.8, chromaAmt = 1;
   // Screen stage (after the glow, at display resolution)
   let barrelAmt = 0.15, scanAmt = 0.35, scanCount = 240, vigAmt = 0.4, grainAmt = 0.08;
+  let crtMask = 0.5, crtBleed = 0.4;                     // CRT phosphor: shadow mask, beam smear
   let shockAmt = 0, shockAmp = 0.06, shockWidth = 0.1;   // Shockwave ring: progress, push, thickness
   let pxThresh = 0.55, pxStreak = 0.5, pxDir = 0;        // Pixel sort
   let cellStates = 12, cellMix = 1, cellKeep = 1;        // Cellular automaton (feedback)
