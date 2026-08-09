@@ -154,11 +154,20 @@
     try { localStorage.setItem(TUT_KEY, JSON.stringify({ seen: true, v: CONFIG.version })); } catch (e) {}
   }
 
-  // A FUNCTION DECLARATION on purpose: the sync-nudge block runs in an EARLIER slice and
-  // calls this from its interval and from showSyncPopup. Declarations hoist to the top of
-  // the one IIFE, so this is in scope there; a `const tutorialOpen = () => …` would be in
-  // the TDZ for anything above this line that ran during startup (same rule as blendOk).
-  function tutorialOpen() { return !!tutDlg && !tutDlg.classList.contains("hidden"); }
+  // A FUNCTION DECLARATION on purpose: three earlier slices call this — the sync-nudge
+  // interval, showSyncPopup, and armAudioResume's document-level capture listener.
+  // Declarations hoist to the top of the one IIFE, so this is in scope there; a
+  // `const tutorialOpen = () => …` would be in the TDZ for all of them (same rule as blendOk).
+  //
+  // It looks the node up rather than closing over `tutDlg`, so hoisting alone is enough: a
+  // closure over the const below would still throw if anything above ever managed to call
+  // this before this slice ran. Nothing does today — every caller is a timer or a gesture,
+  // both of which land after startup — but the whole point of a hoisted guard is that it is
+  // safe to call from anywhere.
+  function tutorialOpen() {
+    const d = document.getElementById("tutdlg");
+    return !!d && !d.classList.contains("hidden");
+  }
 
   // Paint one step. Only the body changes — the header, the dots row and the buttons are
   // permanent nodes updated in place, so the sticky title never reflows mid-tour and the

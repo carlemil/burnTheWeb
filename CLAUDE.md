@@ -1205,9 +1205,16 @@ on `currentColor` like `EYE_OPEN`. Also at **☰ → Tutorial**, above Help.
   `dlgModal` releases any existing trap, so a nudge opening over the tour would take the
   keyboard and leave it visible but dead. `closeTutorial` calls **`syncResetDelay()`** so
   reading the tour does not eat into the nudge's first 30s.
+- **`armAudioResume`'s resume listener must skip it too.** That is a capture-phase
+  `pointerdown`/`keydown` on the **document** that reopens the last source on the FIRST
+  gesture anywhere — and on a fresh load the first thing anyone clicks is the tour's Next
+  button, which threw the browser's "Choose what to share" picker straight over it. The
+  guard **returns without `cleanup()`**, so the arm survives for a real gesture afterwards.
 - **`tutorialOpen` and `syncResetDelay` are function DECLARATIONS** — they are called across
-  slices in both directions (the sync block is earlier, the tutorial later), and only
-  declarations hoist across the one IIFE.
+  slices in both directions (the sync block and `armAudioResume` are earlier, the tutorial
+  later), and only declarations hoist across the one IIFE. **`tutorialOpen` looks the node
+  up rather than closing over `tutDlg`**, so hoisting alone makes it safe to call from
+  anywhere, including a listener armed during startup.
 - Only the step body is re-rendered; the `<h2>`, dots and buttons are permanent nodes updated in
   place, so the sticky title never reflows and the modal trap's focus survives a Next. The `<h2>`
   text is CONSTANT — the step's own title is the `<h3>`.

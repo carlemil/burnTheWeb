@@ -475,6 +475,12 @@
       document.removeEventListener("keydown", resume, true);
     };
     function resume(e) {
+      // NOT while the tutorial has the screen. This fires on the first gesture ANYWHERE, and
+      // on a fresh load the first thing anyone clicks is the tour's Next button — which threw
+      // the browser's "Choose what to share" picker straight over it, from a click that had
+      // nothing to do with audio. Return WITHOUT cleanup so the arm survives: the next real
+      // gesture, once the tour is done, resumes the source as it always did.
+      if (tutorialOpen()) return;
       if (e.target && e.target.closest && e.target.closest("#audCapture, #audMic")) { cleanup(); return; }
       cleanup();
       if (!audio.on) startAudio(kind);
