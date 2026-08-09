@@ -62,7 +62,7 @@ const by = k => P.CONTROLS.find(c => c.key === k);
 const EXPECT = [
   "mbcount", "ksegments", "cbcount", "pgsides", "cosides", "bncount", "sdcount",
   "sdmix", "kfbars", "twcols", "ltbolts", "bpdetail", "flvar", "aucurtains", "rdspeed",
-  "mgiter", "wedgeseg", "poster", "mirror", "pxdir", "cellstates", "kuwrad",
+  "mgiter", "wedgeseg", "poster", "mirror", "pxdir", "cellstates", "kuwrad", "qjdetail",
 ].sort();
 const got = [...P.SINGLE_KEYS].sort();
 ok(got.length === EXPECT.length && got.every((k, i) => k === EXPECT[i]),

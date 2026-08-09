@@ -1,6 +1,6 @@
 # burnTheWeb
 
-A GPU demoscene visual: a collection of **thirty-two effects** in four families,
+A GPU demoscene visual: a collection of **thirty-three effects** in four families,
 all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, a de
@@ -14,7 +14,8 @@ all sharing one palette + glow + banding pipeline —
   sun surface.
 - **Signed-distance shapes** — rotating polygons, a pulsing shape grid,
   concentric ring tunnels, bouncing 2D shapes, a raymarched 3D room of
-  tumbling solids, a raymarched Mandelbulb, and an infinite Menger-sponge dive.
+  tumbling solids, a raymarched Mandelbulb, a four-dimensional quaternion Julia solid, and an
+  infinite Menger-sponge dive.
 
 Stack up to four of them into one scene, each with its own palette and filters.
 The whole thing burns, flickers, and morphs continuously — and every effect can
@@ -25,7 +26,7 @@ The whole thing burns, flickers, and morphs continuously — and every effect ca
 ## Effects
 
 Every row in the panel's **Layers** box carries an **Effect** chooser, switching that layer
-between thirty-two visuals that share the same palette, glow and music-reactivity pipeline —
+between thirty-three visuals that share the same palette, glow and music-reactivity pipeline —
 but each is an independent "scene" that remembers its own settings (see Controls). You can
 **stack up to four of them at once**, each with its own palette and filters — see Layers
 below:
@@ -80,6 +81,7 @@ below:
   - **Cymatics** — sand on a vibrating plate: bright lines trace a standing wave's nodes, snapping into a new symmetry as **Mode** changes — drift its thumbs for continuous morphing or arm its chips so the figure jumps on the beat. **Sharpness** engraves the lines, **Shimmer** makes them tremble.
   - **Lightning storm** — bolts tearing down the screen, every strike a new shape. **Rate** fires them on a clock; arm **Strike**'s chips and the beat fires them instead, each bolt decaying over the Trigger duration. **Bolts** strikes several at once, **Afterglow** lights the sky.
   - **Mandelbulb** — the 3D Mandelbrot, raymarched and slowly orbited. **Power** reshapes it (8 is the classic), **Detail** adds fractal depth, **Glow** lights the silhouette and haloes near-misses. The heaviest effect in the app — it wants a real GPU.
+  - **Quaternion Julia** — the Julia set done in **four** dimensions: `z → z² + c` iterated in the quaternions and raymarched as a solid. A 4D object cannot be shown, only cut, so the two slice controls are where the shapes live: **Slice** is where the cut falls, **Cut angle** rotates the cutting plane itself, and between them the solid walks through cross-sections nothing in 3D can hold. Leave both at 0 and you get the ordinary Julia set spun about its axis. The seed rides the **same cardioid orbit as AnimeJulia**, so the Orbit editor drives it too — sit just outside the Mandelbrot set for filigree, well inside for a blob. **Detail** and **Glow** as on the Mandelbulb. Also wants a real GPU.
   - **Fractal flames** — an Apophysis-style iterated function system: the chaos game bounces between two slowly-morphing maps with a nonlinear **Variation** folding every step, and each landing **adds** heat — dense orbits burn white, wisps stay faint. The only point effect that accumulates density rather than stamping a fixed heat.
   - **Starfield** — a 3D starfield flying past on six parallax depths. Arm **Warp**'s beat chips and the kick punches to hyperspace, every star smearing into a radial streak.
   - **Aurora** — curtains of light hanging from the top of the sky, swaying and shimmering over a faint horizon glow. Ice, Electric and Verdant palettes were made for it.

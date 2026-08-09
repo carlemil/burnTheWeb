@@ -36,7 +36,7 @@ that are inherently "one animated scalar field" rank above ones that need real R
 |---|---|---|
 | ~~**Mandelbulb**~~ ✅ | SHIPPED in 1.16.0 | 64-step raymarch, Power 2–12, halo on misses |
 | ~~**Menger sponge flythrough**~~ ✅ | SHIPPED post-1.16.0 | infinite periodic lattice, dive + roll |
-| **Quaternion Julia (4D)** | Raymarched 4D Julia slices whose seed rides the SAME cardioid-orbit machinery AnimeJulia uses | Raymarch; reuses `juliaSeed` and the Orbit editor for free |
+| ~~**Quaternion Julia (4D)**~~ ✅ | SHIPPED post-1.25.0 | seed rides `juliaSeed` + the Orbit editor; Slice / Cut angle are the 4D knobs — a `c` component is NOT (see below) |
 | **Kleinian limit set** | Wada-basin sphere packings — the exotic showpiece | Raymarch; niche but jaw-dropping |
 | **Black hole** | Accretion disk with gravitational lensing and doppler shading | The one most likely to read as "how is this in a browser" |
 | **3D metaball goo** | Smooth-min blobs merging in 3D (the lava lamp done properly) | Raymarch; reuse the solids physics for blob centres |
@@ -76,17 +76,25 @@ that are inherently "one animated scalar field" rank above ones that need real R
 
 What remains, strongest first:
 
-1. **Quaternion Julia (4D)** (effect) — raymarched Julia slices whose seed rides the SAME
-   cardioid-orbit machinery AnimeJulia uses (`juliaSeed` + the Orbit editor for free).
-2. **Black hole** (effect) — accretion disk with lensing; the remaining "how is this in a
+1. **Black hole** (effect) — accretion disk with lensing; the remaining "how is this in a
    browser" showpiece.
-3. **Gerstner ocean** (effect) — rolling sea heightfield; sunset ramps.
-4. **Glenz / vector balls** (effect) — the last big Amiga classic; Tetrafyer's 3D infra.
-5. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
-6. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
-7. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
-8. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
+2. **Gerstner ocean** (effect) — rolling sea heightfield; sunset ramps.
+3. **Glenz / vector balls** (effect) — the last big Amiga classic; Tetrafyer's 3D infra.
+4. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
+5. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
+6. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
+7. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
 
 Also still open: Sine scroller (needs a glyph source), Crystal growth (reaction–diffusion's
 state-texture machinery now exists to build on), Volumetric nebula, 3D metaball goo,
 Kleinian, Shadebobs, Anaglyph split.
+
+## Lesson from Quaternion Julia (shipped post-1.25.0)
+
+The obvious extra knob for it was a third component on the seed `c`, to "break the symmetry".
+It cannot: `z² + c` in the quaternions is invariant under rotations of the imaginary 3-space,
+so **every** member of this family is a surface of revolution and any `c` can be rotated back
+into the complex plane. All that control did was raise `|c|` until the set escaped and the
+screen went black. The variety in a 4D fractal is in **how you cut it**, not in nudging the
+seed off-plane — hence Slice (where the cut falls) and Cut angle (the cut plane's orientation).
+Worth remembering for **Kleinian** and any other 4D/hyperbolic entry above.

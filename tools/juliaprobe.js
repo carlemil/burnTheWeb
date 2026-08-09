@@ -207,22 +207,44 @@ reset();
 // Regression guard: the CPU fallbacks used to call juliaSeed() again themselves,
 // so on the Canvas2D path Burning Ship / Multibrot ran the orbit at double speed.
 // Checked on the source, since the draw hooks need a GL context to run.
+// The list is DERIVED from the registry (`cardioid: true`), not named here. It used to name
+// the three that existed, which meant a fourth cardioid effect — Quaternion Julia — could
+// break the rule and this check would sail straight past it. The CPU mirror is derived too,
+// off the `else <fn>(` in the same draw hook, so a renamed mirror cannot silently drop out.
 {
-  const decl = id => {
-    const i = src.indexOf('id: "' + id + '"');
-    if (i < 0) throw new Error("probe: no descriptor for " + id);
-    const j = src.indexOf("draw: dt =>", i);
-    return src.slice(j, src.indexOf("\n", j));
-  };
-  for (const id of ["animejulia", "burningship", "multibrot"]) {
-    const d = decl(id);
-    const calls = (d.match(/juliaSeed\(/g) || []).length;
-    ok(calls === 1, id + " advances the seed once per frame", calls + " juliaSeed() call(s) in draw");
+  // Scan the EFFECTS array ONLY. FILTERS and TRANSITIONS use the same `{ id: "…" }` shape
+  // further down the file, and the last of them has no following id to bound it — so an
+  // unbounded scan gave the final transition a "body" running to the end of the source,
+  // picked up an unrelated `cardioid: true` from the Orbit editor, and reported `ripple`
+  // as a cardioid effect.
+  const reg = cut("const EFFECTS = [", "const effectsByName");
+  const cards = [];
+  const re = /\{ id: "([A-Za-z0-9_]+)"/g;
+  let m;
+  while ((m = re.exec(reg))) {
+    const next = reg.indexOf('{ id: "', m.index + 6);
+    const body = reg.slice(m.index, next < 0 ? reg.length : next);
+    if (/cardioid:\s*true/.test(body)) cards.push({ id: m[1], body });
   }
-  for (const fn of ["function julia(", "function burningShip(", "function multibrot("]) {
-    const i = src.indexOf(fn);
-    const body = src.slice(i, i + 400);
-    ok(!/juliaSeed\(/.test(body), fn.slice(9, -1) + "() takes the seed instead of re-advancing it");
+  ok(cards.length >= 4, "every cardioid effect is discovered from the registry",
+     cards.map(c => c.id).join(",") || "none");
+  for (const { id, body } of cards) {
+    // The draw hook may span several lines, so slice to the descriptor's `defaults:` rather
+    // than to the next newline.
+    const j = body.indexOf("draw:");
+    const e = body.indexOf("defaults:", j);
+    const d = j < 0 ? "" : body.slice(j, e < 0 ? body.length : e);
+    // Left-anchored: `qjuliaSeed(` ends in `juliaSeed(` and was counted as a second call.
+    const calls = (d.match(/(?:^|[^A-Za-z0-9_])juliaSeed\(/g) || []).length;
+    ok(calls === 1, id + " advances the seed once per frame", calls + " juliaSeed() call(s) in draw");
+    const mm = d.match(/else\s+([A-Za-z0-9_]+)\s*\(/);
+    ok(!!mm, id + ": its draw names a CPU mirror", mm ? mm[1] : "none found");
+    if (!mm) continue;
+    const fi = src.indexOf("function " + mm[1] + "(");
+    ok(fi >= 0, "..." + mm[1] + "() exists");
+    if (fi < 0) continue;
+    ok(!/(?:^|[^A-Za-z0-9_])juliaSeed\(/.test(src.slice(fi, fi + 500)),
+       mm[1] + "() takes the seed instead of re-advancing it");
   }
 }
 

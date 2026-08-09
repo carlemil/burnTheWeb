@@ -859,6 +859,76 @@
     }
   }
 
+  // ---- Quaternion Julia: raymarched 4D Julia slice (shader effect) ----
+  // Same coarse-mirror bargain as the Mandelbulb below: every 3rd pixel into a 3x3 block,
+  // a third of the shader's steps, iterations capped, flat shading. The seed `c` is handed
+  // in by the descriptor (juliaSeed) exactly like the other cardioid effects — this must
+  // NOT advance the orbit itself, or the Canvas2D path runs it at double speed.
+  let qjSlice = 0, qjCut = 0, qjDetail = 8, qjSpin = 0.3, qjGlow = 0.5, qjPhase = 0;
+  function qjuliaSeed(dt) {
+    qjPhase += dt * qjSpin;
+    // qjCut is stored in DEGREES (it is an angle the user sets); the shader and the mirror
+    // both want radians, and converting once here keeps the two from disagreeing.
+    return { phase: qjPhase, slice: qjSlice, cut: qjCut * Math.PI / 180, iter: qjDetail, glow: qjGlow, zoom };
+  }
+  // iq's quaternion-Julia distance estimate. md2 tracks |dz|^2, which is exact for z^2+c
+  // because the derivative is 2z and only its magnitude matters.
+  function qjDE(zx, zy, zz, zw, cx, cy, cz, cw, it) {
+    let md2 = 1, mz2 = zx * zx + zy * zy + zz * zz + zw * zw;
+    for (let i = 0; i < it; i++) {
+      md2 *= 4 * mz2;
+      const nx = zx * zx - (zy * zy + zz * zz + zw * zw), s = 2 * zx;
+      const ny = s * zy, nz = s * zz, nw = s * zw;
+      zx = nx + cx; zy = ny + cy; zz = nz + cz; zw = nw + cw;
+      mz2 = zx * zx + zy * zy + zz * zz + zw * zw;
+      if (mz2 > 16) break;
+    }
+    return 0.25 * Math.sqrt(mz2 / md2) * Math.log(Math.max(mz2, 1e-12));
+  }
+  function qjulia(seed, s) {              // CPU fallback — mirrors FS_QJULIA, coarsely
+    const ar = fw / fh, it = Math.min(6, Math.round(s.iter));
+    const cx = seed.cx, cy = seed.cy, cz = 0, cw = 0;     // c is purely complex — see FS_QJULIA
+    const kc = Math.cos(s.cut), ks = Math.sin(s.cut);     // the rotated cutting hyperplane
+    const ca = Math.cos(s.phase), sa = Math.sin(s.phase);
+    const tilt = 0.32 * Math.sin(s.phase * 0.6), ct = Math.cos(tilt), st = Math.sin(tilt);
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rox = 0, roy = 0, roz = -2.9;
+        const rl = Math.hypot(ux, uy, 1.7);
+        let rdx = ux / rl, rdy = uy / rl, rdz = 1.7 / rl;
+        let tx = rox * ca + roz * sa; roz = -rox * sa + roz * ca; rox = tx;
+        tx = rdx * ca + rdz * sa; rdz = -rdx * sa + rdz * ca; rdx = tx;
+        let ty = roy * ct - roz * st; roz = roy * st + roz * ct; roy = ty;
+        ty = rdy * ct - rdz * st; rdz = rdy * st + rdz * ct; rdy = ty;
+        let heat = 0, halo = 9;
+        const b = rox * rdx + roy * rdy + roz * rdz;
+        const disc = b * b - (rox * rox + roy * roy + roz * roz - 4);
+        if (disc > 0) {
+          const sd = Math.sqrt(disc);
+          let t = Math.max(0, -b - sd);
+          const tMax = -b + sd;
+          for (let i = 0; i < 32 && t <= tMax; i++) {
+            const px = rox + rdx * t, py = roy + rdy * t, pz = roz + rdz * t;
+            const d = qjDE(px * kc - s.slice * ks, py, pz, px * ks + s.slice * kc, cx, cy, cz, cw, it);
+            if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
+            if (d < 0.003 * Math.max(t, 0.5)) {
+              heat = (0.45 + s.glow * 0.3) * Math.max(0, 1 - (t - 1.6) / 3.4);   // flat — no normals here
+              break;
+            }
+            t += d;
+          }
+        }
+        if (heat === 0) heat = s.glow * 0.35 * Math.exp(-halo * 55);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Mandelbulb: raymarched power-N fractal (shader effect) ----
   // The mirror marches every 3rd pixel and fills 3x3 blocks — a raymarch with a
   // transcendental DE is orders beyond the other mirrors, so this trades sharpness

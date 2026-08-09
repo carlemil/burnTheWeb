@@ -936,6 +936,98 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Quaternion Julia: z -> z^2 + c iterated in the QUATERNIONS, raymarched as a solid.
+    // The set is 4-dimensional, so what is on screen is a 3D SLICE of it — uSlice is where
+    // that slice is cut along the fourth axis, and sliding it morphs the solid continuously
+    // through shapes no 3D fractal can hold still.
+    //
+    // c comes from THE SAME cardioid orbit AnimeJulia rides (juliaSeed, in the descriptor),
+    // so the Orbit editor drives this effect for free and everything already known about
+    // where to sit relative to the Mandelbrot set still applies.
+    //
+    // c IS PURELY COMPLEX, and that is not a simplification. z^2+c in the quaternions is
+    // invariant under rotations of the imaginary 3-space, so ANY c can be rotated into the
+    // (1, i) plane: every quaternion Julia set of this family is a surface of revolution,
+    // and giving c a j or k component only turns the solid on the spot. It does raise |c|
+    // though, and past the escape radius the set is empty — which is a black screen for a
+    // control that was supposed to add detail. (Tried, rendered nothing, removed.)
+    //
+    // The shape variety is in the SLICE instead, which is where it always was: the set is
+    // 4D and the screen is 3D, so something has to be cut. uSlice is where the cut falls,
+    // and uCut ROTATES THE CUTTING HYPERPLANE in the (real, k) plane — at 0 the familiar
+    // (x, y, z, slice) sample, and winding it round trades the real axis for the fourth one
+    // and walks through cross-sections nothing in 3D can show.
+    //
+    // DE is iq's: |z|·log|z|/|dz| with |dz| tracked as the scalar md2 (=|dz|^2), which is
+    // exact here because the derivative of z^2+c is 2z and only its MAGNITUDE is needed.
+    const FS_QJULIA = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform vec4 uC; uniform float uPhase; uniform float uSlice;
+    uniform float uCut; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    vec4 qsqr(vec4 a){ return vec4(a.x*a.x - dot(a.yzw, a.yzw), 2.0*a.x*a.yzw); }
+    // Lift a 3D sample point into the 4D domain through the rotated cutting hyperplane.
+    vec4 qjLift(vec3 p, float s, float ca, float sa){
+      return vec4(p.x*ca - s*sa, p.y, p.z, p.x*sa + s*ca);
+    }
+    float qjDE(vec4 z, vec4 c, int it){
+      float md2 = 1.0, mz2 = dot(z, z);
+      for (int i = 0; i < 12; i++){
+        if (i >= it) break;
+        md2 *= 4.0*mz2;              // |dz|^2 *= |2z|^2
+        z = qsqr(z) + c;
+        mz2 = dot(z, z);
+        if (mz2 > 16.0) break;       // escape: 4^2, well clear of the |z|=2 bound
+      }
+      return 0.25*sqrt(mz2/md2)*log(max(mz2, 1e-12));
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uPhase), sa = sin(uPhase);
+      float tilt = 0.32*sin(uPhase*0.6), ct = cos(tilt), st = sin(tilt);
+      vec3 ro = vec3(0.0, 0.0, -2.9);
+      vec3 rd = normalize(vec3(uv, 1.7));
+      ro = vec3(ro.x*ca + ro.z*sa, ro.y, -ro.x*sa + ro.z*ca);
+      rd = vec3(rd.x*ca + rd.z*sa, rd.y, -rd.x*sa + rd.z*ca);
+      ro = vec3(ro.x, ro.y*ct - ro.z*st, ro.y*st + ro.z*ct);
+      rd = vec3(rd.x, rd.y*ct - rd.z*st, rd.y*st + rd.z*ct);
+      int it = int(uIter);
+      vec4 c = uC;
+      // kc/ks, NOT ca/sa: the camera orbit above already owns those names in this scope.
+      float kc = cos(uCut), ks = sin(uCut);
+      // The whole set is inside |q| < 2, so skip the empty run in front of it rather than
+      // spending steps on vacuum: enter at the bounding sphere, and give up at the far side.
+      float b = dot(ro, rd), cc = dot(ro, ro) - 4.0;
+      float disc = b*b - cc;
+      float heat = 0.0, halo = 9.0;
+      if (disc > 0.0){
+        float sd = sqrt(disc);
+        float t = max(0.0, -b - sd), tMax = -b + sd;
+        for (int i = 0; i < 96; i++){
+          if (t > tMax) break;
+          vec3 p = ro + rd*t;
+          float d = qjDE(qjLift(p, uSlice, kc, ks), c, it);
+          halo = min(halo, d/max(t, 0.3));
+          if (d < 0.0006*max(t, 0.5)){
+            float e = 0.0009*max(t, 0.5);
+            vec2 h = vec2(1.0, -1.0)*0.5773;
+            vec3 nrm = normalize(
+              h.xyy*qjDE(qjLift(p + h.xyy*e, uSlice, kc, ks), c, it) +
+              h.yyx*qjDE(qjLift(p + h.yyx*e, uSlice, kc, ks), c, it) +
+              h.yxy*qjDE(qjLift(p + h.yxy*e, uSlice, kc, ks), c, it) +
+              h.xxx*qjDE(qjLift(p + h.xxx*e, uSlice, kc, ks), c, it));
+            float dif = max(0.0, dot(nrm, normalize(vec3(0.55, 0.75, -0.5))));
+            float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
+            heat = (0.20 + 0.72*dif + uGlow*0.55*rim)*smoothstep(5.0, 1.6, t);
+            break;
+          }
+          t += d;
+        }
+      }
+      if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Starfield / hyperspace: 6 depth layers of cell-hashed stars flying outward; uWarp
     // re-samples the whole field at radially squeezed coordinates so every star smears
     // into a streak — beat-arm Warp and the kick punches to hyperspace. The field lives
