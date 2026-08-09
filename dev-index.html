@@ -4096,6 +4096,67 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Gerstner ocean: a rolling sea to the horizon.
+    //
+    // Not a raymarch and not a mesh — the screen ray is intersected with the flat y=0 plane
+    // and the wave sum is evaluated at THAT world point. A displaced surface would need
+    // marching; at this scale the cheat is invisible and it buys a horizon for free.
+    //
+    // The waves are a Gerstner-style sum: each octave is a sine SHARPENED by pow(), which is
+    // what gives the sea round troughs and peaked crests instead of a bland sine swell —
+    // uChop is that exponent. Directions rotate per octave so the swell interferes with
+    // itself and never reads as a repeating ripple, and both the height and its analytic
+    // derivative come out of the same loop (the derivative is the surface normal, which is
+    // what the glint and the foam are actually made of).
+    //
+    // NB the heat buffer is Y-FLIPPED against the screen, so screen-UP is 0.5 - y/fh. This
+    // effect has a horizon, so it is one of the ones that cares (see CLAUDE.md).
+    const FS_OCEAN = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uSwell; uniform float uChop;
+    uniform float uFoam; uniform float uWind; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)*2.0/uZoom;
+      vec3 rd = normalize(vec3(q.x, q.y - 0.30, 1.35));
+      float camH = 3.4;
+      float heat;
+      if (rd.y > -0.004){
+        // Sky: a soft band brightening down toward the horizon, so the sea has something to
+        // meet. Kept dim — the water is the subject.
+        heat = 0.10*exp(-max(0.0, rd.y)*9.0);
+      } else {
+        float t = camH/(-rd.y);
+        vec2 p = rd.xz*t;
+        float fade = 1.0/(1.0 + t*t*0.0016);        // distance haze, also hides the aliasing
+        float wr = uWind*0.017453293;
+        vec2 dir = vec2(cos(wr), sin(wr));
+        float h = 0.0, dhx = 0.0, dhz = 0.0;
+        float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
+        for (int i = 0; i < 6; i++){
+          float ph = dot(p, dir)*frq + uTime*spd;
+          float s = sin(ph)*0.5 + 0.5;
+          float w = pow(s, uChop);
+          h += amp*w;
+          norm += amp;
+          // d/dp of amp*pow(s, chop): chop*s^(chop-1) * 0.5cos(ph) * frq, along dir
+          float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+          dhx += dw*dir.x; dhz += dw*dir.y;
+          amp *= 0.62; frq *= 1.87; spd *= 1.21;
+          dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+        }
+        h /= norm;
+        vec3 n = normalize(vec3(-dhx*uSwell, 1.0, -dhz*uSwell));
+        float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
+        float slope = clamp(length(vec2(dhx, dhz))*uSwell*0.9, 0.0, 1.0);
+        // Foam rides the CRESTS: high water and steep face at once, which is where it breaks.
+        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), h*0.65 + slope*0.55);
+        heat = (0.10 + 0.48*h*h + 0.45*glint + 0.55*foam)*fade;
+        heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Black hole: an accretion disk seen through its own gravitational lensing.
     //
     // NOT a raymarch — there is no surface to hit. Photons are INTEGRATED: each ray is
@@ -4918,6 +4979,7 @@
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
+    glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
     glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uPos", "uFwd", "uRoll", "uIter", "uGlow", "uZoom"]);
@@ -7311,6 +7373,61 @@
     }
   }
 
+  // ---- Gerstner ocean: rolling sea heightfield (shader effect) ----
+  // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
+  // 2x2 block and four octaves instead of six.
+  let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0;
+  function oceanSeed(dt) {
+    goTime += dt * goSpeed;
+    return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind, zoom };
+  }
+  function oceanCPU(s) {                  // CPU fallback — mirrors FS_OCEAN
+    const ar = fw / fh, camH = 3.4;
+    const wr = s.wind * Math.PI / 180;
+    const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };
+    for (let y = 0; y < fh; y += 2) {
+      for (let x = 0; x < fw; x += 2) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const qy = (0.5 - camPY / fh) * 2 / s.zoom;      // screen-UP, as in the shader
+        let rx = qx, ry = qy - 0.30, rz = 1.35;
+        const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
+        let heat;
+        if (ry > -0.004) {
+          heat = 0.10 * Math.exp(-Math.max(0, ry) * 9);
+        } else {
+          const t = camH / -ry, px = rx * t, pz = rz * t;
+          const fade = 1 / (1 + t * t * 0.0016);
+          let dx = Math.cos(wr), dz = Math.sin(wr);
+          let h = 0, dhx = 0, dhz = 0, amp = 1, frq = 0.40, spd = 1, norm = 0;
+          for (let i = 0; i < 4; i++) {
+            const ph = (px * dx + pz * dz) * frq + s.t * spd;
+            const sv = Math.sin(ph) * 0.5 + 0.5;
+            h += amp * Math.pow(sv, s.chop);
+            norm += amp;
+            const dw = amp * s.chop * Math.pow(Math.max(sv, 1e-4), s.chop - 1) * 0.5 * Math.cos(ph) * frq;
+            dhx += dw * dx; dhz += dw * dz;
+            amp *= 0.62; frq *= 1.87; spd *= 1.21;
+            const nx = dx * 0.62 - dz * 0.78, nz = dx * 0.78 + dz * 0.62;
+            const nl = Math.hypot(nx, nz) || 1; dx = nx / nl; dz = nz / nl;
+          }
+          h /= norm;
+          const nx = -dhx * s.swell, nz = -dhz * s.swell;
+          const nl = Math.hypot(nx, 1, nz) || 1;
+          const gl2 = Math.max(0, (nx / nl) * 0.35 + (1 / nl) * 0.55 + (nz / nl) * -0.75);
+          const glint = Math.pow(gl2, 22);
+          const slope = Math.max(0, Math.min(1, Math.hypot(dhx, dhz) * s.swell * 0.9));
+          const foam = ss((h * 0.65 + slope * 0.55 - s.foam) / Math.max(0.02, Math.min(0.995, s.foam + 0.22) - s.foam));
+          heat = (0.10 + 0.48 * h * h + 0.45 * glint + 0.55 * foam) * fade;
+          heat += 0.16 * Math.exp(-Math.abs(ry + 0.004) * 260);
+        }
+        const v = Math.max(0, Math.min(1, heat)) * 255;
+        for (let by = y; by < Math.min(y + 2, fh); by++)
+          for (let bx = x; bx < Math.min(x + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Black hole: lensed accretion disk (shader effect) ----
   // Photon integration, not a raymarch — see FS_BHOLE for the physics. The mirror keeps the
   // deflection (without it the picture is just an ellipse and the effect is pointless) and
@@ -8992,6 +9109,11 @@
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "goswell", host: "fx", group: "ocean", type: "dual", label: "Swell", valId: "vGoSwell", min: 0, max: 2.5, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSwell = v, durScale: 10 },
+    { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
+    { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
+    { key: "gofoam", host: "fx", group: "ocean", type: "dual", label: "Foam", valId: "vGoFoam", min: 0.1, max: 1, step: 0.01, lo: 0.45, hi: 0.45, fmt: v => sig3(v), apply: v => goFoam = v, durScale: 10 },
+    { key: "gowind", host: "fx", group: "ocean", type: "dual", label: "Wind", valId: "vGoWind", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => goWind = v, durScale: 10 },
     { key: "bhtilt", host: "fx", group: "bhole", type: "dual", label: "Tilt", valId: "vBhTilt", min: 2, max: 80, step: 1, lo: 12, hi: 12, fmt: v => sig3(v) + "°", apply: v => bhTilt = v, durScale: 10 },
     { key: "bhouter", host: "fx", group: "bhole", type: "dual", label: "Disk size", valId: "vBhOuter", min: 4, max: 14, step: 0.1, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bhOuter = v, durScale: 10 },
     { key: "bhspin", host: "fx", group: "bhole", type: "dual", label: "Disk speed", valId: "vBhSpin", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bhSpin = v, durScale: 10 },
@@ -9905,6 +10027,7 @@
     ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
+    ["goTime", () => goTime, v => goTime = v],
     // The black hole carries two: the disk's own rotation and the camera's lap round it.
     ["bhTime", () => bhTime, v => bhTime = v],
     ["bhOrbit", () => bhOrbit, v => bhOrbit = v],
@@ -11442,6 +11565,16 @@
       bakesOwnZoom: true,
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
+      help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
+      params: ["goswell", "gochop", "gospeed", "gofoam", "gowind", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "ocean", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = oceanSeed(dt);
+        if (useGL) glShaderDraw("ocean", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSwell, s.swell); gl.uniform1f(u.uChop, s.chop); gl.uniform1f(u.uFoam, s.foam); gl.uniform1f(u.uWind, s.wind); gl.uniform1f(u.uZoom, s.zoom); });
+        else oceanCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",
       help: "An accretion disk seen through the hole's own gravity. The photons are integrated rather than drawn straight, so light from the FAR side of the disk is bent up over the top of the shadow and back under the bottom — those arcs closing round the dark centre are the whole point, and a straight-ray version would just be an ellipse. Tilt is the camera's height above the disk plane: low is the iconic nearly-edge-on view, high looks down on a plain ring. Beaming is the relativistic boost that makes the limb coming toward you far brighter than the one going away; wind it to 0 for an evenly lit disk. The disk orbits Keplerian, so the inside shears past the outside and the turbulence never repeats. Heavy: it wants a real GPU.",
@@ -17655,6 +17788,11 @@
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Swell", w: "ocean", t: "Ocean only — how big the sea is. It scales the surface normals rather than the height, so raising it steepens every face at once: the glint gets sharper, the foam breaks earlier, and the water goes from a lazy roll to a heavy sea." },
+      { n: "Chop", w: "ocean", t: "Ocean only — how peaked the crests are. Each wave train is a sine raised to this power, so 1 is a bland sine swell with rounded tops, and higher values keep the troughs round while drawing the crests up to a point — which is what real water does. Drift the two thumbs and the sea builds and lays down again." },
+      { n: "Speed", w: "ocean", t: "Ocean only — how fast the waves travel. Each octave runs a little faster than the one below, so the small chop skitters across the big swell. 0 freezes the surface mid-wave." },
+      { n: "Foam", w: "ocean", t: "Ocean only — the threshold a crest has to pass before it breaks white: high water and a steep face together. Low values leave the whole sea flecked, high values keep it to the biggest crests only." },
+      { n: "Wind", w: "ocean", t: "Ocean only — the direction the swell runs, in degrees. Turning it swings the whole sea, and because the octaves fan out from it the interference pattern changes too rather than just rotating." },
       { n: "Tilt", w: "bhole", t: "Black hole only — how high above the disk plane the camera sits. Low angles are the iconic view: the disk is nearly edge-on, so the light from its far side is bent up over the top of the shadow and back under the bottom, closing a ring round the darkness. Wind it high and you are looking down on a plain flat ring with the lensing barely visible." },
       { n: "Disk size", w: "bhole", t: "Black hole only — how far out the accretion disk extends. Small keeps a tight bright annulus hugging the shadow; large spreads a broad faint disk across the frame. The inner edge is fixed where the last stable orbit is." },
       { n: "Disk speed", w: "bhole", t: "Black hole only — how fast the disk turns. It orbits Keplerian, so the inner ring always shears past the outer one and the turbulence never repeats however long you watch. 0 freezes the pattern (the lensing and the beaming stay)." },

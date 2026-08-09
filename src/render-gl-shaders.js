@@ -1028,6 +1028,67 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Gerstner ocean: a rolling sea to the horizon.
+    //
+    // Not a raymarch and not a mesh — the screen ray is intersected with the flat y=0 plane
+    // and the wave sum is evaluated at THAT world point. A displaced surface would need
+    // marching; at this scale the cheat is invisible and it buys a horizon for free.
+    //
+    // The waves are a Gerstner-style sum: each octave is a sine SHARPENED by pow(), which is
+    // what gives the sea round troughs and peaked crests instead of a bland sine swell —
+    // uChop is that exponent. Directions rotate per octave so the swell interferes with
+    // itself and never reads as a repeating ripple, and both the height and its analytic
+    // derivative come out of the same loop (the derivative is the surface normal, which is
+    // what the glint and the foam are actually made of).
+    //
+    // NB the heat buffer is Y-FLIPPED against the screen, so screen-UP is 0.5 - y/fh. This
+    // effect has a horizon, so it is one of the ones that cares (see CLAUDE.md).
+    const FS_OCEAN = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uSwell; uniform float uChop;
+    uniform float uFoam; uniform float uWind; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)*2.0/uZoom;
+      vec3 rd = normalize(vec3(q.x, q.y - 0.30, 1.35));
+      float camH = 3.4;
+      float heat;
+      if (rd.y > -0.004){
+        // Sky: a soft band brightening down toward the horizon, so the sea has something to
+        // meet. Kept dim — the water is the subject.
+        heat = 0.10*exp(-max(0.0, rd.y)*9.0);
+      } else {
+        float t = camH/(-rd.y);
+        vec2 p = rd.xz*t;
+        float fade = 1.0/(1.0 + t*t*0.0016);        // distance haze, also hides the aliasing
+        float wr = uWind*0.017453293;
+        vec2 dir = vec2(cos(wr), sin(wr));
+        float h = 0.0, dhx = 0.0, dhz = 0.0;
+        float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
+        for (int i = 0; i < 6; i++){
+          float ph = dot(p, dir)*frq + uTime*spd;
+          float s = sin(ph)*0.5 + 0.5;
+          float w = pow(s, uChop);
+          h += amp*w;
+          norm += amp;
+          // d/dp of amp*pow(s, chop): chop*s^(chop-1) * 0.5cos(ph) * frq, along dir
+          float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+          dhx += dw*dir.x; dhz += dw*dir.y;
+          amp *= 0.62; frq *= 1.87; spd *= 1.21;
+          dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+        }
+        h /= norm;
+        vec3 n = normalize(vec3(-dhx*uSwell, 1.0, -dhz*uSwell));
+        float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
+        float slope = clamp(length(vec2(dhx, dhz))*uSwell*0.9, 0.0, 1.0);
+        // Foam rides the CRESTS: high water and steep face at once, which is where it breaks.
+        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), h*0.65 + slope*0.55);
+        heat = (0.10 + 0.48*h*h + 0.45*glint + 0.55*foam)*fade;
+        heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Black hole: an accretion disk seen through its own gravitational lensing.
     //
     // NOT a raymarch — there is no surface to hit. Photons are INTEGRATED: each ray is

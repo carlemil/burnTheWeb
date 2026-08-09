@@ -26,7 +26,7 @@ that are inherently "one animated scalar field" rank above ones that need real R
 | ~~**Lightning storm**~~ ✅ | SHIPPED in 1.16.0 | value-is-progress Strike + auto Rate, up to 5 bolts |
 | ~~**Reaction–diffusion (Gray–Scott)**~~ ✅ | SHIPPED post-1.16.0 | own RGBA16F ping-pong pair, dt-scaled steps, mitosis defaults |
 | ~~**Cymatics / Chladni plate**~~ ✅ | SHIPPED in 1.16.0 | Mode drift morphs, beat chips snap figures |
-| **Gerstner ocean** | Rolling sea heightfield lit low, heat by height+slope; sunset ramps | Pattern shader (Gerstner wave sum); Swell / Chop / Wind |
+| ~~**Gerstner ocean**~~ ✅ | SHIPPED post-1.25.0 as "Ocean" | screen ray x flat plane (no marching), 6 pow-sharpened trains, analytic normals for glint + foam |
 | **Volumetric nebula** | fbm cloud raymarch with light scattering — slow, huge, high-end | Raymarch; Density / Light / Drift; CPU mirror at low steps |
 | **Crystal growth** | DLA-style frost creeping from seeds, dissolving and regrowing | Feedback-texture sim like reaction–diffusion |
 
@@ -76,12 +76,11 @@ that are inherently "one animated scalar field" rank above ones that need real R
 
 What remains, strongest first:
 
-1. **Gerstner ocean** (effect) — rolling sea heightfield; sunset ramps.
-2. **Glenz / vector balls** (effect) — the last big Amiga classic; Tetrafyer's 3D infra.
-3. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
-4. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
-5. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
-6. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
+1. **Glenz / vector balls** (effect) — the last big Amiga classic; Tetrafyer's 3D infra.
+2. **Harmonograph** (effect) — decaying pendulum ribbons; cheap and elegant.
+3. **Particle galaxy** (effect) — log-spiral arms on the point pipeline.
+4. **CRT phosphor + mask** (filter) — completes the Scanlines/Barrel retro set.
+5. **Hex pixelate** (filter) — hexagonal mosaic; cheap.
 
 Also still open: Sine scroller (needs a glyph source), Crystal growth (reaction–diffusion's
 state-texture machinery now exists to build on), Volumetric nebula, 3D metaball goo,

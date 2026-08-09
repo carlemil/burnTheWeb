@@ -859,6 +859,61 @@
     }
   }
 
+  // ---- Gerstner ocean: rolling sea heightfield (shader effect) ----
+  // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
+  // 2x2 block and four octaves instead of six.
+  let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0;
+  function oceanSeed(dt) {
+    goTime += dt * goSpeed;
+    return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind, zoom };
+  }
+  function oceanCPU(s) {                  // CPU fallback — mirrors FS_OCEAN
+    const ar = fw / fh, camH = 3.4;
+    const wr = s.wind * Math.PI / 180;
+    const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };
+    for (let y = 0; y < fh; y += 2) {
+      for (let x = 0; x < fw; x += 2) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const qy = (0.5 - camPY / fh) * 2 / s.zoom;      // screen-UP, as in the shader
+        let rx = qx, ry = qy - 0.30, rz = 1.35;
+        const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
+        let heat;
+        if (ry > -0.004) {
+          heat = 0.10 * Math.exp(-Math.max(0, ry) * 9);
+        } else {
+          const t = camH / -ry, px = rx * t, pz = rz * t;
+          const fade = 1 / (1 + t * t * 0.0016);
+          let dx = Math.cos(wr), dz = Math.sin(wr);
+          let h = 0, dhx = 0, dhz = 0, amp = 1, frq = 0.40, spd = 1, norm = 0;
+          for (let i = 0; i < 4; i++) {
+            const ph = (px * dx + pz * dz) * frq + s.t * spd;
+            const sv = Math.sin(ph) * 0.5 + 0.5;
+            h += amp * Math.pow(sv, s.chop);
+            norm += amp;
+            const dw = amp * s.chop * Math.pow(Math.max(sv, 1e-4), s.chop - 1) * 0.5 * Math.cos(ph) * frq;
+            dhx += dw * dx; dhz += dw * dz;
+            amp *= 0.62; frq *= 1.87; spd *= 1.21;
+            const nx = dx * 0.62 - dz * 0.78, nz = dx * 0.78 + dz * 0.62;
+            const nl = Math.hypot(nx, nz) || 1; dx = nx / nl; dz = nz / nl;
+          }
+          h /= norm;
+          const nx = -dhx * s.swell, nz = -dhz * s.swell;
+          const nl = Math.hypot(nx, 1, nz) || 1;
+          const gl2 = Math.max(0, (nx / nl) * 0.35 + (1 / nl) * 0.55 + (nz / nl) * -0.75);
+          const glint = Math.pow(gl2, 22);
+          const slope = Math.max(0, Math.min(1, Math.hypot(dhx, dhz) * s.swell * 0.9));
+          const foam = ss((h * 0.65 + slope * 0.55 - s.foam) / Math.max(0.02, Math.min(0.995, s.foam + 0.22) - s.foam));
+          heat = (0.10 + 0.48 * h * h + 0.45 * glint + 0.55 * foam) * fade;
+          heat += 0.16 * Math.exp(-Math.abs(ry + 0.004) * 260);
+        }
+        const v = Math.max(0, Math.min(1, heat)) * 255;
+        for (let by = y; by < Math.min(y + 2, fh); by++)
+          for (let bx = x; bx < Math.min(x + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Black hole: lensed accretion disk (shader effect) ----
   // Photon integration, not a raymarch — see FS_BHOLE for the physics. The mirror keeps the
   // deflection (without it the picture is just an ellipse and the effect is pointless) and
