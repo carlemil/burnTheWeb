@@ -200,9 +200,14 @@ picture), **Beat tuning** (how beats are detected), **Layers** (the effect stack
 **Layer effect & filters** (the selected layer's visual, its sliders, its own filters and
 its palette). Press **M** to show or hide it.
 
-**React to music** — click **Capture** to tap system/tab audio (so it reacts to
-whatever you're playing, e.g. Spotify: pick *Entire Screen* + "share system
-audio", or a *tab* + "share tab audio"), or **Mic** for the microphone. The
+**React to music** — the **microphone is the default**: with no source of your own chosen,
+the first click anywhere on the page asks to listen through your mic, so music playing in
+the room drives the visual without you having to find anything. (The browser will only ask
+from a real click, which is why it waits for one — and the tutorial holds it until you are
+done reading.) Say no, or press **Stop**, and it is not asked again. Click **Capture**
+to tap system/tab audio instead (so it reacts to whatever you're playing, e.g. Spotify: pick
+*Entire Screen* + "share system audio", or a *tab* + "share tab audio"), or **Mic** for the
+microphone. The
 audio is split into **low / mid / high** bands with per-band beat detection (the
 3-bar meter shows it working). Detection is **onset-based**: each band watches its
 *spectral flux* — how much the spectrum jumped **up** since the last look — so it
@@ -649,7 +654,8 @@ you widened. A few things deliberately stay behind:
 - **Render resolution** is yours, not the scene's — otherwise a scene built on a fast
   GPU could bring a laptop or phone to a crawl with no obvious cause.
 - **Audio** can't be started for you; browsers require you to click. A beat-reactive
-  scene wanders gently until you turn on Capture or Mic.
+  scene wanders gently until you turn on Capture or Mic — the mic is armed by default,
+  but it still waits for your first click and your permission.
 - **The random bits stay random** — where a Julia orbit starts (unless you turn off
   Random seed), the chaos game's speckle, and how far into its cycle the animation is.
 

@@ -102,6 +102,25 @@
         + "raymarched solids, flocking birds) all sharing one palette, glow and beat-reactive "
         + "pipeline. Nothing is installed and nothing is uploaded; the whole thing is this one page. "
         + "<b>Click the picture to pause it</b>, and click again to carry on." },
+    // SECOND, not last. This is the headline feature and the one people never find on their
+    // own, so it comes before the furniture — the tour is not a manual read in order, it is
+    // a chance to say the important thing while anyone is still reading. It forward-refers to
+    // sliders and their chips, which is why it says so; the slider step then lands as the
+    // answer to a question already asked. The audio nudge follows ~30s later as the actual
+    // call to action, so this step deliberately explains rather than asks.
+    { head: "It reacts to your music", art: TUT_ART.music,
+      body: "The thing to know first: burnTheWeb <b>pulses in time with whatever you are listening "
+        + "to</b>. Turn on an audio source from <b>☰ → Audio</b> — <b>Capture</b> shares the sound of a "
+        + "tab (Spotify, YouTube), or use the <b>microphone</b> — and it is split into low, mid and high "
+        + "beats. Any slider can then be armed with its <b>L / M / H</b> chips (a couple of steps from "
+        + "now): it stops drifting, rests at its low end and snaps to its high end on every beat in that "
+        + "band. The audio is analysed in your browser only; nothing is recorded or sent anywhere."
+        // The mic is armed by default (see restore()), so the click that closes this tour is
+        // the one the browser prompts on. Saying so here is the difference between "of course"
+        // and an unexplained permission box a second after a tutorial ended.
+        + "<br><br>So that it just works: <b>your first click after this tour will ask to use the "
+        + "microphone</b>. Allow it and the room drives the visual; refuse, and it is never asked "
+        + "again — you can still start either source yourself from ☰ → Audio." },
     { head: "Two menus", art: TUT_ART.menus,
       body: "The panel down the left is the <b>scene editor</b> — everything that is part of what you "
         + "are looking at. The <b>☰</b> top-right is everything else: audio, render resolution, "
@@ -129,12 +148,6 @@
         + "reorder. Where one sits matters: above the line it shapes the heat <i>before</i> the effect "
         + "draws (Fire, trails, feedback warps build up over frames), below it repaints the finished "
         + "picture (pixelate, mirror, bloom). <b>+ Add filter</b> opens the full catalogue." },
-    { head: "It reacts to music", art: TUT_ART.music,
-      body: "Turn on an audio source — <b>Capture</b> shares the sound of a tab (Spotify, YouTube), or "
-        + "use the <b>microphone</b> — and the sound is split into low, mid and high beats. Arm any "
-        + "slider's <b>L / M / H</b> chips and it stops drifting: it rests at its low end and snaps to "
-        + "its high end on every beat in that band. The audio is analysed in your browser only; nothing "
-        + "is recorded or sent anywhere." },
     { head: "Keeping and sharing", art: TUT_ART.share,
       body: "Your scenes live in this browser. <b>Cloud profile</b> keeps the whole library against a "
         + "Google account and can publish it; <b>Public scenes</b> browses what other people have "

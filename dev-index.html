@@ -8038,6 +8038,13 @@
     // class as pause and fullscreen, deliberately absent from fullSnapshot: a reload that
     // silently came back muted would read as "the beat detection is broken".
     muted: false,
+    // Has the user SETTLED the audio question? With no stored source the app now arms the
+    // mic by default (see restore()), and "nothing stored" has to mean "never chose" rather
+    // than "chose not to" — pressing Stop, or refusing the browser's permission prompt, both
+    // leave `on` false and `src` "off", so without this they read as never-chosen and the
+    // next load re-arms the mic over the top of the decision. Persisted as the string "off"
+    // in the `audio` field, which older blobs simply never carry.
+    settled: false,
     bins: [[1, 7], [7, 116], [116, 557]],   // [start,end] FFT bin per band; set from sampleRate
     energy: [0, 0, 0], pulse: [0, 0, 0],
     flux: [0, 0, 0], thr: [0, 0, 0], peak: [0, 0, 0],
@@ -8155,6 +8162,7 @@
     stopStream();
     if (audio.timer) { clearInterval(audio.timer); audio.timer = 0; }
     audio.on = false; audio.src = "off";
+    audio.settled = true;         // a deliberate Stop — don't re-arm the mic on the next load
     audio.muted = false;          // don't leave the next Capture/Mic silently muted
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
@@ -8208,7 +8216,12 @@
       track("audio_started", { source: kind });          // conversion: a source is live
       markAudioUsed();                                   // satisfy the sync nudge for good
     } catch (err) {
+      // A refusal is an answer too. Without this the default mic arm would fire again on
+      // every single load, and a blocked site answers the prompt instantly and invisibly —
+      // so it would be a silent failed request forever, with the error line to match.
+      audio.settled = true;
       audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
+      persist();
     }
   }
   // One analysis tick (every HOP_MS, off the render loop). Beats are *latched*
@@ -13162,7 +13175,12 @@
       tdur: [+el("tdur-lo").value, +el("tdur-hi").value],   // transition length (ditto)
       scale: cfg.scale,                              // render resolution (global)
       panelOpen: !panel.classList.contains("hidden"),
-      audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
+      // Last live source, to re-arm on reload. THREE states, not two: a source name
+      // re-arms that one, "off" means the user has settled the question (Stop, or a refused
+      // permission prompt) and is left alone, and null/absent means never asked — which is
+      // what restore() answers by arming the MIC. Older blobs carry null, so an existing
+      // visitor who has never turned audio on is treated as never-asked, which is true.
+      audio: audio.on ? audio.src : (audio.settled ? "off" : null),
     };
   }
   function persist() {
@@ -13363,12 +13381,31 @@
         ? saved.curPreset : (presets.length ? 0 : -1);
       if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
       if (saved.audio === "capture" || saved.audio === "mic") armAudioResume(saved.audio);
+      // "off" = the question is settled. This has to be READ BACK into the flag, not just
+      // acted on: fullSnapshot rebuilds the field from `audio.settled`, so a session that
+      // loaded "off" and never touched audio would write null on its very next edit and
+      // re-arm the mic on the load after that — the decision would survive exactly one
+      // reload.
+      else if (saved.audio === "off") audio.settled = true;
     }
   }
   function restore() {
     let saved;
     try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
     applyBlob(saved, false);
+    // NO SOURCE EVER CHOSEN ⇒ arm the MIC. Reacting to music is the point of the app and
+    // the thing nobody discovers on their own, so the default is on rather than off.
+    // `armAudioResume` does not open anything by itself — it waits for the first user
+    // gesture, because getUserMedia may only be called from one. Two consequences worth
+    // knowing: the tutorial suppresses that gesture until the tour is done (so a first-time
+    // visitor is told what the app does before the browser asks for their microphone), and
+    // "off" is excluded here, which is the whole reason `audio.settled` exists.
+    //
+    // Here rather than in applyBlob, which also runs for an incoming SHARE blob: arming
+    // twice would install two resume listeners and start two streams. restore() is the one
+    // startup path and runs exactly once.
+    const a = saved && saved.audio;
+    if (a !== "capture" && a !== "mic" && a !== "off") armAudioResume("mic");
   }
   // Drop the payload from the address bar. Runs even when decode FAILS, so a
   // corrupt link doesn't stick around and get retried on every reload.
@@ -17575,6 +17612,25 @@
         + "raymarched solids, flocking birds) all sharing one palette, glow and beat-reactive "
         + "pipeline. Nothing is installed and nothing is uploaded; the whole thing is this one page. "
         + "<b>Click the picture to pause it</b>, and click again to carry on." },
+    // SECOND, not last. This is the headline feature and the one people never find on their
+    // own, so it comes before the furniture — the tour is not a manual read in order, it is
+    // a chance to say the important thing while anyone is still reading. It forward-refers to
+    // sliders and their chips, which is why it says so; the slider step then lands as the
+    // answer to a question already asked. The audio nudge follows ~30s later as the actual
+    // call to action, so this step deliberately explains rather than asks.
+    { head: "It reacts to your music", art: TUT_ART.music,
+      body: "The thing to know first: burnTheWeb <b>pulses in time with whatever you are listening "
+        + "to</b>. Turn on an audio source from <b>☰ → Audio</b> — <b>Capture</b> shares the sound of a "
+        + "tab (Spotify, YouTube), or use the <b>microphone</b> — and it is split into low, mid and high "
+        + "beats. Any slider can then be armed with its <b>L / M / H</b> chips (a couple of steps from "
+        + "now): it stops drifting, rests at its low end and snaps to its high end on every beat in that "
+        + "band. The audio is analysed in your browser only; nothing is recorded or sent anywhere."
+        // The mic is armed by default (see restore()), so the click that closes this tour is
+        // the one the browser prompts on. Saying so here is the difference between "of course"
+        // and an unexplained permission box a second after a tutorial ended.
+        + "<br><br>So that it just works: <b>your first click after this tour will ask to use the "
+        + "microphone</b>. Allow it and the room drives the visual; refuse, and it is never asked "
+        + "again — you can still start either source yourself from ☰ → Audio." },
     { head: "Two menus", art: TUT_ART.menus,
       body: "The panel down the left is the <b>scene editor</b> — everything that is part of what you "
         + "are looking at. The <b>☰</b> top-right is everything else: audio, render resolution, "
@@ -17602,12 +17658,6 @@
         + "reorder. Where one sits matters: above the line it shapes the heat <i>before</i> the effect "
         + "draws (Fire, trails, feedback warps build up over frames), below it repaints the finished "
         + "picture (pixelate, mirror, bloom). <b>+ Add filter</b> opens the full catalogue." },
-    { head: "It reacts to music", art: TUT_ART.music,
-      body: "Turn on an audio source — <b>Capture</b> shares the sound of a tab (Spotify, YouTube), or "
-        + "use the <b>microphone</b> — and the sound is split into low, mid and high beats. Arm any "
-        + "slider's <b>L / M / H</b> chips and it stops drifting: it rests at its low end and snaps to "
-        + "its high end on every beat in that band. The audio is analysed in your browser only; nothing "
-        + "is recorded or sent anywhere." },
     { head: "Keeping and sharing", art: TUT_ART.share,
       body: "Your scenes live in this browser. <b>Cloud profile</b> keeps the whole library against a "
         + "Google account and can publish it; <b>Public scenes</b> browses what other people have "

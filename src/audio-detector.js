@@ -49,6 +49,13 @@
     // class as pause and fullscreen, deliberately absent from fullSnapshot: a reload that
     // silently came back muted would read as "the beat detection is broken".
     muted: false,
+    // Has the user SETTLED the audio question? With no stored source the app now arms the
+    // mic by default (see restore()), and "nothing stored" has to mean "never chose" rather
+    // than "chose not to" — pressing Stop, or refusing the browser's permission prompt, both
+    // leave `on` false and `src` "off", so without this they read as never-chosen and the
+    // next load re-arms the mic over the top of the decision. Persisted as the string "off"
+    // in the `audio` field, which older blobs simply never carry.
+    settled: false,
     bins: [[1, 7], [7, 116], [116, 557]],   // [start,end] FFT bin per band; set from sampleRate
     energy: [0, 0, 0], pulse: [0, 0, 0],
     flux: [0, 0, 0], thr: [0, 0, 0], peak: [0, 0, 0],
@@ -166,6 +173,7 @@
     stopStream();
     if (audio.timer) { clearInterval(audio.timer); audio.timer = 0; }
     audio.on = false; audio.src = "off";
+    audio.settled = true;         // a deliberate Stop — don't re-arm the mic on the next load
     audio.muted = false;          // don't leave the next Capture/Mic silently muted
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
@@ -219,7 +227,12 @@
       track("audio_started", { source: kind });          // conversion: a source is live
       markAudioUsed();                                   // satisfy the sync nudge for good
     } catch (err) {
+      // A refusal is an answer too. Without this the default mic arm would fire again on
+      // every single load, and a blocked site answers the prompt instantly and invisibly —
+      // so it would be a silent failed request forever, with the error line to match.
+      audio.settled = true;
       audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
+      persist();
     }
   }
   // One analysis tick (every HOP_MS, off the render loop). Beats are *latched*

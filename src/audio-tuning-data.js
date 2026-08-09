@@ -79,7 +79,12 @@
       tdur: [+el("tdur-lo").value, +el("tdur-hi").value],   // transition length (ditto)
       scale: cfg.scale,                              // render resolution (global)
       panelOpen: !panel.classList.contains("hidden"),
-      audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
+      // Last live source, to re-arm on reload. THREE states, not two: a source name
+      // re-arms that one, "off" means the user has settled the question (Stop, or a refused
+      // permission prompt) and is left alone, and null/absent means never asked — which is
+      // what restore() answers by arming the MIC. Older blobs carry null, so an existing
+      // visitor who has never turned audio on is treated as never-asked, which is true.
+      audio: audio.on ? audio.src : (audio.settled ? "off" : null),
     };
   }
   function persist() {
@@ -280,12 +285,31 @@
         ? saved.curPreset : (presets.length ? 0 : -1);
       if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
       if (saved.audio === "capture" || saved.audio === "mic") armAudioResume(saved.audio);
+      // "off" = the question is settled. This has to be READ BACK into the flag, not just
+      // acted on: fullSnapshot rebuilds the field from `audio.settled`, so a session that
+      // loaded "off" and never touched audio would write null on its very next edit and
+      // re-arm the mic on the load after that — the decision would survive exactly one
+      // reload.
+      else if (saved.audio === "off") audio.settled = true;
     }
   }
   function restore() {
     let saved;
     try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
     applyBlob(saved, false);
+    // NO SOURCE EVER CHOSEN ⇒ arm the MIC. Reacting to music is the point of the app and
+    // the thing nobody discovers on their own, so the default is on rather than off.
+    // `armAudioResume` does not open anything by itself — it waits for the first user
+    // gesture, because getUserMedia may only be called from one. Two consequences worth
+    // knowing: the tutorial suppresses that gesture until the tour is done (so a first-time
+    // visitor is told what the app does before the browser asks for their microphone), and
+    // "off" is excluded here, which is the whole reason `audio.settled` exists.
+    //
+    // Here rather than in applyBlob, which also runs for an incoming SHARE blob: arming
+    // twice would install two resume listeners and start two streams. restore() is the one
+    // startup path and runs exactly once.
+    const a = saved && saved.audio;
+    if (a !== "capture" && a !== "mic" && a !== "off") armAudioResume("mic");
   }
   // Drop the payload from the address bar. Runs even when decode FAILS, so a
   // corrupt link doesn't stick around and get retried on every reload.

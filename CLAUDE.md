@@ -1094,7 +1094,19 @@ logs the URL once via `console.info`, and **sorts in both cases**. The query `se
 `payload`. Cached for `CONFIG.cloud.galleryTtlMs`; `galBust()` clears it.
 
 ### Audio & beat reactivity
-`audio` holds the WebAudio graph; `startAudio("capture"|"mic")` must run inside a user gesture. With
+`audio` holds the WebAudio graph; `startAudio("capture"|"mic")` must run inside a user gesture.
+
+**The MIC is armed by default.** `restore()` — not `applyBlob`, which also runs for an
+incoming share blob and would arm a second listener — calls `armAudioResume("mic")` when no
+source was ever chosen. The stored `audio` field therefore has **THREE** states, not two:
+a source name re-arms it, **`"off"` means the user settled the question** (Stop, or a refused
+permission prompt) and is left alone, and null/absent means never asked.
+- **`audio.settled` is the flag behind `"off"`**, set by `stopAudio` and by `startAudio`'s
+  catch. `applyBlob` must **read it back** on `"off"` — `fullSnapshot` rebuilds the field from
+  the flag, so a session that only loaded `"off"` would write null on its next edit and
+  re-arm the mic on the load after that.
+- Old blobs carry null, which correctly reads as never-asked.
+ With
 audio on and a chip armed, `updateAnims()` stops that slider drifting — it rests at the low thumb
 and snaps to the high thumb on each beat. `armAudioResume()` re-opens the last source on the first
 post-load gesture.
@@ -1194,6 +1206,9 @@ a refusal that still incremented `shows` would burn one of the three on a popup 
 `#tutdlg` (`src/ui-tutorial.js`, manifest slice **before `ui-menubar.js`** so the menubar stays
 last) — an eight-step modal tour, `TUT_STEPS` × `{head, body, art}`, `art` an inline SVG string
 on `currentColor` like `EYE_OPEN`. Also at **☰ → Tutorial**, above Help.
+- **Music is step TWO, on purpose** — it is the headline feature and the one nobody finds
+  unaided, so it comes before the furniture and forward-refers to the slider chips rather than
+  waiting for them. Don't file it back under "in logical order".
 - **Seen-once flag is its OWN key** `burnTheWeb.tutorial.v1`, like the credits and banner
   preferences — **not** in `fullSnapshot()`, so it never rides a share link or a backup. Written
   when it OPENS, so a dismissal still counts.
