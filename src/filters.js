@@ -47,7 +47,7 @@
   const FILTERS = [
     { id: "fire",  name: "Fire",  stage: "feedback", params: ["rise", "burn"],
       help: "Heat rises and cools, the classic fire sim — now available to every effect, not just the point ones.",
-      defaults: { rise: [130, 130], burn: [120, 120] },
+      defaults: { rise: [165, 165], burn: [120, 120] },
       glFeedback: src => {
         gl.useProgram(glProg.prop.p);
         bindTexUnit(0, src);
@@ -58,7 +58,7 @@
       } },
     { id: "fade",  name: "Fade pixel", stage: "feedback", params: ["fade"],
       help: "Each pixel keeps a fraction of its heat every tick — phosphor trails.",
-      defaults: { fade: [0.94, 0.94] },
+      defaults: { fade: [0.985, 0.985] },
       glFeedback: src => {
         const P = glProg.fade;
         gl.useProgram(P.p);
@@ -69,7 +69,7 @@
       cpuFeedback: () => { for (let i = 0; i < fire.length; i++) fire[i] = fire[i] * fadeKeep; } },
     { id: "diffuse", name: "Diffuse", stage: "feedback", params: ["diffuse", "diffkeep"],
       help: "Heat bleeds sideways as well as up — Fire's flames turn to smoke.",
-      defaults: { diffuse: [1, 1], diffkeep: [0.97, 0.97] },
+      defaults: { diffuse: [3.6, 3.6], diffkeep: [0.985, 0.985] },
       glFeedback: src => {
         const P = glProg.diffuse;
         gl.useProgram(P.p);
@@ -82,7 +82,7 @@
       cpuFeedback: () => heatDiffuseCPU(diffRad, diffKeep) },
     { id: "echo", name: "Echo", stage: "feedback", params: ["echo", "echoang", "echokeep"],
       help: "Trails drag in a direction instead of just dimming in place.",
-      defaults: { echo: [2, 2], echoang: [90, 90], echokeep: [0.94, 0.94] },
+      defaults: { echo: [4.5, 4.5], echoang: [90, 90], echokeep: [0.94, 0.94] },
       glFeedback: src => glWarpFeedback(src, echoDist, echoAng, 1, 0, echoKeep),
       cpuFeedback: () => heatWarpCPU(echoDist, echoAng, 1, 0, echoKeep) },
     { id: "zoomfb", name: "Zoom feedback", stage: "feedback", params: ["zfb", "zfbkeep"],
@@ -92,7 +92,7 @@
       cpuFeedback: () => heatWarpCPU(0, 0, zfbScale, 0, zfbKeep) },
     { id: "swirl", name: "Swirl", stage: "feedback", params: ["swirl", "swirlkeep"],
       help: "The retained heat is rotated about the centre every tick, so trails spiral. Stack it with Zoom feedback for a vortex.",
-      defaults: { swirl: [2, 2], swirlkeep: [0.94, 0.94] },
+      defaults: { swirl: [6, 6], swirlkeep: [0.94, 0.94] },
       glFeedback: src => glWarpFeedback(src, 0, 0, 1, swirlSpin, swirlKeep),
       cpuFeedback: () => heatWarpCPU(0, 0, 1, swirlSpin, swirlKeep) },
     { id: "cellular", name: "Cellular automaton", stage: "feedback", params: ["cellstates", "cellmix", "cellkeep"],
@@ -119,21 +119,21 @@
       gl: src => postPass("wedge", src, u => { gl.uniform1f(u.uSeg, wedgeSeg); gl.uniform1f(u.uRot, wedgeRot * Math.PI / 180); }) },
     { id: "glitch", cpuOk: false, name: "Slice glitch", stage: "post", params: ["glitch", "glitchrows"],
       help: "Tear horizontal slices sideways at random. Arm the amount to a beat and it rips on the hit.",
-      defaults: { glitch: [0.05, 0.05], glitchrows: [8, 8] },
+      defaults: { glitch: [0.22, 0.22], glitchrows: [10, 10] },
       gl: src => postPass("glitch", src, u => {
         gl.uniform1f(u.uAmount, glitchAmt); gl.uniform1f(u.uRows, glitchRows); gl.uniform1f(u.uTime, postTime);
       }) },
     { id: "pixelate", cpuOk: false, name: "Pixelate", stage: "post", params: ["pixel"],
       help: "Snap the image to a coarse grid of blocks.",
-      defaults: { pixel: [6, 6] },
+      defaults: { pixel: [14, 14] },
       gl: src => postPass("pixelate", src, u => gl.uniform1f(u.uBlock, pixelBlock)) },
     { id: "hexpix", cpuOk: false, name: "Hex pixelate", stage: "post", params: ["hexsize"],
       help: "Snap the image to a honeycomb of hexagons instead of squares.",
-      defaults: { hexsize: [10, 10] },
+      defaults: { hexsize: [20, 20] },
       gl: src => postPass("hexpix", src, u => gl.uniform1f(u.uSize2, hexSize)) },
     { id: "soften", cpuOk: false, name: "Blur / sharpen", stage: "post", params: ["soften", "softrad"],
       help: "One knob: negative blurs, positive sharpens (unsharp mask).",
-      defaults: { soften: [-0.6, -0.6], softrad: [1.5, 1.5] },
+      defaults: { soften: [-1, -1], softrad: [5.5, 5.5] },
       gl: src => postPass("soften", src, u => { gl.uniform1f(u.uRadius, softenRad); gl.uniform1f(u.uAmount, softenAmt); }) },
     { id: "edge", cpuOk: false, name: "Edge", stage: "post", params: ["edge"],
       help: "Sobel outline — traces the shapes instead of filling them.",
@@ -141,11 +141,11 @@
       gl: src => postPass("edge", src, u => gl.uniform1f(u.uAmount, edgeAmt)) },
     { id: "poster", cpuOk: false, name: "Posterize", stage: "post", params: ["poster"],
       help: "Quantise the colours into flat bands.",
-      defaults: { poster: [5, 5] },
+      defaults: { poster: [3, 3] },
       gl: src => postPass("posterize", src, u => gl.uniform1f(u.uLevels, posterLevels)) },
     { id: "halftone", cpuOk: false, name: "Halftone", stage: "post", params: ["halfdot", "halfamt"],
       help: "A rotated dot screen whose dots grow with brightness — the print look. Posterize flattens the ramp; this one spends texture on it.",
-      defaults: { halfdot: [4, 4], halfamt: [0.8, 0.8] },
+      defaults: { halfdot: [6, 6], halfamt: [0.9, 0.9] },
       gl: src => postPass("halftone", src, u => { gl.uniform1f(u.uDot, halfDot); gl.uniform1f(u.uAmount, halfAmt); }) },
     { id: "thresh", cpuOk: false, name: "Solarize", stage: "post", params: ["threshlvl", "threshamt"],
       help: "Invert everything above a brightness level — Posterize's nastier cousin.",
@@ -153,7 +153,7 @@
       gl: src => postPass("thresh", src, u => { gl.uniform1f(u.uLevel, threshLevel); gl.uniform1f(u.uAmount, threshAmt); }) },
     { id: "chroma", cpuOk: false, name: "Chromatic aberration", stage: "post", params: ["chroma"],
       help: "Split the red and blue channels radially, so the image fringes toward the corners like a cheap lens.",
-      defaults: { chroma: [1, 1] },
+      defaults: { chroma: [2.8, 2.8] },
       gl: src => postPass("chroma", src, u => gl.uniform1f(u.uAmount, chromaAmt)) },
     { id: "mirror", cpuOk: false, name: "Mirror", stage: "post", params: ["mirror"],
       help: "Fold the image about its centre — X, Y or both.",
@@ -165,11 +165,11 @@
     // per-effect/whole-scene grouping needs the bloom+screen run to stay contiguous.
     { id: "shock", cpuOk: false, name: "Shockwave", stage: "post", params: ["shock", "shockamp", "shockwidth"],
       help: "A displacement ring rushing out from the centre. Arm Shock's beat chips and every beat fires a wave — Trigger duration sets how long it takes to cross the screen.",
-      defaults: { shock: [0, 0], shockamp: [0.06, 0.06], shockwidth: [0.1, 0.1] },
+      defaults: { shock: [0, 1], shockamp: [0.11, 0.11], shockwidth: [0.16, 0.16] },
       gl: src => postPass("shock", src, u => { gl.uniform1f(u.uAmount, shockAmt); gl.uniform1f(u.uAmp, shockAmp); gl.uniform1f(u.uWidth, shockWidth); }) },
     { id: "pixsort", cpuOk: false, name: "Pixel sort", stage: "post", params: ["pxthresh", "pxstreak", "pxdir"],
       help: "The modern glitch: pixels brighter than the threshold smear into streaks along one direction, dark areas stay put. Lower the threshold to melt more of the picture.",
-      defaults: { pxthresh: [0.55, 0.55], pxstreak: [0.5, 0.5], pxdir: [0, 0] },
+      defaults: { pxthresh: [0.42, 0.42], pxstreak: [0.75, 0.75], pxdir: [0, 0] },
       gl: src => postPass("pixsort", src, u => { gl.uniform1f(u.uThresh, pxThresh); gl.uniform1f(u.uLen, pxStreak); gl.uniform1f(u.uDir, pxDir); }) },
     { id: "lens", cpuOk: false, name: "Lens bubble", stage: "post", params: ["lenssize", "lensmag", "lensspeed"],
       help: "A wandering fisheye magnifier drifting over the picture — the classic demo lens. Wander at 0 parks it in the middle.",
@@ -185,7 +185,7 @@
       gl: src => postPass("droste", src, u => { gl.uniform1f(u.uDepth, drosteDepth); gl.uniform1f(u.uTwist, drosteTwist); gl.uniform1f(u.uTime, postTime); }) },
     { id: "kuwahara", cpuOk: false, name: "Oil paint", stage: "post", params: ["kuwrad"],
       help: "Kuwahara filtering: each pixel takes the calmest neighbourhood's average, flattening texture while keeping edges — the screen-print / oil-paint look.",
-      defaults: { kuwrad: [3, 3] },
+      defaults: { kuwrad: [6, 6] },
       gl: src => postPass("kuwahara", src, u => gl.uniform1f(u.uRad, kuwRad)) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
@@ -210,7 +210,7 @@
     //     the glow too, which is what the old fixed order did.
     { id: "barrel", cpuOk: false, name: "Barrel distortion", stage: "post", params: ["barrel"],
       help: "Bulge the image as if it were painted on the front of a CRT.",
-      defaults: { barrel: [0.15, 0.15] },
+      defaults: { barrel: [0.32, 0.32] },
       gl: src => postPass("barrel", src, u => gl.uniform1f(u.uAmount, barrelAmt)) },
     { id: "scanlines", cpuOk: false, name: "Scanlines", stage: "post", params: ["scan", "scancount"],
       help: "Darken alternating rows — the raster you are pretending to be.",
@@ -226,7 +226,7 @@
       gl: src => postPass("vignette", src, u => gl.uniform1f(u.uAmount, vigAmt)) },
     { id: "grain", cpuOk: false, name: "Film grain", stage: "post", params: ["grain"],
       help: "Animated noise over the finished frame.",
-      defaults: { grain: [0.08, 0.08] },
+      defaults: { grain: [0.22, 0.22] },
       gl: src => postPass("grain", src, u => { gl.uniform1f(u.uAmount, grainAmt); gl.uniform1f(u.uTime, postTime); }) },
   ];
   const FILTER_BY_ID = {};

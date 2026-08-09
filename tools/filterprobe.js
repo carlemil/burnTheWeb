@@ -219,7 +219,13 @@ ok(F.FILTERS.every(f => F.presetFilters(2).indexOf(f.id) < 0),
   const missing = Object.keys(F.FILTER_DEFAULTS).filter(k => !(k in st));
   ok(!missing.length, "every filter param is seeded on an effect that never mentions it",
      missing.length ? "missing " + missing.join(",") : Object.keys(F.FILTER_DEFAULTS).join(","));
-  ok(Array.isArray(st.rise) && st.rise[0] === 130, "Fire's Flame rise is seeded from the registry");
+  // Compared against the registry, NOT against a hard-coded 130. The claim is that the value
+  // travels from the descriptor into the seeded state; pinning the number as well only made
+  // this fail every time a default was retuned, which says nothing about the seeding path.
+  const wantRise = F.FILTER_DEFAULTS.rise;
+  ok(Array.isArray(st.rise) && Array.isArray(wantRise) && st.rise[0] === wantRise[0],
+     "Fire's Flame rise is seeded from the registry",
+     "state " + st.rise[0] + " vs registry " + (wantRise && wantRise[0]));
   const st3 = F.presetState(3);                      // this one sets `rise` itself
   ok(st3.rise[0] === 77, "an effect that names a filter key still wins", JSON.stringify(st3.rise));
   // seeded arrays must be copies, or two effects would share one array

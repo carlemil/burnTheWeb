@@ -315,6 +315,24 @@ must never be sorted.
 - `makeFilterGrab`: transform the dragged section, show a `.filter-drop` marker, reorder once on
   release. **Never move the node mid-drag** (Chromium drops pointer capture on reparent).
 
+**A filter's `defaults` must SHOW IT OFF.** Ticking one in the picker is how a user finds out
+what it does, so a default that reads as "off" is a filter nobody adopts. Several shipped that
+way — **Shockwave's `shock` defaulted to 0, which is the ring already gone off the edge, so
+adding it did literally nothing** — and a dozen more sat in the bottom fifth of their travel.
+Keep the FILTERS `defaults` and the CONTROLS `lo`/`hi` **in step**: the registry is what a
+fresh layer gets (via `presetState`), the control is the slider's shipped position, and two
+different answers to "what is the default" is a trap.
+- Where "bold" is the LOW end, the default belongs there: `soften: -1` is maximum blur,
+  `poster: 3` is the hardest banding. An audit that flags low values will flag these; they are
+  inversions, not omissions. Same for the enums (`mirror`, `pxdir`) and for `shock`, whose
+  default is the *spread* `[0, 1]` so the ring sweeps instead of sitting still.
+- **Measuring this needs BOTH a still and a moving subject, and both a smooth and a sparse
+  one.** A moving scene confounds the filter with its own motion (Bouncing shapes at speed 1
+  gave a noise floor of 34.8, which nothing could clear); freezing the effect isolates the
+  filter perfectly but kills the TRAIL filters by construction — retaining a fraction of an
+  identical frame changes nothing, and Fade pixel measured a flat 0.00. Accumulating filters
+  also need seconds to settle, not milliseconds: judged after 450ms, Fire looked inert.
+
 Filter `params` are ordinary CONTROLS keys (host `"filter"`, one contiguous `group` per filter).
 `refreshControlVisibility()` shows a control when the effect declares it **or** a ticked filter owns
 it. `presetState` merges `FILTER_DEFAULTS` into every effect's state (an effect naming the same key
