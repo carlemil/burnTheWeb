@@ -14,6 +14,19 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.27.0] — 2026-08-10
+
+### Added
+
+- **A "Blank canvas" scene**, at the bottom of the shipped scene list. One layer, no filters,
+  a plain plasma on its shipped defaults — somewhere to start from nothing. Every other scene
+  in the list is a finished picture, and changing a layer's effect deliberately keeps that
+  layer's filter chain, so building something of your own previously began by taking a dozen
+  filters off somebody else's scene.
+
+  It arrives with the rest of the starter library, so it appears on a first visit or on a
+  library you have emptied — an existing set of scenes is left alone.
+
 ## [1.26.0] — 2026-08-10
 
 ### Added
