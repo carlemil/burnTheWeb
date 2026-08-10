@@ -312,7 +312,8 @@
   body.ui-hidden #carddlg, body.ui-hidden #paldlg, body.ui-hidden #paledlg,
   body.ui-hidden #fltdlg, body.ui-hidden #palpickdlg,
   body.ui-hidden #transpickdlg, body.ui-hidden #galdlg,
-  body.ui-hidden #help, body.ui-hidden #restoredlg { display: none !important; }
+  body.ui-hidden #help, body.ui-hidden #restoredlg,
+  body.ui-hidden #tutdlg { display: none !important; }
   #paused {
     position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; background: rgba(10, 6, 4, 0.7); border: 1px solid rgba(255, 140, 40, 0.45);
@@ -1231,7 +1232,7 @@
      #carddlg does NOT (rgba .8 with its own blur). */
   #galdlg .gal-box > h2, #paldlg .pal-box > h2, #paledlg .pale-box > h2,
   #fltdlg .flt-box > h2, #palpickdlg .flt-box > h2, #transpickdlg .flt-box > h2,
-  #help .help-box > h2, #syncpop .sync-box > h2,
+  #help .help-box > h2, #syncpop .sync-box > h2, #tutdlg .tut-box > h2,
   #restoredlg .rst-box > h2 {
     position: sticky; top: 0; z-index: 2; padding: 18px 0 9px;
     /* Near-opaque AND backdrop-blurred: at 0.97 alone the line of text passing underneath
@@ -1401,6 +1402,70 @@
   #syncpop .sync-actions #sync-capture { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
   #syncpop .sync-actions .ghost { flex: 0 0 auto; background: transparent; opacity: .75; }
 
+  /* First-run tutorial — the eight-step tour (ui-tutorial.js).
+     Built on #syncpop's shape: a full-screen flex backdrop with a scrolling box centred in
+     it, so it needs none of the 298px docking the panel-tool dialogs use and nothing in the
+     760px block below. The box is near-opaque and carries NO backdrop-filter of its own,
+     which is precisely what qualifies its title for the painted sticky header up above — a
+     translucent box with its own blur composites a nested backdrop-filter toward black on a
+     real GPU (the #carddlg lesson). Don't add one. */
+  #tutdlg {
+    position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  #tutdlg.hidden { display: none; }
+  #tutdlg .tut-box {
+    /* Sized like the sync nudge: a cap plus a margin, and flex-shrink does the narrow case —
+       measured down to a 320px viewport (a `vw` fraction here would only duplicate what the
+       margin already says). Headless clamps the top-level viewport at 492px, so check this
+       one in an iframe of a real width, not with --window-size. */
+    position: relative; width: 100%; max-width: 500px; max-height: 88vh; overflow-y: auto; margin: 16px;
+    padding: 20px 22px 18px; background: rgba(14, 8, 5, 0.97);
+    border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
+    color: #ffdcb0; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+  }
+  /* Explicit margin: the sticky-header rule supplies the padding, not the margin, and a
+     default <h2> margin would push the title away from the header background it paints. */
+  #tutdlg h2 { margin: 0 0 10px; color: #ffb15a; font-size: 16px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.7); }
+  /* The step counter rides in the title so the header says where you are without a second
+     line of chrome. Pushed to the right of the h2's own box, clear of the floated ×. */
+  #tut-count { float: right; margin-right: 34px; opacity: .5; font-size: 11.5px; font-weight: 400; letter-spacing: .06em; }
+  /* The art is a fixed-height stage, so stepping through the tour never jumps the layout by
+     the difference between two drawings. */
+  #tut-art {
+    display: flex; align-items: center; justify-content: center;
+    height: 118px; margin: 2px 0 14px; color: #ff9a3c;
+    background: rgba(255, 110, 30, 0.07); border: 1px solid rgba(255, 140, 40, 0.18); border-radius: 10px;
+  }
+  #tut-art svg { width: min(100%, 300px); height: 100%; filter: drop-shadow(0 0 8px rgba(255, 110, 20, 0.45)); }
+  #tut-head { margin: 0 0 6px; color: #ffcf87; font-size: 13px; font-weight: 600; }
+  #tut-body { margin: 0; opacity: .88; }
+  #tut-body b { color: #ffcf87; font-weight: 600; }
+  .tut-keys {
+    display: inline-block; padding: 0 5px; border: 1px solid rgba(255, 140, 40, 0.45);
+    border-radius: 4px; background: rgba(255, 110, 30, 0.14); color: #ffce9a;
+  }
+  #tut-dots { display: flex; gap: 6px; margin: 16px 0 0; }
+  .tut-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    border: 1px solid rgba(255, 140, 40, 0.55); background: transparent;
+  }
+  .tut-dot.on { background: #ff9a3c; box-shadow: 0 0 6px rgba(255, 122, 26, 0.8); }
+  /* Same button treatment as the sync nudge's row — Skip hangs left, Back/Next sit right. */
+  #tutdlg .tut-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #tutdlg .tut-actions button {
+    padding: 9px 14px; background: rgba(255, 110, 30, 0.16);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 7px; color: #ffce9a;
+    font: 12px/1 ui-monospace, monospace; cursor: pointer;
+  }
+  #tutdlg .tut-actions button:hover { background: rgba(255, 122, 26, 0.3); }
+  #tutdlg .tut-actions #tut-next { background: rgba(255, 110, 30, 0.34); color: #fff2e6; }
+  #tutdlg .tut-actions #tut-back { margin-left: auto; }
+  #tutdlg .tut-actions .ghost { background: transparent; opacity: .7; }
+  /* .off is setOff's dim; `disabled` is what actually stops Back on step 1. */
+  #tutdlg .tut-actions button.off { opacity: .3; }
+
   /* Cardioid debug view: the Mandelbrot set with the seed's orbit drawn on top.
      Deliberately NOT a modal — it's a floating panel at the same depth as the
      rest of the menu (below #panel, like #breakout), with no backdrop, so you can
@@ -1493,7 +1558,8 @@
      and fails if any dialog's `padding` shorthand is declared below this rule. */
   #galdlg .gal-box, #paldlg .pal-box, #paledlg .pale-box,
   #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
-  #help .help-box, #syncpop .sync-box, #carddlg, #restoredlg .rst-box { padding-top: 0; }
+  #help .help-box, #syncpop .sync-box, #tutdlg .tut-box,
+  #carddlg, #restoredlg .rst-box { padding-top: 0; }
 
   /* ---- NARROW VIEWPORTS — KEEP THIS LAST TOO ----------------------------------------
      Five dialogs dock top-left at the #breakout column's 298px line, and the column itself
@@ -2028,6 +2094,28 @@
   </div>
 </div>
 
+<!-- First-run tutorial: an eight-step tour, shown once and then reachable at ☰ → Tutorial.
+     It opens BEFORE the sync nudge above (which holds its counter while this is up), so a
+     first-time visitor is told what the app is before being asked to share their audio.
+     Modal — backdrop, focus trap — and everything inside it bar the shell is written by
+     ui-tutorial.js: the <h2> deliberately stays constant across steps so the sticky header
+     never reflows, and the step's own title is the <h3>. -->
+<div id="tutdlg" class="hidden">
+  <div class="tut-box" role="dialog" aria-modal="true" aria-labelledby="tut-title">
+    <button id="tut-close" class="pal-close" type="button" aria-label="Close">×</button>
+    <h2 id="tut-title">Welcome to burnTheWeb <span id="tut-count"></span></h2>
+    <div id="tut-art" aria-hidden="true"></div>
+    <h3 id="tut-head"></h3>
+    <div id="tut-body"></div>
+    <div id="tut-dots" aria-hidden="true"></div>
+    <div class="tut-actions">
+      <button id="tut-skip" type="button" class="ghost">Skip</button>
+      <button id="tut-back" type="button">Back</button>
+      <button id="tut-next" type="button">Next →</button>
+    </div>
+  </div>
+</div>
+
 <!-- Pop-out column: sliders "broken out" of the menu dock here (see the break-out
      module in the script). Sits to the right of #panel; empty/hidden by default. -->
 <div id="breakout" class="empty"></div>
@@ -2053,7 +2141,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.25.0",
+    version: "1.26.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2305,7 +2393,7 @@
   // through a hoisted function) because bindRange runs a slider's apply() during
   // wiring, long before the FILTERS registry block is evaluated.
   let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
-    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1;
+    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10;
   // Feedback warps (Echo / Zoom feedback / Swirl / Diffuse). Each carries its own
   // Keep, so it decays standalone instead of saturating to white when it is the only
   // feedback filter ticked — Fade is a separate filter you may or may not stack.
@@ -2317,6 +2405,7 @@
     halfDot = 4, halfAmt = 0.8, threshLevel = 0.5, threshAmt = 0.8, chromaAmt = 1;
   // Screen stage (after the glow, at display resolution)
   let barrelAmt = 0.15, scanAmt = 0.35, scanCount = 240, vigAmt = 0.4, grainAmt = 0.08;
+  let crtMask = 0.5, crtBleed = 0.4;                     // CRT phosphor: shadow mask, beam smear
   let shockAmt = 0, shockAmp = 0.06, shockWidth = 0.1;   // Shockwave ring: progress, push, thickness
   let pxThresh = 0.55, pxStreak = 0.5, pxDir = 0;        // Pixel sort
   let cellStates = 12, cellMix = 1, cellKeep = 1;        // Cellular automaton (feedback)
@@ -3916,6 +4005,331 @@
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
+    // Quaternion Julia: z -> z^2 + c iterated in the QUATERNIONS, raymarched as a solid.
+    // The set is 4-dimensional, so what is on screen is a 3D SLICE of it — uSlice is where
+    // that slice is cut along the fourth axis, and sliding it morphs the solid continuously
+    // through shapes no 3D fractal can hold still.
+    //
+    // c comes from THE SAME cardioid orbit AnimeJulia rides (juliaSeed, in the descriptor),
+    // so the Orbit editor drives this effect for free and everything already known about
+    // where to sit relative to the Mandelbrot set still applies.
+    //
+    // c IS PURELY COMPLEX, and that is not a simplification. z^2+c in the quaternions is
+    // invariant under rotations of the imaginary 3-space, so ANY c can be rotated into the
+    // (1, i) plane: every quaternion Julia set of this family is a surface of revolution,
+    // and giving c a j or k component only turns the solid on the spot. It does raise |c|
+    // though, and past the escape radius the set is empty — which is a black screen for a
+    // control that was supposed to add detail. (Tried, rendered nothing, removed.)
+    //
+    // The shape variety is in the SLICE instead, which is where it always was: the set is
+    // 4D and the screen is 3D, so something has to be cut. uSlice is where the cut falls,
+    // and uCut ROTATES THE CUTTING HYPERPLANE in the (real, k) plane — at 0 the familiar
+    // (x, y, z, slice) sample, and winding it round trades the real axis for the fourth one
+    // and walks through cross-sections nothing in 3D can show.
+    //
+    // DE is iq's: |z|·log|z|/|dz| with |dz| tracked as the scalar md2 (=|dz|^2), which is
+    // exact here because the derivative of z^2+c is 2z and only its MAGNITUDE is needed.
+    const FS_QJULIA = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform vec4 uC; uniform float uPhase; uniform float uSlice;
+    uniform float uCut; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    vec4 qsqr(vec4 a){ return vec4(a.x*a.x - dot(a.yzw, a.yzw), 2.0*a.x*a.yzw); }
+    // Lift a 3D sample point into the 4D domain through the rotated cutting hyperplane.
+    vec4 qjLift(vec3 p, float s, float ca, float sa){
+      return vec4(p.x*ca - s*sa, p.y, p.z, p.x*sa + s*ca);
+    }
+    float qjDE(vec4 z, vec4 c, int it){
+      float md2 = 1.0, mz2 = dot(z, z);
+      for (int i = 0; i < 12; i++){
+        if (i >= it) break;
+        md2 *= 4.0*mz2;              // |dz|^2 *= |2z|^2
+        z = qsqr(z) + c;
+        mz2 = dot(z, z);
+        if (mz2 > 16.0) break;       // escape: 4^2, well clear of the |z|=2 bound
+      }
+      return 0.25*sqrt(mz2/md2)*log(max(mz2, 1e-12));
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uPhase), sa = sin(uPhase);
+      float tilt = 0.32*sin(uPhase*0.6), ct = cos(tilt), st = sin(tilt);
+      vec3 ro = vec3(0.0, 0.0, -2.9);
+      vec3 rd = normalize(vec3(uv, 1.7));
+      ro = vec3(ro.x*ca + ro.z*sa, ro.y, -ro.x*sa + ro.z*ca);
+      rd = vec3(rd.x*ca + rd.z*sa, rd.y, -rd.x*sa + rd.z*ca);
+      ro = vec3(ro.x, ro.y*ct - ro.z*st, ro.y*st + ro.z*ct);
+      rd = vec3(rd.x, rd.y*ct - rd.z*st, rd.y*st + rd.z*ct);
+      int it = int(uIter);
+      vec4 c = uC;
+      // kc/ks, NOT ca/sa: the camera orbit above already owns those names in this scope.
+      float kc = cos(uCut), ks = sin(uCut);
+      // The whole set is inside |q| < 2, so skip the empty run in front of it rather than
+      // spending steps on vacuum: enter at the bounding sphere, and give up at the far side.
+      float b = dot(ro, rd), cc = dot(ro, ro) - 4.0;
+      float disc = b*b - cc;
+      float heat = 0.0, halo = 9.0;
+      if (disc > 0.0){
+        float sd = sqrt(disc);
+        float t = max(0.0, -b - sd), tMax = -b + sd;
+        for (int i = 0; i < 96; i++){
+          if (t > tMax) break;
+          vec3 p = ro + rd*t;
+          float d = qjDE(qjLift(p, uSlice, kc, ks), c, it);
+          halo = min(halo, d/max(t, 0.3));
+          if (d < 0.0006*max(t, 0.5)){
+            float e = 0.0009*max(t, 0.5);
+            vec2 h = vec2(1.0, -1.0)*0.5773;
+            vec3 nrm = normalize(
+              h.xyy*qjDE(qjLift(p + h.xyy*e, uSlice, kc, ks), c, it) +
+              h.yyx*qjDE(qjLift(p + h.yyx*e, uSlice, kc, ks), c, it) +
+              h.yxy*qjDE(qjLift(p + h.yxy*e, uSlice, kc, ks), c, it) +
+              h.xxx*qjDE(qjLift(p + h.xxx*e, uSlice, kc, ks), c, it));
+            float dif = max(0.0, dot(nrm, normalize(vec3(0.55, 0.75, -0.5))));
+            float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
+            heat = (0.20 + 0.72*dif + uGlow*0.55*rim)*smoothstep(5.0, 1.6, t);
+            break;
+          }
+          t += d;
+        }
+      }
+      if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Vector balls: the Amiga "bobs in formation" effect — a rigid constellation of shaded
+    // spheres tumbling in 3D.
+    //
+    // Deliberately NOT a raymarch and NOT a distance field. The original was a painter's
+    // algorithm over projected sprites, and the modern equivalent of that is a per-pixel
+    // z-test: loop every ball, project its centre, and if this pixel lands inside the
+    // projected disc work out the depth of the sphere's FRONT surface there and keep the
+    // nearest. That gives exact mutual occlusion (a ball in front really does hide the one
+    // behind, edge for edge) for a fraction of a marcher's cost, and the ball count is the
+    // loop bound rather than a scene-complexity multiplier.
+    //
+    // The formation is computed IN HERE from the ball index, not passed in as an array, so
+    // the effect carries no per-layer state at all beyond its two tumble angles.
+    const FS_VBALLS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uPhase; uniform float uCount; uniform float uShape;
+    uniform float uRad; uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    vec3 vbForm(float fi, float fn, int shape){
+      if (shape == 0){                       // cube lattice
+        float side = ceil(pow(fn, 1.0/3.0));
+        float ix = mod(fi, side);
+        float iy = mod(floor(fi/side), side);
+        float iz = floor(fi/(side*side));
+        return (vec3(ix, iy, iz) - (side - 1.0)*0.5)*(2.4/max(1.0, side - 1.0));
+      }
+      if (shape == 1){                       // sphere shell, Fibonacci-spaced so it is even
+        float k = (fi + 0.5)/fn;
+        float ph = acos(clamp(1.0 - 2.0*k, -1.0, 1.0));
+        float th = 2.399963*fi;              // golden angle
+        return vec3(sin(ph)*cos(th), sin(ph)*sin(th), cos(ph))*1.45;
+      }
+      if (shape == 2){                       // tilted ring
+        float a = fi/fn*6.2831853;
+        return vec3(cos(a)*1.5, sin(a*2.0)*0.45, sin(a)*1.5);
+      }
+      float u = fi/fn;                       // double helix
+      float a = u*12.0 + (mod(fi, 2.0) < 0.5 ? 0.0 : 3.1415927);
+      return vec3(cos(a)*0.95, (u - 0.5)*3.0, sin(a)*0.95);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ay = uPhase, ax = uPhase*0.63;
+      float cy = cos(ay), sy = sin(ay), cx = cos(ax), sx = sin(ax);
+      int n = int(uCount), shape = int(uShape);
+      float focal = 2.6, camZ = 6.5;
+      float bestZ = 1e9, heat = 0.0;
+      for (int i = 0; i < 48; i++){
+        if (i >= n) break;
+        vec3 c = vbForm(float(i), uCount, shape);
+        c = vec3(c.x*cy + c.z*sy, c.y, -c.x*sy + c.z*cy);      // yaw
+        c = vec3(c.x, c.y*cx - c.z*sx, c.y*sx + c.z*cx);       // then pitch
+        float zc = c.z + camZ;
+        if (zc < 0.35) continue;
+        float k = focal/zc;
+        vec2 sp = c.xy*k;
+        float rad = uRad*k;
+        vec2 d = uv - sp;
+        float r2 = dot(d, d), rr = rad*rad;
+        if (r2 >= rr) continue;
+        // Depth of the sphere's front surface at this pixel, back in world z.
+        float zz = sqrt(rr - r2);
+        float depth = zc - (zz/k);
+        if (depth >= bestZ) continue;
+        bestZ = depth;
+        vec3 nrm = vec3(d/rad, -zz/rad);
+        float dif = max(0.0, dot(nrm, normalize(vec3(0.45, 0.6, -0.66))));
+        float rim = pow(1.0 - abs(nrm.z), 3.0);
+        // Nearer balls read brighter, which is what separates the formation in depth.
+        // A RELATIVE fade across the formation's own depth range, not an inverse-square on
+        // absolute distance: the whole cluster sits around z = camZ, so 9.5/zc^2 was a flat
+        // ~0.22 multiplier on every ball and the effect came out near-black.
+        float dep = mix(1.0, 0.36, clamp((zc - 4.6)/4.2, 0.0, 1.0));
+        heat = (0.14 + 0.78*dif + uGlow*0.7*rim)*dep;
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Gerstner ocean: a rolling sea to the horizon.
+    //
+    // Not a raymarch and not a mesh — the screen ray is intersected with the flat y=0 plane
+    // and the wave sum is evaluated at THAT world point. A displaced surface would need
+    // marching; at this scale the cheat is invisible and it buys a horizon for free.
+    //
+    // The waves are a Gerstner-style sum: each octave is a sine SHARPENED by pow(), which is
+    // what gives the sea round troughs and peaked crests instead of a bland sine swell —
+    // uChop is that exponent. Directions rotate per octave so the swell interferes with
+    // itself and never reads as a repeating ripple, and both the height and its analytic
+    // derivative come out of the same loop (the derivative is the surface normal, which is
+    // what the glint and the foam are actually made of).
+    //
+    // NB the heat buffer is Y-FLIPPED against the screen, so screen-UP is 0.5 - y/fh. This
+    // effect has a horizon, so it is one of the ones that cares (see CLAUDE.md).
+    const FS_OCEAN = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uSwell; uniform float uChop;
+    uniform float uFoam; uniform float uWind; uniform float uZoom;
+    out vec4 o;
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)*2.0/uZoom;
+      vec3 rd = normalize(vec3(q.x, q.y - 0.30, 1.35));
+      float camH = 3.4;
+      float heat;
+      if (rd.y > -0.004){
+        // Sky: a soft band brightening down toward the horizon, so the sea has something to
+        // meet. Kept dim — the water is the subject.
+        heat = 0.10*exp(-max(0.0, rd.y)*9.0);
+      } else {
+        float t = camH/(-rd.y);
+        vec2 p = rd.xz*t;
+        float fade = 1.0/(1.0 + t*t*0.0016);        // distance haze, also hides the aliasing
+        float wr = uWind*0.017453293;
+        vec2 dir = vec2(cos(wr), sin(wr));
+        float h = 0.0, dhx = 0.0, dhz = 0.0;
+        float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
+        for (int i = 0; i < 6; i++){
+          float ph = dot(p, dir)*frq + uTime*spd;
+          float s = sin(ph)*0.5 + 0.5;
+          float w = pow(s, uChop);
+          h += amp*w;
+          norm += amp;
+          // d/dp of amp*pow(s, chop): chop*s^(chop-1) * 0.5cos(ph) * frq, along dir
+          float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+          dhx += dw*dir.x; dhz += dw*dir.y;
+          amp *= 0.62; frq *= 1.87; spd *= 1.21;
+          dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+        }
+        h /= norm;
+        vec3 n = normalize(vec3(-dhx*uSwell, 1.0, -dhz*uSwell));
+        float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
+        float slope = clamp(length(vec2(dhx, dhz))*uSwell*0.9, 0.0, 1.0);
+        // Foam rides the CRESTS: high water and steep face at once, which is where it breaks.
+        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), h*0.65 + slope*0.55);
+        heat = (0.10 + 0.48*h*h + 0.45*glint + 0.55*foam)*fade;
+        heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
+      }
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // Black hole: an accretion disk seen through its own gravitational lensing.
+    //
+    // NOT a raymarch — there is no surface to hit. Photons are INTEGRATED: each ray is
+    // stepped through the hole's field with the standard weak-field deflection
+    //   a = -1.5 · h² · p / |p|⁵      (h = |p × d|, the conserved angular momentum)
+    // which is the Schwarzschild null geodesic to the order that matters at this scale, and
+    // is what bends the far side of the disk up over the top of the hole and back under the
+    // bottom. That arc IS the effect; a straight-ray version just draws an ellipse.
+    //
+    // Units put the horizon at r = 1. A ray that falls inside it is swallowed and stays
+    // black; one that crosses the disk plane between the inner and outer radius picks up
+    // emission there and keeps going, so the disk can be collected MORE THAN ONCE — that
+    // second, thinner arc above the first is the lensed underside, not a bug.
+    //
+    // Doppler beaming (uBeam) is why one side is brighter: the disk orbits, and the limb
+    // coming toward the camera is boosted. Keplerian, so the inner disk shears past the
+    // outer one and the turbulence never repeats.
+    const FS_BHOLE = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uOrbit; uniform float uTilt;
+    uniform float uOuter; uniform float uBeam; uniform float uZoom;
+    out vec4 o;
+    float bhN(vec2 p){
+      // cheap value noise — two octaves is plenty once it is smeared round the disk
+      vec2 i = floor(p), f = fract(p);
+      f = f*f*(3.0 - 2.0*f);
+      vec4 h = vec4(0.0, 1.0, 57.0, 58.0) + dot(i, vec2(1.0, 57.0));
+      vec4 r = fract(sin(h)*43758.5453);
+      return mix(mix(r.x, r.y, f.x), mix(r.z, r.w, f.x), f.y);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      float ca = cos(uOrbit), sa = sin(uOrbit);
+      float ct = cos(uTilt), st = sin(uTilt);
+      // Camera on a circle, raised by the tilt. A LOW tilt is the iconic view: the disk is
+      // nearly edge-on, so the lensed far side stands right up over the hole.
+      // Far enough back that the widest disk still fits: the frame's half-extent at the
+      // origin plane is dist/1.9, so 22 gives ~11.6 against a disk radius of 4..14.
+      vec3 ro = vec3(sa*22.0*ct, 22.0*st, -ca*22.0*ct);
+      vec3 fwd = normalize(-ro);
+      vec3 rgt = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
+      vec3 up = cross(fwd, rgt);
+      vec3 rd = normalize(fwd*1.9 + rgt*uv.x + up*uv.y);
+      vec3 p = ro, d = rd;
+      vec3 hv = cross(p, d);
+      float h2 = dot(hv, hv);
+      float rIn = 2.3, rOut = max(rIn + 1.2, uOuter);
+      float heat = 0.0, prevY = p.y;
+      for (int i = 0; i < 160; i++){
+        float r = length(p);
+        // Through the horizon: stop collecting, but KEEP what is already collected. The
+        // march runs backwards from the camera, so emission picked up in front of the hole
+        // has already reached the eye — the ray falling in afterwards only means there is no
+        // background behind it. Zeroing here erased the entire near half of the disk (every
+        // ray that crosses the disk and then goes down the hole) and left just the photon
+        // ring on a black field.
+        if (r < 1.0) break;
+        if (r > 26.0 && dot(p, d) > 0.0) break;       // escaped, heading away
+        float dt = 0.10 + 0.055*r;
+        vec3 np = p + d*dt;
+        // Disk crossing, found by the sign change of y and placed by linear interpolation —
+        // stepping is far too coarse to just test "am I near the plane".
+        if (prevY*np.y < 0.0){
+          float k = prevY/(prevY - np.y);
+          vec3 q = mix(p, np, k);
+          float rr = length(q.xz);
+          if (rr > rIn && rr < rOut){
+            float ang = atan(q.z, q.x);
+            float kep = uTime*6.0/pow(rr, 1.5);       // Keplerian: the inside shears past
+            float n = 0.55 + 0.45*bhN(vec2(ang*2.6/6.2831853*14.0 + kep, rr*1.7));
+            n *= 0.6 + 0.4*bhN(vec2(ang/6.2831853*38.0 + kep*1.7, rr*4.1));
+            // NOT smoothstep(rOut, rOut*0.55, rr): GLSL leaves smoothstep UNDEFINED when
+            // edge0 >= edge1, and this GPU returns 0 for it — which silently zeroed the
+            // entire disk and left only the photon ring on a black field. Take the rising
+            // ramp and invert it.
+            float edge = (1.0 - smoothstep(rOut*0.55, rOut, rr))*smoothstep(rIn, rIn*1.30, rr);
+            // Doppler beaming: orbital velocity against the view direction.
+            vec3 vel = normalize(vec3(-q.z, 0.0, q.x))/sqrt(rr);
+            float dop = clamp(1.0 + uBeam*3.0*dot(vel, -d), 0.05, 3.2);
+            heat += edge*n*dop*(5.5/rr);
+          }
+        }
+        // deflect, then advance — the whole point of the effect
+        d = normalize(d + (-1.5*h2*p/pow(dot(p, p), 2.5))*dt);
+        prevY = np.y;
+        p = np;
+      }
+      // The photon ring: light that orbited close to r = 1.5 and got out. Approximated by
+      // the impact parameter, which is cheap and lands in the right place.
+      float b = length(cross(ro, rd));
+      heat += 0.55*exp(-pow((b - 2.6)/0.16, 2.0));
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // Starfield / hyperspace: 6 depth layers of cell-hashed stars flying outward; uWarp
     // re-samples the whole field at radially squeezed coordinates so every star smears
     // into a streak — beat-arm Warp and the kick punches to hyperspace. The field lives
@@ -4108,6 +4522,53 @@
       float b = max(1.0, uBlock);
       vec2 px = floor(vUv * uSize / b) * b + b * 0.5;   // snap to block centres
       o = vec4(texture(uSrc, px / uSize).rgb, 1.0);
+    }`;
+    // Hexagonal mosaic — Pixelate's cousin. The plane is covered by two offset rectangular
+    // lattices whose centres interleave into a hex packing: for any point, the nearer of the
+    // two candidate centres IS its hexagon's centre. That is the whole trick, and it costs
+    // two mods and a comparison rather than an axial-coordinate round trip.
+    const FS_HEXPIX = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uSize2;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float s = max(2.0, uSize2);
+      vec2 p = vUv*uSize/s;
+      vec2 r = vec2(1.0, 1.7320508), h = r*0.5;
+      vec2 a = mod(p, r) - h;
+      vec2 b = mod(p - h, r) - h;
+      vec2 c = dot(a, a) < dot(b, b) ? p - a : p - b;      // nearer candidate = this hex's centre
+      o = vec4(texture(uSrc, c*s/uSize).rgb, 1.0);
+    }`;
+    // CRT phosphor: the shadow mask and the beam's bandwidth limit — the two things
+    // Scanlines and Barrel leave out of the retro set.
+    //
+    // Persistence is deliberately NOT here. A post pass sees one finished frame and has no
+    // memory, so a real phosphor decay would need the feedback stage; Fade pixel already IS
+    // that, and duplicating it badly here would be worse than pointing at it.
+    const FS_CRT = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uMask; uniform float uBleed;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      if (uBleed > 0.0){
+        // Horizontal only, and ASYMMETRIC: the beam sweeps left to right and smears its
+        // trail behind it, so weighting the two sides equally reads as a plain blur.
+        vec2 px = 1.0/uSize;
+        vec3 l = texture(uSrc, vUv - vec2(px.x*1.5, 0.0)).rgb;
+        vec3 r = texture(uSrc, vUv + vec2(px.x*1.5, 0.0)).rgb;
+        c = mix(c, c*0.46 + l*0.36 + r*0.18, uBleed);
+      }
+      // Shadow mask: RGB phosphor triads on a 3-pixel pitch. The off-channels keep a FLOOR
+      // rather than going to zero — a hard triad (0 or 2x) turned every highlight into a
+      // pale wash of separated primaries instead of white, because nothing was left of the
+      // other two channels to recombine. 0.30/1.60 costs a little luminance and keeps the
+      // picture a picture.
+      float ph = mod(floor(vUv.x*uSize.x), 3.0);
+      vec3 tri = vec3(step(ph, 0.5), step(abs(ph - 1.0), 0.5), step(2.5, ph + 0.5));
+      vec3 m = mix(vec3(1.0), 0.30 + 1.30*tri, uMask);
+      o = vec4(clamp(c*m, 0.0, 1.0), 1.0);
     }`;
     const FS_POSTERIZE = `#version 300 es
     precision highp float;
@@ -4642,6 +5103,10 @@
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
+    glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
+    glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
+    glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);
+    glProg.vballs = camProg(VS_QUAD, FS_VBALLS, ["uSize", "uPhase", "uCount", "uShape", "uRad", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
     glProg.menger = camProg(VS_QUAD, FS_MENGER, ["uSize", "uPos", "uFwd", "uRoll", "uIter", "uGlow", "uZoom"]);
@@ -4650,6 +5115,8 @@
     glProg.rdshow = camProg(VS_QUAD, FS_RDSHOW, ["uState", "uSize", "uGain", "uZoom"]);
     glProg.pixelate = makeProg(VS_QUAD, FS_PIXELATE, ["uSrc", "uSize", "uBlock"]);
     glProg.posterize = makeProg(VS_QUAD, FS_POSTERIZE, ["uSrc", "uLevels"]);
+    glProg.hexpix = makeProg(VS_QUAD, FS_HEXPIX, ["uSrc", "uSize", "uSize2"]);
+    glProg.crt = makeProg(VS_QUAD, FS_CRT, ["uSrc", "uSize", "uMask", "uBleed"]);
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
     glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
     glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
@@ -7035,6 +7502,290 @@
     }
   }
 
+  // ---- Vector balls: Amiga bobs in formation (shader effect) ----
+  // Same per-pixel z-test as FS_VBALLS, every 2nd pixel into a 2x2 block. The formation is
+  // recomputed per pixel in the shader (it is free there); on the CPU that would be 48
+  // trig-heavy calls per pixel, so the rotated centres are hoisted OUT of the pixel loop —
+  // they do not depend on the pixel, and this is the whole reason the mirror is affordable.
+  const VB_MAX = 48;
+  let vbCount = 24, vbShape = 1, vbRad = 0.30, vbSpin = 0.5, vbGlow = 0.5, vbPhase = 0;
+  function vballsSeed(dt) {
+    vbPhase += dt * vbSpin;
+    return { phase: vbPhase, count: vbCount, shape: vbShape, rad: vbRad, glow: vbGlow, zoom };
+  }
+  function vbForm(fi, fn, shape, out) {
+    if (shape === 0) {
+      const side = Math.ceil(Math.pow(fn, 1 / 3));
+      const ix = fi % side, iy = Math.floor(fi / side) % side, iz = Math.floor(fi / (side * side));
+      const k = 2.4 / Math.max(1, side - 1), c = (side - 1) * 0.5;
+      out[0] = (ix - c) * k; out[1] = (iy - c) * k; out[2] = (iz - c) * k;
+    } else if (shape === 1) {
+      const k = (fi + 0.5) / fn;
+      const ph = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * k))), th = 2.399963 * fi;
+      out[0] = Math.sin(ph) * Math.cos(th) * 1.45;
+      out[1] = Math.sin(ph) * Math.sin(th) * 1.45;
+      out[2] = Math.cos(ph) * 1.45;
+    } else if (shape === 2) {
+      const a = fi / fn * 6.2831853;
+      out[0] = Math.cos(a) * 1.5; out[1] = Math.sin(a * 2) * 0.45; out[2] = Math.sin(a) * 1.5;
+    } else {
+      const u = fi / fn, a = u * 12 + (fi % 2 < 0.5 ? 0 : Math.PI);
+      out[0] = Math.cos(a) * 0.95; out[1] = (u - 0.5) * 3; out[2] = Math.sin(a) * 0.95;
+    }
+  }
+  const vbCx = new Float64Array(VB_MAX), vbCy = new Float64Array(VB_MAX), vbCz = new Float64Array(VB_MAX);
+  const vbTmp = [0, 0, 0];
+  function vballsCPU(s) {                 // CPU fallback — mirrors FS_VBALLS
+    const ar = fw / fh, focal = 2.6, camZ = 6.5;
+    const n = Math.min(VB_MAX, Math.round(s.count)), shape = Math.round(s.shape);
+    const ay = s.phase, ax = s.phase * 0.63;
+    const cy = Math.cos(ay), sy = Math.sin(ay), cx = Math.cos(ax), sx = Math.sin(ax);
+    for (let i = 0; i < n; i++) {
+      vbForm(i, s.count, shape, vbTmp);
+      const x = vbTmp[0], y = vbTmp[1], z = vbTmp[2];
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      vbCx[i] = x1; vbCy[i] = y * cx - z1 * sx; vbCz[i] = y * sx + z1 * cx;
+    }
+    for (let py = 0; py < fh; py += 2) {
+      for (let px = 0; px < fw; px += 2) {
+        camPix(px, py);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let bestZ = 1e9, heat = 0;
+        for (let i = 0; i < n; i++) {
+          const zc = vbCz[i] + camZ;
+          if (zc < 0.35) continue;
+          const k = focal / zc;
+          const dx = ux - vbCx[i] * k, dy = uy - vbCy[i] * k;
+          const rad = s.rad * k, rr = rad * rad, r2 = dx * dx + dy * dy;
+          if (r2 >= rr) continue;
+          const zz = Math.sqrt(rr - r2), depth = zc - zz / k;
+          if (depth >= bestZ) continue;
+          bestZ = depth;
+          const nx = dx / rad, ny = dy / rad, nz = -zz / rad;
+          const dif = Math.max(0, nx * 0.45 + ny * 0.6 + nz * -0.66);
+          const rim = Math.pow(1 - Math.abs(nz), 3);
+          const dep = 1 + (0.36 - 1) * Math.max(0, Math.min(1, (zc - 4.6) / 4.2));
+          heat = (0.14 + 0.78 * dif + s.glow * 0.7 * rim) * dep;
+        }
+        const v = Math.max(0, Math.min(1, heat)) * 255;
+        for (let by = py; by < Math.min(py + 2, fh); by++)
+          for (let bx = px; bx < Math.min(px + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
+  // ---- Gerstner ocean: rolling sea heightfield (shader effect) ----
+  // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
+  // 2x2 block and four octaves instead of six.
+  let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0;
+  function oceanSeed(dt) {
+    goTime += dt * goSpeed;
+    return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind, zoom };
+  }
+  function oceanCPU(s) {                  // CPU fallback — mirrors FS_OCEAN
+    const ar = fw / fh, camH = 3.4;
+    const wr = s.wind * Math.PI / 180;
+    const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };
+    for (let y = 0; y < fh; y += 2) {
+      for (let x = 0; x < fw; x += 2) {
+        camPix(x, y);
+        const qx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const qy = (0.5 - camPY / fh) * 2 / s.zoom;      // screen-UP, as in the shader
+        let rx = qx, ry = qy - 0.30, rz = 1.35;
+        const rl = Math.hypot(rx, ry, rz); rx /= rl; ry /= rl; rz /= rl;
+        let heat;
+        if (ry > -0.004) {
+          heat = 0.10 * Math.exp(-Math.max(0, ry) * 9);
+        } else {
+          const t = camH / -ry, px = rx * t, pz = rz * t;
+          const fade = 1 / (1 + t * t * 0.0016);
+          let dx = Math.cos(wr), dz = Math.sin(wr);
+          let h = 0, dhx = 0, dhz = 0, amp = 1, frq = 0.40, spd = 1, norm = 0;
+          for (let i = 0; i < 4; i++) {
+            const ph = (px * dx + pz * dz) * frq + s.t * spd;
+            const sv = Math.sin(ph) * 0.5 + 0.5;
+            h += amp * Math.pow(sv, s.chop);
+            norm += amp;
+            const dw = amp * s.chop * Math.pow(Math.max(sv, 1e-4), s.chop - 1) * 0.5 * Math.cos(ph) * frq;
+            dhx += dw * dx; dhz += dw * dz;
+            amp *= 0.62; frq *= 1.87; spd *= 1.21;
+            const nx = dx * 0.62 - dz * 0.78, nz = dx * 0.78 + dz * 0.62;
+            const nl = Math.hypot(nx, nz) || 1; dx = nx / nl; dz = nz / nl;
+          }
+          h /= norm;
+          const nx = -dhx * s.swell, nz = -dhz * s.swell;
+          const nl = Math.hypot(nx, 1, nz) || 1;
+          const gl2 = Math.max(0, (nx / nl) * 0.35 + (1 / nl) * 0.55 + (nz / nl) * -0.75);
+          const glint = Math.pow(gl2, 22);
+          const slope = Math.max(0, Math.min(1, Math.hypot(dhx, dhz) * s.swell * 0.9));
+          const foam = ss((h * 0.65 + slope * 0.55 - s.foam) / Math.max(0.02, Math.min(0.995, s.foam + 0.22) - s.foam));
+          heat = (0.10 + 0.48 * h * h + 0.45 * glint + 0.55 * foam) * fade;
+          heat += 0.16 * Math.exp(-Math.abs(ry + 0.004) * 260);
+        }
+        const v = Math.max(0, Math.min(1, heat)) * 255;
+        for (let by = y; by < Math.min(y + 2, fh); by++)
+          for (let bx = x; bx < Math.min(x + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
+  // ---- Black hole: lensed accretion disk (shader effect) ----
+  // Photon integration, not a raymarch — see FS_BHOLE for the physics. The mirror keeps the
+  // deflection (without it the picture is just an ellipse and the effect is pointless) and
+  // gives up everything else: every 4th pixel into a 4x4 block, 56 steps instead of 160,
+  // one noise octave.
+  let bhOrbSpd = 0.08, bhTilt = 12, bhOuter = 8, bhBeam = 0.8, bhSpin = 1;
+  let bhTime = 0, bhOrbit = 0;
+  function bholeSeed(dt) {
+    bhTime += dt * bhSpin;
+    bhOrbit += dt * bhOrbSpd;
+    return { t: bhTime, orbit: bhOrbit, tilt: bhTilt * Math.PI / 180, outer: bhOuter, beam: bhBeam, zoom };
+  }
+  const bhHash = (x, y) => { const v = Math.sin(x + y * 57) * 43758.5453; return v - Math.floor(v); };
+  function bhNoise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    let fx = x - ix, fy = y - iy;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const a = bhHash(ix, iy), b = bhHash(ix + 1, iy), c = bhHash(ix, iy + 1), d = bhHash(ix + 1, iy + 1);
+    return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
+  }
+  // Takes the seed the descriptor already advanced this frame — it must NOT call
+  // bholeSeed() itself, or the Canvas2D path runs the disk and the camera at double speed
+  // (the same trap the cardioid mirrors carry a comment about).
+  function bholeCPU(s) {                  // CPU fallback — mirrors FS_BHOLE, coarsely
+    const ar = fw / fh;
+    const ca = Math.cos(s.orbit), sa = Math.sin(s.orbit);
+    const ct = Math.cos(s.tilt), st = Math.sin(s.tilt);
+    const rox = sa * 22 * ct, roy = 22 * st, roz = -ca * 22 * ct;
+    const fl = Math.hypot(rox, roy, roz);
+    const fx = -rox / fl, fy = -roy / fl, fz = -roz / fl;
+    // right = normalize(cross(up, fwd)) with up = (0,1,0)
+    let rx = 1 * fz - 0 * fy, ry = 0 * fx - 0 * fz, rz = 0 * fy - 1 * fx;
+    const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+    const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+    const rIn = 2.3, rOut = Math.max(rIn + 1.2, s.outer);
+    for (let y = 0; y < fh; y += 4) {
+      for (let x = 0; x < fw; x += 4) {
+        camPix(x, y);
+        const vx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const vy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let dx = fx * 1.9 + rx * vx + ux * vy;
+        let dy = fy * 1.9 + ry * vx + uy * vy;
+        let dz = fz * 1.9 + rz * vx + uz * vy;
+        const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+        // h = |p x d|, conserved
+        const hx = roy * dz - roz * dy, hy = roz * dx - rox * dz, hz = rox * dy - roy * dx;
+        const h2 = hx * hx + hy * hy + hz * hz;
+        let px = rox, py = roy, pz = roz, prevY = py, heat = 0;
+        for (let i = 0; i < 56; i++) {
+          const r = Math.hypot(px, py, pz);
+          if (r < 1) break;               // keep what was collected — see FS_BHOLE
+          if (r > 26 && px * dx + py * dy + pz * dz > 0) break;
+          const dtS = 0.10 + 0.055 * r;
+          const nx = px + dx * dtS, ny = py + dy * dtS, nz = pz + dz * dtS;
+          if (prevY * ny < 0) {
+            const k = prevY / (prevY - ny);
+            const qx = px + (nx - px) * k, qz = pz + (nz - pz) * k;
+            const rr = Math.hypot(qx, qz);
+            if (rr > rIn && rr < rOut) {
+              const ang = Math.atan2(qz, qx);
+              const kep = s.t * 6 / Math.pow(rr, 1.5);
+              const n = 0.55 + 0.45 * bhNoise(ang * 2.6 / 6.2831853 * 14 + kep, rr * 1.7);
+              const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };
+              const e1 = 1 - ss((rr - rOut * 0.55) / (rOut - rOut * 0.55));   // mirrors the shader's inverted ramp
+              const e2 = ss((rr - rIn) / (rIn * 0.30));
+              const vl = 1 / Math.sqrt(rr), vlen = Math.hypot(-qz, qx) || 1;
+              const dop = Math.max(0.05, Math.min(3.2,
+                1 + s.beam * 3 * ((-qz / vlen) * -dx + (qx / vlen) * -dz) * vl));
+              heat += e1 * e2 * n * dop * (5.5 / rr);
+            }
+          }
+          const p2 = px * px + py * py + pz * pz, k2 = -1.5 * h2 / Math.pow(p2, 2.5) * dtS;
+          dx += px * k2; dy += py * k2; dz += pz * k2;
+          const nl = Math.hypot(dx, dy, dz) || 1; dx /= nl; dy /= nl; dz /= nl;
+          prevY = ny; px = nx; py = ny; pz = nz;
+        }
+        const bx = roy * dz - roz * dy, by = roz * dx - rox * dz, bz = rox * dy - roy * dx;
+        const bb = Math.hypot(bx, by, bz);
+        heat += 0.55 * Math.exp(-Math.pow((bb - 2.6) / 0.16, 2));
+        const v = Math.min(1, heat) * 255;
+        for (let by2 = y; by2 < Math.min(y + 4, fh); by2++)
+          for (let bx2 = x; bx2 < Math.min(x + 4, fw); bx2++) fire[by2 * fw + bx2] = v;
+      }
+    }
+  }
+
+  // ---- Quaternion Julia: raymarched 4D Julia slice (shader effect) ----
+  // Same coarse-mirror bargain as the Mandelbulb below: every 3rd pixel into a 3x3 block,
+  // a third of the shader's steps, iterations capped, flat shading. The seed `c` is handed
+  // in by the descriptor (juliaSeed) exactly like the other cardioid effects — this must
+  // NOT advance the orbit itself, or the Canvas2D path runs it at double speed.
+  let qjSlice = 0, qjCut = 0, qjDetail = 8, qjSpin = 0.3, qjGlow = 0.5, qjPhase = 0;
+  function qjuliaSeed(dt) {
+    qjPhase += dt * qjSpin;
+    // qjCut is stored in DEGREES (it is an angle the user sets); the shader and the mirror
+    // both want radians, and converting once here keeps the two from disagreeing.
+    return { phase: qjPhase, slice: qjSlice, cut: qjCut * Math.PI / 180, iter: qjDetail, glow: qjGlow, zoom };
+  }
+  // iq's quaternion-Julia distance estimate. md2 tracks |dz|^2, which is exact for z^2+c
+  // because the derivative is 2z and only its magnitude matters.
+  function qjDE(zx, zy, zz, zw, cx, cy, cz, cw, it) {
+    let md2 = 1, mz2 = zx * zx + zy * zy + zz * zz + zw * zw;
+    for (let i = 0; i < it; i++) {
+      md2 *= 4 * mz2;
+      const nx = zx * zx - (zy * zy + zz * zz + zw * zw), s = 2 * zx;
+      const ny = s * zy, nz = s * zz, nw = s * zw;
+      zx = nx + cx; zy = ny + cy; zz = nz + cz; zw = nw + cw;
+      mz2 = zx * zx + zy * zy + zz * zz + zw * zw;
+      if (mz2 > 16) break;
+    }
+    return 0.25 * Math.sqrt(mz2 / md2) * Math.log(Math.max(mz2, 1e-12));
+  }
+  function qjulia(seed, s) {              // CPU fallback — mirrors FS_QJULIA, coarsely
+    const ar = fw / fh, it = Math.min(6, Math.round(s.iter));
+    const cx = seed.cx, cy = seed.cy, cz = 0, cw = 0;     // c is purely complex — see FS_QJULIA
+    const kc = Math.cos(s.cut), ks = Math.sin(s.cut);     // the rotated cutting hyperplane
+    const ca = Math.cos(s.phase), sa = Math.sin(s.phase);
+    const tilt = 0.32 * Math.sin(s.phase * 0.6), ct = Math.cos(tilt), st = Math.sin(tilt);
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rox = 0, roy = 0, roz = -2.9;
+        const rl = Math.hypot(ux, uy, 1.7);
+        let rdx = ux / rl, rdy = uy / rl, rdz = 1.7 / rl;
+        let tx = rox * ca + roz * sa; roz = -rox * sa + roz * ca; rox = tx;
+        tx = rdx * ca + rdz * sa; rdz = -rdx * sa + rdz * ca; rdx = tx;
+        let ty = roy * ct - roz * st; roz = roy * st + roz * ct; roy = ty;
+        ty = rdy * ct - rdz * st; rdz = rdy * st + rdz * ct; rdy = ty;
+        let heat = 0, halo = 9;
+        const b = rox * rdx + roy * rdy + roz * rdz;
+        const disc = b * b - (rox * rox + roy * roy + roz * roz - 4);
+        if (disc > 0) {
+          const sd = Math.sqrt(disc);
+          let t = Math.max(0, -b - sd);
+          const tMax = -b + sd;
+          for (let i = 0; i < 32 && t <= tMax; i++) {
+            const px = rox + rdx * t, py = roy + rdy * t, pz = roz + rdz * t;
+            const d = qjDE(px * kc - s.slice * ks, py, pz, px * ks + s.slice * kc, cx, cy, cz, cw, it);
+            if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
+            if (d < 0.003 * Math.max(t, 0.5)) {
+              heat = (0.45 + s.glow * 0.3) * Math.max(0, 1 - (t - 1.6) / 3.4);   // flat — no normals here
+              break;
+            }
+            t += d;
+          }
+        }
+        if (heat === 0) heat = s.glow * 0.35 * Math.exp(-halo * 55);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Mandelbulb: raymarched power-N fractal (shader effect) ----
   // The mirror marches every 3rd pixel and fills 3x3 blocks — a raymarch with a
   // transcendental DE is orders beyond the other mirrors, so this trades sharpness
@@ -7204,6 +7955,114 @@
       // Guarded so jit === 0 stays byte-identical to the un-jittered map.
       if (jit > 0) { px += (Math.random() - 0.5) * 2 * jit; py += (Math.random() - 0.5) * 2 * jit; }
       plot(px, py, POINT_HEAT);
+    }
+  }
+
+  // ---- Particle galaxy: log-spiral arms (point effect) ----
+  // A disc of stars whose density follows LOG SPIRALS, which is the shape real galaxies
+  // make: an arm is a straight line in (log r, θ), so the winding tightens toward the core
+  // on its own rather than being drawn tighter by hand.
+  //
+  // THE ARMS TRAIL. Going outward along an arm the angle DECREASES while the disc turns the
+  // other way, so the tips lag behind the rotation — which is what every real spiral galaxy
+  // does and the first version of this got exactly backwards (arms leading, so it read as
+  // spinning the wrong way). The sign of the log term is the whole of it.
+  //
+  // The pattern turns RIGIDLY and the differential motion is a BOUNDED shear on top. A 1/r
+  // rotation curve is what the stars really do and it runs straight into the real winding
+  // problem: the inner disc laps the rim and the arms wind out of existence. Capping the
+  // ratio at 2:1 was not enough — both terms still grew with t, so the absolute lead kept
+  // accumulating and the arms wound up within a minute anyway, just more slowly. Nature
+  // answers this with density waves: the PATTERN is what rotates, not the material. So does
+  // this, with an oscillating shear for the life the differential term was there to give.
+  //
+  // Reseeds the chaos PRNG itself so the star field is the SAME set of stars every frame
+  // and only the rotation moves them — the same bargain flamesStamp makes, and the reason
+  // this needs no per-layer state beyond one clock. Its own salt, so it can never step on
+  // another point effect's sequence.
+  // Stamped ADDITIVELY (`stampAdd` on the descriptor), which is the whole reason the core
+  // reads as a core: point effects are MAX-stamped by default, so a thousand stars in one
+  // pixel are exactly as bright as one and the bulge came out no brighter than the arms.
+  // Additive makes DENSITY the picture, as it is in the sky. GX_HEAT is per-STAR, so it has
+  // to be small — around eight overlapping stars should reach white, not one.
+  const GX_HEAT = 26;
+  let gxArms = 2, gxTwist = 0.55, gxSpin = 0.5, gxCore = 0.35, gxScatter = 0.30, gxTime = 0;
+  function galaxyStamp(xL, xR, yT, yB, n) {
+    gxTime += gxSpin * 2 / cfg.burn;             // per TICK, like flPhase
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.46, sy = (yB - yT) * 0.46;
+    rngState = (SEED + 0x9e37) >>> 0;
+    const arms = Math.max(1, Math.round(gxArms)), armStep = 6.2831853 / arms;
+    const t = gxTime, tw = Math.max(0.05, gxTwist), sc = gxScatter;
+    for (let i = 0; i < n; i++) {
+      // Exponential disc: most stars near the centre, a thin population far out.
+      let r = -Math.log(1 - rnd() * 0.99) * 0.26;
+      if (r > 1) r = 1 - (r - 1) * 0.35;         // fold the tail back rather than clipping a hard rim
+      if (r < 0.012) r = 0.012;
+      // The arm: a log spiral, plus a scatter that widens outward so the core stays tight.
+      const arm = Math.floor(rnd() * arms) * armStep;
+      // NEGATED: θ falls as r rises, so the arm sweeps backwards against a forward-turning
+      // disc. Flip this sign and the arms lead, which is the bug this effect shipped with.
+      const spiral = -Math.log(r) / tw;
+      const jitter = (rnd() + rnd() + rnd() - 1.5) * sc * (0.35 + r);
+      // Rigid pattern rotation (+t) plus a bounded shear that varies with radius, so the
+      // arms breathe and ripple without ever winding up.
+      const shear = 0.55 * Math.sin(t * 0.27 + Math.log(r + 0.05) * 1.6);
+      const th = arm + spiral + jitter + t + shear;
+      const rr = r * (1 + (rnd() - 0.5) * 0.10);
+      plot(cx + Math.cos(th) * rr * sx, cy + Math.sin(th) * rr * sy, GX_HEAT, true);
+    }
+    // The core: a separate tight bulge, otherwise the disc's own falloff leaves the middle
+    // no brighter than the arms and the galaxy has no centre.
+    const bulge = Math.round(n * gxCore * 0.5);
+    for (let i = 0; i < bulge; i++) {
+      const r = Math.pow(rnd(), 2.2) * 0.22, th = rnd() * 6.2831853;
+      plot(cx + Math.cos(th) * r * sx, cy + Math.sin(th) * r * sy, GX_HEAT, true);
+    }
+  }
+
+  // ---- Harmonograph: decaying pendulum ribbons (point effect) ----
+  // The Victorian drawing machine: two pendulums per axis, each a damped sine, their sum
+  // traced by a pen. x and y are therefore each a beat between two nearly-equal frequencies,
+  // and the DETUNE between them is the whole trick — at exactly 0 the figure is a closed
+  // Lissajous that retraces itself forever, and a hair off it the loop fails to close by a
+  // little each lap and the curve precesses into a ribbon.
+  //
+  // The whole curve is redrawn every frame, like the chaos game: the point sequence is
+  // deterministic, and only the slowly-drifting phases reshape it. hgPhase advances per TICK
+  // (not per frame and not off the wall clock), so the morph tracks the sim speed like
+  // flPhase and nodPhase.
+  let hgRatio = 3, hgDetune = 0.012, hgDecay = 0.022, hgMorph = 0.35, hgPhase = 0;
+  function harmonographStamp(xL, xR, yT, yB, n) {
+    hgPhase += hgMorph * 2 / cfg.burn;
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    const sx = (xR - xL) * 0.34, sy = (yB - yT) * 0.34;
+    const p = hgPhase;
+    // Four pendulum phases, drifting apart at incommensurate rates so the figure never
+    // returns to a pose it has held before.
+    const p1 = p * 0.31, p2 = p * 0.23 + 1.9, p3 = p * 0.17 + 3.4, p4 = p * 0.41 + 5.1;
+    const f1 = hgRatio, f2 = hgRatio + hgDetune, f3 = 1, f4 = 1 + hgDetune * 1.37;
+    const d = hgDecay;
+    // Run the pen until the swing has decayed to a few percent — past that it is all ink in
+    // one pixel. Falls back to a fixed span when damping is off, or the loop never ends.
+    const tMax = d > 1e-4 ? Math.min(200, 4.6 / d) : 200;
+    // Sample by ARC LENGTH, not uniformly in t. The pen's speed falls off as exp(-d·t), so
+    // even time steps put the samples furthest apart exactly where the swing is widest —
+    // the outer loops came out as dotted lines while the dead centre got a solid blob.
+    // Inverting the integral of exp(-d·t) spreads the ink evenly along the curve instead.
+    const useArc = d > 1e-4;
+    const span = useArc ? 1 - Math.exp(-d * tMax) : 0;
+    const step = tMax / n;
+    // UNEQUAL amplitudes, 0.6/0.4 rather than half each. Two equal pendulums drifting into
+    // antiphase cancel to nothing, and the figure collapsed to a flat squashed ribbon at
+    // whatever phase the drift happened to be passing through. Unequal ones can only ever
+    // beat down to 0.2, so the figure breathes instead of dying.
+    for (let i = 0; i < n; i++) {
+      const t = useArc ? -Math.log(1 - (i / n) * span) / d : i * step;
+      const e = Math.exp(-d * t);
+      const x = (0.6 * Math.sin(f1 * t + p1) + 0.4 * Math.sin(f2 * t + p2)) * e;
+      const y = (0.6 * Math.sin(f3 * t + p3) + 0.4 * Math.sin(f4 * t + p4)) * e;
+      plot(cx + x * sx, cy + y * sy, POINT_HEAT);
     }
   }
 
@@ -7950,6 +8809,13 @@
     // class as pause and fullscreen, deliberately absent from fullSnapshot: a reload that
     // silently came back muted would read as "the beat detection is broken".
     muted: false,
+    // Has the user SETTLED the audio question? With no stored source the app now arms the
+    // mic by default (see restore()), and "nothing stored" has to mean "never chose" rather
+    // than "chose not to" — pressing Stop, or refusing the browser's permission prompt, both
+    // leave `on` false and `src` "off", so without this they read as never-chosen and the
+    // next load re-arms the mic over the top of the decision. Persisted as the string "off"
+    // in the `audio` field, which older blobs simply never carry.
+    settled: false,
     bins: [[1, 7], [7, 116], [116, 557]],   // [start,end] FFT bin per band; set from sampleRate
     energy: [0, 0, 0], pulse: [0, 0, 0],
     flux: [0, 0, 0], thr: [0, 0, 0], peak: [0, 0, 0],
@@ -8067,6 +8933,7 @@
     stopStream();
     if (audio.timer) { clearInterval(audio.timer); audio.timer = 0; }
     audio.on = false; audio.src = "off";
+    audio.settled = true;         // a deliberate Stop — don't re-arm the mic on the next load
     audio.muted = false;          // don't leave the next Capture/Mic silently muted
     for (let b = 0; b < 3; b++) {
       audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false;
@@ -8120,7 +8987,12 @@
       track("audio_started", { source: kind });          // conversion: a source is live
       markAudioUsed();                                   // satisfy the sync nudge for good
     } catch (err) {
+      // A refusal is an answer too. Without this the default mic arm would fire again on
+      // every single load, and a blocked site answers the prompt instantly and invisibly —
+      // so it would be a silent failed request forever, with the error line to match.
+      audio.settled = true;
       audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
+      persist();
     }
   }
   // One analysis tick (every HOP_MS, off the render loop). Beats are *latched*
@@ -8376,6 +9248,12 @@
       document.removeEventListener("keydown", resume, true);
     };
     function resume(e) {
+      // NOT while the tutorial has the screen. This fires on the first gesture ANYWHERE, and
+      // on a fresh load the first thing anyone clicks is the tour's Next button — which threw
+      // the browser's "Choose what to share" picker straight over it, from a click that had
+      // nothing to do with audio. Return WITHOUT cleanup so the arm survives: the next real
+      // gesture, once the tour is done, resumes the source as it always did.
+      if (tutorialOpen()) return;
       if (e.target && e.target.closest && e.target.closest("#audCapture, #audMic")) { cleanup(); return; }
       cleanup();
       if (!audio.on) startAudio(kind);
@@ -8541,6 +9419,35 @@
     { key: "rdkill", host: "fx", group: "rd", type: "dual", label: "Kill", valId: "vRdKill", min: 0.04, max: 0.075, step: 0.0005, lo: 0.062, hi: 0.062, fmt: v => sig3(v), apply: v => rdKill = v, durScale: 10 },
     { key: "rdspeed", host: "fx", group: "rd", type: "dual", single: true, label: "Sim speed", valId: "vRdSpeed", min: 1, max: 16, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "/f", apply: v => rdSpeedV = Math.round(v), durScale: 10 },
     { key: "rdgain", host: "fx", group: "rd", type: "dual", label: "Brightness", valId: "vRdGain", min: 0.4, max: 2, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rdGain = v, durScale: 10 },
+    { key: "gxarms", host: "fx", group: "galaxy", type: "dual", single: true, label: "Arms", valId: "vGxArms", min: 1, max: 6, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => gxArms = Math.round(v), durScale: 10 },
+    { key: "gxtwist", host: "fx", group: "galaxy", type: "dual", label: "Twist", valId: "vGxTwist", min: 0.15, max: 1.6, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => gxTwist = v, durScale: 10 },
+    { key: "gxspin", host: "fx", group: "galaxy", type: "dual", label: "Spin", valId: "vGxSpin", min: -2, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => gxSpin = v, durScale: 10 },
+    { key: "gxcore", host: "fx", group: "galaxy", type: "dual", label: "Core", valId: "vGxCore", min: 0, max: 1.5, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => gxCore = v, durScale: 10 },
+    { key: "gxscatter", host: "fx", group: "galaxy", type: "dual", label: "Scatter", valId: "vGxScat", min: 0, max: 1.2, step: 0.01, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => gxScatter = v, durScale: 10 },
+    { key: "hgratio", host: "fx", group: "harmo", type: "dual", label: "Frequency ratio", valId: "vHgRatio", min: 1, max: 7, step: 0.001, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => hgRatio = v, durScale: 10 },
+    { key: "hgdetune", host: "fx", group: "harmo", type: "dual", label: "Detune", valId: "vHgDet", min: 0, max: 0.06, step: 0.0005, lo: 0.012, hi: 0.012, fmt: v => sig3(v), apply: v => hgDetune = v, durScale: 10 },
+    { key: "hgdecay", host: "fx", group: "harmo", type: "dual", label: "Damping", valId: "vHgDecay", min: 0.004, max: 0.09, step: 0.001, lo: 0.022, hi: 0.022, fmt: v => sig3(v), apply: v => hgDecay = v, durScale: 10 },
+    { key: "hgmorph", host: "fx", group: "harmo", type: "dual", label: "Morph speed", valId: "vHgMorph", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => hgMorph = v, durScale: 10 },
+    { key: "vbcount", host: "fx", group: "vballs", type: "dual", single: true, label: "Balls", valId: "vVbCount", min: 6, max: 48, step: 1, lo: 24, hi: 24, fmt: v => sig3(Math.round(v)), apply: v => vbCount = Math.round(v), durScale: 10 },
+    { key: "vbshape", host: "fx", group: "vballs", type: "dual", single: true, label: "Formation", valId: "vVbShape", min: 0, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["Lattice", "Sphere", "Ring", "Helix"][Math.round(v)] || "", apply: v => vbShape = Math.round(v), durScale: 10 },
+    { key: "vbsize", host: "fx", group: "vballs", type: "dual", label: "Ball size", valId: "vVbSize", min: 0.08, max: 0.6, step: 0.005, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => vbRad = v, durScale: 10 },
+    { key: "vbspin", host: "fx", group: "vballs", type: "dual", label: "Tumble", valId: "vVbSpin", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => vbSpin = v, durScale: 10 },
+    { key: "vbglow", host: "fx", group: "vballs", type: "dual", label: "Edge glow", valId: "vVbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => vbGlow = v, durScale: 10 },
+    { key: "goswell", host: "fx", group: "ocean", type: "dual", label: "Swell", valId: "vGoSwell", min: 0, max: 2.5, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSwell = v, durScale: 10 },
+    { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
+    { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
+    { key: "gofoam", host: "fx", group: "ocean", type: "dual", label: "Foam", valId: "vGoFoam", min: 0.1, max: 1, step: 0.01, lo: 0.45, hi: 0.45, fmt: v => sig3(v), apply: v => goFoam = v, durScale: 10 },
+    { key: "gowind", host: "fx", group: "ocean", type: "dual", label: "Wind", valId: "vGoWind", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => goWind = v, durScale: 10 },
+    { key: "bhtilt", host: "fx", group: "bhole", type: "dual", label: "Tilt", valId: "vBhTilt", min: 2, max: 80, step: 1, lo: 12, hi: 12, fmt: v => sig3(v) + "°", apply: v => bhTilt = v, durScale: 10 },
+    { key: "bhouter", host: "fx", group: "bhole", type: "dual", label: "Disk size", valId: "vBhOuter", min: 4, max: 14, step: 0.1, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bhOuter = v, durScale: 10 },
+    { key: "bhspin", host: "fx", group: "bhole", type: "dual", label: "Disk speed", valId: "vBhSpin", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bhSpin = v, durScale: 10 },
+    { key: "bhbeam", host: "fx", group: "bhole", type: "dual", label: "Beaming", valId: "vBhBeam", min: 0, max: 1.5, step: 0.02, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => bhBeam = v, durScale: 10 },
+    { key: "bhorbit", host: "fx", group: "bhole", type: "dual", label: "Orbit speed", valId: "vBhOrbit", min: 0, max: 1, step: 0.01, lo: 0.08, hi: 0.08, fmt: v => sig3(v) + "×", apply: v => bhOrbSpd = v, durScale: 10 },
+    { key: "qjslice", host: "fx", group: "qjulia", type: "dual", label: "Slice", valId: "vQjSlice", min: -1, max: 1, step: 0.005, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => qjSlice = v, durScale: 10 },
+    { key: "qjcut", host: "fx", group: "qjulia", type: "dual", label: "Cut angle", valId: "vQjCut", min: 0, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => qjCut = v, durScale: 10 },
+    { key: "qjdetail", host: "fx", group: "qjulia", type: "dual", single: true, label: "Detail", valId: "vQjDetail", min: 4, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => qjDetail = Math.round(v), durScale: 10 },
+    { key: "qjspin", host: "fx", group: "qjulia", type: "dual", label: "Orbit speed", valId: "vQjSpin", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => qjSpin = v, durScale: 10 },
+    { key: "qjglow", host: "fx", group: "qjulia", type: "dual", label: "Glow", valId: "vQjGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => qjGlow = v, durScale: 10 },
     { key: "mgdive", host: "fx", group: "menger", type: "dual", label: "Dive speed", valId: "vMgDive", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => mgDive = v, durScale: 10 },
     { key: "mgrot", host: "fx", group: "menger", type: "dual", label: "Roll", valId: "vMgRot", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => mgRot = v, durScale: 10 },
     { key: "mgiter", host: "fx", group: "menger", type: "dual", single: true, label: "Detail", valId: "vMgIter", min: 2, max: 5, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => mgIter = Math.round(v), durScale: 10 },
@@ -8572,39 +9479,42 @@
     { key: "heatboost", host: "pal", group: "palette", type: "dual", label: "Heat boost", valId: "vHeatBoost", min: 0, max: 4, step: 0.05, lo: 0, hi: 0, fmt: v => v <= 0 ? "off" : "+" + sig3(v), apply: v => heatBoost = v, durScale: 10 },
     // ---- filter parameters. Contiguous, one group per filter, host "filter" so
     // they render in the Filters box; shown only while their filter is ticked. ----
-    { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 130, hi: 130, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
+    { key: "rise", host: "filter", group: "f_fire", type: "dual", label: "Flame rise", valId: "vRise", min: 3, max: 200, step: 1, lo: 165, hi: 165, fmt: v => sig3(v), apply: v => cfg.decay = 128 * v / (v - 1) },
     { key: "burn", host: "filter", group: "f_fire", type: "dual", label: "Burn rate", valId: "vBurn", min: 20, max: 240, step: 1, lo: 120, hi: 120, fmt: v => sig3(v) + "/s", apply: v => cfg.burn = Math.max(1, v), durScale: 10 },
-    { key: "fade", host: "filter", group: "f_fade", type: "dual", label: "Lifetime", valId: "vFade", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => fadeKeep = v, durScale: 10 },
-    { key: "diffuse", host: "filter", group: "f_diffuse", type: "dual", label: "Spread", valId: "vDiffuse", min: 0.5, max: 6, step: 0.1, lo: 1, hi: 1, fmt: v => sig3(v) + "px", apply: v => diffRad = v, durScale: 10 },
-    { key: "diffkeep", host: "filter", group: "f_diffuse", type: "dual", label: "Lifetime", valId: "vDiffKeep", min: 0.5, max: 1, step: 0.001, lo: 0.97, hi: 0.97, fmt: v => sig3(v * 100) + "%", apply: v => diffKeep = v, durScale: 10 },
-    { key: "echo", host: "filter", group: "f_echo", type: "dual", label: "Distance", valId: "vEcho", min: 0, max: 8, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v) + "px", apply: v => echoDist = v, durScale: 10 },
+    { key: "fade", host: "filter", group: "f_fade", type: "dual", label: "Lifetime", valId: "vFade", min: 0.5, max: 0.995, step: 0.001, lo: 0.985, hi: 0.985, fmt: v => sig3(v * 100) + "%", apply: v => fadeKeep = v, durScale: 10 },
+    { key: "diffuse", host: "filter", group: "f_diffuse", type: "dual", label: "Spread", valId: "vDiffuse", min: 0.5, max: 6, step: 0.1, lo: 3.6, hi: 3.6, fmt: v => sig3(v) + "px", apply: v => diffRad = v, durScale: 10 },
+    { key: "diffkeep", host: "filter", group: "f_diffuse", type: "dual", label: "Lifetime", valId: "vDiffKeep", min: 0.5, max: 1, step: 0.001, lo: 0.985, hi: 0.985, fmt: v => sig3(v * 100) + "%", apply: v => diffKeep = v, durScale: 10 },
+    { key: "echo", host: "filter", group: "f_echo", type: "dual", label: "Distance", valId: "vEcho", min: 0, max: 8, step: 0.1, lo: 4.5, hi: 4.5, fmt: v => sig3(v) + "px", apply: v => echoDist = v, durScale: 10 },
     { key: "echoang", host: "filter", group: "f_echo", type: "dual", label: "Angle", valId: "vEchoAng", min: 0, max: 360, step: 1, lo: 90, hi: 90, fmt: v => sig3(v) + "°", apply: v => echoAng = v, durScale: 10 },
     { key: "echokeep", host: "filter", group: "f_echo", type: "dual", label: "Lifetime", valId: "vEchoKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => echoKeep = v, durScale: 10 },
     { key: "zfb", host: "filter", group: "f_zoomfb", type: "dual", label: "Scale", valId: "vZfb", min: 0.9, max: 1.1, step: 0.001, lo: 1.02, hi: 1.02, fmt: v => sig3(v) + "×", apply: v => zfbScale = v, durScale: 10 },
     { key: "zfbkeep", host: "filter", group: "f_zoomfb", type: "dual", label: "Lifetime", valId: "vZfbKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => zfbKeep = v, durScale: 10 },
-    { key: "swirl", host: "filter", group: "f_swirl", type: "dual", label: "Spin", valId: "vSwirl", min: -15, max: 15, step: 0.1, lo: 2, hi: 2, fmt: v => sig3(v) + "°", apply: v => swirlSpin = v, durScale: 10 },
+    { key: "swirl", host: "filter", group: "f_swirl", type: "dual", label: "Spin", valId: "vSwirl", min: -15, max: 15, step: 0.1, lo: 6, hi: 6, fmt: v => sig3(v) + "°", apply: v => swirlSpin = v, durScale: 10 },
     { key: "swirlkeep", host: "filter", group: "f_swirl", type: "dual", label: "Lifetime", valId: "vSwirlKeep", min: 0.5, max: 0.995, step: 0.001, lo: 0.94, hi: 0.94, fmt: v => sig3(v * 100) + "%", apply: v => swirlKeep = v, durScale: 10 },
     { key: "twist", host: "filter", group: "f_twist", type: "dual", label: "Amount", valId: "vTwist", min: -4, max: 4, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v), apply: v => twistAmt = v, durScale: 10 },
     { key: "wedgeseg", host: "filter", group: "f_wedge", type: "dual", single: true, label: "Segments", valId: "vWedgeSeg", min: 2, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => wedgeSeg = Math.round(v), durScale: 10 },
     { key: "wedgerot", host: "filter", group: "f_wedge", type: "dual", label: "Spin", valId: "vWedgeRot", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => wedgeRot = v, durScale: 10 },
-    { key: "glitch", host: "filter", group: "f_glitch", type: "dual", label: "Amount", valId: "vGlitch", min: 0, max: 0.5, step: 0.005, lo: 0.05, hi: 0.05, fmt: v => sig3(v * 100) + "%", apply: v => glitchAmt = v, durScale: 10 },
-    { key: "glitchrows", host: "filter", group: "f_glitch", type: "dual", label: "Slice height", valId: "vGlitchRows", min: 1, max: 40, step: 1, lo: 8, hi: 8, fmt: v => sig3(v) + "px", apply: v => glitchRows = v, durScale: 10 },
-    { key: "pixel", host: "filter", group: "f_pixelate", type: "dual", label: "Block", valId: "vPixel", min: 2, max: 40, step: 1, lo: 6, hi: 6, fmt: v => sig3(v) + "px", apply: v => pixelBlock = v, durScale: 10 },
-    { key: "soften", host: "filter", group: "f_soften", type: "dual", label: "Amount", valId: "vSoften", min: -1, max: 2, step: 0.01, lo: -0.6, hi: -0.6, fmt: v => v < 0 ? "blur " + sig3(-v) : "sharp " + sig3(v), apply: v => softenAmt = v, durScale: 10 },
-    { key: "softrad", host: "filter", group: "f_soften", type: "dual", label: "Radius", valId: "vSoftRad", min: 0.5, max: 6, step: 0.1, lo: 1.5, hi: 1.5, fmt: v => sig3(v) + "px", apply: v => softenRad = v, durScale: 10 },
+    { key: "glitch", host: "filter", group: "f_glitch", type: "dual", label: "Amount", valId: "vGlitch", min: 0, max: 0.5, step: 0.005, lo: 0.22, hi: 0.22, fmt: v => sig3(v * 100) + "%", apply: v => glitchAmt = v, durScale: 10 },
+    { key: "glitchrows", host: "filter", group: "f_glitch", type: "dual", label: "Slice height", valId: "vGlitchRows", min: 1, max: 40, step: 1, lo: 10, hi: 10, fmt: v => sig3(v) + "px", apply: v => glitchRows = v, durScale: 10 },
+    { key: "pixel", host: "filter", group: "f_pixelate", type: "dual", label: "Block", valId: "vPixel", min: 2, max: 40, step: 1, lo: 14, hi: 14, fmt: v => sig3(v) + "px", apply: v => pixelBlock = v, durScale: 10 },
+    { key: "hexsize", host: "filter", group: "f_hexpix", type: "dual", label: "Cell", valId: "vHexSize", min: 3, max: 48, step: 1, lo: 20, hi: 20, fmt: v => sig3(v) + "px", apply: v => hexSize = v, durScale: 10 },
+    { key: "crtmask", host: "filter", group: "f_crt", type: "dual", label: "Mask", valId: "vCrtMask", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => crtMask = v, durScale: 10 },
+    { key: "crtbleed", host: "filter", group: "f_crt", type: "dual", label: "Beam bleed", valId: "vCrtBleed", min: 0, max: 1, step: 0.02, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => crtBleed = v, durScale: 10 },
+    { key: "soften", host: "filter", group: "f_soften", type: "dual", label: "Amount", valId: "vSoften", min: -1, max: 2, step: 0.01, lo: -1, hi: -1, fmt: v => v < 0 ? "blur " + sig3(-v) : "sharp " + sig3(v), apply: v => softenAmt = v, durScale: 10 },
+    { key: "softrad", host: "filter", group: "f_soften", type: "dual", label: "Radius", valId: "vSoftRad", min: 0.5, max: 6, step: 0.1, lo: 5.5, hi: 5.5, fmt: v => sig3(v) + "px", apply: v => softenRad = v, durScale: 10 },
     { key: "edge", host: "filter", group: "f_edge", type: "dual", label: "Amount", valId: "vEdge", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => edgeAmt = v, durScale: 10 },
-    { key: "poster", host: "filter", group: "f_poster", type: "dual", single: true, label: "Levels", valId: "vPoster", min: 2, max: 16, step: 1, lo: 5, hi: 5, fmt: v => sig3(Math.round(v)), apply: v => posterLevels = Math.round(v), durScale: 10 },
-    { key: "halfdot", host: "filter", group: "f_halftone", type: "dual", label: "Dot size", valId: "vHalfDot", min: 2, max: 20, step: 0.5, lo: 4, hi: 4, fmt: v => sig3(v) + "px", apply: v => halfDot = v, durScale: 10 },
-    { key: "halfamt", host: "filter", group: "f_halftone", type: "dual", label: "Amount", valId: "vHalfAmt", min: 0, max: 1, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => halfAmt = v, durScale: 10 },
+    { key: "poster", host: "filter", group: "f_poster", type: "dual", single: true, label: "Levels", valId: "vPoster", min: 2, max: 16, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => posterLevels = Math.round(v), durScale: 10 },
+    { key: "halfdot", host: "filter", group: "f_halftone", type: "dual", label: "Dot size", valId: "vHalfDot", min: 2, max: 20, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v) + "px", apply: v => halfDot = v, durScale: 10 },
+    { key: "halfamt", host: "filter", group: "f_halftone", type: "dual", label: "Amount", valId: "vHalfAmt", min: 0, max: 1, step: 0.01, lo: 0.9, hi: 0.9, fmt: v => sig3(v), apply: v => halfAmt = v, durScale: 10 },
     { key: "threshlvl", host: "filter", group: "f_thresh", type: "dual", label: "Level", valId: "vThreshLvl", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => threshLevel = v, durScale: 10 },
     { key: "threshamt", host: "filter", group: "f_thresh", type: "dual", label: "Amount", valId: "vThreshAmt", min: 0, max: 1, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => threshAmt = v, durScale: 10 },
-    { key: "chroma", host: "filter", group: "f_chroma", type: "dual", label: "Amount", valId: "vChroma", min: 0, max: 6, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => chromaAmt = v, durScale: 10 },
+    { key: "chroma", host: "filter", group: "f_chroma", type: "dual", label: "Amount", valId: "vChroma", min: 0, max: 6, step: 0.05, lo: 2.8, hi: 2.8, fmt: v => sig3(v), apply: v => chromaAmt = v, durScale: 10 },
     { key: "mirror", host: "filter", group: "f_mirror", type: "dual", single: true, label: "Axis", valId: "vMirror", min: 1, max: 3, step: 1, lo: 1, hi: 1, fmt: v => ["", "X", "Y", "Both"][Math.round(v)] || "X", apply: v => mirrorMode = Math.round(v), durScale: 10 },
-    { key: "shock", host: "filter", group: "f_shock", type: "dual", label: "Shock", valId: "vShock", min: 0, max: 1, step: 0.01, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => shockAmt = v, durScale: 10 },
-    { key: "shockamp", host: "filter", group: "f_shock", type: "dual", label: "Push", valId: "vShockAmp", min: 0, max: 0.2, step: 0.005, lo: 0.06, hi: 0.06, fmt: v => sig3(v), apply: v => shockAmp = v, durScale: 10 },
-    { key: "shockwidth", host: "filter", group: "f_shock", type: "dual", label: "Ring width", valId: "vShockWidth", min: 0.02, max: 0.4, step: 0.01, lo: 0.1, hi: 0.1, fmt: v => sig3(v), apply: v => shockWidth = v, durScale: 10 },
-    { key: "pxthresh", host: "filter", group: "f_pixsort", type: "dual", label: "Threshold", valId: "vPxThresh", min: 0, max: 1, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => pxThresh = v, durScale: 10 },
-    { key: "pxstreak", host: "filter", group: "f_pixsort", type: "dual", label: "Streak", valId: "vPxStreak", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => pxStreak = v, durScale: 10 },
+    { key: "shock", host: "filter", group: "f_shock", type: "dual", label: "Shock", valId: "vShock", min: 0, max: 1, step: 0.01, lo: 0, hi: 1, fmt: v => sig3(v), apply: v => shockAmt = v, durScale: 10 },
+    { key: "shockamp", host: "filter", group: "f_shock", type: "dual", label: "Push", valId: "vShockAmp", min: 0, max: 0.2, step: 0.005, lo: 0.11, hi: 0.11, fmt: v => sig3(v), apply: v => shockAmp = v, durScale: 10 },
+    { key: "shockwidth", host: "filter", group: "f_shock", type: "dual", label: "Ring width", valId: "vShockWidth", min: 0.02, max: 0.4, step: 0.01, lo: 0.16, hi: 0.16, fmt: v => sig3(v), apply: v => shockWidth = v, durScale: 10 },
+    { key: "pxthresh", host: "filter", group: "f_pixsort", type: "dual", label: "Threshold", valId: "vPxThresh", min: 0, max: 1, step: 0.01, lo: 0.42, hi: 0.42, fmt: v => sig3(v), apply: v => pxThresh = v, durScale: 10 },
+    { key: "pxstreak", host: "filter", group: "f_pixsort", type: "dual", label: "Streak", valId: "vPxStreak", min: 0, max: 1, step: 0.01, lo: 0.75, hi: 0.75, fmt: v => sig3(v), apply: v => pxStreak = v, durScale: 10 },
     { key: "pxdir", host: "filter", group: "f_pixsort", type: "dual", single: true, label: "Direction", valId: "vPxDir", min: 0, max: 3, step: 1, lo: 0, hi: 0, fmt: v => ["Down", "Up", "Right", "Left"][Math.round(v)] || "Down", apply: v => pxDir = Math.round(v), durScale: 10 },
     { key: "cellstates", host: "filter", group: "f_cell", type: "dual", single: true, label: "States", valId: "vCellStates", min: 3, max: 24, step: 1, lo: 12, hi: 12, fmt: v => sig3(Math.round(v)), apply: v => cellStates = Math.round(v), durScale: 10 },
     { key: "cellmix", host: "filter", group: "f_cell", type: "dual", label: "Blend", valId: "vCellMix", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => cellMix = v, durScale: 10 },
@@ -8614,13 +9524,13 @@
     { key: "lensspeed", host: "filter", group: "f_lens", type: "dual", label: "Wander", valId: "vLensSpeed", min: 0, max: 2, step: 0.05, lo: 0.6, hi: 0.6, fmt: v => sig3(v) + "×", apply: v => lensSpeed = v, durScale: 10 },
     { key: "drdepth", host: "filter", group: "f_droste", type: "dual", label: "Depth", valId: "vDrDepth", min: 1.3, max: 4, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v), apply: v => drosteDepth = v, durScale: 10 },
     { key: "drtwist", host: "filter", group: "f_droste", type: "dual", label: "Spiral", valId: "vDrTwist", min: -1.5, max: 1.5, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => drosteTwist = v, durScale: 10 },
-    { key: "kuwrad", host: "filter", group: "f_kuwahara", type: "dual", single: true, label: "Brush size", valId: "vKuwRad", min: 1, max: 4, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)) + "px", apply: v => kuwRad = Math.round(v), durScale: 10 },
+    { key: "kuwrad", host: "filter", group: "f_kuwahara", type: "dual", single: true, label: "Brush size", valId: "vKuwRad", min: 1, max: 6, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)) + "px", apply: v => kuwRad = Math.round(v), durScale: 10 },
     { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
-    { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.15, hi: 0.15, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
+    { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.32, hi: 0.32, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
     { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 1, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
     { key: "vignette", host: "filter", group: "f_vignette", type: "dual", label: "Amount", valId: "vVignette", min: 0, max: 1, step: 0.01, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => vigAmt = v, durScale: 10 },
-    { key: "grain", host: "filter", group: "f_grain", type: "dual", label: "Amount", valId: "vGrain", min: 0, max: 0.5, step: 0.005, lo: 0.08, hi: 0.08, fmt: v => sig3(v), apply: v => grainAmt = v, durScale: 10 },
+    { key: "grain", host: "filter", group: "f_grain", type: "dual", label: "Amount", valId: "vGrain", min: 0, max: 0.5, step: 0.005, lo: 0.22, hi: 0.22, fmt: v => sig3(v), apply: v => grainAmt = v, durScale: 10 },
     { key: "band", host: "band", group: "banding", type: "dual", label: "Banding", valId: "vBand", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandLevel = v / 100 },
     { key: "bandsize", host: "band", group: "banding", type: "dual", label: "Band size", valId: "vBandSize", min: 1, max: 9, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bandGroup = Math.round(v) },
     { key: "banddim", host: "band", group: "banding", type: "dual", label: "Darkness", valId: "vBandDim", min: 0, max: 100, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "%", apply: v => bandDim = 1 - v / 100 },
@@ -9443,6 +10353,14 @@
     ["ltFront", () => ltFront, v => ltFront = v],
     ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
+    ["qjPhase", () => qjPhase, v => qjPhase = v],
+    ["goTime", () => goTime, v => goTime = v],
+    ["vbPhase", () => vbPhase, v => vbPhase = v],
+    ["hgPhase", () => hgPhase, v => hgPhase = v],
+    ["gxTime", () => gxTime, v => gxTime = v],
+    // The black hole carries two: the disk's own rotation and the camera's lap round it.
+    ["bhTime", () => bhTime, v => bhTime = v],
+    ["bhOrbit", () => bhOrbit, v => bhOrbit = v],
     ["flPhase", () => flPhase, v => flPhase = v],
     ["stTime", () => stTime, v => stTime = v],
     ["auTime", () => auTime, v => auTime = v],
@@ -10978,6 +11896,70 @@
       filters: ["fade"],
       defaults: { palcycle: [0, 0], palhold: [0, 0], bdcount: [80, 80], bdspeed: [1, 1], bdcoh: [1, 1], bdfear: [0, 0], fade: [0.93, 0.93], points: [2500, 2500], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "galaxy", name: "Galaxy", subtitle: "Galaxy · log-spiral star disc",
+      help: "A disc of stars whose density follows log spirals — the shape real galaxies make, where an arm is a straight line in log-radius so the winding tightens toward the core by itself rather than being drawn tighter by hand. The stars differentially rotate too: inner orbits sweep round faster, so the arms shear and re-form instead of turning like a rigid pinwheel. Arms sets how many, Twist how tightly they wind (low is a barred spiral, high a nearly circular ring), Scatter how sharply defined they are against the disc, Core how bright the central bulge burns. Arm Core or Scatter to the beat and the galaxy flares.",
+      params: ["gxarms", "gxtwist", "gxspin", "gxcore", "gxscatter", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      helpTags: ["all", "galaxy"], bakesOwnZoom: true, stampAdd: true,
+      stamp: (xL, xR, yT, yB, n) => galaxyStamp(xL, xR, yT, yB, n),
+      ranges: { points: { min: 3000, max: 40000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], gxarms: [2, 2], gxtwist: [0.55, 0.55], gxspin: [0.5, 0.5], gxcore: [0.35, 0.35], gxscatter: [0.30, 0.30],
+        points: [16000, 16000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "harmonograph", name: "Harmonograph", subtitle: "Harmonograph · damped pendulum ribbons",
+      help: "The Victorian drawing machine: two pendulums per axis, each a dying sine, their sum traced by a pen. Frequency ratio is the figure — whole numbers give the closed classical forms, and the values between them the open weaving ones. Detune is the trick: at exactly 0 the curve closes and retraces itself forever, and a hair off it each lap misses by a little and the whole figure precesses into a ribbon. Damping is how fast the pendulums die, so low values spiral a long way in and high ones draw a tight knot. Points is how finely the pen is sampled; add a Fade or Fire filter and the ribbons trail.",
+      params: ["hgratio", "hgdetune", "hgdecay", "hgmorph", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      helpTags: ["all", "harmo"], bakesOwnZoom: true,
+      stamp: (xL, xR, yT, yB, n) => harmonographStamp(xL, xR, yT, yB, n),
+      // Its own Points range, like Flames. This effect samples ONE continuous curve rather
+      // than scattering a cloud, so the count is the pen's resolution: below ~10k the line
+      // breaks into visible dots, and the shared floor of 500 would only ever look broken.
+      ranges: { points: { min: 4000, max: 60000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], hgratio: [3, 3], hgdetune: [0.012, 0.012], hgdecay: [0.022, 0.022], hgmorph: [0.35, 0.35],
+        points: [24000, 24000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
+    { id: "vballs", name: "Vector balls", subtitle: "Vector balls · Amiga bobs in formation",
+      help: "The Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. Formation picks how they are arranged — Lattice (a cube of them), Sphere (an even shell), Ring or Helix — and the whole set turns as one body, so the shape reads only from how the balls occlude and shade each other. Balls sets how many, Ball size how fat (wind it up and they merge into a solid), Tumble how fast, Edge glow how hard the silhouettes are lit. Nearer balls are brighter, which is what separates the formation in depth.",
+      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "vballs", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = vballsSeed(dt);
+        if (useGL) glShaderDraw("vballs", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uShape, s.shape); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
+        else vballsCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], vbcount: [24, 24], vbshape: [1, 1], vbsize: [0.30, 0.30], vbspin: [0.5, 0.5], vbglow: [0.5, 0.5],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
+      help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
+      params: ["goswell", "gochop", "gospeed", "gofoam", "gowind", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "ocean", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = oceanSeed(dt);
+        if (useGL) glShaderDraw("ocean", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSwell, s.swell); gl.uniform1f(u.uChop, s.chop); gl.uniform1f(u.uFoam, s.foam); gl.uniform1f(u.uWind, s.wind); gl.uniform1f(u.uZoom, s.zoom); });
+        else oceanCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+    { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",
+      help: "An accretion disk seen through the hole's own gravity. The photons are integrated rather than drawn straight, so light from the FAR side of the disk is bent up over the top of the shadow and back under the bottom — those arcs closing round the dark centre are the whole point, and a straight-ray version would just be an ellipse. Tilt is the camera's height above the disk plane: low is the iconic nearly-edge-on view, high looks down on a plain ring. Beaming is the relativistic boost that makes the limb coming toward you far brighter than the one going away; wind it to 0 for an evenly lit disk. The disk orbits Keplerian, so the inside shears past the outside and the turbulence never repeats. Heavy: it wants a real GPU.",
+      params: ["bhtilt", "bhouter", "bhspin", "bhbeam", "bhorbit", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "bhole", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = bholeSeed(dt);
+        if (useGL) glShaderDraw("bhole", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uOrbit, s.orbit); gl.uniform1f(u.uTilt, s.tilt); gl.uniform1f(u.uOuter, s.outer); gl.uniform1f(u.uBeam, s.beam); gl.uniform1f(u.uZoom, s.zoom); });
+        else bholeCPU(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bhtilt: [12, 12], bhouter: [8, 8], bhspin: [1, 1], bhbeam: [0.8, 0.8], bhorbit: [0.08, 0.08],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
+    { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
+      help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
+      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
+      helpTags: ["all", "julia", "qjulia", "band"], bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
+      // ONE juliaSeed() per frame, like the other three — the mirror takes the seed rather
+      // than re-advancing it (juliaprobe pins both halves of that for every cardioid effect).
+      draw: dt => { const seed = juliaSeed(dt), s = qjuliaSeed(dt);
+        if (useGL) glShaderDraw("qjulia", u => { gl.uniform4f(u.uC, seed.cx, seed.cy, 0, 0); gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uSlice, s.slice); gl.uniform1f(u.uCut, s.cut); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
+        else qjulia(seed, s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], qjslice: [0, 0], qjcut: [0, 0], qjdetail: [8, 8], qjspin: [0.3, 0.3], qjglow: [0.5, 0.5],
+        rpm: [0.15, 0.15], ratio: [6.5, 6.5], inrad: [0.12, 0.12], outrad: [1.02, 1.02], phase: [0, 0], cardx: [0, 0],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
   ];
   // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
   // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime
@@ -11336,7 +12318,7 @@
   const FILTERS = [
     { id: "fire",  name: "Fire",  stage: "feedback", params: ["rise", "burn"],
       help: "Heat rises and cools, the classic fire sim — now available to every effect, not just the point ones.",
-      defaults: { rise: [130, 130], burn: [120, 120] },
+      defaults: { rise: [165, 165], burn: [120, 120] },
       glFeedback: src => {
         gl.useProgram(glProg.prop.p);
         bindTexUnit(0, src);
@@ -11347,7 +12329,7 @@
       } },
     { id: "fade",  name: "Fade pixel", stage: "feedback", params: ["fade"],
       help: "Each pixel keeps a fraction of its heat every tick — phosphor trails.",
-      defaults: { fade: [0.94, 0.94] },
+      defaults: { fade: [0.985, 0.985] },
       glFeedback: src => {
         const P = glProg.fade;
         gl.useProgram(P.p);
@@ -11358,7 +12340,7 @@
       cpuFeedback: () => { for (let i = 0; i < fire.length; i++) fire[i] = fire[i] * fadeKeep; } },
     { id: "diffuse", name: "Diffuse", stage: "feedback", params: ["diffuse", "diffkeep"],
       help: "Heat bleeds sideways as well as up — Fire's flames turn to smoke.",
-      defaults: { diffuse: [1, 1], diffkeep: [0.97, 0.97] },
+      defaults: { diffuse: [3.6, 3.6], diffkeep: [0.985, 0.985] },
       glFeedback: src => {
         const P = glProg.diffuse;
         gl.useProgram(P.p);
@@ -11371,7 +12353,7 @@
       cpuFeedback: () => heatDiffuseCPU(diffRad, diffKeep) },
     { id: "echo", name: "Echo", stage: "feedback", params: ["echo", "echoang", "echokeep"],
       help: "Trails drag in a direction instead of just dimming in place.",
-      defaults: { echo: [2, 2], echoang: [90, 90], echokeep: [0.94, 0.94] },
+      defaults: { echo: [4.5, 4.5], echoang: [90, 90], echokeep: [0.94, 0.94] },
       glFeedback: src => glWarpFeedback(src, echoDist, echoAng, 1, 0, echoKeep),
       cpuFeedback: () => heatWarpCPU(echoDist, echoAng, 1, 0, echoKeep) },
     { id: "zoomfb", name: "Zoom feedback", stage: "feedback", params: ["zfb", "zfbkeep"],
@@ -11381,7 +12363,7 @@
       cpuFeedback: () => heatWarpCPU(0, 0, zfbScale, 0, zfbKeep) },
     { id: "swirl", name: "Swirl", stage: "feedback", params: ["swirl", "swirlkeep"],
       help: "The retained heat is rotated about the centre every tick, so trails spiral. Stack it with Zoom feedback for a vortex.",
-      defaults: { swirl: [2, 2], swirlkeep: [0.94, 0.94] },
+      defaults: { swirl: [6, 6], swirlkeep: [0.94, 0.94] },
       glFeedback: src => glWarpFeedback(src, 0, 0, 1, swirlSpin, swirlKeep),
       cpuFeedback: () => heatWarpCPU(0, 0, 1, swirlSpin, swirlKeep) },
     { id: "cellular", name: "Cellular automaton", stage: "feedback", params: ["cellstates", "cellmix", "cellkeep"],
@@ -11408,17 +12390,21 @@
       gl: src => postPass("wedge", src, u => { gl.uniform1f(u.uSeg, wedgeSeg); gl.uniform1f(u.uRot, wedgeRot * Math.PI / 180); }) },
     { id: "glitch", cpuOk: false, name: "Slice glitch", stage: "post", params: ["glitch", "glitchrows"],
       help: "Tear horizontal slices sideways at random. Arm the amount to a beat and it rips on the hit.",
-      defaults: { glitch: [0.05, 0.05], glitchrows: [8, 8] },
+      defaults: { glitch: [0.22, 0.22], glitchrows: [10, 10] },
       gl: src => postPass("glitch", src, u => {
         gl.uniform1f(u.uAmount, glitchAmt); gl.uniform1f(u.uRows, glitchRows); gl.uniform1f(u.uTime, postTime);
       }) },
     { id: "pixelate", cpuOk: false, name: "Pixelate", stage: "post", params: ["pixel"],
       help: "Snap the image to a coarse grid of blocks.",
-      defaults: { pixel: [6, 6] },
+      defaults: { pixel: [14, 14] },
       gl: src => postPass("pixelate", src, u => gl.uniform1f(u.uBlock, pixelBlock)) },
+    { id: "hexpix", cpuOk: false, name: "Hex pixelate", stage: "post", params: ["hexsize"],
+      help: "Snap the image to a honeycomb of hexagons instead of squares.",
+      defaults: { hexsize: [20, 20] },
+      gl: src => postPass("hexpix", src, u => gl.uniform1f(u.uSize2, hexSize)) },
     { id: "soften", cpuOk: false, name: "Blur / sharpen", stage: "post", params: ["soften", "softrad"],
       help: "One knob: negative blurs, positive sharpens (unsharp mask).",
-      defaults: { soften: [-0.6, -0.6], softrad: [1.5, 1.5] },
+      defaults: { soften: [-1, -1], softrad: [5.5, 5.5] },
       gl: src => postPass("soften", src, u => { gl.uniform1f(u.uRadius, softenRad); gl.uniform1f(u.uAmount, softenAmt); }) },
     { id: "edge", cpuOk: false, name: "Edge", stage: "post", params: ["edge"],
       help: "Sobel outline — traces the shapes instead of filling them.",
@@ -11426,11 +12412,11 @@
       gl: src => postPass("edge", src, u => gl.uniform1f(u.uAmount, edgeAmt)) },
     { id: "poster", cpuOk: false, name: "Posterize", stage: "post", params: ["poster"],
       help: "Quantise the colours into flat bands.",
-      defaults: { poster: [5, 5] },
+      defaults: { poster: [3, 3] },
       gl: src => postPass("posterize", src, u => gl.uniform1f(u.uLevels, posterLevels)) },
     { id: "halftone", cpuOk: false, name: "Halftone", stage: "post", params: ["halfdot", "halfamt"],
       help: "A rotated dot screen whose dots grow with brightness — the print look. Posterize flattens the ramp; this one spends texture on it.",
-      defaults: { halfdot: [4, 4], halfamt: [0.8, 0.8] },
+      defaults: { halfdot: [6, 6], halfamt: [0.9, 0.9] },
       gl: src => postPass("halftone", src, u => { gl.uniform1f(u.uDot, halfDot); gl.uniform1f(u.uAmount, halfAmt); }) },
     { id: "thresh", cpuOk: false, name: "Solarize", stage: "post", params: ["threshlvl", "threshamt"],
       help: "Invert everything above a brightness level — Posterize's nastier cousin.",
@@ -11438,7 +12424,7 @@
       gl: src => postPass("thresh", src, u => { gl.uniform1f(u.uLevel, threshLevel); gl.uniform1f(u.uAmount, threshAmt); }) },
     { id: "chroma", cpuOk: false, name: "Chromatic aberration", stage: "post", params: ["chroma"],
       help: "Split the red and blue channels radially, so the image fringes toward the corners like a cheap lens.",
-      defaults: { chroma: [1, 1] },
+      defaults: { chroma: [2.8, 2.8] },
       gl: src => postPass("chroma", src, u => gl.uniform1f(u.uAmount, chromaAmt)) },
     { id: "mirror", cpuOk: false, name: "Mirror", stage: "post", params: ["mirror"],
       help: "Fold the image about its centre — X, Y or both.",
@@ -11450,11 +12436,11 @@
     // per-effect/whole-scene grouping needs the bloom+screen run to stay contiguous.
     { id: "shock", cpuOk: false, name: "Shockwave", stage: "post", params: ["shock", "shockamp", "shockwidth"],
       help: "A displacement ring rushing out from the centre. Arm Shock's beat chips and every beat fires a wave — Trigger duration sets how long it takes to cross the screen.",
-      defaults: { shock: [0, 0], shockamp: [0.06, 0.06], shockwidth: [0.1, 0.1] },
+      defaults: { shock: [0, 1], shockamp: [0.11, 0.11], shockwidth: [0.16, 0.16] },
       gl: src => postPass("shock", src, u => { gl.uniform1f(u.uAmount, shockAmt); gl.uniform1f(u.uAmp, shockAmp); gl.uniform1f(u.uWidth, shockWidth); }) },
     { id: "pixsort", cpuOk: false, name: "Pixel sort", stage: "post", params: ["pxthresh", "pxstreak", "pxdir"],
       help: "The modern glitch: pixels brighter than the threshold smear into streaks along one direction, dark areas stay put. Lower the threshold to melt more of the picture.",
-      defaults: { pxthresh: [0.55, 0.55], pxstreak: [0.5, 0.5], pxdir: [0, 0] },
+      defaults: { pxthresh: [0.42, 0.42], pxstreak: [0.75, 0.75], pxdir: [0, 0] },
       gl: src => postPass("pixsort", src, u => { gl.uniform1f(u.uThresh, pxThresh); gl.uniform1f(u.uLen, pxStreak); gl.uniform1f(u.uDir, pxDir); }) },
     { id: "lens", cpuOk: false, name: "Lens bubble", stage: "post", params: ["lenssize", "lensmag", "lensspeed"],
       help: "A wandering fisheye magnifier drifting over the picture — the classic demo lens. Wander at 0 parks it in the middle.",
@@ -11470,7 +12456,7 @@
       gl: src => postPass("droste", src, u => { gl.uniform1f(u.uDepth, drosteDepth); gl.uniform1f(u.uTwist, drosteTwist); gl.uniform1f(u.uTime, postTime); }) },
     { id: "kuwahara", cpuOk: false, name: "Oil paint", stage: "post", params: ["kuwrad"],
       help: "Kuwahara filtering: each pixel takes the calmest neighbourhood's average, flattening texture while keeping edges — the screen-print / oil-paint look.",
-      defaults: { kuwrad: [3, 3] },
+      defaults: { kuwrad: [6, 6] },
       gl: src => postPass("kuwahara", src, u => gl.uniform1f(u.uRad, kuwRad)) },
     // Bloom is a REAL PASS now, not the composite. It used to BE the whole-scene glow with its
     // strength as a uniform, which is exactly why it had no `gl` hook and could never be
@@ -11495,19 +12481,23 @@
     //     the glow too, which is what the old fixed order did.
     { id: "barrel", cpuOk: false, name: "Barrel distortion", stage: "post", params: ["barrel"],
       help: "Bulge the image as if it were painted on the front of a CRT.",
-      defaults: { barrel: [0.15, 0.15] },
+      defaults: { barrel: [0.32, 0.32] },
       gl: src => postPass("barrel", src, u => gl.uniform1f(u.uAmount, barrelAmt)) },
     { id: "scanlines", cpuOk: false, name: "Scanlines", stage: "post", params: ["scan", "scancount"],
       help: "Darken alternating rows — the raster you are pretending to be.",
       defaults: { scan: [0.35, 0.35], scancount: [240, 240] },
       gl: src => postPass("scan", src, u => { gl.uniform1f(u.uAmount, scanAmt); gl.uniform1f(u.uCount, scanCount); }) },
+    { id: "crt", cpuOk: false, name: "CRT phosphor", stage: "post", params: ["crtmask", "crtbleed"],
+      help: "Shadow-mask RGB triads and the beam's horizontal smear — the rest of the CRT, beside Scanlines and Barrel.",
+      defaults: { crtmask: [0.5, 0.5], crtbleed: [0.4, 0.4] },
+      gl: src => postPass("crt", src, u => { gl.uniform1f(u.uMask, crtMask); gl.uniform1f(u.uBleed, crtBleed); }) },
     { id: "vignette", cpuOk: false, name: "Vignette", stage: "post", params: ["vignette"],
       help: "Fall off toward the corners.",
       defaults: { vignette: [0.4, 0.4] },
       gl: src => postPass("vignette", src, u => gl.uniform1f(u.uAmount, vigAmt)) },
     { id: "grain", cpuOk: false, name: "Film grain", stage: "post", params: ["grain"],
       help: "Animated noise over the finished frame.",
-      defaults: { grain: [0.08, 0.08] },
+      defaults: { grain: [0.22, 0.22] },
       gl: src => postPass("grain", src, u => { gl.uniform1f(u.uAmount, grainAmt); gl.uniform1f(u.uTime, postTime); }) },
   ];
   const FILTER_BY_ID = {};
@@ -13068,7 +14058,12 @@
       tdur: [+el("tdur-lo").value, +el("tdur-hi").value],   // transition length (ditto)
       scale: cfg.scale,                              // render resolution (global)
       panelOpen: !panel.classList.contains("hidden"),
-      audio: audio.on ? audio.src : null,            // last live source, to re-arm on reload
+      // Last live source, to re-arm on reload. THREE states, not two: a source name
+      // re-arms that one, "off" means the user has settled the question (Stop, or a refused
+      // permission prompt) and is left alone, and null/absent means never asked — which is
+      // what restore() answers by arming the MIC. Older blobs carry null, so an existing
+      // visitor who has never turned audio on is treated as never-asked, which is true.
+      audio: audio.on ? audio.src : (audio.settled ? "off" : null),
     };
   }
   function persist() {
@@ -13269,12 +14264,31 @@
         ? saved.curPreset : (presets.length ? 0 : -1);
       if (typeof saved.panelOpen === "boolean") panel.classList.toggle("hidden", !saved.panelOpen);
       if (saved.audio === "capture" || saved.audio === "mic") armAudioResume(saved.audio);
+      // "off" = the question is settled. This has to be READ BACK into the flag, not just
+      // acted on: fullSnapshot rebuilds the field from `audio.settled`, so a session that
+      // loaded "off" and never touched audio would write null on its very next edit and
+      // re-arm the mic on the load after that — the decision would survive exactly one
+      // reload.
+      else if (saved.audio === "off") audio.settled = true;
     }
   }
   function restore() {
     let saved;
     try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
     applyBlob(saved, false);
+    // NO SOURCE EVER CHOSEN ⇒ arm the MIC. Reacting to music is the point of the app and
+    // the thing nobody discovers on their own, so the default is on rather than off.
+    // `armAudioResume` does not open anything by itself — it waits for the first user
+    // gesture, because getUserMedia may only be called from one. Two consequences worth
+    // knowing: the tutorial suppresses that gesture until the tour is done (so a first-time
+    // visitor is told what the app does before the browser asks for their microphone), and
+    // "off" is excluded here, which is the whole reason `audio.settled` exists.
+    //
+    // Here rather than in applyBlob, which also runs for an incoming SHARE blob: arming
+    // twice would install two resume listeners and start two streams. restore() is the one
+    // startup path and runs exactly once.
+    const a = saved && saved.audio;
+    if (a !== "capture" && a !== "mic" && a !== "off") armAudioResume("mic");
   }
   // Drop the payload from the address bar. Runs even when decode FAILS, so a
   // corrupt link doesn't stick around and get retried on every reload.
@@ -17018,7 +18032,7 @@
     // were both missing from it for a release, closable by mouse only, which is the same way
     // the .pal-close and ui-hidden selector lists have each rotted. tools/uiprobe.js now
     // asserts that every dialog id turns up here.
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); cardWanted = false; cardOpen(false); }
+    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
@@ -17063,6 +18077,8 @@
       { n: "Fire", w: "all", t: "The classic rising-fire feedback: heat drifts upward and cools each frame, so whatever the effect draws sprouts flames. Flame rise sets how tall they climb before fading (linear in height); Burn rate how many simulation steps run per second — faster is livelier and flickerier." },
       { n: "Fade pixel", w: "all", t: "Keeps a fraction of the previous frame instead of clearing it, leaving motion trails. Lifetime near 100% smears almost forever; lower values fade quickly. Stacks with Fire." },
       { n: "Pixelate", w: "all", t: "Chunks the image into blocks. Block sets the size — a direct route to a lo-fi console look." },
+      { n: "Hex pixelate", w: "all", t: "The same idea on a honeycomb: the picture snaps to hexagons instead of squares. Cell sets the size. Hexes read as a deliberate screen where squares read as low resolution, so it suits organic effects (plasma, aurora, the ocean) far better than Pixelate does." },
+      { n: "CRT phosphor", w: "all", t: "The rest of the television, beside Scanlines and Barrel. Mask lays RGB shadow-mask triads over the picture the way a real tube's aperture grille does, and Beam bleed smears each scanline horizontally — asymmetrically, trailing to the right, because that is the direction the beam sweeps. Phosphor persistence is deliberately not here: a post filter sees one finished frame and has no memory of the last one, so stack Fade pixel above the line if you want the afterglow." },
       { n: "Blur / sharpen", w: "all", t: "One kernel doing both: negative Amount blurs, positive sharpens, 0 is off. Radius sets how far it reaches, so a wide soft blur and a tight crisp edge come from the same pass." },
       { n: "Edge", w: "all", t: "Edge detection over the finished image — Amount fades between the original and the outlines it finds." },
       { n: "Posterize", w: "all", t: "Crushes the colours to a fixed number of Levels, turning smooth gradients into flat bands." },
@@ -17143,6 +18159,35 @@
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
       { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
       { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Arms", w: "galaxy", t: "Galaxy only — how many spiral arms the disc has. 2 is the common grand-design spiral, 1 gives a single sweeping arm, and higher counts give the flocculent many-armed look. Arm its L/M/H chips and the galaxy restructures on the beat." },
+      { n: "Twist", w: "galaxy", t: "Galaxy only — how tightly the arms wind. An arm is a straight line in log-radius, so this is that line's slope: low values sweep the arms out into a barred, open spiral, high values wind them into a nearly circular ring. It is the single biggest change to the galaxy's character." },
+      { n: "Spin", w: "galaxy", t: "Galaxy only — how fast the disc turns. The arms TRAIL, as real spiral arms do: their tips lag behind the direction of travel. What rotates is the spiral pattern rather than the stars themselves — a density wave — with a slow shear over it, which is what keeps the arms from winding themselves out of existence the way a true inner-faster rotation would within a minute. Negative runs it backwards, so the arms lead; unphysical, and there if you want it. 0 holds the disc still." },
+      { n: "Core", w: "galaxy", t: "Galaxy only — how bright and dense the central bulge burns. 0 leaves a bare disc with no centre to it; higher values pile a tight ball of stars into the middle that blows out to white through the palette." },
+      { n: "Scatter", w: "galaxy", t: "Galaxy only — how far stars stray from their arm. Low values give hard, almost drawn-on arms; high values dissolve them into a general disc where the spiral is only just readable. The scatter widens outward, so the core stays tight either way." },
+      { n: "Frequency ratio", w: "harmo", t: "Harmonograph only — how many times the fast pendulum swings per swing of the slow one, and so which figure the pen draws. Whole numbers give the closed classical forms (2 a figure-of-eight, 3 a trefoil, and so on); the values in between give the open weaving ones. Drift the two thumbs and it walks through the whole family." },
+      { n: "Detune", w: "harmo", t: "Harmonograph only — how far the paired pendulums are out of tune with each other, and the trick the whole machine rests on. At exactly 0 the curve closes and retraces its own line forever, so you get a bare wire figure; a hair off zero and each lap misses the last by a little, the figure precesses, and the accumulated near-misses are what make it a woven ribbon rather than a line." },
+      { n: "Damping", w: "harmo", t: "Harmonograph only — how fast the pendulums die away. Low values let the pen spiral a long way inward, filling a broad figure; high values kill the swing quickly and draw a small tight knot. Real harmonographs ran down in a minute or two — this is that dial." },
+      { n: "Morph speed", w: "harmo", t: "Harmonograph only — how fast the four pendulum phases drift apart. They move at unrelated rates, so the figure never returns to a pose it has held before. 0 freezes one drawing." },
+      { n: "Balls", w: "vballs", t: "Vector balls only — how many spheres are in the formation, up to 48. The arrangement rebuilds around the count, so changing it is not just adding: a Lattice re-sizes its cube, a Sphere re-spaces its shell. Arm its L/M/H chips and the whole constellation rebuilds on the beat." },
+      { n: "Formation", w: "vballs", t: "Vector balls only — how the balls are arranged: Lattice (a cube of them), Sphere (an even Fibonacci-spaced shell), Ring (a tilted circle) or Helix (a double strand). The set is rigid and turns as one body, so the shape only reads from how the balls occlude and shade one another — which is exactly how the Amiga original worked." },
+      { n: "Ball size", w: "vballs", t: "Vector balls only — how fat each sphere is. Small keeps them clearly separate points of light; wind it up and neighbours overlap until the formation reads as one lumpy solid." },
+      { n: "Tumble", w: "vballs", t: "Vector balls only — how fast the constellation turns. It yaws and pitches at different rates, so it never repeats a pose. 0 holds it still." },
+      { n: "Edge glow", w: "vballs", t: "Vector balls only — lights the rim of each sphere where its surface turns away from you. Low is flat shading, high outlines every ball and the formation reads as a cloud of bright shells." },
+      { n: "Swell", w: "ocean", t: "Ocean only — how big the sea is. It scales the surface normals rather than the height, so raising it steepens every face at once: the glint gets sharper, the foam breaks earlier, and the water goes from a lazy roll to a heavy sea." },
+      { n: "Chop", w: "ocean", t: "Ocean only — how peaked the crests are. Each wave train is a sine raised to this power, so 1 is a bland sine swell with rounded tops, and higher values keep the troughs round while drawing the crests up to a point — which is what real water does. Drift the two thumbs and the sea builds and lays down again." },
+      { n: "Speed", w: "ocean", t: "Ocean only — how fast the waves travel. Each octave runs a little faster than the one below, so the small chop skitters across the big swell. 0 freezes the surface mid-wave." },
+      { n: "Foam", w: "ocean", t: "Ocean only — the threshold a crest has to pass before it breaks white: high water and a steep face together. Low values leave the whole sea flecked, high values keep it to the biggest crests only." },
+      { n: "Wind", w: "ocean", t: "Ocean only — the direction the swell runs, in degrees. Turning it swings the whole sea, and because the octaves fan out from it the interference pattern changes too rather than just rotating." },
+      { n: "Tilt", w: "bhole", t: "Black hole only — how high above the disk plane the camera sits. Low angles are the iconic view: the disk is nearly edge-on, so the light from its far side is bent up over the top of the shadow and back under the bottom, closing a ring round the darkness. Wind it high and you are looking down on a plain flat ring with the lensing barely visible." },
+      { n: "Disk size", w: "bhole", t: "Black hole only — how far out the accretion disk extends. Small keeps a tight bright annulus hugging the shadow; large spreads a broad faint disk across the frame. The inner edge is fixed where the last stable orbit is." },
+      { n: "Disk speed", w: "bhole", t: "Black hole only — how fast the disk turns. It orbits Keplerian, so the inner ring always shears past the outer one and the turbulence never repeats however long you watch. 0 freezes the pattern (the lensing and the beaming stay)." },
+      { n: "Beaming", w: "bhole", t: "Black hole only — relativistic Doppler beaming: the side of the disk rotating toward you is boosted and the side going away is dimmed, which is why one limb is far brighter than the other. 0 gives an evenly lit disk, which reads as wrong once you have seen the real thing." },
+      { n: "Orbit speed", w: "bhole", t: "Black hole only — how fast the camera circles the hole. 0 parks it. Slow is best: the lensed arcs change shape as the viewing angle turns." },
+      { n: "Slice", w: "qjulia", t: "Quaternion Julia only — the 4D set is cut to a 3D solid before it can be drawn, and this is where that cut falls along the fourth axis. 0 is the natural slice; move it either way and the solid melts through a continuous family of shapes, shedding and growing whole limbs. Spread the two thumbs and it never stops changing; arm its L/M/H chips and the beat jumps it to a new form." },
+      { n: "Cut angle", w: "qjulia", t: "Quaternion Julia only — rotates the cutting plane itself, rather than sliding it. At 0° the solid is cut the usual way; wind it round and the real axis is traded for the fourth one, so the same 4D object is sighted along a different direction entirely and shows cross-sections the Slice slider alone never reaches. Pairs well with Slice: spread one and pin the other." },
+      { n: "Detail", w: "qjulia", t: "Quaternion Julia only — how many iterations the distance estimate runs. More is crisper and more filigreed, and costs GPU directly." },
+      { n: "Orbit speed", w: "qjulia", t: "Quaternion Julia only — how fast the camera circles the solid, with a slow nod built in. 0 parks it." },
+      { n: "Glow", w: "qjulia", t: "Quaternion Julia only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the whole thing in fire." },
       { n: "Variation", w: "flames", t: "Fractal flames only — the nonlinear fold applied to every step of the chaos game: Sinusoidal, Spherical, Swirl, Horseshoe, Polar or Disc. Each is a different family of shapes; Spherical and Swirl are the classic flame looks." },
       { n: "Morph speed", w: "flames", t: "Fractal flames only — how fast the underlying maps' coefficients orbit, morphing the flame through its family of shapes. 0 freezes the form." },
       { n: "Point glow", w: "flames", t: "Fractal flames only — how much heat every landing point ADDS. Flames accumulate density instead of stamping a fixed heat, so this sets how quickly the dense heart burns toward white." },
@@ -17319,6 +18364,11 @@
     if (s && typeof s === "object") syncState = { shows: s.shows | 0, sinceLast: s.sinceLast | 0, used: !!s.used };
   } catch (e) {}
   function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncState)); } catch (e) {} }
+  // Put the first nudge a full delay away again. Called by the tutorial when it closes, so
+  // reading the tour never eats into the thirty seconds of scene that is supposed to come
+  // before anyone is asked to share their audio. A function declaration, because the caller
+  // is in a LATER slice and this must not be reached through the tutorial's own state.
+  function syncResetDelay() { syncState.sinceLast = 0; saveSync(); }
 
   const syncPop = el("syncpop");
   function hideSyncPopup() {
@@ -17330,13 +18380,23 @@
   // press whether or not the nudge is up, and an unguarded dismissSync would post a
   // sync_popup_dismiss event each time — analytics for a popup nobody was shown.
   function dismissSyncIfOpen() { if (!syncPop.classList.contains("hidden")) dismissSync(); }
+  // Returns whether it actually opened, and the caller only spends one of the three
+  // allowed showings when it did. That is not pedantry: a refusal that still incremented
+  // `shows` would silently use up a nudge nobody saw, and with only three ever, two
+  // refusals leave one.
   function showSyncPopup() {
+    // Never over the tutorial. The interval below already holds its counter while the tour
+    // is up, so this is belt and braces — but it is the important half: dlgModal
+    // deliberately releases any existing trap before arming its own, so a nudge opening on
+    // top would take the keyboard and leave the tutorial visible underneath and dead.
+    if (tutorialOpen()) return false;
     syncPop.classList.remove("hidden");
     // This one opens on a TIMER, not on a click, so taking focus is a real interruption — but
     // it is a full-screen modal that has already taken the pointer, and leaving the keyboard
     // behind the backdrop is worse: you would be tabbing through controls you cannot see.
     dlgModal(syncPop.querySelector(".sync-box"));
     track("sync_popup_shown", { shows: syncState.shows + 1 });
+    return true;
   }
   function markAudioUsed() {          // a source is live — satisfy the nudge permanently
     if (!syncState.used) { syncState.used = true; saveSync(); }
@@ -17352,15 +18412,274 @@
     const syncTimer = setInterval(() => {
       if (syncState.used || syncState.shows >= 3) { clearInterval(syncTimer); return; }
       if (document.hidden) return;              // only count time while the tab is visible
+      if (tutorialOpen()) return;               // ...and not while the tutorial has the screen
       syncState.sinceLast += 1000;
-      if (syncState.sinceLast >= SYNC_DELAYS[syncState.shows]) {
-        showSyncPopup();
+      if (syncState.sinceLast >= SYNC_DELAYS[syncState.shows] && showSyncPopup()) {
         syncState.shows += 1;
         syncState.sinceLast = 0;
         if (syncState.shows >= 3) clearInterval(syncTimer);
       }
       saveSync();
     }, 1000);
+  }
+  // ---- First-run tutorial -------------------------------------------------------------
+  // An eight-step tour of what the app is, shown ONCE ever and then living in the ☰ menu
+  // so it can be re-read. It exists because #help is a REFERENCE — a per-effect blurb list
+  // keyed off helpTags — and never opens by itself, so a first-time visitor met a running
+  // four-layer scene, a dense panel, and thirty seconds later a popup asking to capture
+  // their screen. This runs first and explains what they are looking at.
+  //
+  // Three things make it behave rather than just appear:
+  //   * It waits out the CREDITS (rendered time, see credits.js) so the opening frame is
+  //     clean — a modal backdrop over the burn-in is a poor first impression.
+  //   * It HOLDS the "Sync with your music" nudge while it is up (syncResetDelay below and
+  //     the tutorialOpen() guards in the sync block), so the two can never stack. dlgModal
+  //     deliberately releases any existing trap, so a nudge opening over this would steal
+  //     the keyboard and leave the tutorial visible but dead.
+  //   * Its "seen" flag is its OWN localStorage key, not scene data — the same treatment
+  //     the credits and scene-banner preferences get. It is a property of this browser,
+  //     not of a scene, and must not ride in a share link or a backup.
+  const TUT_KEY = "burnTheWeb.tutorial.v1";
+  // Wall-clock backstop for the credits gate, in seconds of VISIBLE time. `?credits=600`
+  // parks the credits deliberately and a paused scene stops the rendered clock dead, so
+  // without this the tutorial could simply never arrive.
+  const TUT_MAX_WAIT = 20;
+
+  // Schematic line art, one per step. Inline SVG strings on currentColor in the style of
+  // EYE_OPEN/EYE_SHUT (boot-globals.js) — a few strokes each, not illustrations: they are
+  // there to give the eye something to land on while reading, and to make eight steps of
+  // prose feel like eight different things.
+  const TUT_ART = {
+    // No outer frame on this one: the art stage in the dialog is already a bordered box, and
+    // a rect inside it read as a box in a box.
+    canvas:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+      + '<path d="M100 82c-19 0-33-13-33-29 0-18 17-25 17-41 0 8 7 12 12 18 7-8 4-17 4-17 14 10 33 23 33 40 0 16-14 29-33 29z"/>'
+      + '<path d="M100 82c-9 0-16-7-16-15 0-9 11-13 11-24 6 7 21 15 21 24 0 8-7 15-16 15z" opacity=".55"/>'
+      + '</svg>',
+    menus:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+      + '<rect x="10" y="8" width="58" height="70" rx="6"/>'
+      + '<path d="M20 24h38M20 36h38M20 48h26M20 60h32" opacity=".55"/>'
+      + '<rect x="160" y="8" width="30" height="24" rx="6"/>'
+      + '<path d="M167 16h16M167 20h16M167 24h16"/>'
+      + '<rect x="120" y="40" width="70" height="38" rx="6" opacity=".55"/>'
+      + '<path d="M130 52h50M130 62h34" opacity=".45"/>'
+      + '</svg>',
+    scenes:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+      + '<rect x="24" y="10" width="152" height="18" rx="5" opacity=".45"/>'
+      + '<rect x="24" y="34" width="152" height="18" rx="5"/>'
+      + '<rect x="24" y="58" width="152" height="18" rx="5" opacity=".45"/>'
+      + '<path d="M34 43l6 6 12-13"/>'
+      + '<path d="M40 19h64M62 43h64M40 67h64" opacity=".4"/>'
+      + '</svg>',
+    layers:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">'
+      + '<rect x="52" y="50" width="112" height="26" rx="6" opacity=".4"/>'
+      + '<rect x="42" y="34" width="112" height="26" rx="6" opacity=".65"/>'
+      + '<rect x="32" y="18" width="112" height="26" rx="6"/>'
+      + '</svg>',
+    slider:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+      + '<path d="M20 40h160" opacity=".35"/>'
+      + '<path d="M64 40h72"/>'
+      + '<circle cx="64" cy="40" r="8"/><circle cx="136" cy="40" r="8"/>'
+      + '<rect x="88" y="56" width="24" height="20" rx="5" opacity=".5"/>'
+      + '<path d="M94 66h12M100 60v12" opacity=".8"/>'
+      + '</svg>',
+    filters:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+      + '<rect x="44" y="6" width="112" height="16" rx="5"/>'
+      + '<rect x="44" y="26" width="112" height="16" rx="5"/>'
+      + '<path d="M24 50h152" stroke-dasharray="5 5" opacity=".7"/>'
+      + '<rect x="44" y="58" width="112" height="16" rx="5" opacity=".6"/>'
+      + '</svg>',
+    music:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+      + '<path d="M14 43h12l6-16 8 34 8-26 7 14 6-6h14" opacity=".7"/>'
+      + '<rect x="96" y="28" width="26" height="30" rx="6"/>'
+      + '<rect x="128" y="28" width="26" height="30" rx="6" opacity=".7"/>'
+      + '<rect x="160" y="28" width="26" height="30" rx="6" opacity=".45"/>'
+      // Empty boxes read as nothing; the letters are what make them the L/M/H chips the
+      // step is talking about. fill/stroke reversed — the root sets stroke-only.
+      + '<g fill="currentColor" stroke="none" font-family="ui-monospace, monospace" font-size="15" text-anchor="middle">'
+      + '<text x="109" y="49">L</text><text x="141" y="49" opacity=".7">M</text>'
+      + '<text x="173" y="49" opacity=".45">H</text></g>'
+      + '</svg>',
+    share:
+      '<svg viewBox="0 0 200 86" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M50 58a17 17 0 0 1 2-34 25 25 0 0 1 46 6 15 15 0 0 1-3 28z" opacity=".6"/>'
+      + '<path d="M74 76V34M74 34l-9 9M74 34l9 9"/>'
+      // Two offset capsules read as a chain link at this size; a proper interlocking glyph
+      // turns to mush below about 40px.
+      + '<rect x="126" y="34" width="34" height="16" rx="8" opacity=".5"/>'
+      + '<rect x="146" y="50" width="34" height="16" rx="8" opacity=".5"/>'
+      + '</svg>',
+  };
+
+  // The tour. `head` is the step's own title (an <h3> — the <h2> stays constant so the
+  // sticky header never reflows), `body` is HTML.
+  const TUT_STEPS = [
+    { head: "A visual that runs in your browser", art: TUT_ART.canvas,
+      body: "burnTheWeb is a demoscene visual — forty-odd effects (fractals, plasmas, tunnels, "
+        + "raymarched solids, flocking birds) all sharing one palette, glow and beat-reactive "
+        + "pipeline. Nothing is installed and nothing is uploaded; the whole thing is this one page. "
+        + "<b>Click the picture to pause it</b>, and click again to carry on." },
+    // SECOND, not last. This is the headline feature and the one people never find on their
+    // own, so it comes before the furniture — the tour is not a manual read in order, it is
+    // a chance to say the important thing while anyone is still reading. It forward-refers to
+    // sliders and their chips, which is why it says so; the slider step then lands as the
+    // answer to a question already asked. The audio nudge follows ~30s later as the actual
+    // call to action, so this step deliberately explains rather than asks.
+    { head: "It reacts to your music", art: TUT_ART.music,
+      body: "The thing to know first: burnTheWeb <b>pulses in time with whatever you are listening "
+        + "to</b>. Turn on an audio source from <b>☰ → Audio</b> — <b>Capture</b> shares the sound of a "
+        + "tab (Spotify, YouTube), or use the <b>microphone</b> — and it is split into low, mid and high "
+        + "beats. Any slider can then be armed with its <b>L / M / H</b> chips (a couple of steps from "
+        + "now): it stops drifting, rests at its low end and snaps to its high end on every beat in that "
+        + "band. The audio is analysed in your browser only; nothing is recorded or sent anywhere."
+        // The mic is armed by default (see restore()), so the click that closes this tour is
+        // the one the browser prompts on. Saying so here is the difference between "of course"
+        // and an unexplained permission box a second after a tutorial ended.
+        + "<br><br>So that it just works: <b>your first click after this tour will ask to use the "
+        + "microphone</b>. Allow it and the room drives the visual; refuse, and it is never asked "
+        + "again — you can still start either source yourself from ☰ → Audio." },
+    { head: "Two menus", art: TUT_ART.menus,
+      body: "The panel down the left is the <b>scene editor</b> — everything that is part of what you "
+        + "are looking at. The <b>☰</b> top-right is everything else: audio, render resolution, "
+        + "fullscreen, your cloud profile, other people's scenes, the help reference — and this tutorial. "
+        + "<span class=\"tut-keys\">M</span> hides and shows the panel, <span class=\"tut-keys\">F</span> "
+        + "goes fullscreen and <span class=\"tut-keys\">H</span> strips every last bit of chrome." },
+    { head: "Scenes", art: TUT_ART.scenes,
+      body: "A <b>scene</b> is a complete snapshot — the effects, the colours, the filters, every slider. "
+        + "Pick one from the list and it loads; from then on <b>every change you make is saved straight "
+        + "back into it</b>, with no Save button. Press <b>New</b> first if you would rather work on a "
+        + "copy. <b>Auto-cycle</b> drifts through the scenes you have ticked, so you can leave it running." },
+    { head: "Layers", art: TUT_ART.layers,
+      body: "A scene can stack up to <b>four effects</b> into one picture. Each layer keeps its own "
+        + "effect, palette, camera and filters, and they are blended together in perceptual colour "
+        + "space — so a plasma can wash under a fractal and the two really do mix. The chevron on a "
+        + "layer's row opens its controls, the eye mutes it, and the handle drags it up or down the stack." },
+    { head: "Sliders drift", art: TUT_ART.slider,
+      body: "Most sliders have <b>two thumbs</b>: they are a low and a high bound, and the live value "
+        + "wanders erratically between them. That drift is where a lot of the movement comes from — "
+        + "<b>pinch the thumbs together</b> to hold a constant instead. The <b>+</b> beside a slider's "
+        + "name breaks it out into its own box on the right, where its value range and its beat "
+        + "triggers live." },
+    { head: "Filters", art: TUT_ART.filters,
+      body: "Each layer carries a chain of <b>filters</b>, listed in the order they run — drag to "
+        + "reorder. Where one sits matters: above the line it shapes the heat <i>before</i> the effect "
+        + "draws (Fire, trails, feedback warps build up over frames), below it repaints the finished "
+        + "picture (pixelate, mirror, bloom). <b>+ Add filter</b> opens the full catalogue." },
+    { head: "Keeping and sharing", art: TUT_ART.share,
+      body: "Your scenes live in this browser. <b>Cloud profile</b> keeps the whole library against a "
+        + "Google account and can publish it; <b>Public scenes</b> browses what other people have "
+        + "published and loads it alongside your own. <b>Share</b> copies a link to the one scene you "
+        + "have open.<br><br>That is the tour. <b>☰ → Help</b> explains every single control, and "
+        + "<b>☰ → Tutorial</b> brings this back whenever you want it." },
+  ];
+
+  const tutDlg = el("tutdlg");
+  const tutBox = tutDlg && tutDlg.querySelector(".tut-box");
+  let tutStep = 0, tutTimer = 0, tutWaited = 0;
+
+  function tutSeen() {
+    try { return !!JSON.parse(localStorage.getItem(TUT_KEY) || "null"); } catch (e) { return false; }
+  }
+  function tutMarkSeen() {
+    try { localStorage.setItem(TUT_KEY, JSON.stringify({ seen: true, v: CONFIG.version })); } catch (e) {}
+  }
+
+  // A FUNCTION DECLARATION on purpose: three earlier slices call this — the sync-nudge
+  // interval, showSyncPopup, and armAudioResume's document-level capture listener.
+  // Declarations hoist to the top of the one IIFE, so this is in scope there; a
+  // `const tutorialOpen = () => …` would be in the TDZ for all of them (same rule as blendOk).
+  //
+  // It looks the node up rather than closing over `tutDlg`, so hoisting alone is enough: a
+  // closure over the const below would still throw if anything above ever managed to call
+  // this before this slice ran. Nothing does today — every caller is a timer or a gesture,
+  // both of which land after startup — but the whole point of a hoisted guard is that it is
+  // safe to call from anywhere.
+  function tutorialOpen() {
+    const d = document.getElementById("tutdlg");
+    return !!d && !d.classList.contains("hidden");
+  }
+
+  // Paint one step. Only the body changes — the header, the dots row and the buttons are
+  // permanent nodes updated in place, so the sticky title never reflows mid-tour and the
+  // focus the modal trap handed out survives a Next.
+  function tutGo(n) {
+    tutStep = Math.max(0, Math.min(TUT_STEPS.length - 1, n | 0));
+    const s = TUT_STEPS[tutStep], last = tutStep === TUT_STEPS.length - 1;
+    el("tut-count").textContent = (tutStep + 1) + " / " + TUT_STEPS.length;
+    el("tut-art").innerHTML = s.art;
+    el("tut-head").textContent = s.head;
+    el("tut-body").innerHTML = s.body;
+    el("tut-dots").innerHTML = TUT_STEPS
+      .map((_, i) => '<span class="tut-dot' + (i <= tutStep ? " on" : "") + '"></span>').join("");
+    // setOff, not a bare class: `.off` dims but leaves the tab stop and the Enter key live
+    // (see boot-globals). Back on step 1 has to be genuinely dead, not just grey.
+    setOff(el("tut-back"), tutStep === 0);
+    el("tut-next").textContent = last ? "Done" : "Next →";
+    el("tut-skip").hidden = last;              // nothing left to skip on the last step
+    track("tutorial_step", { step: tutStep + 1 });
+  }
+
+  function openTutorial(auto) {
+    if (!tutDlg) return;
+    clearInterval(tutTimer); tutTimer = 0;     // whichever route got here, stop waiting
+    tutMarkSeen();                             // shown once is shown, even if it is dismissed
+    tutDlg.classList.remove("hidden");
+    tutGo(0);
+    dlgModal(tutBox);
+    track("tutorial_shown", { auto: auto ? 1 : 0 });
+  }
+  function closeTutorial() {
+    if (!tutDlg) return;
+    const wasOpen = tutorialOpen();
+    tutDlg.classList.add("hidden");
+    dlgRelease(tutBox);
+    // Reading the tutorial must not eat into the audio nudge's first delay — hand back a
+    // full thirty seconds of scene, so the nudge lands on someone who has been watching it
+    // rather than immediately on top of the dialog they just closed.
+    if (wasOpen) syncResetDelay();
+  }
+  function tutFinish() {
+    const last = tutStep === TUT_STEPS.length - 1;
+    track(last ? "tutorial_done" : "tutorial_skip", { step: tutStep + 1 });
+    closeTutorial();
+  }
+
+  if (tutDlg) {
+    el("tut-close").addEventListener("click", tutFinish);
+    el("tut-skip").addEventListener("click", tutFinish);
+    el("tut-back").addEventListener("click", () => tutGo(tutStep - 1));
+    el("tut-next").addEventListener("click", () => {
+      if (tutStep === TUT_STEPS.length - 1) tutFinish(); else tutGo(tutStep + 1);
+    });
+    // Click the backdrop to leave, like every other modal here.
+    tutDlg.addEventListener("click", e => { if (e.target === tutDlg) tutFinish(); });
+    // ◂ / ▸ page the tour. Enter is left to the focused button — the modal trap parks focus
+    // on the × and then wherever you tab to, and hijacking Enter would fire Next while you
+    // were pressing Skip. Escape is handled by the global key branch (ui-diagnostics.js).
+    tutDlg.addEventListener("keydown", e => {
+      if (e.key === "ArrowRight") { e.preventDefault(); tutGo(tutStep + 1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); tutGo(tutStep - 1); }
+    });
+
+    // The auto-open gate. `creditLeft` counts RENDERED time in the frame loop, so this
+    // waits for the credits to actually finish burning rather than for a wall clock that
+    // keeps running in a backgrounded tab. TUT_MAX_WAIT is the backstop for the two cases
+    // where that clock never reaches zero: ?credits=<big>, and a scene paused on arrival.
+    if (!tutSeen()) {
+      tutTimer = setInterval(() => {
+        if (document.hidden) return;
+        tutWaited += 0.25;
+        if (creditLeft > 0 && tutWaited < TUT_MAX_WAIT) return;
+        openTutorial(true);
+      }, 250);
+    }
   }
   // ---- ☰ fold-out menubar ------------------------------------------------------------
   // A traditional multi-level menu: the ☰ opens a root list, items with a ▸ open a submenu
@@ -17564,6 +18883,17 @@
         run: () => galOpen(true) }] : []),
       { label: "Credits", sub: [{ adopt: "creditbox" }] },
       { sep: true },
+      // Above Help deliberately: the tour is the thing you want when you do not yet know
+      // what to look up, and Help is the reference you reach for once you do.
+      //
+      // Opened in a MICROTASK, not inline. A leaf's click handler runs `run()` and *then*
+      // menubarClose(), which destroys the panel this button lives in — so opening a modal
+      // inline has dlgModal record a menu item that is detached a moment later as the place
+      // to put focus back. dlgRelease skips a disconnected node, and Escape then leaves
+      // focus nowhere. Deferring lets the menu tear down first, so focus is already back on
+      // the ☰ when the trap arms and Escape returns it there.
+      { label: "Tutorial", title: "The eight-step tour of what everything here does",
+        run: () => Promise.resolve().then(() => openTutorial(false)) },
       { label: "Help", title: "What the controls do — the full help panel", run: () => openHelp() },
     ];
   }

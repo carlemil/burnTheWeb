@@ -14,6 +14,76 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.26.0] — 2026-08-10
+
+### Added
+
+- **A first-run tutorial.** An eight-step tour of what the app is and how it works, which
+  opens by itself the first time you visit — once the startup credits have burned away, and
+  before anything asks you for audio. It lives at **☰ → Tutorial** afterwards, so you can
+  read it again whenever you like. Where **Help** explains every individual control,
+  this explains the shape of the thing: the two menus, scenes, layers, ranged sliders,
+  filters, music, and sharing.
+- **Six new effects**, bringing the total to thirty-eight:
+  - **Quaternion Julia** — the Julia set done in four dimensions and raymarched as a solid.
+    A 4D object can only ever be cut, not shown, so the shapes live in the two slice
+    controls: **Slice** is where the cut falls, **Cut angle** turns the cutting plane itself.
+    The seed rides the same cardioid orbit as AnimeJulia, so the Orbit editor drives it too.
+  - **Black hole** — an accretion disk seen through its own gravity. The light is bent rather
+    than drawn straight, so the far side of the disk arcs up over the top of the shadow and
+    back under the bottom. **Tilt** is the camera's height (low is the iconic nearly-edge-on
+    view), **Beaming** the relativistic boost that makes one limb far brighter than the other.
+  - **Ocean** — a rolling Gerstner swell out to a horizon, with glinting crests and breaking
+    foam. **Chop** sharpens the crests, **Wind** turns the whole sea. Amber and Ember make it
+    a sunset; the cold palettes make it the North Sea.
+  - **Vector balls** — the Amiga classic: a rigid constellation of shaded spheres tumbling in
+    3D, as a **Lattice**, **Sphere**, **Ring** or **Helix**. The shape reads purely from how
+    the balls occlude and shade each other.
+  - **Harmonograph** — the Victorian drawing machine: two pendulums per axis, their sum traced
+    by a pen. **Detune** is the trick — at exactly 0 the curve retraces itself forever, and a
+    hair off it the figure precesses into a woven ribbon.
+  - **Galaxy** — a disc of stars on log spirals with a bulge that burns white. **Arms**,
+    **Twist**, **Scatter** and **Core** shape it; the arms trail the rotation, as real ones do.
+- **Two new filters**, bringing the total to twenty-four:
+  - **Hex pixelate** — the picture snaps to a honeycomb instead of squares. Hexes read as a
+    deliberate screen where squares read as low resolution.
+  - **CRT phosphor** — RGB shadow-mask triads and the electron beam's horizontal smear, which
+    is the rest of the television beside Scanlines and Barrel.
+
+### Changed
+
+- **The microphone is armed by default.** With no audio source of your own chosen, your first
+  click anywhere asks to listen through the mic, so music in the room drives the visual
+  without you having to find anything. Say no, or press **Stop**, and it is never asked
+  again — that decision is now remembered separately from "never chose".
+- **Filters show themselves off when you add them.** Ticking a filter in the picker is how you
+  find out what it does, and sixteen of them shipped so timid that adding one appeared to do
+  nothing at all. Their defaults are bolder now.
+- Oil paint's **Brush size** goes up to 6 (was 4), which is where the effect becomes obvious.
+
+### Fixed
+
+- **Shockwave did nothing when you added it.** Its **Shock** value *is* the ring's position,
+  and it defaulted to 0 — the ring already gone off the edge of the screen. It now sweeps.
+- **Clicking in the tutorial no longer raises the browser's "Choose what to share" picker.**
+  If your last session had audio capture running, the first click anywhere re-opened it — and
+  on a first visit that click is the tutorial's own **Next** button.
+
+### Internal
+
+- New `galaxyprobe.js` pins the two Galaxy properties a still frame cannot show: that the arms
+  trail, and that they stay arms rather than winding themselves out of existence.
+- `juliaprobe` now discovers the cardioid effects from the registry instead of naming the
+  three that existed, so a fourth cannot quietly break the once-per-frame seed rule.
+- `filterprobe` compares Fire's seeded Flame rise against the registry rather than a
+  hard-coded number, which is the claim it was actually making.
+- `uiprobe`'s dialog table covers the tutorial, so it is checked against every list a dialog
+  has to appear in.
+
+Scenes saved before this load exactly as they did: a saved scene carries its own value for
+every filter setting, so the bolder defaults apply only to filters you add from now on.
+Nothing about an existing scene, share link or backup changes.
+
 ## [1.25.0] — 2026-08-08
 
 ### Added
