@@ -33,17 +33,20 @@
     };
   }
   // The library a first-time visitor gets, and what an emptied one is re-seeded with.
-  // TWO hand-authored scenes rather than one per effect: twenty machine-named scenes is a
+  // THREE hand-authored scenes rather than one per effect: twenty machine-named scenes is a
   // list to wade through, and the opening should look like something instead. Both were
   // authored in the app and lifted from the published profiles they live in — Fetingen from
   // dyze, Round and round from Erbsman — with `collection` stripped, so a new visitor sees
   // them as their own scenes rather than as somebody else's collection.
+  // Blank canvas is APPENDED to whichever of those two we end up with, never prepended: the
+  // first visit applies index 0, and the opening frame should be a finished picture rather
+  // than an empty one.
   function defaultPresets() {
     const lib = deserializeBlob({ presets: DEFAULT_LIBRARY }).presets;
     // deserializeBlob drops any scene naming an effect this build no longer ships. If that
     // took the lot, fall back to one per effect: an empty library would break the
     // "something is always selected" invariant before ensureSelection could repair it.
-    return lib.length ? lib : perEffectPresets();
+    return (lib.length ? lib : perEffectPresets()).concat(blankPreset());
   }
   // The scenes above, in the WIRE FORMAT (effect ids, not indices), so they survive a
   // registry reorder exactly like any saved scene does. Every map is kept WHOLE rather than
@@ -56,6 +59,21 @@
   // with nothing at all.
   function perEffectPresets() {
     return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), btune: presetBtune(), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
+  }
+  // A deliberately empty place to start. Changing a layer's effect KEEPS its filter chain (see
+  // filters.js), and the shipped Fetingen carries twelve of them, so "start fresh" otherwise
+  // means clicking ✕ a dozen times — there was nowhere in the library that was simply nothing.
+  //
+  // Built from the shipped defaults the same way perEffectPresets does, NOT hand-authored into
+  // DEFAULT_LIBRARY: "the defaults" is precisely what this scene is meant to be, and a wire-format
+  // blob would freeze today's answer and drift from it. Plasma because presetFilters(e) is
+  // EFFECTS[e].filters || [] and only Fractal flames and Boids declare one, because every filter
+  // reads clearly over it, and because effect defaults are neutral — so it sits STILL, and pulling
+  // a slider's two thumbs apart is a visible before-and-after. No `layers` key, so it is a
+  // single-item stack by construction.
+  function blankPreset() {
+    const e = Math.max(0, EFFECTS.findIndex(f => f.id === "plasma"));
+    return { name: "Blank canvas", effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), btune: presetBtune(), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} };
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
