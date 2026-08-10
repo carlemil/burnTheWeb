@@ -14,6 +14,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.27.1] — 2026-08-11
+
+### Fixed
+
+- **Blank canvas no longer plays in the auto-cycle show.** It seeded with the cycle checkbox
+  ticked like every other scene, so a fresh library's show would periodically cut to a bare,
+  motionless plasma and hold it for the full scene time — easy to read as the app hanging.
+  It now arrives unticked; tick it in the scene list if you do want it in the rotation, and
+  anything you build on top of it stays out of the show until you do.
+
 ## [1.27.0] — 2026-08-10
 
 ### Added

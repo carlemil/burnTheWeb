@@ -2141,7 +2141,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.27.0",
+    version: "1.27.1",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -15383,19 +15383,21 @@
   }
   // The library a first-time visitor gets, and what an emptied one is re-seeded with.
   // THREE hand-authored scenes rather than one per effect: twenty machine-named scenes is a
-  // list to wade through, and the opening should look like something instead. Both were
-  // authored in the app and lifted from the published profiles they live in — Fetingen from
-  // dyze, Round and round from Erbsman — with `collection` stripped, so a new visitor sees
-  // them as their own scenes rather than as somebody else's collection.
-  // Blank canvas is APPENDED to whichever of those two we end up with, never prepended: the
-  // first visit applies index 0, and the opening frame should be a finished picture rather
-  // than an empty one.
+  // list to wade through, and the opening should look like something instead. All were
+  // authored in the app — Fetingen and Round and round lifted from the published profiles
+  // they live in (dyze and Erbsman, `collection` stripped so a new visitor sees them as
+  // their own scenes rather than somebody else's collection), Julia shapes made for the
+  // library itself.
+  // Blank canvas rides the REAL library only, APPENDED never prepended — the first visit
+  // applies index 0 and the opening frame should be a finished picture rather than an empty
+  // one. The perEffectPresets fallback doesn't take it: every scene there already IS the
+  // neutral defaults, one of them already Plasma's.
   function defaultPresets() {
     const lib = deserializeBlob({ presets: DEFAULT_LIBRARY }).presets;
     // deserializeBlob drops any scene naming an effect this build no longer ships. If that
     // took the lot, fall back to one per effect: an empty library would break the
     // "something is always selected" invariant before ensureSelection could repair it.
-    return (lib.length ? lib : perEffectPresets()).concat(blankPreset());
+    return lib.length ? lib.concat(blankPreset() || []) : perEffectPresets();
   }
   // The scenes above, in the WIRE FORMAT (effect ids, not indices), so they survive a
   // registry reorder exactly like any saved scene does. Every map is kept WHOLE rather than
@@ -15407,22 +15409,35 @@
   // fallback above, kept so a DEFAULT_LIBRARY naming a retired effect cannot leave a visitor
   // with nothing at all.
   function perEffectPresets() {
-    return EFFECTS.map((f, e) => ({ name: f.presetName || f.name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), btune: presetBtune(), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} }));
+    return EFFECTS.map((f, e) => neutralPreset(e, f.presetName || f.name));
+  }
+  // THE one literal for "a scene at the shipped defaults". perEffectPresets and blankPreset
+  // both build from it, so the next per-effect map added to the preset shape (the way btune
+  // arrived) cannot be added to one and silently missed in the other.
+  function neutralPreset(e, name) {
+    return { name, effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), btune: presetBtune(), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} };
   }
   // A deliberately empty place to start. Changing a layer's effect KEEPS its filter chain (see
   // filters.js), and the shipped Fetingen carries twelve of them, so "start fresh" otherwise
   // means clicking ✕ a dozen times — there was nowhere in the library that was simply nothing.
   //
-  // Built from the shipped defaults the same way perEffectPresets does, NOT hand-authored into
-  // DEFAULT_LIBRARY: "the defaults" is precisely what this scene is meant to be, and a wire-format
-  // blob would freeze today's answer and drift from it. Plasma because presetFilters(e) is
-  // EFFECTS[e].filters || [] and only Fractal flames and Boids declare one, because every filter
-  // reads clearly over it, and because effect defaults are neutral — so it sits STILL, and pulling
-  // a slider's two thumbs apart is a visible before-and-after. No `layers` key, so it is a
-  // single-item stack by construction.
+  // Built from the shipped defaults, NOT hand-authored into DEFAULT_LIBRARY: "the defaults" is
+  // precisely what this scene is meant to be, and a wire-format blob would freeze today's answer
+  // and drift from it. Plasma because presetFilters(e) is EFFECTS[e].filters || [] and only
+  // Fractal flames and Boids declare one, because every filter reads clearly over it, and because
+  // effect defaults are neutral — so it sits STILL, and pulling a slider's two thumbs apart is a
+  // visible before-and-after. That stillness is also why it must NOT ride the auto-cycle show
+  // (inRotation: absent means IN), hence rotate: false — the scene list's checkbox opts it back
+  // in, and autosavePreset carries the flag, so work built on it stays out until ticked. No
+  // `layers` key, so it is a single-item stack by construction. A retired plasma id returns null
+  // and the caller drops the scene — the wire format's rule, unknown id ⇒ dropped, never misfiled
+  // onto whatever effect happens to sit at index 0.
   function blankPreset() {
-    const e = Math.max(0, EFFECTS.findIndex(f => f.id === "plasma"));
-    return { name: "Blank canvas", effect: e, state: presetState(e), beat: presetBeat(e), pulse: presetPulse(e), plen: presetPlen(e), btune: presetBtune(), extra: presetExtra(e), beatTune: mergeBeatTune(null), ranges: {} };
+    const e = effectIndexFromId("plasma");
+    if (e < 0) return null;
+    const p = neutralPreset(e, "Blank canvas");
+    p.rotate = false;
+    return p;
   }
   function rebuildPresetOptions() {
     presetSel.innerHTML = "";
@@ -16574,7 +16589,7 @@
   syncStackUI();                      // draw the layer rows for the restored stack
   let freshVisit = false;
   if (presets.length === 0) {         // first visit: seed the preset library
-    presets = defaultPresets();       // the two shipped scenes (never empty — see defaultPresets)
+    presets = defaultPresets();       // the shipped starter library (never empty — see defaultPresets)
     applyPreset(0);                   // open on the first of them; installs its stack, curPreset = 0
     freshVisit = true;
   }
