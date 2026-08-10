@@ -910,14 +910,19 @@ field is one `snapshotScene` captures *and* one the import mapping carries.
 `Date.now()` chaos seed, every accumulated phase.
 
 **First-visit library** built once when `presets.length === 0`: `defaultPresets()`, applied at index
-0, then `persist()` once. It is **`DEFAULT_LIBRARY` — THREE scenes**: `Fetingen` (Sierpiński, single
+0, then `persist()` once. It is **`DEFAULT_LIBRARY` — THREE scenes** — `Fetingen` (Sierpiński, single
 layer), `Round and round` (Moiré, two layers), `Julia shapes` (AnimeJulia + Bouncing shapes, two
-layers, `xor` blend).
+layers, `xor` blend) — **plus `blankPreset()` APPENDED**: `Blank canvas`, one neutral Plasma layer,
+no filters, built live from the shipped defaults via **`neutralPreset(e, name)`** (never a
+hand-frozen blob) and carrying **`rotate: false`** so the deliberately-still scene stays out of the
+auto-cycle show.
 - **Wire format** (effect ids), so a registry reorder cannot remap them, and every map is kept
   **whole**. Re-export from the app and paste over to change them.
 - `defaultPresets()` runs it through `deserializeBlob`, which drops any scene naming a retired
   effect; if that took the lot it falls back to **`perEffectPresets()`** (backstop only), so the
-  library can never be empty and break the always-something-selected invariant.
+  library can never be empty and break the always-something-selected invariant. The fallback does
+  **not** append the blank (its scenes are all already the neutral defaults); a retired `plasma`
+  id makes `blankPreset()` return null — dropped, never misfiled.
 - **`function defaultPresets(` is a `presetprobe` slicing marker** — keep the name and keep it
   directly after `snapshotScene`.
 

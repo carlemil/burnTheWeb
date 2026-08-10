@@ -427,7 +427,7 @@
   syncStackUI();                      // draw the layer rows for the restored stack
   let freshVisit = false;
   if (presets.length === 0) {         // first visit: seed the preset library
-    presets = defaultPresets();       // the two shipped scenes (never empty — see defaultPresets)
+    presets = defaultPresets();       // the shipped starter library (never empty — see defaultPresets)
     applyPreset(0);                   // open on the first of them; installs its stack, curPreset = 0
     freshVisit = true;
   }
