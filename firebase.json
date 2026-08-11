@@ -8,12 +8,15 @@
     "Hosting is deliberately absent: GitHub Pages serves the site, and adding Firebase Hosting",
     "here would give the app two live origins that could drift apart.",
     "",
-    "The indexes file is likewise absent. The gallery query (where pub == true, orderBy",
-    "updated) would use a composite index, but galList falls back to an unordered query when",
-    "it is missing, so the app works without one and the index is an optimisation to add from",
-    "the console link Firestore returns."
+    "The indexes file used to be absent too, on the grounds that galList falls back to an",
+    "unordered query and the gallery therefore works without one. It does — but the fallback",
+    "costs a failed 400 request and a console error on every uncached gallery open, and it can",
+    "only sort the arbitrary page of documents it got back. The index is now declared in",
+    "firestore.indexes.json so it deploys with the rules instead of waiting for someone to",
+    "notice the console link."
   ],
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   }
 }

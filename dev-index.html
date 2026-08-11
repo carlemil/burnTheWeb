@@ -8924,9 +8924,21 @@
     setAudioUI();
   }
   function toggleMute() {
-    if (!audio.on) { audioMsg("Nothing to mute yet — start Capture or Mic above."); return; }
+    if (!audio.on) {
+      audioMsg("Nothing to mute yet — start Capture or Mic above.");
+      // ...and say it somewhere it can actually be READ. #audMsg lives inside #audiobox,
+      // which is hidden until the menu adopts it, so this branch had no visible effect at
+      // all: the S key and the dimmed ♪ both did nothing and explained nothing. The toast
+      // works with the panel closed and with the UI hidden, which is exactly when a key
+      // shortcut gets pressed.
+      flashUiHint("No audio yet — <b>☰ → Audio</b> to start Capture or Mic");
+      return;
+    }
     setMuted(!audio.muted);
     audioMsg("");
+    // Mirror the state change for the same reason: with the UI hidden the ♪ glyph and its
+    // strike-through are not on screen to read.
+    flashUiHint(audio.muted ? "Audio muted — <b>S</b> to unmute" : "Audio unmuted");
   }
   function stopStream() { if (audio.stream) { audio.stream.getTracks().forEach(t => t.stop()); audio.stream = null; } }
   function stopAudio() {
@@ -15649,6 +15661,15 @@
   // on load and the list opens as a short stack of names — the requested default. Surviving
   // rebuilds is what stops a pick from folding the group you are working in.
   const openCollections = new Set();
+  // ...with ONE exception: the top group is opened once per load. Starting with every group
+  // folded meant a first-time visitor met a single "Default scenes 4" row and no scenes at
+  // all, so the entire shipped library sat behind a disclosure nothing invited them to click.
+  // Opening only the FIRST group keeps the short-stack-of-names shape once you follow a few
+  // collections, and it is the group New lands in.
+  //
+  // One-shot, not a re-assert on every rebuild: collapsing that group has to stay collapsed
+  // for the rest of the session, and buildPresetList runs on every pick, rename and delete.
+  let topGroupOpened = false;
   // The heading under the Scene box that names what you are editing. Called from
   // buildPresetList rather than from each selection path, because that function is already
   // the one choke point every path goes through to move the highlight (create, rename,
@@ -15677,7 +15698,9 @@
     // Every .pl-scene in here is now a real saved scene. The list used to open with an
     // "— unsaved scene —" row that also carried .pl-scene, so anything counting that class to
     // count scenes was off by one; it isn't any more.
-    for (const g of presetGroups()) {
+    const groups = presetGroups();
+    if (!topGroupOpened && groups.length) { topGroupOpened = true; openCollections.add(groups[0].key); }
+    for (const g of groups) {
       const sec = document.createElement("div");
       sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");
       const head = document.createElement("button");
@@ -16525,7 +16548,14 @@
   function sharedLibrary(raw) {
     const own = cloudOwnLoad; cloudOwnLoad = false;   // consume: one decode, whatever happens
     const norm = normalizeBackup(raw);
-    if (!norm) return null;
+    // SAY SO. Every decoder on the way here is deliberately forgiving — atobSafe, parse and
+    // normalizeBackup each answer null rather than throwing — so a truncated or mangled link
+    // used to arrive here as a plain null and the app simply booted as if you had followed no
+    // link at all. That is indistinguishable from "the link worked and your scenes were
+    // already there", and it left the one shape of failure a user can actually fix (a link
+    // that got cut in half by a chat client) as the only one that said nothing. The
+    // no-usable-scenes case below has always spoken up; this is the same class of problem.
+    if (!norm) { alert("Nothing could be read from this link — it may have been truncated or damaged."); return null; }
     const parts = deserializeBlob(norm);
     const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
     const valid = validatePresetList(arr);
@@ -18026,15 +18056,28 @@
   // bug. Hence: hint on H and on the menu item, silence on the URL.
   const uiHint = el("uihint");
   var uiHintTimer = 0;
-  function flashUiHint() {
-    if (!uiHint) return;
+  var uiHintBack = "";        // the shipped "Press H…" markup, captured on first use
+  // With a `msg` this is a general one-line toast, and it is the only place in the app that
+  // can report anything without a panel, a menu or a dialog being open — it is `position:
+  // fixed`, aria-live, and exempt from `body.ui-hidden`. That makes it the right home for
+  // feedback from a KEY, which can be pressed with the whole UI hidden (see toggleMute).
+  //
+  // A function DECLARATION looking its node up rather than closing over `uiHint`: earlier
+  // slices call this, and only declarations hoist across the one IIFE. `uiHintBack` is a
+  // `var` filled lazily for the same reason — a const captured at slice time would be in the
+  // TDZ for any caller above. Same rule as tutorialOpen.
+  function flashUiHint(msg) {
+    const n = document.getElementById("uihint");
+    if (!n) return;
     clearTimeout(uiHintTimer);
-    uiHint.classList.remove("hidden", "fading");
+    if (!uiHintBack) uiHintBack = n.innerHTML;          // capture before the first overwrite
+    n.innerHTML = msg === undefined ? uiHintBack : String(msg);
+    n.classList.remove("hidden", "fading");
     // Two stages: hold, then fade, then take it out of the layout entirely so it can never
     // catch a late screenshot.
     uiHintTimer = setTimeout(() => {
-      uiHint.classList.add("fading");
-      uiHintTimer = setTimeout(() => uiHint.classList.add("hidden"), 600);
+      n.classList.add("fading");
+      uiHintTimer = setTimeout(() => n.classList.add("hidden"), 600);
     }, 2200);
   }
   function hideUiHint() {

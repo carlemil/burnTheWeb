@@ -19,15 +19,28 @@
   // bug. Hence: hint on H and on the menu item, silence on the URL.
   const uiHint = el("uihint");
   var uiHintTimer = 0;
-  function flashUiHint() {
-    if (!uiHint) return;
+  var uiHintBack = "";        // the shipped "Press H…" markup, captured on first use
+  // With a `msg` this is a general one-line toast, and it is the only place in the app that
+  // can report anything without a panel, a menu or a dialog being open — it is `position:
+  // fixed`, aria-live, and exempt from `body.ui-hidden`. That makes it the right home for
+  // feedback from a KEY, which can be pressed with the whole UI hidden (see toggleMute).
+  //
+  // A function DECLARATION looking its node up rather than closing over `uiHint`: earlier
+  // slices call this, and only declarations hoist across the one IIFE. `uiHintBack` is a
+  // `var` filled lazily for the same reason — a const captured at slice time would be in the
+  // TDZ for any caller above. Same rule as tutorialOpen.
+  function flashUiHint(msg) {
+    const n = document.getElementById("uihint");
+    if (!n) return;
     clearTimeout(uiHintTimer);
-    uiHint.classList.remove("hidden", "fading");
+    if (!uiHintBack) uiHintBack = n.innerHTML;          // capture before the first overwrite
+    n.innerHTML = msg === undefined ? uiHintBack : String(msg);
+    n.classList.remove("hidden", "fading");
     // Two stages: hold, then fade, then take it out of the layout entirely so it can never
     // catch a late screenshot.
     uiHintTimer = setTimeout(() => {
-      uiHint.classList.add("fading");
-      uiHintTimer = setTimeout(() => uiHint.classList.add("hidden"), 600);
+      n.classList.add("fading");
+      uiHintTimer = setTimeout(() => n.classList.add("hidden"), 600);
     }, 2200);
   }
   function hideUiHint() {

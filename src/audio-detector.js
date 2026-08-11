@@ -164,9 +164,21 @@
     setAudioUI();
   }
   function toggleMute() {
-    if (!audio.on) { audioMsg("Nothing to mute yet — start Capture or Mic above."); return; }
+    if (!audio.on) {
+      audioMsg("Nothing to mute yet — start Capture or Mic above.");
+      // ...and say it somewhere it can actually be READ. #audMsg lives inside #audiobox,
+      // which is hidden until the menu adopts it, so this branch had no visible effect at
+      // all: the S key and the dimmed ♪ both did nothing and explained nothing. The toast
+      // works with the panel closed and with the UI hidden, which is exactly when a key
+      // shortcut gets pressed.
+      flashUiHint("No audio yet — <b>☰ → Audio</b> to start Capture or Mic");
+      return;
+    }
     setMuted(!audio.muted);
     audioMsg("");
+    // Mirror the state change for the same reason: with the UI hidden the ♪ glyph and its
+    // strike-through are not on screen to read.
+    flashUiHint(audio.muted ? "Audio muted — <b>S</b> to unmute" : "Audio unmuted");
   }
   function stopStream() { if (audio.stream) { audio.stream.getTracks().forEach(t => t.stop()); audio.stream = null; } }
   function stopAudio() {

@@ -363,7 +363,14 @@
   function sharedLibrary(raw) {
     const own = cloudOwnLoad; cloudOwnLoad = false;   // consume: one decode, whatever happens
     const norm = normalizeBackup(raw);
-    if (!norm) return null;
+    // SAY SO. Every decoder on the way here is deliberately forgiving — atobSafe, parse and
+    // normalizeBackup each answer null rather than throwing — so a truncated or mangled link
+    // used to arrive here as a plain null and the app simply booted as if you had followed no
+    // link at all. That is indistinguishable from "the link worked and your scenes were
+    // already there", and it left the one shape of failure a user can actually fix (a link
+    // that got cut in half by a chat client) as the only one that said nothing. The
+    // no-usable-scenes case below has always spoken up; this is the same class of problem.
+    if (!norm) { alert("Nothing could be read from this link — it may have been truncated or damaged."); return null; }
     const parts = deserializeBlob(norm);
     const arr = Array.isArray(parts) ? parts : ((parts && parts.presets) || []);
     const valid = validatePresetList(arr);

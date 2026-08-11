@@ -300,6 +300,15 @@
   // on load and the list opens as a short stack of names — the requested default. Surviving
   // rebuilds is what stops a pick from folding the group you are working in.
   const openCollections = new Set();
+  // ...with ONE exception: the top group is opened once per load. Starting with every group
+  // folded meant a first-time visitor met a single "Default scenes 4" row and no scenes at
+  // all, so the entire shipped library sat behind a disclosure nothing invited them to click.
+  // Opening only the FIRST group keeps the short-stack-of-names shape once you follow a few
+  // collections, and it is the group New lands in.
+  //
+  // One-shot, not a re-assert on every rebuild: collapsing that group has to stay collapsed
+  // for the rest of the session, and buildPresetList runs on every pick, rename and delete.
+  let topGroupOpened = false;
   // The heading under the Scene box that names what you are editing. Called from
   // buildPresetList rather than from each selection path, because that function is already
   // the one choke point every path goes through to move the highlight (create, rename,
@@ -328,7 +337,9 @@
     // Every .pl-scene in here is now a real saved scene. The list used to open with an
     // "— unsaved scene —" row that also carried .pl-scene, so anything counting that class to
     // count scenes was off by one; it isn't any more.
-    for (const g of presetGroups()) {
+    const groups = presetGroups();
+    if (!topGroupOpened && groups.length) { topGroupOpened = true; openCollections.add(groups[0].key); }
+    for (const g of groups) {
       const sec = document.createElement("div");
       sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");
       const head = document.createElement("button");
