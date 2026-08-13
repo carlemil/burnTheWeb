@@ -332,13 +332,36 @@
     if (typeof v === "number") v = LEGACY_EFFECT_IDS[v];
     return EFFECTS.findIndex(f => f.id === v);
   }
-  // The per-effect maps are keyed by registry POSITION, which only means anything in the
-  // build that wrote them. They get the same id treatment as `effect` at the storage
-  // edge — otherwise reordering or removing an effect silently reattaches every saved
-  // scene to whichever effect now sits at that index, in localStorage, Backups and
-  // share links alike. Presets were already safe (their `effect` is an id); these maps
-  // were the hole in that guarantee, and the failure is invisible until someone reorders.
-  const EFFECT_MAPS = ["states", "beats", "pulses", "plens", "btunes", "extras"];
+  // ---- THE per-effect-map registry ---------------------------------------------------
+  // One row per per-effect map, naming its wire field and its whole verb family. The verbs
+  // are function declarations from later slices — hoisting is what lets this table sit here.
+  // The MECHANICAL all-maps sites iterate this table instead of hand-listing six calls:
+  // the three snapshot preambles (saveLiveMaps), setEffect's save/load runs (loadLiveMaps),
+  // and installShared's re-seed (initAllMaps) — which is exactly the site that proved the
+  // point: its hand-list was missing initBtuneStates, so a recipient's own per-slider beat
+  // tuning silently bled into every shared scene they opened. A new map = one row here.
+  //
+  // The SEMANTIC per-map sites stay explicit on purpose — applyBlob's validation loops,
+  // snapshotScene's literal, applyPreset's merge lines, freezeItem/thawItem — because their
+  // per-map differences (bounds-checking, replace-vs-merge, deep copies) are the behaviour,
+  // and presetprobe/stackprobe pin them line by line.
+  //
+  // The wire names double as EFFECT_MAPS: the maps are keyed by registry POSITION in memory,
+  // which only means anything in the build that wrote them, so they get the same id
+  // treatment as `effect` at the storage edge — otherwise reordering or removing an effect
+  // silently reattaches every saved scene to whichever effect now sits at that index.
+  const MAP_DEFS = [
+    { wire: "states", save: e => saveState(e), load: e => loadState(e), init: () => initStates() },
+    { wire: "beats",  save: e => saveBeat(e),  load: e => loadBeat(e),  init: () => initBeatStates() },
+    { wire: "pulses", save: e => savePulse(e), load: e => loadPulse(e), init: () => initPulseStates() },
+    { wire: "plens",  save: e => savePlen(e),  load: e => loadPlen(e),  init: () => initPlenStates() },
+    { wire: "btunes", save: e => saveBtune(e), load: e => loadBtune(e), init: () => initBtuneStates() },
+    { wire: "extras", save: e => saveExtra(e), load: e => loadExtra(e), init: () => initExtras() },
+  ];
+  const EFFECT_MAPS = MAP_DEFS.map(d => d.wire);
+  function saveLiveMaps(e) { for (const d of MAP_DEFS) d.save(e); }   // fold the live DOM/singletons into effect e's maps
+  function loadLiveMaps(e) { for (const d of MAP_DEFS) d.load(e); }   // put effect e's maps onto the live DOM/singletons
+  function initAllMaps() { for (const d of MAP_DEFS) d.init(); }      // re-seed every map to its shipped defaults
   function keysToIds(m) {                          // { 3: {...} } → { plasma: {...} }
     const out = {};
     for (const k in m) { const f = EFFECTS[+k]; if (f) out[f.id] = m[k]; }

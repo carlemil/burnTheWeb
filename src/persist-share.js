@@ -110,7 +110,7 @@
   // (which stores this same payload in Firestore instead of in a URL) cannot drift from it —
   // one definition of "what a shared scene is", two transports.
   function sceneBlob() {
-    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect);
+    saveLiveMaps(effect);             // fold the live DOM/singletons into the current effect's maps
     const only = m => ({ [effect]: m[effect] });
     const blob = {
       states: { [effect]: roundMap(states[effect]) },

@@ -56,12 +56,7 @@
   // TDZ on every reload that carried the field. Same split as cpuBlocked.
   let collectionsHeld = [];
   function fullSnapshot() {
-    saveState(effect);                // fold the live sliders into the current effect
-    saveBeat(effect);                 // ...the live beat toggles
-    savePulse(effect);                // ...the live beat-pulse shapes
-    savePlen(effect);                 // ...their lengths
-    saveBtune(effect);                // ...their own detector thresholds
-    saveExtra(effect);                // ...and palette/morph/show-box/TTL
+    saveLiveMaps(effect);             // fold the live DOM/singletons into the current effect's maps (all of MAP_DEFS)
     return {
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, btunes: btuneStates, extras, effect,
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted); each item carries its own `cam`
@@ -318,7 +313,11 @@
   // anyone who had used the app before (it looked perfect in a fresh browser).
   function installShared(d, name) {
     if (!d) return false;
-    initStates(); initBeatStates(); initPulseStates(); initPlenStates(); initExtras();
+    // ALL of them, via the table — the hand-written list this replaced was missing
+    // initBtuneStates, so a recipient's own per-slider beat tuning (absent = "inherit",
+    // and the pruned share blob omits untouched effects by design) silently bled into
+    // every shared scene they opened. The table is how the next map cannot be missed.
+    initAllMaps();
     sceneOn = new Set();     // same reason: a shared scene omitting sceneFx must not inherit the recipient's Scene filters
     // Same reason as the five above: a shared scene with no `layers` must land as ONE
     // item, not inherit whatever stack the recipient happened to have built.
@@ -412,7 +411,7 @@
   // time. Merely RE-SELECTING an existing stack layer to edit it passes enter=false: the
   // layer keeps running exactly as it was, so selecting a layer never changes the render.
   function setEffect(i, save = true, enter = true) {
-    if (save && i !== effect && states[effect]) { saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect); }  // remember outgoing
+    if (save && i !== effect && states[effect]) saveLiveMaps(effect);   // remember the outgoing effect's whole map family
     effect = i;
     // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
     // editor-side use of it (shownKeys, refreshBreakout, resetControl, ctlOwner, the
@@ -437,12 +436,11 @@
     }
     cardOpen(!!fx.cardioid && cardWanted);
     applyLayerRanges(stack[stackSel].ranges);   // this layer's custom slider bounds — BEFORE loadState, so its values validate against them
-    loadState(i);                     // restore this effect's remembered sliders
-    loadBeat(i);                      // ...its beat-toggle selection
-    loadPulse(i);                     // ...its per-slider beat-pulse shapes
-    loadPlen(i);                      // ...and their lengths
-    loadBtune(i);                     // ...and each slider's own detector thresholds
-    loadExtra(i);                     // ...and palette/morph/show-box/random-seed/TTL
+    // Restore this effect's remembered sliders, beat toggles, pulse shapes + lengths, its
+    // sliders' own detector thresholds, and palette/morph/show-box/random-seed — the whole
+    // MAP_DEFS family, in table order (states first: loadState's synthetic inputs run
+    // before the rest read the DOM).
+    loadLiveMaps(i);
     if (enter && fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry — but NOT on a layer re-select
     if (enter) acc = 0;               // don't carry banked sim time across a switch (kept on a re-select)
     // The heat buffer is deliberately NOT cleared here. Leaving the outgoing effect's

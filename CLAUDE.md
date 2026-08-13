@@ -386,8 +386,15 @@ Adding an effect = append one descriptor (`assertRegistry()` warns on dup id and
   `fractal2d`; `setEffect` runs `onEnter`; `renderHelp` filters by `helpTags`.
 - **Identity: the stable string `id`, never the index.** `serializeBlob`/`deserializeBlob` convert
   at the storage edge; `LEGACY_EFFECT_IDS` migrates pre-id blobs; `effect` stays the runtime index.
-  **`EFFECT_MAPS` + `keysToIds`/`keysToIdx` cover the per-effect maps** (`states`, `beats`,
-  `pulses`, `plens`, `extras`). Numeric key ⇒ pre-id blob; unknown id ⇒ dropped, never misfiled.
+  **`MAP_DEFS` is THE per-effect-map registry** — one row per map (`states`, `beats`, `pulses`,
+  `plens`, `btunes`, `extras`) naming its wire field + `save`/`load`/`init` hooks. `EFFECT_MAPS`
+  derives from it; `keysToIds`/`keysToIdx` do the edge conversion. The MECHANICAL all-maps sites
+  go through the table (`saveLiveMaps` in the three snapshot preambles + `setEffect`,
+  `loadLiveMaps` in `setEffect`, `initAllMaps` in `installShared` — whose hand list missed
+  `initBtuneStates` and bled recipient beat tuning into shared scenes); the SEMANTIC sites
+  (applyBlob's validation loops, `snapshotScene`'s literal, `applyPreset`'s merges,
+  freeze/thaw) stay explicit on purpose, probe-pinned. **A new map = one `MAP_DEFS` row plus
+  the semantic sites.** Numeric key ⇒ pre-id blob; unknown id ⇒ dropped, never misfiled.
 
 **Per-effect slider bounds** — optional `ranges: { <key>: {min, max, step?} }`, **per-LAYER keys
 only** (a scene key's bounds are shared scene-wide). Flames' `points` is the one user; widening the

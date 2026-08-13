@@ -1,6 +1,6 @@
   // ---- presets: named full-scene snapshots (effect + all its settings) ----
   function snapshotScene() {
-    saveState(effect); saveBeat(effect); savePulse(effect); savePlen(effect); saveBtune(effect); saveExtra(effect);
+    saveLiveMaps(effect);             // fold the live DOM/singletons into the current effect's maps
     return {
       effect,
       state: JSON.parse(JSON.stringify(states[effect])),

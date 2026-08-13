@@ -67,13 +67,22 @@ ok(snapKeys.size >= 9, "snapshotScene returns a populated object", [...snapKeys]
 for (const k of ["effect", "state", "beat", "pulse", "plen", "btune", "beatTune", "ranges", "extra"])
   ok(snapKeys.has(k), "snapshotScene captures `" + k + "`");
 {
-  // EVERY per-effect map has to be in EFFECT_MAPS, which is what converts its effect-index
-  // keys to stable ids at the storage edge. A map left out of it still saves and still
-  // loads — until someone reorders or removes an effect, at which point every stored entry
-  // silently reattaches to whichever effect now sits at that index. Invisible until it bites.
-  const maps = (src.match(/const EFFECT_MAPS = \[([^\]]*)\]/) || [])[1] || "";
+  // EVERY per-effect map has to be a MAP_DEFS row — the one registry its wire name, save,
+  // load and init hooks all come from. A map left out still saves and still loads — until
+  // someone reorders or removes an effect, at which point every stored entry silently
+  // reattaches to whichever effect now sits at that index. Invisible until it bites.
+  const defs = (src.match(/const MAP_DEFS = \[([\s\S]*?)\n  \];/) || [])[1] || "";
   for (const m of ["states", "beats", "pulses", "plens", "btunes", "extras"])
-    ok(maps.includes('"' + m + '"'), "EFFECT_MAPS carries `" + m + "` across the storage edge", maps.trim());
+    ok(defs.includes('wire: "' + m + '"'), "MAP_DEFS carries `" + m + "` across the storage edge");
+  ok(/const EFFECT_MAPS = MAP_DEFS\.map\(d => d\.wire\)/.test(src),
+     "EFFECT_MAPS derives from MAP_DEFS — one list, not two to keep in step");
+  for (const hook of ["save", "load", "init"])
+    ok(defs.split(hook + ":").length - 1 === 6, "every MAP_DEFS row carries a `" + hook + "` hook");
+  // The site that motivated the table: installShared's re-seed was a hand list that missed
+  // initBtuneStates, so a recipient's own per-slider beat tuning bled into shared scenes.
+  const shared = cut("function installShared(", "function applyShared()");
+  ok(/initAllMaps\(\)/.test(shared),
+     "installShared re-seeds every map through the table (the hand list missed btunes)");
 }
 // The camera moved OUT of the preset root: it is per-layer state now, so snapshotScene must
 // NOT emit a root `cam` (that field was a redundant mirror, and its presence at root is the
