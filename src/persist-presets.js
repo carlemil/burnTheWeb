@@ -17,7 +17,10 @@
       // the DOM, so a preset authored with a widened bound would quietly animate differently.
       // The camera is NOT a preset-root field: it is per-layer state, riding inline in this
       // top-level `state` (the single/selected effect) and in each layer's own `cam` node.
-      sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
+      // No `sceneFx` node any more: the whole-scene filter feature is retired and the live set
+      // is empty by construction, so emitting it wrote `{on:[],vals:{}}` into every scene for
+      // nothing. The DECODE stays forever — old scenes carrying one go through migrateSceneFx
+      // (inside migrateBlob), which folds it onto the layers and deletes it.
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
       // Scene TTL and Transition are NOT here: they are purely GLOBAL, kept once in
@@ -642,15 +645,13 @@
     // Scene TTL and Transition are deliberately NOT installed from the preset — they are
     // global, so picking a scene must not retune the show's pacing under you. Presets saved
     // while they were per-scene still carry `ttl`/`tdur`; ignoring them is the whole change.
-    migrateSceneFx(p);   // pre-per-layer-filter preset: fold its whole-scene FX onto the layers
-    migrateCam(p);                                // pre-per-layer preset: fold its one `cam` into p.state / p.layers before they merge
+    migrateBlob(p);      // every legacy-shape fix (sceneFx fold, scene-wide cam), one ordered funnel
     installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = mergeBeat(p.effect, p.beat);      // p.beat may predate a control → default it
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
     btuneStates[p.effect] = mergeBtune(p.btune);             // ...and p.btune → every slider inherits
-    if (p.sceneFx) writeSceneFx(sceneFxOk(p.sceneFx));       // scene-global Scene filters (absent ⇒ keep current)
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     // The stack, after applyRanges for the same reason the four maps are: every item's
     // values are validated against the live bounds. installStack thaws item 0, which

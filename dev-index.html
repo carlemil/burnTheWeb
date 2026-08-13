@@ -12969,6 +12969,18 @@
     inject(p.state);
     if (Array.isArray(p.layers)) for (const L of p.layers) if (L) inject(L.state);
   }
+  // THE ONE MIGRATION FUNNEL. Every legacy-shape fix runs here, in order, and BOTH load paths
+  // (applyBlob for a whole blob, applyPreset for one scene) call this instead of picking
+  // migrations individually — that split is how a future migration gets added to one path and
+  // silently skipped by the other. A new `migrate*` function goes on this list, nowhere else;
+  // presetprobe asserts every function named migrate* in the source is called from this body.
+  // Each migration sniffs its own old shape and is idempotent, so the funnel needs no version
+  // number and is safe to run on any blob of any age.
+  function migrateBlob(p) {
+    migrateSceneFx(p);   // whole-scene filters (retired `sceneFx`) → folded onto layers/effects
+    migrateCam(p);       // scene-wide camera → folded into every layer/effect state
+    return p;
+  }
   // Scene filters (Bloom + the screen-stage FX) are scene-global — read/write their on/off
   // and dual-slider values as one blob (readSceneFx/writeSceneFx/sceneFxOk).
   function readSceneFx() {
@@ -14090,7 +14102,7 @@
     return {
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, btunes: btuneStates, extras, effect,
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted); each item carries its own `cam`
-      sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
+      // No `sceneFx` — retired; the decode (migrateSceneFx, in migrateBlob) runs forever.
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
@@ -14135,8 +14147,7 @@
   function applyBlob(saved, sharing) {
     if (!saved) return;
     saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
-    migrateSceneFx(saved);   // ...and its whole-scene filters onto the layers/effects
-    migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
+    migrateBlob(saved);                            // every legacy-shape fix, in one ordered funnel
     // Custom bounds FIRST, so the state validation below measures against them rather than
     // against the shipped ones. BOTH halves: the scene-wide sliders, and the per-layer ones,
     // which for a single-layer scene ride in this same map (sceneRanges folds them in when the
@@ -14218,18 +14229,9 @@
     }
     // Camera is per-layer state now: it rides in saved.states / saved.layers (applied above /
     // by installStack). A pre-per-layer scene's scene-wide `cam` was folded in by migrateCam.
-    if (saved.sceneFx) writeSceneFx(sceneFxOk(saved.sceneFx));   // scene-global Scene filters (on/off + values)
-    else {   // pre-feature blob: Scene filters lived per-effect — lift the selected effect's onto the global set
-      const e = Number.isInteger(saved.effect) ? saved.effect : 0;
-      const src = (Array.isArray(saved.layers) && saved.layers[0] && saved.layers[0].filters)
-        || (saved.extras && saved.extras[e] && saved.extras[e].filters);
-      const fset = filtersOk(src);
-      const on = fset ? [...fset].filter(isSceneFilter) : [];
-      const st = (saved.states && saved.states[e]) || {};
-      const vals = {};
-      for (const k of SCENE_FILTER_KEYS) if (Array.isArray(st[k])) vals[k] = st[k];
-      writeSceneFx({ on, vals });   // lift the selected effect's scene-filters; none ⇒ no scene filters (all off)
-    }
+    // There is no `sceneFx` apply either: migrateBlob consumed the field above (folding a
+    // legacy one onto the layers and deleting it), and the whole-scene filter set is empty by
+    // construction, so the old write-through here was a no-op running on nothing.
     if (saved.plens) {                  // ...and their lengths (absent in pre-feature blobs → PULSE_DROP)
       for (const k in plenStates) {
         const ps = saved.plens[k]; if (!ps) continue;
@@ -15325,7 +15327,7 @@
       btunes: pruneBtunes(only(btuneStates)),
       extras: only(extras),
       effect,
-      sceneFx: readSceneFx(),         // the scene-global Scene filters travel with a share link
+      // No `sceneFx` — retired; old links carrying one still decode (migrateSceneFx).
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
     };
@@ -15444,7 +15446,10 @@
       // the DOM, so a preset authored with a widened bound would quietly animate differently.
       // The camera is NOT a preset-root field: it is per-layer state, riding inline in this
       // top-level `state` (the single/selected effect) and in each layer's own `cam` node.
-      sceneFx: readSceneFx(),         // the scene-global Scene filters travel with the preset
+      // No `sceneFx` node any more: the whole-scene filter feature is retired and the live set
+      // is empty by construction, so emitting it wrote `{on:[],vals:{}}` into every scene for
+      // nothing. The DECODE stays forever — old scenes carrying one go through migrateSceneFx
+      // (inside migrateBlob), which folds it onto the layers and deletes it.
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
       // Scene TTL and Transition are NOT here: they are purely GLOBAL, kept once in
@@ -16069,15 +16074,13 @@
     // Scene TTL and Transition are deliberately NOT installed from the preset — they are
     // global, so picking a scene must not retune the show's pacing under you. Presets saved
     // while they were per-scene still carry `ttl`/`tdur`; ignoring them is the whole change.
-    migrateSceneFx(p);   // pre-per-layer-filter preset: fold its whole-scene FX onto the layers
-    migrateCam(p);                                // pre-per-layer preset: fold its one `cam` into p.state / p.layers before they merge
+    migrateBlob(p);      // every legacy-shape fix (sceneFx fold, scene-wide cam), one ordered funnel
     installBeatTune(mergeBeatTune(p.beatTune));   // absent in pre-feature presets ⇒ shipped defaults
     states[p.effect] = mergeState(p.effect, p.state);
     beatStates[p.effect] = mergeBeat(p.effect, p.beat);      // p.beat may predate a control → default it
     pulseStates[p.effect] = mergePulse(p.effect, p.pulse);   // p.pulse absent in pre-feature presets → all snap
     plenStates[p.effect] = mergePlen(p.effect, p.plen);      // ...likewise p.plen → the default length
     btuneStates[p.effect] = mergeBtune(p.btune);             // ...and p.btune → every slider inherits
-    if (p.sceneFx) writeSceneFx(sceneFxOk(p.sceneFx));       // scene-global Scene filters (absent ⇒ keep current)
     extras[p.effect] = mergeExtra(p.effect, p.extra);   // no p.extra.filters ⇒ the descriptor's
     // The stack, after applyRanges for the same reason the four maps are: every item's
     // values are validated against the live bounds. installStack thaws item 0, which
@@ -18600,7 +18603,6 @@
       "├─ effect                  <i>the SELECTED layer's effect (a stable name)</i>\n" +
       "├─ state·beat·pulse·plen   <i>selected effect's copy (single-layer fallback)</i>\n" +
       "├─ extra                   <i>…its palette / seed / filters</i>\n" +
-      "├─ <b>sceneFx</b>   { on, vals }   <i>Scene filters: Bloom + screen FX</i>\n" +
       "├─ <b>beatTune</b>  { fluxK, floor, refract, bands }\n" +
       "├─ <b>ranges</b>    { slider min/max/step }   <i>scene-wide bounds</i>\n" +
       "└─ <b>layers[ ]</b>                 <i>the stack, draw order (omitted if 1 layer)</i>\n" +
@@ -18614,7 +18616,7 @@
     html += "<p>A saved scene is a <b>complete snapshot of what is on screen</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
     html += '<pre class="help-tree">' + tree + "</pre>";
     html += "<dl>";
-    html += "<dt>Scene-wide — one per scene</dt><dd>The Scene filters (Bloom + the screen FX), the beat-detector tuning, and the scene-wide slider bounds.</dd>";
+    html += "<dt>Scene-wide — one per scene</dt><dd>The beat-detector tuning and the scene-wide slider bounds.</dd>";
     html += "<dt>Per-layer — the stack</dt><dd>Each layer keeps its own effect, slider values, beat wiring, <b>camera</b> (zoom + X/Y/Z, in its own <code>cam</code>), palette, cardioid orbit, its <em>own</em> slider bounds, filters, and how it blends into the stack (blend / gain / mute).</dd>";
     html += "<dt>Selected-effect copy</dt><dd>The top-level effect and its values describe the selected layer — the whole story for a one-layer scene (its camera rides inside that <code>state</code>), and a fallback for a stack (which a one-layer scene omits entirely, so it stays byte-identical to how scenes were stored before stacking).</dd>";
     html += "</dl>";

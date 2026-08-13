@@ -309,6 +309,18 @@
     inject(p.state);
     if (Array.isArray(p.layers)) for (const L of p.layers) if (L) inject(L.state);
   }
+  // THE ONE MIGRATION FUNNEL. Every legacy-shape fix runs here, in order, and BOTH load paths
+  // (applyBlob for a whole blob, applyPreset for one scene) call this instead of picking
+  // migrations individually — that split is how a future migration gets added to one path and
+  // silently skipped by the other. A new `migrate*` function goes on this list, nowhere else;
+  // presetprobe asserts every function named migrate* in the source is called from this body.
+  // Each migration sniffs its own old shape and is idempotent, so the funnel needs no version
+  // number and is safe to run on any blob of any age.
+  function migrateBlob(p) {
+    migrateSceneFx(p);   // whole-scene filters (retired `sceneFx`) → folded onto layers/effects
+    migrateCam(p);       // scene-wide camera → folded into every layer/effect state
+    return p;
+  }
   // Scene filters (Bloom + the screen-stage FX) are scene-global — read/write their on/off
   // and dual-slider values as one blob (readSceneFx/writeSceneFx/sceneFxOk).
   function readSceneFx() {

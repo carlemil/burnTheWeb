@@ -253,7 +253,6 @@
       "├─ effect                  <i>the SELECTED layer's effect (a stable name)</i>\n" +
       "├─ state·beat·pulse·plen   <i>selected effect's copy (single-layer fallback)</i>\n" +
       "├─ extra                   <i>…its palette / seed / filters</i>\n" +
-      "├─ <b>sceneFx</b>   { on, vals }   <i>Scene filters: Bloom + screen FX</i>\n" +
       "├─ <b>beatTune</b>  { fluxK, floor, refract, bands }\n" +
       "├─ <b>ranges</b>    { slider min/max/step }   <i>scene-wide bounds</i>\n" +
       "└─ <b>layers[ ]</b>                 <i>the stack, draw order (omitted if 1 layer)</i>\n" +
@@ -267,7 +266,7 @@
     html += "<p>A saved scene is a <b>complete snapshot of what is on screen</b> — the effect stack plus every setting — portable enough to hand to someone else. It nests three scopes of state.</p>";
     html += '<pre class="help-tree">' + tree + "</pre>";
     html += "<dl>";
-    html += "<dt>Scene-wide — one per scene</dt><dd>The Scene filters (Bloom + the screen FX), the beat-detector tuning, and the scene-wide slider bounds.</dd>";
+    html += "<dt>Scene-wide — one per scene</dt><dd>The beat-detector tuning and the scene-wide slider bounds.</dd>";
     html += "<dt>Per-layer — the stack</dt><dd>Each layer keeps its own effect, slider values, beat wiring, <b>camera</b> (zoom + X/Y/Z, in its own <code>cam</code>), palette, cardioid orbit, its <em>own</em> slider bounds, filters, and how it blends into the stack (blend / gain / mute).</dd>";
     html += "<dt>Selected-effect copy</dt><dd>The top-level effect and its values describe the selected layer — the whole story for a one-layer scene (its camera rides inside that <code>state</code>), and a fallback for a stack (which a one-layer scene omits entirely, so it stays byte-identical to how scenes were stored before stacking).</dd>";
     html += "</dl>";

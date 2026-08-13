@@ -120,7 +120,7 @@
       btunes: pruneBtunes(only(btuneStates)),
       extras: only(extras),
       effect,
-      sceneFx: readSceneFx(),         // the scene-global Scene filters travel with a share link
+      // No `sceneFx` — retired; old links carrying one still decode (migrateSceneFx).
       beatTune: collectBeatTune(),
       ranges: sceneRanges(),
     };

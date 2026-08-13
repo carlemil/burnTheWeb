@@ -114,6 +114,27 @@ ok(!snapKeys.has("cam"), "snapshotScene no longer emits a root `cam` (camera is 
 ok(importKeys.has("cam"), "import still carries `cam` (migration source for pre-per-layer backups)");
 ok(importKeys.has("beatTune"), "import keeps `beatTune`");
 
+// --- 1b. structural: ONE migration funnel -------------------------------------
+// Every legacy-shape fix must run from migrateBlob, and BOTH load paths must call the
+// funnel rather than picking migrations individually — the split is exactly how a future
+// migration gets added to one path and silently skipped by the other. Comments stripped
+// before matching: the surrounding prose names these very functions.
+{
+  const funnel = cut("  function migrateBlob(p) {", "  function readSceneFx(");
+  const blobSrc = cut("  function applyBlob(", "  function restore(");
+  const migrators = [...new Set([...src.matchAll(/function (migrate\w+)\(/g)].map(m => m[1]))]
+    .filter(n => n !== "migrateBlob");
+  ok(migrators.length >= 2, "there are migrations to funnel", migrators.join(","));
+  for (const name of migrators)
+    ok(new RegExp(name + "\\(").test(noComments(funnel)), "migrateBlob runs " + name);
+  ok(/migrateBlob\(/.test(noComments(blobSrc)), "applyBlob migrates through the funnel");
+  ok(/migrateBlob\(/.test(noComments(applySrc)), "applyPreset migrates through the funnel");
+  for (const [where, body] of [["applyBlob", blobSrc], ["applyPreset", applySrc]])
+    for (const name of migrators)
+      ok(!new RegExp(name + "\\(").test(noComments(body)),
+         where + " does not bypass the funnel with " + name);
+}
+
 // --- 2. behavioural: mergeBeatTune replace semantics --------------------------
 const code =
   cut("const CONFIG =", "// ==== end CONFIG ====") +   // BEAT_DEFAULTS sources from CONFIG now

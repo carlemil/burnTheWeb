@@ -65,7 +65,7 @@
     return {
       states, beats: beatStates, pulses: pulseStates, plens: plenStates, btunes: btuneStates, extras, effect,
       layers: stackOut(),                            // the live stack (null ⇒ one item, omitted); each item carries its own `cam`
-      sceneFx: readSceneFx(),                        // the scene-global Scene filters (on/off + values)
+      // No `sceneFx` — retired; the decode (migrateSceneFx, in migrateBlob) runs forever.
       ranges: sceneRanges(),                       // custom slider min/max/step (only what differs)
       beatTune: collectBeatTune(),                   // live detector thresholds (localStorage + Backup only)
       palettes: customPalettes(),                    // user-authored ramps ({name, stops}); [] when there are none
@@ -110,8 +110,7 @@
   function applyBlob(saved, sharing) {
     if (!saved) return;
     saved = deserializeBlob(saved);                // stable effect ids (or legacy numbers) → numeric indices
-    migrateSceneFx(saved);   // ...and its whole-scene filters onto the layers/effects
-    migrateCam(saved);                             // pre-per-layer scenes: fold the one scene-wide `cam` into every layer/effect state
+    migrateBlob(saved);                            // every legacy-shape fix, in one ordered funnel
     // Custom bounds FIRST, so the state validation below measures against them rather than
     // against the shipped ones. BOTH halves: the scene-wide sliders, and the per-layer ones,
     // which for a single-layer scene ride in this same map (sceneRanges folds them in when the
@@ -193,18 +192,9 @@
     }
     // Camera is per-layer state now: it rides in saved.states / saved.layers (applied above /
     // by installStack). A pre-per-layer scene's scene-wide `cam` was folded in by migrateCam.
-    if (saved.sceneFx) writeSceneFx(sceneFxOk(saved.sceneFx));   // scene-global Scene filters (on/off + values)
-    else {   // pre-feature blob: Scene filters lived per-effect — lift the selected effect's onto the global set
-      const e = Number.isInteger(saved.effect) ? saved.effect : 0;
-      const src = (Array.isArray(saved.layers) && saved.layers[0] && saved.layers[0].filters)
-        || (saved.extras && saved.extras[e] && saved.extras[e].filters);
-      const fset = filtersOk(src);
-      const on = fset ? [...fset].filter(isSceneFilter) : [];
-      const st = (saved.states && saved.states[e]) || {};
-      const vals = {};
-      for (const k of SCENE_FILTER_KEYS) if (Array.isArray(st[k])) vals[k] = st[k];
-      writeSceneFx({ on, vals });   // lift the selected effect's scene-filters; none ⇒ no scene filters (all off)
-    }
+    // There is no `sceneFx` apply either: migrateBlob consumed the field above (folding a
+    // legacy one onto the layers and deleting it), and the whole-scene filter set is empty by
+    // construction, so the old write-through here was a no-op running on nothing.
     if (saved.plens) {                  // ...and their lengths (absent in pre-feature blobs → PULSE_DROP)
       for (const k in plenStates) {
         const ps = saved.plens[k]; if (!ps) continue;
