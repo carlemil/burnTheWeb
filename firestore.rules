@@ -31,6 +31,9 @@ rules_version = '2';
 //  14. delete a /scenes document you do not own                     → DENY
 //  15. CREATE under /profiles/{uid}/snapshots (the retired feature) → DENY
 //  16. owner DELETE of a leftover snapshot                          → ALLOW (cleanup only)
+//  17. profile write with `updated` more than a day in the future   → DENY (gallery sort integrity)
+//  18. profile write with a non-timestamp `updated`                 → DENY
+//  19. /scenes create with a non-timestamp `created`                → DENY
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -64,7 +67,13 @@ service cloud.firestore {
         && request.resource.data.count is int
         && request.resource.data.count >= 0
         && request.resource.data.count <= 500
-        && request.resource.data.pub is bool;
+        && request.resource.data.pub is bool
+        // `updated` is what the gallery sorts by, and the client writes its own clock — so
+        // without a bound a forged far-future timestamp pins a profile to the top of the
+        // listing forever. A day of tolerance absorbs any real clock skew; a griefed value
+        // can now lead the gallery for at most a day before honest saves pass it.
+        && request.resource.data.updated is timestamp
+        && request.resource.data.updated < request.time + duration.value(1, 'd');
     }
 
     // RETIRED: version history. The app kept a daily snapshot of the whole library here; it
@@ -112,7 +121,8 @@ service cloud.firestore {
         && request.resource.data.payload is string
         && request.resource.data.payload.size() < 200000
         && request.resource.data.name is string
-        && request.resource.data.name.size() <= 60;
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.created is timestamp;
 
       // Immutable: a share link is a SNAPSHOT. Allowing updates would let the content behind
       // an already-circulated link be swapped for something else after the fact.

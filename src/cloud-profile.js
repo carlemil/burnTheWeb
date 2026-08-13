@@ -233,6 +233,12 @@
     // truly empty profile (no scenes, no follows) has nothing to say. The rules allow
     // count 0 (`count >= 0`), so an empty presets array is a legal document.
     if (!n && !nc) { cloudMsg("Nothing to save — you have no scenes yet.", true); return; }
+    // The rules cap count at 500; without this pre-check a larger library fails the write and
+    // surfaces as a bare "Missing or insufficient permissions", which explains nothing.
+    if (n > 500) {
+      cloudMsg("Your library has " + n + " scenes — the cloud cap is 500. Delete some and save again.", true);
+      return;
+    }
     cloudMsg("Saving…");
     zipToB64(JSON.stringify(blob)).then(payload => {
       if (payload == null) throw new Error("this browser cannot compress the payload");
