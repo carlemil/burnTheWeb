@@ -1535,6 +1535,15 @@ All slice real source out of the built file by **markers — keep them**.
   being checked BEFORE the ✕'s `confirm`. Reads the built markup/CSS/JS as text rather than
   slicing functions — these are all *lists*, and every one of them rotted by omission.
   Adding a dialog and forgetting a list fails here.
+- **`stackprobe.js`** — the stack-item LIFECYCLE invariants, previously comment-enforced only:
+  `thawItem` nulls the record; `paintBlock` never dispatches `input`, skips the selected slot,
+  applies bounds before values, collapses singles itself; `selectStack`'s eight-step order;
+  `pointMaps` calls no `apply` and never touches `animPhase`; `stackItemOut` serialises no
+  transient field (`anim`/`phase`/`fxOff`/`solids`/`boids`/`tetras`); `stackOut` is
+  freeze→map→thaw; `installStack` re-points before thawing and repaints every block. Plus the
+  blob-level symmetry: every field `fullSnapshot` writes is one `applyBlob` reads and vice
+  versa (depth-scanned literal keys vs `saved.<key>` reads, comments stripped). Markers listed
+  in its header — keep them.
 - **`shareprobe.js`** — the share codec round trip.
 - **`cloudprobe.js`** — the cloud path structurally shares `serializeBlob` + the codec with `#zp=`
   bundles; an empty `CONFIG.cloud.apiKey` makes zero network requests at startup.
