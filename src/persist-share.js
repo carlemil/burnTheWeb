@@ -26,6 +26,13 @@
       return b64urlOut(btoa(bin));
     } catch (e) { return null; }
   }
+  // Every deflated payload the app ever ingests (?z=, #zp=, cloud profile, #c= scene)
+  // decompresses HERE, and deflate expands up to ~1032:1 — so an attacker-authored
+  // payload that fits the Firestore rules' size cap could still balloon to hundreds
+  // of MB in this tab before validatePresetList ever sees it. Read the stream with a
+  // byte budget instead of Response.arrayBuffer() (which has none); over budget ⇒
+  // cancel and return null, the same answer as a corrupt payload.
+  const UNZIP_MAX = CONFIG.maxUnzipBytes;
   async function unzipFromB64(str) {
     if (typeof DecompressionStream !== "function") return null;
     try {
@@ -33,7 +40,20 @@
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const body = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-      return new TextDecoder().decode(await new Response(body).arrayBuffer());
+      const reader = body.getReader();
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > UNZIP_MAX) { reader.cancel(); return null; }
+        chunks.push(value);
+      }
+      const all = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) { all.set(c, off); off += c.byteLength; }
+      return new TextDecoder().decode(all);
     } catch (e) { return null; }
   }
 

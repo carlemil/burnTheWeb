@@ -2180,6 +2180,14 @@
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
       refract: [110, 100, 70], bands: [[30, 150], [250, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
 
+    // --- incoming payload codec safety ---
+    // Budget for DECOMPRESSING any incoming deflated payload (?z= links, #zp= bundles,
+    // cloud profiles, #c= scenes). Deflate expands up to ~1032:1, so a payload that
+    // passes the rules' 300k-char cap could still balloon to ~300 MB in THIS tab
+    // before any validator runs — a zip bomb from any published profile or link.
+    // 10 MB is ~30× the largest legitimate library measured; unzipFromB64 aborts past it.
+    maxUnzipBytes: 10000000,                      // (UNZIP_MAX)
+
     // --- "Sync with your music" nudge + analytics ---
     sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
     analyticsId: "G-7CMDJP72N7",                  // GA4 Measurement id; "" makes analytics completely inert
@@ -15185,6 +15193,13 @@
       return b64urlOut(btoa(bin));
     } catch (e) { return null; }
   }
+  // Every deflated payload the app ever ingests (?z=, #zp=, cloud profile, #c= scene)
+  // decompresses HERE, and deflate expands up to ~1032:1 — so an attacker-authored
+  // payload that fits the Firestore rules' size cap could still balloon to hundreds
+  // of MB in this tab before validatePresetList ever sees it. Read the stream with a
+  // byte budget instead of Response.arrayBuffer() (which has none); over budget ⇒
+  // cancel and return null, the same answer as a corrupt payload.
+  const UNZIP_MAX = CONFIG.maxUnzipBytes;
   async function unzipFromB64(str) {
     if (typeof DecompressionStream !== "function") return null;
     try {
@@ -15192,7 +15207,20 @@
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const body = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-      return new TextDecoder().decode(await new Response(body).arrayBuffer());
+      const reader = body.getReader();
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > UNZIP_MAX) { reader.cancel(); return null; }
+        chunks.push(value);
+      }
+      const all = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) { all.set(c, off); off += c.byteLength; }
+      return new TextDecoder().decode(all);
     } catch (e) { return null; }
   }
 

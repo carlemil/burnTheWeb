@@ -56,6 +56,14 @@
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
       refract: [110, 100, 70], bands: [[30, 150], [250, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
 
+    // --- incoming payload codec safety ---
+    // Budget for DECOMPRESSING any incoming deflated payload (?z= links, #zp= bundles,
+    // cloud profiles, #c= scenes). Deflate expands up to ~1032:1, so a payload that
+    // passes the rules' 300k-char cap could still balloon to ~300 MB in THIS tab
+    // before any validator runs — a zip bomb from any published profile or link.
+    // 10 MB is ~30× the largest legitimate library measured; unzipFromB64 aborts past it.
+    maxUnzipBytes: 10000000,                      // (UNZIP_MAX)
+
     // --- "Sync with your music" nudge + analytics ---
     sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
     analyticsId: "G-7CMDJP72N7",                  // GA4 Measurement id; "" makes analytics completely inert

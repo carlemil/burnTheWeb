@@ -30,6 +30,9 @@ const code =
   // Per-layer controls resolve through ctl() — the selected layer's block — instead of el().
   // For a bounds lookup the two name the same node, so alias it.
   "const ctl = el;\n" +
+  // The codec reads its decompression budget off CONFIG (manifest slice 1); give the
+  // sliced source the same shape with the shipped value.
+  "const CONFIG = { maxUnzipBytes: 10000000 };\n" +
   CONTROLS_SRC +                     // the slice already carries its closing `];`
   cut("  // ---- share payload codec", "  // Build the share URL for the current scene") +
   "\nreturn { zipToB64, unzipFromB64, b64urlIn, b64urlOut, roundShared, roundMap, CTL_STEP };";
@@ -107,6 +110,19 @@ const ok = (cond, name, detail) => {
   // --- 5. corrupt input is refused, not thrown ---------------------------------
   ok((await S.unzipFromB64("not-a-real-payload")) === null, "garbage decodes to null, no throw");
   ok((await S.unzipFromB64("")) === null, "empty payload decodes to null");
+
+  // --- 6. decompression budget: a zip bomb is refused, a big real payload isn't --
+  // Deflate expands up to ~1032:1, so a tiny attacker-authored payload (a published
+  // profile, a #c= link) can balloon past any sane library size. The codec must
+  // refuse it with the same null as a corrupt payload — and must NOT refuse a
+  // merely-large legitimate blob under the cap.
+  const bomb = await S.zipToB64("x".repeat(12 * 1024 * 1024));   // 12 MB expanded > 10 MB cap
+  ok(typeof bomb === "string" && bomb.length < 20000, "the bomb itself is tiny on the wire",
+     bomb && bomb.length + " chars");
+  ok((await S.unzipFromB64(bomb)) === null, "a payload expanding past the budget decodes to null");
+  const bigReal = "y".repeat(2 * 1024 * 1024);                   // 2 MB — over any real library, under the cap
+  ok((await S.unzipFromB64(await S.zipToB64(bigReal))) === bigReal,
+     "a large legitimate payload under the budget still round-trips");
 
   console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");
   process.exit(fail ? 1 : 0);
