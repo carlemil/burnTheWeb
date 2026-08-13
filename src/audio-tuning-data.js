@@ -244,39 +244,31 @@
     // written before this feature, and every non-stacked one written after it.
     if (Array.isArray(saved.layers) && saved.layers.length) {
       installStack(mergeLayers(saved));
-      effectSel.value = stack[0].fx;
     } else {
-      // NO `layers` ⇒ a single-layer scene, and mergeLayers never runs — so nothing ever
-      // read the filter list back and every reload silently unticked Fire / Fade / the
-      // image filters while the blob still held them. (Multi-layer scenes were fine: their
-      // items carry `filters` and go through mergeLayers, which is why this only bit once
-      // you were down to one layer.)
+      // NO `layers` ⇒ a single-layer scene — and it goes through THE SAME reader the
+      // multi-layer case does, on a preset-shaped view of the runtime maps this function
+      // just restored and validated. This branch used to hand-seed `stack[0].filters` and
+      // `stack[0].ranges` instead, and both were bugs first: with one item nothing ever
+      // read those fields back, so every reload silently unticked the filter chain, and a
+      // widened slider came back shipped while the value it allowed was hard-rejected.
+      // Hand-seeding fixed each in turn; routing through mergeLayers fixes the CLASS —
+      // mergeLayers' fallback branch is already the one place "a single item described by
+      // top-level fields" is turned into a stack item (applyPreset relies on it), so any
+      // per-layer field added there is picked up here by construction.
       //
-      // The item's `filters` is given a CONCRETE value here, which is what the comment in
-      // layerFeedbackChain means by "old-scene compat is handled at load in mergeLayers":
-      // `applyLayerExtras` must keep falling back to the DESCRIPTOR default rather than the
-      // runtime `extras[L.fx]`, because that fallback is what made every not-yet-captured
-      // same-effect layer mirror the last one edited. So the value has to be in place
-      // BEFORE it is read, not discovered afterwards.
-      //
-      // Setting the live `activeIds` instead does NOT work, and the reason is worth
-      // recording: `stackOut()` returns null the moment the stack holds one item, so it
-      // never freezes and persist() never captures the live set into `L.filters` — the
-      // restored `activeIds` is simply overwritten by applyLayerExtras a moment later.
-      // Nothing clobbers `L.filters` for a one-item stack, for exactly the same reason.
+      // The maps are handed over rather than `saved`'s raw fields because the loop above
+      // validated them (bounds-checked states, filtersOk'd extras); mergeLayers re-merging
+      // them is idempotent, and installStack's thaw writes the same values straight back.
       const e = Number.isInteger(saved.effect) && EFFECTS[saved.effect] ? saved.effect : 0;
-      // The sole layer's custom slider BOUNDS, for the same reason its filters are seeded
-      // here: with one item sceneRanges() folds the per-layer bounds into the scene-wide
-      // `ranges`, and nothing was reading them back — so a widened slider came back shipped,
-      // and any value the widening had allowed was then rejected by the validator below and
-      // reset to its default. They are APPLIED at the top of applyBlob, before that validator.
-      stack[0].ranges = layerRangesOf(saved.ranges);
-      const fset = filtersOk(extras[e] && extras[e].filters);
-      // In the USER'S order, not the registry's: the chain is a sequence and its positions
-      // are meaningful (splitChain), so re-sorting here would change what the scene renders.
-      // Ids are still matched by name, so reordering FILTERS cannot remap a saved scene.
-      if (fset && stack.length === 1) stack[0].filters = orderFilters([...fset]).map(f => f.id);
+      installStack(mergeLayers({
+        effect: e,
+        state: states[e], beat: beatStates[e], pulse: pulseStates[e],
+        plen: plenStates[e], btune: btuneStates[e],
+        extra: extras[e],
+        ranges: saved.ranges,          // one item ⇒ its bounds ride in the scene-wide map
+      }));
     }
+    effectSel.value = stack[0].fx;
     if (!sharing) {   // browser-local: saved presets + panel visibility
       if (Array.isArray(saved.presets)) presets = saved.presets.filter(p => p && EFFECTS[p.effect] && p.state && p.beat && p.extra);
       // Out of range (or a `-1` written before the scratch mode was removed) resolves to the

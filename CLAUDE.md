@@ -840,10 +840,13 @@ with the camera 2×2. The fractal rasterises at full grid resolution; out-of-gri
 - **`stackZoom()` is always 1** ⇒ `FS_ZOOM` is an identity blit and the CPU zoom block is dead. Both
   kept deliberately.
 
-**A single-layer scene never touches `mergeLayers`** — `applyBlob` calls it only when `saved.layers`
-exists. Its else-branch must **seed `stack[0].filters` from the restored `extras[e]`**. Two
-non-fixes: **do not add an `extras[L.fx]` fallback to `applyLayerExtras`**, and **setting live
-`activeIds` does not survive** (`stackOut()` returns null for one item).
+**Every scene loads through `mergeLayers`, single-layer included.** `applyBlob`'s no-`layers`
+branch hands mergeLayers a preset-shaped view of the just-validated runtime maps
+(`states[e]`/`extras[e]`/…, plus `saved.ranges` — one item's bounds ride in the scene-wide map),
+so its fallback branch is the ONE place a top-level-fields scene becomes a stack item. It used to
+hand-seed `stack[0].filters`/`ranges` instead, and each was a shipped bug first. Two non-fixes:
+**do not add an `extras[L.fx]` fallback to `applyLayerExtras`**, and **setting live `activeIds`
+does not survive** (`stackOut()` returns null for one item).
 
 **Persistence: an optional `layers` array.** One item ⇒ **nothing emitted**. `mergeLayers` truncates
 to `STACK_MAX`, drops retired effect ids, clamps gain, defaults blend, and runs every per-item map
