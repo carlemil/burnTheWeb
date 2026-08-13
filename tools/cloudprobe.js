@@ -134,8 +134,19 @@ console.log("--- Cloud profiles: Firestore codec (" + file + ")\n");
 // Sliced to cloudDelete ALONE: snapDelete issues a DELETE of its own, so an index comparison
 // over a wider slice would compare against the wrong one.
 {
+  // Retraction only exists because the minted id is NOTED: /scenes is unlistable by design
+  // (allow list: false), so a link not recorded at mint time can never be found again. Pin
+  // the note, its own storage key (device history, not scene data), and the delete sweep.
+  const share = slice("function cloudShareScene() {", "// ---- my shared links");
+  ok("sharing a scene notes the minted document id", /shareLinkNote\(/.test(share));
+  const links = slice("// ---- my shared links", "function cloudFetchScene(");
+  ok("shared links live under their own storage key, not the scene blob",
+     /burnTheWeb\.sharelinks\.v1/.test(links));
+  ok("retracting a link tolerates an already-deleted document", /r\.ok \|\| r\.status === 404/.test(links));
+
   const del = slice("function cloudDelete() {", "// ---- leftover version-history sweep");
   ok("delete sweeps the snapshots subcollection", /snapDeleteAll\(/.test(del));
+  ok("...and the shared scenes this browser noted", /shareLinksDeleteAll\(/.test(del));
   // BOTH indices are required to exist. `indexOf` returns -1 for a missing needle, and -1 is
   // less than everything — so the bare `a < b` form PASSES when the sweep has been deleted,
   // which is the one case this assertion exists to catch.

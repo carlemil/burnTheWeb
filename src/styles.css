@@ -391,6 +391,24 @@
   #panel #cloudrow #cloud-nameview:hover { border-bottom-color: #ffcf87; }
   #panel #cloudrow #cloud-nameview.empty { color: #ffb15a; opacity: .5; font-style: italic; }
   #panel #cloudrow #cloud-nameview:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
+  /* My shared links — the #c= links this browser minted (cloudLinksRender). Named for BOTH
+     hosts: the block is authored in the panel markup and ADOPTED into the menubar. */
+  #panel #cloud-links, #menubar #cloud-links { margin: 8px 0 2px; font-size: 12px; }
+  #panel #cloud-links summary, #menubar #cloud-links summary {
+    cursor: pointer; color: #ffcf87; opacity: .85; padding: 2px 0;
+  }
+  #panel #cloud-links .cl-row, #menubar #cloud-links .cl-row {
+    display: flex; align-items: center; gap: 6px; margin: 4px 0;
+  }
+  #panel #cloud-links .cl-name, #menubar #cloud-links .cl-name {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ffcf87;
+  }
+  #panel #cloud-links .cl-btn, #menubar #cloud-links .cl-btn {
+    padding: 2px 7px; background: rgba(255, 122, 26, 0.14);
+    border: 1px solid rgba(255, 140, 40, 0.5); border-radius: 6px;
+    color: #ffcf87; font-size: 11px; cursor: pointer; flex: none;
+  }
+  #panel #cloud-links .cl-btn:hover, #menubar #cloud-links .cl-btn:hover { background: rgba(255, 122, 26, 0.3); }
   /* Public profile gallery — floating and translucent like the other popups.
      A second list dialog shared every rule below for one release (version history), and that
      is the pattern to follow if another ever appears: ADD it to these selectors, or give both

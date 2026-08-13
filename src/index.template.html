@@ -106,6 +106,14 @@
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
       <label class="check" title="List your profile in the public gallery so anyone can load your scenes. Your name and scene count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
+      <!-- Links minted by "Share this scene" while signed in. /scenes is deliberately
+           unlistable (a link meant for one person must not be enumerable), so the local
+           note taken at mint time is the ONLY record — which is what makes the ✕ here the
+           one working retraction path. Hidden while there is nothing to show. -->
+      <details id="cloud-links" style="display:none">
+        <summary title="Scenes you shared as #c= links from this browser">My shared links</summary>
+        <div id="cloud-linklist"></div>
+      </details>
       <div class="presetrow grid2">
         <button id="cloud-signout" class="audbtn" type="button" title="Sign out on this device. Your profile stays in the cloud.">Sign out</button>
         <button id="cloud-delete" class="audbtn" type="button" title="Permanently delete your cloud profile and everything in it">Delete profile</button>

@@ -1055,6 +1055,11 @@ or refused ⇒ falls back to `?z=`; the cloud route is an optimisation, not a ga
 **Shared scenes live in `/scenes`, NOT `/profiles`.** World-readable, created only by a signed-in
 user stamping their own uid as `owner`, **immutable** (`allow update: if false`), deletable by their
 owner.
+- **`/scenes` is unlistable by design, so the minted id is NOTED at share time** —
+  `burnTheWeb.sharelinks.v1` (device history, its own key) is the only record that can ever
+  exist, and "My shared links" in the cloud box (copy / ✕ = delete the document) is the one
+  retraction path. Links minted before the note existed can't be listed. `cloudDelete` sweeps
+  the noted ones (`shareLinksDeleteAll`) beside the snapshots sweep. `cloudprobe` pins all of it.
 
 **`cloudApplyPayload(payload)` is the ONE place a stored payload becomes a library** — unzip → parse
 → `openSharedLibrary`. `cloudLoad` is its only caller today; the seam is kept deliberately.

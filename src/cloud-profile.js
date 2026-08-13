@@ -406,6 +406,9 @@
     // at, whereas deleting the parent first would strand the snapshots with no UI left to
     // reach them from. (Version history is retired — see snapDeleteAll for why this stays.)
     snapDeleteAll()
+      // Same reasoning, different collection: the /scenes this browser knows it shared are
+      // part of "everything in it". Best-effort — only the locally-noted ones can go.
+      .then(() => shareLinksDeleteAll())
       .then(() => cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }))
       .then(r => {
         if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
@@ -681,11 +684,12 @@
     if (!cloudOn() || !cloudSess) return shareUrl();          // signed out ⇒ the classic link
     return zipToB64(json).then(payload => {
       if (payload == null || payload.length >= 200000) return shareUrl();
+      const sceneName = (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]
+        ? String(presets[curPreset].name) : "Shared scene").slice(0, 60);
       const body = fsOut({
         owner: cloudSess.uid,
         payload,
-        name: (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]
-          ? String(presets[curPreset].name) : "Shared scene").slice(0, 60),
+        name: sceneName,
         created: new Date(),
       });
       // POST to the COLLECTION mints an auto-id; PATCH would need us to invent one and risk
@@ -695,10 +699,102 @@
         .then(doc => {
           const id = String(doc.name || "").split("/").pop();
           if (!id) throw new Error("no document id returned");
+          // The note taken HERE is the only record that will ever exist: /scenes is unlisted
+          // by design (allow list: false), so a link that is not noted at mint time can never
+          // be found again — which is exactly what made retraction dead code before this.
+          shareLinkNote(id, sceneName);
           track("share_scene_cloud", {});
           return dir + "#c=" + id;
         })
         .catch(() => shareUrl());       // quota, rules, offline — the link still works
+    });
+  }
+
+  // ---- my shared links: the local record that makes retraction possible --------------
+  // /scenes documents are immutable snapshots the rules let their owner DELETE — but they are
+  // deliberately unlistable (a link meant for one person must not be enumerable into a public
+  // directory), so the owner cannot ask the server what they shared. The ONLY workable record
+  // is this local note taken when the link is minted. Its own localStorage key, not the scene
+  // blob: which links you shared is device history, like the session, not scene data.
+  // Links shared before this record existed cannot be listed — only retracted by hand from a
+  // kept URL — and that is the accepted cost of keeping /scenes unlistable.
+  const SHARELINKS_KEY = "burnTheWeb.sharelinks.v1";
+  function shareLinksLoad() {
+    try {
+      const a = JSON.parse(localStorage.getItem(SHARELINKS_KEY) || "[]");
+      return Array.isArray(a) ? a.filter(x => x && typeof x.id === "string") : [];
+    } catch (e) { return []; }
+  }
+  function shareLinksSave(a) {
+    try { localStorage.setItem(SHARELINKS_KEY, JSON.stringify(a)); } catch (e) { /* private mode */ }
+  }
+  function shareLinkNote(id, name) {
+    if (!cloudSess) return;
+    const a = shareLinksLoad().filter(x => x.id !== id);
+    a.push({ id, name: String(name || "").slice(0, 60), uid: cloudSess.uid, created: Date.now() });
+    shareLinksSave(a.slice(-100));      // a cap, not a policy — nobody mints 100 live links
+    cloudLinksRender();
+  }
+  function shareLinkForget(id) {
+    shareLinksSave(shareLinksLoad().filter(x => x.id !== id));
+    cloudLinksRender();
+  }
+  // Deleting the document is the retraction: the link stops opening for everyone holding it.
+  // 404 counts as done — already deleted from another device, or by Delete profile's sweep.
+  function cloudLinkDelete(id) {
+    return cloudFetch(galUrl + "/scenes/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(r => {
+        if (r.ok || r.status === 404) { shareLinkForget(id); return; }
+        return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+      });
+  }
+  // Best-effort sweep for Delete profile: "delete my cloud profile and everything in it"
+  // should take the scenes this browser knows it shared along with the rest. Only the noted
+  // ones CAN go (see above); a failure never blocks the profile delete itself.
+  function shareLinksDeleteAll() {
+    if (!cloudSess) return Promise.resolve();
+    const mine = shareLinksLoad().filter(x => x.uid === cloudSess.uid);
+    return Promise.all(mine.map(x => cloudLinkDelete(x.id).catch(() => {})));
+  }
+  function cloudLinksRender() {
+    const box = el("cloud-links"), list = el("cloud-linklist");
+    if (!box || !list) return;
+    const mine = cloudSess ? shareLinksLoad().filter(x => x.uid === cloudSess.uid) : [];
+    box.style.display = mine.length ? "" : "none";
+    list.textContent = "";
+    const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
+    mine.slice().reverse().forEach(x => {          // newest first
+      const row = document.createElement("div");
+      row.className = "cl-row";
+      const name = document.createElement("span");
+      name.className = "cl-name";
+      name.textContent = x.name || "Shared scene";
+      name.title = new Date(x.created || 0).toLocaleDateString();
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "cl-btn";
+      copy.textContent = "Copy";
+      copy.title = "Copy the share link again";
+      copy.onclick = () => {
+        const u = dir + "#c=" + x.id;
+        (navigator.clipboard && navigator.clipboard.writeText
+          ? navigator.clipboard.writeText(u) : Promise.reject())
+          .then(() => cloudMsg("Link copied."), () => prompt("Share link:", u));
+      };
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "cl-btn";
+      del.textContent = "✕";
+      del.title = "Delete this shared scene from the cloud — the link stops opening for everyone";
+      del.onclick = () => {
+        if (!confirm('Delete the shared link for "' + (x.name || "Shared scene")
+          + '"? Anyone holding it will no longer be able to open it.')) return;
+        cloudLinkDelete(x.id).then(
+          () => cloudMsg("Shared link deleted."),
+          e => cloudMsg("Could not delete the link: " + e.message, true));
+      };
+      row.append(name, copy, del);
+      list.appendChild(row);
     });
   }
   // Recipient side of #c=<id>. Called (deferred) from applyShared: the fetch is anonymous,
@@ -787,6 +883,7 @@
     const pubBox = el("cloud-pub");
     if (pubBox) pubBox.checked = !!(cloudSess && cloudSess.pub);
     cloudNameShow();                     // signing in/out always lands back on the label
+    cloudLinksRender();                  // the list only shows YOUR links, so it follows the session
     if (!inS) cloudMsg("");
   }
 
