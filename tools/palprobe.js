@@ -124,5 +124,88 @@ ok(P.palRemapOne(1, gone, backLive) === 1, "a reference below it is untouched");
 ok(backLive === 4, "the fallback itself is shifted before it is stored", String(backLive));
 ok(P.palRemapOne("5", gone, backLive) === "4", "string flavour in, string flavour out");
 
+// --- 8. stable palette ids at the serialize edge ---------------------------------
+// Palette refs travel as string IDS now (converted beside effect ids in serializeBlob /
+// deserializeBlob), with raw numerics decoding forever as legacy positions. Slices the
+// REAL id table, hash, converters and both codec halves; stubs only what they read.
+// Markers: `// ---- stable palette ids` … `function customPalEntry(`,
+// `function palStopsOk(` … `// The stops to seed the editor`,
+// `const LEGACY_EFFECT_IDS` … `// Per-effect slider presets,`.
+{
+  const stub = `
+    const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
+    const PAL_BUILTIN = 19, PAL_MAX_CUSTOM = 24, PAL_MAX_STOPS = 16, PAL_MIN_STOPS = 2;
+    const PALETTES = Array.from({ length: 19 }, () => ({}));
+    const EFFECTS = [{ id: "sirpinfyer" }, { id: "tetrafyer" }, { id: "animejulia" }, { id: "plasma" }];
+  `;
+  const C = new Function(stub
+    + cut("  // ---- stable palette ids", "  function customPalEntry(")
+    + cut("  function palStopsOk(", "  // The stops to seed the editor")
+    + cut("  const LEGACY_EFFECT_IDS", "  // Per-effect slider presets,")
+    + "\nreturn { PAL_IDS, PALETTES, palHashId, palIdOut, palIdxIn, customPalettesOk,"
+    + "  serializeBlob, deserializeBlob };")();
+
+  // The frozen table — hard-coded here like singleprobe's SINGLE_KEYS, so an edit to the
+  // shipped list (reorder, rename-as-id-change) goes red instead of quietly re-mapping
+  // every stored blob.
+  const WANT = ["fire", "ice", "toxic", "copper", "purple", "rainbow", "grayscale",
+    "electric", "amber", "matrix", "sunset", "c64", "cga", "blood", "chrome",
+    "tricolor", "ember", "verdant", "sunburst"];
+  ok(JSON.stringify(C.PAL_IDS) === JSON.stringify(WANT),
+     "PAL_IDS is exactly the shipped 19, in catalog order", C.PAL_IDS.join(","));
+
+  // Round trip, built-in refs everywhere a palette can ride.
+  const blob = {
+    effect: 3,
+    extras: { 3: { palette: "7", morph: true } },
+    layers: [{ effect: "plasma", palette: "1" }, { effect: "plasma" }],
+    palUse: [0, 7], palGone: [2],
+    presets: [{ name: "T", effect: 3, extra: { palette: "9" }, layers: [{ palette: "4" }] }],
+  };
+  const enc = C.serializeBlob(blob);
+  ok(enc.extras.plasma.palette === "electric", "extras.palette encodes to an id", enc.extras.plasma.palette);
+  ok(enc.layers[0].palette === "ice" && enc.layers[1].palette === undefined,
+     "layer palettes encode; an absent one stays absent");
+  ok(JSON.stringify(enc.palUse) === '["fire","electric"]' && JSON.stringify(enc.palGone) === '["toxic"]',
+     "palUse/palGone encode to id lists");
+  ok(enc.presets[0].extra.palette === "matrix" && enc.presets[0].layers[0].palette === "purple",
+     "a preset's extra and layers encode too");
+  ok(blob.extras[3].palette === "7" && blob.presets[0].extra.palette === "9",
+     "encoding copies — the runtime objects handed in are never mutated");
+  const dec = C.deserializeBlob(enc);
+  ok(dec.extras[3].palette === "7" && dec.layers[0].palette === "1"
+     && JSON.stringify(dec.palUse) === "[0,7]" && JSON.stringify(dec.palGone) === "[2]"
+     && dec.presets[0].extra.palette === "9" && dec.presets[0].layers[0].palette === "4",
+     "…and the whole blob decodes back to the original indices");
+
+  // Legacy numerics decode forever; null palUse (= all) passes through untouched.
+  const leg = C.deserializeBlob({ effect: "plasma", extras: { plasma: { palette: "7" } }, palUse: null });
+  ok(leg.extras[3].palette === "7" && leg.palUse === null,
+     "a pre-id blob's numeric refs and null palUse decode unchanged");
+
+  // Customs: ids are content-derived, minted for pre-id blobs, resolved against the blob's
+  // OWN list, and an unknown id is dropped — never misfiled onto someone else's ramp.
+  const stops = [[0, [0, 0, 0]], [1, [255, 255, 255]]];
+  const mint = C.customPalettesOk([{ name: "My", stops }]);
+  ok(mint.length === 1 && /^u[0-9a-z]+$/.test(mint[0].id), "a pre-id custom gets a minted id", mint[0].id);
+  ok(JSON.stringify(C.customPalettesOk(mint)) === JSON.stringify(mint),
+     "customPalettesOk is idempotent (deserializeBlob and applyBlob both run it)");
+  const twice = C.customPalettesOk([{ name: "My", stops }, { name: "My", stops }]);
+  ok(twice.length === 2 && twice[0].id !== twice[1].id, "identical ramps get distinct ids");
+  const cdec = C.deserializeBlob({
+    palettes: [{ name: "My", stops }],
+    extras: { plasma: { palette: mint[0].id } },
+  });
+  ok(cdec.extras[3].palette === "19", "a custom id resolves against the blob's own list",
+     cdec.extras[3].palette);
+  const gone2 = C.deserializeBlob({ extras: { plasma: { palette: "unowhere", morph: true } } });
+  ok(gone2.extras[3].palette === undefined && gone2.extras[3].morph === true,
+     "an unknown id is dropped (the rest of the extra survives), never misfiled");
+
+  // Encode side for a custom: the live entry's id is what travels.
+  C.PALETTES.push({ custom: true, id: mint[0].id });
+  ok(C.palIdOut(19) === mint[0].id, "a custom index encodes to its entry's id");
+}
+
 console.log("\n" + (fail ? fail + " FAILED, " + pass + " passed" : "all " + pass + " passed"));
 process.exit(fail ? 1 : 0);

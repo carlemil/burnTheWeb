@@ -354,23 +354,90 @@
     }
     return out;
   }
+  // ---- palette references get the same edge treatment as effect ids -----------------
+  // Palette refs live NESTED — extras values, layer items, presets' extra + layers — and the
+  // inputs alias RUNTIME objects (extras[e], the presets array), so every level that gets a
+  // rewritten field is copied, never mutated in place. Encode keeps the raw value when the
+  // index resolves to no id (nothing to say about it ⇒ say what was there); decode drops an
+  // unknown id (never misfile) and emits STRING indices, the shape the runtime has always
+  // stored (`L.palette`/`extras[e].palette` are numeric strings).
+  const palExOut = ex => {
+    if (!ex || typeof ex !== "object" || ex.palette == null) return ex;
+    const id = palIdOut(ex.palette);
+    return id ? { ...ex, palette: id } : ex;
+  };
+  const palLayersOut = ls => (Array.isArray(ls)
+    ? ls.map(L => {
+        if (!L || typeof L !== "object" || L.palette == null) return L;
+        const id = palIdOut(L.palette);
+        return id ? { ...L, palette: id } : L;
+      })
+    : ls);
+  const palListOut = a => (Array.isArray(a) ? a.map(palIdOut).filter(Boolean) : a);
+  // Decode halves. `customs` is the blob's own (already-validated) `palettes` list, which is
+  // where a custom id resolves — see palIdxIn.
+  const palExIn = (ex, customs) => {
+    if (!ex || typeof ex !== "object" || ex.palette == null) return ex;
+    const i = palIdxIn(ex.palette, customs);
+    if (i < 0) { const c = { ...ex }; delete c.palette; return c; }
+    return { ...ex, palette: String(i) };
+  };
+  const palLayersIn = (ls, customs) => (Array.isArray(ls)
+    ? ls.map(L => {
+        if (!L || typeof L !== "object" || L.palette == null) return L;
+        const i = palIdxIn(L.palette, customs);
+        if (i < 0) { const c = { ...L }; delete c.palette; return c; }
+        return { ...L, palette: String(i) };
+      })
+    : ls);
+  const palListIn = (a, customs) => (Array.isArray(a)
+    ? a.map(v => palIdxIn(v, customs)).filter(i => i >= 0) : a);
+  const mapValues = (m, fn) => {
+    const out = {};
+    for (const k in m) out[k] = fn(m[k]);
+    return out;
+  };
   function serializeBlob(b) {                      // numeric effect indices → ids, for storage
     const out = { ...b };
     if (typeof b.effect === "number") out.effect = effectId(b.effect);
-    if (Array.isArray(b.presets)) out.presets = b.presets.map(p => (p && typeof p.effect === "number" ? { ...p, effect: effectId(p.effect) } : p));
+    if (Array.isArray(b.presets)) out.presets = b.presets.map(p => {
+      if (!p || typeof p !== "object") return p;
+      const q = { ...p, extra: palExOut(p.extra) };
+      if (typeof p.effect === "number") q.effect = effectId(p.effect);
+      if (Array.isArray(p.layers)) q.layers = palLayersOut(p.layers);
+      return q;
+    });
     for (const f of EFFECT_MAPS) if (b[f] && typeof b[f] === "object") out[f] = keysToIds(b[f]);
+    if (out.extras && typeof out.extras === "object") out.extras = mapValues(out.extras, palExOut);
+    if (Array.isArray(b.layers)) out.layers = palLayersOut(b.layers);
+    if (Array.isArray(b.palUse)) out.palUse = palListOut(b.palUse);
+    if (Array.isArray(b.palGone)) out.palGone = palListOut(b.palGone);
     return out;
   }
   function deserializeBlob(b) {                    // ids (or legacy numbers) → numeric indices; drops unknown-effect presets
     if (!b || typeof b !== "object") return b;
     const out = { ...b };
+    // The custom list first: it is what the palette refs below resolve their ids against,
+    // and normalizing it HERE (rather than only in applyBlob) pins the positions — applyBlob
+    // installs this same validated list, so an id resolved to PAL_BUILTIN+n now still names
+    // that ramp after the install. customPalettesOk is idempotent, so the second run in
+    // applyBlob sees it unchanged.
+    if (b.palettes !== undefined) out.palettes = customPalettesOk(b.palettes);
+    const customs = out.palettes;
     if (b.effect !== undefined) { const i = effectIndexFromId(b.effect); if (i >= 0) out.effect = i; else delete out.effect; }
     if (Array.isArray(b.presets)) out.presets = b.presets.map(p => {
       if (!p || typeof p !== "object") return null;
       const i = effectIndexFromId(p.effect);
-      return i >= 0 ? { ...p, effect: i } : null;
+      if (i < 0) return null;
+      const q = { ...p, effect: i, extra: palExIn(p.extra, customs) };
+      if (Array.isArray(p.layers)) q.layers = palLayersIn(p.layers, customs);
+      return q;
     }).filter(Boolean);
     for (const f of EFFECT_MAPS) if (b[f] && typeof b[f] === "object") out[f] = keysToIdx(b[f]);
+    if (out.extras && typeof out.extras === "object") out.extras = mapValues(out.extras, ex => palExIn(ex, customs));
+    if (Array.isArray(b.layers)) out.layers = palLayersIn(b.layers, customs);
+    if (Array.isArray(b.palUse)) out.palUse = palListIn(b.palUse, customs);
+    if (Array.isArray(b.palGone)) out.palGone = palListIn(b.palGone, customs);
     return out;
   }
   // Per-effect slider presets, loaded whenever an effect becomes active (manual

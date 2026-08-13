@@ -89,9 +89,10 @@
     { name: "Blood", fn: grad([[0, [0, 0, 0]], [0.35, [50, 0, 0]], [0.6, [150, 0, 10]], [0.8, [225, 40, 30]], [0.92, [255, 140, 110]], [1, [255, 230, 215]]]) },
     { name: "Chrome", fn: grad([[0, [0, 0, 0]], [0.25, [20, 30, 55]], [0.45, [90, 110, 140]], [0.62, [200, 215, 235]], [0.75, [70, 90, 120]], [0.9, [180, 200, 225]], [1, [255, 255, 255]]]) },
     // A green / gold / red family. "Tricolor" runs all three in sequence; the other three
-    // each lean on one of them. Renaming these is SAFE: a palette is referenced everywhere
-    // by INDEX (see palRemapDeleted), never by name, so no saved scene, share link, backup
-    // or cloud profile is affected — keep the ORDER, though.
+    // each lean on one of them. Renaming these is SAFE: the wire format is the stable id
+    // in PAL_IDS below (runtime still uses the index), so no saved scene, share link,
+    // backup or cloud profile is affected — keep the ORDER though (legacy numeric refs
+    // decode by position forever), and never change a shipped id.
     { name: "Tricolor", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
     { name: "Ember", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
     { name: "Verdant", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
@@ -113,10 +114,66 @@
   const PAL_BUILTIN = PALETTES.length;
   const PAL_MAX_CUSTOM = 24, PAL_MAX_STOPS = 16, PAL_MIN_STOPS = 2;
   const isCustomPal = i => i >= PAL_BUILTIN;
+  // ---- stable palette ids: the wire format ----------------------------------
+  // Saved blobs reference palettes by these STRING ids, converted at the same
+  // serialize/deserialize edge as effect ids. Raw indices were the wire format before,
+  // which is why the catalog's ORDER is append-only forever (a legacy numeric value still
+  // decodes as a position) — but an index in an already-shared link could not survive a
+  // custom-palette deletion on the recipient's machine: palRemapDeleted rewrites live data,
+  // not links, so an old link silently opened with whatever ramp had slid into that slot.
+  // The exact failure class effect ids were introduced to kill, closed the same way.
+  //
+  // PAL_IDS is FROZEN against the PALETTES literal above, position for position. Renaming
+  // a palette stays safe (ids, not names, travel); this list itself may only be APPENDED
+  // to, in step with the literal — an id, once shipped, is forever.
+  const PAL_IDS = ["fire", "ice", "toxic", "copper", "purple", "rainbow", "grayscale",
+    "electric", "amber", "matrix", "sunset", "c64", "cga", "blood", "chrome",
+    "tricolor", "ember", "verdant", "sunburst"];
+  if (PAL_IDS.length !== PAL_BUILTIN) console.error("PAL_IDS out of step with PALETTES");
+  PALETTES.forEach((p, i) => { p.id = PAL_IDS[i]; });
+  // A custom's id is CONTENT-DERIVED (hash of name + stops), not random: the same ramp gets
+  // the same id on every machine, so a share link naming a custom can resolve against a
+  // recipient who authored the identical ramp — a random id could never match. An edit
+  // changes the id, which is harmless where it matters: every self-contained blob carries
+  // its `palettes` list beside the refs written in the same save, so the pair stays
+  // consistent, and the decoder resolves ids against the blob's own list first.
+  function palHashId(name, stops) {
+    const s = String(name) + "|" + JSON.stringify(stops);
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    return "u" + h.toString(36);
+  }
+  // index → wire id (encode). An index the catalog does not hold emits null; the caller
+  // keeps the raw value in that case rather than inventing an id.
+  function palIdOut(i) {
+    const n = +i;
+    if (!Number.isInteger(n) || n < 0 || n >= PALETTES.length) return null;
+    return PALETTES[n].id || null;
+  }
+  // wire value → numeric index (decode). Three forms: a number (or numeric string) is a
+  // legacy index and passes through — append-only order makes old positions permanent,
+  // the LEGACY_EFFECT_IDS argument; a built-in id resolves by table; a custom id resolves
+  // against the BLOB'S OWN `palettes` list first (customs install later in applyBlob, so
+  // at decode time the list riding beside the refs is the truth), then against the live
+  // custom tail (a share link carries no list, but a content-derived id can match a ramp
+  // the recipient also has). Unknown ⇒ -1: dropped, never misfiled.
+  function palIdxIn(v, customs) {
+    if (typeof v === "number" && Number.isInteger(v)) return v;
+    if (typeof v !== "string") return -1;
+    if (/^\d+$/.test(v)) return +v;
+    const b = PAL_IDS.indexOf(v);
+    if (b >= 0) return b;
+    if (Array.isArray(customs)) {
+      const c = customs.findIndex(d => d && d.id === v);
+      if (c >= 0) return PAL_BUILTIN + c;
+    }
+    return PALETTES.findIndex(p => p.id === v && p.custom);
+  }
   // One custom definition {name, stops} → a PALETTES entry. `stops` is kept on the entry as
   // well as inside the fn so the editor and the serializer read the same array.
   function customPalEntry(def) {
-    return { name: def.name, fn: grad(def.stops), custom: true, stops: def.stops };
+    return { name: def.name, fn: grad(def.stops), custom: true, stops: def.stops,
+             id: def.id || palHashId(def.name, def.stops) };
   }
   // Replace the custom tail wholesale. Truncating to PAL_BUILTIN first is what makes this
   // idempotent — it is called on every load and on every editor save.
@@ -124,7 +181,9 @@
     PALETTES.length = PAL_BUILTIN;
     (list || []).forEach(d => PALETTES.push(customPalEntry(d)));
   }
-  const customPalettes = () => PALETTES.slice(PAL_BUILTIN).map(p => ({ name: p.name, stops: p.stops }));
+  // The id rides in the blob's `palettes` entries so the refs written in the same save
+  // always have their targets beside them (see palIdxIn).
+  const customPalettes = () => PALETTES.slice(PAL_BUILTIN).map(p => ({ name: p.name, stops: p.stops, id: p.id }));
   // Validate a stop list from a blob: pairs of [pos 0..1, [r,g,b]], sorted, deduped, clamped,
   // capped. Returns null if it cannot be made into a usable ramp — a caller that gets null
   // drops that palette rather than installing something that would throw inside grad().
@@ -146,13 +205,20 @@
   }
   function customPalettesOk(raw) {
     if (!Array.isArray(raw)) return [];
-    const out = [];
+    const out = [], seen = new Set();
     for (const d of raw.slice(0, PAL_MAX_CUSTOM)) {
       if (!d || typeof d !== "object") continue;
       const stops = palStopsOk(d.stops);
       if (!stops) continue;
       const name = typeof d.name === "string" && d.name.trim() ? d.name.trim().slice(0, 40) : "Custom";
-      out.push({ name, stops });
+      // Keep a stored id, mint one for a pre-id blob (deterministic, so decoding the same
+      // old blob twice resolves the same way), and de-duplicate within the list — two
+      // identical ramps would otherwise hash alike and make refs ambiguous. Deterministic
+      // suffixing, so validation is idempotent (deserializeBlob and applyBlob both run it).
+      let id = (typeof d.id === "string" && /^u[0-9a-z-]{1,24}$/.test(d.id)) ? d.id : palHashId(name, stops);
+      while (seen.has(id)) id += "-2";
+      seen.add(id);
+      out.push({ name, stops, id });
     }
     return out;
   }

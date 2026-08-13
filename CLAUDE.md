@@ -695,7 +695,9 @@ custom branch, so closing without an edit KEEPS it. Create new must add the new 
 - **`applyBlob` must install customs BEFORE validating any palette value.** `customPalettesOk` drops
   malformed entries and **sorts stop lists**.
 - **Deleting a custom shifts later indices down** ⇒ `palRemapDeleted` rewrites the live stack,
-  per-effect `extras` and every preset. Existing share links are not rewritten.
+  per-effect `extras` and every preset (runtime is index-based). Links written since palette
+  ids shipped are immune (ids don't shift); OLD numeric links still resolve by position and can
+  land on a different custom after a deletion — unfixable for links already minted.
 
 **`palGone`** — SOFT-deleted shipped palettes (a tombstone Set of built-in indices, persisted beside
 `palUse`, skipped while sharing). **A built-in can never really be removed** — indices are the wire
@@ -723,11 +725,19 @@ CYCLE only (`pickOther` picks from it). A scene storing an unticked palette stil
 `null` = all; `setPalUse` collapses full/empty back to `null`. Global blob field, skipped while
 `sharing`. **Indices ⇒ `palRemapDeleted` must remap it.**
 
-**Palette names may change; the ORDER may not** — everything references palettes by index. The
-UI nevertheless lists them **by name** through **`palByName()`** (beside `palInUse`): the strip,
-the picker rows and the hidden `#palette` options are appended in name order while `PALETTES`
-itself never moves, and every option/swatch still carries the real index (`value`, `data-pal`).
-Sorting the array instead would repoint every saved scene, link and backup.
+**Palette identity: stable string ids on the WIRE, indices at runtime** — same split as effects.
+`PAL_IDS` (frozen against the `PALETTES` literal, append-only, ids are forever) + content-hash
+ids for customs (`palHashId`, minted/deduped in `customPalettesOk`, riding in the blob's
+`palettes` entries). Conversion happens only in `serializeBlob`/`deserializeBlob` (`palIdOut`/
+`palIdxIn` + the `palEx*`/`palLayers*`/`palList*` wrappers over extras values, layer items,
+presets' extra+layers, `palUse`, `palGone`). Decode order: numeric = legacy position (why the
+ORDER is still append-only forever), built-in id, the **blob's own `palettes` list** (normalized
+in `deserializeBlob` so positions match what `applyBlob` installs), then the live custom tail
+(content ids let identical ramps match across users); unknown ⇒ dropped, never misfiled.
+**Names may change freely; ids and order may not.** `palprobe` pins the table and the round trip.
+The UI lists palettes **by name** through **`palByName()`** (beside `palInUse`): the strip, the
+picker rows and the hidden `#palette` options are appended in name order while `PALETTES` itself
+never moves, and every option/swatch still carries the real index (`value`, `data-pal`).
 
 **Palette picker**: `#palette <select>` is the hidden value store; `#palswatches` is visible (one
 gradient per in-use entry via `palGradientCss(i)`). A swatch sets `paletteSel.value` and dispatches
@@ -1519,7 +1529,11 @@ All slice real source out of the built file by **markers — keep them**.
   across a whole arm spacing, so a sweep degenerates into noise and any fold-and-compare
   aliases past half an arm. Two earlier versions of the check passed the very bug they were
   written for. Markers: `function galaxyStamp(` … `// ---- Harmonograph`.
-- **`palprobe.js`** — palette DELETION: `palByName` orders by name while `PALETTES` stays put;
+- **`palprobe.js`** — palette DELETION and the palette ID CODEC: the frozen `PAL_IDS` table
+  (hard-coded, so a reorder/rename-as-id goes red); the full serialize/deserialize round trip
+  over extras/layers/presets/`palUse`/`palGone`; legacy numeric passthrough; custom id minting,
+  idempotency, dedup, blob-own-list resolution; unknown-id dropped-never-misfiled; and that
+  encoding copies rather than mutating runtime objects. Deletion half: `palByName` orders by name while `PALETTES` stays put;
   `palFallbackFor` takes the next in-use palette in display order (wrapping), prefers an in-use
   one over a nearer unticked one, **never returns a tombstoned palette** (the Fire case) and skips
   a whole run of them; `palKeepInUse` re-ticks when the set would be left empty; and `palRemapOne`

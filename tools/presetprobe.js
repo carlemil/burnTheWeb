@@ -249,7 +249,14 @@ const D = P.BEAT_DEFAULTS;
 // followed their effect rather than their slot.
 {
   const mk = ids => ids.map(id => ({ id }));
+  // The codec also converts palette refs now; stub those converters to pass-through — the
+  // real ones are exercised by palprobe, and THIS check is about effect keying alone.
+  const palStubs =
+    "const palIdOut = () => null;\n" +
+    "const palIdxIn = v => (typeof v === 'number' ? v : (/^\\d+$/.test(v) ? +v : -1));\n" +
+    "const customPalettesOk = a => (Array.isArray(a) ? a : []);\n";
   const build = ids => new Function("EFFECTS",
+    palStubs +
     cut("  const LEGACY_EFFECT_IDS", "  // Per-effect slider presets") +
     "\nreturn { serializeBlob, deserializeBlob };")(mk(ids));
 
