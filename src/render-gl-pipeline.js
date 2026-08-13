@@ -1016,6 +1016,18 @@
   // L.palette is null while selected, exactly like state/beat), so read the live dropdown
   // — otherwise editing the palette wouldn't update the layer until you deselected it.
   // Others use their captured L.palette, falling back to the effect's default.
+  //
+  // TWO PER-LAYER FALLBACK POLICIES COEXIST, AND BOTH ARE DELIBERATE — do not "unify" them.
+  // The palette family here (palette / rev / bg / showBox) falls back to the RUNTIME
+  // `extras[L.fx]`: per-effect palette memory is a feature (an effect recalls the palette you
+  // last used with it), and legacy scenes with no per-layer palette must open looking the way
+  // they did when every same-effect layer shared one. Filters and seedPts fall back to the
+  // DESCRIPTOR default instead (layerFilterSet below, installStackItem) because for them the
+  // runtime fallback was a bug — every not-yet-captured layer mirrored the last one edited,
+  // and a filter chain or orbit path is structure, not a tint. The accepted cost here: a
+  // legacy layer whose palette is still null re-tints if you edit a same-effect layer's
+  // palette, for at most as long as it stays never-selected — applyLayerExtras captures
+  // concrete values on first selection, which ends the sharing.
   function layerPalIndex(L) {
     let raw;
     if (L === stack[stackSel]) raw = +paletteSel.value;

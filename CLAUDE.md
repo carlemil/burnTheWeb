@@ -662,6 +662,14 @@ living permanently in their row. Any number open at once. No `#lyrctl`, no `park
 each duration like `ttlMs()`. Both thumbs 0 pins it. `morphing` is **derived** (`palCycleOn()`), not
 stored; `syncMorphFromSlider()` starts/pins on edit. `extras.morph` still written for compat.
 
+**Two per-layer fallback policies coexist, deliberately — don't unify.** A null per-layer field
+falls back to the **runtime `extras[L.fx]`** for the palette family (palette/rev/bg/showBox —
+per-effect palette memory is a feature, and legacy scenes must keep their shared-palette look)
+but to the **descriptor default** for filters and seedPts (the runtime fallback there was the
+"every uncaptured layer mirrors the last edit" bug — structure, not tint). Accepted cost: a
+legacy never-selected layer with null palette re-tints with same-effect edits until first
+selection captures it. Documented at `layerPalIndex`.
+
 **Reverse colours** (`#palrev`) — **per layer**: live `paletteReverse` for the selected layer,
 `L.paletteRev` otherwise (`layerPalRev(L)`), `extras[e].paletteRev` as single-layer fallback. Flips
 indices **1..255** of the baked LUT, leaving 0 as background. Both bake choke points:
