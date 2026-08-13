@@ -87,10 +87,22 @@
       audio: audio.on ? audio.src : (audio.settled ? "off" : null),
     };
   }
+  // The catch distinguishes the two failure classes on purpose. Storage full/disabled is a
+  // fact of the environment and stays silent. Anything ELSE — a TypeError from fullSnapshot
+  // reading a renamed DOM node, say — means persistence has silently STOPPED on every edit,
+  // which is data loss wearing a green UI; log it once so a report can name it, then stay
+  // quiet (the frame loop calls persist constantly and a broken snapshot would spam).
+  let persistWarned = false;
   function persist() {
     if (!persistReady || suppressPersist) return;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(fullSnapshot()))); }
-    catch (e) { /* storage full / disabled — ignore */ }
+    catch (e) {
+      const quota = e && (e.name === "QuotaExceededError" || e.name === "SecurityError");
+      if (!quota && !persistWarned) {
+        persistWarned = true;
+        console.error("burnTheWeb: persist() is failing — edits are NOT being saved", e);
+      }
+    }
   }
   // Apply a settings blob (from localStorage or a shared URL). `sharing` skips the
   // browser-local bits (saved presets, panel state) so a shared link only carries
