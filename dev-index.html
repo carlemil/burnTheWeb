@@ -2724,9 +2724,10 @@
     { name: "Blood", fn: grad([[0, [0, 0, 0]], [0.35, [50, 0, 0]], [0.6, [150, 0, 10]], [0.8, [225, 40, 30]], [0.92, [255, 140, 110]], [1, [255, 230, 215]]]) },
     { name: "Chrome", fn: grad([[0, [0, 0, 0]], [0.25, [20, 30, 55]], [0.45, [90, 110, 140]], [0.62, [200, 215, 235]], [0.75, [70, 90, 120]], [0.9, [180, 200, 225]], [1, [255, 255, 255]]]) },
     // A green / gold / red family. "Tricolor" runs all three in sequence; the other three
-    // each lean on one of them. Renaming these is SAFE: a palette is referenced everywhere
-    // by INDEX (see palRemapDeleted), never by name, so no saved scene, share link, backup
-    // or cloud profile is affected — keep the ORDER, though.
+    // each lean on one of them. Renaming these is SAFE: the wire format is the stable id
+    // in PAL_IDS below (runtime still uses the index), so no saved scene, share link,
+    // backup or cloud profile is affected — keep the ORDER though (legacy numeric refs
+    // decode by position forever), and never change a shipped id.
     { name: "Tricolor", fn: grad([[0, [0, 0, 0]], [0.22, [0, 110, 40]], [0.5, [240, 200, 20]], [0.78, [210, 25, 25]], [1, [255, 240, 205]]]) },
     { name: "Ember", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
     { name: "Verdant", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
