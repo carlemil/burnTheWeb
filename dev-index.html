@@ -16818,7 +16818,7 @@
       ...opts,
       headers: { ...(opts && opts.headers), "Content-Type": "application/json", Authorization: "Bearer " + tok },
     })).then(r => {
-      if (r.status === 401 && !retried) {
+      if (r.status === 401 && !retried && cloudSess) {   // a parallel sign-out may have nulled the session
         cloudSess.expires = 0;            // force the refresh, then one more attempt
         return cloudFetch(url, opts, true);
       }
@@ -16904,6 +16904,38 @@
   }
 
   // ---- save / load / delete ----
+  // THE SAVE IS GUARDED BY A SERVER PRECONDITION, because it is a full replace: two signed-in
+  // devices are otherwise silent last-write-wins, and the sharpest case is not even a Save
+  // button — the Publish checkbox routes through cloudSave(), so ticking it on a fresh machine
+  // would overwrite a real library with the shipped default scenes. cloudSess.docTime tracks
+  // the profile document's server updateTime as this browser last saw it ("none" = known to
+  // not exist, absent = never seen — a pre-feature session, which saves unguarded exactly as
+  // before). Every read/write that learns the document's version records it here.
+  function cloudNoteDocTime(t) {
+    if (!cloudSess) return;
+    cloudSess.docTime = t;
+    cloudSaveSess();
+  }
+  // The document metadata alone — used to re-arm docTime after a precondition failure, so the
+  // user's next Save carries the NEW version and succeeds as a deliberate overwrite.
+  function cloudRearmDocTime() {
+    if (!cloudSess) return Promise.resolve();
+    return cloudFetch(docUrl(cloudSess.uid) + "?mask.fieldPaths=count", { method: "GET" })
+      .then(r => (r.ok ? r.json().then(doc => cloudNoteDocTime(doc.updateTime || null))
+        : (r.status === 404 ? cloudNoteDocTime("none") : null)))
+      .catch(() => { /* next save just goes unguarded, like a pre-feature session */ });
+  }
+  // Firestore maps a failed document precondition to 409/FAILED_PRECONDITION; match either,
+  // since the HTTP code has varied across API surfaces while the status string has not.
+  function fsStale(text, status) {
+    if (status === 409) return true;
+    try {
+      const j = JSON.parse(text);
+      return !!(j && j.error && j.error.status === "FAILED_PRECONDITION");
+    } catch (e) { return false; }
+  }
+  const CLOUD_STALE_MSG = "your cloud copy changed since this browser last saw it "
+    + "(another device or tab saved). Load to keep that version, or Save again to overwrite it.";
   function cloudSave() {
     if (!cloudSess) return;
     const blob = cloudBlob();
@@ -16933,18 +16965,36 @@
       // RESULTING document, so a stray leftover field would fail the write.
       const mask = ["name", "payload", "count", "pub", "updated"]
         .map(f => "updateMask.fieldPaths=" + f).join("&");
-      return cloudFetch(docUrl(cloudSess.uid) + "?" + mask, { method: "PATCH", body: JSON.stringify(body) });
+      // The precondition: replace only the version this browser last saw. "none" asserts the
+      // document does not exist yet (a first save that races another device's first save still
+      // loses cleanly), absent docTime sends no guard — the pre-feature behaviour, which a
+      // stale-failure re-arm below upgrades on first contact.
+      const t = cloudSess.docTime;
+      const pre = t === "none" ? "&currentDocument.exists=false"
+        : t ? "&currentDocument.updateTime=" + encodeURIComponent(t) : "";
+      return cloudFetch(docUrl(cloudSess.uid) + "?" + mask + pre,
+        { method: "PATCH", body: JSON.stringify(body) });
     }).then(r => {
-      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      // Name both halves of what was stored — "Saved 9 scenes" reads as data loss to someone
-      // who is looking at 19 in the panel, so say where the other ten live.
-      cloudMsg(n
-        ? "Saved " + n + " scene" + (n === 1 ? "" : "s")
-          + (nc ? " and " + nc + " followed collection" + (nc === 1 ? "" : "s") : "")
-          + " to your profile."
-        : "Saved your " + nc + " followed collection" + (nc === 1 ? "" : "s")
-          + " — no scenes of your own yet.");
-      track("cloud_save", { count: n });
+      if (!r.ok) return r.text().then(txt => {
+        if (fsStale(txt, r.status)) {
+          // Learn the current version so a DELIBERATE second Save overwrites — the user has
+          // read the warning by then; what must never happen is the silent first-click loss.
+          return cloudRearmDocTime().then(() => Promise.reject(new Error(CLOUD_STALE_MSG)));
+        }
+        return Promise.reject(new Error(cloudErr(txt, r.status)));
+      });
+      return r.json().then(doc => {
+        cloudNoteDocTime(doc.updateTime || null);
+        // Name both halves of what was stored — "Saved 9 scenes" reads as data loss to someone
+        // who is looking at 19 in the panel, so say where the other ten live.
+        cloudMsg(n
+          ? "Saved " + n + " scene" + (n === 1 ? "" : "s")
+            + (nc ? " and " + nc + " followed collection" + (nc === 1 ? "" : "s") : "")
+            + " to your profile."
+          : "Saved your " + nc + " followed collection" + (nc === 1 ? "" : "s")
+            + " — no scenes of your own yet.");
+        track("cloud_save", { count: n });
+      });
     }).catch(e => cloudMsg("Could not save: " + e.message, true));
   }
 
@@ -17042,10 +17092,15 @@
     if (!cloudSess) return;
     cloudMsg("Loading…");
     cloudFetch(docUrl(cloudSess.uid), { method: "GET" }).then(r => {
-      if (r.status === 404) return Promise.reject(new Error("you have not saved a profile yet"));
+      if (r.status === 404) {
+        cloudNoteDocTime("none");
+        return Promise.reject(new Error("you have not saved a profile yet"));
+      }
       if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
       return r.json();
     }).then(doc => {
+      // Loading IS seeing the current version — the save precondition compares against this.
+      cloudNoteDocTime(doc.updateTime || null);
       const d = fsIn(doc);
       if (!d.payload) throw new Error("that profile is empty");
       return cloudApplyPayload(d.payload);
@@ -17068,6 +17123,7 @@
       .then(() => cloudFetch(docUrl(cloudSess.uid), { method: "DELETE" }))
       .then(r => {
         if (!r.ok && r.status !== 404) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+        cloudNoteDocTime("none");
         cloudMsg("Profile deleted.");
         track("cloud_delete", {});
       }).catch(e => cloudMsg("Could not delete: " + e.message, true));
@@ -17117,8 +17173,14 @@
   function cloudFetchProfileMeta() {
     if (!cloudSess) return;
     cloudFetch(docUrl(cloudSess.uid) + "?mask.fieldPaths=name&mask.fieldPaths=count&mask.fieldPaths=pub",
-      { method: "GET" }).then(r => (r.ok ? r.json() : null)).then(doc => {
+      { method: "GET" }).then(r => {
+        // 404 = no profile yet, and that is worth REMEMBERING: the save precondition asserts
+        // exists=false from it, so two fresh machines racing their first save still lose cleanly.
+        if (r.status === 404) { cloudNoteDocTime("none"); return null; }
+        return r.ok ? r.json() : null;
+      }).then(doc => {
         if (!doc) return;
+        cloudNoteDocTime(doc.updateTime || null);
         const d = fsIn(doc);
         // Through setProfileName, so the cache and the scene-list heading follow. This is the
         // async arrival the cache exists to pre-empt — on a first-ever sign-in it is the only
@@ -17145,6 +17207,9 @@
   // forced by the rules, not laziness: they require the resulting document to carry
   // name/payload/count/pub, so a pub-only write to a profile that does not exist yet fails
   // validation. Going through cloudSave() always produces a document the rules accept.
+  // That routing is also what makes the tick SAFE on a stale machine: the save precondition
+  // fails instead of silently replacing a newer cloud library with this browser's, and the
+  // kept cloudSess.pub means the intent still lands with the user's deliberate re-save.
   function cloudPublish(on) {
     if (!cloudSess) return;
     cloudSess.pub = !!on;

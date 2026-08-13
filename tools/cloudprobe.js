@@ -98,6 +98,22 @@ console.log("--- Cloud profiles: Firestore codec (" + file + ")\n");
   const save = slice("function cloudSave() {", "function cloudApplyPayload(");
   ok("save compresses with the share codec (zipToB64)", /zipToB64\(/.test(save));
   ok("...and enforces the same size cap the rules do", /maxPayload/.test(save));
+  // The save is a FULL REPLACE, so without a server precondition two devices are silent
+  // last-write-wins — and the Publish checkbox routes through cloudSave, so ticking it on a
+  // stale machine would overwrite a real library with this browser's. Pin the guard, the
+  // stale-failure re-arm (a deliberate second Save must overwrite), and that every path
+  // that LEARNS the document's version records it.
+  ok("save sends a currentDocument precondition built from the last-seen version",
+     /currentDocument\.updateTime/.test(save) && /currentDocument\.exists=false/.test(save));
+  ok("...and a stale failure re-arms the version instead of leaving Save dead",
+     /fsStale\(/.test(save) && /cloudRearmDocTime\(\)/.test(save));
+  ok("...and a successful save records the NEW version", /cloudNoteDocTime\(doc\.updateTime/.test(save));
+  const loadT = slice("function cloudLoad() {", "function cloudDelete()");
+  ok("load records the version it fetched (the precondition compares against it)",
+     /cloudNoteDocTime\(doc\.updateTime/.test(loadT));
+  const meta = slice("function cloudFetchProfileMeta() {", "function cloudErr(");
+  ok("the sign-in meta fetch records the version too, and 404 as known-absent",
+     /cloudNoteDocTime\(doc\.updateTime/.test(meta) && /cloudNoteDocTime\("none"\)/.test(meta));
   // ONE decode path for every transport. It lives in a helper rather than inside cloudLoad,
   // which is a seam worth keeping even with a single caller: the moment anything else needs to
   // turn a stored payload into a library, it must come through here, or a cloud payload stops

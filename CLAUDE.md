@@ -1062,6 +1062,12 @@ owner.
 
 **ONLY THE CURRENT VERSION IS STORED.** A profile is one document; a save replaces it. No version
 history (shipped 1.13.0, removed 1.13.1 — a snapshot was a copy of the *whole library*, not a delta).
+- **The save carries a `currentDocument` precondition** from `cloudSess.docTime` — the server
+  `updateTime` this browser last saw (`"none"` = known absent ⇒ `exists=false`; absent = never
+  seen ⇒ unguarded, the pre-feature behaviour). Every path that learns the version records it
+  (`cloudNoteDocTime`: load, meta fetch, save response, delete, 404s). A stale save re-arms via
+  `cloudRearmDocTime()` and reports; a deliberate second Save overwrites. This is what makes the
+  Publish checkbox safe on a stale machine — it routes through `cloudSave`. `cloudprobe` pins it.
 - **Deleting a scene locally already removes it from the cloud** — `cloudBlob()` is built from
   `fullSnapshot()` and the write is a full replace. A deleted scene survives only in `/scenes` share
   links, immutable by design.
