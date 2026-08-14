@@ -14,6 +14,57 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.28.0] — 2026-08-14
+
+### Added
+
+- **"My shared links"** in the cloud box (☰ → Cloud profile, signed in). Every scene you
+  share as a short `#c=` link is now remembered on this device: the list shows what you
+  shared, **Copy** re-issues a link, and **✕ deletes the shared scene from the cloud**, so
+  the link stops opening for everyone holding it. Until now a shared link could never be
+  taken back. Links shared before this release can't be listed (nothing recorded them) —
+  only new ones. **Delete profile** now also removes the shared scenes this device knows
+  about.
+
+### Changed
+
+- **Saving to the cloud can no longer silently overwrite a newer copy.** If another device
+  (or another tab) saved after this browser last looked, Save now stops and tells you —
+  **Load** to keep the cloud copy, or press **Save again** to deliberately replace it.
+  Previously the last writer always won without a word, and even ticking **Publish to
+  gallery** on a freshly signed-in machine could wipe a real library with the starter
+  scenes.
+- **A library over the cloud's 500-scene cap now says so** before uploading, instead of
+  failing with a bare permissions error.
+
+### Fixed
+
+- **Shared scenes no longer pick up the recipient's beat tuning.** If you had tuned a
+  slider's own beat thresholds, opening someone else's shared scene silently applied *your*
+  tuning to *their* scene. A shared scene now arrives with its own (or the shipped)
+  detector tuning throughout.
+- **Saved palette choices are now stored by name, not position.** A share link or backup
+  that used a custom palette could end up showing a *different* palette after custom
+  palettes were added or deleted, because the reference was "the Nth one". Palettes now
+  travel under stable ids (every old link and scene still loads exactly as before), so a
+  saved scene keeps meaning the ramp it was saved with.
+- **A corrupt or malicious share/cloud payload can no longer freeze the tab.** Compressed
+  payloads are decompressed under a 10 MB budget; one that expands past it is refused like
+  any other corrupt link. The Firestore rules were also tightened (gallery timestamps must
+  be real and near-current), and the gallery's sort index is now deployed, removing a
+  failed request on every uncached gallery open.
+
+### Internal
+
+- The data-model review's structural hardening: one `migrateBlob` funnel for every
+  legacy-shape fix (both load paths); single-layer scenes load through the same
+  `mergeLayers` reader as stacks; one `MAP_DEFS` registry for the six per-effect maps;
+  the retired `sceneFx` field is no longer written into every blob (old ones still decode).
+  Two new probes — `stackprobe` (freeze/thaw lifecycle + fullSnapshot↔applyBlob symmetry)
+  and palprobe's palette-id codec section — plus pins for the cloud precondition and
+  shared-link retraction; the suite is now 13 probes / 758 checks. `persist()` reports
+  non-quota failures instead of swallowing them.
+
 ## [1.27.1] — 2026-08-11
 
 ### Fixed
