@@ -685,6 +685,12 @@
   }
   #breakout .plen input[type=range] { flex: 1; min-width: 0; height: 12px; }
   #breakout .plen-val { flex: none; min-width: 40px; text-align: right; color: #ffcf87; }
+  /* The pulse-shape plot under the Shape picker: the slider's value against time after a
+     beat, drawn from the same formula the animation applies. */
+  #breakout canvas.pulse-plot {
+    display: block; width: 100%; height: 56px; margin: 4px 0 2px;
+    background: rgba(255, 140, 40, 0.06); border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 5px;
+  }
   /* Per-slider range editor: the min/max/step of *this* slider, retunable live.
      (This replaced the one shared "Slider ranges" list in Diagnostics.) */
   /* Directly under the slider it describes, so NO top border — that rule used to separate

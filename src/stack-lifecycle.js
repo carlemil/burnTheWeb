@@ -613,7 +613,7 @@
   initPulseStates();
   function savePulse(e) { for (const id in pulseShape) pulseStates[e][id] = pulseShape[id]; }
   function loadPulse(e) { for (const id in pulseShape) pulseShape[id] = PULSE_FN[pulseStates[e][id]] ? pulseStates[e][id] : PULSE_DEFAULT; syncPulse(); }
-  function syncPulse() { for (const id in pulseEls) pulseEls[id].value = pulseShape[id]; }
+  function syncPulse() { for (const id in pulseEls) { pulseEls[id].value = pulseShape[id]; drawPulsePlots(id); } }
 
   // Per-effect beat-pulse LENGTH, exactly parallel to pulseStates above. Seeded to
   // the descriptor's optional `plen` map, else PULSE_DROP (the old hardcoded value).
@@ -633,7 +633,7 @@
   function savePlen(e) { for (const id in pulseLen) plenStates[e][id] = pulseLen[id]; }
   function loadPlen(e) { for (const id in pulseLen) pulseLen[id] = plenOk(plenStates[e][id]) ? plenStates[e][id] : PULSE_DROP; syncPlen(); }
   function syncPlen() {
-    for (const id in plenEls) { plenEls[id].inp.value = pulseLen[id]; plenEls[id].out.textContent = plenFmt(pulseLen[id]); }
+    for (const id in plenEls) { plenEls[id].inp.value = pulseLen[id]; plenEls[id].out.textContent = plenFmt(pulseLen[id]); drawPulsePlots(id); }
   }
 
   // Per-effect DETECTOR TUNING per slider, exactly parallel to plenStates above. Seeded EMPTY
