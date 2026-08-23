@@ -14,6 +14,24 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.37.1] — 2026-08-23
+
+### Fixed
+
+- **The page hung at startup in 1.37.0.** The shared-3D-world shader was being compiled at
+  boot, and with all five effects in it the graphics driver took over a minute to link — the
+  page sat on a black screen with no error. It is now built only when a scene actually ticks
+  **Share one 3D world**, only for the effects that joined, and in the background: the joined
+  layers draw themselves for a moment and the shared world appears once the driver is ready.
+  Startup is back to a few seconds, and scenes that never use the world never build it.
+
+### Internal
+
+- `tools/startup-check.sh` — a wall-clock startup gate, now part of `/deploy`. This bug was
+  invisible to every existing check: no error, DOM fine, probes green, and the headless
+  browser checks passed too because their virtual clock waits through a synchronous stall.
+  Only real seconds see a hang: 4 s on this build, 69 s on 1.37.0.
+
 ## [1.37.0] — 2026-08-23
 
 ### Added
