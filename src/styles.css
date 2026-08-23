@@ -589,7 +589,13 @@
   }
   #breakout.empty { display: none; }
   #panel.hidden ~ #breakout { display: none; }      /* hide the column when the menu is hidden */
-  #breakout .ctl {
+  /* `.ctl.poppable`, NOT `.ctl`: a box is a POPPED control. Every generated control is a
+     .ctl, and the ones that are never popped (the check-type controls -- Show box, Random
+     seed, Share one 3D world) live INSIDE the layer block, which now lives inside #breakout.
+     With a bare `.ctl` selector each of those rendered as its own absolutely-positioned,
+     bordered 244px box floating in the grid, which is how "Share one 3D world" shipped
+     sitting way off from the rest of the settings. */
+  #breakout .ctl.poppable {
     position: absolute; width: 244px; pointer-events: auto;
     margin: 0; padding: 12px 14px 12px 30px;
     background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
@@ -1666,6 +1672,6 @@
     }
     /* Back into flow: the grid needs room the narrow case does not have, so below this the
        boxes are a sheet again and layoutBreakout clears the inline offsets it set. */
-    #breakout .ctl { position: relative; flex: 0 0 auto; width: 244px; }
+    #breakout .ctl.poppable { position: relative; flex: 0 0 auto; width: 244px; }
     #breakout .ctl-owner .own-txt { cursor: default; }
   }

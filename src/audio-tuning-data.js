@@ -418,12 +418,14 @@
   // layer keeps running exactly as it was, so selecting a layer never changes the render.
   function setEffect(i, save = true, enter = true) {
     if (save && i !== effect && states[effect]) saveLiveMaps(effect);   // remember the outgoing effect's whole map family
+    const prevFx = stack[stackSel].fx;
     effect = i;
     // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
     // editor-side use of it (shownKeys, refreshBreakout, resetControl, ctlOwner, the
     // cardioid button) keeps its exact meaning; only the render path reads
     // the stack. Assigned in this one place, so the two cannot drift apart.
     stack[stackSel].fx = i;
+    applyEffectBlend(stack[stackSel], prevFx);   // an effect's shipped blend, unless you chose one
     effectSel.value = i;              // the chooser follows, so selecting a layer shows its effect
     syncStackUI();                    // the selected row's name follows the chooser
     const fx = EFFECTS[i];

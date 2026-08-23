@@ -393,7 +393,11 @@
       // Heat boost: gamma-remap the heat toward the bright end (uCurve 0 = identity, byte-for-byte).
       float hb = uCurve > 0.0 ? pow(h, 1.0/(1.0 + uCurve)) : h;
       float idx = (floor(hb*255.0 + 0.5) + 0.5) / 256.0;
-      o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, 1.0);
+      // Alpha is COVERAGE -- 1 where the effect drew a surface, 0 where it drew nothing --
+      // which only the OVER blend reads. It was a constant 1.0 nobody used. An opaque object
+      // (a metal ball) needs it to cover the layer beneath instead of MAX-blending with it,
+      // which let a bright layer below show straight through the ball.
+      o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, h > 0.0 ? 1.0 : 0.0);
     }`;
     // zoom about centre (fire modes); Julia passes zoom=1
     // Preset transitions. One pass, one mode uniform, run only while a transition is
@@ -1284,6 +1288,7 @@
     { id: "hsv",   label: "HSV", u: 16, tip: "Hyper-vivid — takes the greater lightness AND chroma of the two, hue from the punchier layer. Louder than OKL; overlaps read maximally bright and saturated." },
     { id: "avg",   label: "AVG", u: 17, tip: "Average — a plain 50/50 perceptual mean of both layers in OKLab. Soft and painterly, the calm opposite of the screen/add family." },
     { id: "cmp",   label: "CMP", u: 18, tip: "Complement push — overlaps rotate to the opposite hue of the dominant layer: reds bleed cyan, greens bleed magenta. Alien colour you can't get by mixing." },
+    { id: "over",  label: "OVR", u: 20, tip: "Over — where this layer drew something it COVERS the layers below; where it drew nothing they show through. The one to use for a solid object (a metal ball, a raymarched solid) that should hide what is behind it rather than glow through it." },
     { id: "cmax",  label: "CMX", u: 19, tip: "Channel max (Lighten) — takes the brighter of the two layers in EACH of red, green and blue independently. Unlike MAX (which keeps whichever whole layer is brighter), this mixes channels, so a red layer over a green one yields yellow where they overlap." },
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));

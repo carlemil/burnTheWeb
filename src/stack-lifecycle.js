@@ -112,6 +112,7 @@
     if (stack.length >= STACK_MAX) return;
     freezeItem(stack[stackSel]);
     const L = newStackItem(fx === undefined ? effect : fx);
+    applyEffectBlend(L);              // the effect's shipped blend (Glass ball: over)
     // A fresh item is seeded from its effect's shipped defaults, not from the item that
     // happened to be selected — mergeState against its OWN effect, or every key that
     // effect declares would be dropped.

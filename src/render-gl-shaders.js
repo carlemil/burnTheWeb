@@ -195,9 +195,19 @@
     uniform float uGain; uniform int uBlend;
     in vec2 vUv; out vec4 o;` + OKLAB_GLSL + `
     void main(){
-      vec3 col = texture(uLayer, vUv).rgb;               // this layer's finished colour
+      vec4 lay = texture(uLayer, vUv);
+      vec3 col = lay.rgb;                                // this layer's finished colour
       vec4 acc = texture(uAcc, vUv);
       float accW = acc.a * WMAX;
+      // OVER (20): coverage, not brightness, decides. lay.a is 1 where the effect drew a
+      // surface and 0 where it drew nothing (FS_PAL writes it), so a dark ball still covers
+      // a bright layer beneath it, and the empty space around it still shows that layer.
+      // It is the one mode that ignores the gain weighting: an object is either there or not.
+      if (uBlend == 20) {
+        vec3 c = clamp(col * uGain, 0.0, 1.0);
+        o = lay.a > 0.5 ? vec4(c, 1.0) : acc;
+        return;
+      }
       vec3 labC = srgb2oklab(col);
       float w = clamp(labC.x * uGain, 0.0, WMAX);        // weight = perceptual L · gain
       if (accW + w < 1.0e-4) { o = vec4(0.0); return; }  // nothing lit here yet

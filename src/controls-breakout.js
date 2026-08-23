@@ -708,8 +708,35 @@
     popped.add(popKey(slot, key));
     const b = slot < 0 ? el("ctl-" + key) : ctlIn(slot, "ctl-" + key);
     if (b) breakout.appendChild(b);              // append ⇒ boxes stack top→down in click order
+    // Popped from an OPEN layer box ⇒ land beside it, not at the foot of the default
+    // column. You opened the layer to work on it, so its sliders belong next to it.
+    if (slot >= 0 && !brkPos.has(popKey(slot, key))) placeBeside(slot, popKey(slot, key), b);
     syncPopBtns(slot, key);
     refreshBreakout();
+  }
+  // Give a new box a grid anchor next to its layer's box: the first quarter-cell column to
+  // the right of it that no visible box already occupies at that row, wrapping down a row
+  // at a time. Only when the layer box is on screen -- otherwise the column is right.
+  function placeBeside(slot, key, box) {
+    const lb = breakout.querySelector('.lyr-box[data-slot="' + slot + '"]');
+    if (!lb || lb.style.display === "none" || !brkFree()) return;
+    const g = brkGrid(), r = lb.getBoundingClientRect();
+    const w = box ? (box.offsetWidth || BRK_W) : BRK_W, h = box ? (box.offsetHeight || 120) : 120;
+    const taken = [...breakout.querySelectorAll(".ctl.poppable")]
+      .filter(n => n !== box && n.style.display !== "none").map(n => n.getBoundingClientRect());
+    const clear = (x, y) => taken.every(t => x + w <= t.left || x >= t.right || y + h <= t.top || y >= t.bottom);
+    // candidate anchors: to the right of the layer box, then below it, on the quarter grid
+    const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
+    const startX = Math.ceil((r.right + BRK_GAP - g.x0) / qx), startY = Math.round((r.top - g.y0) / qy);
+    for (let row = 0; row < BRK_ROWS * BRK_SUB; row++) {
+      for (let col = 0; col < 6 * BRK_SUB; col++) {
+        const gx = startX + col, gy = startY + row;
+        const x = g.x0 + gx * qx, y = g.y0 + gy * qy;
+        if (x + w > window.innerWidth - BRK_EDGE) break;
+        if (y + h > window.innerHeight - BRK_EDGE) return;
+        if (clear(x, y)) { brkPos.set(key, { gx, gy, right: false, bottom: false }); return; }
+      }
+    }
   }
   function dockCtl(slot, key) {
     if (!isPopped(slot, key)) return;

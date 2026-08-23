@@ -916,6 +916,22 @@ No `#lyrctl`, no `parkLayerCtl`.
   and the panel grew a horizontal scrollbar. Styled `#panel .lyr button.lyr-pop`.
 - **The block's CSS is scoped `#panel …, #breakout .lyr-box …`** — 46 rules were widened in one
   pass when the block moved. A rule that names only `#panel` no longer reaches it.
+- **The box rule is `#breakout .ctl.poppable`, never bare `.ctl`.** Every generated control is a
+  `.ctl`, and the never-popped check controls (Show box, Random seed, Share one 3D world) live
+  inside the block, which lives inside `#breakout` — with a bare selector each rendered as its
+  own absolutely-positioned 244px box floating in the grid. That is how "Share one 3D world"
+  shipped sitting away from the rest of the settings.
+- **A slider popped from an OPEN layer box lands beside it** (`placeBeside`: first clear
+  quarter-cell to the right, wrapping down), not at the foot of the default column.
+
+**Blend on the wire is per layer; an effect may SHIP one** (descriptor `blend`, read by
+`effectBlend`/`applyEffectBlend`). Glass ball ships `"over"`. Applied on a fresh item and on
+an effect switch — on a switch only while the layer still carries the OUTGOING effect's
+default, so a hand-picked blend is never overwritten. **`OVR` (`u: 20`) composites by
+COVERAGE, not brightness**: `FS_PAL`'s alpha is `heat > 0` (it was a constant 1 nobody read),
+and `FS_OKMERGE` returns the layer where covered and the accumulator where not, ignoring the
+gain weight. With MAX a bright layer beneath showed straight through a metal ball, which read
+as "the metal is transparent" — it was not; the mode was additive.
 - **Every chevron in the app is 2x** (~20–22px); `::before` ones pin `line-height: 0`.
 - **`#effect` is hidden here, not deleted** — it stays the effect value store.
 - First *visible* group heading's top border via **`.grp-first`, set by `markFirstGroup()`** —

@@ -22,6 +22,16 @@
       seedPath: null, seedRide: null, seedPts: null, showBox: null, world: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
+  // An effect may SHIP a blend (descriptor `blend`): Glass ball is "over", because a ball
+  // is an object that hides what is behind it and MAX let the layer beneath glow straight
+  // through it. Applied on a fresh item and on an effect switch -- but on a switch only
+  // while the layer still carries the OUTGOING effect's default, so a blend you chose by
+  // hand is never overwritten. Function declaration: called from setEffect, slices away.
+  function effectBlend(fx) { return (EFFECTS[fx] && EFFECTS[fx].blend) || "max"; }
+  function applyEffectBlend(L, prevFx) {
+    if (!L) return;
+    if (prevFx === undefined || L.blend === effectBlend(prevFx)) L.blend = effectBlend(L.fx);
+  }
   let stack = [newStackItem(0)], stackSel = 0;
   const selItem = () => stack[stackSel];
   // Display zoom is scene-level and applied ONCE, to the composite. An effect that
