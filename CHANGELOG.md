@@ -14,6 +14,24 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.33.0] — 2026-08-23
+
+### Added
+
+- **Break-out boxes go anywhere.** Drag a popped-out slider box by its title line and it
+  snaps to a grid over the whole screen, so the controls you are working can sit beside the
+  thing they change. Drag one **past the middle and it re-aligns to the near edge and grows
+  inward** — a box parked in a corner stays in that corner however tall it gets. Double-click
+  its title to send it back to the column beside the menu.
+- **Shape thumbnails in the box.** Polygon, Concentric rings, Shape grid, Bouncing shapes,
+  Bouncing solids and Vector balls now show a small picture of the shape their sliders make,
+  at the top of every one of that effect's boxes — so "Sides 7, Thickness 0.3" is a
+  seven-sided ring you can see rather than one you have to imagine.
+- **The Triggers section folds away.** The chevron on a box's **Triggers** heading collapses
+  the beat wiring — Shape, Duration, Tuning **and the L/M/H chips** — even while a band is
+  armed. The coloured dot on the menu row still shows the slider is wired to the beat, so
+  nothing is hidden that you need.
+
 ## [1.32.0] — 2026-08-23
 
 ### Added
