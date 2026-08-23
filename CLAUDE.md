@@ -111,6 +111,17 @@ a flat disc without one.
 - **Do not paint the environment outside the subject** when `uHasBelow` is set: that repaints
   the layer below in this layer's palette, which HIDES it rather than reflecting it.
 
+**Ocean is MARCHED, not projected.** The first version solved one plane hit and displaced
+only the shading normal — a crest could not hide the trough behind it and the horizon was a
+ruler-straight line at any sea state. It now steps the height field geometrically (near water
+needs fine sampling, far water is a few pixels) and takes ONE secant step at the crossing; a
+bisection loop is not worth it at that spacing. **Two octave counts on purpose**:
+`WAVE_OCT_MARCH` (3) for the silhouette, all six for the shading normal — the fine chop moves
+the silhouette by under a pixel and paying for it 32× per ray is the whole cost. Wave height
+is capped at `CAM_H*0.55`: a swell taller than the viewpoint puts the camera underwater, the
+march never crosses, and the frame goes to sky. **The CPU mirror keeps the flat plane** and
+says so — 32 steps × 3 octaves is a shader's budget, not a JS loop's.
+
 ### Doughnut / Trees (the two effects with a cheap invariant worth pinning)
 - **Doughnut** needs no DE-escape solver — unlike the Mandelbulb the free space is known, so the
   path is the tube's centre circle plus a wobble capped at `DN_WOB` 0.30 of the tube against a
@@ -163,6 +174,13 @@ the steps.
   clearance zero. Scan-verified: min DE 0.107, ~940 dives over 6000 s at max sliders.
 
 ### Effect-shader gotchas
+- **NO BACKTICK ANYWHERE INSIDE AN `FS_*`/`VS_*` SOURCE, comments included** — they are JS
+  template literals, so one stray backtick closes the literal and the rest of the GLSL is
+  parsed as JavaScript. The whole IIFE then fails with a baffling error deep inside a shader
+  (`Unexpected identifier 'oct'`) and the page renders nothing. The rule was written for probe
+  generators; it applies to the shader sources themselves for exactly the same reason. Quote
+  identifiers in a shader comment with 'single quotes'. `node tools/build.js` will not catch
+  it — scan for it, or syntax-check the built file with `new Function`.
 - **`smoothstep(hi, lo, x)` is UNDEFINED in GLSL** when `edge0 >= edge1`, and this GPU
   returns **0**. Use `1.0 - smoothstep(lo, hi, x)` for a falling ramp. It silently zeroed the
   whole Black hole disk and left only the photon ring — the shader compiled, the geometry was
@@ -568,6 +586,17 @@ the original math byte-for-byte.
   `seedSplineFor` WeakMap invalidates.
 - `stageLayerExtras`/`applyLayerExtras` install the seed, **not `loadExtra`**. `syncOrbitUI()`
   reflects live state; `seedDrawing` is transient.
+
+**Field of view** rides the shared camera as `uCam.w` (so `uCam` is a **vec4** and
+`glShaderDraw` sets it with `uniform4f`): a radial scale on the SAMPLE coordinate, applied
+**before** the rotation in both `camFrag4()` and `camPix()` so the two compose identically,
+normalised by the half diagonal so one slider means one lens at any resolution. `camOn()`
+must include `camFov`. **Shader effects only** — `fov` is in the `params` of the 33
+descriptors with a `draw` hook and none of the 8 with a `stamp` one: it is an INVERSE map on
+a sample coordinate, and a point effect stamps a destination. The same curve applied to a
+stamped point bends it the opposite way for the same slider value, and the true inverse is a
+cubic per point. Default 0, seeded in `presetState` and listed in `CAM_KEYS`, so every scene
+saved before it renders identically (`camOn()` is still false at rest).
 
 **Camera on CPU**: mirrors call `camPix(x, y)` per pixel (scratch `camPX`/`camPY`, no allocation).
 Per-row hoists must stay **inside** the x loop — rotation mixes x into y. **Copper Bars** keeps its

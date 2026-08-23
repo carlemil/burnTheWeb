@@ -12,7 +12,8 @@ all sharing one palette + glow + banding pipeline —
   rotozoomer, moiré, munching squares, copper bars, Kefrens bars, a twister
   column, Amiga vector balls, Chladni-plate cymatics, a beat-fired lightning storm, a hyperspace
   starfield, aurora curtains, a living reaction–diffusion dish, a rolling Gerstner
-  ocean and a boiling sun surface.
+  ocean whose waves are really intersected (so crests hide the troughs behind them) and
+  which mirrors the layer beneath it, and a boiling sun surface.
 - **Signed-distance shapes** — rotating polygons, a pulsing shape grid,
   concentric ring tunnels, bouncing 2D shapes, a raymarched 3D room of
   tumbling solids, raytraced glass and metal balls that reflect and refract the layers
@@ -262,6 +263,7 @@ except the shared few listed above.
 | **Tick beside each scene** | Whether that scene is part of the show. Ticked scenes are the ones auto-cycle picks from; unticked ones dim slightly and are skipped — but they are still there and still selectable by hand, so this is a way to build a set out of part of your library rather than a way to hide scenes. Everything starts ticked, and untick them all and auto-cycle simply sits still rather than falling back to the whole list. The ticks travel with your scenes into backups, cloud profiles and published collections. |
 | **Show author** | The banner naming each scene as you land on it — its name, a dash, and who made it. Off to keep the screen clean. *(Remembered in this browser, like the credits switch; never part of a scene.)* |
 | **Scene TTL** *(ranged, seconds)* | How long auto-cycle holds each scene before applying a random other one — a random time drawn from this range. Grays out while auto-cycle is off. Each saved scene remembers the TTL it was authored with, so selecting one sets this to that scene's own pacing. |
+| **Field of view** *(ranged)* | How wide a lens this layer is seen through — it moves where each pixel takes its colour from, so positive bows the middle out into a fisheye and negative flattens the frame into a telephoto. 0 is the normal lens; drift the thumbs and the layer breathes. Per layer, so one can bulge while another stays flat. Not offered on the point effects (Sierpiński, Trees, Boids and the rest), which stamp points rather than sampling a coordinate. |
 | **Palette** *(the ▾ beside the title)* | Collapses the whole palette section — swatch strip, Reverse colours, Background and the cycle sliders — down to its heading, for when the colours are settled and you want the sliders above them back. It folds every layer's block at once, and it is not remembered: reload and the palette is open again, like every other fold in the panel. |
 | **Palettes in use** | The **+** tile at the end of the swatch strip opens a list of every ramp with a tick beside it. Only the ticked ones show in the strip, and only they are picked when the palette cycle runs — so a big catalogue can still cycle inside the four that suit a set. Nothing is deleted by unticking: a scene that stores an unticked ramp still loads and still renders it, and the one you are on always stays visible in the strip. *(Remembered per browser, like auto-cycle; not part of a scene you share.)* |
 | **Palette** | Pick one of nineteen colour ramps — each is shown as a gradient swatch, so you preview the colours instead of reading a name. Click one to select it; the active ramp is highlighted. The **👁** button beside the label opens the inspector: the whole 0–255 ramp as a grid, hover any cell for its index and hex. |

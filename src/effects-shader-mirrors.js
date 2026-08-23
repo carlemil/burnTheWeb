@@ -936,11 +936,20 @@
   // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
   // 2x2 block and four octaves instead of six.
   let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0;
+  let goHeight = 0.7, goReflect = 0.6;
   function oceanSeed(dt) {
     goTime += dt * goSpeed;
-    return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind, zoom };
+    return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind,
+             height: goHeight, reflect: goReflect, zoom };
   }
-  function oceanCPU(s) {                  // CPU fallback — mirrors FS_OCEAN
+  // CPU fallback. It keeps the ORIGINAL flat-plane intersection rather than mirroring the
+  // march, and that is a deliberate simplification, not an oversight: 32 steps x 3 wave
+  // octaves is ~100 sin/cos per pixel, which is a shader's budget and not a JS loop's. The
+  // fallback therefore shows a displaced-normal sea with no self-occlusion and no
+  // reflection — the fallback path renders one layer, so there is nothing beneath it to
+  // reflect in the first place.
+  // ponytail: flat-plane fallback; march it if anyone ever runs this without WebGL2 and minds.
+  function oceanCPU(s) {                  // CPU fallback — a simplified FS_OCEAN
     const ar = fw / fh, camH = 3.4;
     const wr = s.wind * Math.PI / 180;
     const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };

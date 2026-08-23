@@ -241,6 +241,7 @@
     // Camera X/Y/Z rotation is per-layer state now (was the scene-wide `cam`), so seed it into
     // every effect exactly like a filter default — an effect that named it would still win below.
     st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
+    st.fov = [0, 0];         // neutral, so every scene saved before FOV existed renders identically
     st.heatboost = [0, 0];   // per-layer palette control, seeded like the camera so no effect descriptor needs it
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
@@ -250,7 +251,7 @@
   // installStackItem before it draws. There is no camera tween — the camera snaps per layer
   // like every other effect param. On the wire the four keys are grouped into a per-layer `cam`
   // node (splitLayerCam/joinLayerCam below); there is no camera object at the preset root.
-  const CAM_KEYS = ["zoom", "camrx", "camry", "camrz"];
+  const CAM_KEYS = ["zoom", "camrx", "camry", "camrz", "fov"];
   // A layer's camera (zoom + X/Y/Z rotation) is per-layer STATE — the four keys live in the
   // layer's `state` map with every other slider. On the WIRE they are grouped into a `cam`
   // sub-object per layer instead (layers[i].cam), so the serialized shape reads cleanly and the

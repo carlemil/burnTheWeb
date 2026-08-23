@@ -290,6 +290,18 @@
   // state (states[e].camrx/camry/camrz), and installStackItem pushes each layer's angles
   // in — plus camMat() — just before that layer renders.
   let camRX = 0, camRY = 0, camRZ = 0;
+  // FIELD OF VIEW, and it works the way the camera rotation does: by moving WHERE EACH PIXEL
+  // TAKES ITS COLOUR FROM, not by re-projecting anything. Positive pushes the sample outward
+  // with the square of the radius (a fisheye / wide lens), negative pulls it in (telephoto).
+  // Because it rides the shared camera it costs every shader effect one multiply and needs no
+  // per-effect code at all.
+  //
+  // SHADER EFFECTS ONLY, deliberately: it is an inverse map on the SAMPLE coordinate, and a
+  // point effect has no sample coordinate — it stamps a destination. Applying the same curve
+  // to a stamped point would bend it the opposite way for the same slider value, and applying
+  // the true inverse means solving a cubic per point. So `fov` is listed in the params of the
+  // 33 effects with a `draw` hook and not the 8 with a `stamp` one.
+  let camFov = 0;
   // CPU mirror of the shader camera. Rotating (x, y, 0) by Rz·Ry·Rx and dropping z is a
   // plain 2×2 map, so the whole camera collapses to four numbers — worth hoisting,
   // since the CPU mirrors would otherwise call trig six times per pixel. Recomputed
@@ -303,14 +315,19 @@
     camM[2] = cy * sz;  camM[3] = sx * sy * sz + cx * cz;
     return camM;
   }
-  const camOn = () => camRX !== 0 || camRY !== 0 || camRZ !== 0;   // skip the maths at rest
+  const camOn = () => camRX !== 0 || camRY !== 0 || camRZ !== 0 || camFov !== 0;   // skip the maths at rest
   // Rotate a pixel about the frame centre into camPX/camPY. The CPU mirrors call
   // this per pixel, so it writes scratch globals rather than returning a pair.
   // Mirrors the shader camera (camGlsl), which rotates gl_FragCoord the same way.
   let camPX = 0, camPY = 0;
   function camPix(x, y) {
     if (!camOn()) { camPX = x; camPY = y; return; }
-    const dx = x - fw * 0.5, dy = y - fh * 0.5;
+    let dx = x - fw * 0.5, dy = y - fh * 0.5;
+    if (camFov !== 0) {                // lens first, then rotation — same order as camFrag4
+      const half = fw * fw * 0.25 + fh * fh * 0.25;
+      const k = 1 + camFov * (dx * dx + dy * dy) / half;
+      dx *= k; dy *= k;
+    }
     camPX = camM[0] * dx + camM[1] * dy + fw * 0.5;
     camPY = camM[2] * dx + camM[3] * dy + fh * 0.5;
   }

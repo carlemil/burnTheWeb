@@ -32,9 +32,13 @@
   // A hoisted function, not a const: initGL() is called above this line, so a const
   // would still be in its temporal dead zone when camProg() first runs.
   function camGlsl() { return `
-    uniform vec3 uCam; uniform vec2 uCamSize;
+    uniform vec4 uCam; uniform vec2 uCamSize;
     vec4 camFrag4() {
       vec2 c = gl_FragCoord.xy - 0.5 * uCamSize;
+      // FIELD OF VIEW (uCam.w) — a radial scale on the SAMPLE coordinate, applied before the
+      // rotation so the two compose the same way here and in camPix. Normalised by the half
+      // diagonal, so the same slider gives the same lens at any resolution or aspect.
+      if (uCam.w != 0.0) c *= 1.0 + uCam.w*dot(c, c)/(0.25*dot(uCamSize, uCamSize));
       vec3 q = vec3(c, 0.0);
       float s, k;
       s = sin(uCam.x); k = cos(uCam.x); q = vec3(q.x, q.y * k - q.z * s, q.y * s + q.z * k);
@@ -1342,49 +1346,113 @@
     //
     // NB the heat buffer is Y-FLIPPED against the screen, so screen-UP is 0.5 - y/fh. This
     // effect has a horizon, so it is one of the ones that cares (see CLAUDE.md).
+     // Ocean: a marched swell that reflects the layers beneath it.
+    //
+    // THE SURFACE IS INTERSECTED, NOT PROJECTED. The first version solved one plane hit
+    // (t = camH / -rd.y) and displaced only the shading normal, which is cheap and is a
+    // lie: a crest could not hide the trough behind it, the horizon was a ruler-straight
+    // line whatever the sea state, and Swell changed the lighting without changing the
+    // shape. Marching the height field and refining the crossing gives real occlusion and
+    // a horizon that breaks up in a heavy sea, which is most of what makes water read as
+    // water rather than as a shaded plane.
+    //
+    // Two octave counts, deliberately: the march runs WAVE_OCT_MARCH octaves and the
+    // shading runs all six. The fine chop moves the silhouette by less than a pixel at any
+    // distance the march cares about, and paying for it 32 times per ray instead of once is
+    // the whole cost of the effect.
+    //
+    // REFLECTION comes from uBelow — the layers already merged underneath this one (see
+    // glBelowTex) — read through the same screen-space projection the Glass ball uses, and
+    // weighted by Fresnel, so it is a glancing sheen far off and almost nothing straight
+    // down. That is how water behaves and it is why the horizon is the bright part. With no
+    // layer beneath, uHasBelow is 0 and the sky term stands alone, exactly as before.
     const FS_OCEAN = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uSwell; uniform float uChop;
     uniform float uFoam; uniform float uWind; uniform float uZoom;
+    uniform float uHeight; uniform float uReflect;
+    uniform sampler2D uBelow; uniform float uHasBelow;
     out vec4 o;
+    const int WAVE_OCT_MARCH = 3;
+    const float CAM_H = 3.4;
+    // Height (0..1) and its two slopes, summed over 'oct' wave trains whose directions fan
+    // out from the wind so the sea interferes with itself instead of repeating.
+    void waves(vec2 p, int oct, out float h, out vec2 dh){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+      float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
+      h = 0.0; dh = vec2(0.0);
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        float ph = dot(p, dir)*frq + uTime*spd;
+        float s = sin(ph)*0.5 + 0.5;
+        h += amp*pow(s, uChop);
+        norm += amp;
+        float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+        dh += dw*dir;
+        amp *= 0.62; frq *= 1.87; spd *= 1.21;
+        dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+      }
+      h /= max(norm, 1e-4);
+    }
+    float envBelow(vec3 d){
+      vec2 uv = 0.5 + 0.5*d.xy/(abs(d.z) + 1.25);
+      vec3 c = texture(uBelow, clamp(uv, 0.002, 0.998)).rgb;
+      return dot(c, vec3(0.299, 0.587, 0.114));
+    }
     void main(){
       float fw = uSize.x, fh = uSize.y;
       vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)*2.0/uZoom;
       vec3 rd = normalize(vec3(q.x, q.y - 0.30, 1.35));
-      float camH = 3.4;
+      // Wave height in world units. Capped against the camera height: a swell taller than
+      // the viewpoint puts the camera underwater, where the march never crosses the surface
+      // and the whole frame goes to sky.
+      float amp = min(uHeight, CAM_H*0.55);
       float heat;
       if (rd.y > -0.004){
-        // Sky: a soft band brightening down toward the horizon, so the sea has something to
-        // meet. Kept dim — the water is the subject.
-        heat = 0.10*exp(-max(0.0, rd.y)*9.0);
+        heat = 0.10*exp(-max(0.0, rd.y)*9.0);      // sky: a soft band down toward the horizon
       } else {
-        float t = camH/(-rd.y);
-        vec2 p = rd.xz*t;
-        float fade = 1.0/(1.0 + t*t*0.0016);        // distance haze, also hides the aliasing
-        float wr = uWind*0.017453293;
-        vec2 dir = vec2(cos(wr), sin(wr));
-        float h = 0.0, dhx = 0.0, dhz = 0.0;
-        float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
-        for (int i = 0; i < 6; i++){
-          float ph = dot(p, dir)*frq + uTime*spd;
-          float s = sin(ph)*0.5 + 0.5;
-          float w = pow(s, uChop);
-          h += amp*w;
-          norm += amp;
-          // d/dp of amp*pow(s, chop): chop*s^(chop-1) * 0.5cos(ph) * frq, along dir
-          float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
-          dhx += dw*dir.x; dhz += dw*dir.y;
-          amp *= 0.62; frq *= 1.87; spd *= 1.21;
-          dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+        // MARCH. Geometric steps, because the near water needs fine sampling and the far
+        // water is a handful of pixels: a linear march either misses the first crest or
+        // spends thirty steps on the horizon.
+        float tHit = -1.0, tp = 0.6, dp = CAM_H;
+        for (int i = 1; i <= 32; i++){
+          float t = 0.6*pow(1.24, float(i));
+          vec3 p = vec3(0.0, CAM_H, 0.0) + rd*t;
+          float hh; vec2 dd;
+          waves(p.xz, WAVE_OCT_MARCH, hh, dd);
+          float d = p.y - hh*amp;
+          if (d < 0.0){
+            // One secant step between the last point above and this one below. A bisection
+            // loop is the textbook answer and is not worth it here: the surface is smooth
+            // between two steps this close and the error lands well under a pixel.
+            tHit = tp + (t - tp)*dp/max(dp - d, 1e-4);
+            break;
+          }
+          tp = t; dp = d;
+          if (t > 420.0) break;
         }
-        h /= norm;
-        vec3 n = normalize(vec3(-dhx*uSwell, 1.0, -dhz*uSwell));
-        float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
-        float slope = clamp(length(vec2(dhx, dhz))*uSwell*0.9, 0.0, 1.0);
-        // Foam rides the CRESTS: high water and steep face at once, which is where it breaks.
-        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), h*0.65 + slope*0.55);
-        heat = (0.10 + 0.48*h*h + 0.45*glint + 0.55*foam)*fade;
-        heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
+        if (tHit < 0.0){
+          heat = 0.10*exp(-max(0.0, rd.y)*9.0) + 0.16*exp(-abs(rd.y + 0.004)*260.0);
+        } else {
+          vec3 p = vec3(0.0, CAM_H, 0.0) + rd*tHit;
+          float hh; vec2 dd;
+          waves(p.xz, 6, hh, dd);                   // full detail for the shading normal
+          float fade = 1.0/(1.0 + tHit*tHit*0.0016);
+          vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
+          float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
+          float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
+          // Foam rides the CRESTS: high water and a steep face at once, which is where it breaks.
+          float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+          heat = (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
+          if (uHasBelow > 0.5 && uReflect > 0.0){
+            // Fresnel: water is a mirror at a glancing angle and nearly clear straight down,
+            // so the reflection concentrates toward the horizon by itself.
+            float fres = 0.02 + 0.98*pow(1.0 - max(0.0, dot(n, -rd)), 5.0);
+            heat += uReflect*fres*envBelow(reflect(rd, n))*fade;
+          }
+          heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
+        }
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;

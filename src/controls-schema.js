@@ -191,6 +191,8 @@
     { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
     { key: "gofoam", host: "fx", group: "ocean", type: "dual", label: "Foam", valId: "vGoFoam", min: 0.1, max: 1, step: 0.01, lo: 0.45, hi: 0.45, fmt: v => sig3(v), apply: v => goFoam = v, durScale: 10 },
+    { key: "goheight", host: "fx", group: "ocean", type: "dual", label: "Wave height", valId: "vGoHeight", min: 0.05, max: 1.8, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => goHeight = v, durScale: 10 },
+    { key: "goreflect", host: "fx", group: "ocean", type: "dual", label: "Reflection", valId: "vGoReflect", min: 0, max: 1.5, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => goReflect = v, durScale: 10 },
     { key: "gowind", host: "fx", group: "ocean", type: "dual", label: "Wind", valId: "vGoWind", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => goWind = v, durScale: 10 },
     { key: "bhtilt", host: "fx", group: "bhole", type: "dual", label: "Tilt", valId: "vBhTilt", min: 2, max: 80, step: 1, lo: 12, hi: 12, fmt: v => sig3(v) + "°", apply: v => bhTilt = v, durScale: 10 },
     { key: "bhouter", host: "fx", group: "bhole", type: "dual", label: "Disk size", valId: "vBhOuter", min: 4, max: 14, step: 0.1, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bhOuter = v, durScale: 10 },
@@ -217,6 +219,9 @@
     { key: "camrx", host: "fx", group: "camera", type: "dual", label: "Camera X", valId: "vCamRX", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRX = v * Math.PI / 180, durScale: 10 },
     { key: "camry", host: "fx", group: "camera", type: "dual", label: "Camera Y", valId: "vCamRY", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRY = v * Math.PI / 180, durScale: 10 },
     { key: "camrz", host: "fx", group: "camera", type: "dual", label: "Camera Z", valId: "vCamRZ", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRZ = v * Math.PI / 180, durScale: 10 },
+    // Field of view. Shown for the 33 SHADER effects only -- see the note on camFov: a
+    // point effect stamps a destination and has no sample coordinate to bend.
+    { key: "fov", host: "fx", group: "camera", type: "dual", label: "Field of view", valId: "vFov", min: -0.8, max: 2, step: 0.02, lo: 0, hi: 0, fmt: v => v === 0 ? "normal" : (v > 0 ? "wide " : "tele ") + sig3(Math.abs(v)), apply: v => camFov = v, durScale: 10 },
     { key: "randseed", host: "fx", group: "other", type: "check", label: "Random seed each reload" },
     // Palette cycle time, in seconds, as a [min,max] band: each morph holds for a
     // random time drawn from it (like Preset TTL). Collapsed to 0 = fixed palette.
