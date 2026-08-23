@@ -64,6 +64,13 @@ const EXPECT = [
   "sdmix", "kfbars", "twcols", "ltbolts", "bpdetail", "flvar", "aucurtains", "rdspeed",
   "mgiter", "wedgeseg", "poster", "mirror", "pxdir", "cellstates", "kuwrad", "qjdetail",
   "vbcount", "vbshape", "gxarms",
+  // Doughnut: both are single because the flute pattern cos(flute·(ang + twist·arc))
+  // only closes across the atan2 branch cut when flute·twist is a whole number.
+  "dnflute", "dntwist",
+  // Trees: all three COUNT something, and a fractional branch count is not a shape.
+  "trcount", "trdepth", "trsplit",
+  // Glass ball: a count and an enum.
+  "gbcount", "gbmat",
 ].sort();
 const got = [...P.SINGLE_KEYS].sort();
 ok(got.length === EXPECT.length && got.every((k, i) => k === EXPECT[i]),

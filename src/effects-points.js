@@ -367,3 +367,110 @@
     }
   }
 
+
+  // ---- Trees: a swaying recursive fractal canopy (point effect) ----
+  // A point effect rather than a shader on purpose. The whole appeal of a tree in wind is
+  // the TRAIL the tips leave, and this family runs the fire sim and every feedback filter
+  // for free: add Fade and the canopy smears the way branches do at a long exposure.
+  //
+  // BEAT REACTIVITY NEEDED NO CODE. "Sways in time" is what arming Sway's L/M/H chips
+  // already does — the trigger machinery snaps that slider to its high thumb on a beat and
+  // decays it over the pulse length, which is a gust. Writing a bespoke beat hook here
+  // would have been a second, worse copy of `updateAnims`.
+  //
+  // Deterministic like every other point effect: branch jitter comes from `trHash`, never
+  // from Math.random and never from the chaos PRNG (which the stamp loop re-seeds).
+  let trCount = 3, trDepth = 8, trSplit = 2, trAngle = 28, trShrink = 0.72,
+      trSway = 0.35, trSpeed = 1, trPhase = 0;
+  // A whole tree is redrawn every tick, so the segment count is the cost. It is
+  // split^depth, which reaches 4^11 = four million at the slider extremes — the sliders
+  // cannot be allowed to multiply into that, so the DEPTH is clamped to whatever keeps the
+  // total under this. Clamping depth rather than split keeps the silhouette the user asked
+  // for (a 4-way tree stays 4-way, just shallower).
+  const TR_SEG_MAX = 12000;
+  function trHash(i) {                     // deterministic per-branch jitter, [-1, 1]
+    let h = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
+    h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+    return (h >>> 0) / 2147483648 - 1;
+  }
+  function trMaxDepth(split, want) {       // deepest tree that still fits TR_SEG_MAX
+    let total = 0, level = 1, d = 0;
+    while (d < want) {
+      const next = total + level;
+      if (next > TR_SEG_MAX) break;
+      total = next; level *= split; d++;
+    }
+    return Math.max(1, d);
+  }
+  function treeStamp(xL, xR, yT, yB, n) {
+    trPhase += trSpeed * 2 / cfg.burn;     // per TICK, like gxTime and flPhase
+    const w = xR - xL, h = yB - yT;
+    const split = Math.max(2, Math.min(4, Math.round(trSplit)));
+    const maxD = trMaxDepth(split, Math.max(1, Math.round(trDepth)));
+    const shrink = trShrink, spread = trAngle * Math.PI / 180;
+    const trees = Math.max(1, Math.min(5, Math.round(trCount)));
+    // Points are shared out by LENGTH, so a long trunk is not drawn at the same density as
+    // a twig. Total length is closed-form — sum over depth of split^d * L0 * shrink^d — so
+    // the tree is walked once rather than measured and then drawn.
+    // TRUNK LENGTH IS NORMALISED so the whole tree fits the box at every Taper. A fixed
+    // trunk is the obvious version and it does not work: the straight-chain height is
+    // L0·(1 − shrink^depth)/(1 − shrink), which runs from 1.7·L0 at taper 0.45 to 5.4·L0
+    // at 0.85 — so a wispy tree grew to 290px in a 178px frame and you saw trunk and
+    // nothing else (measured: 40% of the canopy stamped off-grid, where plot() drops it
+    // silently and it just reads as a smaller tree). Solving for L0 instead makes Taper a
+    // control over the tree's PROPORTIONS — stubby against wispy — rather than over
+    // whether it is on screen, which is what the slider is for. The default lands at
+    // 0.271·h, near enough the old fixed 0.30 that the shipped tree is unchanged.
+    let chain = 0;
+    for (let d = 0, len = 1; d < maxD; d++) { chain += len; len *= shrink; }
+    // 0.82, not 0.9: the straight chain is the tallest path, but the fan puts branches
+    // slightly above it, and at 0.9 the crowns were clipped by the top of the frame.
+    const L0 = h * 0.82 / Math.max(1, chain);
+    let totalLen = 0;
+    for (let d = 0, lev = 1, len = L0; d < maxD; d++) { totalLen += lev * len; lev *= split; len *= shrink; }
+    totalLen *= trees;
+    const perUnit = totalLen > 0 ? n / totalLen : 0;
+    // One live level of branches at a time: [x, y, angle, length, depth] flattened. A tree
+    // this size is a few thousand entries, and two flat arrays beat allocating an object
+    // per branch every tick.
+    let cur = [], nxt = [];
+    for (let t = 0; t < trees; t++) {
+      const fx = trees === 1 ? 0.5 : 0.14 + 0.72 * (t / (trees - 1));
+      cur.push(xL + w * fx, yB, 0, L0 * (0.85 + 0.3 * Math.abs(trHash(t * 7 + 1))), 0);
+    }
+    let branchId = 0;
+    for (let d = 0; d < maxD; d++) {
+      nxt.length = 0;
+      // WIND. The sway is added to each branch's angle as it is built, so it ACCUMULATES
+      // down the chain from trunk to twig — which is what makes it read as a tree bending
+      // rather than as a rigid pinwheel turning. Amplitude grows with depth for the same
+      // reason: a trunk barely moves and the tips whip.
+      const grow = (d + 1) / maxD;
+      const bend = trSway * grow * grow;
+      const heat = POINT_HEAT * (0.55 + 0.45 * (1 - d / maxD));
+      for (let i = 0; i < cur.length; i += 5) {
+        const bx = cur[i], by = cur[i + 1], ba = cur[i + 2], bl = cur[i + 3];
+        const id = ++branchId;
+        // Two clocks per branch: the slow body of the gust, and a faster flutter phased by
+        // the branch's own hash so no two twigs move together.
+        const sway = bend * (Math.sin(trPhase + d * 0.55 + trHash(id) * 3.1)
+                           + 0.45 * Math.sin(trPhase * 2.7 + trHash(id + 9973) * 6.2));
+        const a = ba + sway;
+        const ex = bx + Math.sin(a) * bl, ey = by - Math.cos(a) * bl;   // row 0 is the TOP, so up is -y
+        const pts = Math.max(1, Math.round(bl * perUnit));
+        for (let k = 0; k <= pts; k++) {
+          const f = k / pts;
+          plot(bx + (ex - bx) * f, by + (ey - by) * f, heat);
+        }
+        if (d + 1 >= maxD) continue;
+        const childLen = bl * shrink;
+        for (let c = 0; c < split; c++) {
+          // Fan the children about the parent, with a per-child jitter so the tree is not
+          // a perfectly symmetric diagram of itself.
+          const off = split === 1 ? 0 : (c / (split - 1) - 0.5) * 2 * spread;
+          nxt.push(ex, ey, a + off + trHash(id * 31 + c) * spread * 0.22, childLen, d + 1);
+        }
+      }
+      const swap = cur; cur = nxt; nxt = swap;
+    }
+  }

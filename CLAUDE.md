@@ -96,6 +96,37 @@ package manager, test framework or runtime dependency. Keep `README.md` in sync.
     Multibrot backdrop already fixed.
 - `tools/juliaprobe.js` locks this down.
 
+### Effects that read the layers BENEATH them
+**`glBelowTex` is the one seam** (declared beside `glColorTex`): `renderStackColor` points it
+at `glTex.color[acc]` — the OKLab accumulator holding every layer merged so far — immediately
+before each `renderLayerHeat`, and **nulls it after the loop**. It is null for the bottom-most
+live layer and for the whole single-layer path, so an effect reading it MUST have a fallback of
+its own; Glass ball's is a procedural room, and an effect whose subject is reflection renders as
+a flat disc without one.
+- It is a **COLOUR** texture and effects write **HEAT**, so all an effect can take from it is
+  **luminance**. Reflecting the colour would mean an effect that outputs RGB — a different
+  pipeline. Brightness through the reading layer's own palette is the version that fits.
+- The sampler must be bound to a **complete** texture even when the shader will not read it
+  (`bindTexUnit(3, glBelowTex || glTex.native)`), with a `uHasBelow` float switching the branch.
+- **Do not paint the environment outside the subject** when `uHasBelow` is set: that repaints
+  the layer below in this layer's palette, which HIDES it rather than reflecting it.
+
+### Doughnut / Trees (the two effects with a cheap invariant worth pinning)
+- **Doughnut** needs no DE-escape solver — unlike the Mandelbulb the free space is known, so the
+  path is the tube's centre circle plus a wobble capped at `DN_WOB` 0.30 of the tube against a
+  wall floor of 0.743. **`dntwist`/`dnflute` are `single` because the pattern is
+  `cos(flute·(ang + twist·arc))` over an atan2 `arc`** — it only closes across the branch cut
+  when `flute·twist` is whole, and a fractional twist draws one hard seam. Heading is the
+  CENTRE CIRCLE's tangent, not the wobbling path's (the path tangent swings the vanishing point
+  off-frame and reads as drift). `tools/dnutprobe.js`.
+- **Trees**: segment count is `split^depth`, four million at the extremes, so **`trMaxDepth`
+  clamps the DEPTH** to `TR_SEG_MAX` (clamping split would change the silhouette the user
+  asked for). Trunk length is **solved so the tree fits the box at every Taper** — a fixed L0
+  grew a wispy tree to 290px in a 178px frame and `plot()` dropped 40% of it silently.
+  Sway is added **at every joint**, so the bend accumulates trunk→tip; that is the property
+  a still frame cannot show and `tools/treeprobe.js` measures it as tip-travel vs root-travel.
+  **Beat reactivity needed no code** — arming Sway's chips is the gust.
+
 ### Bouncing solids (the one 3D shader effect)
 `src/solids-3d.js`: CPU rigid-body physics, ≤8 bodies, hands the shader only `uPos`
 (centre+radius `vec4`), `uQuat`, `uShape`. `FS_SOLIDS` raymarches; CPU mirror `solids()` uses half

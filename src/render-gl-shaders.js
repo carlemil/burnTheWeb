@@ -968,6 +968,217 @@
     // (x, y, z, slice) sample, and winding it round trades the real axis for the fourth one
     // and walks through cross-sections nothing in 3D can show.
     //
+    // Glass ball: raytraced spheres that REFLECT AND REFRACT THE LAYERS BENEATH THEM.
+    //
+    // Analytic, not raymarched. A sphere is the one primitive with a closed-form ray
+    // intersection, and a marcher here would buy nothing but steps — which matters because
+    // Glass traces a second and third ray per pixel (in, out, and the reflection) and a
+    // marched version of that is three raymarches.
+    //
+    // THE ENVIRONMENT IS THE LAYER UNDERNEATH. `uBelow` is the OKLab accumulator holding
+    // every layer merged so far (glBelowTex), and a reflected or refracted ray is projected
+    // back onto the screen to read it — the screen-space environment-map trick. It is
+    // approximate by construction: what a ray "sees" is whatever the flat picture happens to
+    // hold in that direction, so the world behind the camera is the world in front of it.
+    // At ball scale nobody can tell, and the alternative is a cube map of a scene that only
+    // exists as one frame.
+    //
+    // With nothing underneath (uHasBelow 0 — a single-layer scene) it falls back to a
+    // procedural room, so the effect stands on its own. That fallback is not decoration: an
+    // effect whose whole subject is reflection renders as a flat disc without one.
+    //
+    // Heat, not colour, is what comes back — the pipeline is single-channel — so the ball
+    // reflects the BRIGHTNESS of what is behind it and gets tinted by its own palette.
+    const FS_GLASS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCount; uniform float uRad;
+    uniform float uMat; uniform float uIor; uniform float uGlow; uniform float uZoom;
+    uniform sampler2D uBelow; uniform float uHasBelow;
+    out vec4 o;
+    vec3 ballAt(int i, float t){
+      float f = float(i);
+      // Two incommensurate rates per ball, offset by the golden angle, so they drift through
+      // each other instead of orbiting in formation.
+      float a = t*(0.60 + 0.13*f) + f*2.39996;
+      float b = t*(0.41 + 0.09*f) + f*1.11700;
+      return vec3(1.25*sin(a) + 0.35*sin(b*1.7),
+                  0.85*sin(b) + 0.25*cos(a*1.3),
+                  0.60*cos(a*0.8 + f));
+    }
+    float env(vec3 d){
+      if (uHasBelow > 0.5){
+        // Screen-space projection of the ray. The +1.25 keeps the divisor away from zero for
+        // a ray travelling across the screen plane, which would otherwise smear one texel
+        // over the whole ball.
+        vec2 uv = 0.5 + 0.5*d.xy/(abs(d.z) + 1.25);
+        vec3 c = texture(uBelow, clamp(uv, 0.002, 0.998)).rgb;
+        return dot(c, vec3(0.299, 0.587, 0.114));
+      }
+      // Procedural room: sky, a low sun, and a receding floor grid to reflect.
+      float sky = 0.14 + 0.52*pow(max(0.0, d.y), 0.7);
+      float sun = pow(max(0.0, dot(d, normalize(vec3(0.40, 0.62, -0.68)))), 60.0);
+      float fl = 0.0;
+      if (d.y < -0.02){
+        float tf = -1.6/d.y;
+        vec2 g = abs(fract(d.xz*tf*0.35) - 0.5);
+        // A FALLING ramp has to be written this way round: smoothstep(hi, lo, x) is
+        // undefined in GLSL and this GPU answers 0, which would delete the floor entirely.
+        fl = (1.0 - smoothstep(0.40, 0.50, max(g.x, g.y)))/(1.0 + tf*tf*0.02);
+      }
+      return clamp(sky + 0.85*sun + 0.60*fl, 0.0, 1.0);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      vec3 ro = vec3(0.0, 0.0, -3.2);
+      vec3 rd = normalize(vec3(uv, 1.55));
+      int n = int(uCount);
+      float best = 1e9;
+      vec3 nrm = vec3(0.0, 0.0, -1.0), ctr = vec3(0.0);
+      bool hit = false;
+      for (int i = 0; i < 5; i++){
+        if (i >= n) break;
+        vec3 c = ballAt(i, uTime);
+        vec3 oc = ro - c;
+        float b = dot(oc, rd), q = dot(oc, oc) - uRad*uRad;
+        float h = b*b - q;
+        if (h < 0.0) continue;
+        h = sqrt(h);
+        float tn = -b - h;
+        if (tn < 0.0) tn = -b + h;
+        if (tn > 0.0 && tn < best){ best = tn; ctr = c; hit = true; }
+      }
+      float heat;
+      if (!hit){
+        // OUTSIDE THE BALLS, DRAW NOTHING when there is a layer beneath. Painting the
+        // environment here would repaint the layer below in this layer's palette, which
+        // hides it instead of reflecting it -- the opposite of the point. On its own the
+        // room is the backdrop and is worth drawing.
+        heat = uHasBelow > 0.5 ? 0.0 : env(rd)*0.42;
+      } else {
+        vec3 p = ro + rd*best;
+        nrm = normalize(p - ctr);
+        float face = max(0.0, dot(nrm, -rd));
+        float fres = pow(1.0 - face, 5.0);
+        // A SECOND, WIDER grazing term, and it is what makes the ball a ball. The Fresnel
+        // exponent of 5 is physically right and visually useless here: it lights a hairline
+        // at the very limb, so over a smooth layer (plasma, aurora) the ball showed only a
+        // gently distorted copy of the background and vanished into it. Exponent 2 draws a
+        // broad bright edge that outlines the sphere against anything, which is the job.
+        float rim = pow(1.0 - face, 2.0);
+        vec3 refl = reflect(rd, nrm);
+        if (uMat < 0.5){                     // METAL -- an opaque mirror
+          heat = env(refl)*0.90 + (0.06 + uGlow*0.55)*rim;
+        } else if (uMat < 1.5){              // GLASS -- refract in, refract out again
+          vec3 r1 = refract(rd, nrm, 1.0/uIor);
+          // The exit point is the far intersection with the SAME sphere, and because the
+          // entry point is already on the surface it is a single dot product rather than a
+          // second quadratic: t = -2 (p - c) . r1.
+          vec3 pe = p - 2.0*dot(p - ctr, r1)*r1;
+          vec3 n2 = normalize(pe - ctr);
+          vec3 r2 = refract(r1, -n2, uIor);
+          // refract() returns 0 on total internal reflection, which would read as a black
+          // patch on the far limb -- exactly where a real glass ball goes mirror-bright.
+          if (dot(r2, r2) < 0.001) r2 = reflect(r1, -n2);
+          // The interior is pulled down as well as outlined: at equal brightness a refracted
+          // copy of the layer below reads as more of the layer below, not as glass.
+          heat = mix(env(r2)*0.78, env(refl), clamp(fres*1.6, 0.0, 1.0)) + (0.06 + uGlow*0.70)*rim;
+        } else {                             // BUBBLE -- a thin shell: rim, and a faint bend
+          vec3 r1 = refract(rd, nrm, 1.0/uIor);
+          vec3 thin = normalize(mix(rd, r1, 0.30));
+          heat = mix(env(thin)*0.60, env(refl), clamp(0.20 + fres*2.0, 0.0, 1.0))
+               + (0.14 + uGlow*0.9)*rim;
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 0.92), 0.0, 0.0, 1.0);
+    }`;
+    // Doughnut: the inside of a torus, flown along the tube.
+    //
+    // The camera never needs a DE-escape solver the way the Mandelbulb's does, and that is
+    // the whole reason this effect is cheap: the free space is KNOWN. The tube's centre
+    // circle is free by construction, so the CPU parks the camera on it (bulbSeed's helix,
+    // without the correction) and the wobble is capped well inside the narrowest wall.
+    //
+    // DE is the CROSS-SECTION distance — wall radius minus how far the point sits from the
+    // centre circle — which is an OVERestimate wherever the ray runs along the tube rather
+    // than across it. So the march scales its step (MK below). Without that the ray steps
+    // clean through a wall on the inside of the bend and the tunnel gains holes.
+    //
+    // **uTwist and uFlute are INTEGERS, and that is load-bearing.** The flute pattern is
+    // cos(flute·(tubeAngle + twist·arc)) and `arc` is an atan2 — it jumps by 2π at the
+    // branch cut behind the camera. The pattern only closes across that jump when
+    // flute·twist is a whole number, and a fractional twist draws one hard seam down the
+    // tunnel. Both are `single: true` controls for exactly this reason; do not "free" them.
+    const FS_TORUS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform vec3 uPos; uniform vec3 uFwd;
+    uniform float uRing; uniform float uTube; uniform float uTwist; uniform float uFlute;
+    uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float torusDE(vec3 p){
+      float q = length(p.xy) - uRing;              // radial offset from the centre circle
+      float arc = atan(p.y, p.x);                  // how far round the doughnut
+      vec2 c = vec2(q, p.z);
+      float rad = length(c);
+      float ang = atan(c.y, c.x) + uTwist*arc;     // tube angle, wound along the arc
+      // Scalloped wall + a fine corrugation along the arc. The corrugation is what gives
+      // the flight a sense of speed at low twist, where the flutes slide past too slowly.
+      float wall = uTube*(1.0 - 0.18*cos(uFlute*ang))
+                 - uTube*(0.055*cos(arc*24.0) + 0.022*cos(arc*97.0 + ang*3.0));
+      return wall - rad;                           // positive inside the pipe
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      vec3 f = normalize(uFwd);
+      vec3 wup = abs(f.z) > 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+      vec3 rt = normalize(cross(wup, f));
+      vec3 up = cross(f, rt);
+      vec3 ro = uPos;
+      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.25);
+      const float MK = 0.62;                       // step safety, see the note above
+      float t = 0.0, halo = 9.0, heat = 0.0, steps = 0.0;
+      for (int i = 0; i < 72; i++){
+        vec3 p = ro + rd*t;
+        float d = torusDE(p);
+        halo = min(halo, d/max(t, 0.25));
+        steps = float(i);
+        if (d < 0.0015*max(t, 0.5)){
+          float e = 0.002*max(t, 0.5);
+          vec2 h = vec2(1.0, -1.0)*0.5773;
+          vec3 nrm = normalize(h.xyy*torusDE(p + h.xyy*e) + h.yyx*torusDE(p + h.yyx*e)
+                             + h.yxy*torusDE(p + h.yxy*e) + h.xxx*torusDE(p + h.xxx*e));
+          // The normal points INTO the pipe (the field is positive inside), so the light
+          // is carried with the camera -- there is no sun in here.
+          float dif = max(0.0, dot(nrm, -rd));
+          float rim = pow(1.0 - dif, 3.0);
+          // HEADLAMP FALLOFF, not fog, is the depth cue in here. A tunnel is a metre wide
+          // and lit from the camera, so an exponential haze barely varies over the range
+          // that matters (exp(-0.3t) is 0.86 to 0.55 across the whole near wall) and the
+          // frame comes out one flat sheet of white. Inverse-square does vary: 0.9 at the
+          // wall beside you, 0.2 a few units on, 0.03 down the bend.
+          // INVERSE-LINEAR, and it was tuned against the palette rather than against the
+          // geometry. Inverse-SQUARE reads correctly and looks wrong: the wall in here sits
+          // 1-4 units out, over which t*t*0.45 swings 20x and the whole frame collapses into
+          // the bottom quarter of the ramp (measured: one flat dark brown). Plain exponential
+          // fog is the other failure -- it barely moves over that range and the frame comes
+          // out one flat sheet of white. This holds the near wall around 0.75, the mid tunnel
+          // around 0.5 and the far bend under 0.3, which is the band the palettes actually use.
+          float lamp = 1.0/(1.0 + t*0.42);
+          float ao = 1.0 - steps/72.0;
+          // Ceiling 0.82, the shader-side POINT_HEAT: 14 of the 19 palettes are near-white
+          // at the top of the ramp, so a surface allowed to reach 1.0 reads as blown out
+          // rather than as brightly lit. A CLAMP, not a scale -- scaling darkens the mid
+          // tones that are doing all the work to fix a problem only the peak has.
+          heat = min(0.82, (0.10 + 0.95*dif*lamp + uGlow*0.6*rim*lamp)*(0.6 + 0.4*ao));
+          break;
+        }
+        t += d*MK;
+        if (t > 26.0) break;
+      }
+      if (heat == 0.0) heat = uGlow*0.22*exp(-halo*40.0);   // proximity halo on a miss
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // DE is iq's: |z|·log|z|/|dz| with |dz| tracked as the scalar md2 (=|dz|^2), which is
     // exact here because the derivative of z^2+c is 2z and only its MAGNITUDE is needed.
     const FS_QJULIA = `#version 300 es

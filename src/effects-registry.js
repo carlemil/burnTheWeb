@@ -258,6 +258,48 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], vbcount: [24, 24], vbshape: [1, 1], vbsize: [0.30, 0.30], vbspin: [0.5, 0.5], vbglow: [0.5, 0.5],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "glass", name: "Glass ball", subtitle: "Glass ball · raytraced spheres over the layers below",
+      help: "Raytraced spheres that reflect and refract WHAT IS UNDERNEATH THEM. Put this layer on top of another one and the balls pick that layer's picture up: Metal mirrors it, Glass bends it through and turns it upside down the way a real ball does, Bubble is a thin shell that barely bends it but rings hard at the edge. Refraction is the glass's density — low is nearly water, high squeezes the whole scene into the middle of the ball. On its own, with no layer beneath, the balls fall back to reflecting a procedural room so the effect still stands up. The reflection is of BRIGHTNESS, not colour — everything is re-tinted by this layer's own palette.",
+      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "glass", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = glassSeed(dt);
+        if (useGL) glShaderDraw("glass", u => {
+          gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad);
+          gl.uniform1f(u.uMat, s.mat); gl.uniform1f(u.uIor, s.ior); gl.uniform1f(u.uGlow, s.glow);
+          gl.uniform1f(u.uZoom, s.zoom);
+          // The layers beneath, as this ball's environment. A sampler must be bound to a
+          // COMPLETE texture even when the shader never reads it, so with nothing underneath
+          // bind any real texture and let uHasBelow switch the branch.
+          bindTexUnit(3, glBelowTex || glTex.native); gl.uniform1i(u.uBelow, 3);
+          gl.uniform1f(u.uHasBelow, glBelowTex ? 1 : 0);
+        });
+        else glassCPU(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], gbcount: [3, 3], gbsize: [0.62, 0.62], gbmat: [1, 1], gbior: [1.45, 1.45], gbglow: [0.5, 0.5],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
+    { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
+      help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
+      params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      helpTags: ["all", "trees"], bakesOwnZoom: true,
+      stamp: (xL, xR, yT, yB, n) => treeStamp(xL, xR, yT, yB, n),
+      // TREES OWN THEIR POINTS RANGE, and it is high for a reason: this effect draws LINES,
+      // not a cloud, so the budget is spread over the tree's total length rather than
+      // scattered. Three default trees are ~26k pixels of branch at full resolution, so the
+      // shared 2500 default drew a dotted wireframe. 30000 is roughly one point per pixel.
+      ranges: { points: { min: 4000, max: 60000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], trcount: [3, 3], trdepth: [8, 8], trsplit: [2, 2], trangle: [28, 28], trshrink: [0.72, 0.72], trsway: [0.35, 0.35], trspeed: [1, 1],
+        points: [30000, 30000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",
+      help: "The inside of a doughnut, flown along the tube. The camera rides the pipe's centre line, so the wall wraps the whole frame and the curve of the ring keeps bringing new surface into view — you are always about to round a bend you can never quite see past. Flutes cuts lengthwise grooves into the pipe and Twist winds them into a spiral (both whole numbers, so the pattern closes on itself with no seam; set Flutes to 0 for a smooth pipe). Ring radius is how big the doughnut is — small values bend the tunnel hard and shorten the view, large ones straighten it out. Tube radius is how tight it is around you. Speed runs the flight, and negative reverses it.",
+      params: ["dnring", "dntube", "dnspeed", "dntwist", "dnflute", "dnglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "torus", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = torusSeed(dt);
+        if (useGL) glShaderDraw("torus", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uRing, s.ring); gl.uniform1f(u.uTube, s.tube); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uFlute, s.flute); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
+        else torusCPU(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], dnring: [3, 3], dntube: [0.8, 0.8], dnspeed: [1, 1], dntwist: [1, 1], dnflute: [6, 6], dnglow: [0.5, 0.5],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
       help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
       params: ["goswell", "gochop", "gospeed", "gofoam", "gowind", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],

@@ -1313,3 +1313,141 @@
     }
   }
 
+  // ---- Glass ball: raytraced spheres over the layers beneath (shader effect) ----
+  // No per-frame state but the clock: the balls' positions are a closed-form function of it
+  // (ballAt in FS_GLASS), so nothing has to be carried between frames and nothing can drift
+  // apart between the shader and its mirror.
+  let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0;
+  function glassSeed(dt) {
+    gbPhase += dt * 0.5;
+    return { t: gbPhase, count: Math.round(gbCount), rad: gbRad, mat: Math.round(gbMat),
+             ior: gbIor, glow: gbGlow, zoom };
+  }
+  // CPU fallback. Spheres and a headlamp -- no reflection, no refraction, and no layer
+  // underneath to sample: the fallback path renders ONE item, so "the layers beneath" does
+  // not exist there at all. Shading them as plain lit balls is the honest version; faking a
+  // reflection of nothing would just be noise.
+  function glassCPU(dt) {
+    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(5, s.count));
+    const cx = [], cy = [], cz = [];
+    for (let i = 0; i < n; i++) {
+      const a = s.t * (0.60 + 0.13 * i) + i * 2.39996;
+      const b = s.t * (0.41 + 0.09 * i) + i * 1.11700;
+      cx.push(1.25 * Math.sin(a) + 0.35 * Math.sin(b * 1.7));
+      cy.push(0.85 * Math.sin(b) + 0.25 * Math.cos(a * 1.3));
+      cz.push(0.60 * Math.cos(a * 0.8 + i));
+    }
+    for (let y = 0; y < fh; y += 2) {
+      for (let x = 0; x < fw; x += 2) {
+        camPix(x, y);
+        const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const sy = (camPY / fh - 0.5) * 2 / s.zoom;
+        const rl = Math.hypot(sx, sy, 1.55);
+        const rdx = sx / rl, rdy = sy / rl, rdz = 1.55 / rl;
+        let best = 1e9, bi = -1;
+        for (let i = 0; i < n; i++) {
+          const ox = -cx[i], oy = -cy[i], oz = -3.2 - cz[i];
+          const bq = ox * rdx + oy * rdy + oz * rdz;
+          const h = bq * bq - (ox * ox + oy * oy + oz * oz - R * R);
+          if (h < 0) continue;
+          const sq = Math.sqrt(h);
+          let t = -bq - sq;
+          if (t < 0) t = -bq + sq;
+          if (t > 0 && t < best) { best = t; bi = i; }
+        }
+        let heat = 0;
+        if (bi >= 0) {
+          const px = rdx * best - cx[bi], py = rdy * best - cy[bi], pz = -3.2 + rdz * best - cz[bi];
+          const nx = px / R, ny = py / R, nz = pz / R;
+          const dif = Math.max(0, -(nx * rdx + ny * rdy + nz * rdz));
+          const rim = Math.pow(1 - dif, 2);          // the same wide grazing term the shader uses
+          heat = 0.12 + 0.55 * dif + (0.10 + s.glow * 0.7) * rim;
+        }
+        const v = Math.min(0.92, heat) * 255;
+        for (let by = y; by < Math.min(y + 2, fh); by++)
+          for (let bx = x; bx < Math.min(x + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+  // ---- Doughnut: the inside of a torus, flown along the tube (shader effect) ----
+  // The Mandelbulb's interior camera needed a DE-escape solver because the free space in a
+  // fractal is not knowable in closed form. Here it IS: the tube's centre circle is free by
+  // construction, so the path is just that circle plus a wobble, and the only thing to get
+  // right is keeping the wobble inside the narrowest wall.
+  //
+  // THE WALL IS SCALLOPED, so "narrowest" is not uTube. FS_TORUS carves
+  //   wall = tube·(1 − 0.18·cos(flute·ang)) − 0.06·tube·cos(24·arc)
+  // whose minimum is 0.76·tube. DN_WOB is 0.30, and the radial term is scaled by tube, so
+  // the camera sits at most 0.30·tube out against a 0.76·tube floor at every slider setting
+  // — no per-frame clearance check, no state, and nothing to go wrong at 4 fps.
+  let dnRing = 3, dnTube = 0.8, dnSpeed = 1, dnTwist = 1, dnFlute = 6, dnGlow = 0.5, dnPhase = 0;
+  const DN_WOB = 0.30;                    // wobble as a fraction of the tube radius
+  const dnAt = (ph, out) => {             // the path — pure, so the heading can sample it twice
+    // Two clocks on the cross-section offset, at an irrational-ish ratio, so the camera
+    // never retraces the same helix and the flutes arrive at a different angle each lap.
+    const w = DN_WOB * dnTube * (0.55 + 0.45 * Math.sin(ph * 0.23));
+    const a = ph * 0.61;
+    const rr = dnRing + w * Math.cos(a);
+    out[0] = rr * Math.cos(ph); out[1] = rr * Math.sin(ph); out[2] = w * Math.sin(a);
+    return out;
+  };
+  const dnP = [0, 0, 0];
+  function torusSeed(dt) {
+    dnPhase += dt * dnSpeed * 0.55;       // radians of arc per second at speed 1
+    const p = dnAt(dnPhase, dnP);
+    // Heading is the CENTRE CIRCLE's tangent, not the wobbling path's. The path tangent is
+    // the obvious choice and it is wrong here: the wobble tilts it a few degrees, which
+    // swings the vanishing point off the frame and reads as the camera drifting rather than
+    // as the tunnel bending. Aiming down the pipe keeps the far end roughly centred and
+    // turns the wobble into parallax against the near wall, which is what sells the flight.
+    // Sign follows the direction of travel, so Speed can run negative.
+    const dir = dnSpeed < 0 ? -1 : 1;
+    let fx = -Math.sin(dnPhase) * dir, fy = Math.cos(dnPhase) * dir, fz = 0;
+    const fl = Math.hypot(fx, fy, fz) || 1;
+    return { px: p[0], py: p[1], pz: p[2], fx: fx / fl, fy: fy / fl, fz: fz / fl,
+             ring: dnRing, tube: dnTube, twist: Math.round(dnTwist), flute: Math.round(dnFlute),
+             glow: dnGlow, zoom };
+  }
+  function torusDECPU(x, y, z, ring, tube, twist, flute) {
+    const q = Math.hypot(x, y) - ring, arc = Math.atan2(y, x);
+    const rad = Math.hypot(q, z), ang = Math.atan2(z, q) + twist * arc;
+    const wall = tube * (1 - 0.18 * Math.cos(flute * ang))
+               - tube * (0.055 * Math.cos(arc * 24) + 0.022 * Math.cos(arc * 97 + ang * 3));
+    return wall - rad;
+  }
+  function torusCPU(dt) {                 // CPU fallback — mirrors FS_TORUS, coarsely
+    const s = torusSeed(dt), ar = fw / fh;
+    const fx = s.fx, fy = s.fy, fz = s.fz;
+    const vert = Math.abs(fz) > 0.9, wx = 0, wy = vert ? 1 : 0, wz = vert ? 0 : 1;
+    let rx = wy * fz - wz * fy, ry = wz * fx - wx * fz, rz = wx * fy - wy * fx;
+    const rn = Math.hypot(rx, ry, rz) || 1; rx /= rn; ry /= rn; rz /= rn;
+    const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const sy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rdx = rx * sx + ux * sy + fx * 1.25;
+        let rdy = ry * sx + uy * sy + fy * 1.25;
+        let rdz = rz * sx + uz * sy + fz * 1.25;
+        const rl = Math.hypot(rdx, rdy, rdz) || 1; rdx /= rl; rdy /= rl; rdz /= rl;
+        let t = 0, halo = 9, heat = 0;
+        for (let i = 0; i < 26; i++) {
+          const d = torusDECPU(s.px + rdx * t, s.py + rdy * t, s.pz + rdz * t,
+                               s.ring, s.tube, s.twist, s.flute);
+          if (d / Math.max(t, 0.25) < halo) halo = d / Math.max(t, 0.25);
+          if (d < 0.004 * Math.max(t, 0.5)) {
+            heat = Math.min(0.82, (0.10 + (0.95 + s.glow * 0.6) / (1 + t * 0.42)) * 0.9);   // flat shade, same headlamp falloff
+            break;
+          }
+          t += d * 0.62;
+          if (t > 26) break;
+        }
+        if (heat === 0) heat = s.glow * 0.22 * Math.exp(-halo * 40);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)           // fill the 3x3 block
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+

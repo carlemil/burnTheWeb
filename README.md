@@ -5,7 +5,8 @@ all sharing one palette + glow + banding pipeline —
 
 - **Fractal fire** — a Sierpiński triangle, a bouncing 3D tetrahedron, a de
   Jong strange attractor, an Apophysis-style fractal flame, a Victorian harmonograph,
-  a log-spiral galaxy or a wheeling boids murmuration stamped as fresh heat into a classic rising-fire buffer.
+  a log-spiral galaxy, a row of fractal trees bending in a wind that can gust on the beat,
+  or a wheeling boids murmuration stamped as fresh heat into a classic rising-fire buffer.
 - **Shader fractals** — animated Julia, Burning Ship, Multibrot and Newton.
 - **Coordinate / pattern classics** — plasma, tunnel, metaballs, kaleidoscope,
   rotozoomer, moiré, munching squares, copper bars, Kefrens bars, a twister
@@ -14,7 +15,9 @@ all sharing one palette + glow + banding pipeline —
   ocean and a boiling sun surface.
 - **Signed-distance shapes** — rotating polygons, a pulsing shape grid,
   concentric ring tunnels, bouncing 2D shapes, a raymarched 3D room of
-  tumbling solids, a raymarched Mandelbulb, a four-dimensional quaternion Julia solid, and an
+  tumbling solids, raytraced glass and metal balls that reflect and refract the layers
+  beneath them, a Mandelbulb flown from the inside, a flight down the inside of a
+  fluted doughnut, a four-dimensional quaternion Julia solid, and an
   infinite Menger-sponge dive.
 
 Stack up to four of them into one scene, each with its own palette and filters.

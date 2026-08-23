@@ -590,6 +590,8 @@
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPos", "uFwd", "uPower", "uIter", "uGlow", "uZoom"]);
+    glProg.torus = camProg(VS_QUAD, FS_TORUS, ["uSize", "uPos", "uFwd", "uRing", "uTube", "uTwist", "uFlute", "uGlow", "uZoom"]);
+    glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);
@@ -971,6 +973,17 @@
   //   • an RGBA8 ping-pong accumulator (glTex.color) that layers blend into in order.
   // glColorTex holds the finished accumulator for glRender; null ⇒ the classic path.
   let glColorTex = null;
+  // THE LAYERS BENEATH, as a texture, for the effects that reflect them (Glass ball, Ocean).
+  // renderStackColor points this at the OKLab accumulator holding everything merged so far,
+  // just before each layer's heat is rendered, and nulls it afterwards. It is only ever
+  // non-null inside that loop: the single-layer path has nothing beneath by definition, and
+  // an effect that reads it must fall back to something of its own when it is null.
+  //
+  // It is a COLOUR texture and effects write HEAT, so what they can take from it is
+  // luminance. Reflecting the colour of the layer below would mean an effect that outputs
+  // RGB, which is a different pipeline; brightness through the ball's own palette is the
+  // version that fits this one.
+  let glBelowTex = null;
   const layerCur = [0, 0, 0, 0];         // which of heatL[slot][0/1] is live, per slot
   const layerPal = [];                   // per-slot palette-morph state (see stepLayerPal)
   const palScratch = new Uint8Array(256 * 4);
@@ -1252,6 +1265,10 @@
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
     for (const L of live) {
       const slot = stack.indexOf(L), fx = EFFECTS[L.fx];
+      // What is underneath THIS layer, for the effects that reflect it. Set before the heat
+      // render because that is when the effect's draw() runs; the accumulator is not written
+      // again until glOkMerge below, so it is safe to sample.
+      glBelowTex = acc >= 0 && live.indexOf(L) > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
       const base = stepLayerPal(slot, layerPalIndex(L), now);
       bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
@@ -1261,6 +1278,7 @@
       glOkMerge(colTex, L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc]);
       acc = 1 - acc;
     }
+    glBelowTex = null;                 // only ever live inside the loop above
     glColorTex = glTex.color[acc];
   }
   function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }

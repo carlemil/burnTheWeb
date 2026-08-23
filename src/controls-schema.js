@@ -163,6 +163,30 @@
     { key: "vbsize", host: "fx", group: "vballs", type: "dual", label: "Ball size", valId: "vVbSize", min: 0.08, max: 0.6, step: 0.005, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => vbRad = v, durScale: 10 },
     { key: "vbspin", host: "fx", group: "vballs", type: "dual", label: "Tumble", valId: "vVbSpin", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => vbSpin = v, durScale: 10 },
     { key: "vbglow", host: "fx", group: "vballs", type: "dual", label: "Edge glow", valId: "vVbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => vbGlow = v, durScale: 10 },
+    // Glass ball. Material is an enum, Balls a count -- both single.
+    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
+    { key: "gbsize", host: "fx", group: "glass", type: "dual", label: "Size", valId: "vGbSize", min: 0.2, max: 1.2, step: 0.01, lo: 0.62, hi: 0.62, fmt: v => sig3(v), apply: v => gbRad = v, durScale: 10 },
+    { key: "gbmat", host: "fx", group: "glass", type: "dual", single: true, label: "Material", valId: "vGbMat", min: 0, max: 2, step: 1, lo: 1, hi: 1, fmt: v => ["Metal", "Glass", "Bubble"][Math.round(v)] || "Glass", apply: v => gbMat = Math.round(v), durScale: 10 },
+    { key: "gbior", host: "fx", group: "glass", type: "dual", label: "Refraction", valId: "vGbIor", min: 1.02, max: 2.2, step: 0.01, lo: 1.45, hi: 1.45, fmt: v => sig3(v), apply: v => gbIor = v, durScale: 10 },
+    { key: "gbglow", host: "fx", group: "glass", type: "dual", label: "Edge glow", valId: "vGbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => gbGlow = v, durScale: 10 },
+    // Doughnut. Twist and Flutes are `single` because the flute pattern is
+    // cos(flute·(tubeAngle + twist·arc)) over an atan2 `arc` — it only closes across the
+    // branch cut when flute·twist is a whole number. A fractional twist draws a seam.
+    // Trees. Count/Depth/Splits are single -- they count things, and a fractional branch
+    // count is not a shape. Depth is also what the segment budget clamps (see TR_SEG_MAX).
+    { key: "trcount", host: "fx", group: "trees", type: "dual", single: true, label: "Trees", valId: "vTrCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => trCount = Math.round(v), durScale: 10 },
+    { key: "trdepth", host: "fx", group: "trees", type: "dual", single: true, label: "Depth", valId: "vTrDepth", min: 3, max: 11, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => trDepth = Math.round(v), durScale: 10 },
+    { key: "trsplit", host: "fx", group: "trees", type: "dual", single: true, label: "Splits", valId: "vTrSplit", min: 2, max: 4, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => trSplit = Math.round(v), durScale: 10 },
+    { key: "trangle", host: "fx", group: "trees", type: "dual", label: "Branch angle", valId: "vTrAngle", min: 5, max: 65, step: 0.5, lo: 28, hi: 28, fmt: v => sig3(v) + "°", apply: v => trAngle = v, durScale: 10 },
+    { key: "trshrink", host: "fx", group: "trees", type: "dual", label: "Taper", valId: "vTrShrink", min: 0.45, max: 0.85, step: 0.005, lo: 0.72, hi: 0.72, fmt: v => sig3(v) + "×", apply: v => trShrink = v, durScale: 10 },
+    { key: "trsway", host: "fx", group: "trees", type: "dual", label: "Sway", valId: "vTrSway", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => trSway = v, durScale: 10 },
+    { key: "trspeed", host: "fx", group: "trees", type: "dual", label: "Wind speed", valId: "vTrSpeed", min: 0, max: 4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => trSpeed = v, durScale: 10 },
+    { key: "dnring", host: "fx", group: "torus", type: "dual", label: "Ring radius", valId: "vDnRing", min: 1.5, max: 6, step: 0.05, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => dnRing = v, durScale: 10 },
+    { key: "dntube", host: "fx", group: "torus", type: "dual", label: "Tube radius", valId: "vDnTube", min: 0.25, max: 1.6, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => dnTube = v, durScale: 10 },
+    { key: "dnspeed", host: "fx", group: "torus", type: "dual", label: "Speed", valId: "vDnSpeed", min: -3, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => dnSpeed = v, durScale: 10 },
+    { key: "dntwist", host: "fx", group: "torus", type: "dual", single: true, label: "Twist", valId: "vDnTwist", min: -4, max: 4, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => dnTwist = Math.round(v), durScale: 10 },
+    { key: "dnflute", host: "fx", group: "torus", type: "dual", single: true, label: "Flutes", valId: "vDnFlute", min: 0, max: 12, step: 1, lo: 6, hi: 6, fmt: v => Math.round(v) === 0 ? "smooth" : sig3(Math.round(v)), apply: v => dnFlute = Math.round(v), durScale: 10 },
+    { key: "dnglow", host: "fx", group: "torus", type: "dual", label: "Glow", valId: "vDnGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => dnGlow = v, durScale: 10 },
     { key: "goswell", host: "fx", group: "ocean", type: "dual", label: "Swell", valId: "vGoSwell", min: 0, max: 2.5, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSwell = v, durScale: 10 },
     { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
@@ -934,6 +958,7 @@
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
     boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
+    torus: "Doughnut", trees: "Trees", glass: "Glass ball",
     bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
@@ -1095,6 +1120,9 @@
     ["bpOffZ", () => bpOffZ, v => bpOffZ = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
     ["goTime", () => goTime, v => goTime = v],
+    ["dnPhase", () => dnPhase, v => dnPhase = v],
+    ["trPhase", () => trPhase, v => trPhase = v],
+    ["gbPhase", () => gbPhase, v => gbPhase = v],
     ["vbPhase", () => vbPhase, v => vbPhase = v],
     ["hgPhase", () => hgPhase, v => hgPhase = v],
     ["gxTime", () => gxTime, v => gxTime = v],
