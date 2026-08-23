@@ -14,6 +14,32 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.43.0] — 2026-08-23
+
+### Added
+- Several **Glass ball** layers can now join the shared 3D world at once. Each layer's
+  balls are placed by its own Place/Scale sliders and reflect the other layers' balls
+  where they really stand — before, a second glass layer always read as centred.
+
+### Changed
+- Each layer's block now remembers its **own open tab** (Effect / Filters / Palette), so
+  two layer boxes open side by side can show different tabs.
+
+### Fixed
+- Editing one layer's palette no longer re-tints other layers running the same effect —
+  every layer gets its own concrete palette, reverse and background at install.
+- The **Share one 3D world** tick could silently untick itself when switching layers; it
+  now sticks.
+- Metal balls showed a black patch at the front top — where the ball reflects the dark
+  sky — glaring under a palette whose darkest colour is bright. An object's darkest area
+  now renders in the palette's darkest colour instead of punching a hole to the
+  background.
+
+### Internal
+- The world-shader compile check injects the new per-program glass count (16/16 combos
+  green); `worldprobe` covers the multi-glass plan and program keys; `bulbprobe`
+  (Mandelbulb interior camera) checked in.
+
 ## [1.42.0] — 2026-08-23
 
 ### Added
