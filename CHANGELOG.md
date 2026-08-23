@@ -14,6 +14,14 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.37.3] — 2026-08-23
+
+### Changed
+
+- **The palette chevron now looks exactly like the layer chevron** — a bare ▾ beside the
+  Palette heading rather than a small boxed button — and it is wired to fold **Banding** along
+  with the rest of the palette section.
+
 ## [1.37.2] — 2026-08-23
 
 ### Changed
