@@ -2268,7 +2268,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.37.3",
+    version: "1.38.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -4361,7 +4361,7 @@
     uniform vec4 uSdPlace;
     uniform float uQjOn; uniform float uQjId; uniform float uQjPhase; uniform float uQjSlice;
     uniform float uQjCut; uniform float uQjIter; uniform float uQjGlow;
-    uniform vec4 uQjC; uniform vec4 uQjPlace;
+    uniform vec4 uQjC; uniform vec4 uQjPlace; uniform vec3 uQjRot;
     uniform float uVbOn; uniform float uVbId; uniform float uVbPhase; uniform float uVbCount;
     uniform float uVbShape; uniform float uVbRad; uniform float uVbGlow;
     uniform vec4 uVbPlace;
@@ -4467,6 +4467,12 @@
       pl = vec3(pl.x*c1 + pl.z*s1, pl.y, -pl.x*s1 + pl.z*c1);
       float tl = 0.32*sin(uQjPhase*0.6), c2 = cos(tl), s2 = sin(tl);
       pl = vec3(pl.x, pl.y*c2 - pl.z*s2, pl.y*s2 + pl.z*c2);
+      // The object's own orientation (Pitch/Yaw/Roll + tumble) -- with the camera fixed this
+      // is the only way to turn the solid. Same three rotations, same order, as qjOrient.
+      float c3, s3;
+      c3 = cos(uQjRot.x); s3 = sin(uQjRot.x); pl = vec3(pl.x, pl.y*c3 - pl.z*s3, pl.y*s3 + pl.z*c3);
+      c3 = cos(uQjRot.y); s3 = sin(uQjRot.y); pl = vec3(pl.x*c3 + pl.z*s3, pl.y, -pl.x*s3 + pl.z*c3);
+      c3 = cos(uQjRot.z); s3 = sin(uQjRot.z); pl = vec3(pl.x*c3 - pl.y*s3, pl.x*s3 + pl.y*c3, pl.z);
       // Outside |q| = 2 the escape-time estimate says nothing useful, so hand back the
       // distance TO the bounding sphere: a valid bound, and the thing that stops the
       // marcher crawling step by step through vacuum on its way in.
@@ -4674,6 +4680,7 @@
 #if !W_GB
       } else {
         heat = shade0(id, ro + rd*t, rd, t);
+      }
 #else
       } else if (!(id == uGbId && uGbOn > 0.5)){
         // Solids and Quaternion Julia are opaque and shade exactly as they do standalone.
@@ -4959,7 +4966,19 @@
     precision highp float;
     uniform vec2 uSize; uniform vec4 uC; uniform float uPhase; uniform float uSlice;
     uniform float uCut; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    uniform vec3 uRot;
     out vec4 o;
+    // The object's own orientation (Pitch/Yaw/Roll + tumble), applied to the SAMPLE point:
+    // an implicit surface has no vertices to rotate, so the ray is un-rotated instead. Same
+    // three rotations, same order, as qjuliaDE in the shared world, so a scene set up here
+    // looks the same after it joins.
+    vec3 qjOrient(vec3 p, vec3 r){
+      float c, s;
+      c = cos(r.x); s = sin(r.x); p = vec3(p.x, p.y*c - p.z*s, p.y*s + p.z*c);
+      c = cos(r.y); s = sin(r.y); p = vec3(p.x*c + p.z*s, p.y, -p.x*s + p.z*c);
+      c = cos(r.z); s = sin(r.z); p = vec3(p.x*c - p.y*s, p.x*s + p.y*c, p.z);
+      return p;
+    }
     vec4 qsqr(vec4 a){ return vec4(a.x*a.x - dot(a.yzw, a.yzw), 2.0*a.x*a.yzw); }
     // Lift a 3D sample point into the 4D domain through the rotated cutting hyperplane.
     vec4 qjLift(vec3 p, float s, float ca, float sa){
@@ -5001,7 +5020,7 @@
         float t = max(0.0, -b - sd), tMax = -b + sd;
         for (int i = 0; i < 96; i++){
           if (t > tMax) break;
-          vec3 p = ro + rd*t;
+          vec3 p = qjOrient(ro + rd*t, uRot);
           float d = qjDE(qjLift(p, uSlice, kc, ks), c, it);
           halo = min(halo, d/max(t, 0.3));
           if (d < 0.0006*max(t, 0.5)){
@@ -6110,7 +6129,7 @@
     glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.worldmix = makeProg(VS_QUAD, FS_WORLDMIX, ["uA", "uB", "uT"]);
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
-    glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
+    glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom", "uRot"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"]);
     glProg.vballs = camProg(VS_QUAD, FS_VBALLS, ["uSize", "uPhase", "uCount", "uShape", "uRad", "uGlow", "uZoom"]);
@@ -6878,7 +6897,7 @@
     "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
     "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace",
     "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
-    "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace",
+    "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace", "uQjRot",
     "uVbOn", "uVbId", "uVbPhase", "uVbCount", "uVbShape", "uVbRad", "uVbGlow", "uVbPlace"];
   // The defines go immediately after #version, which must stay the very first line of a
   // GLSL ES 3.0 source. Built with fromCharCode rather than an escape: this file is edited
@@ -6984,6 +7003,7 @@
       gl.uniform1f(P.u.uQjPhase, s.phase); gl.uniform1f(P.u.uQjSlice, s.slice);
       gl.uniform1f(P.u.uQjCut, s.cut); gl.uniform1f(P.u.uQjIter, s.iter);
       gl.uniform1f(P.u.uQjGlow, s.glow);
+      gl.uniform3f(P.u.uQjRot, s.rx, s.ry, s.rz);
       gl.uniform4f(P.u.uQjPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
       capturePhase(qj);
     }
@@ -9086,11 +9106,23 @@
   // in by the descriptor (juliaSeed) exactly like the other cardioid effects — this must
   // NOT advance the orbit itself, or the Canvas2D path runs it at double speed.
   let qjSlice = 0, qjCut = 0, qjDetail = 8, qjSpin = 0.3, qjGlow = 0.5, qjPhase = 0;
+  // ORIENTATION. Standalone, the effect orbits its camera (qjPhase drives the yaw, with a
+  // built-in nod); in the shared 3D world the camera belongs to every layer, so the same
+  // rotation moves the OBJECT instead -- and with the camera fixed there was no way to turn
+  // the solid at all. These three angles plus the per-axis tumble rates are that control.
+  // They apply in BOTH modes, to the same thing (the object's frame relative to the viewer),
+  // so a scene set up standalone looks the same after joining. qjTum* accumulate per frame
+  // like qjPhase and ride PHASE_VARS with it.
+  let qjPitch = 0, qjYaw = 0, qjRoll = 0, qjTumX = 0, qjTumY = 0, qjTumZ = 0;
+  let qjTx = 0, qjTy = 0, qjTz = 0;
   function qjuliaSeed(dt) {
     qjPhase += dt * qjSpin;
+    qjTx += dt * qjTumX; qjTy += dt * qjTumY; qjTz += dt * qjTumZ;
     // qjCut is stored in DEGREES (it is an angle the user sets); the shader and the mirror
     // both want radians, and converting once here keeps the two from disagreeing.
-    return { phase: qjPhase, slice: qjSlice, cut: qjCut * Math.PI / 180, iter: qjDetail, glow: qjGlow, zoom };
+    const D = Math.PI / 180;
+    return { phase: qjPhase, slice: qjSlice, cut: qjCut * D, iter: qjDetail, glow: qjGlow, zoom,
+             rx: qjPitch * D + qjTx, ry: qjYaw * D + qjTy, rz: qjRoll * D + qjTz };
   }
   // iq's quaternion-Julia distance estimate. md2 tracks |dz|^2, which is exact for z^2+c
   // because the derivative is 2z and only its magnitude matters.
@@ -9132,7 +9164,11 @@
           let t = Math.max(0, -b - sd);
           const tMax = -b + sd;
           for (let i = 0; i < 32 && t <= tMax; i++) {
-            const px = rox + rdx * t, py = roy + rdy * t, pz = roz + rdz * t;
+            let px = rox + rdx * t, py = roy + rdy * t, pz = roz + rdz * t;
+            // the object's orientation, same three rotations in the same order as qjOrient
+            { let c = Math.cos(s.rx), sn = Math.sin(s.rx), q = py * c - pz * sn; pz = py * sn + pz * c; py = q; }
+            { let c = Math.cos(s.ry), sn = Math.sin(s.ry), q = px * c + pz * sn; pz = -px * sn + pz * c; px = q; }
+            { let c = Math.cos(s.rz), sn = Math.sin(s.rz), q = px * c - py * sn; py = px * sn + py * c; px = q; }
             const d = qjDE(px * kc - s.slice * ks, py, pz, px * ks + s.slice * kc, cx, cy, cz, cw, it);
             if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
             if (d < 0.003 * Math.max(t, 0.5)) {
@@ -11215,6 +11251,14 @@
     { key: "qjdetail", host: "fx", group: "qjulia", type: "dual", single: true, label: "Detail", valId: "vQjDetail", min: 4, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => qjDetail = Math.round(v), durScale: 10 },
     { key: "qjspin", host: "fx", group: "qjulia", type: "dual", label: "Orbit speed", valId: "vQjSpin", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => qjSpin = v, durScale: 10 },
     { key: "qjglow", host: "fx", group: "qjulia", type: "dual", label: "Glow", valId: "vQjGlow", min: 0, max: 1.2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => qjGlow = v, durScale: 10 },
+    // Orientation of the solid itself -- the only way to turn it once the shared 3D world
+    // has fixed the camera. Degrees, plus a tumble rate per axis in turns per minute.
+    { key: "qjpitch", host: "fx", group: "qjulia", type: "dual", label: "Pitch", valId: "vQjPitch", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => qjPitch = v, durScale: 10 },
+    { key: "qjyaw", host: "fx", group: "qjulia", type: "dual", label: "Yaw", valId: "vQjYaw", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => qjYaw = v, durScale: 10 },
+    { key: "qjroll", host: "fx", group: "qjulia", type: "dual", label: "Roll", valId: "vQjRoll", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => qjRoll = v, durScale: 10 },
+    { key: "qjtumx", host: "fx", group: "qjulia", type: "dual", label: "Tumble X", valId: "vQjTumX", min: -2, max: 2, step: 0.02, lo: 0, hi: 0, fmt: v => sig3(v) + "×", apply: v => qjTumX = v, durScale: 10 },
+    { key: "qjtumy", host: "fx", group: "qjulia", type: "dual", label: "Tumble Y", valId: "vQjTumY", min: -2, max: 2, step: 0.02, lo: 0, hi: 0, fmt: v => sig3(v) + "×", apply: v => qjTumY = v, durScale: 10 },
+    { key: "qjtumz", host: "fx", group: "qjulia", type: "dual", label: "Tumble Z", valId: "vQjTumZ", min: -2, max: 2, step: 0.02, lo: 0, hi: 0, fmt: v => sig3(v) + "×", apply: v => qjTumZ = v, durScale: 10 },
     { key: "mgdive", host: "fx", group: "menger", type: "dual", label: "Dive speed", valId: "vMgDive", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => mgDive = v, durScale: 10 },
     { key: "mgrot", host: "fx", group: "menger", type: "dual", label: "Roll", valId: "vMgRot", min: 0, max: 2, step: 0.02, lo: 0.3, hi: 0.3, fmt: v => sig3(v) + "×", apply: v => mgRot = v, durScale: 10 },
     { key: "mgiter", host: "fx", group: "menger", type: "dual", single: true, label: "Detail", valId: "vMgIter", min: 2, max: 5, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => mgIter = Math.round(v), durScale: 10 },
@@ -12143,6 +12187,9 @@
     ["bpOffY", () => bpOffY, v => bpOffY = v],
     ["bpOffZ", () => bpOffZ, v => bpOffZ = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
+    ["qjTx", () => qjTx, v => qjTx = v],
+    ["qjTy", () => qjTy, v => qjTy = v],
+    ["qjTz", () => qjTz, v => qjTz = v],
     ["goTime", () => goTime, v => goTime = v],
     ["dnPhase", () => dnPhase, v => dnPhase = v],
     ["trPhase", () => trPhase, v => trPhase = v],
@@ -13889,14 +13936,15 @@
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
       help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
-      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
+      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjpitch", "qjyaw", "qjroll", "qjtumx", "qjtumy", "qjtumz", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
       helpTags: ["all", "julia", "qjulia", "band"], bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // ONE juliaSeed() per frame, like the other three — the mirror takes the seed rather
       // than re-advancing it (juliaprobe pins both halves of that for every cardioid effect).
       draw: dt => { const seed = juliaSeed(dt), s = qjuliaSeed(dt);
-        if (useGL) glShaderDraw("qjulia", u => { gl.uniform4f(u.uC, seed.cx, seed.cy, 0, 0); gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uSlice, s.slice); gl.uniform1f(u.uCut, s.cut); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
+        if (useGL) glShaderDraw("qjulia", u => { gl.uniform4f(u.uC, seed.cx, seed.cy, 0, 0); gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uSlice, s.slice); gl.uniform1f(u.uCut, s.cut); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); gl.uniform3f(u.uRot, s.rx, s.ry, s.rz); });
         else qjulia(seed, s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], qjslice: [0, 0], qjcut: [0, 0], qjdetail: [8, 8], qjspin: [0.3, 0.3], qjglow: [0.5, 0.5],
+        qjpitch: [0, 0], qjyaw: [0, 0], qjroll: [0, 0], qjtumx: [0, 0], qjtumy: [0, 0], qjtumz: [0, 0],
         rpm: [0.15, 0.15], ratio: [6.5, 6.5], inrad: [0.12, 0.12], outrad: [1.02, 1.02], phase: [0, 0], cardx: [0, 0],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "4", morph: false, showBox: true, world: false, randSeed: true } },
@@ -20880,6 +20928,12 @@
       { n: "Place Y", w: "all", t: "How high this layer's geometry stands in the shared world. 0 is the waterline — set it low and a ball is half submerged, with the surface cutting across it and its reflection right beneath." },
       { n: "Place Z", w: "all", t: "How far out to sea this layer's geometry stands. Near objects are big and steeply lit; far ones sit toward the horizon where the water is most reflective, so that is where a mirror image reads most strongly." },
       { n: "World scale", w: "all", t: "How big this layer's geometry is in the shared world. It scales the whole arrangement, not one object, so the balls spread apart as they grow." },
+      { n: "Pitch", w: "qjulia", t: "Quaternion Julia only — tips the solid forward or back, in degrees. Together with Yaw and Roll this is how you turn the object itself; it matters most in the shared 3D world, where the camera is fixed and these are the only way to see another side of it." },
+      { n: "Yaw", w: "qjulia", t: "Quaternion Julia only — turns the solid about its vertical axis, in degrees." },
+      { n: "Roll", w: "qjulia", t: "Quaternion Julia only — rolls the solid about the line of sight, in degrees." },
+      { n: "Tumble X", w: "qjulia", t: "Quaternion Julia only — a steady rotation rate about the pitch axis, on top of the fixed angle. Set two or three of these to different values and the solid tumbles rather than spins. Negative runs backwards, 0 holds it." },
+      { n: "Tumble Y", w: "qjulia", t: "Quaternion Julia only — a steady rotation rate about the yaw axis. Unlike Orbit speed, which swings the camera around the object (and moves the object when the camera is shared), this turns the object on its own axis." },
+      { n: "Tumble Z", w: "qjulia", t: "Quaternion Julia only — a steady rotation rate about the roll axis." },
       { n: "Balls", w: "glass", t: "Glass ball only — how many spheres are in the air. Each drifts on its own pair of clocks, so they pass through each other's reflections rather than orbiting in formation." },
       { n: "Material", w: "glass", t: "Glass ball only. **Metal** is an opaque mirror — you see only what is behind you. **Glass** refracts the scene through both surfaces, so the layer underneath appears inside the ball, shrunk and turned over. **Bubble** is a thin shell: it barely bends what is behind it, but the rim rings bright. Metal reads best over a busy layer, Glass over a big simple one." },
       { n: "Refraction", w: "glass", t: "Glass ball only — how dense the glass is (its index of refraction). Around 1.05 is barely more than air and the scene passes almost straight through; 1.45 is real glass; past 2 the whole picture is squeezed into a bright knot at the centre of the ball. Only Glass and Bubble use it — Metal never lets a ray in." },

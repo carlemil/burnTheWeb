@@ -14,6 +14,28 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.38.0] — 2026-08-23
+
+### Added
+
+- **Quaternion Julia: Pitch, Yaw, Roll and Tumble X/Y/Z.** The first three set the solid's
+  orientation in degrees; the Tumble rates turn it steadily about each axis, so two or three
+  set differently give a tumble rather than a spin. They are there because in the shared 3D
+  world the camera is fixed, and until now there was no way to look at another side of the
+  object. They work standalone too, and a scene set up standalone keeps its pose when it joins.
+
+### Fixed
+
+- **A shared 3D world without a Glass ball rendered nothing** in 1.37.1–1.37.3: the world
+  shader failed to compile in every combination that lacked one, silently. Ocean + solids,
+  Ocean + Quaternion Julia, Ocean + Vector balls all work now.
+
+### Internal
+
+- `tools/worldcompile-check.js` compiles all sixteen combinations of the world shader on the
+  GPU, and `/deploy` runs it. `worldprobe` also preprocesses each combination and counts
+  braces — the static half of the same claim, which is what found the unclosed `else`.
+
 ## [1.37.3] — 2026-08-23
 
 ### Changed
