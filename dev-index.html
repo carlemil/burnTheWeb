@@ -15782,7 +15782,19 @@
         e.stopPropagation();
         if (!stack[j]) return;
         if (openSlots.has(j)) { openSlots.delete(j); syncStackUI(); }
-        else { openSlots.add(j); selectStack(j); syncStackUI(); }   // selectStack no-ops if already selected
+        else {
+          openSlots.add(j); selectStack(j); syncStackUI();   // selectStack no-ops if already selected
+          // Same rule as popCtl: a layer box with no fully-on-screen home does not open.
+          // The chevron reverts to + (syncStackUI) and the anchor is dropped so the next
+          // attempt — after closing something — searches fresh. brkOffscreen hoists across
+          // the slices (function declaration in controls-breakout.js).
+          const bx = lyrBoxes[j];
+          if (bx && bx.style.display !== "none" && brkFree() && brkOffscreen(bx)) {
+            openSlots.delete(j);
+            brkPos.delete(j + "/layer");
+            syncStackUI();
+          }
+        }
       });
       // A grid child, EXPLICITLY PLACED (last column, row 1 -- see .lyr-pop). Appended without
       // placement it takes the next auto cell and shifts the chooser, the mute row and the
@@ -17562,6 +17574,14 @@
       b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
     }
   }
+  // A box must never sit partly OFF the screen. Anchored placements are bounds-checked at
+  // choice time; this is the after-the-fact check for everything else (the flow column with
+  // no room left, a box taller than the viewport).
+  function brkOffscreen(box) {
+    const r = box.getBoundingClientRect();
+    return r.left < -0.5 || r.top < -0.5
+      || r.right > window.innerWidth + 0.5 || r.bottom > window.innerHeight + 0.5;
+  }
   function popCtl(slot, key) {
     if (isPopped(slot, key)) return;
     popped.add(popKey(slot, key));
@@ -17572,6 +17592,13 @@
     if (slot >= 0 && !brkPos.has(popKey(slot, key))) placeBeside(slot, popKey(slot, key), b);
     syncPopBtns(slot, key);
     refreshBreakout();
+    // No on-screen home for it ⇒ it does not open at all: dock it straight back (the +
+    // reverts, the box hides) rather than show it clipped by the viewport edge. The anchor
+    // is dropped too, so a later attempt — after closing something — searches fresh.
+    if (b && brkFree() && b.style.display !== "none" && brkOffscreen(b)) {
+      brkPos.delete(popKey(slot, key));
+      dockCtl(slot, key);
+    }
   }
   // Give a new box a grid anchor next to its layer's box: the nearest clear quarter-cell
   // column on EITHER side of it — right first at each distance, then left — wrapping down
@@ -17586,11 +17613,18 @@
     const rightX = Math.ceil((r.right + BRK_GAP - g.x0) / qx);
     const leftX = Math.floor((r.left - BRK_GAP - w - g.x0) / qx);
     const startY = Math.round((r.top - g.y0) / qy);
-    for (let row = 0; row < BRK_ROWS * BRK_SUB; row++) {
-      const gy = startY + row, y = g.y0 + gy * qy;
-      if (y + h > window.innerHeight - BRK_EDGE) return;
+    // Rows alternate down/up from the layer box's own row (a layer parked near the bottom
+    // edge still gets neighbours), and at each distance the side AWAY from the screen
+    // centre is tried first — boxes grow outward, keeping the middle of the picture clear.
+    for (let i = 0; i < BRK_ROWS * BRK_SUB * 2; i++) {
+      const gy = startY + (i % 2 ? -((i + 1) >> 1) : i >> 1);
+      const y = g.y0 + gy * qy;
+      if (gy < 0 || y + h > window.innerHeight - BRK_EDGE) continue;
       for (let d = 0; d < 6 * BRK_SUB; d++) {
-        for (const gx of [rightX + d, leftX - d]) {
+        const cands = [rightX + d, leftX - d];
+        if (Math.abs(g.x0 + cands[1] * qx + w / 2 - window.innerWidth / 2) >
+            Math.abs(g.x0 + cands[0] * qx + w / 2 - window.innerWidth / 2)) cands.reverse();
+        for (const gx of cands) {
           if (gx < 0) continue;                        // left of the grid origin: no home there
           const x = g.x0 + gx * qx;
           if (x + w > window.innerWidth - BRK_EDGE) continue;
@@ -17599,11 +17633,11 @@
       }
     }
   }
-  // A LAYER box opening for the FIRST time gets an anchor of its own, chosen far from the
-  // other open layer boxes: whole-cell candidates only (the strong grid lines), overlapping
-  // nothing visible, maximising the distance to the nearest other layer box — so two open
-  // layers land on opposite sides of the free area and each one's sliders have room to
-  // gather around it (placeBeside). Alone, it takes the first clear cell beside the panel.
+  // A LAYER box opening for the FIRST time gets an anchor of its own: whole-cell candidates
+  // only (the strong grid lines), overlapping nothing visible, scored to sit FAR FROM THE
+  // CENTRE OF THE SCREEN first (the picture lives there) and far from the other open layer
+  // boxes second — so layer boxes head for the corners and edges, each with room for its
+  // sliders to gather around it (placeBeside, which leans outward the same way).
   // Reopening keeps the previous spot: the anchor survives in brkPos, and remapPopped
   // already carries "<slot>/layer" keys through a reorder.
   function placeLayerBox(slot, box) {
@@ -17620,10 +17654,13 @@
       for (let cx = 0; g.x0 + cx * g.cw + w <= window.innerWidth - BRK_EDGE; cx++) {
         const x = g.x0 + cx * g.cw, y = g.y0 + cy * g.ch;
         if (!rectClear(x, y, w, h, taken)) continue;
-        const score = others.length
-          ? Math.min(...others.map(t => Math.hypot(x + w / 2 - (t.left + t.right) / 2,
-                                                   y + h / 2 - (t.top + t.bottom) / 2)))
-          : -(cx * 10 + cy);
+        // Centre distance weighs double: "away from the middle of the picture" beats
+        // "away from the other layer boxes" when the two pull in different directions.
+        const score = Math.hypot(x + w / 2 - window.innerWidth / 2, y + h / 2 - window.innerHeight / 2) * 2
+          + (others.length
+            ? Math.min(...others.map(t => Math.hypot(x + w / 2 - (t.left + t.right) / 2,
+                                                     y + h / 2 - (t.top + t.bottom) / 2)))
+            : 0);
         if (score > bestScore) { bestScore = score; best = { gx: cx * BRK_SUB, gy: cy * BRK_SUB, right: false, bottom: false }; }
       }
     }
@@ -17703,6 +17740,11 @@
   }, true);
   function refreshBreakout() {
     let anyVisible = false;
+    // Un-hide the host BEFORE anything measures: placeLayerBox reads the freshly-shown
+    // box's size mid-pass, and inside a display:none host every box measures 0×0 — which
+    // sent the first layer box to a "fits anywhere" phantom anchor off the screen edge.
+    // The real state is restored by the toggle at the end of this function.
+    breakout.classList.remove("empty");
     // The LAYER boxes: a whole layer's settings block, open while its slot is in openSlots
     // (the same set the rows' +/- toggles). Shown here so they go through the one layout
     // pass with the slider boxes and snap on the same grid.
@@ -18546,15 +18588,10 @@
   // on load and the list opens as a short stack of names — the requested default. Surviving
   // rebuilds is what stops a pick from folding the group you are working in.
   const openCollections = new Set();
-  // ...with ONE exception: the top group is opened once per load. Starting with every group
-  // folded meant a first-time visitor met a single "Default scenes 4" row and no scenes at
-  // all, so the entire shipped library sat behind a disclosure nothing invited them to click.
-  // Opening only the FIRST group keeps the short-stack-of-names shape once you follow a few
-  // collections, and it is the group New lands in.
-  //
-  // One-shot, not a re-assert on every rebuild: collapsing that group has to stay collapsed
-  // for the rest of the session, and buildPresetList runs on every pick, rename and delete.
-  let topGroupOpened = false;
+  // No exceptions any more: the top group used to be opened once per load (so a first-time
+  // visitor saw the shipped scenes rather than one closed "Default scenes 4" row), but that
+  // was rolled back by request — EVERY group starts folded, your own included. The count on
+  // each heading is what says there is something inside.
   // The heading under the Scene box that names what you are editing. Called from
   // buildPresetList rather than from each selection path, because that function is already
   // the one choke point every path goes through to move the highlight (create, rename,
@@ -18584,7 +18621,6 @@
     // "— unsaved scene —" row that also carried .pl-scene, so anything counting that class to
     // count scenes was off by one; it isn't any more.
     const groups = presetGroups();
-    if (!topGroupOpened && groups.length) { topGroupOpened = true; openCollections.add(groups[0].key); }
     for (const g of groups) {
       const sec = document.createElement("div");
       sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");

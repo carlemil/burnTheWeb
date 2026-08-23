@@ -507,7 +507,19 @@
         e.stopPropagation();
         if (!stack[j]) return;
         if (openSlots.has(j)) { openSlots.delete(j); syncStackUI(); }
-        else { openSlots.add(j); selectStack(j); syncStackUI(); }   // selectStack no-ops if already selected
+        else {
+          openSlots.add(j); selectStack(j); syncStackUI();   // selectStack no-ops if already selected
+          // Same rule as popCtl: a layer box with no fully-on-screen home does not open.
+          // The chevron reverts to + (syncStackUI) and the anchor is dropped so the next
+          // attempt — after closing something — searches fresh. brkOffscreen hoists across
+          // the slices (function declaration in controls-breakout.js).
+          const bx = lyrBoxes[j];
+          if (bx && bx.style.display !== "none" && brkFree() && brkOffscreen(bx)) {
+            openSlots.delete(j);
+            brkPos.delete(j + "/layer");
+            syncStackUI();
+          }
+        }
       });
       // A grid child, EXPLICITLY PLACED (last column, row 1 -- see .lyr-pop). Appended without
       // placement it takes the next auto cell and shifts the chooser, the mute row and the
