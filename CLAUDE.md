@@ -631,7 +631,13 @@ in click order. A thumb is only ever visible in the column.
 - Box order top→bottom: `.ctl-owner`; label+value; slider; **`.rng-sec`** (collapsible "Value range"
   wrapping `.rng-edit` — min/max/step only, closed by default, summary `?` opens `openRangeHelp`);
   `.ctl-div`; **Triggers** (`.trig-t`) over the chips; **`.trig-body` — ONE folding element holding
-  the whole trigger kit** (**Shape** over the `PULSE_SHAPES` picker, **Duration** (`.plen-name`)
+  the whole trigger kit** (**Shape** over the `PULSE_SHAPES` picker and **the pulse PLOT**
+  (`canvas.pulse-plot`, `drawPulsePlot` — the slider's value against time after a beat, drawn
+  from the SAME formula `updateAnims` applies, `lo + shape(pulse)·(hi−lo)`, so it cannot
+  disagree with the animation; y is the slider's own band, so a pinned slider honestly plots
+  flat, and x is scaled to the pulse length, so it is deliberately duration-INVARIANT; redrawn
+  on shape/duration/thumb input and from `syncPulse`/`syncPlen`; **every shipped slider is
+  pinned, so the default plot is flat** — a check must spread the band first), **Duration** (`.plen-name`)
   over `.plen` + its max row, **Tuning** (`.trig-refs`) closing it — **this slider's OWN detector
   thresholds**: `.trig-sub` groups for Sensitivity (per band, 0.5–6×), Floor (one row, 0–1) and
   Refractory (per band, 20–500 ms), shown only for armed bands, with a `↺` on the heading); then
