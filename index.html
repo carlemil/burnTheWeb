@@ -627,8 +627,32 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     cursor: grab; touch-action: none; flex: 1 1 auto;
   }
-  #breakout .ctl.dragging { z-index: 3; opacity: .92; }
+  /* Anything mid-drag: a break-out box or a floating panel. Raised so it clears whatever it
+     is being dragged over, and slightly transparent so the grid underneath reads. */
+  .dragging { opacity: .92; }
+  #breakout .ctl.dragging { z-index: 3; }
   #breakout .ctl.dragging .own-txt { cursor: grabbing; }
+  /* Every dialog's <h2> is its title BAR now — grab it to move the panel onto the grid,
+     double-click to give the placement back. Scoped to the draggable hosts so the modal
+     reading dialogs' headings do not advertise a cursor they cannot honour below 760px. */
+  #carddlg h2, #paledlg h2, #paldlg h2, #fltdlg h2, #palpickdlg h2, #transpickdlg h2,
+  #galdlg h2, #restoredlg h2, #syncpop h2, #help h2 {
+    cursor: grab; touch-action: none; user-select: none;
+  }
+  .dragging h2 { cursor: grabbing; }
+  /* The snap grid. Placed and sized from brkGrid() — origin at the panel's own right edge
+     and top, one column per box, rows dividing the panel's height — so what you see is
+     exactly where a drop will land. */
+  #brkgrid {
+    position: fixed; z-index: 4; pointer-events: none;
+    opacity: 0; transition: opacity .12s ease;
+    background-image:
+      linear-gradient(to right, rgba(255, 140, 40, 0.20) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 140, 40, 0.20) 1px, transparent 1px);
+    box-shadow: inset 0 0 0 1px rgba(255, 140, 40, 0.28);
+  }
+  body.brk-gridding #brkgrid { opacity: 1; }
+  body.ui-hidden #brkgrid { display: none; }
   /* The per-box help ?, mirroring the panel's own #help-btn but smaller. Pushed to the
      right of the owner line so every box carries one in the same place. */
   #breakout .ctl-help {
@@ -926,15 +950,20 @@
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
-  /* The palette-section fold, in the "Palette" label beside the inspect magnifier. Same 2x
-     marker as the layer chevron and the group headings; it lives inside a <label>, not a
-     `.lyr`, so it needs none of that reset — only the sizing. */
+  /* The palette-section fold. Deliberately IDENTICAL to the layer row's chevron — same
+     15x18 box, same 20px monospace glyph, same colour, opacity and hover, and first in its
+     label so it leads the heading the way `.lyr-chev` leads a row. Two controls that do the
+     same thing (fold this section away) should not look like two different affordances.
+     It needs the same `padding/border/background` reset for a different reason: a <b> here
+     inherits nothing, but keeping the declarations in step makes the two rules diffable. */
   #panel .pal-chev {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 15px; height: 15px; cursor: pointer; color: #ffb15a; opacity: .8;
-    font: 20px/1 monospace; user-select: none; vertical-align: middle;
+    width: 15px; height: 18px; margin-right: 2px; cursor: pointer;
+    color: #ffb15a; opacity: .8;
+    font: 20px/1 monospace; padding: 0; border: 0; background: none;
+    user-select: none; vertical-align: middle;
   }
-  #panel .pal-chev:hover { opacity: 1; }
+  #panel .pal-chev:hover { opacity: 1; background: none; }
   /* The trigger-section fold, on the "Triggers" heading inside a break-out box. Scoped
      to #breakout because that is the only place the trigger section exists. */
   #breakout .trig-chev {
@@ -1912,7 +1941,7 @@
        tallest run of furniture in the block, and the part you stop needing once the colours
        are settled. One boolean drives every block at once, the same policy the group folds
        use, and it is transient: not in fullSnapshot(), so it never rides a scene or a link. -->
-  <label>Palette <b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b> <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <label><b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palbody">
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
@@ -2199,6 +2228,10 @@
 
 <!-- Pop-out column: sliders "broken out" of the menu dock here (see the break-out
      module in the script). Sits to the right of #panel; empty/hidden by default. -->
+<!-- The snap grid, drawn only while something is being dragged. Its own element rather
+     than a background on #breakout: that host is hidden when empty and when the panel
+     is, and the grid is placed from the PANEL's rect, not from the column's. -->
+<div id="brkgrid" aria-hidden="true"></div>
 <div id="breakout" class="empty"></div>
 
 <script>
@@ -2222,7 +2255,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.34.0",
+    version: "1.35.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2694,6 +2727,46 @@
     }
     camPX = camM[0] * dx + camM[1] * dy + fw * 0.5;
     camPY = camM[2] * dx + camM[3] * dy + fh * 0.5;
+  }
+  // THE POINT SIDE OF THE LENS, which is the INVERSE map — and the reason FOV shipped as
+  // "shader effects only" before this.
+  //
+  // camFrag4/camPix bend the SAMPLE coordinate: a screen offset s reads the effect at
+  // lens(s) = s·(1 + k·|s|²/R²). A point effect runs the other way — it already knows the
+  // content offset and has to be told where on screen to stamp it — so it needs lens⁻¹.
+  // Applying lens() to a stamped point instead is the trap: it bows the picture the
+  // OPPOSITE way for the same slider value, so a scene with a fisheye layer over a
+  // stamped one would have the two curving against each other.
+  //
+  // lens⁻¹ is a depressed cubic — k·u³ + u − v = 0 in normalised radius — and Newton
+  // solves it in three steps from u₀ = v. The map is near the identity over the visible
+  // disc, so the first guess is already good to a few percent and three steps are exact to
+  // float precision.
+  //
+  // A NEGATIVE FOV FOLDS, and dropping the point is the right answer. v = u(1 + k·u²)
+  // peaks at u* = 1/√(−3k), so content past v* = ⅔u* has no screen position at all — that
+  // is not a failure, it is what a long lens does, and those points fall outside the frame
+  // exactly as a zoomed-out point does.
+  let camUX = 0, camUY = 0;
+  function camUnlens(dx, dy) {
+    const r2 = dx * dx + dy * dy;
+    if (r2 < 1e-12) { camUX = dx; camUY = dy; return true; }
+    const R = Math.sqrt(fw * fw * 0.25 + fh * fh * 0.25);
+    const v = Math.sqrt(r2) / R, k = camFov;
+    if (k < 0) {
+      const us = 1 / Math.sqrt(-3 * k);
+      if (v > us * (1 + k * us * us)) return false;      // past the fold: off the frame
+    }
+    let u = v;
+    for (let i = 0; i < 3; i++) {
+      const gp = 3 * k * u * u + 1;
+      if (gp < 1e-4) return false;                       // on the fold; no stable root
+      u -= (k * u * u * u + u - v) / gp;
+      if (!(u >= 0)) return false;                       // NaN-safe
+    }
+    const f = u / v;
+    camUX = dx * f; camUY = dy * f;
+    return true;
   }
 
   // Deterministic PRNG (mulberry32). Seeded once from unix time at load, then
@@ -6519,6 +6592,15 @@
         const rx = camM[0] * dx + camM[1] * dy;
         dy = camM[2] * dx + camM[3] * dy;
         dx = rx;
+      }
+      // FIELD OF VIEW, last, on the SCREEN offset. camFrag4 applies the lens FIRST to the
+      // screen offset on its way IN to the effect, so its inverse belongs at the far end of
+      // the same chain on the way OUT — which is what makes a stamped layer and a shader
+      // layer bow the same way at the same slider value. A point with no screen position
+      // (a long lens folds the far field away) is dropped, like any out-of-grid point.
+      if (camFov !== 0) {
+        if (!camUnlens(dx, dy)) return;
+        dx = camUX; dy = camUY;
       }
       x = dx + fw * 0.5;
       y = dy + fh * 0.5;
@@ -12737,12 +12819,12 @@
   const EFFECTS = [
     { id: "sirpinfyer", name: "Sierpiński", subtitle: "Sierpiński triangle · classic fire",
       help: "A 2D Sierpiński triangle drawn by the chaos game — repeatedly jump halfway toward a random one of three slowly drifting corners — stamped as fresh heat into a classic rising-fire buffer.",
-      params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire"], fractal2d: true, bakesOwnZoom: true,
+      params: ["points", "layers", "speed", "size", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "fire"], fractal2d: true, bakesOwnZoom: true,
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [22, 22], rise: [52, 52], zoom: [1, 1], size: [1, 1], rot: [0, 0], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [3850, 3850] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "tetrafyer", name: "Tetrahedron", subtitle: "Sierpiński tetrahedron · classic fire",
       help: "A 3D Sierpiński tetrahedron, a rigid body under real physics whose four tumbling corners seed the same fire. With Show box on it bounces inside an invisible box, bursting a sphere of sparks on each wall hit; with the box off there are no walls, so it orbits the centre of the screen instead. Objects stacks more tetrahedra, each smaller and moving on its own. Two rotations turn the view: Rotation yaws it (0 by default — spread the thumbs to drift) and Box nod pitches it up and down in a slow sine (Nod speed sets how fast).",
-      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "sway", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"], bakesOwnZoom: true,
+      params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "sway", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"], bakesOwnZoom: true,
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], sway: [0.5, 0.5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [1500, 1500] },
       beat: {}, extras: { palette: "1", morph: false, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", subtitle: "Julia set · animated seed",
@@ -12827,7 +12909,7 @@
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "attractor", name: "Attractor", subtitle: "Strange attractor · de Jong",
       help: "A de Jong strange attractor — millions of points from x'=sin(a·y)−cos(b·x), y'=sin(c·x)−cos(d·y) stamped into the fire. The four coefficients a/b/c/d are the shape knobs; nudge them (or arm their L/M/H chips) and the delicate threads morph. Points sets the density, Flame rise the glow. The map is exact, so Point jitter scatters each point a little to soften the threads — set it to 0 for the bare, hard-edged curves.",
-      params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "attractor"], bakesOwnZoom: true,
+      params: ["ata", "atb", "atc", "atd", "atjit", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "attractor"], bakesOwnZoom: true,
       stamp: (xL, xR, yT, yB, n) => attractorStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
@@ -12904,7 +12986,7 @@
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "flames", name: "Fractal flames", subtitle: "Fractal flames · IFS density",
       help: "An iterated function system in the Apophysis / Electric Sheep style: the chaos game bounces between two slowly-morphing affine maps, a nonlinear Variation bends every step, and each landing ADDS heat — so the dense heart of the orbit burns white while the wisps stay faint. Variation picks the fold (Spherical and Swirl are the classics), Morph speed orbits the coefficients, Point glow sets how much each landing adds, and Points the density budget.",
-      params: ["flvar", "flmorph", "flglow", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "flames"], bakesOwnZoom: true, stampAdd: true,
+      params: ["flvar", "flmorph", "flglow", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "flames"], bakesOwnZoom: true, stampAdd: true,
       stamp: (xL, xR, yT, yB, n) => flamesStamp(xL, xR, yT, yB, n),
       // The ONE effect that ships with a filter: additive stamps + Fade retention IS the
       // fractal-flame render model — density accumulates over ~a second and decays, so the
@@ -12945,7 +13027,7 @@
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "boids", name: "Boids", subtitle: "Boids · murmuration",
       help: "A flock of birds wheeling as one — cohesion, alignment and separation, nothing else, which is the whole magic of boids. Each bird stamps a short streak, and the shipped Fade filter turns the flock into a smoky murmuration. Arm Scatter's L/M/H chips and every beat BLASTS the flock apart from its centre before it regathers; Cohesion sets how tightly it wheels.",
-      params: ["bdcount", "bdspeed", "bdcoh", "bdfear", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "boids"], boids: true,
+      params: ["bdcount", "bdspeed", "bdcoh", "bdfear", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "boids"], boids: true,
       stamp: (xL, xR, yT, yB, n) => boidsStamp(xL, xR, yT, yB, n),
       bakesOwnZoom: true,
       filters: ["fade"],
@@ -12953,7 +13035,7 @@
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "galaxy", name: "Galaxy", subtitle: "Galaxy · log-spiral star disc",
       help: "A disc of stars whose density follows log spirals — the shape real galaxies make, where an arm is a straight line in log-radius so the winding tightens toward the core by itself rather than being drawn tighter by hand. The stars differentially rotate too: inner orbits sweep round faster, so the arms shear and re-form instead of turning like a rigid pinwheel. Arms sets how many, Twist how tightly they wind (low is a barred spiral, high a nearly circular ring), Scatter how sharply defined they are against the disc, Core how bright the central bulge burns. Arm Core or Scatter to the beat and the galaxy flares.",
-      params: ["gxarms", "gxtwist", "gxspin", "gxcore", "gxscatter", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      params: ["gxarms", "gxtwist", "gxspin", "gxcore", "gxscatter", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
       helpTags: ["all", "galaxy"], bakesOwnZoom: true, stampAdd: true,
       stamp: (xL, xR, yT, yB, n) => galaxyStamp(xL, xR, yT, yB, n),
       ranges: { points: { min: 3000, max: 40000 } },
@@ -12962,7 +13044,7 @@
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "harmonograph", name: "Harmonograph", subtitle: "Harmonograph · damped pendulum ribbons",
       help: "The Victorian drawing machine: two pendulums per axis, each a dying sine, their sum traced by a pen. Frequency ratio is the figure — whole numbers give the closed classical forms, and the values between them the open weaving ones. Detune is the trick: at exactly 0 the curve closes and retraces itself forever, and a hair off it each lap misses by a little and the whole figure precesses into a ribbon. Damping is how fast the pendulums die, so low values spiral a long way in and high ones draw a tight knot. Points is how finely the pen is sampled; add a Fade or Fire filter and the ribbons trail.",
-      params: ["hgratio", "hgdetune", "hgdecay", "hgmorph", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      params: ["hgratio", "hgdetune", "hgdecay", "hgmorph", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
       helpTags: ["all", "harmo"], bakesOwnZoom: true,
       stamp: (xL, xR, yT, yB, n) => harmonographStamp(xL, xR, yT, yB, n),
       // Its own Points range, like Flames. This effect samples ONE continuous curve rather
@@ -13003,7 +13085,7 @@
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
       help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
-      params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
       helpTags: ["all", "trees"], bakesOwnZoom: true,
       stamp: (xL, xR, yT, yB, n) => treeStamp(xL, xR, yT, yB, n),
       // TREES OWN THEIR POINTS RANGE, and it is high for a reason: this effect draws LINES,
@@ -15878,53 +15960,84 @@
   }
   // The box's own furniture — owner line, bounds editor, dock button. Split out because the
   // SCENE pass below dresses one box for the whole page rather than one per block.
-  // ---- the break-out column is a FREE GRID --------------------------------------
-  // Boxes used to fill one fixed column down the left. They are dragged anywhere on screen
-  // now and snap to a coarse grid over the viewport, so the sliders you are working can sit
-  // beside the thing they change instead of queueing beside the menu.
+  // ---- ONE DRAG ENGINE, ONE GRID -------------------------------------------------
+  // Break-out slider boxes and every floating tool panel (Orbit editor, Palette editor,
+  // Palette inspector, the three pickers, and the modal dialogs) are dragged by their
+  // title bar onto the same grid. They used to be three different positioning schemes —
+  // a flex column, a fixed corner, and a margin-docked box inside a full-screen shell —
+  // and unifying the DRAG rather than the CSS is what keeps that from becoming a fourth.
   //
-  // ONE POSITIONING MODEL, not two. Every visible box is absolutely positioned — the ones
-  // you have never dragged are laid out by `layoutBreakout` into the same 298px column they
-  // always used (wrapping into a second column rather than scrolling, which a full-screen
-  // host cannot do), and a dragged one is placed from its stored anchor instead. Keeping the
-  // flow ones in flex and the dragged ones absolute would have meant two layouts that
-  // disagree about heights, or a second host — and a second host means adding its id to
-  // every "#panel …, #breakout …" control rule, which is the mistake CLAUDE.md records
-  // having been made three times.
+  // THE GRID IS THE EDITOR'S GRID. Its origin is the panel's own right edge and top, and
+  // its column is exactly one box plus its gap, so column 0 sits flush beside the menu and
+  // a snapped box lines up with the panel rather than with an arbitrary twelfth of the
+  // window. The rows divide the panel's HEIGHT, so they line up with it too. Everything is
+  // measured from the live bounding rect — the panel's width is a CSS number that has
+  // changed before, and hard-coding 298 here is how the two drift apart.
   //
-  // EDGE AFFINITY is the whole point of the snap: a box whose centre is in the left half
-  // anchors its LEFT edge to the grid line and grows right; past the middle it anchors its
-  // RIGHT edge and grows left. Same vertically. So dragging a box across the middle re-aligns
-  // it to the near edge and it grows inward, and a box in a corner stays in that corner
-  // however tall its content becomes.
+  // EDGE AFFINITY is the point of the snap: a box whose centre is in the left half anchors
+  // its LEFT edge to a grid line and grows right; past the middle it anchors its RIGHT edge
+  // and grows left, and the same vertically. So dragging across the middle re-aligns it to
+  // the near edge and it grows inward, and a corner box stays in its corner however tall
+  // its content becomes.
   //
-  // Transient, like `popped` itself: positions are not in fullSnapshot() and never ride a
-  // scene, a link or a backup.
-  const BRK_COLS = 12, BRK_ROWS = 8;        // grid over the viewport
-  const BRK_W = 244, BRK_GAP = 10, BRK_TOP = 58, BRK_LEFT = 298, BRK_EDGE = 14;
-  const brkPos = new Map();                 // "<slot>/<key>" -> { gx, gy, right, bottom }
-  // Below this the column is a bottom sheet (see the 760px block in styles.css) and the CSS
-  // takes the boxes back into flow; dragging them there would fight it.
+  // Transient, like `popped` itself: nothing here is in fullSnapshot(), so no position ever
+  // rides a scene, a link or a backup.
+  const BRK_W = 244, BRK_GAP = 10, BRK_ROWS = 8, BRK_EDGE = 14;
+  const brkPos = new Map();                 // "<slot>/<key>" | "dlg:<id>" -> { gx, gy, right, bottom }
+  // Below this the CSS puts the boxes back in flow as a bottom sheet and re-docks the
+  // dialogs (see the 760px block in styles.css); dragging there would fight it.
   const brkFree = () => window.innerWidth > 760;
-  function brkCell() {
-    return { w: window.innerWidth / BRK_COLS, h: window.innerHeight / BRK_ROWS };
+  function brkGrid() {
+    const r = panel.getBoundingClientRect();
+    return {
+      x0: Math.max(0, Math.round(r.right) + BRK_GAP),
+      y0: Math.max(0, Math.round(r.top)),
+      cw: BRK_W + BRK_GAP,                  // one box per column, its gap included
+      ch: Math.max(48, r.height / BRK_ROWS),
+    };
   }
-  function brkPlace(box, p) {
-    const c = brkCell();
-    if (p.right) { box.style.right = Math.max(0, window.innerWidth - p.gx * c.w) + "px"; box.style.left = "auto"; }
-    else { box.style.left = Math.max(0, p.gx * c.w) + "px"; box.style.right = "auto"; }
-    if (p.bottom) { box.style.bottom = Math.max(0, window.innerHeight - p.gy * c.h) + "px"; box.style.top = "auto"; }
-    else { box.style.top = Math.max(0, p.gy * c.h) + "px"; box.style.bottom = "auto"; }
+  function brkPlace(node, p) {
+    const g = brkGrid();
+    const x = g.x0 + p.gx * g.cw, y = g.y0 + p.gy * g.ch;
+    if (p.right) { node.style.right = Math.max(0, window.innerWidth - x) + "px"; node.style.left = "auto"; }
+    else { node.style.left = Math.max(0, x) + "px"; node.style.right = "auto"; }
+    if (p.bottom) { node.style.bottom = Math.max(0, window.innerHeight - y) + "px"; node.style.top = "auto"; }
+    else { node.style.top = Math.max(0, y) + "px"; node.style.bottom = "auto"; }
   }
-  // Lay out every visible box: stored anchors where there are any, the default column for
-  // the rest. Called from refreshBreakout (which knows what is visible) and on resize.
+  function brkSnap(node) {
+    const g = brkGrid(), r = node.getBoundingClientRect();
+    const right = r.left + r.width / 2 > window.innerWidth / 2;
+    const bottom = r.top + r.height / 2 > window.innerHeight / 2;
+    return {
+      right: right, bottom: bottom,
+      gx: Math.round(((right ? r.right : r.left) - g.x0) / g.cw),
+      gy: Math.round(((bottom ? r.bottom : r.top) - g.y0) / g.ch),
+    };
+  }
+  // The grid, made visible while something is being dragged — a snap you cannot see is a
+  // box that jumps somewhere you did not ask for. Two repeating gradients on one element,
+  // sized and placed from brkGrid(), so the drawing and the maths cannot disagree.
+  function brkGridPaint() {
+    const el2 = el("brkgrid");
+    if (!el2) return;
+    const g = brkGrid();
+    el2.style.left = g.x0 + "px";
+    el2.style.top = g.y0 + "px";
+    el2.style.width = Math.max(0, window.innerWidth - g.x0) + "px";
+    el2.style.height = Math.max(0, window.innerHeight - g.y0) + "px";
+    el2.style.backgroundSize = g.cw + "px " + g.ch + "px";
+  }
+  // Lay out every visible break-out box: stored anchors where there are any, the default
+  // column for the rest. Called from refreshBreakout (which knows what is visible), from
+  // the end of a drag, and on resize.
   function layoutBreakout() {
     if (!brkFree()) {                       // bottom sheet: hand the boxes back to the CSS
       for (const box of breakout.querySelectorAll(".ctl"))
         box.style.left = box.style.right = box.style.top = box.style.bottom = "";
       return;
     }
-    let x = BRK_LEFT, y = BRK_TOP;
+    const g = brkGrid();
+    let x = g.x0, y = g.y0;
     for (const box of breakout.querySelectorAll(".ctl")) {
       if (box.style.display === "none") continue;
       const p = brkPos.get(box.dataset.brk || "");
@@ -15932,62 +16045,112 @@
       // Measure AFTER the anchored ones are placed: offsetHeight is the same either way
       // (the width is fixed), but reading it while the box is still display:none is not.
       const h = box.offsetHeight || 120;
-      if (y + h > window.innerHeight - BRK_EDGE && y > BRK_TOP) { y = BRK_TOP; x += BRK_W + BRK_GAP; }
+      if (y + h > window.innerHeight - BRK_EDGE && y > g.y0) { y = g.y0; x += g.cw; }
       box.style.left = x + "px"; box.style.top = y + "px";
       box.style.right = box.style.bottom = "auto";
       y += h + BRK_GAP;
     }
+    // Floating panels keep their placement across a resize; the ones never dragged are
+    // left entirely to the CSS.
+    for (const f of brkFloats) { const p = brkPos.get(f.key); if (p) brkPlace(f.node, p); }
   }
-  // Drag by the owner line — the one strip of a box that is a title and not a control.
+  const brkFloats = [];
+  // ---- the engine ----
+  let dragNode = null, dragHandle = null, dragKey = "";
+  let dragSX = 0, dragSY = 0, dragOX = 0, dragOY = 0;
+  function dragBegin(node, handle, key, e) {
+    if (!brkFree() || e.button || !node || !key) return;
+    // Never start a drag from a control inside the title bar — the close X, the step
+    // counter's buttons, anything focusable.
+    if (e.target.closest && e.target.closest("button, input, select, textarea, a")) return;
+    const r = node.getBoundingClientRect();
+    dragNode = node; dragHandle = handle; dragKey = key;
+    dragSX = e.clientX; dragSY = e.clientY; dragOX = r.left; dragOY = r.top;
+    // A floating panel is `relative` inside a full-screen `inset: 0` shell, or `fixed` in
+    // its own right (the Orbit editor). Only the relative ones need converting, and the
+    // shell being inset:0 is what makes viewport coordinates and absolute ones the same
+    // number — which is why one rect-based engine drives both.
+    if (getComputedStyle(node).position !== "fixed") node.style.position = "absolute";
+    node.style.margin = "0";
+    node.style.left = dragOX + "px"; node.style.top = dragOY + "px";
+    node.style.right = node.style.bottom = "auto";
+    node.classList.add("dragging");
+    document.body.classList.add("brk-gridding");
+    brkGridPaint();
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  }
+  function dragMove(e) {
+    if (!dragNode) return;
+    dragNode.style.left = (dragOX + e.clientX - dragSX) + "px";
+    dragNode.style.top = (dragOY + e.clientY - dragSY) + "px";
+  }
+  function dragEnd(e) {
+    if (!dragNode) return;
+    const node = dragNode, handle = dragHandle, key = dragKey;
+    dragNode = dragHandle = null;
+    node.classList.remove("dragging");
+    document.body.classList.remove("brk-gridding");
+    try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+    const p = brkSnap(node);
+    brkPos.set(key, p);
+    brkPlace(node, p);
+    layoutBreakout();                       // the column closes the gap a box left behind
+  }
+  // Document-level, once: a delegated pointerdown can start a drag on a node that did not
+  // exist at startup (the Help dialog builds its whole box on open), and the move/up pair
+  // has to survive the pointer leaving the handle.
+  document.addEventListener("pointermove", dragMove, true);
+  document.addEventListener("pointerup", dragEnd, true);
+  document.addEventListener("pointercancel", dragEnd, true);
+  // Double-click a title bar to give the placement back — the way out of a drop you did not
+  // mean, without hunting for where it came from.
+  function dragReset(node, key) {
+    brkPos.delete(key);
+    node.style.left = node.style.top = node.style.right = node.style.bottom = "";
+    node.style.margin = node.style.position = "";
+    layoutBreakout();
+  }
   function makeBoxGrab(box, handle) {
-    let sx = 0, sy = 0, ox = 0, oy = 0, live = false;
-    handle.addEventListener("pointerdown", e => {
-      if (!brkFree() || e.button) return;
-      live = true;
-      sx = e.clientX; sy = e.clientY;
-      ox = box.offsetLeft; oy = box.offsetTop;
-      // Pin by top/left for the duration: dragging a right-anchored box by its left edge
-      // would move it the wrong way as the pointer travels.
-      box.style.left = ox + "px"; box.style.top = oy + "px";
-      box.style.right = box.style.bottom = "auto";
-      box.classList.add("dragging");
-      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
-      e.preventDefault();
-    });
-    handle.addEventListener("pointermove", e => {
-      if (!live) return;
-      box.style.left = (ox + e.clientX - sx) + "px";
-      box.style.top = (oy + e.clientY - sy) + "px";
-    });
-    const done = e => {
-      if (!live) return;
-      live = false;
-      box.classList.remove("dragging");
-      try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
-      const c = brkCell(), w = box.offsetWidth, h = box.offsetHeight;
-      const l = box.offsetLeft, t = box.offsetTop;
-      const right = l + w / 2 > window.innerWidth / 2;
-      const bottom = t + h / 2 > window.innerHeight / 2;
-      const p = {
-        right: right, bottom: bottom,
-        gx: Math.max(0, Math.min(BRK_COLS, Math.round((right ? l + w : l) / c.w))),
-        gy: Math.max(0, Math.min(BRK_ROWS, Math.round((bottom ? t + h : t) / c.h))),
-      };
-      brkPos.set(box.dataset.brk, p);
-      brkPlace(box, p);
-      layoutBreakout();                     // the column closes the gap this box left
-    };
-    handle.addEventListener("pointerup", done);
-    handle.addEventListener("pointercancel", done);
-    // Double-click the title puts a box back in the column — the way out of a placement you
-    // did not mean, without hunting for the spot it came from.
-    handle.addEventListener("dblclick", e => {
-      e.preventDefault();
-      brkPos.delete(box.dataset.brk);
-      layoutBreakout();
-    });
+    handle.addEventListener("pointerdown", e => dragBegin(box, handle, box.dataset.brk, e));
+    handle.addEventListener("dblclick", e => { e.preventDefault(); dragReset(box, box.dataset.brk); });
   }
-  window.addEventListener("resize", () => layoutBreakout());
+  // ---- the floating panels ------------------------------------------------------
+  // Every dialog in the app follows the same shape — a close button then an <h2>, inside a
+  // box inside a host — so one delegated handler covers all of them, including the ones
+  // built on open. The MOVABLE node is not always the h2's parent: #carddlg's .card-box is
+  // deliberately `position: static` and the host is what carries the placement, so walk up
+  // to the first ancestor that is positioned at all and move that.
+  const DRAG_HOSTS = "#carddlg,#paledlg,#paldlg,#fltdlg,#palpickdlg,#transpickdlg,"
+                   + "#galdlg,#restoredlg,#syncpop,#help";
+  function dragTargetFor(h2) {
+    let n = h2.parentElement;
+    while (n && n !== document.body && getComputedStyle(n).position === "static") n = n.parentElement;
+    return n && n !== document.body ? n : null;
+  }
+  function dragKeyFor(node) {
+    const idOwner = node.closest("[id]");
+    return idOwner ? "dlg:" + idOwner.id : "";
+  }
+  document.addEventListener("pointerdown", e => {
+    if (!e.target.closest) return;
+    const h2 = e.target.closest("h2");
+    if (!h2 || !h2.closest(DRAG_HOSTS)) return;
+    const node = dragTargetFor(h2);
+    if (!node) return;
+    const key = dragKeyFor(node);
+    if (!key) return;
+    if (!brkFloats.some(f => f.key === key)) brkFloats.push({ node: node, key: key });
+    dragBegin(node, h2, key, e);
+  }, true);
+  document.addEventListener("dblclick", e => {
+    if (!e.target.closest) return;
+    const h2 = e.target.closest("h2");
+    if (!h2 || !h2.closest(DRAG_HOSTS)) return;
+    const node = dragTargetFor(h2);
+    if (node) { e.preventDefault(); dragReset(node, dragKeyFor(node)); }
+  }, true);
+  window.addEventListener("resize", () => { layoutBreakout(); brkGridPaint(); });
   // ---- shape preview -------------------------------------------------------------
   // A small square canvas at the top of a break-out box, drawing the shape the box's group
   // actually makes from that layer's own slider settings — so "Sides 7, Thickness 0.3" is a
@@ -19953,7 +20116,7 @@
       { n: "Ball size", w: "vballs", t: "Vector balls only — how fat each sphere is. Small keeps them clearly separate points of light; wind it up and neighbours overlap until the formation reads as one lumpy solid." },
       { n: "Tumble", w: "vballs", t: "Vector balls only — how fast the constellation turns. It yaws and pitches at different rates, so it never repeats a pose. 0 holds it still." },
       { n: "Edge glow", w: "vballs", t: "Vector balls only — lights the rim of each sphere where its surface turns away from you. Low is flat shading, high outlines every ball and the formation reads as a cloud of bright shells." },
-      { n: "Field of view", w: "all", t: "How wide a lens this layer is seen through. It works the way the Camera X/Y/Z sliders do — by moving where each pixel takes its colour from — so it costs nothing and applies to every shader effect: positive pushes the sample outward with the square of the radius, which is a fisheye that bows the middle out and drags the corners in; negative pulls it in, which is a telephoto that flattens the frame. 0 is the normal lens. Drift the two thumbs and the whole layer breathes in and out. It is per LAYER, so one layer can bulge while another stays flat. Not offered on the point effects (Sierpński, Trees, Boids and the rest) — those stamp points rather than sampling a coordinate, so there is nothing to bend." },
+      { n: "Field of view", w: "all", t: "How wide a lens this layer is seen through. It works the way the Camera X/Y/Z sliders do — by moving where each pixel takes its colour from — so it costs nothing and applies to every shader effect: positive pushes the sample outward with the square of the radius, which is a fisheye that bows the middle out and drags the corners in; negative pulls it in, which is a telephoto that flattens the frame. 0 is the normal lens. Drift the two thumbs and the whole layer breathes in and out. It is per LAYER, so one layer can bulge while another stays flat. The point effects (Sierpński, Trees, Boids and the rest) get it too, through the inverse of the same curve — they stamp a position rather than sampling one, so the lens has to be run backwards for them, which is what makes a stamped layer and a shader layer bow the SAME way at the same setting. A wide lens pulls a stamped picture in from the corners, so expect dark edges where a shader effect would simply show you more; a long one folds the far field away entirely and those points are dropped, which is what being outside the frame means." },
       { n: "Balls", w: "glass", t: "Glass ball only — how many spheres are in the air. Each drifts on its own pair of clocks, so they pass through each other's reflections rather than orbiting in formation." },
       { n: "Material", w: "glass", t: "Glass ball only. **Metal** is an opaque mirror — you see only what is behind you. **Glass** refracts the scene through both surfaces, so the layer underneath appears inside the ball, shrunk and turned over. **Bubble** is a thin shell: it barely bends what is behind it, but the rim rings bright. Metal reads best over a busy layer, Glass over a big simple one." },
       { n: "Refraction", w: "glass", t: "Glass ball only — how dense the glass is (its index of refraction). Around 1.05 is barely more than air and the scene passes almost straight through; 1.45 is real glass; past 2 the whole picture is squeezed into a bright knot at the centre of the ball. Only Glass and Bubble use it — Metal never lets a ray in." },

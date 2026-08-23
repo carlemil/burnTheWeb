@@ -14,6 +14,31 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.35.0] — 2026-08-23
+
+### Added
+
+- **The snap grid is visible while you drag**, and it is the **editor's own grid** — it starts
+  at the panel's right edge, one column is exactly one box wide, and the rows divide the
+  panel's height, so everything you place lines up with the menu instead of with an arbitrary
+  fraction of the window.
+- **Every floating panel can be moved**, not just the slider boxes: the **Orbit editor**, the
+  **Palette editor** and **inspector**, the filter/palette/transition pickers and the dialogs
+  are all dragged by their **title bar** onto that same grid. Drag one past the middle and it
+  re-aligns to the near edge and grows inward; double-click its title bar to give the
+  placement back.
+
+### Changed
+
+- **Field of view now works on the point effects too** — Sierpiński, Tetrahedron, Attractor,
+  Fractal flames, Harmonograph, Galaxy, Boids and Trees. Those stamp a position rather than
+  sampling one, so the lens runs backwards for them, which is what makes a stamped layer and
+  a shader layer bow the *same* way at the same setting. A wide lens pulls a stamped picture
+  in from the corners (expect dark edges where a shader effect would simply show you more); a
+  long one folds the far field out of the frame entirely.
+- **The palette fold chevron matches the layer chevron** — same size, glyph and position at
+  the head of its label, so the two folds read as the same control.
+
 ## [1.34.0] — 2026-08-23
 
 ### Changed
