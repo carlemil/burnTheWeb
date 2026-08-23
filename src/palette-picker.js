@@ -239,12 +239,42 @@
                        set checked(v) { for (const n of ctlEach("showbox")) n.checked = v; } };
   const randSeedChk = { get checked() { const n = ctl("randseed"); return !!n && n.checked; },
                         set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
+  // ---- palette fold ----------------------------------------------------------
+  // The palette body (swatches, Reverse, Background, cycle) is the tallest run of furniture
+  // in a layer block and the first thing you stop needing once the colours are settled.
+  // ONE boolean for every block, not one per slot: the same policy the group folds use
+  // ("folds apply to every block at once"), and it keeps a reorder from carrying a fold to
+  // a layer that never had one. Transient — not in fullSnapshot(), so it never rides a
+  // scene, a share link or a backup, exactly like every other fold in the app.
+  let palFolded = false;
+  function syncPalFold() {
+    for (const n of ctlEach("palbody")) n.style.display = palFolded ? "none" : "";
+    for (const n of ctlEach("pal-fold")) {
+      n.textContent = palFolded ? "▸" : "▾";
+      n.title = palFolded ? "Show the palette controls" : "Hide the palette controls";
+      n.setAttribute("aria-label", palFolded ? "Expand palette" : "Collapse palette");
+      n.setAttribute("aria-expanded", palFolded ? "false" : "true");
+    }
+  }
+  function togglePalFold(e) {
+    // Inside a <label>, so a bare click would fall through to the label's own activation.
+    e.preventDefault(); e.stopPropagation();
+    palFolded = !palFolded;
+    syncPalFold();
+  }
   for (let slot = 0; slot < STACK_MAX; slot++) {
     ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
     // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
     ctlIn(slot, "randseed").addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
     ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
+    const pf = ctlIn(slot, "pal-fold");
+    pf.addEventListener("click", togglePalFold);
+    // A <b> takes no keyboard activation of its own (role=button + tabindex only makes it
+    // focusable), so Enter/Space have to be wired by hand — the same gap `setOff` documents
+    // for the row controls.
+    pf.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") togglePalFold(e); });
   }
+  syncPalFold();
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");

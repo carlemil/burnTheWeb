@@ -155,7 +155,10 @@
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
+  <label class="check" title="Switch scene on the TTL timer. Paused while this panel is open, so nothing changes under you while you edit."><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
+  <!-- STATIC, not toggled: the note is only ever readable while the panel is open, which is
+       exactly when cycling is paused. A JS-driven "paused" badge would have nothing to say. -->
+  <div class="cycle-note">paused while this panel is open</div>
   <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
        Auto-cycle, because that is when you see it most — every cycle tick draws one — even
        though it is drawn by the credits overlay and remembered per browser like the credits
@@ -267,7 +270,12 @@
   <!-- A MAGNIFIER, not the old 👁 eye: the eye became the visibility-toggle glyph (layer
        mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
        currentColor, like the eye icons. -->
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <!-- The chevron COLLAPSES the palette body (swatches, reverse, background, cycle) — the
+       tallest run of furniture in the block, and the part you stop needing once the colours
+       are settled. One boolean drives every block at once, the same policy the group folds
+       use, and it is transient: not in fullSnapshot(), so it never rides a scene or a link. -->
+  <label>Palette <b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b> <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <div data-k="palbody">
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -276,6 +284,7 @@
     <select data-k="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
   <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
+  </div>
   <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </div></template>
   </details>

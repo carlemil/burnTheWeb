@@ -122,10 +122,11 @@
         + "microphone</b>. Allow it and the room drives the visual; refuse, and it is never asked "
         + "again — you can still start either source yourself from ☰ → Audio." },
     { head: "Two menus", art: TUT_ART.menus,
-      body: "The panel down the left is the <b>scene editor</b> — everything that is part of what you "
-        + "are looking at. The <b>☰</b> top-right is everything else: audio, render resolution, "
+      body: "<span class=\"tut-keys\">M</span> opens the <b>scene editor</b> down the left — everything "
+        + "that is part of what you are looking at. While it is open the scenes stop auto-cycling, so "
+        + "nothing changes under you while you work. The <b>☰</b> top-right is everything else: audio, render resolution, "
         + "fullscreen, your cloud profile, other people's scenes, the help reference — and this tutorial. "
-        + "<span class=\"tut-keys\">M</span> hides and shows the panel, <span class=\"tut-keys\">F</span> "
+        + "<span class=\"tut-keys\">M</span> hides it again, <span class=\"tut-keys\">F</span> "
         + "goes fullscreen and <span class=\"tut-keys\">H</span> strips every last bit of chrome." },
     { head: "Scenes", art: TUT_ART.scenes,
       body: "A <b>scene</b> is a complete snapshot — the effects, the colours, the filters, every slider. "

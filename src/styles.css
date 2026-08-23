@@ -215,6 +215,9 @@
     opacity: .9;
   }
   #panel .check input, #menubar .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
+  /* Under "Auto-cycle scenes": the cycler is gated on the panel being hidden, and this is the
+     one line that says so. Indented to the checkbox's label text (15px box + 8px gap). */
+  #panel .cycle-note { margin: 2px 0 0 23px; font-size: 10px; opacity: .5; font-style: italic; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
   #toggle, #fs, #mute {
     position: fixed;
@@ -891,6 +894,15 @@
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
+  /* The palette-section fold, in the "Palette" label beside the inspect magnifier. Same 2x
+     marker as the layer chevron and the group headings; it lives inside a <label>, not a
+     `.lyr`, so it needs none of that reset — only the sizing. */
+  #panel .pal-chev {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; cursor: pointer; color: #ffb15a; opacity: .8;
+    font: 20px/1 monospace; user-select: none; vertical-align: middle;
+  }
+  #panel .pal-chev:hover { opacity: 1; }
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > .lyrblock { display: none; }

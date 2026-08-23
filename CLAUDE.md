@@ -677,6 +677,12 @@ but to the **descriptor default** for filters and seedPts (the runtime fallback 
 legacy never-selected layer with null palette re-tints with same-effect edits until first
 selection captures it. Documented at `layerPalIndex`.
 
+**Palette fold** — the `▾` in the block's `Palette` label collapses `[data-k="palbody"]`
+(swatches, Reverse, Background, cycle). **ONE module-level boolean for every block**, like the
+group folds, and **transient** — not in `fullSnapshot()`. It is a `<b>` inside a `<label>`, so
+its handler needs `preventDefault()` (the label would swallow the click) **and** an explicit
+Enter/Space keydown: `role="button"` only makes it focusable, it does not activate.
+
 **Reverse colours** (`#palrev`) — **per layer**: live `paletteReverse` for the selected layer,
 `L.paletteRev` otherwise (`layerPalRev(L)`), `extras[e].paletteRev` as single-layer fallback. Flips
 indices **1..255** of the baked LUT, leaving 0 as background. Both bake choke points:
@@ -953,6 +959,17 @@ auto-cycle show.
   id makes `blankPreset()` return null — dropped, never misfiled.
 - **`function defaultPresets(` is a `presetprobe` slicing marker** — keep the name and keep it
   directly after `snapshotScene`.
+
+**AUTO-CYCLE IS GATED ON THE EDITOR BEING HIDDEN.** `cyclePresets` early-returns (and zeroes
+`nextSwitch`, so closing the panel starts a fresh hold) while `editorOpen()` — `#panel` not
+`.hidden` **and** `body` not `.ui-hidden`, so `H` and `?hideui` count as hidden. It **gates the
+tick and never writes `cycleOn` or `#cycle`**: toggling those would persist `cycle:false` into
+the blob and silently destroy the user's setting. The consequence is load-bearing in the other
+direction too — the panel ships OPEN and `CONFIG.scene.autoCycle` ships ON, so **`restore()`
+hides the panel when `saved.panelOpen` is ABSENT** (first visit only; a stored boolean always
+wins), or a new visitor lands on one still scene and the shipped library never runs as a show.
+The "paused while this panel is open" note under the checkbox is **static markup, not a JS
+badge** — it is only ever readable while the panel is open, which is exactly when it is true.
 
 **Creating a preset, adopting a shared scene and restoring a backup all `stopCycling()`.**
 `applyRestore` can't (it reloads), so it writes `out.cycle = false` **last**.
@@ -1434,6 +1451,16 @@ Plasma + Fire ~3/4. **Re-run a mismatch 2–3 times.**
 shader effects are bit-reproducible; **point effects are not** — gate those on logic. **Inject
 before the app**, into `<head>`. **Do not clear the rAF queue** — `frame()` re-arms itself. Stub
 `Math.random`; read pixels with `readPixels` in the **same task** as the last frame.
+
+**A headless assertion of the form "nothing happened after I toggled X" is almost always
+INSENSITIVE.** After a mid-run state change the page renders ~2 frames in *twenty* virtual
+seconds — the initial burst is all you get — so anything driven by the frame loop would not
+have fired regardless, and the check passes against a build with the feature deleted. Measured
+on the auto-cycle gate: "opening the editor stops the cycle" was green either way, while the
+mirror claim taken from the LOAD state ("no switch while the editor is open", panel open from
+boot) went red the moment the gate was removed. **Assert from the boot state, and always run
+the negative control.** `tools/foldcycle-check.js` is that check (a browser one — deliberately
+NOT named `*probe.js`, since `/deploy` runs `node tools/*probe.js` over the whole directory).
 
 **A green logic probe is necessary, not sufficient**, for anything writing retained heat — drive a
 few hundred real frames and look at the screenshot.

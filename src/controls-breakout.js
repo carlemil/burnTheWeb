@@ -483,7 +483,18 @@
     for (let i = 0; i < presets.length; i++) if (inRotation(presets[i])) pool.push(i);
     return pool;
   }
+  // AUTO-CYCLE PAUSES WHILE THE EDITOR IS ON SCREEN. Having a scene swapped out from under
+  // you mid-edit loses your place, and the cycler's whole job is to run a show at an unwatched
+  // screen. So the panel being visible gates the TICK — it never touches `cycleOn` or the
+  // checkbox, which stay the user's stored preference (writing them would persist cycle:false
+  // into the blob and silently lose that choice). `body.ui-hidden` counts as hidden too: H
+  // strips the panel along with the rest of the chrome, and ?hideui is how the headless
+  // screenshots run. Zeroing nextSwitch means closing the panel starts a FRESH TTL rather
+  // than switching the instant you hide it.
+  const editorOpen = () => !panel.classList.contains("hidden")
+    && !document.body.classList.contains("ui-hidden");
   function cyclePresets(now) {
+    if (editorOpen()) { nextSwitch = 0; return; }
     const pool = rotationPool();
     // Something to switch TO: two or more ticked scenes, or exactly one that isn't the one
     // already on screen (having hand-picked an unticked scene, the cycle should still take
