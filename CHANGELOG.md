@@ -14,6 +14,15 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.37.2] — 2026-08-23
+
+### Changed
+
+- **Joining the shared 3D world fades in instead of cutting.** When you tick **Share one 3D
+  world** the layer keeps drawing itself while the world is being built, then crossfades
+  into the shared scene over about half a second — and fades back out the same way when it
+  leaves. The switch used to be a hard cut.
+
 ## [1.37.1] — 2026-08-23
 
 ### Fixed
