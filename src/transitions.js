@@ -265,6 +265,11 @@
     st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
     st.fov = [0, 0];         // neutral, so every scene saved before FOV existed renders identically
     st.heatboost = [0, 0];   // per-layer palette control, seeded like the camera so no effect descriptor needs it
+    // World placement (Place X/Y/Z + World scale) — params-but-not-defaults on the five
+    // world effects, so until seeded here the values were silently DROPPED by saveState/
+    // mergeState and never persisted at all. Seeded at the CONTROLS shipped lo/hi, so a
+    // scene saved before this renders identically.
+    st.wldx = [0, 0]; st.wldy = [1.6, 1.6]; st.wldz = [6, 6]; st.wldscale = [1.2, 1.2];
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }

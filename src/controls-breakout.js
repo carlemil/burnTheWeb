@@ -744,6 +744,55 @@
         ctlReg(slot, "row-" + key, row);
       });
   }));
+  // ---- per-tab Random / Reset ----------------------------------------------------
+  // ⚄ nudges every slider the tab currently shows for this layer by a small fraction of
+  // its range (the browser snaps each write to the slider's own step, so a `single`
+  // control moves by whole numbers or not at all), and SOMETIMES arms one beat trigger
+  // on a random armable slider — whose thumbs the same pass just jiggled, so the trigger
+  // arrives with slightly-adjusted values rather than defaults. ↺ runs resetControl over
+  // the same keys: value, range, chips, pulse — the whole tab back to the effect's
+  // defaults. The buttons live inside the layer box, so the capture-phase pointerdown on
+  // #breakout has already selected the layer by the time the click runs — the block is
+  // live, which is what the chip handlers and resetControl require.
+  function tabKeys(pane) {
+    return [...pane.querySelectorAll(".ctl-row")]
+      .filter(r => r.offsetParent !== null && r.dataset.k && r.dataset.k.indexOf("row-") === 0)
+      .map(r => r.dataset.k.slice(4));
+  }
+  function jiggleTab(slot, pane) {
+    const armable = [];
+    for (const key of tabKeys(pane)) {
+      const els = ctlRangeInputsIn(slot, key);
+      // A single control keeps lo === hi through the mirror on the FIRST thumb's input —
+      // nudging both with different deltas would fight it.
+      for (const inp of (SINGLE_KEYS.has(key) ? els.slice(0, 1) : els)) {
+        const mn = +inp.min, mx = +inp.max;
+        if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
+        const d = (Math.random() * 2 - 1) * 0.08 * (mx - mn);
+        inp.value = String(Math.min(mx, Math.max(mn, +inp.value + d)));
+        inp.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      const w = W[slot] && W[slot][key];
+      if (w && w.chips && !SINGLE_KEYS.has(key)) armable.push(w.chips);
+    }
+    if (armable.length && Math.random() < 0.35) {
+      const chips = armable[(Math.random() * armable.length) | 0];
+      const off = ["low", "mid", "high"].filter(b => chips[b] && !chips[b].classList.contains("on"));
+      if (off.length) chips[off[(Math.random() * off.length) | 0]].click();
+    }
+  }
+  function resetTab(pane) {
+    for (const key of tabKeys(pane)) resetControl(key);
+    rngSyncAll();               // the in-box min/max fields follow the restored bounds
+  }
+  for (let slot = 0; slot < STACK_MAX; slot++) for (const t of ["fx", "flt", "pal"]) {
+    const pane = ctlIn(slot, "tab-" + t);
+    const rnd = ctlIn(slot, "rnd-" + t), rst = ctlIn(slot, "rst-" + t);
+    if (!pane || !rnd || !rst) continue;
+    rnd.addEventListener("click", e => { e.stopPropagation(); jiggleTab(slot, pane); });
+    rst.addEventListener("click", e => { e.stopPropagation(); resetTab(pane); });
+  }
+
   // The launcher rows and beat dots are the last per-block pieces to exist, so install
   // slot 0 into the singleton maps now that its record is complete.
   pointMaps(0);

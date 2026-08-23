@@ -349,6 +349,26 @@
     transition: background .15s;
   }
   [data-k="reset"]:hover, [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
+  /* Per-tab ⚄ Random / ↺ Reset pair heading each layer-tab pane. Same family as the big
+     Reset button above, halved: two side-by-side, quieter resting tone. Scoped to both
+     hosts like every block rule — the block lives in a layer box in #breakout. */
+  #panel .tab-tools, #breakout .lyr-box .tab-tools { display: flex; gap: 6px; margin: 6px 0 2px; }
+  #panel .tab-tools button, #breakout .lyr-box .tab-tools button {
+    flex: 1 1 0;
+    padding: 5px 0;
+    background: transparent;
+    border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 6px;
+    color: #ffb15a;
+    font: 11px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em;
+    cursor: pointer;
+    opacity: .82;
+    transition: background .15s;
+  }
+  #panel .tab-tools button:hover, #breakout .lyr-box .tab-tools button:hover {
+    background: rgba(255, 122, 26, 0.3); opacity: 1;
+  }
   [data-k="cardbtn"], #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
   /* Cloud profile row. Hidden wholesale when CONFIG.cloud.apiKey is "" — an unconfigured
      build shows no trace of the feature rather than a dead button. */
