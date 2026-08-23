@@ -902,11 +902,17 @@ but to the **descriptor default** for filters and seedPts (the runtime fallback 
 legacy never-selected layer with null palette re-tints with same-effect edits until first
 selection captures it. Documented at `layerPalIndex`.
 
-**Palette fold** — the `▾` in the block's `Palette` label collapses `[data-k="palbody"]`
-(swatches, Reverse, Background, cycle). **ONE module-level boolean for every block**, like the
-group folds, and **transient** — not in `fullSnapshot()`. It is a `<b>` inside a `<label>`, so
-its handler needs `preventDefault()` (the label would swallow the click) **and** an explicit
-Enter/Space keydown: `role="button"` only makes it focusable, it does not activate.
+**Palette fold** — the `▾` beside the block's `Palette` label collapses `[data-k="palbody"]`
+(swatches, Reverse, Background, cycle **and banding** — banding is a filter over the palette, so
+it belongs to the section the chevron names). **ONE module-level boolean for every block**, like
+the group folds, and **transient** — not in `fullSnapshot()`. **It is a SIBLING of the label
+(`.pal-head`, a two-column grid), not a child** — inside the label it picked up the label's own
+click chrome. And it is styled **`#panel .lyr b.pal-chev`**, at that specificity, for the reason
+`.lyr-chev` spells out: the palette block lives inside a layer row, and **`#panel .lyr b` gives
+every `<b>` in a row the mute/✕ button chrome** (10px font, 1px border, dark fill) — a plain
+`.pal-chev` rule loses to it and the chevron ships as a little boxed button, which it did. The
+`<b>` still needs an explicit Enter/Space keydown: `role="button"` only makes it focusable.
+`foldcycle-check` asserts the two chevrons compute identically on eight properties.
 
 **Reverse colours** (`#palrev`) — **per layer**: live `paletteReverse` for the selected layer,
 `L.paletteRev` otherwise (`layerPalRev(L)`), `extras[e].paletteRev` as single-layer fallback. Flips

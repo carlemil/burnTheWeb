@@ -934,20 +934,26 @@
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
-  /* The palette-section fold. Deliberately IDENTICAL to the layer row's chevron — same
-     15x18 box, same 20px monospace glyph, same colour, opacity and hover, and first in its
-     label so it leads the heading the way `.lyr-chev` leads a row. Two controls that do the
-     same thing (fold this section away) should not look like two different affordances.
-     It needs the same `padding/border/background` reset for a different reason: a <b> here
-     inherits nothing, but keeping the declarations in step makes the two rules diffable. */
-  #panel .pal-chev {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 15px; height: 18px; margin-right: 2px; cursor: pointer;
-    color: #ffb15a; opacity: .8;
-    font: 20px/1 monospace; padding: 0; border: 0; background: none;
-    user-select: none; vertical-align: middle;
+  /* The palette-section fold: the LAYER ROW'S CHEVRON, reproduced. Same 15x18 cell, same
+     20px monospace glyph, same colour, opacity and hover — and, like `.lyr-chev`, a bare
+     marker in a grid cell BESIDE its label rather than a child of it. Inside the <label> the
+     label's own click/focus chrome boxed it like a button, which is what this layout fixes.
+     Two controls that do the same thing should not read as two different affordances. */
+  #panel .pal-head { display: grid; grid-template-columns: 15px 1fr; align-items: center; gap: 4px; margin-top: 10px; }
+  #panel .pal-head > label { margin: 0; }
+  /* `#panel .lyr b.pal-chev`, at THAT specificity, for the reason `.lyr-chev` spells out:
+     the palette block lives inside a layer row, and `#panel .lyr b` (further down) gives
+     every <b> in a row the mute/✕ button chrome — 10px font, 1px border, dark fill, 4px
+     padding. A plain `.pal-chev` rule loses to it and the chevron renders as a little boxed
+     button, which is exactly what this was shipped looking like. The reset below strips
+     that chrome the way the layer chevron's rule does. */
+  #panel .lyr b.pal-chev {
+    grid-column: 1; justify-self: center; align-self: center;
+    width: 15px; height: 18px; cursor: pointer; color: #ffb15a; opacity: .8;
+    font: 20px/1 monospace; padding: 0; border: 0; border-radius: 0; background: none; outline: none;
+    display: flex; align-items: center; justify-content: center; user-select: none;
   }
-  #panel .pal-chev:hover { opacity: 1; background: none; }
+  #panel .lyr b.pal-chev:hover, #panel .lyr b.pal-chev:focus-visible { opacity: 1; background: none; }
   /* The trigger-section fold, on the "Triggers" heading inside a break-out box. Scoped
      to #breakout because that is the only place the trigger section exists. */
   #breakout .trig-chev {

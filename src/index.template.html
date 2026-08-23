@@ -274,7 +274,10 @@
        tallest run of furniture in the block, and the part you stop needing once the colours
        are settled. One boolean drives every block at once, the same policy the group folds
        use, and it is transient: not in fullSnapshot(), so it never rides a scene or a link. -->
-  <label><b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <!-- The chevron is a SIBLING of the label, not a child. Inside it, the label's own
+       click-and-focus chrome wrapped it in a box; beside it, it is exactly the layer
+       row's chevron: a bare <b> marker in its own grid cell. -->
+  <div class="pal-head"><b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b><label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label></div>
   <div data-k="palbody">
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
@@ -284,8 +287,10 @@
     <select data-k="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
   <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
-  </div>
+  <!-- Banding lives under the palette fold too: it is a filter over the palette, so it
+       belongs to the section the chevron names. -->
   <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  </div>
   </div></template>
   </details>
 
