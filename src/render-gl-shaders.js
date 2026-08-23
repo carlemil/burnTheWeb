@@ -1024,9 +1024,10 @@
     uniform float uOcOn; uniform float uOcId; uniform float uTime; uniform float uSwell;
     uniform float uChop; uniform float uFoam; uniform float uWind; uniform float uHeight;
     uniform float uReflect;
-    uniform float uGbOn; uniform float uGbId; uniform float uGbTime; uniform float uGbCount;
-    uniform float uGbRad; uniform float uGbMat; uniform float uGbIor; uniform float uGbGlow;
-    uniform vec4 uGbPlace;
+    uniform float uGbOn;
+    uniform float uGbId[4]; uniform float uGbTime[4]; uniform float uGbCount[4];
+    uniform float uGbRad[4]; uniform float uGbMat[4]; uniform float uGbIor[4]; uniform float uGbGlow[4];
+    uniform vec4 uGbPlace[4];
     uniform float uSdOn; uniform float uSdId; uniform float uSdCount; uniform float uSdRim;
     uniform vec4 uSdPos[8]; uniform vec4 uSdQuat[8]; uniform float uSdShape[8];
     uniform vec4 uSdPlace;
@@ -1072,18 +1073,37 @@
     // Dropping that multiply is the classic placed-SDF bug: the marcher then takes steps in
     // local units through world space, overshoots, and punches holes in the object — which
     // reads as a broken shader rather than as a missing factor. worldprobe pins it.
-    float glassDE(vec3 p){
+    // UP TO FOUR GLASS LAYERS AT ONCE -- the one-per-kind rule is lifted for this effect,
+    // because two glass layers reflecting each other at their true positions is the whole
+    // request. Each group keeps its own placement, clock, material and ID; the union
+    // reports WHICH group was nearest (.y) so the shading can use that group's material.
+    vec2 glassDE(vec3 p){
 #if W_GB
-      vec3 pl = (p - uGbPlace.xyz)/uGbPlace.w;
-      float d = 1e9;
-      for (int i = 0; i < 5; i++){
-        if (float(i) >= uGbCount) break;
-        d = min(d, length(pl - ballAt(i, uGbTime)) - uGbRad);
+      float d = 1e9, gid = 0.0;
+      // W_GBN is a COMPILE-TIME constant, injected per program like the W_* gates: the
+      // driver's backend pays for every group a loop can reach, so a uniform bound made
+      // one glass layer link like four (12s against 3.5). One program per count instead.
+      for (int g = 0; g < W_GBN; g++){
+        vec3 pl = (p - uGbPlace[g].xyz)/uGbPlace[g].w;
+        float dg = 1e9;
+        for (int i = 0; i < 5; i++){
+          if (float(i) >= uGbCount[g]) break;
+          dg = min(dg, length(pl - ballAt(i, uGbTime[g])) - uGbRad[g]);
+        }
+        dg = dg*uGbPlace[g].w;
+        if (dg < d){ d = dg; gid = float(g); }
       }
-      return d*uGbPlace.w;
+      return vec2(d, gid);
 #else
-      return 1e9;
+      return vec2(1e9, 0.0);
 #endif
+    }
+    // Which glass group owns this hit ID; -1 if the hit is not glass at all.
+    int gbGroupOf(float id){
+      for (int g = 0; g < W_GBN; g++){
+        if (abs(uGbId[g] - id) < 0.5) return g;
+      }
+      return -1;
     }
     // Bouncing solids, verbatim from FS_SOLIDS: the bodies carry a quaternion, and an
     // implicit surface has no vertices to hold an orientation, so each SAMPLE is un-rotated
@@ -1212,7 +1232,7 @@
     vec2 worldMap(vec3 p){
       float d = 1e9, id = 0.0;
 #if W_GB
-      if (uGbOn > 0.5){ float g = glassDE(p); if (g < d){ d = g; id = uGbId; } }
+      if (uGbOn > 0.5){ vec2 g = glassDE(p); if (g.x < d){ d = g.x; id = uGbId[int(g.y + 0.5)]; } }
 #endif
 #if W_SD
       if (uSdOn > 0.5){ float g = solidsDE(p); if (g < d){ d = g; id = uSdId; } }
@@ -1297,7 +1317,10 @@
         return 0.20 + 0.72*max(0.0, dot(n, normalize(vec3(0.55, 0.75, -0.5)))) + uQjGlow*0.55*rim;
       if (id == uVbId && uVbOn > 0.5)
         return 0.14 + 0.78*max(0.0, dot(n, normalize(vec3(0.45, 0.6, -0.66)))) + uVbGlow*0.7*rim;
-      return 0.10 + 0.55*face + (0.06 + uGbGlow*0.55)*rim;
+      // glass, seen flat in someone else's reflection: no nested bounce, that group's glow
+      int gg = gbGroupOf(id);
+      float glow = gg >= 0 ? uGbGlow[gg] : 0.5;
+      return 0.10 + 0.55*face + (0.06 + glow*0.55)*rim;
     }
     float envRay(vec3 ro, vec3 rd){
       float id;
@@ -1353,49 +1376,60 @@
         heat = shade0(id, ro + rd*t, rd, t);
       }
 #else
-      } else if (!(id == uGbId && uGbOn > 0.5)){
+      } else if (uGbOn < 0.5 || gbGroupOf(id) < 0){
         // Solids and Quaternion Julia are opaque and shade exactly as they do standalone.
         // They are in the world to be SEEN by the reflective ones and to occlude them --
         // giving them their own reflection rays would double the trace for a material that
         // never had one.
         heat = shade0(id, ro + rd*t, rd, t);
       } else {
+        // Every glass parameter is the HIT GROUP's -- two glass layers can be different
+        // materials, and each is reflected in the other with its own look.
+        int gg = gbGroupOf(id);
+        float mat = uGbMat[gg], ior = uGbIor[gg], glow = uGbGlow[gg];
         vec3 p = ro + rd*t;
         vec3 n = sdfNormal(p);
         float face = max(0.0, dot(n, -rd));
         float fres = pow(1.0 - face, 5.0);
         float rim = pow(1.0 - face, 2.0);                // the wide term that makes a ball a ball
         vec3 refl = reflect(rd, n);
-        if (uGbMat < 0.5){
-          heat = envRay(p, refl)*0.90 + (0.06 + uGbGlow*0.55)*rim;
-        } else if (uGbMat < 1.5){
-          vec3 r1 = refract(rd, n, 1.0/uGbIor);
+        if (mat < 0.5){
+          heat = envRay(p, refl)*0.90 + (0.06 + glow*0.55)*rim;
+        } else if (mat < 1.5){
+          vec3 r1 = refract(rd, n, 1.0/ior);
           // Exit through the far side of the same ball. Placed geometry, so the centre has
           // to come back out of the placement rather than being read from a uniform.
-          vec3 pl = (p - uGbPlace.xyz)/uGbPlace.w;
+          vec3 pl = (p - uGbPlace[gg].xyz)/uGbPlace[gg].w;
           vec3 cl = vec3(0.0);
           float bd = 1e9;
           for (int i = 0; i < 5; i++){
-            if (float(i) >= uGbCount) break;
-            vec3 ci = ballAt(i, uGbTime);
-            float di = abs(length(pl - ci) - uGbRad);
+            if (float(i) >= uGbCount[gg]) break;
+            vec3 ci = ballAt(i, uGbTime[gg]);
+            float di = abs(length(pl - ci) - uGbRad[gg]);
             if (di < bd){ bd = di; cl = ci; }
           }
-          vec3 ctr = uGbPlace.xyz + cl*uGbPlace.w;
+          vec3 ctr = uGbPlace[gg].xyz + cl*uGbPlace[gg].w;
           vec3 pe = p - 2.0*dot(p - ctr, r1)*r1;
           vec3 n2 = normalize(pe - ctr);
-          vec3 r2 = refract(r1, -n2, uGbIor);
+          vec3 r2 = refract(r1, -n2, ior);
           if (dot(r2, r2) < 0.001) r2 = reflect(r1, -n2);
           heat = mix(envRay(pe, r2)*0.78, envRay(p, refl), clamp(fres*1.6, 0.0, 1.0))
-               + (0.06 + uGbGlow*0.70)*rim;
+               + (0.06 + glow*0.70)*rim;
         } else {
-          vec3 r1 = refract(rd, n, 1.0/uGbIor);
+          vec3 r1 = refract(rd, n, 1.0/ior);
           vec3 thin = normalize(mix(rd, r1, 0.30));
           heat = mix(envRay(p, thin)*0.60, envRay(p, refl), clamp(0.20 + fres*2.0, 0.0, 1.0))
-               + (0.14 + uGbGlow*0.9)*rim;
+               + (0.14 + glow*0.9)*rim;
         }
       }
 #endif
+      // A HIT keeps at least ONE HEAT QUANTUM. Coverage (the OVER blend's alpha) is heat>0,
+      // and an opaque surface can legitimately shade to ~0 -- a metal ball's front top
+      // reflects the near-black sky with the rim term at zero -- so without this floor the
+      // coverage mask punched a hole in the ball exactly where a highlight belongs, showing
+      // the background through it as black. One quantum renders as the palette's DARKEST
+      // colour, which is what a dark part of an opaque object should be.
+      if (id > 0.5) heat = max(heat, 0.004);
       o = vec4(clamp(heat, 0.0, 0.92), id/255.0, 0.0, 1.0);
     }`;
     // Hand one layer its own pixels out of the world G-buffer. Everything downstream —
@@ -1542,6 +1576,10 @@
                + (0.14 + uGlow*0.9)*rim;
         }
       }
+      // Same one-quantum floor the world pass applies on a hit: coverage is heat>0, and a
+      // dark metal face must stay part of the ball, not become a hole showing the layer
+      // below. Misses keep their exact 0 -- that IS the mask.
+      if (hit) heat = max(heat, 0.004);
       o = vec4(clamp(heat, 0.0, 0.92), 0.0, 0.0, 1.0);
     }`;
     // Doughnut: the inside of a torus, flown along the tube.

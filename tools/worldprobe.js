@@ -64,33 +64,44 @@ const ok = (name, cond, detail) => {
 
   const a = L(0, true), b = L(1, true), c = L(4, true), d = L(5, true), e = L(6, true);
   // More kinds than STACK_MAX on purpose: the plan must not care how many can join, only
-  // that each kind claims one slot and each claim gets its own ID.
+  // that each kind claims its slot and each claim gets its own ID.
   const plan = P.planWorld([a, b, c, d, e]);
   ok("every joinable kind can share one world",
-     !!plan && plan.oc === a && plan.gb === b && plan.sd === c && plan.qj === d && plan.vb === e);
+     !!plan && plan.oc === a && plan.gbs[0] === b && plan.sd === c && plan.qj === d && plan.vb === e);
   const ids = [...plan.ids.values()];
   ok("every joined layer gets an ID", plan.ids.size === 5, ids.join(","));
   ok("IDs are unique", new Set(ids).size === ids.length, ids.join(","));
   // 0 is "nothing was hit" in the G-buffer, so no layer may hold it.
   ok("no layer is given ID 0 -- that is the background", ids.every(v => v >= 1), ids.join(","));
 
-  // One per kind, first in stack order, and the LOSER must still render itself.
+  // GLASS IS THE MULTI EXCEPTION: every joined Glass ball layer is its own group, with its
+  // own ID -- two glass layers reflecting each other at their true positions is the point.
   const g1 = L(1, true), g2 = L(1, true);
   const p2 = P.planWorld([g1, g2]);
-  ok("only one layer per effect kind joins", p2.ids.size === 1);
-  ok("...and it is the first in stack order", p2.ids.has(g1) && !p2.ids.has(g2));
+  ok("two Glass ball layers BOTH join", p2.ids.size === 2 && p2.gbs.length === 2);
+  ok("...with distinct IDs", p2.ids.get(g1) !== p2.ids.get(g2),
+     p2.ids.get(g1) + " / " + p2.ids.get(g2));
+  // The single kinds stay single.
+  const o1 = L(0, true), o2 = L(0, true);
+  const p2b = P.planWorld([o1, o2]);
+  ok("two Oceans still collapse to one", p2b.ids.size === 1 && p2b.ids.has(o1) && !p2b.ids.has(o2));
 
   // The owner -- whose camera the world uses -- is the lowest joined layer.
   const p3 = P.planWorld([L(2, true), b, a]);
   ok("the first joined layer owns the camera", p3.ids.keys().next().value === b,
      "glass came before ocean in the stack");
+  ok("the glass cap is STACK_MAX", (function(){
+    const p = P.planWorld([L(1, true), L(1, true), L(1, true), L(1, true)]);
+    return p.gbs.length === 4;
+  })(), "four glass layers, four groups");
 }
 
 // --- 2. the placement scale, which the march depends on -------------------------
 {
-  const glassDE = slice("    float glassDE(vec3 p){", "    // The SDF union.");
-  ok("a placed SDF divides the point by the scale", /\(p - uGbPlace\.xyz\)\/uGbPlace\.w/.test(glassDE));
-  ok("...and MULTIPLIES the distance back by it", /return d\*uGbPlace\.w;/.test(glassDE),
+  const glassDE = slice("    vec2 glassDE(vec3 p){", "    int gbGroupOf(");
+  ok("a placed SDF divides the point by its group's scale",
+     glassDE.indexOf("(p - uGbPlace[g].xyz)/uGbPlace[g].w") >= 0);
+  ok("...and MULTIPLIES the distance back by it", glassDE.indexOf("dg*uGbPlace[g].w") >= 0,
      "without this the marcher overshoots and the object gains holes");
   // EVERY placed group, not just the first: the multiply is easy to forget on the next one.
   // The bodies are matched with a regex rather than sliced on a newline literal -- an
@@ -153,7 +164,8 @@ const ok = (name, cond, detail) => {
      "otherwise the tab freezes for the length of the link");
   const draw = slice("  function glWorldDraw(", "  function glWorldPick(");
   ok("the ocean's clock is advanced there", /oceanSeed\(dt\)/.test(draw));
-  ok("and the glass ball's", /glassSeed\(dt\)/.test(draw));
+  ok("and every glass layer's own", /glassSeed\(dt\)/.test(draw) && /gbs\.forEach/.test(draw),
+     "one clock advance per joined glass layer, each installed first");
 
   const rlh = noComments(slice("  function renderLayerHeat(", "  // Map a layer's heat"));
   ok("a joined layer picks instead of drawing itself",
@@ -226,13 +238,19 @@ const ok = (name, cond, detail) => {
 
   const wpf = slice("  function worldProgFor(", "  // `dt` is not optional.");
   ok("the program is keyed by the COMBINATION of joined groups",
-     /\["gb", "sd", "qj", "vb"\]\.filter/.test(wpf), "so two effects never pay for the other three");
+     wpf.indexOf('.filter(k => k === "gb" ? plan.gbs.length : plan[k])') >= 0,
+     "so two effects never pay for the other three");
+  ok("...and the glass COUNT is part of the key",
+     wpf.indexOf('"gb" + plan.gbs.length') >= 0,
+     "a uniform loop bound made ONE glass layer link like four -- 12s against 3.5");
+  const ws = slice("  function worldSource(", "  // Returns the linked program");
+  ok("W_GBN is baked into the source from that key", ws.indexOf('"#define W_GBN "') >= 0);
   ok("LINK_STATUS is not read until the driver says it is done",
      wpf.indexOf("COMPLETION_STATUS_KHR") < wpf.indexOf("gl.LINK_STATUS"),
      "reading it early IS the stall -- it blocks until the link finishes");
   ok("a failed link is remembered, not retried every frame", /e\.prog = \{ p: null/.test(wpf));
 
-  const ws = slice("  function worldSource(", "  // Returns the linked program");
+  const ws2 = slice("  function worldSource(", "  // Returns the linked program");
   ok("the defines are injected after #version, which must stay line 1",
      /replace\("#version 300 es" \+ WNL, "#version 300 es" \+ def\)/.test(ws));
   ok("...and are built without a newline ESCAPE", /String\.fromCharCode\(10\)/.test(src),

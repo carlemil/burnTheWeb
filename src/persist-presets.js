@@ -620,6 +620,19 @@
   function installStack(items) {
     const now = phaseSnapshot();
     for (const L of items) L.phase = Object.assign({}, now);
+    // EVERY layer's palette family becomes CONCRETE here. A null palette used to fall back
+    // to the runtime extras[L.fx] at render time -- per-effect palette memory -- which meant
+    // two layers of the SAME effect re-tinted each other: edit one glass layer's palette and
+    // the other, never selected, followed it. Resolving the fallback ONCE at install keeps
+    // what that policy was for (a legacy shared-palette scene still loads looking shared,
+    // because both layers resolve from the same extras) while ending the bleed: from this
+    // point each layer owns its values and edits stay where they were made.
+    for (const L of items) {
+      const fx = extras[L.fx] || presetExtra(L.fx);
+      if (L.palette == null) L.palette = String(fx.palette);
+      if (L.paletteRev == null) L.paletteRev = !!fx.paletteRev;
+      if (L.paletteBg == null) L.paletteBg = bgOk(fx.paletteBg);
+    }
     stack = items;
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed

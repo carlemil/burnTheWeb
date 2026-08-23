@@ -1386,7 +1386,7 @@
           const nx = px / R, ny = py / R, nz = pz / R;
           const dif = Math.max(0, -(nx * rdx + ny * rdy + nz * rdz));
           const rim = Math.pow(1 - dif, 2);          // the same wide grazing term the shader uses
-          heat = 0.12 + 0.55 * dif + (0.10 + s.glow * 0.7) * rim;
+          heat = Math.max(0.004, 0.12 + 0.55 * dif + (0.10 + s.glow * 0.7) * rim);
         }
         const v = Math.min(0.92, heat) * 255;
         for (let by = y; by < Math.min(y + 2, fh); by++)

@@ -189,9 +189,20 @@ it renders unchanged.
   rotations in the same order inside `qjuliaDE` in the world — so a scene set up standalone
   keeps its pose when it joins. `worldprobe` asserts the order matches.
 - **`WORLD_KINDS` is the roster**: `ocean`, `glass`, `solids`, `qjulia`, `vballs`. One layer
-  per kind (first in stack order); a second Glass ball layer renders standalone. The interior
-  flights can never be added — they have nowhere to stand in someone else's world, and
-  `worldprobe` asserts their absence by name.
+  per kind — **except GLASS, which is multi**: every joined Glass ball layer is its own group
+  (up to `STACK_MAX`), with its own ID, placement, clock and material, so two glass layers
+  reflect each other at their true positions. The uniforms are arrays; `glassDE` returns
+  `(dist, groupIdx)` and the shading indexes the hit group's material. **The glass COUNT is
+  baked into the program key (`gb2|oc`) as `#define W_GBN`** — a uniform loop bound made ONE
+  glass layer link like four (12 s against 3.5), because the backend optimises for every
+  group a loop can reach. The interior flights can never be added, and `worldprobe` asserts
+  their absence by name.
+- **The `world` tick's single writer is its own change handler**, writing `stack[slot]` (the
+  layer the checkbox BELONGS to) from `e.target.checked` — never `stack[stackSel]` from the
+  selected block's node. `captureLayerExtras` must NOT read it back from the checkbox:
+  `applyLayerExtras` repaints checkboxes from the incoming layer, so a freeze could capture a
+  value another selection had just painted over and a tick silently unticked itself. The
+  `worldChk` setter writes ONLY the selected block (`paintBlock` maintains the others).
 - **Only the Glass ball traces secondary rays.** The others shade exactly as they do
   standalone; they are in the world to be SEEN in its reflections and to occlude it. Giving
   them reflection rays would double the trace for materials that never had one.
@@ -941,15 +952,18 @@ as "the metal is transparent" — it was not; the mode was additive.
 each duration like `ttlMs()`. Both thumbs 0 pins it. `morphing` is **derived** (`palCycleOn()`), not
 stored; `syncMorphFromSlider()` starts/pins on edit. `extras.morph` still written for compat.
 
-**Two per-layer fallback policies coexist, deliberately — don't unify.** A null per-layer field
-falls back to the **runtime `extras[L.fx]`** for the palette family (palette/rev/bg/showBox —
-per-effect palette memory is a feature, and legacy scenes must keep their shared-palette look)
-but to the **descriptor default** for filters and seedPts (the runtime fallback there was the
-"every uncaptured layer mirrors the last edit" bug — structure, not tint). Accepted cost: a
-legacy never-selected layer with null palette re-tints with same-effect edits until first
-selection captures it. Documented at `layerPalIndex`.
+**The palette family is made CONCRETE per layer at install** (`installStack` + `addStackItem`
+resolve a null `palette`/`paletteRev`/`paletteBg` from `extras[L.fx] || presetExtra` ONCE).
+The old policy left null palettes falling back to the runtime extras at render time —
+per-effect palette memory — and its "accepted cost" stopped being acceptable the day two
+same-effect layers sat open side by side: editing one glass layer's palette re-tinted the
+other. Resolving once at install keeps what the fallback was for (a legacy shared-palette
+scene still LOADS looking shared, both layers resolving from the same extras) while ending
+the bleed. Filters and seedPts still fall back to the **descriptor default** on null.
 
-**Each layer block has THREE TABS — Effect / Filters / Palette** (`.lyr-tabs`, panes
+**Each layer block has THREE TABS — Effect / Filters / Palette**, and the open tab is
+**PER LAYER** (`lyrTab` is an array by slot): it shipped shared for one release, and the layer
+boxes made that wrong — side-by-side workspaces must not flip each other's tabs. The block (`.lyr-tabs`, panes
 `[data-k="tab-fx|tab-flt|tab-pal"]`) over the three runs of controls the block always had:
 `fxctl` + Orbit editor + Reset; `filterlist` + `filterctl`; swatches + Reverse + Background +
 cycle + **banding** (a filter over the palette, so it lives there). **Which tab is open is ONE

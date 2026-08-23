@@ -1340,7 +1340,17 @@
     for (const L of live) {
       const kind = WORLD_KINDS[EFFECTS[L.fx].id];
       if (!kind || !layerWorld(L)) continue;
-      if (!plan) plan = { ids: new Map(), oc: null, gb: null, sd: null, qj: null, vb: null };
+      if (!plan) plan = { ids: new Map(), oc: null, gbs: [], sd: null, qj: null, vb: null };
+      // GLASS IS MULTI: every joined Glass ball layer gets its own group (up to STACK_MAX),
+      // because two glass layers reflecting each other at their true positions is the point.
+      // The other kinds stay one-per-world -- their uniforms are single, and nobody has
+      // asked for two oceans.
+      if (kind === "gb") {
+        if (plan.gbs.length >= 4) continue;
+        plan.gbs.push(L);
+        plan.ids.set(L, next++);
+        continue;
+      }
       if (plan[kind]) continue;         // one per kind, first in stack order
       plan[kind] = L;
       plan.ids.set(L, next++);
@@ -1369,6 +1379,10 @@
   // executes later and wipes it, so the world shader compiles from an empty string and
   // throws `1:1 syntax error` on every frame. Exactly the trap bindFbo's curFbo documents.
   // initGL is the one place these are set.
+  // Scratch for the glass groups' uniform arrays -- allocated once, refilled per frame.
+  const gbScr = { ids: new Float32Array(4), times: new Float32Array(4), counts: new Float32Array(4),
+                  rads: new Float32Array(4), mats: new Float32Array(4), iors: new Float32Array(4),
+                  glows: new Float32Array(4), places: new Float32Array(16) };
   var worldProgs;                       // "gb|sd" -> { p, pending } | { p, prog }
   var worldPar;                         // the parallel-compile extension, looked up once
   var worldVs, worldFsBase;             // shader sources -- they are local to initGL
@@ -1385,7 +1399,14 @@
   const WNL = String.fromCharCode(10);
   function worldSource(key) {
     const on = f => (key.indexOf(f) >= 0 ? "1" : "0");
+    // The glass COUNT is baked in as W_GBN (the key carries it: "gb2|oc"). A uniform bound
+    // made every program pay the 4-group link cost -- one glass layer linked in 12 seconds
+    // against 3.5 -- because the backend optimises for every group a loop can reach. A
+    // constant bound makes one glass layer link like one. W_GBN stays >= 1 with glass off;
+    // the arrays are still declared either way.
+    const gbm = key.match(/gb([0-9])/);
     const def = WNL + "#define W_GB " + on("gb")
+              + WNL + "#define W_GBN " + (gbm ? gbm[1] : "1")
               + WNL + "#define W_SD " + on("sd")
               + WNL + "#define W_QJ " + on("qj")
               + WNL + "#define W_VB " + on("vb") + WNL;
@@ -1393,7 +1414,9 @@
   }
   // Returns the linked program, or null while it is still being built.
   function worldProgFor(plan) {
-    const key = ["gb", "sd", "qj", "vb"].filter(k => plan[k]).join("|") || "oc";
+    const key = ["gb", "sd", "qj", "vb"]
+      .filter(k => k === "gb" ? plan.gbs.length : plan[k])
+      .map(k => k === "gb" ? "gb" + plan.gbs.length : k).join("|") || "oc";
     let e = worldProgs[key];
     if (e && e.prog) return e.prog;
     if (!e) {
@@ -1434,7 +1457,7 @@
     gl.uniform2f(P.u.uSize, fw, fh);
     if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
     gl.uniform1f(P.u.uZoom, zoom);
-    const oc = plan.oc, gb = plan.gb, sd = plan.sd, qj = plan.qj, vb = plan.vb;
+    const oc = plan.oc, gbs = plan.gbs, sd = plan.sd, qj = plan.qj, vb = plan.vb;
     gl.uniform1f(P.u.uOcOn, oc ? 1 : 0);
     gl.uniform1f(P.u.uOcId, oc ? plan.ids.get(oc) : 0);
     if (oc) {
@@ -1446,16 +1469,25 @@
       gl.uniform1f(P.u.uReflect, s.reflect);
       capturePhase(oc);
     }
-    gl.uniform1f(P.u.uGbOn, gb ? 1 : 0);
-    gl.uniform1f(P.u.uGbId, gb ? plan.ids.get(gb) : 0);
-    if (gb) {
-      installStackItem(gb); installPhase(gb);
-      const s = glassSeed(dt);          // ...likewise
-      gl.uniform1f(P.u.uGbTime, s.t); gl.uniform1f(P.u.uGbCount, s.count);
-      gl.uniform1f(P.u.uGbRad, s.rad); gl.uniform1f(P.u.uGbMat, s.mat);
-      gl.uniform1f(P.u.uGbIor, s.ior); gl.uniform1f(P.u.uGbGlow, s.glow);
-      gl.uniform4f(P.u.uGbPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
-      capturePhase(gb);
+    gl.uniform1f(P.u.uGbOn, gbs.length ? 1 : 0);
+    if (gbs.length) {
+      // One array entry per joined glass layer. installStackItem puts THAT layer's placement
+      // sliders and clock into the globals before each read, so every group carries its own.
+      const ids = gbScr.ids, times = gbScr.times, counts = gbScr.counts, rads = gbScr.rads;
+      const mats = gbScr.mats, iors = gbScr.iors, glows = gbScr.glows, places = gbScr.places;
+      gbs.forEach((gb, g) => {
+        installStackItem(gb); installPhase(gb);
+        const s = glassSeed(dt);        // this layer's one clock advance for the frame
+        ids[g] = plan.ids.get(gb); times[g] = s.t; counts[g] = s.count; rads[g] = s.rad;
+        mats[g] = s.mat; iors[g] = s.ior; glows[g] = s.glow;
+        places[g * 4] = wldX; places[g * 4 + 1] = wldY; places[g * 4 + 2] = wldZ;
+        places[g * 4 + 3] = Math.max(0.05, wldScale);
+        capturePhase(gb);
+      });
+      gl.uniform1fv(P.u.uGbId, ids); gl.uniform1fv(P.u.uGbTime, times);
+      gl.uniform1fv(P.u.uGbCount, counts); gl.uniform1fv(P.u.uGbRad, rads);
+      gl.uniform1fv(P.u.uGbMat, mats); gl.uniform1fv(P.u.uGbIor, iors);
+      gl.uniform1fv(P.u.uGbGlow, glows); gl.uniform4fv(P.u.uGbPlace, places);
     }
     gl.uniform1f(P.u.uSdOn, sd ? 1 : 0);
     gl.uniform1f(P.u.uSdId, sd ? plan.ids.get(sd) : 0);

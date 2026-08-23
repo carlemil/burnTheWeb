@@ -239,8 +239,12 @@
                        set checked(v) { for (const n of ctlEach("showbox")) n.checked = v; } };
   const randSeedChk = { get checked() { const n = ctl("randseed"); return !!n && n.checked; },
                         set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
+  // The world tick: the GETTER reads the selected block, but the SETTER writes ONLY the
+  // selected block -- unlike showBox's all-blocks setter. Each block's checkbox mirrors its
+  // OWN layer (paintBlock maintains the others), and an all-blocks write is how selecting
+  // layer A blanked layer B's tick.
   const worldChk = { get checked() { const n = ctl("world"); return !!n && n.checked; },
-                     set checked(v) { for (const n of ctlEach("world")) n.checked = v; } };
+                     set checked(v) { const n = ctl("world"); if (n) n.checked = v; } };
   // ---- layer tabs: Effect / Filters / Palette -------------------------------------
   // Which tab is open is ONE value for every block, like the group folds: a tab is a way of
   // looking at a layer, and switching layers should not also switch what you are looking
@@ -248,17 +252,23 @@
   // The tab REPLACED the palette fold: a tab is a fold with a name, and two ways to hide
   // the same controls is one too many.
   const LYR_TABS = ["fx", "flt", "pal"];
-  let lyrTab = "fx";
+  // PER LAYER, not shared: with layer boxes open side by side in the grid, each block is its
+  // own workspace, and switching one box's tab must not flip its neighbour's. (It shipped
+  // shared for one release, on the panel-column logic that a tab was a way of looking at
+  // whichever layer was selected; the boxes made that wrong.) Transient, per slot.
+  const lyrTab = ["fx", "fx", "fx", "fx"];
   function syncLyrTabs() {
-    for (const t of LYR_TABS) {
-      const on = t === lyrTab;
-      for (const n of ctlEach("tab-" + t)) n.hidden = !on;
-      for (const n of ctlEach("tab-btn-" + t)) { n.classList.toggle("on", on); n.setAttribute("aria-selected", on ? "true" : "false"); }
+    for (let s2 = 0; s2 < STACK_MAX; s2++) for (const t of LYR_TABS) {
+      const on = t === lyrTab[s2];
+      const pane = ctlIn(s2, "tab-" + t);
+      if (pane) pane.hidden = !on;
+      const btn = ctlIn(s2, "tab-btn-" + t);
+      if (btn) { btn.classList.toggle("on", on); btn.setAttribute("aria-selected", on ? "true" : "false"); }
     }
   }
-  function setLyrTab(t) {
-    if (LYR_TABS.indexOf(t) < 0 || t === lyrTab) return;
-    lyrTab = t;
+  function setLyrTab(slot, t) {
+    if (LYR_TABS.indexOf(t) < 0 || lyrTab[slot] === t) return;
+    lyrTab[slot] = t;
     syncLyrTabs();
     // Break-out boxes are NOT tied to the tab: you popped a slider out precisely so it
     // stays in view whatever the block is showing.
@@ -269,14 +279,19 @@
     ctlIn(slot, "randseed").addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
     // Joining or leaving the shared world changes which layers are traced together, so
     // it has to reach the render immediately rather than waiting for a reselect.
-    ctlIn(slot, "world").addEventListener("change", () => { if (stack[stackSel]) stack[stackSel].world = worldChk.checked; });
+    // Write the layer THIS CHECKBOX BELONGS TO, from the event's own target -- not
+    // stack[stackSel] from the selected block's node. A real click selects the layer first
+    // (the capture-phase pointerdown on the box), so the two usually agree; a synthetic
+    // change without that selection wrote the WRONG layer from the WRONG checkbox, and the
+    // tick silently landed nowhere.
+    ctlIn(slot, "world").addEventListener("change", e => { if (stack[slot]) stack[slot].world = e.target.checked; });
     ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
     for (const t of LYR_TABS) {
       const btn = ctlIn(slot, "tab-btn-" + t);
       // stopPropagation on click only: the row's capture-phase pointerdown still selects the
       // layer (clicking a tab IS reaching for that layer), but the click must not bubble to
       // anything that would treat it as an edit.
-      if (btn) btn.addEventListener("click", e => { e.stopPropagation(); setLyrTab(t); });
+      if (btn) btn.addEventListener("click", e => { e.stopPropagation(); setLyrTab(slot, t); });
     }
   }
   syncLyrTabs();

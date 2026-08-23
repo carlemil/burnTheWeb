@@ -113,6 +113,10 @@
     freezeItem(stack[stackSel]);
     const L = newStackItem(fx === undefined ? effect : fx);
     applyEffectBlend(L);              // the effect's shipped blend (Glass ball: over)
+    // Concrete palette from birth, for the same reason installStack resolves it: a null here
+    // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
+    { const px = extras[L.fx] || presetExtra(L.fx);
+      L.palette = String(px.palette); L.paletteRev = !!px.paletteRev; L.paletteBg = bgOk(px.paletteBg); }
     // A fresh item is seeded from its effect's shipped defaults, not from the item that
     // happened to be selected — mergeState against its OWN effect, or every key that
     // effect declares would be dropped.
@@ -791,7 +795,13 @@
     L.paletteBg = paletteBg;
     captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
     L.showBox = showBoxChk.checked;   // the wireframe box is per-layer, not per-effect
-    L.world = worldChk.checked;       // ...and so is joining the shared 3D world
+    // NOT L.world: the world tick's single writer is its own change handler, which sets
+    // stack[stackSel].world directly. Capturing it from the checkbox here is the bug class
+    // this line used to be -- applyLayerExtras repaints EVERY block's checkbox from the
+    // incoming layer (the shared setter), so with two layers of the same effect a freeze
+    // could read back a value another layer's selection had just painted over, and a tick
+    // silently unticked itself. showBox tolerates the round trip because nothing else
+    // repaints it mid-flow; the world tick did not.
     L.filters = activeFilterIds();    // the user's drag order, not registry order
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
