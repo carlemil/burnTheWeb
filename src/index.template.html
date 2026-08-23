@@ -274,7 +274,7 @@
        tallest run of furniture in the block, and the part you stop needing once the colours
        are settled. One boolean drives every block at once, the same policy the group folds
        use, and it is transient: not in fullSnapshot(), so it never rides a scene or a link. -->
-  <label>Palette <b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b> <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <label><b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palbody">
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
@@ -561,6 +561,10 @@
 
 <!-- Pop-out column: sliders "broken out" of the menu dock here (see the break-out
      module in the script). Sits to the right of #panel; empty/hidden by default. -->
+<!-- The snap grid, drawn only while something is being dragged. Its own element rather
+     than a background on #breakout: that host is hidden when empty and when the panel
+     is, and the grid is placed from the PANEL's rect, not from the column's. -->
+<div id="brkgrid" aria-hidden="true"></div>
 <div id="breakout" class="empty"></div>
 
 <script>

@@ -573,6 +573,27 @@ in click order. A thumb is only ever visible in the column.
   A `single` control has no trigger section at all (`wireRange` suppresses it), so it has
   no chevron either — asserting the fold on one is a check of nothing.
 
+**ONE DRAG ENGINE, AND THE GRID IS THE EDITOR'S GRID.** Break-out boxes and every floating
+tool panel (`#carddlg`, `#paledlg`, `#paldlg`, the three pickers, and the modal dialogs) are
+dragged by their **title bar** — `.ctl-owner .own-txt` for a box, the `<h2>` for a dialog —
+onto one shared grid. They are three different positioning schemes (a JS-placed column, a
+fixed corner, a margin-docked box inside a full-screen shell), and unifying the DRAG rather
+than the CSS is what stops that becoming a fourth.
+- **`brkGrid()` measures the PANEL's live bounding rect**: origin at its right edge + gap and
+  its top, one column exactly `BRK_W + BRK_GAP` wide, rows dividing the panel's height. So
+  column 0 is flush beside the menu and a snap lines up with the editor. Hard-coding 298/58
+  here is how the two drift apart — the panel's width is a CSS number that has moved before.
+- **`#brkgrid` draws it while dragging** (`body.brk-gridding`), placed and sized from the same
+  `brkGrid()`, so the drawing and the maths cannot disagree. A snap you cannot see is a box
+  that jumps somewhere you did not ask for.
+- The dialogs' movable node is **not always the `<h2>`'s parent** — `#carddlg .card-box` is
+  deliberately `position: static` and the host carries the placement — so `dragTargetFor`
+  walks up to the first positioned ancestor. A `relative` box is converted to `absolute`;
+  its shell being `inset: 0` is what makes viewport and absolute coordinates the same number,
+  which is why one rect-based engine drives boxes and dialogs alike.
+- The dialog handler is **delegated on `document`** (capture): `#help` builds its whole box on
+  open, so nothing to wire exists at startup.
+
 **`#breakout` IS A FULL-SCREEN FREE GRID.** `position: fixed; inset: 0; pointer-events: none`,
 every visible box `position: absolute; pointer-events: auto`. **One positioning model, not
 two**: `layoutBreakout()` places the never-dragged boxes into the same 298/58 column (wrapping
@@ -654,12 +675,19 @@ the original math byte-for-byte.
 `glShaderDraw` sets it with `uniform4f`): a radial scale on the SAMPLE coordinate, applied
 **before** the rotation in both `camFrag4()` and `camPix()` so the two compose identically,
 normalised by the half diagonal so one slider means one lens at any resolution. `camOn()`
-must include `camFov`. **Shader effects only** — `fov` is in the `params` of the 33
-descriptors with a `draw` hook and none of the 8 with a `stamp` one: it is an INVERSE map on
-a sample coordinate, and a point effect stamps a destination. The same curve applied to a
-stamped point bends it the opposite way for the same slider value, and the true inverse is a
-cubic per point. Default 0, seeded in `presetState` and listed in `CAM_KEYS`, so every scene
-saved before it renders identically (`camOn()` is still false at rest).
+must include `camFov`. Default 0, seeded in `presetState` and listed in `CAM_KEYS`, so every
+scene saved before it renders identically (`camOn()` is still false at rest).
+- **Point effects need the INVERSE**, and `camUnlens` is it. A shader bends the coordinate it
+  SAMPLES; a stamped point already knows its content offset and has to be told where to land,
+  so applying `lens()` to it would bow the picture the OPPOSITE way at the same slider value
+  and a fisheye layer over a stamped one would curve against it. `plot()` therefore applies
+  `camUnlens` **last, to the screen offset** — the far end of the chain whose near end is
+  `camFrag4`'s lens.
+- `lens⁻¹` is the depressed cubic `k·u³ + u − v = 0`; Newton from `u₀ = v` converges in three
+  steps. **A negative FOV FOLDS** — `v = u(1+k·u²)` peaks at `u* = 1/√(−3k)` — and content
+  past `v* = ⅔u*` has no screen position, so those points are DROPPED. That is what a long
+  lens does, not a failure. A wide lens on a stamped effect pulls the picture in from the
+  corners and leaves dark edges, where a shader effect simply shows more of itself.
 
 **Camera on CPU**: mirrors call `camPix(x, y)` per pixel (scratch `camPX`/`camPY`, no allocation).
 Per-row hoists must stay **inside** the x loop — rotation mixes x into y. **Copper Bars** keeps its
@@ -1574,6 +1602,18 @@ Plasma + Fire ~3/4. **Re-run a mismatch 2–3 times.**
 shader effects are bit-reproducible; **point effects are not** — gate those on logic. **Inject
 before the app**, into `<head>`. **Do not clear the rAF queue** — `frame()` re-arms itself. Stub
 `Math.random`; read pixels with `readPixels` in the **same task** as the last frame.
+
+**A CSS TRANSITION DOES NOT ADVANCE UNDER VIRTUAL TIME.** It runs on real time, which
+`--virtual-time-budget` skips past, so a fade read 400 virtual ms after the class goes on
+comes back somewhere between 0 and 0.03 depending on how much real time that run happened to
+spend — an end-value assertion fails against correct code and a greater-than-zero one is
+simply flaky. **Set `style.transition = "none"` first and measure the RULE**, which is the
+part that can actually break.
+
+**A check's own `ok(name, cond)` signature is a trap worth enforcing in code.** Swapped, every
+assertion passes — the name is a non-empty string and therefore always a truthy condition —
+and it went unnoticed four times in one sitting, hiding a real miss behind a green line
+reading `PASS true`. Both browser checks now hard-fail on a non-string first argument.
 
 **A headless assertion of the form "nothing happened after I toggled X" is almost always
 INSENSITIVE.** After a mid-run state change the page renders ~2 frames in *twenty* virtual

@@ -337,6 +337,46 @@
     camPX = camM[0] * dx + camM[1] * dy + fw * 0.5;
     camPY = camM[2] * dx + camM[3] * dy + fh * 0.5;
   }
+  // THE POINT SIDE OF THE LENS, which is the INVERSE map — and the reason FOV shipped as
+  // "shader effects only" before this.
+  //
+  // camFrag4/camPix bend the SAMPLE coordinate: a screen offset s reads the effect at
+  // lens(s) = s·(1 + k·|s|²/R²). A point effect runs the other way — it already knows the
+  // content offset and has to be told where on screen to stamp it — so it needs lens⁻¹.
+  // Applying lens() to a stamped point instead is the trap: it bows the picture the
+  // OPPOSITE way for the same slider value, so a scene with a fisheye layer over a
+  // stamped one would have the two curving against each other.
+  //
+  // lens⁻¹ is a depressed cubic — k·u³ + u − v = 0 in normalised radius — and Newton
+  // solves it in three steps from u₀ = v. The map is near the identity over the visible
+  // disc, so the first guess is already good to a few percent and three steps are exact to
+  // float precision.
+  //
+  // A NEGATIVE FOV FOLDS, and dropping the point is the right answer. v = u(1 + k·u²)
+  // peaks at u* = 1/√(−3k), so content past v* = ⅔u* has no screen position at all — that
+  // is not a failure, it is what a long lens does, and those points fall outside the frame
+  // exactly as a zoomed-out point does.
+  let camUX = 0, camUY = 0;
+  function camUnlens(dx, dy) {
+    const r2 = dx * dx + dy * dy;
+    if (r2 < 1e-12) { camUX = dx; camUY = dy; return true; }
+    const R = Math.sqrt(fw * fw * 0.25 + fh * fh * 0.25);
+    const v = Math.sqrt(r2) / R, k = camFov;
+    if (k < 0) {
+      const us = 1 / Math.sqrt(-3 * k);
+      if (v > us * (1 + k * us * us)) return false;      // past the fold: off the frame
+    }
+    let u = v;
+    for (let i = 0; i < 3; i++) {
+      const gp = 3 * k * u * u + 1;
+      if (gp < 1e-4) return false;                       // on the fold; no stable root
+      u -= (k * u * u * u + u - v) / gp;
+      if (!(u >= 0)) return false;                       // NaN-safe
+    }
+    const f = u / v;
+    camUX = dx * f; camUY = dy * f;
+    return true;
+  }
 
   // Deterministic PRNG (mulberry32). Seeded once from unix time at load, then
   // re-seeded to that same value every frame so the chaos game draws the

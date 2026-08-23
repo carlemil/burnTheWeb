@@ -609,8 +609,32 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     cursor: grab; touch-action: none; flex: 1 1 auto;
   }
-  #breakout .ctl.dragging { z-index: 3; opacity: .92; }
+  /* Anything mid-drag: a break-out box or a floating panel. Raised so it clears whatever it
+     is being dragged over, and slightly transparent so the grid underneath reads. */
+  .dragging { opacity: .92; }
+  #breakout .ctl.dragging { z-index: 3; }
   #breakout .ctl.dragging .own-txt { cursor: grabbing; }
+  /* Every dialog's <h2> is its title BAR now — grab it to move the panel onto the grid,
+     double-click to give the placement back. Scoped to the draggable hosts so the modal
+     reading dialogs' headings do not advertise a cursor they cannot honour below 760px. */
+  #carddlg h2, #paledlg h2, #paldlg h2, #fltdlg h2, #palpickdlg h2, #transpickdlg h2,
+  #galdlg h2, #restoredlg h2, #syncpop h2, #help h2 {
+    cursor: grab; touch-action: none; user-select: none;
+  }
+  .dragging h2 { cursor: grabbing; }
+  /* The snap grid. Placed and sized from brkGrid() — origin at the panel's own right edge
+     and top, one column per box, rows dividing the panel's height — so what you see is
+     exactly where a drop will land. */
+  #brkgrid {
+    position: fixed; z-index: 4; pointer-events: none;
+    opacity: 0; transition: opacity .12s ease;
+    background-image:
+      linear-gradient(to right, rgba(255, 140, 40, 0.20) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 140, 40, 0.20) 1px, transparent 1px);
+    box-shadow: inset 0 0 0 1px rgba(255, 140, 40, 0.28);
+  }
+  body.brk-gridding #brkgrid { opacity: 1; }
+  body.ui-hidden #brkgrid { display: none; }
   /* The per-box help ?, mirroring the panel's own #help-btn but smaller. Pushed to the
      right of the owner line so every box carries one in the same place. */
   #breakout .ctl-help {
@@ -908,15 +932,20 @@
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
-  /* The palette-section fold, in the "Palette" label beside the inspect magnifier. Same 2x
-     marker as the layer chevron and the group headings; it lives inside a <label>, not a
-     `.lyr`, so it needs none of that reset — only the sizing. */
+  /* The palette-section fold. Deliberately IDENTICAL to the layer row's chevron — same
+     15x18 box, same 20px monospace glyph, same colour, opacity and hover, and first in its
+     label so it leads the heading the way `.lyr-chev` leads a row. Two controls that do the
+     same thing (fold this section away) should not look like two different affordances.
+     It needs the same `padding/border/background` reset for a different reason: a <b> here
+     inherits nothing, but keeping the declarations in step makes the two rules diffable. */
   #panel .pal-chev {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 15px; height: 15px; cursor: pointer; color: #ffb15a; opacity: .8;
-    font: 20px/1 monospace; user-select: none; vertical-align: middle;
+    width: 15px; height: 18px; margin-right: 2px; cursor: pointer;
+    color: #ffb15a; opacity: .8;
+    font: 20px/1 monospace; padding: 0; border: 0; background: none;
+    user-select: none; vertical-align: middle;
   }
-  #panel .pal-chev:hover { opacity: 1; }
+  #panel .pal-chev:hover { opacity: 1; background: none; }
   /* The trigger-section fold, on the "Triggers" heading inside a break-out box. Scoped
      to #breakout because that is the only place the trigger section exists. */
   #breakout .trig-chev {

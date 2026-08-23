@@ -203,53 +203,84 @@
   }
   // The box's own furniture — owner line, bounds editor, dock button. Split out because the
   // SCENE pass below dresses one box for the whole page rather than one per block.
-  // ---- the break-out column is a FREE GRID --------------------------------------
-  // Boxes used to fill one fixed column down the left. They are dragged anywhere on screen
-  // now and snap to a coarse grid over the viewport, so the sliders you are working can sit
-  // beside the thing they change instead of queueing beside the menu.
+  // ---- ONE DRAG ENGINE, ONE GRID -------------------------------------------------
+  // Break-out slider boxes and every floating tool panel (Orbit editor, Palette editor,
+  // Palette inspector, the three pickers, and the modal dialogs) are dragged by their
+  // title bar onto the same grid. They used to be three different positioning schemes —
+  // a flex column, a fixed corner, and a margin-docked box inside a full-screen shell —
+  // and unifying the DRAG rather than the CSS is what keeps that from becoming a fourth.
   //
-  // ONE POSITIONING MODEL, not two. Every visible box is absolutely positioned — the ones
-  // you have never dragged are laid out by `layoutBreakout` into the same 298px column they
-  // always used (wrapping into a second column rather than scrolling, which a full-screen
-  // host cannot do), and a dragged one is placed from its stored anchor instead. Keeping the
-  // flow ones in flex and the dragged ones absolute would have meant two layouts that
-  // disagree about heights, or a second host — and a second host means adding its id to
-  // every "#panel …, #breakout …" control rule, which is the mistake CLAUDE.md records
-  // having been made three times.
+  // THE GRID IS THE EDITOR'S GRID. Its origin is the panel's own right edge and top, and
+  // its column is exactly one box plus its gap, so column 0 sits flush beside the menu and
+  // a snapped box lines up with the panel rather than with an arbitrary twelfth of the
+  // window. The rows divide the panel's HEIGHT, so they line up with it too. Everything is
+  // measured from the live bounding rect — the panel's width is a CSS number that has
+  // changed before, and hard-coding 298 here is how the two drift apart.
   //
-  // EDGE AFFINITY is the whole point of the snap: a box whose centre is in the left half
-  // anchors its LEFT edge to the grid line and grows right; past the middle it anchors its
-  // RIGHT edge and grows left. Same vertically. So dragging a box across the middle re-aligns
-  // it to the near edge and it grows inward, and a box in a corner stays in that corner
-  // however tall its content becomes.
+  // EDGE AFFINITY is the point of the snap: a box whose centre is in the left half anchors
+  // its LEFT edge to a grid line and grows right; past the middle it anchors its RIGHT edge
+  // and grows left, and the same vertically. So dragging across the middle re-aligns it to
+  // the near edge and it grows inward, and a corner box stays in its corner however tall
+  // its content becomes.
   //
-  // Transient, like `popped` itself: positions are not in fullSnapshot() and never ride a
-  // scene, a link or a backup.
-  const BRK_COLS = 12, BRK_ROWS = 8;        // grid over the viewport
-  const BRK_W = 244, BRK_GAP = 10, BRK_TOP = 58, BRK_LEFT = 298, BRK_EDGE = 14;
-  const brkPos = new Map();                 // "<slot>/<key>" -> { gx, gy, right, bottom }
-  // Below this the column is a bottom sheet (see the 760px block in styles.css) and the CSS
-  // takes the boxes back into flow; dragging them there would fight it.
+  // Transient, like `popped` itself: nothing here is in fullSnapshot(), so no position ever
+  // rides a scene, a link or a backup.
+  const BRK_W = 244, BRK_GAP = 10, BRK_ROWS = 8, BRK_EDGE = 14;
+  const brkPos = new Map();                 // "<slot>/<key>" | "dlg:<id>" -> { gx, gy, right, bottom }
+  // Below this the CSS puts the boxes back in flow as a bottom sheet and re-docks the
+  // dialogs (see the 760px block in styles.css); dragging there would fight it.
   const brkFree = () => window.innerWidth > 760;
-  function brkCell() {
-    return { w: window.innerWidth / BRK_COLS, h: window.innerHeight / BRK_ROWS };
+  function brkGrid() {
+    const r = panel.getBoundingClientRect();
+    return {
+      x0: Math.max(0, Math.round(r.right) + BRK_GAP),
+      y0: Math.max(0, Math.round(r.top)),
+      cw: BRK_W + BRK_GAP,                  // one box per column, its gap included
+      ch: Math.max(48, r.height / BRK_ROWS),
+    };
   }
-  function brkPlace(box, p) {
-    const c = brkCell();
-    if (p.right) { box.style.right = Math.max(0, window.innerWidth - p.gx * c.w) + "px"; box.style.left = "auto"; }
-    else { box.style.left = Math.max(0, p.gx * c.w) + "px"; box.style.right = "auto"; }
-    if (p.bottom) { box.style.bottom = Math.max(0, window.innerHeight - p.gy * c.h) + "px"; box.style.top = "auto"; }
-    else { box.style.top = Math.max(0, p.gy * c.h) + "px"; box.style.bottom = "auto"; }
+  function brkPlace(node, p) {
+    const g = brkGrid();
+    const x = g.x0 + p.gx * g.cw, y = g.y0 + p.gy * g.ch;
+    if (p.right) { node.style.right = Math.max(0, window.innerWidth - x) + "px"; node.style.left = "auto"; }
+    else { node.style.left = Math.max(0, x) + "px"; node.style.right = "auto"; }
+    if (p.bottom) { node.style.bottom = Math.max(0, window.innerHeight - y) + "px"; node.style.top = "auto"; }
+    else { node.style.top = Math.max(0, y) + "px"; node.style.bottom = "auto"; }
   }
-  // Lay out every visible box: stored anchors where there are any, the default column for
-  // the rest. Called from refreshBreakout (which knows what is visible) and on resize.
+  function brkSnap(node) {
+    const g = brkGrid(), r = node.getBoundingClientRect();
+    const right = r.left + r.width / 2 > window.innerWidth / 2;
+    const bottom = r.top + r.height / 2 > window.innerHeight / 2;
+    return {
+      right: right, bottom: bottom,
+      gx: Math.round(((right ? r.right : r.left) - g.x0) / g.cw),
+      gy: Math.round(((bottom ? r.bottom : r.top) - g.y0) / g.ch),
+    };
+  }
+  // The grid, made visible while something is being dragged — a snap you cannot see is a
+  // box that jumps somewhere you did not ask for. Two repeating gradients on one element,
+  // sized and placed from brkGrid(), so the drawing and the maths cannot disagree.
+  function brkGridPaint() {
+    const el2 = el("brkgrid");
+    if (!el2) return;
+    const g = brkGrid();
+    el2.style.left = g.x0 + "px";
+    el2.style.top = g.y0 + "px";
+    el2.style.width = Math.max(0, window.innerWidth - g.x0) + "px";
+    el2.style.height = Math.max(0, window.innerHeight - g.y0) + "px";
+    el2.style.backgroundSize = g.cw + "px " + g.ch + "px";
+  }
+  // Lay out every visible break-out box: stored anchors where there are any, the default
+  // column for the rest. Called from refreshBreakout (which knows what is visible), from
+  // the end of a drag, and on resize.
   function layoutBreakout() {
     if (!brkFree()) {                       // bottom sheet: hand the boxes back to the CSS
       for (const box of breakout.querySelectorAll(".ctl"))
         box.style.left = box.style.right = box.style.top = box.style.bottom = "";
       return;
     }
-    let x = BRK_LEFT, y = BRK_TOP;
+    const g = brkGrid();
+    let x = g.x0, y = g.y0;
     for (const box of breakout.querySelectorAll(".ctl")) {
       if (box.style.display === "none") continue;
       const p = brkPos.get(box.dataset.brk || "");
@@ -257,62 +288,112 @@
       // Measure AFTER the anchored ones are placed: offsetHeight is the same either way
       // (the width is fixed), but reading it while the box is still display:none is not.
       const h = box.offsetHeight || 120;
-      if (y + h > window.innerHeight - BRK_EDGE && y > BRK_TOP) { y = BRK_TOP; x += BRK_W + BRK_GAP; }
+      if (y + h > window.innerHeight - BRK_EDGE && y > g.y0) { y = g.y0; x += g.cw; }
       box.style.left = x + "px"; box.style.top = y + "px";
       box.style.right = box.style.bottom = "auto";
       y += h + BRK_GAP;
     }
+    // Floating panels keep their placement across a resize; the ones never dragged are
+    // left entirely to the CSS.
+    for (const f of brkFloats) { const p = brkPos.get(f.key); if (p) brkPlace(f.node, p); }
   }
-  // Drag by the owner line — the one strip of a box that is a title and not a control.
+  const brkFloats = [];
+  // ---- the engine ----
+  let dragNode = null, dragHandle = null, dragKey = "";
+  let dragSX = 0, dragSY = 0, dragOX = 0, dragOY = 0;
+  function dragBegin(node, handle, key, e) {
+    if (!brkFree() || e.button || !node || !key) return;
+    // Never start a drag from a control inside the title bar — the close X, the step
+    // counter's buttons, anything focusable.
+    if (e.target.closest && e.target.closest("button, input, select, textarea, a")) return;
+    const r = node.getBoundingClientRect();
+    dragNode = node; dragHandle = handle; dragKey = key;
+    dragSX = e.clientX; dragSY = e.clientY; dragOX = r.left; dragOY = r.top;
+    // A floating panel is `relative` inside a full-screen `inset: 0` shell, or `fixed` in
+    // its own right (the Orbit editor). Only the relative ones need converting, and the
+    // shell being inset:0 is what makes viewport coordinates and absolute ones the same
+    // number — which is why one rect-based engine drives both.
+    if (getComputedStyle(node).position !== "fixed") node.style.position = "absolute";
+    node.style.margin = "0";
+    node.style.left = dragOX + "px"; node.style.top = dragOY + "px";
+    node.style.right = node.style.bottom = "auto";
+    node.classList.add("dragging");
+    document.body.classList.add("brk-gridding");
+    brkGridPaint();
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  }
+  function dragMove(e) {
+    if (!dragNode) return;
+    dragNode.style.left = (dragOX + e.clientX - dragSX) + "px";
+    dragNode.style.top = (dragOY + e.clientY - dragSY) + "px";
+  }
+  function dragEnd(e) {
+    if (!dragNode) return;
+    const node = dragNode, handle = dragHandle, key = dragKey;
+    dragNode = dragHandle = null;
+    node.classList.remove("dragging");
+    document.body.classList.remove("brk-gridding");
+    try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+    const p = brkSnap(node);
+    brkPos.set(key, p);
+    brkPlace(node, p);
+    layoutBreakout();                       // the column closes the gap a box left behind
+  }
+  // Document-level, once: a delegated pointerdown can start a drag on a node that did not
+  // exist at startup (the Help dialog builds its whole box on open), and the move/up pair
+  // has to survive the pointer leaving the handle.
+  document.addEventListener("pointermove", dragMove, true);
+  document.addEventListener("pointerup", dragEnd, true);
+  document.addEventListener("pointercancel", dragEnd, true);
+  // Double-click a title bar to give the placement back — the way out of a drop you did not
+  // mean, without hunting for where it came from.
+  function dragReset(node, key) {
+    brkPos.delete(key);
+    node.style.left = node.style.top = node.style.right = node.style.bottom = "";
+    node.style.margin = node.style.position = "";
+    layoutBreakout();
+  }
   function makeBoxGrab(box, handle) {
-    let sx = 0, sy = 0, ox = 0, oy = 0, live = false;
-    handle.addEventListener("pointerdown", e => {
-      if (!brkFree() || e.button) return;
-      live = true;
-      sx = e.clientX; sy = e.clientY;
-      ox = box.offsetLeft; oy = box.offsetTop;
-      // Pin by top/left for the duration: dragging a right-anchored box by its left edge
-      // would move it the wrong way as the pointer travels.
-      box.style.left = ox + "px"; box.style.top = oy + "px";
-      box.style.right = box.style.bottom = "auto";
-      box.classList.add("dragging");
-      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
-      e.preventDefault();
-    });
-    handle.addEventListener("pointermove", e => {
-      if (!live) return;
-      box.style.left = (ox + e.clientX - sx) + "px";
-      box.style.top = (oy + e.clientY - sy) + "px";
-    });
-    const done = e => {
-      if (!live) return;
-      live = false;
-      box.classList.remove("dragging");
-      try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
-      const c = brkCell(), w = box.offsetWidth, h = box.offsetHeight;
-      const l = box.offsetLeft, t = box.offsetTop;
-      const right = l + w / 2 > window.innerWidth / 2;
-      const bottom = t + h / 2 > window.innerHeight / 2;
-      const p = {
-        right: right, bottom: bottom,
-        gx: Math.max(0, Math.min(BRK_COLS, Math.round((right ? l + w : l) / c.w))),
-        gy: Math.max(0, Math.min(BRK_ROWS, Math.round((bottom ? t + h : t) / c.h))),
-      };
-      brkPos.set(box.dataset.brk, p);
-      brkPlace(box, p);
-      layoutBreakout();                     // the column closes the gap this box left
-    };
-    handle.addEventListener("pointerup", done);
-    handle.addEventListener("pointercancel", done);
-    // Double-click the title puts a box back in the column — the way out of a placement you
-    // did not mean, without hunting for the spot it came from.
-    handle.addEventListener("dblclick", e => {
-      e.preventDefault();
-      brkPos.delete(box.dataset.brk);
-      layoutBreakout();
-    });
+    handle.addEventListener("pointerdown", e => dragBegin(box, handle, box.dataset.brk, e));
+    handle.addEventListener("dblclick", e => { e.preventDefault(); dragReset(box, box.dataset.brk); });
   }
-  window.addEventListener("resize", () => layoutBreakout());
+  // ---- the floating panels ------------------------------------------------------
+  // Every dialog in the app follows the same shape — a close button then an <h2>, inside a
+  // box inside a host — so one delegated handler covers all of them, including the ones
+  // built on open. The MOVABLE node is not always the h2's parent: #carddlg's .card-box is
+  // deliberately `position: static` and the host is what carries the placement, so walk up
+  // to the first ancestor that is positioned at all and move that.
+  const DRAG_HOSTS = "#carddlg,#paledlg,#paldlg,#fltdlg,#palpickdlg,#transpickdlg,"
+                   + "#galdlg,#restoredlg,#syncpop,#help";
+  function dragTargetFor(h2) {
+    let n = h2.parentElement;
+    while (n && n !== document.body && getComputedStyle(n).position === "static") n = n.parentElement;
+    return n && n !== document.body ? n : null;
+  }
+  function dragKeyFor(node) {
+    const idOwner = node.closest("[id]");
+    return idOwner ? "dlg:" + idOwner.id : "";
+  }
+  document.addEventListener("pointerdown", e => {
+    if (!e.target.closest) return;
+    const h2 = e.target.closest("h2");
+    if (!h2 || !h2.closest(DRAG_HOSTS)) return;
+    const node = dragTargetFor(h2);
+    if (!node) return;
+    const key = dragKeyFor(node);
+    if (!key) return;
+    if (!brkFloats.some(f => f.key === key)) brkFloats.push({ node: node, key: key });
+    dragBegin(node, h2, key, e);
+  }, true);
+  document.addEventListener("dblclick", e => {
+    if (!e.target.closest) return;
+    const h2 = e.target.closest("h2");
+    if (!h2 || !h2.closest(DRAG_HOSTS)) return;
+    const node = dragTargetFor(h2);
+    if (node) { e.preventDefault(); dragReset(node, dragKeyFor(node)); }
+  }, true);
+  window.addEventListener("resize", () => { layoutBreakout(); brkGridPaint(); });
   // ---- shape preview -------------------------------------------------------------
   // A small square canvas at the top of a break-out box, drawing the shape the box's group
   // actually makes from that layer's own slider settings — so "Sides 7, Thickness 0.3" is a

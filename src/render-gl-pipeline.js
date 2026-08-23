@@ -1540,6 +1540,15 @@
         dy = camM[2] * dx + camM[3] * dy;
         dx = rx;
       }
+      // FIELD OF VIEW, last, on the SCREEN offset. camFrag4 applies the lens FIRST to the
+      // screen offset on its way IN to the effect, so its inverse belongs at the far end of
+      // the same chain on the way OUT — which is what makes a stamped layer and a shader
+      // layer bow the same way at the same slider value. A point with no screen position
+      // (a long lens folds the far field away) is dropped, like any out-of-grid point.
+      if (camFov !== 0) {
+        if (!camUnlens(dx, dy)) return;
+        dx = camUX; dy = camUY;
+      }
       x = dx + fw * 0.5;
       y = dy + fh * 0.5;
     }
