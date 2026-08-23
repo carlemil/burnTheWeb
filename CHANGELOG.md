@@ -14,6 +14,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.34.0] — 2026-08-23
+
+### Changed
+
+- **Scene transitions no longer freeze the scene you are leaving.** Both sides of a blend
+  run: the outgoing scene keeps animating all the way out instead of becoming a still
+  photograph the moment you switch, so a dissolve is now two live pictures rather than one
+  live one over a frozen one. Nothing to set — every transition mode gets it, and there is no
+  measurable cost to the frame rate.
+
 ## [1.33.0] — 2026-08-23
 
 ### Added
