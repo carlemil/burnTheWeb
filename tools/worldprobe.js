@@ -35,6 +35,7 @@ function slice(from, to) {
   if (b < 0) throw new Error("marker not found: " + to);
   return src.slice(a, b);
 }
+const NL = String.fromCharCode(10);
 const noComments = s => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
 let pass = 0, fail = 0;
@@ -51,7 +52,8 @@ const ok = (name, cond, detail) => {
     "  return { WORLD_KINDS, planWorld };",
   ].join("\n");
   // Stubs: the plan only needs each layer's effect id and whether it has joined.
-  const EFFECTS = [{ id: "ocean" }, { id: "glass" }, { id: "plasma" }, { id: "mandelbulb" }];
+  const EFFECTS = [{ id: "ocean" }, { id: "glass" }, { id: "plasma" }, { id: "mandelbulb" },
+                   { id: "solids" }, { id: "qjulia" }, { id: "vballs" }];
   const layerWorld = L => !!L.joined;
   const P = new Function("EFFECTS", "layerWorld", body + api)(EFFECTS, layerWorld);
 
@@ -60,11 +62,14 @@ const ok = (name, cond, detail) => {
   ok("a layer whose effect cannot join is ignored",
      P.planWorld([L(2, true), L(3, true)]) === null, "plasma + mandelbulb");
 
-  const a = L(0, true), b = L(1, true);
-  const plan = P.planWorld([a, b]);
-  ok("ocean + glass make a world", !!plan && plan.oc === a && plan.gb === b);
+  const a = L(0, true), b = L(1, true), c = L(4, true), d = L(5, true), e = L(6, true);
+  // More kinds than STACK_MAX on purpose: the plan must not care how many can join, only
+  // that each kind claims one slot and each claim gets its own ID.
+  const plan = P.planWorld([a, b, c, d, e]);
+  ok("every joinable kind can share one world",
+     !!plan && plan.oc === a && plan.gb === b && plan.sd === c && plan.qj === d && plan.vb === e);
   const ids = [...plan.ids.values()];
-  ok("every joined layer gets an ID", plan.ids.size === 2, ids.join(","));
+  ok("every joined layer gets an ID", plan.ids.size === 5, ids.join(","));
   ok("IDs are unique", new Set(ids).size === ids.length, ids.join(","));
   // 0 is "nothing was hit" in the G-buffer, so no layer may hold it.
   ok("no layer is given ID 0 -- that is the background", ids.every(v => v >= 1), ids.join(","));
@@ -87,6 +92,32 @@ const ok = (name, cond, detail) => {
   ok("a placed SDF divides the point by the scale", /\(p - uGbPlace\.xyz\)\/uGbPlace\.w/.test(glassDE));
   ok("...and MULTIPLIES the distance back by it", /return d\*uGbPlace\.w;/.test(glassDE),
      "without this the marcher overshoots and the object gains holes");
+  // EVERY placed group, not just the first: the multiply is easy to forget on the next one.
+  // The bodies are matched with a regex rather than sliced on a newline literal -- an
+  // escaped newline written into probe source has a habit of becoming a REAL one and
+  // breaking the string it sits in, which is the trap CLAUDE.md records for generators.
+  const world = slice("    const FS_WORLD = ", "    const FS_WORLDPICK = ");
+  for (const [fn, pl] of [["solidsDE", "uSdPlace"], ["qjuliaDE", "uQjPlace"],
+                          ["vballsDE", "uVbPlace"]]) {
+    // indexOf, not a regex: the escaping needed for "\(" and "\s" inside a JS string
+    // inside a shell-written file collapsed twice, leaving a pattern that matched nothing
+    // and two assertions that could only ever fail. Plain string search has no escapes.
+    const head = "float " + fn + "(vec3 p){";
+    const hi = world.indexOf(head);
+    ok(fn + " is in the world shader", hi >= 0);
+    if (hi < 0) continue;
+    const close = world.indexOf(NL + "    }", hi);
+    const b = world.slice(hi, close < 0 ? hi + 900 : close);
+    ok(fn + " divides the point by its scale",
+       b.indexOf("(p - " + pl + ".xyz)/" + pl + ".w") >= 0);
+    // EVERY return path, including qjuliaDE's bounding-sphere shortcut -- that one is the
+    // easy miss, because it reads as a plain early-out rather than as a distance.
+    const rets = b.match(/return [^;]+;/g) || [];
+    const scaled = rets.filter(r => r.indexOf(pl + ".w") >= 0);
+    ok(fn + " multiplies EVERY returned distance back by it",
+       rets.length > 0 && scaled.length === rets.length,
+       scaled.length + " of " + rets.length + " returns");
+  }
 }
 
 // --- 3. IDs through the G-buffer and back ---------------------------------------
@@ -137,8 +168,14 @@ const ok = (name, cond, detail) => {
   // Only the two Phase A effects offer it, so nothing else grew a control it cannot honour.
   const owners = [...src.matchAll(/\{ id: "([a-z0-9]+)"[\s\S]*?params: \[([^\]]*)\]/g)]
     .filter(m => m[2].indexOf('"world"') >= 0).map(m => m[1]);
-  ok("exactly the effects that can join offer the control", owners.length === 2,
-     owners.join(",") || "none");
+  // Hard-coded, like singleprobe's set: the danger is not that this stops working, it is
+  // that an INTERIOR FLIGHT is added to it -- Mandelbulb, Menger sponge or Doughnut have
+  // the camera inside their own geometry and cannot stand anywhere in a shared world.
+  const EXPECT = ["glass", "ocean", "qjulia", "solids", "vballs"];
+  ok("exactly the effects that can share a viewpoint offer the control",
+     owners.slice().sort().join(",") === EXPECT.join(","), owners.join(",") || "none");
+  for (const flight of ["mandelbulb", "menger", "torus"])
+    ok(flight + " cannot join -- it is flown from the inside", owners.indexOf(flight) < 0);
 }
 
 console.log("");

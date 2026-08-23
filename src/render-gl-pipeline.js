@@ -594,7 +594,10 @@
     // camProg, so the owning layer's camera rotation, zoom and FOV orbit the whole world.
     glProg.world = camProg(VS_QUAD, FS_WORLD, ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
       "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
-      "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace"]);
+      "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace",
+      "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
+      "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace",
+      "uVbOn", "uVbId", "uVbPhase", "uVbCount", "uVbShape", "uVbRad", "uVbGlow", "uVbPlace"]);
     glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
@@ -1299,8 +1302,11 @@
   //
   // GL only. The Canvas2D fallback renders a single item and has nowhere to put a merged
   // scene, so on that path every effect draws itself exactly as before.
-  const WORLD_KINDS = { ocean: "oc", glass: "gb" };     // effect id -> uniform prefix
-  let worldPlan = null;                 // { ids: Map<layer, id>, oc: L|null, gb: L|null }
+  // effect id -> uniform prefix. Only effects that can share a VIEWPOINT are here: the
+  // interior flights (Mandelbulb, Menger sponge, Doughnut) put the camera inside their own
+  // geometry and have nowhere to stand in someone else's world.
+  const WORLD_KINDS = { ocean: "oc", glass: "gb", solids: "sd", qjulia: "qj", vballs: "vb" };
+  let worldPlan = null;                 // { ids: Map<layer, id>, oc/gb/sd/qj: L|null }
   // Which joined layers are in this frame's world, and what ID each one owns. IDs start at
   // 1: 0 is "nothing was hit", so a layer can never be handed the background.
   function planWorld(live) {
@@ -1308,7 +1314,7 @@
     for (const L of live) {
       const kind = WORLD_KINDS[EFFECTS[L.fx].id];
       if (!kind || !layerWorld(L)) continue;
-      if (!plan) plan = { ids: new Map(), oc: null, gb: null };
+      if (!plan) plan = { ids: new Map(), oc: null, gb: null, sd: null, qj: null, vb: null };
       if (plan[kind]) continue;         // one per kind, first in stack order
       plan[kind] = L;
       plan.ids.set(L, next++);
@@ -1330,7 +1336,7 @@
     gl.uniform2f(P.u.uSize, fw, fh);
     if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
     gl.uniform1f(P.u.uZoom, zoom);
-    const oc = plan.oc, gb = plan.gb;
+    const oc = plan.oc, gb = plan.gb, sd = plan.sd, qj = plan.qj, vb = plan.vb;
     gl.uniform1f(P.u.uOcOn, oc ? 1 : 0);
     gl.uniform1f(P.u.uOcId, oc ? plan.ids.get(oc) : 0);
     if (oc) {
@@ -1352,6 +1358,45 @@
       gl.uniform1f(P.u.uGbIor, s.ior); gl.uniform1f(P.u.uGbGlow, s.glow);
       gl.uniform4f(P.u.uGbPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
       capturePhase(gb);
+    }
+    gl.uniform1f(P.u.uSdOn, sd ? 1 : 0);
+    gl.uniform1f(P.u.uSdId, sd ? plan.ids.get(sd) : 0);
+    if (sd) {
+      // installStackItem also points the body list at THIS layer's solids (installSolids),
+      // so the arrays below are its own set and not whichever layer drew last.
+      installStackItem(sd); installPhase(sd);
+      const s = solidsSeed(dt);
+      gl.uniform4fv(P.u.uSdPos, s.pos); gl.uniform4fv(P.u.uSdQuat, s.quat);
+      gl.uniform1fv(P.u.uSdShape, s.shape);
+      gl.uniform1f(P.u.uSdCount, s.count); gl.uniform1f(P.u.uSdRim, s.rim);
+      gl.uniform4f(P.u.uSdPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(sd);
+    }
+    gl.uniform1f(P.u.uQjOn, qj ? 1 : 0);
+    gl.uniform1f(P.u.uQjId, qj ? plan.ids.get(qj) : 0);
+    if (qj) {
+      installStackItem(qj); installPhase(qj);
+      // BOTH seeds, and juliaSeed exactly once: the cardioid orbit that supplies c is the
+      // same one AnimeJulia rides, and this is the layer's one advance for the frame now
+      // that its own draw hook never runs.
+      const seed = juliaSeed(dt), s = qjuliaSeed(dt);
+      gl.uniform4f(P.u.uQjC, seed.cx, seed.cy, 0, 0);
+      gl.uniform1f(P.u.uQjPhase, s.phase); gl.uniform1f(P.u.uQjSlice, s.slice);
+      gl.uniform1f(P.u.uQjCut, s.cut); gl.uniform1f(P.u.uQjIter, s.iter);
+      gl.uniform1f(P.u.uQjGlow, s.glow);
+      gl.uniform4f(P.u.uQjPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(qj);
+    }
+    gl.uniform1f(P.u.uVbOn, vb ? 1 : 0);
+    gl.uniform1f(P.u.uVbId, vb ? plan.ids.get(vb) : 0);
+    if (vb) {
+      installStackItem(vb); installPhase(vb);
+      const s = vballsSeed(dt);
+      gl.uniform1f(P.u.uVbPhase, s.phase); gl.uniform1f(P.u.uVbCount, s.count);
+      gl.uniform1f(P.u.uVbShape, s.shape); gl.uniform1f(P.u.uVbRad, s.rad);
+      gl.uniform1f(P.u.uVbGlow, s.glow);
+      gl.uniform4f(P.u.uVbPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(vb);
     }
     drawQuad();
   }

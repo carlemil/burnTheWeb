@@ -628,10 +628,12 @@
   #brkgrid {
     position: fixed; z-index: 4; pointer-events: none;
     opacity: 0; transition: opacity .12s ease;
+    /* 2px at .42, not 1px at .20: a hairline grid disappears over a bright effect, and the
+       whole point of drawing it is to see where a drop will land. */
     background-image:
-      linear-gradient(to right, rgba(255, 140, 40, 0.20) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 140, 40, 0.20) 1px, transparent 1px);
-    box-shadow: inset 0 0 0 1px rgba(255, 140, 40, 0.28);
+      linear-gradient(to right, rgba(255, 150, 55, 0.42) 2px, transparent 2px),
+      linear-gradient(to bottom, rgba(255, 150, 55, 0.42) 2px, transparent 2px);
+    box-shadow: inset 0 0 0 2px rgba(255, 150, 55, 0.55);
   }
   body.brk-gridding #brkgrid { opacity: 1; }
   body.ui-hidden #brkgrid { display: none; }

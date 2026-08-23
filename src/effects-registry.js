@@ -134,11 +134,11 @@
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "solids", name: "Bouncing solids", subtitle: "Solids · raymarched 3D",
       help: "Real 3D: a handful of solid primitives — sphere, box, doughnut, capsule, octahedron, cylinder — tumbling and ricocheting off the walls of an invisible room, raymarched as signed-distance fields and shaded into the palette by surface angle and depth. Count sets how many bodies, Size how big (which is also the radius they bounce on, so bigger ones turn sooner), Shape mix how many different primitives are in play (1 = all spheres, 6 = all six), Speed how fast they travel and Tumble how hard they spin — a wall hit converts slide into roll, so they kick into a tumble on an angled clip. Edge glow lights the silhouettes. Tick Fire or Fade pixel for trails.",
-      params: ["sdcount", "sdsize", "sdmix", "sdspeed", "sdspin", "sdrim", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "solids", "band"],
+      params: ["sdcount", "sdsize", "sdmix", "sdspeed", "sdspin", "sdrim", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "solids", "band"],
       bakesOwnZoom: true, solids: true,
       draw: dt => { const s = solidsSeed(dt); if (useGL) glShaderDraw("solids", u => { gl.uniform4fv(u.uPos, s.pos); gl.uniform4fv(u.uQuat, s.quat); gl.uniform1fv(u.uShape, s.shape); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRim, s.rim); gl.uniform1f(u.uZoom, s.zoom); }); else solids(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], sdcount: [5, 5], sdsize: [0.26, 0.26], sdmix: [6, 6], sdspeed: [1, 1], sdspin: [1, 1], sdrim: [0.55, 0.55], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "sunsurface", name: "Sun surface", subtitle: "Sun surface · solar granulation",
       help: "The boiling surface of the sun, as the Inouye Solar Telescope sees it: a full-screen field of bright convection cells separated by narrow dark lanes, each cell slowly drifting, deforming and brightening as it churns, with tiny bright points sparking in the lanes. Raise Sunspot to sink a dark spot into the middle — a near-black core ringed by fine filaments radiating out into the granulation. Fire-family palettes (Amber, Fire, Ember, Sunburst) give it its colour.",
       params: ["sunscale", "sunspeed", "sunlane", "sunglow", "sunspot", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "sun", "band"], bakesOwnZoom: true,
@@ -250,14 +250,14 @@
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "vballs", name: "Vector balls", subtitle: "Vector balls · Amiga bobs in formation",
       help: "The Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. Formation picks how they are arranged — Lattice (a cube of them), Sphere (an even shell), Ring or Helix — and the whole set turns as one body, so the shape reads only from how the balls occlude and shade each other. Balls sets how many, Ball size how fat (wind it up and they merge into a solid), Tumble how fast, Edge glow how hard the silhouettes are lit. Nearer balls are brighter, which is what separates the formation in depth.",
-      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "vballs", "band"], bakesOwnZoom: true,
       draw: dt => { const s = vballsSeed(dt);
         if (useGL) glShaderDraw("vballs", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uShape, s.shape); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
         else vballsCPU(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], vbcount: [24, 24], vbshape: [1, 1], vbsize: [0.30, 0.30], vbspin: [0.5, 0.5], vbglow: [0.5, 0.5],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "glass", name: "Glass ball", subtitle: "Glass ball · raytraced spheres over the layers below",
       help: "Raytraced spheres that reflect and refract WHAT IS UNDERNEATH THEM. Put this layer on top of another one and the balls pick that layer's picture up: Metal mirrors it, Glass bends it through and turns it upside down the way a real ball does, Bubble is a thin shell that barely bends it but rings hard at the edge. Refraction is the glass's density — low is nearly water, high squeezes the whole scene into the middle of the ball. On its own, with no layer beneath, the balls fall back to reflecting a procedural room so the effect still stands up. The reflection is of BRIGHTNESS, not colour — everything is re-tinted by this layer's own palette.",
       params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -330,7 +330,7 @@
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
       help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
-      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
+      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
       helpTags: ["all", "julia", "qjulia", "band"], bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // ONE juliaSeed() per frame, like the other three — the mirror takes the seed rather
       // than re-advancing it (juliaprobe pins both halves of that for every cardioid effect).
@@ -340,7 +340,7 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], qjslice: [0, 0], qjcut: [0, 0], qjdetail: [8, 8], qjspin: [0.3, 0.3], qjglow: [0.5, 0.5],
         rpm: [0.15, 0.15], ratio: [6.5, 6.5], inrad: [0.12, 0.12], outrad: [1.02, 1.02], phase: [0, 0], cardx: [0, 0],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "4", morph: false, showBox: true, world: false, randSeed: true } },
   ];
   // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
   // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime

@@ -1009,6 +1009,15 @@
     uniform float uGbOn; uniform float uGbId; uniform float uGbTime; uniform float uGbCount;
     uniform float uGbRad; uniform float uGbMat; uniform float uGbIor; uniform float uGbGlow;
     uniform vec4 uGbPlace;
+    uniform float uSdOn; uniform float uSdId; uniform float uSdCount; uniform float uSdRim;
+    uniform vec4 uSdPos[8]; uniform vec4 uSdQuat[8]; uniform float uSdShape[8];
+    uniform vec4 uSdPlace;
+    uniform float uQjOn; uniform float uQjId; uniform float uQjPhase; uniform float uQjSlice;
+    uniform float uQjCut; uniform float uQjIter; uniform float uQjGlow;
+    uniform vec4 uQjC; uniform vec4 uQjPlace;
+    uniform float uVbOn; uniform float uVbId; uniform float uVbPhase; uniform float uVbCount;
+    uniform float uVbShape; uniform float uVbRad; uniform float uVbGlow;
+    uniform vec4 uVbPlace;
     out vec4 o;
     const int WAVE_OCT_MARCH = 3;
     const float CAM_H = 3.4;
@@ -1054,10 +1063,118 @@
       }
       return d*uGbPlace.w;
     }
-    // The SDF union. Returns distance and the ID of whatever is nearest.
+    // Bouncing solids, verbatim from FS_SOLIDS: the bodies carry a quaternion, and an
+    // implicit surface has no vertices to hold an orientation, so each SAMPLE is un-rotated
+    // instead of the surface being rotated.
+    vec3 toBody(vec4 q, vec3 v){ vec3 u = -q.xyz; return v + 2.0*cross(u, cross(u, v) + q.w*v); }
+    float shapeDist(int s, vec3 p, float r){
+      if (s == 0) return length(p) - r;                                              // sphere
+      if (s == 1){ vec3 d = abs(p) - vec3(r*0.55);                                   // box
+                   return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0); }
+      if (s == 2){ vec2 q = vec2(length(p.xz) - r*0.70, p.y); return length(q) - r*0.30; }   // torus
+      if (s == 3){ vec3 q = p; q.y -= clamp(q.y, -r*0.60, r*0.60); return length(q) - r*0.40; }  // capsule
+      if (s == 4){ vec3 a = abs(p); return (a.x + a.y + a.z - r)*0.5773; }           // octahedron
+      vec2 d = vec2(length(p.xz) - r*0.60, abs(p.y) - r*0.60);                       // cylinder
+      return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+    }
+    float solidsDE(vec3 p){
+      vec3 pl = (p - uSdPlace.xyz)/uSdPlace.w;
+      float d = 1e9; int n = int(uSdCount);
+      for (int i = 0; i < 8; i++){
+        if (i >= n) break;
+        d = min(d, shapeDist(int(uSdShape[i]), toBody(uSdQuat[i], pl - uSdPos[i].xyz), uSdPos[i].w));
+      }
+      return d*uSdPlace.w;
+    }
+    // Quaternion Julia, verbatim from FS_QJULIA.
+    vec4 qsqr(vec4 a){ return vec4(a.x*a.x - dot(a.yzw, a.yzw), 2.0*a.x*a.yzw); }
+    vec4 qjLift(vec3 p, float s, float ca, float sa){
+      return vec4(p.x*ca - s*sa, p.y, p.z, p.x*sa + s*ca);
+    }
+    float qjDE(vec4 z, vec4 c, int it){
+      float md2 = 1.0, mz2 = dot(z, z);
+      for (int i = 0; i < 12; i++){
+        if (i >= it) break;
+        md2 *= 4.0*mz2;
+        z = qsqr(z) + c;
+        mz2 = dot(z, z);
+        if (mz2 > 16.0) break;
+      }
+      return 0.25*sqrt(mz2/md2)*log(max(mz2, 1e-12));
+    }
+    float qjuliaDE(vec3 p){
+      vec3 pl = (p - uQjPlace.xyz)/uQjPlace.w;
+      // THE OBJECT TUMBLES HERE. Standalone, this effect orbits its CAMERA about the solid;
+      // in a shared world the camera belongs to everyone, so the same rotation has to move
+      // the object instead or the whole scene would swing with it.
+      float c1 = cos(uQjPhase), s1 = sin(uQjPhase);
+      pl = vec3(pl.x*c1 + pl.z*s1, pl.y, -pl.x*s1 + pl.z*c1);
+      float tl = 0.32*sin(uQjPhase*0.6), c2 = cos(tl), s2 = sin(tl);
+      pl = vec3(pl.x, pl.y*c2 - pl.z*s2, pl.y*s2 + pl.z*c2);
+      // Outside |q| = 2 the escape-time estimate says nothing useful, so hand back the
+      // distance TO the bounding sphere: a valid bound, and the thing that stops the
+      // marcher crawling step by step through vacuum on its way in.
+      float br = length(pl) - 2.0;
+      if (br > 0.0) return br*uQjPlace.w;
+      return qjDE(qjLift(pl, uQjSlice, cos(uQjCut), sin(uQjCut)), uQjC, int(uQjIter))*uQjPlace.w;
+    }
+    // Vector balls, and the one participant that needed NEW geometry. Standalone it is a
+    // projected sprite rasteriser -- it never had a distance function, it z-sorts discs --
+    // so it could not be traced against anything. Its bobs ARE spheres though, and vbForm
+    // already supplies the centres, so in the world it becomes a sphere union. The sprite
+    // path stays for non-world mode: the cheap projection IS the Amiga look.
+    vec3 vbForm(float fi, float fn, int shape){
+      if (shape == 0){                       // cube lattice
+        float side = ceil(pow(fn, 1.0/3.0));
+        float ix = mod(fi, side);
+        float iy = mod(floor(fi/side), side);
+        float iz = floor(fi/(side*side));
+        return (vec3(ix, iy, iz) - (side - 1.0)*0.5)*(2.4/max(1.0, side - 1.0));
+      }
+      if (shape == 1){                       // sphere shell, Fibonacci-spaced
+        float k = (fi + 0.5)/fn;
+        float ph = acos(clamp(1.0 - 2.0*k, -1.0, 1.0));
+        float th = 2.399963*fi;
+        return vec3(sin(ph)*cos(th), sin(ph)*sin(th), cos(ph))*1.45;
+      }
+      if (shape == 2){                       // tilted ring
+        float a = fi/fn*6.2831853;
+        return vec3(cos(a)*1.5, sin(a*2.0)*0.45, sin(a)*1.5);
+      }
+      float u = fi/fn;                       // double helix
+      float a = u*12.0 + (mod(fi, 2.0) < 0.5 ? 0.0 : 3.1415927);
+      return vec3(cos(a)*0.95, (u - 0.5)*3.0, sin(a)*0.95);
+    }
+    float vballsDE(vec3 p){
+      vec3 pl = (p - uVbPlace.xyz)/uVbPlace.w;
+      // UN-TUMBLE THE SAMPLE rather than rotating 48 centres: the formation turns as one
+      // rigid body, so one inverse rotation of the point replaces N of the constellation.
+      // Pitch then yaw, the reverse of the order the effect applies them.
+      float cx = cos(uVbPhase*0.63), sx = sin(uVbPhase*0.63);
+      vec3 q = vec3(pl.x, pl.y*cx + pl.z*sx, -pl.y*sx + pl.z*cx);
+      float cy = cos(uVbPhase), sy = sin(uVbPhase);
+      q = vec3(q.x*cy - q.z*sy, q.y, q.x*sy + q.z*cy);
+      // A BOUNDING SPHERE, and it is the whole cost of this group. The widest formation
+      // reaches 1.57 from the centre (the tilted ring), so outside 1.6 + the ball radius the
+      // union IS the distance to that sphere and the 48-iteration loop can be skipped --
+      // which is most of the march, since most of the march is empty space.
+      float br = length(q) - (1.6 + uVbRad);
+      if (br > 0.05) return br*uVbPlace.w;
+      float d = 1e9; int n = int(uVbCount);
+      for (int i = 0; i < 48; i++){
+        if (i >= n) break;
+        d = min(d, length(q - vbForm(float(i), uVbCount, int(uVbShape))) - uVbRad);
+      }
+      return d*uVbPlace.w;
+    }
+    // The SDF union. Returns distance and the ID of whatever is nearest. Each group is
+    // gated by its own On uniform, so a kind that has not joined costs one compare.
     vec2 worldMap(vec3 p){
       float d = 1e9, id = 0.0;
       if (uGbOn > 0.5){ float g = glassDE(p); if (g < d){ d = g; id = uGbId; } }
+      if (uSdOn > 0.5){ float g = solidsDE(p); if (g < d){ d = g; id = uSdId; } }
+      if (uQjOn > 0.5){ float g = qjuliaDE(p); if (g < d){ d = g; id = uQjId; } }
+      if (uVbOn > 0.5){ float g = vballsDE(p); if (g < d){ d = g; id = uVbId; } }
       return vec2(d, id);
     }
     vec3 sdfNormal(vec3 p){
@@ -1123,7 +1240,16 @@
       }
       vec3 n = sdfNormal(p);
       float face = max(0.0, dot(n, -rd));
-      return 0.10 + 0.55*face + (0.06 + uGbGlow*0.55)*pow(1.0 - face, 2.0);
+      float rim = pow(1.0 - face, 2.0);
+      // Each object keeps its OWN key light, so it still looks like itself inside someone
+      // else's reflection as well as in the primary view.
+      if (id == uSdId && uSdOn > 0.5)
+        return 0.14 + 0.62*max(0.0, dot(n, vec3(-0.4557, 0.7295, -0.5104))) + uSdRim*0.5*rim;
+      if (id == uQjId && uQjOn > 0.5)
+        return 0.20 + 0.72*max(0.0, dot(n, normalize(vec3(0.55, 0.75, -0.5)))) + uQjGlow*0.55*rim;
+      if (id == uVbId && uVbOn > 0.5)
+        return 0.14 + 0.78*max(0.0, dot(n, normalize(vec3(0.45, 0.6, -0.66)))) + uVbGlow*0.7*rim;
+      return 0.10 + 0.55*face + (0.06 + uGbGlow*0.55)*rim;
     }
     float envRay(vec3 ro, vec3 rd){
       float id;
@@ -1174,6 +1300,12 @@
           heat = mix(heat, envRay(p, reflect(rd, n))/(1.0 + t*t*0.0016), w);
         }
         heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);      // the bright line at the horizon
+      } else if (!(id == uGbId && uGbOn > 0.5)){
+        // Solids and Quaternion Julia are opaque and shade exactly as they do standalone.
+        // They are in the world to be SEEN by the reflective ones and to occlude them --
+        // giving them their own reflection rays would double the trace for a material that
+        // never had one.
+        heat = shade0(id, ro + rd*t, rd, t);
       } else {
         vec3 p = ro + rd*t;
         vec3 n = sdfNormal(p);

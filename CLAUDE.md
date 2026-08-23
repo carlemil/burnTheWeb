@@ -151,8 +151,25 @@ it renders unchanged.
   outputting the hit test alone) and the picture showed nothing. Its `uReflect` is also
   two-part — physical up to 1, lifting toward a flat mirror above — because at this camera
   height the near sea is viewed far too steeply for the honest amount to read.
-- One kind per world (first in stack order); a second Glass ball layer renders standalone.
-  GL only — the Canvas2D fallback renders one item. `tools/worldprobe.js`.
+- **`WORLD_KINDS` is the roster**: `ocean`, `glass`, `solids`, `qjulia`, `vballs`. One layer
+  per kind (first in stack order); a second Glass ball layer renders standalone. The interior
+  flights can never be added — they have nowhere to stand in someone else's world, and
+  `worldprobe` asserts their absence by name.
+- **Only the Glass ball traces secondary rays.** The others shade exactly as they do
+  standalone; they are in the world to be SEEN in its reflections and to occlude it. Giving
+  them reflection rays would double the trace for materials that never had one.
+- **Quaternion Julia tumbles the OBJECT, not the camera.** Standalone it orbits its camera
+  about the solid; in a shared world the camera belongs to everyone, so the same rotation has
+  to move the object or the whole scene swings with it. Its DE also returns the distance to
+  its **bounding sphere** outside |q| = 2 — a valid bound, and what stops the marcher crawling
+  through vacuum. That return path needs the placement multiply too; it is the easy one to
+  miss because it reads as an early-out rather than as a distance.
+- **Vector balls needed new geometry.** Standalone it is a projected sprite rasteriser with no
+  distance function at all — it z-sorts discs. In the world its bobs become a sphere union
+  (`vbForm` already supplies the centres), behind a **bounding sphere** so the 48-iteration
+  loop is skipped for the empty space that is most of the march. The sprite path stays: the
+  cheap projection IS the Amiga look.
+- GL only — the Canvas2D fallback renders one item. `tools/worldprobe.js`.
 
 ### Doughnut / Trees (the two effects with a cheap invariant worth pinning)
 - **Doughnut** needs no DE-escape solver — unlike the Mandelbulb the free space is known, so the
