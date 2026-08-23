@@ -14,6 +14,39 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.31.0] — 2026-08-23
+
+### Added
+
+- **Doughnut** — a new effect: the inside of a torus, flown along the tube. The wall wraps
+  the whole frame and the curve of the ring keeps bringing new surface into view, so you are
+  always about to round a bend you can never quite see past. **Flutes** cuts lengthwise
+  grooves into the pipe and **Twist** winds them into a spiral (0 flutes gives a smooth pipe);
+  **Ring radius** bends the tunnel, **Tube radius** tightens it around you, and **Speed** runs
+  the flight — negative flies it backwards.
+- **Trees** — a new effect: a row of fractal trees bending in a wind. The sway is added at
+  every joint rather than to the tree as a whole, so it accumulates from trunk to tip and the
+  twigs whip while the trunk barely moves. **Arm Sway's L/M/H chips and the trees gust on the
+  beat.** **Depth**, **Splits**, **Branch angle** and **Taper** shape the tree; it stamps into
+  the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips
+  into trails.
+- **Glass ball** — a new effect: raytraced spheres that **reflect and refract the layers
+  underneath them**. Put it on top of another layer and the balls pick that layer's picture
+  up — **Metal** mirrors it, **Glass** bends it through and turns it over inside the ball,
+  **Bubble** is a thin shell that rings hard at the edge. **Refraction** is the glass's
+  density. On its own it falls back to reflecting a procedural room, so it still stands up as
+  a single layer. What it reflects is brightness, so everything comes back in this layer's own
+  palette.
+
+### Internal
+
+- `tools/dnutprobe.js` and `tools/treeprobe.js` — the properties a still frame cannot show:
+  the Doughnut camera never enters the wall at any slider setting and its flute pattern closes
+  across the atan2 branch cut (a fractional Twist tears it, which is why Twist and Flutes are
+  whole numbers); the Trees segment budget cannot be multiplied past its cap, the canopy is
+  scaled to the frame at every Taper, and the sway really does accumulate — measured as tip
+  travel against trunk travel.
+
 ## [1.30.0] — 2026-08-23
 
 ### Added

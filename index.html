@@ -2188,7 +2188,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.30.0",
+    version: "1.31.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -4158,6 +4158,217 @@
     // (x, y, z, slice) sample, and winding it round trades the real axis for the fourth one
     // and walks through cross-sections nothing in 3D can show.
     //
+    // Glass ball: raytraced spheres that REFLECT AND REFRACT THE LAYERS BENEATH THEM.
+    //
+    // Analytic, not raymarched. A sphere is the one primitive with a closed-form ray
+    // intersection, and a marcher here would buy nothing but steps — which matters because
+    // Glass traces a second and third ray per pixel (in, out, and the reflection) and a
+    // marched version of that is three raymarches.
+    //
+    // THE ENVIRONMENT IS THE LAYER UNDERNEATH. `uBelow` is the OKLab accumulator holding
+    // every layer merged so far (glBelowTex), and a reflected or refracted ray is projected
+    // back onto the screen to read it — the screen-space environment-map trick. It is
+    // approximate by construction: what a ray "sees" is whatever the flat picture happens to
+    // hold in that direction, so the world behind the camera is the world in front of it.
+    // At ball scale nobody can tell, and the alternative is a cube map of a scene that only
+    // exists as one frame.
+    //
+    // With nothing underneath (uHasBelow 0 — a single-layer scene) it falls back to a
+    // procedural room, so the effect stands on its own. That fallback is not decoration: an
+    // effect whose whole subject is reflection renders as a flat disc without one.
+    //
+    // Heat, not colour, is what comes back — the pipeline is single-channel — so the ball
+    // reflects the BRIGHTNESS of what is behind it and gets tinted by its own palette.
+    const FS_GLASS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCount; uniform float uRad;
+    uniform float uMat; uniform float uIor; uniform float uGlow; uniform float uZoom;
+    uniform sampler2D uBelow; uniform float uHasBelow;
+    out vec4 o;
+    vec3 ballAt(int i, float t){
+      float f = float(i);
+      // Two incommensurate rates per ball, offset by the golden angle, so they drift through
+      // each other instead of orbiting in formation.
+      float a = t*(0.60 + 0.13*f) + f*2.39996;
+      float b = t*(0.41 + 0.09*f) + f*1.11700;
+      return vec3(1.25*sin(a) + 0.35*sin(b*1.7),
+                  0.85*sin(b) + 0.25*cos(a*1.3),
+                  0.60*cos(a*0.8 + f));
+    }
+    float env(vec3 d){
+      if (uHasBelow > 0.5){
+        // Screen-space projection of the ray. The +1.25 keeps the divisor away from zero for
+        // a ray travelling across the screen plane, which would otherwise smear one texel
+        // over the whole ball.
+        vec2 uv = 0.5 + 0.5*d.xy/(abs(d.z) + 1.25);
+        vec3 c = texture(uBelow, clamp(uv, 0.002, 0.998)).rgb;
+        return dot(c, vec3(0.299, 0.587, 0.114));
+      }
+      // Procedural room: sky, a low sun, and a receding floor grid to reflect.
+      float sky = 0.14 + 0.52*pow(max(0.0, d.y), 0.7);
+      float sun = pow(max(0.0, dot(d, normalize(vec3(0.40, 0.62, -0.68)))), 60.0);
+      float fl = 0.0;
+      if (d.y < -0.02){
+        float tf = -1.6/d.y;
+        vec2 g = abs(fract(d.xz*tf*0.35) - 0.5);
+        // A FALLING ramp has to be written this way round: smoothstep(hi, lo, x) is
+        // undefined in GLSL and this GPU answers 0, which would delete the floor entirely.
+        fl = (1.0 - smoothstep(0.40, 0.50, max(g.x, g.y)))/(1.0 + tf*tf*0.02);
+      }
+      return clamp(sky + 0.85*sun + 0.60*fl, 0.0, 1.0);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      vec3 ro = vec3(0.0, 0.0, -3.2);
+      vec3 rd = normalize(vec3(uv, 1.55));
+      int n = int(uCount);
+      float best = 1e9;
+      vec3 nrm = vec3(0.0, 0.0, -1.0), ctr = vec3(0.0);
+      bool hit = false;
+      for (int i = 0; i < 5; i++){
+        if (i >= n) break;
+        vec3 c = ballAt(i, uTime);
+        vec3 oc = ro - c;
+        float b = dot(oc, rd), q = dot(oc, oc) - uRad*uRad;
+        float h = b*b - q;
+        if (h < 0.0) continue;
+        h = sqrt(h);
+        float tn = -b - h;
+        if (tn < 0.0) tn = -b + h;
+        if (tn > 0.0 && tn < best){ best = tn; ctr = c; hit = true; }
+      }
+      float heat;
+      if (!hit){
+        // OUTSIDE THE BALLS, DRAW NOTHING when there is a layer beneath. Painting the
+        // environment here would repaint the layer below in this layer's palette, which
+        // hides it instead of reflecting it -- the opposite of the point. On its own the
+        // room is the backdrop and is worth drawing.
+        heat = uHasBelow > 0.5 ? 0.0 : env(rd)*0.42;
+      } else {
+        vec3 p = ro + rd*best;
+        nrm = normalize(p - ctr);
+        float face = max(0.0, dot(nrm, -rd));
+        float fres = pow(1.0 - face, 5.0);
+        // A SECOND, WIDER grazing term, and it is what makes the ball a ball. The Fresnel
+        // exponent of 5 is physically right and visually useless here: it lights a hairline
+        // at the very limb, so over a smooth layer (plasma, aurora) the ball showed only a
+        // gently distorted copy of the background and vanished into it. Exponent 2 draws a
+        // broad bright edge that outlines the sphere against anything, which is the job.
+        float rim = pow(1.0 - face, 2.0);
+        vec3 refl = reflect(rd, nrm);
+        if (uMat < 0.5){                     // METAL -- an opaque mirror
+          heat = env(refl)*0.90 + (0.06 + uGlow*0.55)*rim;
+        } else if (uMat < 1.5){              // GLASS -- refract in, refract out again
+          vec3 r1 = refract(rd, nrm, 1.0/uIor);
+          // The exit point is the far intersection with the SAME sphere, and because the
+          // entry point is already on the surface it is a single dot product rather than a
+          // second quadratic: t = -2 (p - c) . r1.
+          vec3 pe = p - 2.0*dot(p - ctr, r1)*r1;
+          vec3 n2 = normalize(pe - ctr);
+          vec3 r2 = refract(r1, -n2, uIor);
+          // refract() returns 0 on total internal reflection, which would read as a black
+          // patch on the far limb -- exactly where a real glass ball goes mirror-bright.
+          if (dot(r2, r2) < 0.001) r2 = reflect(r1, -n2);
+          // The interior is pulled down as well as outlined: at equal brightness a refracted
+          // copy of the layer below reads as more of the layer below, not as glass.
+          heat = mix(env(r2)*0.78, env(refl), clamp(fres*1.6, 0.0, 1.0)) + (0.06 + uGlow*0.70)*rim;
+        } else {                             // BUBBLE -- a thin shell: rim, and a faint bend
+          vec3 r1 = refract(rd, nrm, 1.0/uIor);
+          vec3 thin = normalize(mix(rd, r1, 0.30));
+          heat = mix(env(thin)*0.60, env(refl), clamp(0.20 + fres*2.0, 0.0, 1.0))
+               + (0.14 + uGlow*0.9)*rim;
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 0.92), 0.0, 0.0, 1.0);
+    }`;
+    // Doughnut: the inside of a torus, flown along the tube.
+    //
+    // The camera never needs a DE-escape solver the way the Mandelbulb's does, and that is
+    // the whole reason this effect is cheap: the free space is KNOWN. The tube's centre
+    // circle is free by construction, so the CPU parks the camera on it (bulbSeed's helix,
+    // without the correction) and the wobble is capped well inside the narrowest wall.
+    //
+    // DE is the CROSS-SECTION distance — wall radius minus how far the point sits from the
+    // centre circle — which is an OVERestimate wherever the ray runs along the tube rather
+    // than across it. So the march scales its step (MK below). Without that the ray steps
+    // clean through a wall on the inside of the bend and the tunnel gains holes.
+    //
+    // **uTwist and uFlute are INTEGERS, and that is load-bearing.** The flute pattern is
+    // cos(flute·(tubeAngle + twist·arc)) and `arc` is an atan2 — it jumps by 2π at the
+    // branch cut behind the camera. The pattern only closes across that jump when
+    // flute·twist is a whole number, and a fractional twist draws one hard seam down the
+    // tunnel. Both are `single: true` controls for exactly this reason; do not "free" them.
+    const FS_TORUS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform vec3 uPos; uniform vec3 uFwd;
+    uniform float uRing; uniform float uTube; uniform float uTwist; uniform float uFlute;
+    uniform float uGlow; uniform float uZoom;
+    out vec4 o;
+    float torusDE(vec3 p){
+      float q = length(p.xy) - uRing;              // radial offset from the centre circle
+      float arc = atan(p.y, p.x);                  // how far round the doughnut
+      vec2 c = vec2(q, p.z);
+      float rad = length(c);
+      float ang = atan(c.y, c.x) + uTwist*arc;     // tube angle, wound along the arc
+      // Scalloped wall + a fine corrugation along the arc. The corrugation is what gives
+      // the flight a sense of speed at low twist, where the flutes slide past too slowly.
+      float wall = uTube*(1.0 - 0.18*cos(uFlute*ang))
+                 - uTube*(0.055*cos(arc*24.0) + 0.022*cos(arc*97.0 + ang*3.0));
+      return wall - rad;                           // positive inside the pipe
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
+      vec3 f = normalize(uFwd);
+      vec3 wup = abs(f.z) > 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+      vec3 rt = normalize(cross(wup, f));
+      vec3 up = cross(f, rt);
+      vec3 ro = uPos;
+      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.25);
+      const float MK = 0.62;                       // step safety, see the note above
+      float t = 0.0, halo = 9.0, heat = 0.0, steps = 0.0;
+      for (int i = 0; i < 72; i++){
+        vec3 p = ro + rd*t;
+        float d = torusDE(p);
+        halo = min(halo, d/max(t, 0.25));
+        steps = float(i);
+        if (d < 0.0015*max(t, 0.5)){
+          float e = 0.002*max(t, 0.5);
+          vec2 h = vec2(1.0, -1.0)*0.5773;
+          vec3 nrm = normalize(h.xyy*torusDE(p + h.xyy*e) + h.yyx*torusDE(p + h.yyx*e)
+                             + h.yxy*torusDE(p + h.yxy*e) + h.xxx*torusDE(p + h.xxx*e));
+          // The normal points INTO the pipe (the field is positive inside), so the light
+          // is carried with the camera -- there is no sun in here.
+          float dif = max(0.0, dot(nrm, -rd));
+          float rim = pow(1.0 - dif, 3.0);
+          // HEADLAMP FALLOFF, not fog, is the depth cue in here. A tunnel is a metre wide
+          // and lit from the camera, so an exponential haze barely varies over the range
+          // that matters (exp(-0.3t) is 0.86 to 0.55 across the whole near wall) and the
+          // frame comes out one flat sheet of white. Inverse-square does vary: 0.9 at the
+          // wall beside you, 0.2 a few units on, 0.03 down the bend.
+          // INVERSE-LINEAR, and it was tuned against the palette rather than against the
+          // geometry. Inverse-SQUARE reads correctly and looks wrong: the wall in here sits
+          // 1-4 units out, over which t*t*0.45 swings 20x and the whole frame collapses into
+          // the bottom quarter of the ramp (measured: one flat dark brown). Plain exponential
+          // fog is the other failure -- it barely moves over that range and the frame comes
+          // out one flat sheet of white. This holds the near wall around 0.75, the mid tunnel
+          // around 0.5 and the far bend under 0.3, which is the band the palettes actually use.
+          float lamp = 1.0/(1.0 + t*0.42);
+          float ao = 1.0 - steps/72.0;
+          // Ceiling 0.82, the shader-side POINT_HEAT: 14 of the 19 palettes are near-white
+          // at the top of the ramp, so a surface allowed to reach 1.0 reads as blown out
+          // rather than as brightly lit. A CLAMP, not a scale -- scaling darkens the mid
+          // tones that are doing all the work to fix a problem only the peak has.
+          heat = min(0.82, (0.10 + 0.95*dif*lamp + uGlow*0.6*rim*lamp)*(0.6 + 0.4*ao));
+          break;
+        }
+        t += d*MK;
+        if (t > 26.0) break;
+      }
+      if (heat == 0.0) heat = uGlow*0.22*exp(-halo*40.0);   // proximity halo on a miss
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     // DE is iq's: |z|·log|z|/|dz| with |dz| tracked as the scalar md2 (=|dz|^2), which is
     // exact here because the derivative of z^2+c is 2z and only its MAGNITUDE is needed.
     const FS_QJULIA = `#version 300 es
@@ -5234,6 +5445,8 @@
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPos", "uFwd", "uPower", "uIter", "uGlow", "uZoom"]);
+    glProg.torus = camProg(VS_QUAD, FS_TORUS, ["uSize", "uPos", "uFwd", "uRing", "uTube", "uTwist", "uFlute", "uGlow", "uZoom"]);
+    glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);
@@ -5615,6 +5828,17 @@
   //   • an RGBA8 ping-pong accumulator (glTex.color) that layers blend into in order.
   // glColorTex holds the finished accumulator for glRender; null ⇒ the classic path.
   let glColorTex = null;
+  // THE LAYERS BENEATH, as a texture, for the effects that reflect them (Glass ball, Ocean).
+  // renderStackColor points this at the OKLab accumulator holding everything merged so far,
+  // just before each layer's heat is rendered, and nulls it afterwards. It is only ever
+  // non-null inside that loop: the single-layer path has nothing beneath by definition, and
+  // an effect that reads it must fall back to something of its own when it is null.
+  //
+  // It is a COLOUR texture and effects write HEAT, so what they can take from it is
+  // luminance. Reflecting the colour of the layer below would mean an effect that outputs
+  // RGB, which is a different pipeline; brightness through the ball's own palette is the
+  // version that fits this one.
+  let glBelowTex = null;
   const layerCur = [0, 0, 0, 0];         // which of heatL[slot][0/1] is live, per slot
   const layerPal = [];                   // per-slot palette-morph state (see stepLayerPal)
   const palScratch = new Uint8Array(256 * 4);
@@ -5896,6 +6120,10 @@
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
     for (const L of live) {
       const slot = stack.indexOf(L), fx = EFFECTS[L.fx];
+      // What is underneath THIS layer, for the effects that reflect it. Set before the heat
+      // render because that is when the effect's draw() runs; the accumulator is not written
+      // again until glOkMerge below, so it is safe to sample.
+      glBelowTex = acc >= 0 && live.indexOf(L) > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
       const base = stepLayerPal(slot, layerPalIndex(L), now);
       bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
@@ -5905,6 +6133,7 @@
       glOkMerge(colTex, L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc]);
       acc = 1 - acc;
     }
+    glBelowTex = null;                 // only ever live inside the loop above
     glColorTex = glTex.color[acc];
   }
   function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }
@@ -8099,6 +8328,144 @@
     }
   }
 
+  // ---- Glass ball: raytraced spheres over the layers beneath (shader effect) ----
+  // No per-frame state but the clock: the balls' positions are a closed-form function of it
+  // (ballAt in FS_GLASS), so nothing has to be carried between frames and nothing can drift
+  // apart between the shader and its mirror.
+  let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0;
+  function glassSeed(dt) {
+    gbPhase += dt * 0.5;
+    return { t: gbPhase, count: Math.round(gbCount), rad: gbRad, mat: Math.round(gbMat),
+             ior: gbIor, glow: gbGlow, zoom };
+  }
+  // CPU fallback. Spheres and a headlamp -- no reflection, no refraction, and no layer
+  // underneath to sample: the fallback path renders ONE item, so "the layers beneath" does
+  // not exist there at all. Shading them as plain lit balls is the honest version; faking a
+  // reflection of nothing would just be noise.
+  function glassCPU(dt) {
+    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(5, s.count));
+    const cx = [], cy = [], cz = [];
+    for (let i = 0; i < n; i++) {
+      const a = s.t * (0.60 + 0.13 * i) + i * 2.39996;
+      const b = s.t * (0.41 + 0.09 * i) + i * 1.11700;
+      cx.push(1.25 * Math.sin(a) + 0.35 * Math.sin(b * 1.7));
+      cy.push(0.85 * Math.sin(b) + 0.25 * Math.cos(a * 1.3));
+      cz.push(0.60 * Math.cos(a * 0.8 + i));
+    }
+    for (let y = 0; y < fh; y += 2) {
+      for (let x = 0; x < fw; x += 2) {
+        camPix(x, y);
+        const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const sy = (camPY / fh - 0.5) * 2 / s.zoom;
+        const rl = Math.hypot(sx, sy, 1.55);
+        const rdx = sx / rl, rdy = sy / rl, rdz = 1.55 / rl;
+        let best = 1e9, bi = -1;
+        for (let i = 0; i < n; i++) {
+          const ox = -cx[i], oy = -cy[i], oz = -3.2 - cz[i];
+          const bq = ox * rdx + oy * rdy + oz * rdz;
+          const h = bq * bq - (ox * ox + oy * oy + oz * oz - R * R);
+          if (h < 0) continue;
+          const sq = Math.sqrt(h);
+          let t = -bq - sq;
+          if (t < 0) t = -bq + sq;
+          if (t > 0 && t < best) { best = t; bi = i; }
+        }
+        let heat = 0;
+        if (bi >= 0) {
+          const px = rdx * best - cx[bi], py = rdy * best - cy[bi], pz = -3.2 + rdz * best - cz[bi];
+          const nx = px / R, ny = py / R, nz = pz / R;
+          const dif = Math.max(0, -(nx * rdx + ny * rdy + nz * rdz));
+          const rim = Math.pow(1 - dif, 2);          // the same wide grazing term the shader uses
+          heat = 0.12 + 0.55 * dif + (0.10 + s.glow * 0.7) * rim;
+        }
+        const v = Math.min(0.92, heat) * 255;
+        for (let by = y; by < Math.min(y + 2, fh); by++)
+          for (let bx = x; bx < Math.min(x + 2, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+  // ---- Doughnut: the inside of a torus, flown along the tube (shader effect) ----
+  // The Mandelbulb's interior camera needed a DE-escape solver because the free space in a
+  // fractal is not knowable in closed form. Here it IS: the tube's centre circle is free by
+  // construction, so the path is just that circle plus a wobble, and the only thing to get
+  // right is keeping the wobble inside the narrowest wall.
+  //
+  // THE WALL IS SCALLOPED, so "narrowest" is not uTube. FS_TORUS carves
+  //   wall = tube·(1 − 0.18·cos(flute·ang)) − 0.06·tube·cos(24·arc)
+  // whose minimum is 0.76·tube. DN_WOB is 0.30, and the radial term is scaled by tube, so
+  // the camera sits at most 0.30·tube out against a 0.76·tube floor at every slider setting
+  // — no per-frame clearance check, no state, and nothing to go wrong at 4 fps.
+  let dnRing = 3, dnTube = 0.8, dnSpeed = 1, dnTwist = 1, dnFlute = 6, dnGlow = 0.5, dnPhase = 0;
+  const DN_WOB = 0.30;                    // wobble as a fraction of the tube radius
+  const dnAt = (ph, out) => {             // the path — pure, so the heading can sample it twice
+    // Two clocks on the cross-section offset, at an irrational-ish ratio, so the camera
+    // never retraces the same helix and the flutes arrive at a different angle each lap.
+    const w = DN_WOB * dnTube * (0.55 + 0.45 * Math.sin(ph * 0.23));
+    const a = ph * 0.61;
+    const rr = dnRing + w * Math.cos(a);
+    out[0] = rr * Math.cos(ph); out[1] = rr * Math.sin(ph); out[2] = w * Math.sin(a);
+    return out;
+  };
+  const dnP = [0, 0, 0];
+  function torusSeed(dt) {
+    dnPhase += dt * dnSpeed * 0.55;       // radians of arc per second at speed 1
+    const p = dnAt(dnPhase, dnP);
+    // Heading is the CENTRE CIRCLE's tangent, not the wobbling path's. The path tangent is
+    // the obvious choice and it is wrong here: the wobble tilts it a few degrees, which
+    // swings the vanishing point off the frame and reads as the camera drifting rather than
+    // as the tunnel bending. Aiming down the pipe keeps the far end roughly centred and
+    // turns the wobble into parallax against the near wall, which is what sells the flight.
+    // Sign follows the direction of travel, so Speed can run negative.
+    const dir = dnSpeed < 0 ? -1 : 1;
+    let fx = -Math.sin(dnPhase) * dir, fy = Math.cos(dnPhase) * dir, fz = 0;
+    const fl = Math.hypot(fx, fy, fz) || 1;
+    return { px: p[0], py: p[1], pz: p[2], fx: fx / fl, fy: fy / fl, fz: fz / fl,
+             ring: dnRing, tube: dnTube, twist: Math.round(dnTwist), flute: Math.round(dnFlute),
+             glow: dnGlow, zoom };
+  }
+  function torusDECPU(x, y, z, ring, tube, twist, flute) {
+    const q = Math.hypot(x, y) - ring, arc = Math.atan2(y, x);
+    const rad = Math.hypot(q, z), ang = Math.atan2(z, q) + twist * arc;
+    const wall = tube * (1 - 0.18 * Math.cos(flute * ang))
+               - tube * (0.055 * Math.cos(arc * 24) + 0.022 * Math.cos(arc * 97 + ang * 3));
+    return wall - rad;
+  }
+  function torusCPU(dt) {                 // CPU fallback — mirrors FS_TORUS, coarsely
+    const s = torusSeed(dt), ar = fw / fh;
+    const fx = s.fx, fy = s.fy, fz = s.fz;
+    const vert = Math.abs(fz) > 0.9, wx = 0, wy = vert ? 1 : 0, wz = vert ? 0 : 1;
+    let rx = wy * fz - wz * fy, ry = wz * fx - wx * fz, rz = wx * fy - wy * fx;
+    const rn = Math.hypot(rx, ry, rz) || 1; rx /= rn; ry /= rn; rz /= rn;
+    const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+    for (let y = 0; y < fh; y += 3) {
+      for (let x = 0; x < fw; x += 3) {
+        camPix(x, y);
+        const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const sy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rdx = rx * sx + ux * sy + fx * 1.25;
+        let rdy = ry * sx + uy * sy + fy * 1.25;
+        let rdz = rz * sx + uz * sy + fz * 1.25;
+        const rl = Math.hypot(rdx, rdy, rdz) || 1; rdx /= rl; rdy /= rl; rdz /= rl;
+        let t = 0, halo = 9, heat = 0;
+        for (let i = 0; i < 26; i++) {
+          const d = torusDECPU(s.px + rdx * t, s.py + rdy * t, s.pz + rdz * t,
+                               s.ring, s.tube, s.twist, s.flute);
+          if (d / Math.max(t, 0.25) < halo) halo = d / Math.max(t, 0.25);
+          if (d < 0.004 * Math.max(t, 0.5)) {
+            heat = Math.min(0.82, (0.10 + (0.95 + s.glow * 0.6) / (1 + t * 0.42)) * 0.9);   // flat shade, same headlamp falloff
+            break;
+          }
+          t += d * 0.62;
+          if (t > 26) break;
+        }
+        if (heat === 0) heat = s.glow * 0.22 * Math.exp(-halo * 40);
+        const v = Math.min(1, heat) * 255;
+        for (let by = y; by < Math.min(y + 3, fh); by++)           // fill the 3x3 block
+          for (let bx = x; bx < Math.min(x + 3, fw); bx++) fire[by * fw + bx] = v;
+      }
+    }
+  }
+
   // ---- Geometric shape effects (CPU mirrors of FS_POLYGON / FS_SHAPEGRID / FS_CONCENTRIC
   // / FS_BOUNCE). Each *Seed(dt) advances this frame's phase and is called ONCE per frame
   // in the descriptor's draw hook; the mirror TAKES that seed and never re-seeds, so the
@@ -8468,6 +8835,113 @@
     }
   }
 
+
+  // ---- Trees: a swaying recursive fractal canopy (point effect) ----
+  // A point effect rather than a shader on purpose. The whole appeal of a tree in wind is
+  // the TRAIL the tips leave, and this family runs the fire sim and every feedback filter
+  // for free: add Fade and the canopy smears the way branches do at a long exposure.
+  //
+  // BEAT REACTIVITY NEEDED NO CODE. "Sways in time" is what arming Sway's L/M/H chips
+  // already does — the trigger machinery snaps that slider to its high thumb on a beat and
+  // decays it over the pulse length, which is a gust. Writing a bespoke beat hook here
+  // would have been a second, worse copy of `updateAnims`.
+  //
+  // Deterministic like every other point effect: branch jitter comes from `trHash`, never
+  // from Math.random and never from the chaos PRNG (which the stamp loop re-seeds).
+  let trCount = 3, trDepth = 8, trSplit = 2, trAngle = 28, trShrink = 0.72,
+      trSway = 0.35, trSpeed = 1, trPhase = 0;
+  // A whole tree is redrawn every tick, so the segment count is the cost. It is
+  // split^depth, which reaches 4^11 = four million at the slider extremes — the sliders
+  // cannot be allowed to multiply into that, so the DEPTH is clamped to whatever keeps the
+  // total under this. Clamping depth rather than split keeps the silhouette the user asked
+  // for (a 4-way tree stays 4-way, just shallower).
+  const TR_SEG_MAX = 12000;
+  function trHash(i) {                     // deterministic per-branch jitter, [-1, 1]
+    let h = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
+    h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+    return (h >>> 0) / 2147483648 - 1;
+  }
+  function trMaxDepth(split, want) {       // deepest tree that still fits TR_SEG_MAX
+    let total = 0, level = 1, d = 0;
+    while (d < want) {
+      const next = total + level;
+      if (next > TR_SEG_MAX) break;
+      total = next; level *= split; d++;
+    }
+    return Math.max(1, d);
+  }
+  function treeStamp(xL, xR, yT, yB, n) {
+    trPhase += trSpeed * 2 / cfg.burn;     // per TICK, like gxTime and flPhase
+    const w = xR - xL, h = yB - yT;
+    const split = Math.max(2, Math.min(4, Math.round(trSplit)));
+    const maxD = trMaxDepth(split, Math.max(1, Math.round(trDepth)));
+    const shrink = trShrink, spread = trAngle * Math.PI / 180;
+    const trees = Math.max(1, Math.min(5, Math.round(trCount)));
+    // Points are shared out by LENGTH, so a long trunk is not drawn at the same density as
+    // a twig. Total length is closed-form — sum over depth of split^d * L0 * shrink^d — so
+    // the tree is walked once rather than measured and then drawn.
+    // TRUNK LENGTH IS NORMALISED so the whole tree fits the box at every Taper. A fixed
+    // trunk is the obvious version and it does not work: the straight-chain height is
+    // L0·(1 − shrink^depth)/(1 − shrink), which runs from 1.7·L0 at taper 0.45 to 5.4·L0
+    // at 0.85 — so a wispy tree grew to 290px in a 178px frame and you saw trunk and
+    // nothing else (measured: 40% of the canopy stamped off-grid, where plot() drops it
+    // silently and it just reads as a smaller tree). Solving for L0 instead makes Taper a
+    // control over the tree's PROPORTIONS — stubby against wispy — rather than over
+    // whether it is on screen, which is what the slider is for. The default lands at
+    // 0.271·h, near enough the old fixed 0.30 that the shipped tree is unchanged.
+    let chain = 0;
+    for (let d = 0, len = 1; d < maxD; d++) { chain += len; len *= shrink; }
+    // 0.82, not 0.9: the straight chain is the tallest path, but the fan puts branches
+    // slightly above it, and at 0.9 the crowns were clipped by the top of the frame.
+    const L0 = h * 0.82 / Math.max(1, chain);
+    let totalLen = 0;
+    for (let d = 0, lev = 1, len = L0; d < maxD; d++) { totalLen += lev * len; lev *= split; len *= shrink; }
+    totalLen *= trees;
+    const perUnit = totalLen > 0 ? n / totalLen : 0;
+    // One live level of branches at a time: [x, y, angle, length, depth] flattened. A tree
+    // this size is a few thousand entries, and two flat arrays beat allocating an object
+    // per branch every tick.
+    let cur = [], nxt = [];
+    for (let t = 0; t < trees; t++) {
+      const fx = trees === 1 ? 0.5 : 0.14 + 0.72 * (t / (trees - 1));
+      cur.push(xL + w * fx, yB, 0, L0 * (0.85 + 0.3 * Math.abs(trHash(t * 7 + 1))), 0);
+    }
+    let branchId = 0;
+    for (let d = 0; d < maxD; d++) {
+      nxt.length = 0;
+      // WIND. The sway is added to each branch's angle as it is built, so it ACCUMULATES
+      // down the chain from trunk to twig — which is what makes it read as a tree bending
+      // rather than as a rigid pinwheel turning. Amplitude grows with depth for the same
+      // reason: a trunk barely moves and the tips whip.
+      const grow = (d + 1) / maxD;
+      const bend = trSway * grow * grow;
+      const heat = POINT_HEAT * (0.55 + 0.45 * (1 - d / maxD));
+      for (let i = 0; i < cur.length; i += 5) {
+        const bx = cur[i], by = cur[i + 1], ba = cur[i + 2], bl = cur[i + 3];
+        const id = ++branchId;
+        // Two clocks per branch: the slow body of the gust, and a faster flutter phased by
+        // the branch's own hash so no two twigs move together.
+        const sway = bend * (Math.sin(trPhase + d * 0.55 + trHash(id) * 3.1)
+                           + 0.45 * Math.sin(trPhase * 2.7 + trHash(id + 9973) * 6.2));
+        const a = ba + sway;
+        const ex = bx + Math.sin(a) * bl, ey = by - Math.cos(a) * bl;   // row 0 is the TOP, so up is -y
+        const pts = Math.max(1, Math.round(bl * perUnit));
+        for (let k = 0; k <= pts; k++) {
+          const f = k / pts;
+          plot(bx + (ex - bx) * f, by + (ey - by) * f, heat);
+        }
+        if (d + 1 >= maxD) continue;
+        const childLen = bl * shrink;
+        for (let c = 0; c < split; c++) {
+          // Fan the children about the parent, with a per-child jitter so the tree is not
+          // a perfectly symmetric diagram of itself.
+          const off = split === 1 ? 0 : (c / (split - 1) - 0.5) * 2 * spread;
+          nxt.push(ex, ey, a + off + trHash(id * 31 + c) * spread * 0.22, childLen, d + 1);
+        }
+      }
+      const swap = cur; cur = nxt; nxt = swap;
+    }
+  }
   // ---- Bouncing solids: rigid bodies raymarched as SDFs ---------------------
   // The 3D member of the shape family (Polygon / Shape grid / Concentric / Bouncing
   // shapes are its 2D siblings). A handful of primitives — sphere, box, doughnut,
@@ -9698,6 +10172,30 @@
     { key: "vbsize", host: "fx", group: "vballs", type: "dual", label: "Ball size", valId: "vVbSize", min: 0.08, max: 0.6, step: 0.005, lo: 0.30, hi: 0.30, fmt: v => sig3(v), apply: v => vbRad = v, durScale: 10 },
     { key: "vbspin", host: "fx", group: "vballs", type: "dual", label: "Tumble", valId: "vVbSpin", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => vbSpin = v, durScale: 10 },
     { key: "vbglow", host: "fx", group: "vballs", type: "dual", label: "Edge glow", valId: "vVbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => vbGlow = v, durScale: 10 },
+    // Glass ball. Material is an enum, Balls a count -- both single.
+    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
+    { key: "gbsize", host: "fx", group: "glass", type: "dual", label: "Size", valId: "vGbSize", min: 0.2, max: 1.2, step: 0.01, lo: 0.62, hi: 0.62, fmt: v => sig3(v), apply: v => gbRad = v, durScale: 10 },
+    { key: "gbmat", host: "fx", group: "glass", type: "dual", single: true, label: "Material", valId: "vGbMat", min: 0, max: 2, step: 1, lo: 1, hi: 1, fmt: v => ["Metal", "Glass", "Bubble"][Math.round(v)] || "Glass", apply: v => gbMat = Math.round(v), durScale: 10 },
+    { key: "gbior", host: "fx", group: "glass", type: "dual", label: "Refraction", valId: "vGbIor", min: 1.02, max: 2.2, step: 0.01, lo: 1.45, hi: 1.45, fmt: v => sig3(v), apply: v => gbIor = v, durScale: 10 },
+    { key: "gbglow", host: "fx", group: "glass", type: "dual", label: "Edge glow", valId: "vGbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => gbGlow = v, durScale: 10 },
+    // Doughnut. Twist and Flutes are `single` because the flute pattern is
+    // cos(flute·(tubeAngle + twist·arc)) over an atan2 `arc` — it only closes across the
+    // branch cut when flute·twist is a whole number. A fractional twist draws a seam.
+    // Trees. Count/Depth/Splits are single -- they count things, and a fractional branch
+    // count is not a shape. Depth is also what the segment budget clamps (see TR_SEG_MAX).
+    { key: "trcount", host: "fx", group: "trees", type: "dual", single: true, label: "Trees", valId: "vTrCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => trCount = Math.round(v), durScale: 10 },
+    { key: "trdepth", host: "fx", group: "trees", type: "dual", single: true, label: "Depth", valId: "vTrDepth", min: 3, max: 11, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => trDepth = Math.round(v), durScale: 10 },
+    { key: "trsplit", host: "fx", group: "trees", type: "dual", single: true, label: "Splits", valId: "vTrSplit", min: 2, max: 4, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => trSplit = Math.round(v), durScale: 10 },
+    { key: "trangle", host: "fx", group: "trees", type: "dual", label: "Branch angle", valId: "vTrAngle", min: 5, max: 65, step: 0.5, lo: 28, hi: 28, fmt: v => sig3(v) + "°", apply: v => trAngle = v, durScale: 10 },
+    { key: "trshrink", host: "fx", group: "trees", type: "dual", label: "Taper", valId: "vTrShrink", min: 0.45, max: 0.85, step: 0.005, lo: 0.72, hi: 0.72, fmt: v => sig3(v) + "×", apply: v => trShrink = v, durScale: 10 },
+    { key: "trsway", host: "fx", group: "trees", type: "dual", label: "Sway", valId: "vTrSway", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => trSway = v, durScale: 10 },
+    { key: "trspeed", host: "fx", group: "trees", type: "dual", label: "Wind speed", valId: "vTrSpeed", min: 0, max: 4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => trSpeed = v, durScale: 10 },
+    { key: "dnring", host: "fx", group: "torus", type: "dual", label: "Ring radius", valId: "vDnRing", min: 1.5, max: 6, step: 0.05, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => dnRing = v, durScale: 10 },
+    { key: "dntube", host: "fx", group: "torus", type: "dual", label: "Tube radius", valId: "vDnTube", min: 0.25, max: 1.6, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => dnTube = v, durScale: 10 },
+    { key: "dnspeed", host: "fx", group: "torus", type: "dual", label: "Speed", valId: "vDnSpeed", min: -3, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => dnSpeed = v, durScale: 10 },
+    { key: "dntwist", host: "fx", group: "torus", type: "dual", single: true, label: "Twist", valId: "vDnTwist", min: -4, max: 4, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => dnTwist = Math.round(v), durScale: 10 },
+    { key: "dnflute", host: "fx", group: "torus", type: "dual", single: true, label: "Flutes", valId: "vDnFlute", min: 0, max: 12, step: 1, lo: 6, hi: 6, fmt: v => Math.round(v) === 0 ? "smooth" : sig3(Math.round(v)), apply: v => dnFlute = Math.round(v), durScale: 10 },
+    { key: "dnglow", host: "fx", group: "torus", type: "dual", label: "Glow", valId: "vDnGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => dnGlow = v, durScale: 10 },
     { key: "goswell", host: "fx", group: "ocean", type: "dual", label: "Swell", valId: "vGoSwell", min: 0, max: 2.5, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSwell = v, durScale: 10 },
     { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
@@ -10469,6 +10967,7 @@
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
     boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
+    torus: "Doughnut", trees: "Trees", glass: "Glass ball",
     bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
@@ -10630,6 +11129,9 @@
     ["bpOffZ", () => bpOffZ, v => bpOffZ = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
     ["goTime", () => goTime, v => goTime = v],
+    ["dnPhase", () => dnPhase, v => dnPhase = v],
+    ["trPhase", () => trPhase, v => trPhase = v],
+    ["gbPhase", () => gbPhase, v => gbPhase = v],
     ["vbPhase", () => vbPhase, v => vbPhase = v],
     ["hgPhase", () => hgPhase, v => hgPhase = v],
     ["gxTime", () => gxTime, v => gxTime = v],
@@ -12232,6 +12734,48 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], vbcount: [24, 24], vbshape: [1, 1], vbsize: [0.30, 0.30], vbspin: [0.5, 0.5], vbglow: [0.5, 0.5],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "glass", name: "Glass ball", subtitle: "Glass ball · raytraced spheres over the layers below",
+      help: "Raytraced spheres that reflect and refract WHAT IS UNDERNEATH THEM. Put this layer on top of another one and the balls pick that layer's picture up: Metal mirrors it, Glass bends it through and turns it upside down the way a real ball does, Bubble is a thin shell that barely bends it but rings hard at the edge. Refraction is the glass's density — low is nearly water, high squeezes the whole scene into the middle of the ball. On its own, with no layer beneath, the balls fall back to reflecting a procedural room so the effect still stands up. The reflection is of BRIGHTNESS, not colour — everything is re-tinted by this layer's own palette.",
+      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "glass", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = glassSeed(dt);
+        if (useGL) glShaderDraw("glass", u => {
+          gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad);
+          gl.uniform1f(u.uMat, s.mat); gl.uniform1f(u.uIor, s.ior); gl.uniform1f(u.uGlow, s.glow);
+          gl.uniform1f(u.uZoom, s.zoom);
+          // The layers beneath, as this ball's environment. A sampler must be bound to a
+          // COMPLETE texture even when the shader never reads it, so with nothing underneath
+          // bind any real texture and let uHasBelow switch the branch.
+          bindTexUnit(3, glBelowTex || glTex.native); gl.uniform1i(u.uBelow, 3);
+          gl.uniform1f(u.uHasBelow, glBelowTex ? 1 : 0);
+        });
+        else glassCPU(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], gbcount: [3, 3], gbsize: [0.62, 0.62], gbmat: [1, 1], gbior: [1.45, 1.45], gbglow: [0.5, 0.5],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
+    { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
+      help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
+      params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"],
+      helpTags: ["all", "trees"], bakesOwnZoom: true,
+      stamp: (xL, xR, yT, yB, n) => treeStamp(xL, xR, yT, yB, n),
+      // TREES OWN THEIR POINTS RANGE, and it is high for a reason: this effect draws LINES,
+      // not a cloud, so the budget is spread over the tree's total length rather than
+      // scattered. Three default trees are ~26k pixels of branch at full resolution, so the
+      // shared 2500 default drew a dotted wireframe. 30000 is roughly one point per pixel.
+      ranges: { points: { min: 4000, max: 60000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], trcount: [3, 3], trdepth: [8, 8], trsplit: [2, 2], trangle: [28, 28], trshrink: [0.72, 0.72], trsway: [0.35, 0.35], trspeed: [1, 1],
+        points: [30000, 30000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",
+      help: "The inside of a doughnut, flown along the tube. The camera rides the pipe's centre line, so the wall wraps the whole frame and the curve of the ring keeps bringing new surface into view — you are always about to round a bend you can never quite see past. Flutes cuts lengthwise grooves into the pipe and Twist winds them into a spiral (both whole numbers, so the pattern closes on itself with no seam; set Flutes to 0 for a smooth pipe). Ring radius is how big the doughnut is — small values bend the tunnel hard and shorten the view, large ones straighten it out. Tube radius is how tight it is around you. Speed runs the flight, and negative reverses it.",
+      params: ["dnring", "dntube", "dnspeed", "dntwist", "dnflute", "dnglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "torus", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = torusSeed(dt);
+        if (useGL) glShaderDraw("torus", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uRing, s.ring); gl.uniform1f(u.uTube, s.tube); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uFlute, s.flute); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
+        else torusCPU(dt); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], dnring: [3, 3], dntube: [0.8, 0.8], dnspeed: [1, 1], dntwist: [1, 1], dnflute: [6, 6], dnglow: [0.5, 0.5],
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
       help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
       params: ["goswell", "gochop", "gospeed", "gofoam", "gowind", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -18842,8 +19386,25 @@
       { n: "Ball size", w: "vballs", t: "Vector balls only — how fat each sphere is. Small keeps them clearly separate points of light; wind it up and neighbours overlap until the formation reads as one lumpy solid." },
       { n: "Tumble", w: "vballs", t: "Vector balls only — how fast the constellation turns. It yaws and pitches at different rates, so it never repeats a pose. 0 holds it still." },
       { n: "Edge glow", w: "vballs", t: "Vector balls only — lights the rim of each sphere where its surface turns away from you. Low is flat shading, high outlines every ball and the formation reads as a cloud of bright shells." },
+      { n: "Balls", w: "glass", t: "Glass ball only — how many spheres are in the air. Each drifts on its own pair of clocks, so they pass through each other's reflections rather than orbiting in formation." },
+      { n: "Material", w: "glass", t: "Glass ball only. **Metal** is an opaque mirror — you see only what is behind you. **Glass** refracts the scene through both surfaces, so the layer underneath appears inside the ball, shrunk and turned over. **Bubble** is a thin shell: it barely bends what is behind it, but the rim rings bright. Metal reads best over a busy layer, Glass over a big simple one." },
+      { n: "Refraction", w: "glass", t: "Glass ball only — how dense the glass is (its index of refraction). Around 1.05 is barely more than air and the scene passes almost straight through; 1.45 is real glass; past 2 the whole picture is squeezed into a bright knot at the centre of the ball. Only Glass and Bubble use it — Metal never lets a ray in." },
+      { n: "Edge glow", w: "glass", t: "Glass ball only — how hard the rim lights up where the surface turns away from you. That grazing brightening is what makes a sphere read as a sphere rather than as a flat disc, so a little of it is worth keeping even on Metal." },
+      { n: "Trees", w: "trees", t: "Trees only — how many trunks stand in the row. They are spread across the frame and each is seeded differently, so they lean and gust out of step with one another rather than moving as one." },
+      { n: "Depth", w: "trees", t: "Trees only — how many times the tree splits. This is where the filigree comes from, and it is also the expensive slider: the branch count is Splits to the power of Depth, so a deep 4-way tree is millions of segments. The depth is quietly clamped to whatever keeps the total drawable, which is why very deep 3- and 4-way trees stop getting finer." },
+      { n: "Splits", w: "trees", t: "Trees only — how many branches come off each joint. 2 is the classic Y-forked tree, 3 and 4 give a denser, more shrub-like crown — and cost far more, so they reach less depth before the budget stops them." },
+      { n: "Branch angle", w: "trees", t: "Trees only — how wide each fork opens, in degrees. Narrow angles give a tall poplar; wide ones splay the crown out flat. Drift the two thumbs and the whole canopy opens and closes." },
+      { n: "Taper", w: "trees", t: "Trees only — how much shorter each generation of branch is than its parent. Low values give a stubby tree with a thick trunk and twigs that vanish almost at once; high values a wispy one whose branches barely shorten, so the detail is spread evenly out to the tips. The tree is scaled to fit the frame either way, so this changes its proportions rather than its size." },
+      { n: "Sway", w: "trees", t: "Trees only — the wind strength. The bend is added at every joint, so it accumulates out along each branch: the trunk hardly moves and the tips whip, the way a real tree does. **Arm this slider's L/M/H chips and the trees gust on the beat** — that is what makes them sway in time with the music." },
+      { n: "Wind speed", w: "trees", t: "Trees only — how fast the wind cycles. Each branch carries its own phase, so the gust travels through the canopy instead of every twig moving together. 0 freezes the trees mid-bend." },
+      { n: "Ring radius", w: "torus", t: "Doughnut only — how big the doughnut is, measured to the centre of the tube. Small values bend the tunnel hard, so the wall closes off the view a short way ahead and the flight feels fast and tight; large values straighten the pipe out and you can see a long way down it." },
+      { n: "Tube radius", w: "torus", t: "Doughnut only — how wide the pipe is around you. The camera's wander scales with it, so this changes how close the wall gets without ever letting you touch it." },
+      { n: "Twist", w: "torus", t: "Doughnut only — how many extra turns the flutes make in one lap of the doughnut, so it winds the grooves into a spiral. Whole numbers only, and deliberately: the pattern has to close on itself after a full lap or there would be a seam running down the tunnel. 0 leaves the grooves running straight, and negative winds them the other way." },
+      { n: "Flutes", w: "torus", t: "Doughnut only — how many lengthwise grooves are cut into the pipe. 0 is a smooth tube; higher counts give it a fluted, organ-pipe cross-section that the Twist can then spiral. Whole numbers, for the same reason Twist is." },
       { n: "Swell", w: "ocean", t: "Ocean only — how big the sea is. It scales the surface normals rather than the height, so raising it steepens every face at once: the glint gets sharper, the foam breaks earlier, and the water goes from a lazy roll to a heavy sea." },
       { n: "Chop", w: "ocean", t: "Ocean only — how peaked the crests are. Each wave train is a sine raised to this power, so 1 is a bland sine swell with rounded tops, and higher values keep the troughs round while drawing the crests up to a point — which is what real water does. Drift the two thumbs and the sea builds and lays down again." },
+      { n: "Speed", w: "torus", t: "Doughnut only — how fast the flight runs along the tube. Negative flies it backwards, and 0 parks you inside, still looking down the pipe." },
+      { n: "Glow", w: "torus", t: "Doughnut only — grazing light on the wall, brightest where the surface turns away from you. High values light the far bend before you reach it." },
       { n: "Speed", w: "ocean", t: "Ocean only — how fast the waves travel. Each octave runs a little faster than the one below, so the small chop skitters across the big swell. 0 freezes the surface mid-wave." },
       { n: "Foam", w: "ocean", t: "Ocean only — the threshold a crest has to pass before it breaks white: high water and a steep face together. Low values leave the whole sea flecked, high values keep it to the biggest crests only." },
       { n: "Wind", w: "ocean", t: "Ocean only — the direction the swell runs, in degrees. Turning it swings the whole sea, and because the octaves fan out from it the interference pattern changes too rather than just rotating." },
