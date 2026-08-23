@@ -684,8 +684,13 @@
     // Each slot gets its own persistent heat pair (so it retains its own fire/feedback),
     // its own 256×1 palette LUT, so every stacked effect keeps its own colours. The
     // colour accumulator ping-pongs (glTex.color[0/1]); layers blend into it in OKLab.
+    // TWICE STACK_MAX, not STACK_MAX. Slots 0..3 are the live scene; 4..7 are the OUTGOING
+    // scene while a transition runs, which is rendered for real rather than frozen (see
+    // renderPrevScene). Both sets are allocated up front: they are R8 at fire resolution,
+    // the extra four pairs cost a few megabytes, and allocating them at the moment a scene
+    // switches would put a texture upload inside the one frame that must not stutter.
     glTex.heatL = []; glFbo.heatL = []; glTex.palL = [];
-    for (let i = 0; i < STACK_MAX; i++) {
+    for (let i = 0; i < STACK_MAX * 2; i++) {
       const a = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
       const b = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
       glTex.heatL.push([a, b]);
@@ -751,7 +756,7 @@
     resizeTex(glTex.layer, fw, fh);
     resizeTex(glTex.rd[0], fw, fh); resizeTex(glTex.rd[1], fw, fh);
     rdNeedSeed = true;                 // a resized dish is blank — re-seed the culture
-    for (let i = 0; i < STACK_MAX; i++) {
+    for (let i = 0; i < glTex.heatL.length; i++) {
       resizeTex(glTex.heatL[i][0], fw, fh);
       resizeTex(glTex.heatL[i][1], fw, fh);
     }
@@ -984,7 +989,7 @@
   // RGB, which is a different pipeline; brightness through the ball's own palette is the
   // version that fits this one.
   let glBelowTex = null;
-  const layerCur = [0, 0, 0, 0];         // which of heatL[slot][0/1] is live, per slot
+  const layerCur = [0, 0, 0, 0, 0, 0, 0, 0];   // which of heatL[slot][0/1] is live, per slot (live 0-3, outgoing 4-7)
   const layerPal = [];                   // per-slot palette-morph state (see stepLayerPal)
   const palScratch = new Uint8Array(256 * 4);
   // Bake a smooth base ramp (+ the live banding filter) into RGBA bytes for a LUT upload.
@@ -1258,17 +1263,22 @@
   // The whole multi-layer colour path: render each live layer's heat, colour it with its
   // own palette, run its OWN filter chain (feedback already applied inside renderLayerHeat;
   // post here), then blend the layers together in OKLab, leaving the result in glColorTex.
-  function renderStackColor(live, dt, now, ticks) {
+  // `base` offsets the per-slot buffers: 0 for the live scene, STACK_MAX for the outgoing
+  // one during a transition. It replaces `stack.indexOf(L)`, which returns -1 for a
+  // DETACHED item and is the one line that has to change for this to work at all — every
+  // per-slot lookup below would silently read heatL[-1] and the whole scene would vanish.
+  function renderStackColor(live, dt, now, ticks, base) {
+    const b0 = base || 0;
     let acc = 0;
     bindFbo(glFbo.color[0], fw, fh);
     gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
-    for (const L of live) {
-      const slot = stack.indexOf(L), fx = EFFECTS[L.fx];
+    for (let li = 0; li < live.length; li++) {
+      const L = live[li], slot = b0 + li, fx = EFFECTS[L.fx];
       // What is underneath THIS layer, for the effects that reflect it. Set before the heat
       // render because that is when the effect's draw() runs; the accumulator is not written
       // again until glOkMerge below, so it is safe to sample.
-      glBelowTex = acc >= 0 && live.indexOf(L) > 0 ? glTex.color[acc] : null;
+      glBelowTex = li > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
       const base = stepLayerPal(slot, layerPalIndex(L), now);
       bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
@@ -1280,6 +1290,32 @@
     }
     glBelowTex = null;                 // only ever live inside the loop above
     glColorTex = glTex.color[acc];
+  }
+  // THE OUTGOING SCENE KEEPS RUNNING. A transition used to blend against one frozen frame
+  // (transBegin copied glTex.scene → glTex.prev and that was the whole outgoing side), so
+  // half of every switch was a still. It is rendered for real now, into glTex.prev, once
+  // per frame while the transition lasts.
+  //
+  // Three things make this cheap rather than a second engine. A FROZEN stack item is
+  // already a complete, self-contained scene — its own state, filters, palette, ranges,
+  // anim and phase — so `prevStack` is just the array installStack replaced. This path
+  // already renders an arbitrary list of layers, points and shaders alike. And running the
+  // outgoing scene FIRST means the colour accumulator can be reused: by the time the live
+  // scene wants glTex.color, the outgoing frame has been copied out.
+  //
+  // Known ceiling: reaction–diffusion is a deliberate singleton (glTex.rd), so an outgoing
+  // RD scene shares the incoming one's dish for the length of the blend.
+  function renderPrevScene(dt, now, ticks) {
+    const plive = prevStack.filter(L => !L.mute);
+    if (!plive.length) return;
+    renderStackColor(plive, dt, now, ticks, STACK_MAX);
+    bindFbo(glFbo.prev, fw, fh);
+    gl.disable(gl.BLEND);
+    gl.useProgram(glProg.zoom.p);
+    bindTexUnit(0, glColorTex); gl.uniform1i(glProg.zoom.u.uSrc, 0);
+    gl.uniform1f(glProg.zoom.u.uZoom, 1);
+    drawQuad();
+    glColorTex = null;              // the live pass below decides its own
   }
   function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }
   function glPlasma(s) { glShaderDraw("plasma", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); }

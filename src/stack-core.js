@@ -612,22 +612,38 @@
   // and apply immediately — frame() reads cfg.burn, cfg.decay, zoom and bloomAmt
   // between here and the draw. Layer keys are computed only; installStackItem() puts
   // each item's values into the globals just before that item draws.
-  function updateAnims(now, dt) {
+  // `items` runs the loop over a DETACHED stack instead of the live one — the outgoing
+  // scene during a transition, which keeps drifting rather than freezing (renderPrevScene).
+  // Called AFTER the live pass, deliberately: each fresh drift segment draws twice from
+  // Math.random, so putting the outgoing scene second leaves the live scene's sequence
+  // exactly as it was.
+  //
+  // Two things are skipped for a detached stack. SCENE keys are shared — `burn`, `bloom`
+  // and the four screen filters belong to the one finished picture, and the incoming scene
+  // owns them. And its sliders are NOT beat-armed: `trigState` is keyed by slot, the
+  // outgoing slots are not in `trigList`, so `clearBeats` would never drain their latches
+  // and every armed slider would sit pinned at its high thumb for the length of the blend.
+  // Passing a null band drops each one straight through to the drift, which is what a
+  // sub-second dissolve wants anyway.
+  function updateAnims(now, dt, items) {
+    const list = items || stack;
+    const detached = !!items;
     for (const id in anims) {
       const a = anims[id];
       if (a.scene) {
+        if (detached) continue;
         const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
         // A scene control belongs to no layer, so its trigger is filed under the SELECTED
         // slot — the same slot its tuning is edited from and stored under.
         stepAnim(a, animPhase[id], mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true, stackSel, id);
         continue;
       }
-      for (let s = 0; s < stack.length; s++) {
-        const L = stack[s];
+      for (let s = 0; s < list.length; s++) {
+        const L = list[s];
         const b = bandOf(L, id);
         if (!b) continue;                 // this item's effect doesn't carry the key
         stepAnim(a, itemAnim(L, id), Math.min(b[0], b[1]), Math.max(b[0], b[1]),
-          beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false, s, id);
+          detached ? null : beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false, s, id);
       }
     }
   }

@@ -5,9 +5,12 @@
   // used to cut hard. These cover that gap.
   //
   // Every one is a mode of the single FS_TRANS pass, run between the zoom and the glow
-  // on a frozen copy of the outgoing frame (glTex.prev). Freezing is the tradeoff:
-  // rendering both scenes at once would need two live copies of state that is singleton
-  // here. For a sub-second transition it reads the way a video switcher's dissolve does.
+  // against glTex.prev — which holds the OUTGOING SCENE, STILL RUNNING. Both sides of a
+  // blend are live: `prevStack` is the stack array installStack replaced, every item frozen
+  // and therefore self-contained, re-rendered each frame by renderPrevScene into the second
+  // half of the per-slot buffers. (It was a frozen still until 1.34.0, on the grounds that
+  // two live scenes would need two copies of singleton state; the per-layer colour path had
+  // since made that false.)
   //
   // `fits(a, b)` returns a *weight* for a switch from scene a to scene b — 0 means
   // "never pick me for this pair". Both sides are {dense, retains, palette} summaries,
@@ -213,7 +216,23 @@
     trans.on = true; trans.t = 0; trans.id = pick.id;
     trans.mode = pick.mode; trans.burn = !!pick.burn;
     trans.dur = Math.max(0.05, pick.dur * scale);
-    if (pick.mode < 0) return;               // cut / burn-off need no frozen copy
+    if (pick.mode < 0) return;               // cut / burn-off need no outgoing copy
+    // KEEP THE OUTGOING STACK ALIVE. `stack` is about to be replaced wholesale by
+    // installStack with a brand-new array of new item objects, so simply holding this
+    // reference leaves the old scene intact and unowned — and a frozen stack item already
+    // carries everything needed to render it. Freezing the SELECTED one first is what makes
+    // that true of all of them: the selected item's store is the DOM, and without this its
+    // record would be null and the layer you were editing would drop out of the blend.
+    if (useGL && glReady) {
+      if (stack[stackSel]) freezeItem(stack[stackSel]);
+      prevStack = stack;
+    }
+    // The one-off snapshot STAYS, even though renderPrevScene rewrites glTex.prev before the
+    // first composite. It is the fallback for the case renderPrevScene returns early on:
+    // an outgoing scene with every layer muted has nothing to render, and without this the
+    // blend would run against whatever glTex.prev last held. Verified the other way round
+    // too — delete this copy and the outgoing half still draws, which is what proves the
+    // live path is doing the work rather than this.
     if (useGL && glReady) {                  // snapshot glTex.scene → glTex.prev
       gl.bindFramebuffer(gl.FRAMEBUFFER, glFbo.scene);
       gl.bindTexture(gl.TEXTURE_2D, glTex.prev);
@@ -231,7 +250,10 @@
   function transStep(dt) {
     if (!trans.on) return;
     trans.t += dt / trans.dur;
-    if (trans.t >= 1) { trans.on = false; trans.t = 0; trans.mode = -1; trans.burn = false; }
+    if (trans.t >= 1) {
+      trans.on = false; trans.t = 0; trans.mode = -1; trans.burn = false;
+      prevStack = null;                      // stop rendering the scene that has gone
+    }
   }
   function presetState(e) {           // a fresh copy of effect e's default slider values
     const st = {}, d = EFFECTS[e].defaults;

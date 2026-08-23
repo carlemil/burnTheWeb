@@ -2378,6 +2378,12 @@
   var blocks = [];        // slot -> that stack slot's control block element
   var keyMap = [];        // slot -> { "<the string that used to be the id>": node }
   var W = [];             // slot -> { key: wiring record } — see wireRange
+  // The OUTGOING stack while a preset transition runs: the array installStack replaced,
+  // every item frozen, so it is a complete renderable scene (see renderPrevScene).
+  // `var`, and declared here rather than beside `trans`: it is read by frame-loop.js and
+  // render-gl-pipeline.js, both of which load BEFORE transitions.js, and a `let` there
+  // would be in the TDZ for them.
+  var prevStack = null;
   var secs = [];          // slot -> { filterId: that block's <details> } — see buildFilterUI
   // A HASH of node references, not a subtree query. The POPPABLE pass moves every .ctl out
   // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —
@@ -5658,8 +5664,13 @@
     // Each slot gets its own persistent heat pair (so it retains its own fire/feedback),
     // its own 256×1 palette LUT, so every stacked effect keeps its own colours. The
     // colour accumulator ping-pongs (glTex.color[0/1]); layers blend into it in OKLab.
+    // TWICE STACK_MAX, not STACK_MAX. Slots 0..3 are the live scene; 4..7 are the OUTGOING
+    // scene while a transition runs, which is rendered for real rather than frozen (see
+    // renderPrevScene). Both sets are allocated up front: they are R8 at fire resolution,
+    // the extra four pairs cost a few megabytes, and allocating them at the moment a scene
+    // switches would put a texture upload inside the one frame that must not stutter.
     glTex.heatL = []; glFbo.heatL = []; glTex.palL = [];
-    for (let i = 0; i < STACK_MAX; i++) {
+    for (let i = 0; i < STACK_MAX * 2; i++) {
       const a = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
       const b = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
       glTex.heatL.push([a, b]);
@@ -5725,7 +5736,7 @@
     resizeTex(glTex.layer, fw, fh);
     resizeTex(glTex.rd[0], fw, fh); resizeTex(glTex.rd[1], fw, fh);
     rdNeedSeed = true;                 // a resized dish is blank — re-seed the culture
-    for (let i = 0; i < STACK_MAX; i++) {
+    for (let i = 0; i < glTex.heatL.length; i++) {
       resizeTex(glTex.heatL[i][0], fw, fh);
       resizeTex(glTex.heatL[i][1], fw, fh);
     }
@@ -5958,7 +5969,7 @@
   // RGB, which is a different pipeline; brightness through the ball's own palette is the
   // version that fits this one.
   let glBelowTex = null;
-  const layerCur = [0, 0, 0, 0];         // which of heatL[slot][0/1] is live, per slot
+  const layerCur = [0, 0, 0, 0, 0, 0, 0, 0];   // which of heatL[slot][0/1] is live, per slot (live 0-3, outgoing 4-7)
   const layerPal = [];                   // per-slot palette-morph state (see stepLayerPal)
   const palScratch = new Uint8Array(256 * 4);
   // Bake a smooth base ramp (+ the live banding filter) into RGBA bytes for a LUT upload.
@@ -6232,17 +6243,22 @@
   // The whole multi-layer colour path: render each live layer's heat, colour it with its
   // own palette, run its OWN filter chain (feedback already applied inside renderLayerHeat;
   // post here), then blend the layers together in OKLab, leaving the result in glColorTex.
-  function renderStackColor(live, dt, now, ticks) {
+  // `base` offsets the per-slot buffers: 0 for the live scene, STACK_MAX for the outgoing
+  // one during a transition. It replaces `stack.indexOf(L)`, which returns -1 for a
+  // DETACHED item and is the one line that has to change for this to work at all — every
+  // per-slot lookup below would silently read heatL[-1] and the whole scene would vanish.
+  function renderStackColor(live, dt, now, ticks, base) {
+    const b0 = base || 0;
     let acc = 0;
     bindFbo(glFbo.color[0], fw, fh);
     gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
-    for (const L of live) {
-      const slot = stack.indexOf(L), fx = EFFECTS[L.fx];
+    for (let li = 0; li < live.length; li++) {
+      const L = live[li], slot = b0 + li, fx = EFFECTS[L.fx];
       // What is underneath THIS layer, for the effects that reflect it. Set before the heat
       // render because that is when the effect's draw() runs; the accumulator is not written
       // again until glOkMerge below, so it is safe to sample.
-      glBelowTex = acc >= 0 && live.indexOf(L) > 0 ? glTex.color[acc] : null;
+      glBelowTex = li > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
       const base = stepLayerPal(slot, layerPalIndex(L), now);
       bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
@@ -6254,6 +6270,32 @@
     }
     glBelowTex = null;                 // only ever live inside the loop above
     glColorTex = glTex.color[acc];
+  }
+  // THE OUTGOING SCENE KEEPS RUNNING. A transition used to blend against one frozen frame
+  // (transBegin copied glTex.scene → glTex.prev and that was the whole outgoing side), so
+  // half of every switch was a still. It is rendered for real now, into glTex.prev, once
+  // per frame while the transition lasts.
+  //
+  // Three things make this cheap rather than a second engine. A FROZEN stack item is
+  // already a complete, self-contained scene — its own state, filters, palette, ranges,
+  // anim and phase — so `prevStack` is just the array installStack replaced. This path
+  // already renders an arbitrary list of layers, points and shaders alike. And running the
+  // outgoing scene FIRST means the colour accumulator can be reused: by the time the live
+  // scene wants glTex.color, the outgoing frame has been copied out.
+  //
+  // Known ceiling: reaction–diffusion is a deliberate singleton (glTex.rd), so an outgoing
+  // RD scene shares the incoming one's dish for the length of the blend.
+  function renderPrevScene(dt, now, ticks) {
+    const plive = prevStack.filter(L => !L.mute);
+    if (!plive.length) return;
+    renderStackColor(plive, dt, now, ticks, STACK_MAX);
+    bindFbo(glFbo.prev, fw, fh);
+    gl.disable(gl.BLEND);
+    gl.useProgram(glProg.zoom.p);
+    bindTexUnit(0, glColorTex); gl.uniform1i(glProg.zoom.u.uSrc, 0);
+    gl.uniform1f(glProg.zoom.u.uZoom, 1);
+    drawQuad();
+    glColorTex = null;              // the live pass below decides its own
   }
   function glJulia(s) { glShaderDraw("julia", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); }); }
   function glPlasma(s) { glShaderDraw("plasma", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); }
@@ -9432,6 +9474,10 @@
     // empty bars — and there is no latch left to clear.
     if (audioLive()) { updateMeter(); flashChips(); }
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
+    // ...and the OUTGOING scene, if one is still blending out. After the live pass: each
+    // fresh drift segment draws twice from Math.random, so this order leaves the live
+    // scene's sequence exactly as it was.
+    if (prevStack) updateAnims(now, dt, prevStack);
     if (audioLive()) clearBeats();
     if (dbg.on) dbgDraw();
 
@@ -9512,6 +9558,12 @@
     // plain assignment, so a second mirror would simply erase the first, and each extra
     // mirror is a full per-pixel JS loop — an N× multiplier on the dominant cost of the
     // frame, on exactly the machines that have no GPU.
+    // THE OUTGOING SCENE, rendered for real into glTex.prev, before the live one. It has to
+    // come first: it borrows the same colour accumulator, and by the time the live pass
+    // wants it the outgoing frame has already been copied out. It tramples the render
+    // globals (camera, zoom, filter params) exactly as any layer's turn does, and every
+    // branch below re-installs before it draws, so nothing downstream notices.
+    if (useGL && prevStack && transActive()) renderPrevScene(dt, now, ticks);
     if (!useGL) {
       const L = live[0] || stack[0];
       installStackItem(L);
@@ -11909,22 +11961,38 @@
   // and apply immediately — frame() reads cfg.burn, cfg.decay, zoom and bloomAmt
   // between here and the draw. Layer keys are computed only; installStackItem() puts
   // each item's values into the globals just before that item draws.
-  function updateAnims(now, dt) {
+  // `items` runs the loop over a DETACHED stack instead of the live one — the outgoing
+  // scene during a transition, which keeps drifting rather than freezing (renderPrevScene).
+  // Called AFTER the live pass, deliberately: each fresh drift segment draws twice from
+  // Math.random, so putting the outgoing scene second leaves the live scene's sequence
+  // exactly as it was.
+  //
+  // Two things are skipped for a detached stack. SCENE keys are shared — `burn`, `bloom`
+  // and the four screen filters belong to the one finished picture, and the incoming scene
+  // owns them. And its sliders are NOT beat-armed: `trigState` is keyed by slot, the
+  // outgoing slots are not in `trigList`, so `clearBeats` would never drain their latches
+  // and every armed slider would sit pinned at its high thumb for the length of the blend.
+  // Passing a null band drops each one straight through to the drift, which is what a
+  // sub-second dissolve wants anyway.
+  function updateAnims(now, dt, items) {
+    const list = items || stack;
+    const detached = !!items;
     for (const id in anims) {
       const a = anims[id];
       if (a.scene) {
+        if (detached) continue;
         const mn = Math.min(+a.lo.value, +a.hi.value), mx = Math.max(+a.lo.value, +a.hi.value);
         // A scene control belongs to no layer, so its trigger is filed under the SELECTED
         // slot — the same slot its tuning is edited from and stored under.
         stepAnim(a, animPhase[id], mn, mx, beatReact[id], pulseShape[id], pulseLen[id], now, dt, true, stackSel, id);
         continue;
       }
-      for (let s = 0; s < stack.length; s++) {
-        const L = stack[s];
+      for (let s = 0; s < list.length; s++) {
+        const L = list[s];
         const b = bandOf(L, id);
         if (!b) continue;                 // this item's effect doesn't carry the key
         stepAnim(a, itemAnim(L, id), Math.min(b[0], b[1]), Math.max(b[0], b[1]),
-          beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false, s, id);
+          detached ? null : beatOf(L, id), shapeOf(L, id), plenOf(L, id), now, dt, false, s, id);
       }
     }
   }
@@ -13746,9 +13814,12 @@
   // used to cut hard. These cover that gap.
   //
   // Every one is a mode of the single FS_TRANS pass, run between the zoom and the glow
-  // on a frozen copy of the outgoing frame (glTex.prev). Freezing is the tradeoff:
-  // rendering both scenes at once would need two live copies of state that is singleton
-  // here. For a sub-second transition it reads the way a video switcher's dissolve does.
+  // against glTex.prev — which holds the OUTGOING SCENE, STILL RUNNING. Both sides of a
+  // blend are live: `prevStack` is the stack array installStack replaced, every item frozen
+  // and therefore self-contained, re-rendered each frame by renderPrevScene into the second
+  // half of the per-slot buffers. (It was a frozen still until 1.34.0, on the grounds that
+  // two live scenes would need two copies of singleton state; the per-layer colour path had
+  // since made that false.)
   //
   // `fits(a, b)` returns a *weight* for a switch from scene a to scene b — 0 means
   // "never pick me for this pair". Both sides are {dense, retains, palette} summaries,
@@ -13954,7 +14025,23 @@
     trans.on = true; trans.t = 0; trans.id = pick.id;
     trans.mode = pick.mode; trans.burn = !!pick.burn;
     trans.dur = Math.max(0.05, pick.dur * scale);
-    if (pick.mode < 0) return;               // cut / burn-off need no frozen copy
+    if (pick.mode < 0) return;               // cut / burn-off need no outgoing copy
+    // KEEP THE OUTGOING STACK ALIVE. `stack` is about to be replaced wholesale by
+    // installStack with a brand-new array of new item objects, so simply holding this
+    // reference leaves the old scene intact and unowned — and a frozen stack item already
+    // carries everything needed to render it. Freezing the SELECTED one first is what makes
+    // that true of all of them: the selected item's store is the DOM, and without this its
+    // record would be null and the layer you were editing would drop out of the blend.
+    if (useGL && glReady) {
+      if (stack[stackSel]) freezeItem(stack[stackSel]);
+      prevStack = stack;
+    }
+    // The one-off snapshot STAYS, even though renderPrevScene rewrites glTex.prev before the
+    // first composite. It is the fallback for the case renderPrevScene returns early on:
+    // an outgoing scene with every layer muted has nothing to render, and without this the
+    // blend would run against whatever glTex.prev last held. Verified the other way round
+    // too — delete this copy and the outgoing half still draws, which is what proves the
+    // live path is doing the work rather than this.
     if (useGL && glReady) {                  // snapshot glTex.scene → glTex.prev
       gl.bindFramebuffer(gl.FRAMEBUFFER, glFbo.scene);
       gl.bindTexture(gl.TEXTURE_2D, glTex.prev);
@@ -13972,7 +14059,10 @@
   function transStep(dt) {
     if (!trans.on) return;
     trans.t += dt / trans.dur;
-    if (trans.t >= 1) { trans.on = false; trans.t = 0; trans.mode = -1; trans.burn = false; }
+    if (trans.t >= 1) {
+      trans.on = false; trans.t = 0; trans.mode = -1; trans.burn = false;
+      prevStack = null;                      // stop rendering the scene that has gone
+    }
   }
   function presetState(e) {           // a fresh copy of effect e's default slider values
     const st = {}, d = EFFECTS[e].defaults;

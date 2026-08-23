@@ -20,6 +20,12 @@
   var blocks = [];        // slot -> that stack slot's control block element
   var keyMap = [];        // slot -> { "<the string that used to be the id>": node }
   var W = [];             // slot -> { key: wiring record } — see wireRange
+  // The OUTGOING stack while a preset transition runs: the array installStack replaced,
+  // every item frozen, so it is a complete renderable scene (see renderPrevScene).
+  // `var`, and declared here rather than beside `trans`: it is read by frame-loop.js and
+  // render-gl-pipeline.js, both of which load BEFORE transitions.js, and a `let` there
+  // would be in the TDZ for them.
+  var prevStack = null;
   var secs = [];          // slot -> { filterId: that block's <details> } — see buildFilterUI
   // A HASH of node references, not a subtree query. The POPPABLE pass moves every .ctl out
   // of its block and into #breakout, so blocks[slot].querySelector would stop finding them —

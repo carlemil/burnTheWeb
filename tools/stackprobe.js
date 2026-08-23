@@ -139,5 +139,53 @@ const ordered = (body, ...needles) => {
      neverWritten.length ? "loaded but never saved: " + neverWritten.join(", ") : readKeys.size + " keys");
 }
 
+// ---- the LIVE outgoing scene during a transition -----------------------------------
+// Both sides of a preset blend are rendered now, not one live frame against a frozen still.
+// The outgoing scene is the stack array installStack replaced, every item frozen, rendered
+// through the second half of the per-slot buffers. Every claim below is a way that goes
+// wrong invisibly: a detached item resolving to slot -1 draws NOTHING (and the blend just
+// looks like a cut); an unfrozen selected item drops the layer you were editing out of the
+// outgoing half; a leaked prevStack keeps rendering a scene nobody can see, forever.
+{
+  const begin = cut("  function transBegin(", "  let transOff");
+  const step = cut("  function transStep(", "  function presetState(");
+  const rsc = cut("  function renderStackColor(", "  function renderPrevScene(");
+  const rps = cut("  function renderPrevScene(", "  function glJulia(");
+  const ua = cut("  function updateAnims(", "  function installStackItem(");
+
+  ok(/freezeItem\(stack\[stackSel\]\)/.test(begin) &&
+     begin.indexOf("freezeItem(stack[stackSel])") < begin.indexOf("prevStack = stack"),
+     "transBegin FREEZES the selected item before keeping the outgoing stack");
+  ok(/prevStack = stack/.test(begin), "...and keeps it");
+  ok(/prevStack = null/.test(step), "transStep drops the outgoing stack when the blend ends");
+
+  // The one line that had to change for any of this to work.
+  ok(!/stack\.indexOf\(L\)/.test(noComments(rsc)),
+     "renderStackColor no longer resolves a slot with stack.indexOf (which is -1 when detached)");
+  ok(/const L = live\[li\], slot = b0 \+ li/.test(rsc),
+     "...it takes the slot from the base offset and the loop index");
+  ok(/renderStackColor\(plive, dt, now, ticks, STACK_MAX\)/.test(rps),
+     "renderPrevScene renders the outgoing stack into the SECOND half of the per-slot buffers");
+  ok(/glFbo\.prev/.test(rps), "...and lands it in glTex.prev, where the transition pass reads it");
+
+  // Enough buffers to hold two scenes at once, or the two halves fight over one set.
+  const alloc = cut("    glTex.heatL = []", "    glTex.color = [");
+  ok(/i < STACK_MAX \* 2/.test(alloc), "the per-slot buffers are allocated for BOTH scenes");
+  const curDecl = src.match(/const layerCur = \[[^\]]*\]/);
+  ok(!!curDecl && curDecl[0].split(",").length === 8,
+     "layerCur has a slot for each of them", curDecl ? curDecl[0] : "not found");
+
+  // The outgoing scene keeps DRIFTING but must not re-arm anything: trigState is keyed by
+  // slot, the outgoing slots are not in trigList, so clearBeats would never drain their
+  // latches and every armed slider would sit pinned for the length of the blend.
+  ok(/if \(detached\) continue;/.test(ua), "updateAnims skips SCENE keys for a detached stack");
+  ok(/detached \? null : beatOf\(L, id\)/.test(ua), "...and disarms its beat triggers");
+  const frame = cut("  function frame(now) {", "  function trigFor(");
+  ok(frame.indexOf("updateAnims(now, dt, prevStack)") > frame.indexOf("updateAnims(now, dt);"),
+     "the outgoing pass runs AFTER the live one, so the live Math.random sequence is unchanged");
+  ok(frame.indexOf("renderPrevScene(dt, now, ticks)") < frame.indexOf("renderStackColor(live, dt, now, ticks)"),
+     "and it RENDERS first, so the shared colour accumulator is free by the time the live scene wants it");
+}
+
 console.log("\n" + (fail ? fail + " FAILED, " : "") + "all " + pass + " passed");
 process.exit(fail ? 1 : 0);

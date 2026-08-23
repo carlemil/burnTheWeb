@@ -247,6 +247,38 @@ button row. `showSceneTitle(name, author)` arms `titleLeft` from
 - **`createPreset` does not arm the banner.**
 
 ### Preset transitions
+**BOTH SIDES OF A BLEND ARE LIVE.** `glTex.prev` holds the OUTGOING SCENE, re-rendered every
+frame — it was a frozen still until 1.34.0, on the grounds that two live scenes would need two
+copies of singleton state, which the per-layer colour path had since made false.
+- `transBegin` **freezes the selected item, then keeps `stack`** as `prevStack` (a `var` in
+  `boot-globals.js` — frame-loop and the pipeline both read it and both load before
+  `transitions.js`). `installStack` assigns a **brand-new array**, so the old one survives
+  untouched, and a frozen item is already a complete self-contained scene.
+  **Freezing the selected one first is what makes that true of all of them** — its store is
+  the DOM, so without it the layer you were editing drops out of the outgoing half.
+- **`renderStackColor(live, dt, now, ticks, base)`** — `base` is 0 for the live scene and
+  `STACK_MAX` for the outgoing one, and it replaced `stack.indexOf(L)`, **which returns −1 for
+  a detached item**. That one line is the whole difference between this working and the
+  outgoing half silently drawing nothing. `glTex.heatL`/`glFbo.heatL`/`glTex.palL`/`layerCur`
+  are therefore sized `STACK_MAX * 2`.
+- **Order in `frame()` is load-bearing both ways**: `renderPrevScene` runs BEFORE the live
+  render (they share `glTex.color`, and the outgoing frame is copied to `glTex.prev` before
+  the live pass wants the accumulator), and `updateAnims(now, dt, prevStack)` runs AFTER the
+  live one (each fresh drift segment draws twice from `Math.random`, so this keeps the live
+  scene's sequence unchanged).
+- The outgoing scene **drifts but does not re-trigger**: `trigState` is keyed by slot, the
+  outgoing slots are not in `trigList`, so `clearBeats` would never drain their latches and
+  every armed slider would sit pinned for the length of the blend. `updateAnims` passes a
+  null band for a detached stack, and skips SCENE keys (the incoming scene owns `burn`,
+  `bloom` and the four screen filters).
+- `transStep` nulls `prevStack` when the blend ends. The `transBegin` snapshot **stays** as
+  the all-layers-muted fallback; deleting it and watching the outgoing half still draw is the
+  negative control that proves the live path is doing the work.
+- Known ceilings: reaction–diffusion is a deliberate singleton (`glTex.rd`), so an outgoing RD
+  scene shares the incoming one's dish for the blend; and the Canvas2D fallback keeps the
+  frozen `transOff` copy, since it renders one layer and has no spare per-layer buffers.
+  **No resolution downscale** — measured no fps drop across a blend, so it is not paid for.
+
 `TRANSITIONS` — third registry beside `EFFECTS`/`FILTERS`. Sixteen entries, each a `mode` of the
 single **`FS_TRANS`** pass: `cut`, `burnoff`, `crossfade`, `dip`, `flash`, `pixelate`, `blur`,
 `wipe`, `iris`, then the staggered family `checker`, `bars`, `shutter`, `slide`, `clock`,

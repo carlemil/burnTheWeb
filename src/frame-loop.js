@@ -134,6 +134,10 @@
     // empty bars — and there is no latch left to clear.
     if (audioLive()) { updateMeter(); flashChips(); }
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
+    // ...and the OUTGOING scene, if one is still blending out. After the live pass: each
+    // fresh drift segment draws twice from Math.random, so this order leaves the live
+    // scene's sequence exactly as it was.
+    if (prevStack) updateAnims(now, dt, prevStack);
     if (audioLive()) clearBeats();
     if (dbg.on) dbgDraw();
 
@@ -214,6 +218,12 @@
     // plain assignment, so a second mirror would simply erase the first, and each extra
     // mirror is a full per-pixel JS loop — an N× multiplier on the dominant cost of the
     // frame, on exactly the machines that have no GPU.
+    // THE OUTGOING SCENE, rendered for real into glTex.prev, before the live one. It has to
+    // come first: it borrows the same colour accumulator, and by the time the live pass
+    // wants it the outgoing frame has already been copied out. It tramples the render
+    // globals (camera, zoom, filter params) exactly as any layer's turn does, and every
+    // branch below re-installs before it draws, so nothing downstream notices.
+    if (useGL && prevStack && transActive()) renderPrevScene(dt, now, ticks);
     if (!useGL) {
       const L = live[0] || stack[0];
       installStackItem(L);
