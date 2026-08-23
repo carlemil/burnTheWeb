@@ -14,6 +14,24 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.37.0] — 2026-08-23
+
+### Added
+
+- **Three more effects can join the shared 3D world**: **Bouncing solids**, **Quaternion
+  Julia** and **Vector balls**, alongside Ocean and Glass ball. Tick **Share one 3D world** on
+  any two and they are traced as one scene — solids bobbing in the sea, a 4D Julia solid
+  standing in it, a formation of vector balls hanging over it, each hiding the others where it
+  should and each appearing inside the glass ball's reflections in its own colours. One layer
+  of each kind per world. The effects you fly *inside* — Mandelbulb, Menger sponge, Doughnut —
+  still cannot join: they put the camera in their own geometry, so there is nowhere for them to
+  stand in anyone else's.
+
+### Changed
+
+- **The snap grid is easier to see** while you drag a box or a panel — thicker lines, brighter
+  against a lit scene.
+
 ## [1.36.0] — 2026-08-23
 
 ### Added

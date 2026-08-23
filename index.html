@@ -646,10 +646,12 @@
   #brkgrid {
     position: fixed; z-index: 4; pointer-events: none;
     opacity: 0; transition: opacity .12s ease;
+    /* 2px at .42, not 1px at .20: a hairline grid disappears over a bright effect, and the
+       whole point of drawing it is to see where a drop will land. */
     background-image:
-      linear-gradient(to right, rgba(255, 140, 40, 0.20) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 140, 40, 0.20) 1px, transparent 1px);
-    box-shadow: inset 0 0 0 1px rgba(255, 140, 40, 0.28);
+      linear-gradient(to right, rgba(255, 150, 55, 0.42) 2px, transparent 2px),
+      linear-gradient(to bottom, rgba(255, 150, 55, 0.42) 2px, transparent 2px);
+    box-shadow: inset 0 0 0 2px rgba(255, 150, 55, 0.55);
   }
   body.brk-gridding #brkgrid { opacity: 1; }
   body.ui-hidden #brkgrid { display: none; }
@@ -2255,7 +2257,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.36.0",
+    version: "1.37.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -4335,6 +4337,15 @@
     uniform float uGbOn; uniform float uGbId; uniform float uGbTime; uniform float uGbCount;
     uniform float uGbRad; uniform float uGbMat; uniform float uGbIor; uniform float uGbGlow;
     uniform vec4 uGbPlace;
+    uniform float uSdOn; uniform float uSdId; uniform float uSdCount; uniform float uSdRim;
+    uniform vec4 uSdPos[8]; uniform vec4 uSdQuat[8]; uniform float uSdShape[8];
+    uniform vec4 uSdPlace;
+    uniform float uQjOn; uniform float uQjId; uniform float uQjPhase; uniform float uQjSlice;
+    uniform float uQjCut; uniform float uQjIter; uniform float uQjGlow;
+    uniform vec4 uQjC; uniform vec4 uQjPlace;
+    uniform float uVbOn; uniform float uVbId; uniform float uVbPhase; uniform float uVbCount;
+    uniform float uVbShape; uniform float uVbRad; uniform float uVbGlow;
+    uniform vec4 uVbPlace;
     out vec4 o;
     const int WAVE_OCT_MARCH = 3;
     const float CAM_H = 3.4;
@@ -4380,10 +4391,118 @@
       }
       return d*uGbPlace.w;
     }
-    // The SDF union. Returns distance and the ID of whatever is nearest.
+    // Bouncing solids, verbatim from FS_SOLIDS: the bodies carry a quaternion, and an
+    // implicit surface has no vertices to hold an orientation, so each SAMPLE is un-rotated
+    // instead of the surface being rotated.
+    vec3 toBody(vec4 q, vec3 v){ vec3 u = -q.xyz; return v + 2.0*cross(u, cross(u, v) + q.w*v); }
+    float shapeDist(int s, vec3 p, float r){
+      if (s == 0) return length(p) - r;                                              // sphere
+      if (s == 1){ vec3 d = abs(p) - vec3(r*0.55);                                   // box
+                   return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0); }
+      if (s == 2){ vec2 q = vec2(length(p.xz) - r*0.70, p.y); return length(q) - r*0.30; }   // torus
+      if (s == 3){ vec3 q = p; q.y -= clamp(q.y, -r*0.60, r*0.60); return length(q) - r*0.40; }  // capsule
+      if (s == 4){ vec3 a = abs(p); return (a.x + a.y + a.z - r)*0.5773; }           // octahedron
+      vec2 d = vec2(length(p.xz) - r*0.60, abs(p.y) - r*0.60);                       // cylinder
+      return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+    }
+    float solidsDE(vec3 p){
+      vec3 pl = (p - uSdPlace.xyz)/uSdPlace.w;
+      float d = 1e9; int n = int(uSdCount);
+      for (int i = 0; i < 8; i++){
+        if (i >= n) break;
+        d = min(d, shapeDist(int(uSdShape[i]), toBody(uSdQuat[i], pl - uSdPos[i].xyz), uSdPos[i].w));
+      }
+      return d*uSdPlace.w;
+    }
+    // Quaternion Julia, verbatim from FS_QJULIA.
+    vec4 qsqr(vec4 a){ return vec4(a.x*a.x - dot(a.yzw, a.yzw), 2.0*a.x*a.yzw); }
+    vec4 qjLift(vec3 p, float s, float ca, float sa){
+      return vec4(p.x*ca - s*sa, p.y, p.z, p.x*sa + s*ca);
+    }
+    float qjDE(vec4 z, vec4 c, int it){
+      float md2 = 1.0, mz2 = dot(z, z);
+      for (int i = 0; i < 12; i++){
+        if (i >= it) break;
+        md2 *= 4.0*mz2;
+        z = qsqr(z) + c;
+        mz2 = dot(z, z);
+        if (mz2 > 16.0) break;
+      }
+      return 0.25*sqrt(mz2/md2)*log(max(mz2, 1e-12));
+    }
+    float qjuliaDE(vec3 p){
+      vec3 pl = (p - uQjPlace.xyz)/uQjPlace.w;
+      // THE OBJECT TUMBLES HERE. Standalone, this effect orbits its CAMERA about the solid;
+      // in a shared world the camera belongs to everyone, so the same rotation has to move
+      // the object instead or the whole scene would swing with it.
+      float c1 = cos(uQjPhase), s1 = sin(uQjPhase);
+      pl = vec3(pl.x*c1 + pl.z*s1, pl.y, -pl.x*s1 + pl.z*c1);
+      float tl = 0.32*sin(uQjPhase*0.6), c2 = cos(tl), s2 = sin(tl);
+      pl = vec3(pl.x, pl.y*c2 - pl.z*s2, pl.y*s2 + pl.z*c2);
+      // Outside |q| = 2 the escape-time estimate says nothing useful, so hand back the
+      // distance TO the bounding sphere: a valid bound, and the thing that stops the
+      // marcher crawling step by step through vacuum on its way in.
+      float br = length(pl) - 2.0;
+      if (br > 0.0) return br*uQjPlace.w;
+      return qjDE(qjLift(pl, uQjSlice, cos(uQjCut), sin(uQjCut)), uQjC, int(uQjIter))*uQjPlace.w;
+    }
+    // Vector balls, and the one participant that needed NEW geometry. Standalone it is a
+    // projected sprite rasteriser -- it never had a distance function, it z-sorts discs --
+    // so it could not be traced against anything. Its bobs ARE spheres though, and vbForm
+    // already supplies the centres, so in the world it becomes a sphere union. The sprite
+    // path stays for non-world mode: the cheap projection IS the Amiga look.
+    vec3 vbForm(float fi, float fn, int shape){
+      if (shape == 0){                       // cube lattice
+        float side = ceil(pow(fn, 1.0/3.0));
+        float ix = mod(fi, side);
+        float iy = mod(floor(fi/side), side);
+        float iz = floor(fi/(side*side));
+        return (vec3(ix, iy, iz) - (side - 1.0)*0.5)*(2.4/max(1.0, side - 1.0));
+      }
+      if (shape == 1){                       // sphere shell, Fibonacci-spaced
+        float k = (fi + 0.5)/fn;
+        float ph = acos(clamp(1.0 - 2.0*k, -1.0, 1.0));
+        float th = 2.399963*fi;
+        return vec3(sin(ph)*cos(th), sin(ph)*sin(th), cos(ph))*1.45;
+      }
+      if (shape == 2){                       // tilted ring
+        float a = fi/fn*6.2831853;
+        return vec3(cos(a)*1.5, sin(a*2.0)*0.45, sin(a)*1.5);
+      }
+      float u = fi/fn;                       // double helix
+      float a = u*12.0 + (mod(fi, 2.0) < 0.5 ? 0.0 : 3.1415927);
+      return vec3(cos(a)*0.95, (u - 0.5)*3.0, sin(a)*0.95);
+    }
+    float vballsDE(vec3 p){
+      vec3 pl = (p - uVbPlace.xyz)/uVbPlace.w;
+      // UN-TUMBLE THE SAMPLE rather than rotating 48 centres: the formation turns as one
+      // rigid body, so one inverse rotation of the point replaces N of the constellation.
+      // Pitch then yaw, the reverse of the order the effect applies them.
+      float cx = cos(uVbPhase*0.63), sx = sin(uVbPhase*0.63);
+      vec3 q = vec3(pl.x, pl.y*cx + pl.z*sx, -pl.y*sx + pl.z*cx);
+      float cy = cos(uVbPhase), sy = sin(uVbPhase);
+      q = vec3(q.x*cy - q.z*sy, q.y, q.x*sy + q.z*cy);
+      // A BOUNDING SPHERE, and it is the whole cost of this group. The widest formation
+      // reaches 1.57 from the centre (the tilted ring), so outside 1.6 + the ball radius the
+      // union IS the distance to that sphere and the 48-iteration loop can be skipped --
+      // which is most of the march, since most of the march is empty space.
+      float br = length(q) - (1.6 + uVbRad);
+      if (br > 0.05) return br*uVbPlace.w;
+      float d = 1e9; int n = int(uVbCount);
+      for (int i = 0; i < 48; i++){
+        if (i >= n) break;
+        d = min(d, length(q - vbForm(float(i), uVbCount, int(uVbShape))) - uVbRad);
+      }
+      return d*uVbPlace.w;
+    }
+    // The SDF union. Returns distance and the ID of whatever is nearest. Each group is
+    // gated by its own On uniform, so a kind that has not joined costs one compare.
     vec2 worldMap(vec3 p){
       float d = 1e9, id = 0.0;
       if (uGbOn > 0.5){ float g = glassDE(p); if (g < d){ d = g; id = uGbId; } }
+      if (uSdOn > 0.5){ float g = solidsDE(p); if (g < d){ d = g; id = uSdId; } }
+      if (uQjOn > 0.5){ float g = qjuliaDE(p); if (g < d){ d = g; id = uQjId; } }
+      if (uVbOn > 0.5){ float g = vballsDE(p); if (g < d){ d = g; id = uVbId; } }
       return vec2(d, id);
     }
     vec3 sdfNormal(vec3 p){
@@ -4449,7 +4568,16 @@
       }
       vec3 n = sdfNormal(p);
       float face = max(0.0, dot(n, -rd));
-      return 0.10 + 0.55*face + (0.06 + uGbGlow*0.55)*pow(1.0 - face, 2.0);
+      float rim = pow(1.0 - face, 2.0);
+      // Each object keeps its OWN key light, so it still looks like itself inside someone
+      // else's reflection as well as in the primary view.
+      if (id == uSdId && uSdOn > 0.5)
+        return 0.14 + 0.62*max(0.0, dot(n, vec3(-0.4557, 0.7295, -0.5104))) + uSdRim*0.5*rim;
+      if (id == uQjId && uQjOn > 0.5)
+        return 0.20 + 0.72*max(0.0, dot(n, normalize(vec3(0.55, 0.75, -0.5)))) + uQjGlow*0.55*rim;
+      if (id == uVbId && uVbOn > 0.5)
+        return 0.14 + 0.78*max(0.0, dot(n, normalize(vec3(0.45, 0.6, -0.66)))) + uVbGlow*0.7*rim;
+      return 0.10 + 0.55*face + (0.06 + uGbGlow*0.55)*rim;
     }
     float envRay(vec3 ro, vec3 rd){
       float id;
@@ -4500,6 +4628,12 @@
           heat = mix(heat, envRay(p, reflect(rd, n))/(1.0 + t*t*0.0016), w);
         }
         heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);      // the bright line at the horizon
+      } else if (!(id == uGbId && uGbOn > 0.5)){
+        // Solids and Quaternion Julia are opaque and shade exactly as they do standalone.
+        // They are in the world to be SEEN by the reflective ones and to occlude them --
+        // giving them their own reflection rays would double the trace for a material that
+        // never had one.
+        heat = shade0(id, ro + rd*t, rd, t);
       } else {
         vec3 p = ro + rd*t;
         vec3 n = sdfNormal(p);
@@ -5911,7 +6045,10 @@
     // camProg, so the owning layer's camera rotation, zoom and FOV orbit the whole world.
     glProg.world = camProg(VS_QUAD, FS_WORLD, ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
       "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
-      "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace"]);
+      "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace",
+      "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
+      "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace",
+      "uVbOn", "uVbId", "uVbPhase", "uVbCount", "uVbShape", "uVbRad", "uVbGlow", "uVbPlace"]);
     glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
@@ -6616,8 +6753,11 @@
   //
   // GL only. The Canvas2D fallback renders a single item and has nowhere to put a merged
   // scene, so on that path every effect draws itself exactly as before.
-  const WORLD_KINDS = { ocean: "oc", glass: "gb" };     // effect id -> uniform prefix
-  let worldPlan = null;                 // { ids: Map<layer, id>, oc: L|null, gb: L|null }
+  // effect id -> uniform prefix. Only effects that can share a VIEWPOINT are here: the
+  // interior flights (Mandelbulb, Menger sponge, Doughnut) put the camera inside their own
+  // geometry and have nowhere to stand in someone else's world.
+  const WORLD_KINDS = { ocean: "oc", glass: "gb", solids: "sd", qjulia: "qj", vballs: "vb" };
+  let worldPlan = null;                 // { ids: Map<layer, id>, oc/gb/sd/qj: L|null }
   // Which joined layers are in this frame's world, and what ID each one owns. IDs start at
   // 1: 0 is "nothing was hit", so a layer can never be handed the background.
   function planWorld(live) {
@@ -6625,7 +6765,7 @@
     for (const L of live) {
       const kind = WORLD_KINDS[EFFECTS[L.fx].id];
       if (!kind || !layerWorld(L)) continue;
-      if (!plan) plan = { ids: new Map(), oc: null, gb: null };
+      if (!plan) plan = { ids: new Map(), oc: null, gb: null, sd: null, qj: null, vb: null };
       if (plan[kind]) continue;         // one per kind, first in stack order
       plan[kind] = L;
       plan.ids.set(L, next++);
@@ -6647,7 +6787,7 @@
     gl.uniform2f(P.u.uSize, fw, fh);
     if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
     gl.uniform1f(P.u.uZoom, zoom);
-    const oc = plan.oc, gb = plan.gb;
+    const oc = plan.oc, gb = plan.gb, sd = plan.sd, qj = plan.qj, vb = plan.vb;
     gl.uniform1f(P.u.uOcOn, oc ? 1 : 0);
     gl.uniform1f(P.u.uOcId, oc ? plan.ids.get(oc) : 0);
     if (oc) {
@@ -6669,6 +6809,45 @@
       gl.uniform1f(P.u.uGbIor, s.ior); gl.uniform1f(P.u.uGbGlow, s.glow);
       gl.uniform4f(P.u.uGbPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
       capturePhase(gb);
+    }
+    gl.uniform1f(P.u.uSdOn, sd ? 1 : 0);
+    gl.uniform1f(P.u.uSdId, sd ? plan.ids.get(sd) : 0);
+    if (sd) {
+      // installStackItem also points the body list at THIS layer's solids (installSolids),
+      // so the arrays below are its own set and not whichever layer drew last.
+      installStackItem(sd); installPhase(sd);
+      const s = solidsSeed(dt);
+      gl.uniform4fv(P.u.uSdPos, s.pos); gl.uniform4fv(P.u.uSdQuat, s.quat);
+      gl.uniform1fv(P.u.uSdShape, s.shape);
+      gl.uniform1f(P.u.uSdCount, s.count); gl.uniform1f(P.u.uSdRim, s.rim);
+      gl.uniform4f(P.u.uSdPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(sd);
+    }
+    gl.uniform1f(P.u.uQjOn, qj ? 1 : 0);
+    gl.uniform1f(P.u.uQjId, qj ? plan.ids.get(qj) : 0);
+    if (qj) {
+      installStackItem(qj); installPhase(qj);
+      // BOTH seeds, and juliaSeed exactly once: the cardioid orbit that supplies c is the
+      // same one AnimeJulia rides, and this is the layer's one advance for the frame now
+      // that its own draw hook never runs.
+      const seed = juliaSeed(dt), s = qjuliaSeed(dt);
+      gl.uniform4f(P.u.uQjC, seed.cx, seed.cy, 0, 0);
+      gl.uniform1f(P.u.uQjPhase, s.phase); gl.uniform1f(P.u.uQjSlice, s.slice);
+      gl.uniform1f(P.u.uQjCut, s.cut); gl.uniform1f(P.u.uQjIter, s.iter);
+      gl.uniform1f(P.u.uQjGlow, s.glow);
+      gl.uniform4f(P.u.uQjPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(qj);
+    }
+    gl.uniform1f(P.u.uVbOn, vb ? 1 : 0);
+    gl.uniform1f(P.u.uVbId, vb ? plan.ids.get(vb) : 0);
+    if (vb) {
+      installStackItem(vb); installPhase(vb);
+      const s = vballsSeed(dt);
+      gl.uniform1f(P.u.uVbPhase, s.phase); gl.uniform1f(P.u.uVbCount, s.count);
+      gl.uniform1f(P.u.uVbShape, s.shape); gl.uniform1f(P.u.uVbRad, s.rad);
+      gl.uniform1f(P.u.uVbGlow, s.glow);
+      gl.uniform4f(P.u.uVbPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(vb);
     }
     drawQuad();
   }
@@ -13334,11 +13513,11 @@
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "solids", name: "Bouncing solids", subtitle: "Solids · raymarched 3D",
       help: "Real 3D: a handful of solid primitives — sphere, box, doughnut, capsule, octahedron, cylinder — tumbling and ricocheting off the walls of an invisible room, raymarched as signed-distance fields and shaded into the palette by surface angle and depth. Count sets how many bodies, Size how big (which is also the radius they bounce on, so bigger ones turn sooner), Shape mix how many different primitives are in play (1 = all spheres, 6 = all six), Speed how fast they travel and Tumble how hard they spin — a wall hit converts slide into roll, so they kick into a tumble on an angled clip. Edge glow lights the silhouettes. Tick Fire or Fade pixel for trails.",
-      params: ["sdcount", "sdsize", "sdmix", "sdspeed", "sdspin", "sdrim", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "solids", "band"],
+      params: ["sdcount", "sdsize", "sdmix", "sdspeed", "sdspin", "sdrim", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "solids", "band"],
       bakesOwnZoom: true, solids: true,
       draw: dt => { const s = solidsSeed(dt); if (useGL) glShaderDraw("solids", u => { gl.uniform4fv(u.uPos, s.pos); gl.uniform4fv(u.uQuat, s.quat); gl.uniform1fv(u.uShape, s.shape); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRim, s.rim); gl.uniform1f(u.uZoom, s.zoom); }); else solids(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], sdcount: [5, 5], sdsize: [0.26, 0.26], sdmix: [6, 6], sdspeed: [1, 1], sdspin: [1, 1], sdrim: [0.55, 0.55], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "sunsurface", name: "Sun surface", subtitle: "Sun surface · solar granulation",
       help: "The boiling surface of the sun, as the Inouye Solar Telescope sees it: a full-screen field of bright convection cells separated by narrow dark lanes, each cell slowly drifting, deforming and brightening as it churns, with tiny bright points sparking in the lanes. Raise Sunspot to sink a dark spot into the middle — a near-black core ringed by fine filaments radiating out into the granulation. Fire-family palettes (Amber, Fire, Ember, Sunburst) give it its colour.",
       params: ["sunscale", "sunspeed", "sunlane", "sunglow", "sunspot", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "sun", "band"], bakesOwnZoom: true,
@@ -13450,14 +13629,14 @@
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "vballs", name: "Vector balls", subtitle: "Vector balls · Amiga bobs in formation",
       help: "The Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. Formation picks how they are arranged — Lattice (a cube of them), Sphere (an even shell), Ring or Helix — and the whole set turns as one body, so the shape reads only from how the balls occlude and shade each other. Balls sets how many, Ball size how fat (wind it up and they merge into a solid), Tumble how fast, Edge glow how hard the silhouettes are lit. Nearer balls are brighter, which is what separates the formation in depth.",
-      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "vballs", "band"], bakesOwnZoom: true,
       draw: dt => { const s = vballsSeed(dt);
         if (useGL) glShaderDraw("vballs", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uShape, s.shape); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
         else vballsCPU(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], vbcount: [24, 24], vbshape: [1, 1], vbsize: [0.30, 0.30], vbspin: [0.5, 0.5], vbglow: [0.5, 0.5],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "6", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "glass", name: "Glass ball", subtitle: "Glass ball · raytraced spheres over the layers below",
       help: "Raytraced spheres that reflect and refract WHAT IS UNDERNEATH THEM. Put this layer on top of another one and the balls pick that layer's picture up: Metal mirrors it, Glass bends it through and turns it upside down the way a real ball does, Bubble is a thin shell that barely bends it but rings hard at the edge. Refraction is the glass's density — low is nearly water, high squeezes the whole scene into the middle of the ball. On its own, with no layer beneath, the balls fall back to reflecting a procedural room so the effect still stands up. The reflection is of BRIGHTNESS, not colour — everything is re-tinted by this layer's own palette.",
       params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -13530,7 +13709,7 @@
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
       help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
-      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
+      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
       helpTags: ["all", "julia", "qjulia", "band"], bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // ONE juliaSeed() per frame, like the other three — the mirror takes the seed rather
       // than re-advancing it (juliaprobe pins both halves of that for every cardioid effect).
@@ -13540,7 +13719,7 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], qjslice: [0, 0], qjcut: [0, 0], qjdetail: [8, 8], qjspin: [0.3, 0.3], qjglow: [0.5, 0.5],
         rpm: [0.15, 0.15], ratio: [6.5, 6.5], inrad: [0.12, 0.12], outrad: [1.02, 1.02], phase: [0, 0], cardx: [0, 0],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "4", morph: false, showBox: true, world: false, randSeed: true } },
   ];
   // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
   // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime
@@ -20516,7 +20695,7 @@
       { n: "Tumble", w: "vballs", t: "Vector balls only — how fast the constellation turns. It yaws and pitches at different rates, so it never repeats a pose. 0 holds it still." },
       { n: "Edge glow", w: "vballs", t: "Vector balls only — lights the rim of each sphere where its surface turns away from you. Low is flat shading, high outlines every ball and the formation reads as a cloud of bright shells." },
       { n: "Field of view", w: "all", t: "How wide a lens this layer is seen through. It works the way the Camera X/Y/Z sliders do — by moving where each pixel takes its colour from — so it costs nothing and applies to every shader effect: positive pushes the sample outward with the square of the radius, which is a fisheye that bows the middle out and drags the corners in; negative pulls it in, which is a telephoto that flattens the frame. 0 is the normal lens. Drift the two thumbs and the whole layer breathes in and out. It is per LAYER, so one layer can bulge while another stays flat. The point effects (Sierpński, Trees, Boids and the rest) get it too, through the inverse of the same curve — they stamp a position rather than sampling one, so the lens has to be run backwards for them, which is what makes a stamped layer and a shader layer bow the SAME way at the same setting. A wide lens pulls a stamped picture in from the corners, so expect dark edges where a shader effect would simply show you more; a long one folds the far field away entirely and those points are dropped, which is what being outside the frame means." },
-      { n: "Share one 3D world", w: "all", t: "Traces this layer's geometry TOGETHER with every other layer that has it ticked, as one scene, instead of drawing it on its own. Tick it on an Ocean and a Glass ball and the balls really sit in the water: the water is reflected and refracted through them, they are reflected back in it, each hides the other where it should, and there is a real waterline across them. Only the effects that can share a viewpoint offer it — the ones you fly INSIDE (Mandelbulb, Menger sponge, Doughnut) never can. Each layer keeps its own palette, so the water seen inside the ball is tinted like the ball; that is deliberate, and it is the same rule the rest of the app follows. The camera comes from the lowest layer that has joined — its Camera X/Y/Z, Zoom and Field of view now move the whole world." },
+      { n: "Share one 3D world", w: "all", t: "Traces this layer's geometry TOGETHER with every other layer that has it ticked, as one scene, instead of drawing it on its own. Tick it on an Ocean and a Glass ball and the balls really sit in the water: the water is reflected and refracted through them, they are reflected back in it, each hides the other where it should, and there is a real waterline across them. **Ocean, Glass ball, Bouncing solids, Quaternion Julia and Vector balls** can join, one layer of each per world. The ones you fly INSIDE (Mandelbulb, Menger sponge, Doughnut) never can — they put the camera in their own geometry, so they have nowhere to stand in anyone else's. Only the Glass ball traces reflections of its own; the others are there to be seen in it and to block it. Each layer keeps its own palette, so the water seen inside the ball is tinted like the ball; that is deliberate, and it is the same rule the rest of the app follows. The camera comes from the lowest layer that has joined — its Camera X/Y/Z, Zoom and Field of view now move the whole world." },
       { n: "Place X", w: "all", t: "Where this layer's geometry stands in the shared world, left to right. The world is the Ocean's: the water is at height 0 and the camera floats above it looking out to sea." },
       { n: "Place Y", w: "all", t: "How high this layer's geometry stands in the shared world. 0 is the waterline — set it low and a ball is half submerged, with the surface cutting across it and its reflection right beneath." },
       { n: "Place Z", w: "all", t: "How far out to sea this layer's geometry stands. Near objects are big and steeply lit; far ones sit toward the horizon where the water is most reflective, so that is where a mirror image reads most strongly." },
