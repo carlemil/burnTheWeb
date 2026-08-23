@@ -675,9 +675,15 @@ than the CSS is what stops that becoming a fourth.
   its top, one column exactly `BRK_W + BRK_GAP` wide, rows dividing the panel's height. So
   column 0 is flush beside the menu and a snap lines up with the editor. Hard-coding 298/58
   here is how the two drift apart — the panel's width is a CSS number that has moved before.
-- **`#brkgrid` draws it while dragging** (`body.brk-gridding`), placed and sized from the same
-  `brkGrid()`, so the drawing and the maths cannot disagree. A snap you cannot see is a box
-  that jumps somewhere you did not ask for.
+- **The snap is a QUARTER cell** (`BRK_SUB` 4 — `gx`/`gy` are stored in quarter-cells, so
+  a position on a coarse line is an exact multiple and unchanged). **`#brkgrid` draws BOTH
+  levels while dragging** (`body.brk-gridding`): four background layers, the faint 1px
+  quarter mesh on top, the strong 2px whole-cell lines behind — those are the "best"
+  alignments, flush with the panel or exactly one box apart. All four sizes come from the same
+  `brkGrid()` the snap uses, so the drawing and the maths cannot disagree.
+- A box near the far edge is **clamped to the viewport** (`right: 0`), and the viewport edge
+  is not on the grid — `breakout-check` asserts the snap only when the clamp did not engage
+  (at whole-cell resolution that assertion passed by luck).
 - The dialogs' movable node is **not always the `<h2>`'s parent** — `#carddlg .card-box` is
   deliberately `position: static` and the host carries the placement — so `dragTargetFor`
   walks up to the first positioned ancestor. A `relative` box is converted to `absolute`;

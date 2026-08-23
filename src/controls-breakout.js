@@ -241,20 +241,26 @@
   }
   function brkPlace(node, p) {
     const g = brkGrid();
-    const x = g.x0 + p.gx * g.cw, y = g.y0 + p.gy * g.ch;
+    const x = g.x0 + p.gx * g.cw / BRK_SUB, y = g.y0 + p.gy * g.ch / BRK_SUB;
     if (p.right) { node.style.right = Math.max(0, window.innerWidth - x) + "px"; node.style.left = "auto"; }
     else { node.style.left = Math.max(0, x) + "px"; node.style.right = "auto"; }
     if (p.bottom) { node.style.bottom = Math.max(0, window.innerHeight - y) + "px"; node.style.top = "auto"; }
     else { node.style.top = Math.max(0, y) + "px"; node.style.bottom = "auto"; }
   }
+  // THE SNAP IS FOUR TIMES FINER THAN THE GRID YOU SEE MOST. gx/gy are in quarter-cells:
+  // a box can land on any of the fine lines, and the whole-cell lines -- the ones that put a
+  // box flush beside the panel, or exactly one box-width from its neighbour -- are drawn
+  // stronger so the "best" alignments read as such while you drag. Placement maths divides
+  // by BRK_SUB, so a stored position on a coarse line is an exact multiple and unchanged.
+  const BRK_SUB = 4;
   function brkSnap(node) {
     const g = brkGrid(), r = node.getBoundingClientRect();
     const right = r.left + r.width / 2 > window.innerWidth / 2;
     const bottom = r.top + r.height / 2 > window.innerHeight / 2;
     return {
       right: right, bottom: bottom,
-      gx: Math.round(((right ? r.right : r.left) - g.x0) / g.cw),
-      gy: Math.round(((bottom ? r.bottom : r.top) - g.y0) / g.ch),
+      gx: Math.round(((right ? r.right : r.left) - g.x0) / g.cw * BRK_SUB),
+      gy: Math.round(((bottom ? r.bottom : r.top) - g.y0) / g.ch * BRK_SUB),
     };
   }
   // The grid, made visible while something is being dragged — a snap you cannot see is a
@@ -268,7 +274,12 @@
     el2.style.top = g.y0 + "px";
     el2.style.width = Math.max(0, window.innerWidth - g.x0) + "px";
     el2.style.height = Math.max(0, window.innerHeight - g.y0) + "px";
-    el2.style.backgroundSize = g.cw + "px " + g.ch + "px";
+    // Two grids on one element: the fine quarter-cell mesh first (drawn on top), the
+    // whole-cell lines behind it, stronger. Sizes from the same g as the snap, so the
+    // drawing and the maths cannot disagree.
+    const fw2 = g.cw / BRK_SUB, fh2 = g.ch / BRK_SUB;
+    el2.style.backgroundSize = fw2 + "px " + fh2 + "px, " + fw2 + "px " + fh2 + "px, "
+                             + g.cw + "px " + g.ch + "px, " + g.cw + "px " + g.ch + "px";
   }
   // Lay out every visible break-out box: stored anchors where there are any, the default
   // column for the rest. Called from refreshBreakout (which knows what is visible), from
