@@ -14,6 +14,18 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.41.0] — 2026-08-23
+
+### Changed
+
+- **A layer's settings now open as a box in the grid.** The chevron in a layer row's corner is
+  gone; in its place a **+** on the right of the row — the same control a slider row has —
+  opens that layer's whole settings block as a box beside the panel. It drags by its title
+  line, snaps to the same grid as the slider boxes, and closes with the **−** on the row or on
+  the box. Any number of layers can be open at once, so two layers' controls can sit side by
+  side instead of stacking down the panel. Selecting a layer does not open it; opening one
+  selects it.
+
 ## [1.40.1] — 2026-08-23
 
 ### Changed
