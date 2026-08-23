@@ -367,6 +367,26 @@
     transition: background .15s;
   }
   [data-k="reset"]:hover, [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
+  /* Per-tab ⚄ Random / ↺ Reset pair heading each layer-tab pane. Same family as the big
+     Reset button above, halved: two side-by-side, quieter resting tone. Scoped to both
+     hosts like every block rule — the block lives in a layer box in #breakout. */
+  #panel .tab-tools, #breakout .lyr-box .tab-tools { display: flex; gap: 6px; margin: 6px 0 2px; }
+  #panel .tab-tools button, #breakout .lyr-box .tab-tools button {
+    flex: 1 1 0;
+    padding: 5px 0;
+    background: transparent;
+    border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 6px;
+    color: #ffb15a;
+    font: 11px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .04em;
+    cursor: pointer;
+    opacity: .82;
+    transition: background .15s;
+  }
+  #panel .tab-tools button:hover, #breakout .lyr-box .tab-tools button:hover {
+    background: rgba(255, 122, 26, 0.3); opacity: 1;
+  }
   [data-k="cardbtn"], #addlayer { background: transparent; opacity: .82; }   /* quieter, matching the Orbit editor button */
   /* Cloud profile row. Hidden wholesale when CONFIG.cloud.apiKey is "" — an unconfigured
      build shows no trace of the feature rather than a dead button. */
@@ -1948,6 +1968,13 @@
   </div>
   <!-- EFFECT -->
   <div data-k="tab-fx" class="lyr-pane" role="tabpanel">
+  <!-- Per-tab tools: ⚄ nudges every one of this tab's sliders a little (and sometimes arms
+       a beat trigger on one of them); ↺ puts the tab's sliders — values, ranges, triggers —
+       back to this effect's defaults. One pair per pane, wired per slot. -->
+  <div class="tab-tools">
+    <button type="button" data-k="rnd-fx" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rst-fx" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
+  </div>
   <div data-k="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button data-k="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
@@ -1955,6 +1982,10 @@
   </div>
   <!-- FILTERS: this layer's chain (feedback + post). -->
   <div data-k="tab-flt" class="lyr-pane" role="tabpanel" hidden>
+  <div class="tab-tools">
+    <button type="button" data-k="rnd-flt" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rst-flt" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to their defaults">↺ Reset</button>
+  </div>
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
   </div>
@@ -1963,6 +1994,10 @@
        mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
        currentColor, like the eye icons. -->
   <div data-k="tab-pal" class="lyr-pane" role="tabpanel" hidden>
+  <div class="tab-tools">
+    <button type="button" data-k="rnd-pal" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rst-pal" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
+  </div>
   <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
@@ -2277,7 +2312,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.43.0",
+    version: "1.44.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -15137,6 +15172,11 @@
     st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
     st.fov = [0, 0];         // neutral, so every scene saved before FOV existed renders identically
     st.heatboost = [0, 0];   // per-layer palette control, seeded like the camera so no effect descriptor needs it
+    // World placement (Place X/Y/Z + World scale) — params-but-not-defaults on the five
+    // world effects, so until seeded here the values were silently DROPPED by saveState/
+    // mergeState and never persisted at all. Seeded at the CONTROLS shipped lo/hi, so a
+    // scene saved before this renders identically.
+    st.wldx = [0, 0]; st.wldy = [1.6, 1.6]; st.wldz = [6, 6]; st.wldscale = [1.2, 1.2];
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
@@ -15782,7 +15822,19 @@
         e.stopPropagation();
         if (!stack[j]) return;
         if (openSlots.has(j)) { openSlots.delete(j); syncStackUI(); }
-        else { openSlots.add(j); selectStack(j); syncStackUI(); }   // selectStack no-ops if already selected
+        else {
+          openSlots.add(j); selectStack(j); syncStackUI();   // selectStack no-ops if already selected
+          // Same rule as popCtl: a layer box with no fully-on-screen home does not open.
+          // The chevron reverts to + (syncStackUI) and the anchor is dropped so the next
+          // attempt — after closing something — searches fresh. brkOffscreen hoists across
+          // the slices (function declaration in controls-breakout.js).
+          const bx = lyrBoxes[j];
+          if (bx && bx.style.display !== "none" && brkFree() && brkOffscreen(bx)) {
+            openSlots.delete(j);
+            brkPos.delete(j + "/layer");
+            syncStackUI();
+          }
+        }
       });
       // A grid child, EXPLICITLY PLACED (last column, row 1 -- see .lyr-pop). Appended without
       // placement it takes the next auto cell and shifts the chooser, the mute row and the
@@ -17037,6 +17089,32 @@
       ch: Math.max(48, r.height / BRK_ROWS),
     };
   }
+  // The rects the overlap checks run against: every directly-placed visible box in the
+  // grid (slider boxes, scene boxes, layer boxes). Direct children only — the never-popped
+  // .ctl check rows nested inside a layer block are not placed boxes.
+  function brkRects(except) {
+    return [...breakout.querySelectorAll(":scope > .ctl.poppable")]
+      .filter(n => n !== except && n.style.display !== "none")
+      .map(n => n.getBoundingClientRect());
+  }
+  // Half a pixel of slack: grid maths and measured rects disagree by subpixels, and two
+  // boxes sharing an edge exactly must count as clear, not overlapping.
+  const rectClear = (x, y, w, h, taken) =>
+    taken.every(t => x + w <= t.left + 0.5 || x >= t.right - 0.5 || y + h <= t.top + 0.5 || y >= t.bottom - 0.5);
+  // A box's height rounded UP to the quarter-cell grid, gap included — the height layout
+  // gives it (min-height, border-box), so boxes anchored on grid lines leave a uniform
+  // BRK_GAP between rows instead of a different remainder per box.
+  function brkH(box, g) {
+    const q = g.ch / BRK_SUB, h = box ? (box.offsetHeight || 120) : 120;
+    return Math.ceil((h + BRK_GAP) / q) * q - BRK_GAP;
+  }
+  // Same for width: a slider box is already exactly one column (244 + 10 = 4 quarters),
+  // but the wider layer box (300px) is not, and un-rounded it pushes its neighbours off
+  // the gap rhythm — min-width wins over the CSS width, so this widens it onto the grid.
+  function brkW(box, g) {
+    const q = g.cw / BRK_SUB, w = box ? (box.offsetWidth || BRK_W) : BRK_W;
+    return Math.ceil((w + BRK_GAP) / q) * q - BRK_GAP;
+  }
   function brkPlace(node, p) {
     const g = brkGrid();
     const x = g.x0 + p.gx * g.cw / BRK_SUB, y = g.y0 + p.gy * g.ch / BRK_SUB;
@@ -17083,23 +17161,44 @@
   // column for the rest. Called from refreshBreakout (which knows what is visible), from
   // the end of a drag, and on resize.
   function layoutBreakout() {
+    const boxes = [...breakout.querySelectorAll(":scope > .ctl.poppable")];
     if (!brkFree()) {                       // bottom sheet: hand the boxes back to the CSS
-      for (const box of breakout.querySelectorAll(".ctl"))
-        box.style.left = box.style.right = box.style.top = box.style.bottom = "";
+      for (const box of boxes)
+        box.style.left = box.style.right = box.style.top = box.style.bottom =
+          box.style.minHeight = box.style.minWidth = "";
       return;
     }
     const g = brkGrid();
-    let x = g.x0, y = g.y0;
-    for (const box of breakout.querySelectorAll(".ctl")) {
-      if (box.style.display === "none") continue;
+    const vis = boxes.filter(b => b.style.display !== "none");
+    // Size every visible box to the grid first: clear the previous stretch (content may
+    // have shrunk), measure, round up to the quarter cell. Placement below then reads the
+    // rounded heights, so the spacing between stacked boxes is a uniform BRK_GAP.
+    for (const box of vis) {
+      box.style.minHeight = box.style.minWidth = "";
+      const hh = brkH(box, g), ww = brkW(box, g);
+      if (hh > box.offsetHeight) box.style.minHeight = hh + "px";
+      if (ww > box.offsetWidth) box.style.minWidth = ww + "px";
+    }
+    // Anchored boxes first, so the flow column can steer around them instead of stacking
+    // straight through — the overlap check the free grid was missing.
+    const placed = [], flow = [];
+    for (const box of vis) {
       const p = brkPos.get(box.dataset.brk || "");
-      if (p) { brkPlace(box, p); continue; }
-      // Measure AFTER the anchored ones are placed: offsetHeight is the same either way
-      // (the width is fixed), but reading it while the box is still display:none is not.
+      if (p) { brkPlace(box, p); placed.push(box.getBoundingClientRect()); }
+      else flow.push(box);
+    }
+    let x = g.x0, y = g.y0;
+    for (const box of flow) {
       const h = box.offsetHeight || 120;
-      if (y + h > window.innerHeight - BRK_EDGE && y > g.y0) { y = g.y0; x += g.cw; }
+      for (let guard = 0; guard < 64; guard++) {
+        if (y + h > window.innerHeight - BRK_EDGE && y > g.y0) { y = g.y0; x += g.cw; continue; }
+        const hit = placed.find(t => !rectClear(x, y, BRK_W, h, [t]));
+        if (!hit) break;
+        y = hit.bottom + BRK_GAP;
+      }
       box.style.left = x + "px"; box.style.top = y + "px";
       box.style.right = box.style.bottom = "auto";
+      placed.push(box.getBoundingClientRect());
       y += h + BRK_GAP;
     }
     // Floating panels keep their placement across a resize; the ones never dragged are
@@ -17145,6 +17244,20 @@
     document.body.classList.remove("brk-gridding");
     try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
     const p = brkSnap(node);
+    // A drop may not bury another box: nudge a quarter-cell at a time toward the middle
+    // until the spot is clear. Boxes only — the floating dialogs are large and deliberately
+    // layer over things.
+    // ponytail: pushes one direction only; a wall of boxes can pin it at the screen edge
+    // still overlapping — acceptable, the user is one drag away from fixing it.
+    if (node.classList.contains("poppable")) {
+      const taken = brkRects(node);
+      for (let i = 0; i < BRK_ROWS * BRK_SUB * 2; i++) {
+        brkPlace(node, p);
+        const r = node.getBoundingClientRect();
+        if (rectClear(r.left, r.top, r.width, r.height, taken)) break;
+        p.gy += p.bottom ? -1 : 1;
+      }
+    }
     brkPos.set(key, p);
     brkPlace(node, p);
     layoutBreakout();                       // the column closes the gap a box left behind
@@ -17481,6 +17594,55 @@
         ctlReg(slot, "row-" + key, row);
       });
   }));
+  // ---- per-tab Random / Reset ----------------------------------------------------
+  // ⚄ nudges every slider the tab currently shows for this layer by a small fraction of
+  // its range (the browser snaps each write to the slider's own step, so a `single`
+  // control moves by whole numbers or not at all), and SOMETIMES arms one beat trigger
+  // on a random armable slider — whose thumbs the same pass just jiggled, so the trigger
+  // arrives with slightly-adjusted values rather than defaults. ↺ runs resetControl over
+  // the same keys: value, range, chips, pulse — the whole tab back to the effect's
+  // defaults. The buttons live inside the layer box, so the capture-phase pointerdown on
+  // #breakout has already selected the layer by the time the click runs — the block is
+  // live, which is what the chip handlers and resetControl require.
+  function tabKeys(pane) {
+    return [...pane.querySelectorAll(".ctl-row")]
+      .filter(r => r.offsetParent !== null && r.dataset.k && r.dataset.k.indexOf("row-") === 0)
+      .map(r => r.dataset.k.slice(4));
+  }
+  function jiggleTab(slot, pane) {
+    const armable = [];
+    for (const key of tabKeys(pane)) {
+      const els = ctlRangeInputsIn(slot, key);
+      // A single control keeps lo === hi through the mirror on the FIRST thumb's input —
+      // nudging both with different deltas would fight it.
+      for (const inp of (SINGLE_KEYS.has(key) ? els.slice(0, 1) : els)) {
+        const mn = +inp.min, mx = +inp.max;
+        if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
+        const d = (Math.random() * 2 - 1) * 0.08 * (mx - mn);
+        inp.value = String(Math.min(mx, Math.max(mn, +inp.value + d)));
+        inp.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      const w = W[slot] && W[slot][key];
+      if (w && w.chips && !SINGLE_KEYS.has(key)) armable.push(w.chips);
+    }
+    if (armable.length && Math.random() < 0.35) {
+      const chips = armable[(Math.random() * armable.length) | 0];
+      const off = ["low", "mid", "high"].filter(b => chips[b] && !chips[b].classList.contains("on"));
+      if (off.length) chips[off[(Math.random() * off.length) | 0]].click();
+    }
+  }
+  function resetTab(pane) {
+    for (const key of tabKeys(pane)) resetControl(key);
+    rngSyncAll();               // the in-box min/max fields follow the restored bounds
+  }
+  for (let slot = 0; slot < STACK_MAX; slot++) for (const t of ["fx", "flt", "pal"]) {
+    const pane = ctlIn(slot, "tab-" + t);
+    const rnd = ctlIn(slot, "rnd-" + t), rst = ctlIn(slot, "rst-" + t);
+    if (!pane || !rnd || !rst) continue;
+    rnd.addEventListener("click", e => { e.stopPropagation(); jiggleTab(slot, pane); });
+    rst.addEventListener("click", e => { e.stopPropagation(); resetTab(pane); });
+  }
+
   // The launcher rows and beat dots are the last per-block pieces to exist, so install
   // slot 0 into the singleton maps now that its record is complete.
   pointMaps(0);
@@ -17501,6 +17663,14 @@
       b.setAttribute("aria-label", ctlLabel(key) + ": " + b.title);
     }
   }
+  // A box must never sit partly OFF the screen. Anchored placements are bounds-checked at
+  // choice time; this is the after-the-fact check for everything else (the flow column with
+  // no room left, a box taller than the viewport).
+  function brkOffscreen(box) {
+    const r = box.getBoundingClientRect();
+    return r.left < -0.5 || r.top < -0.5
+      || r.right > window.innerWidth + 0.5 || r.bottom > window.innerHeight + 0.5;
+  }
   function popCtl(slot, key) {
     if (isPopped(slot, key)) return;
     popped.add(popKey(slot, key));
@@ -17511,30 +17681,81 @@
     if (slot >= 0 && !brkPos.has(popKey(slot, key))) placeBeside(slot, popKey(slot, key), b);
     syncPopBtns(slot, key);
     refreshBreakout();
+    // No on-screen home for it ⇒ it does not open at all: dock it straight back (the +
+    // reverts, the box hides) rather than show it clipped by the viewport edge. The anchor
+    // is dropped too, so a later attempt — after closing something — searches fresh.
+    if (b && brkFree() && b.style.display !== "none" && brkOffscreen(b)) {
+      brkPos.delete(popKey(slot, key));
+      dockCtl(slot, key);
+    }
   }
-  // Give a new box a grid anchor next to its layer's box: the first quarter-cell column to
-  // the right of it that no visible box already occupies at that row, wrapping down a row
-  // at a time. Only when the layer box is on screen -- otherwise the column is right.
+  // Give a new box a grid anchor next to its layer's box: the nearest clear quarter-cell
+  // column on EITHER side of it — right first at each distance, then left — wrapping down
+  // a row at a time. Only when the layer box is on screen -- otherwise the column is right.
   function placeBeside(slot, key, box) {
     const lb = breakout.querySelector('.lyr-box[data-slot="' + slot + '"]');
     if (!lb || lb.style.display === "none" || !brkFree()) return;
     const g = brkGrid(), r = lb.getBoundingClientRect();
-    const w = box ? (box.offsetWidth || BRK_W) : BRK_W, h = box ? (box.offsetHeight || 120) : 120;
-    const taken = [...breakout.querySelectorAll(".ctl.poppable")]
-      .filter(n => n !== box && n.style.display !== "none").map(n => n.getBoundingClientRect());
-    const clear = (x, y) => taken.every(t => x + w <= t.left || x >= t.right || y + h <= t.top || y >= t.bottom);
-    // candidate anchors: to the right of the layer box, then below it, on the quarter grid
+    const w = brkW(box, g), h = brkH(box, g);
+    const taken = brkRects(box);
     const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
-    const startX = Math.ceil((r.right + BRK_GAP - g.x0) / qx), startY = Math.round((r.top - g.y0) / qy);
-    for (let row = 0; row < BRK_ROWS * BRK_SUB; row++) {
-      for (let col = 0; col < 6 * BRK_SUB; col++) {
-        const gx = startX + col, gy = startY + row;
-        const x = g.x0 + gx * qx, y = g.y0 + gy * qy;
-        if (x + w > window.innerWidth - BRK_EDGE) break;
-        if (y + h > window.innerHeight - BRK_EDGE) return;
-        if (clear(x, y)) { brkPos.set(key, { gx, gy, right: false, bottom: false }); return; }
+    const rightX = Math.ceil((r.right + BRK_GAP - g.x0) / qx);
+    const leftX = Math.floor((r.left - BRK_GAP - w - g.x0) / qx);
+    const startY = Math.round((r.top - g.y0) / qy);
+    // Rows alternate down/up from the layer box's own row (a layer parked near the bottom
+    // edge still gets neighbours), and at each distance the side AWAY from the screen
+    // centre is tried first — boxes grow outward, keeping the middle of the picture clear.
+    for (let i = 0; i < BRK_ROWS * BRK_SUB * 2; i++) {
+      const gy = startY + (i % 2 ? -((i + 1) >> 1) : i >> 1);
+      const y = g.y0 + gy * qy;
+      if (gy < 0 || y + h > window.innerHeight - BRK_EDGE) continue;
+      for (let d = 0; d < 6 * BRK_SUB; d++) {
+        const cands = [rightX + d, leftX - d];
+        if (Math.abs(g.x0 + cands[1] * qx + w / 2 - window.innerWidth / 2) >
+            Math.abs(g.x0 + cands[0] * qx + w / 2 - window.innerWidth / 2)) cands.reverse();
+        for (const gx of cands) {
+          if (gx < 0) continue;                        // left of the grid origin: no home there
+          const x = g.x0 + gx * qx;
+          if (x + w > window.innerWidth - BRK_EDGE) continue;
+          if (rectClear(x, y, w, h, taken)) { brkPos.set(key, { gx, gy, right: false, bottom: false }); return; }
+        }
       }
     }
+  }
+  // A LAYER box opening for the FIRST time gets an anchor of its own: whole-cell candidates
+  // only (the strong grid lines), overlapping nothing visible, scored to sit FAR FROM THE
+  // CENTRE OF THE SCREEN first (the picture lives there) and far from the other open layer
+  // boxes second — so layer boxes head for the corners and edges, each with room for its
+  // sliders to gather around it (placeBeside, which leans outward the same way).
+  // Reopening keeps the previous spot: the anchor survives in brkPos, and remapPopped
+  // already carries "<slot>/layer" keys through a reorder.
+  function placeLayerBox(slot, box) {
+    const key = slot + "/layer";
+    if (!brkFree() || brkPos.has(key)) return;
+    const g = brkGrid();
+    const w = brkW(box, g), h = brkH(box, g);
+    const others = [...breakout.querySelectorAll(":scope > .lyr-box")]
+      .filter(n => n !== box && n.style.display !== "none")
+      .map(n => n.getBoundingClientRect());
+    const taken = brkRects(box);
+    let best = null, bestScore = -Infinity;
+    for (let cy = 0; g.y0 + cy * g.ch + h <= window.innerHeight - BRK_EDGE; cy++) {
+      for (let cx = 0; g.x0 + cx * g.cw + w <= window.innerWidth - BRK_EDGE; cx++) {
+        const x = g.x0 + cx * g.cw, y = g.y0 + cy * g.ch;
+        if (!rectClear(x, y, w, h, taken)) continue;
+        // Centre distance weighs double: "away from the middle of the picture" beats
+        // "away from the other layer boxes" when the two pull in different directions.
+        const score = Math.hypot(x + w / 2 - window.innerWidth / 2, y + h / 2 - window.innerHeight / 2) * 2
+          + (others.length
+            ? Math.min(...others.map(t => Math.hypot(x + w / 2 - (t.left + t.right) / 2,
+                                                     y + h / 2 - (t.top + t.bottom) / 2)))
+            : 0);
+        if (score > bestScore) { bestScore = score; best = { gx: cx * BRK_SUB, gy: cy * BRK_SUB, right: false, bottom: false }; }
+      }
+    }
+    // Place it NOW, not just at the next layout: a second layer box opening in the same
+    // refresh pass measures the first one's rect, which must already be at its anchor.
+    if (best) { brkPos.set(key, best); brkPlace(box, best); }
   }
   function dockCtl(slot, key) {
     if (!isPopped(slot, key)) return;
@@ -17608,6 +17829,11 @@
   }, true);
   function refreshBreakout() {
     let anyVisible = false;
+    // Un-hide the host BEFORE anything measures: placeLayerBox reads the freshly-shown
+    // box's size mid-pass, and inside a display:none host every box measures 0×0 — which
+    // sent the first layer box to a "fits anywhere" phantom anchor off the screen edge.
+    // The real state is restored by the toggle at the end of this function.
+    breakout.classList.remove("empty");
     // The LAYER boxes: a whole layer's settings block, open while its slot is in openSlots
     // (the same set the rows' +/- toggles). Shown here so they go through the one layout
     // pass with the slider boxes and snap on the same grid.
@@ -17615,7 +17841,7 @@
       const slot = +box.dataset.slot;
       const vis = !!stack[slot] && openSlots.has(slot);
       box.style.display = vis ? "" : "none";
-      if (vis) anyVisible = true;
+      if (vis) { anyVisible = true; placeLayerBox(slot, box); }
     }
     for (let slot = 0; slot < STACK_MAX; slot++) {
       const shown = shownKeysFor(slot);
@@ -18451,15 +18677,10 @@
   // on load and the list opens as a short stack of names — the requested default. Surviving
   // rebuilds is what stops a pick from folding the group you are working in.
   const openCollections = new Set();
-  // ...with ONE exception: the top group is opened once per load. Starting with every group
-  // folded meant a first-time visitor met a single "Default scenes 4" row and no scenes at
-  // all, so the entire shipped library sat behind a disclosure nothing invited them to click.
-  // Opening only the FIRST group keeps the short-stack-of-names shape once you follow a few
-  // collections, and it is the group New lands in.
-  //
-  // One-shot, not a re-assert on every rebuild: collapsing that group has to stay collapsed
-  // for the rest of the session, and buildPresetList runs on every pick, rename and delete.
-  let topGroupOpened = false;
+  // No exceptions any more: the top group used to be opened once per load (so a first-time
+  // visitor saw the shipped scenes rather than one closed "Default scenes 4" row), but that
+  // was rolled back by request — EVERY group starts folded, your own included. The count on
+  // each heading is what says there is something inside.
   // The heading under the Scene box that names what you are editing. Called from
   // buildPresetList rather than from each selection path, because that function is already
   // the one choke point every path goes through to move the highlight (create, rename,
@@ -18489,7 +18710,6 @@
     // "— unsaved scene —" row that also carried .pl-scene, so anything counting that class to
     // count scenes was off by one; it isn't any more.
     const groups = presetGroups();
-    if (!topGroupOpened && groups.length) { topGroupOpened = true; openCollections.add(groups[0].key); }
     for (const g of groups) {
       const sec = document.createElement("div");
       sec.className = "pl-grp" + (openCollections.has(g.key) ? " open" : "");

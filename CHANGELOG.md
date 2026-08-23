@@ -14,6 +14,33 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.44.0] — 2026-08-23
+
+### Added
+- **⚄ Random / ↺ Reset on every layer tab.** Each tab of a layer box (Effect / Filters /
+  Palette) now opens with a tools row: **Random** nudges every slider on that tab a little,
+  up or down — and about one click in three also arms a beat trigger on one of them, so a
+  few presses grow a scene its own motion. **Reset** puts the tab's sliders — values,
+  ranges and triggers — back to the effect's defaults.
+
+### Changed
+- **Open layer boxes spread themselves out** — far from the centre of the screen (where the
+  picture is) and far from each other, heading for corners and edges of the grid. A popped
+  slider lands on whichever side of its layer box has room, nearest spot first, growing
+  outward away from the middle.
+- **Boxes no longer overlap**: the layout steers around placed boxes, and dropping a
+  dragged box onto another nudges it to the nearest clear grid spot. Box widths and heights
+  are rounded up to the layout grid, so the gap between neighbouring boxes is uniform.
+- **A box that cannot fit fully on screen does not open** — its +/− button reverts instead
+  of showing a box clipped by the viewport edge. Close something and try again.
+- **The scene list starts fully collapsed**, your own collection included — each heading's
+  count says how many scenes are inside.
+
+### Fixed
+- **Place X/Y/Z and World scale now save.** The shared-3D-world placement sliders were
+  never persisted — not in the scene, not in the browser — so every reload put the
+  geometry back at the shipped spot. They now ride the scene like every other slider.
+
 ## [1.43.0] — 2026-08-23
 
 ### Added
