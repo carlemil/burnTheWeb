@@ -14,6 +14,35 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.30.0] — 2026-08-23
+
+### Added
+
+- **The palette section folds away.** The `▾` beside **Palette** in a layer's block collapses
+  the swatch strip, Reverse colours, Background and the palette-cycle sliders down to the
+  heading — the tallest run of furniture in the block, and the first thing you stop needing
+  once the colours are settled. It folds every layer at once, and like the other folds it is
+  not remembered across a reload.
+
+### Changed
+
+- **Auto-cycle now pauses while the scene editor is open**, so a scene is never swapped out
+  from under you mid-edit. Hide the panel (**M**, or **H** for all the chrome) and the show
+  runs again. Your **Auto-cycle scenes** tick is never touched — only the timer is held — and
+  closing the panel starts a fresh hold rather than switching the instant you do.
+- **A first visit now opens with the panel closed**, so the scenes that ship with the app run
+  as a show straight away. If you have used the app before, your saved open/closed state still
+  wins. The tutorial's "Two menus" step opens the editor with **M** to match, and says why the
+  scenes stop changing while it is up.
+
+### Internal
+
+- `tools/foldcycle-check.js` — a browser check (14 assertions over three seeded profiles) for
+  the cycle gate, the fold and the first-visit default. Half of it was written, measured
+  against a build with the feature deleted, found to pass anyway, and removed: after a mid-run
+  toggle a headless page renders two frames in twenty virtual seconds, so "nothing happened"
+  is not evidence. CLAUDE.md now carries that as a rule.
+
 ## [1.29.0] — 2026-08-23
 
 ### Changed

@@ -233,6 +233,9 @@
     opacity: .9;
   }
   #panel .check input, #menubar .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
+  /* Under "Auto-cycle scenes": the cycler is gated on the panel being hidden, and this is the
+     one line that says so. Indented to the checkbox's label text (15px box + 8px gap). */
+  #panel .cycle-note { margin: 2px 0 0 23px; font-size: 10px; opacity: .5; font-style: italic; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
   #toggle, #fs, #mute {
     position: fixed;
@@ -909,6 +912,15 @@
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
+  /* The palette-section fold, in the "Palette" label beside the inspect magnifier. Same 2x
+     marker as the layer chevron and the group headings; it lives inside a <label>, not a
+     `.lyr`, so it needs none of that reset — only the sizing. */
+  #panel .pal-chev {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; cursor: pointer; color: #ffb15a; opacity: .8;
+    font: 20px/1 monospace; user-select: none; vertical-align: middle;
+  }
+  #panel .pal-chev:hover { opacity: 1; }
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > .lyrblock { display: none; }
@@ -1747,7 +1759,10 @@
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check"><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
+  <label class="check" title="Switch scene on the TTL timer. Paused while this panel is open, so nothing changes under you while you edit."><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
+  <!-- STATIC, not toggled: the note is only ever readable while the panel is open, which is
+       exactly when cycling is paused. A JS-driven "paused" badge would have nothing to say. -->
+  <div class="cycle-note">paused while this panel is open</div>
   <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
        Auto-cycle, because that is when you see it most — every cycle tick draws one — even
        though it is drawn by the credits overlay and remembered per browser like the credits
@@ -1859,7 +1874,12 @@
   <!-- A MAGNIFIER, not the old 👁 eye: the eye became the visibility-toggle glyph (layer
        mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
        currentColor, like the eye icons. -->
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <!-- The chevron COLLAPSES the palette body (swatches, reverse, background, cycle) — the
+       tallest run of furniture in the block, and the part you stop needing once the colours
+       are settled. One boolean drives every block at once, the same policy the group folds
+       use, and it is transient: not in fullSnapshot(), so it never rides a scene or a link. -->
+  <label>Palette <b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b> <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <div data-k="palbody">
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -1868,6 +1888,7 @@
     <select data-k="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
   <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
+  </div>
   <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </div></template>
   </details>
@@ -2167,7 +2188,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.29.0",
+    version: "1.30.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -11546,12 +11567,42 @@
                        set checked(v) { for (const n of ctlEach("showbox")) n.checked = v; } };
   const randSeedChk = { get checked() { const n = ctl("randseed"); return !!n && n.checked; },
                         set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
+  // ---- palette fold ----------------------------------------------------------
+  // The palette body (swatches, Reverse, Background, cycle) is the tallest run of furniture
+  // in a layer block and the first thing you stop needing once the colours are settled.
+  // ONE boolean for every block, not one per slot: the same policy the group folds use
+  // ("folds apply to every block at once"), and it keeps a reorder from carrying a fold to
+  // a layer that never had one. Transient — not in fullSnapshot(), so it never rides a
+  // scene, a share link or a backup, exactly like every other fold in the app.
+  let palFolded = false;
+  function syncPalFold() {
+    for (const n of ctlEach("palbody")) n.style.display = palFolded ? "none" : "";
+    for (const n of ctlEach("pal-fold")) {
+      n.textContent = palFolded ? "▸" : "▾";
+      n.title = palFolded ? "Show the palette controls" : "Hide the palette controls";
+      n.setAttribute("aria-label", palFolded ? "Expand palette" : "Collapse palette");
+      n.setAttribute("aria-expanded", palFolded ? "false" : "true");
+    }
+  }
+  function togglePalFold(e) {
+    // Inside a <label>, so a bare click would fall through to the label's own activation.
+    e.preventDefault(); e.stopPropagation();
+    palFolded = !palFolded;
+    syncPalFold();
+  }
   for (let slot = 0; slot < STACK_MAX; slot++) {
     ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
     // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
     ctlIn(slot, "randseed").addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
     ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
+    const pf = ctlIn(slot, "pal-fold");
+    pf.addEventListener("click", togglePalFold);
+    // A <b> takes no keyboard activation of its own (role=button + tabindex only makes it
+    // focusable), so Enter/Space have to be wired by hand — the same gap `setOff` documents
+    // for the row controls.
+    pf.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") togglePalFold(e); });
   }
+  syncPalFold();
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");
@@ -14621,6 +14672,12 @@
     let saved;
     try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
     applyBlob(saved, false);
+    // FIRST VISIT STARTS WITH THE PANEL HIDDEN. Auto-cycle now pauses while the editor is on
+    // screen (cyclePresets), and the panel ships OPEN — so without this a new visitor would
+    // arrive at one still scene and never see the shipped library run as a show, which is how
+    // the site demonstrates itself. Only when nothing was ever stored: a saved panelOpen of
+    // either value always wins, so a returning user keeps their layout.
+    if (!saved || typeof saved.panelOpen !== "boolean") panel.classList.add("hidden");
     // NO SOURCE EVER CHOSEN ⇒ arm the MIC. Reacting to music is the point of the app and
     // the thing nobody discovers on their own, so the default is on rather than off.
     // `armAudioResume` does not open anything by itself — it waits for the first user
@@ -15275,7 +15332,18 @@
     for (let i = 0; i < presets.length; i++) if (inRotation(presets[i])) pool.push(i);
     return pool;
   }
+  // AUTO-CYCLE PAUSES WHILE THE EDITOR IS ON SCREEN. Having a scene swapped out from under
+  // you mid-edit loses your place, and the cycler's whole job is to run a show at an unwatched
+  // screen. So the panel being visible gates the TICK — it never touches `cycleOn` or the
+  // checkbox, which stay the user's stored preference (writing them would persist cycle:false
+  // into the blob and silently lose that choice). `body.ui-hidden` counts as hidden too: H
+  // strips the panel along with the rest of the chrome, and ?hideui is how the headless
+  // screenshots run. Zeroing nextSwitch means closing the panel starts a FRESH TTL rather
+  // than switching the instant you hide it.
+  const editorOpen = () => !panel.classList.contains("hidden")
+    && !document.body.classList.contains("ui-hidden");
   function cyclePresets(now) {
+    if (editorOpen()) { nextSwitch = 0; return; }
     const pool = rotationPool();
     // Something to switch TO: two or more ticked scenes, or exactly one that isn't the one
     // already on screen (having hand-picked an unticked scene, the cycle should still take
@@ -19146,10 +19214,11 @@
         + "microphone</b>. Allow it and the room drives the visual; refuse, and it is never asked "
         + "again — you can still start either source yourself from ☰ → Audio." },
     { head: "Two menus", art: TUT_ART.menus,
-      body: "The panel down the left is the <b>scene editor</b> — everything that is part of what you "
-        + "are looking at. The <b>☰</b> top-right is everything else: audio, render resolution, "
+      body: "<span class=\"tut-keys\">M</span> opens the <b>scene editor</b> down the left — everything "
+        + "that is part of what you are looking at. While it is open the scenes stop auto-cycling, so "
+        + "nothing changes under you while you work. The <b>☰</b> top-right is everything else: audio, render resolution, "
         + "fullscreen, your cloud profile, other people's scenes, the help reference — and this tutorial. "
-        + "<span class=\"tut-keys\">M</span> hides and shows the panel, <span class=\"tut-keys\">F</span> "
+        + "<span class=\"tut-keys\">M</span> hides it again, <span class=\"tut-keys\">F</span> "
         + "goes fullscreen and <span class=\"tut-keys\">H</span> strips every last bit of chrome." },
     { head: "Scenes", art: TUT_ART.scenes,
       body: "A <b>scene</b> is a complete snapshot — the effects, the colours, the filters, every slider. "
