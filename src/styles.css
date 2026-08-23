@@ -575,16 +575,23 @@
   }
   /* ---- break-out boxes: a slider popped into its own box, in a column that
        fills top→down at the right of the menu. Boxes are moved #ctl nodes. ---- */
+  /* THE HOST IS THE WHOLE SCREEN and every box in it is absolutely positioned — boxes are
+     dragged anywhere and snap to a grid over the viewport (layoutBreakout / makeBoxGrab).
+     `pointer-events: none` is what keeps a full-screen overlay from eating every click meant
+     for the canvas; each box turns them back on for itself. The default column is laid out
+     in JS at the same 298px/58px it always used, wrapping into a second column rather than
+     scrolling, which is what a full-screen host cannot do.
+     One host, not two: a second one would have to be added to every "#panel …, #breakout …"
+     control rule, which is the mistake this file records having made three times. */
   #breakout {
-    position: fixed; top: 58px; left: 298px; z-index: 5;
-    width: 244px; max-height: calc(100vh - 72px); overflow-y: auto; overscroll-behavior: contain;
-    display: flex; flex-direction: column; gap: 10px;
+    position: fixed; inset: 0; z-index: 5; pointer-events: none;
     color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; user-select: none;
   }
   #breakout.empty { display: none; }
   #panel.hidden ~ #breakout { display: none; }      /* hide the column when the menu is hidden */
   #breakout .ctl {
-    position: relative; margin: 0; padding: 12px 14px 12px 30px;
+    position: absolute; width: 244px; pointer-events: auto;
+    margin: 0; padding: 12px 14px 12px 30px;
     background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
@@ -596,7 +603,14 @@
     margin: 0 0 4px; color: #ffb15a; opacity: .62;
     font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
   }
-  #breakout .ctl-owner .own-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The owner line is also the DRAG HANDLE — the one strip of a box that is a title and not
+     a control. `touch-action: none` is required, or a touch drag scrolls the page instead. */
+  #breakout .ctl-owner .own-txt {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    cursor: grab; touch-action: none; flex: 1 1 auto;
+  }
+  #breakout .ctl.dragging { z-index: 3; opacity: .92; }
+  #breakout .ctl.dragging .own-txt { cursor: grabbing; }
   /* The per-box help ?, mirroring the panel's own #help-btn but smaller. Pushed to the
      right of the owner line so every box carries one in the same place. */
   #breakout .ctl-help {
@@ -903,6 +917,22 @@
     font: 20px/1 monospace; user-select: none; vertical-align: middle;
   }
   #panel .pal-chev:hover { opacity: 1; }
+  /* The trigger-section fold, on the "Triggers" heading inside a break-out box. Scoped
+     to #breakout because that is the only place the trigger section exists. */
+  #breakout .trig-chev {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; margin-left: 4px; cursor: pointer;
+    color: #ffb15a; opacity: .7; font: 20px/1 monospace; user-select: none;
+    vertical-align: middle;
+  }
+  #breakout .trig-chev:hover { opacity: 1; }
+  /* Shape thumbnail at the top of a break-out box: the figure the box's sliders make.
+     Floated so the label and readout keep their own line beside it. */
+  #breakout canvas.shape-prev {
+    float: right; width: 48px; height: 48px; margin: 0 0 4px 8px;
+    background: rgba(255, 140, 40, 0.07);
+    border: 1px solid rgba(255, 140, 40, 0.30); border-radius: 5px;
+  }
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
   #panel .lyr.folded > .lyrblock { display: none; }
@@ -1597,8 +1627,12 @@
        it becomes a bottom sheet: boxes lie in a row and scroll sideways, the panel stays
        readable above them. Without this a popped-out slider was simply off-screen. */
     #breakout {
-      top: auto; left: 14px; right: 14px; bottom: 14px; width: auto;
-      flex-direction: row; max-height: 46vh; overflow-x: auto;
+      inset: auto 14px 14px 14px; pointer-events: auto;
+      display: flex; flex-direction: row; gap: 10px;
+      max-height: 46vh; overflow-x: auto;
     }
-    #breakout .ctl { flex: 0 0 auto; width: 244px; }
+    /* Back into flow: the grid needs room the narrow case does not have, so below this the
+       boxes are a sheet again and layoutBreakout clears the inline offsets it set. */
+    #breakout .ctl { position: relative; flex: 0 0 auto; width: 244px; }
+    #breakout .ctl-owner .own-txt { cursor: default; }
   }

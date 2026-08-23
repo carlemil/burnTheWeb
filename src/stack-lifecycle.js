@@ -571,10 +571,13 @@
       put(k, eff.refract[b], v => v + "ms", Array.isArray(own.refract), on);
     }
     put("floor", eff.floor, v => (+v).toFixed(2), typeof own.floor === "number", any);
-    r.wrap.style.display = any ? "" : "none";
-    // The whole trigger body — Shape, Duration and Tuning — folds as ONE element on the
-    // same condition: something armed.
-    if (r.body) r.body.style.display = any ? "" : "none";
+    // Something armed AND not folded away by hand. The fold is the second condition and
+    // it wins: an armed slider you have finished tuning should still be able to give the
+    // box back (see trigFolded).
+    const show = any && !trigFolded.has(id);
+    r.wrap.style.display = show ? "" : "none";
+    // The whole trigger body — Shape, Duration and Tuning — folds as ONE element.
+    if (r.body) r.body.style.display = show ? "" : "none";
   }
   function syncTrigTune() {
     try { for (const id in refEls) paintTuneRows(id); } catch (e) {}

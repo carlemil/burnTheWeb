@@ -203,6 +203,262 @@
   }
   // The box's own furniture — owner line, bounds editor, dock button. Split out because the
   // SCENE pass below dresses one box for the whole page rather than one per block.
+  // ---- the break-out column is a FREE GRID --------------------------------------
+  // Boxes used to fill one fixed column down the left. They are dragged anywhere on screen
+  // now and snap to a coarse grid over the viewport, so the sliders you are working can sit
+  // beside the thing they change instead of queueing beside the menu.
+  //
+  // ONE POSITIONING MODEL, not two. Every visible box is absolutely positioned — the ones
+  // you have never dragged are laid out by `layoutBreakout` into the same 298px column they
+  // always used (wrapping into a second column rather than scrolling, which a full-screen
+  // host cannot do), and a dragged one is placed from its stored anchor instead. Keeping the
+  // flow ones in flex and the dragged ones absolute would have meant two layouts that
+  // disagree about heights, or a second host — and a second host means adding its id to
+  // every "#panel …, #breakout …" control rule, which is the mistake CLAUDE.md records
+  // having been made three times.
+  //
+  // EDGE AFFINITY is the whole point of the snap: a box whose centre is in the left half
+  // anchors its LEFT edge to the grid line and grows right; past the middle it anchors its
+  // RIGHT edge and grows left. Same vertically. So dragging a box across the middle re-aligns
+  // it to the near edge and it grows inward, and a box in a corner stays in that corner
+  // however tall its content becomes.
+  //
+  // Transient, like `popped` itself: positions are not in fullSnapshot() and never ride a
+  // scene, a link or a backup.
+  const BRK_COLS = 12, BRK_ROWS = 8;        // grid over the viewport
+  const BRK_W = 244, BRK_GAP = 10, BRK_TOP = 58, BRK_LEFT = 298, BRK_EDGE = 14;
+  const brkPos = new Map();                 // "<slot>/<key>" -> { gx, gy, right, bottom }
+  // Below this the column is a bottom sheet (see the 760px block in styles.css) and the CSS
+  // takes the boxes back into flow; dragging them there would fight it.
+  const brkFree = () => window.innerWidth > 760;
+  function brkCell() {
+    return { w: window.innerWidth / BRK_COLS, h: window.innerHeight / BRK_ROWS };
+  }
+  function brkPlace(box, p) {
+    const c = brkCell();
+    if (p.right) { box.style.right = Math.max(0, window.innerWidth - p.gx * c.w) + "px"; box.style.left = "auto"; }
+    else { box.style.left = Math.max(0, p.gx * c.w) + "px"; box.style.right = "auto"; }
+    if (p.bottom) { box.style.bottom = Math.max(0, window.innerHeight - p.gy * c.h) + "px"; box.style.top = "auto"; }
+    else { box.style.top = Math.max(0, p.gy * c.h) + "px"; box.style.bottom = "auto"; }
+  }
+  // Lay out every visible box: stored anchors where there are any, the default column for
+  // the rest. Called from refreshBreakout (which knows what is visible) and on resize.
+  function layoutBreakout() {
+    if (!brkFree()) {                       // bottom sheet: hand the boxes back to the CSS
+      for (const box of breakout.querySelectorAll(".ctl"))
+        box.style.left = box.style.right = box.style.top = box.style.bottom = "";
+      return;
+    }
+    let x = BRK_LEFT, y = BRK_TOP;
+    for (const box of breakout.querySelectorAll(".ctl")) {
+      if (box.style.display === "none") continue;
+      const p = brkPos.get(box.dataset.brk || "");
+      if (p) { brkPlace(box, p); continue; }
+      // Measure AFTER the anchored ones are placed: offsetHeight is the same either way
+      // (the width is fixed), but reading it while the box is still display:none is not.
+      const h = box.offsetHeight || 120;
+      if (y + h > window.innerHeight - BRK_EDGE && y > BRK_TOP) { y = BRK_TOP; x += BRK_W + BRK_GAP; }
+      box.style.left = x + "px"; box.style.top = y + "px";
+      box.style.right = box.style.bottom = "auto";
+      y += h + BRK_GAP;
+    }
+  }
+  // Drag by the owner line — the one strip of a box that is a title and not a control.
+  function makeBoxGrab(box, handle) {
+    let sx = 0, sy = 0, ox = 0, oy = 0, live = false;
+    handle.addEventListener("pointerdown", e => {
+      if (!brkFree() || e.button) return;
+      live = true;
+      sx = e.clientX; sy = e.clientY;
+      ox = box.offsetLeft; oy = box.offsetTop;
+      // Pin by top/left for the duration: dragging a right-anchored box by its left edge
+      // would move it the wrong way as the pointer travels.
+      box.style.left = ox + "px"; box.style.top = oy + "px";
+      box.style.right = box.style.bottom = "auto";
+      box.classList.add("dragging");
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    handle.addEventListener("pointermove", e => {
+      if (!live) return;
+      box.style.left = (ox + e.clientX - sx) + "px";
+      box.style.top = (oy + e.clientY - sy) + "px";
+    });
+    const done = e => {
+      if (!live) return;
+      live = false;
+      box.classList.remove("dragging");
+      try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+      const c = brkCell(), w = box.offsetWidth, h = box.offsetHeight;
+      const l = box.offsetLeft, t = box.offsetTop;
+      const right = l + w / 2 > window.innerWidth / 2;
+      const bottom = t + h / 2 > window.innerHeight / 2;
+      const p = {
+        right: right, bottom: bottom,
+        gx: Math.max(0, Math.min(BRK_COLS, Math.round((right ? l + w : l) / c.w))),
+        gy: Math.max(0, Math.min(BRK_ROWS, Math.round((bottom ? t + h : t) / c.h))),
+      };
+      brkPos.set(box.dataset.brk, p);
+      brkPlace(box, p);
+      layoutBreakout();                     // the column closes the gap this box left
+    };
+    handle.addEventListener("pointerup", done);
+    handle.addEventListener("pointercancel", done);
+    // Double-click the title puts a box back in the column — the way out of a placement you
+    // did not mean, without hunting for the spot it came from.
+    handle.addEventListener("dblclick", e => {
+      e.preventDefault();
+      brkPos.delete(box.dataset.brk);
+      layoutBreakout();
+    });
+  }
+  window.addEventListener("resize", () => layoutBreakout());
+  // ---- shape preview -------------------------------------------------------------
+  // A small square canvas at the top of a break-out box, drawing the shape the box's group
+  // actually makes from that layer's own slider settings — so "Sides 7, Thickness 0.3" is a
+  // picture of a seven-sided ring rather than two numbers you have to imagine.
+  //
+  // Keyed by GROUP, not by control, because the shape is made by the whole group together:
+  // the Polygon preview has to see Sides and Size and Thickness at once, and every one of
+  // Polygon's boxes shows the same figure. That is deliberate — each box then shows what its
+  // own slider is acting on.
+  //
+  // It reads the SLIDER VALUES, not the animated globals. Two reasons: the globals hold
+  // whichever layer drew last, so a box belonging to a non-selected layer would draw the
+  // wrong shape; and a thumbnail that jitters along with a drifting slider is harder to read
+  // than one that shows the setting. Redraw is on `input` in the box, so it costs nothing
+  // between edits.
+  // ponytail: six hand-drawn thumbnails, not a shared SDF pass. A 48px preview is cheaper
+  // drawn than rendered, and a new family is one more function.
+  const SHAPE_PREV_PX = 96;                 // backing store; CSS shows it at 48
+  // A superellipse |x|^p + |y|^p = 1: p 2 is a circle, p high is a square. The same
+  // "squareness" the Shape grid and Bouncing shapes shaders use, so the thumbnail and the
+  // effect agree on what the slider means.
+  function prevSuper(c, cx, cy, r, square, fill) {
+    const p = 2 + square * 8;
+    c.beginPath();
+    for (let i = 0; i <= 64; i++) {
+      const th = i / 64 * Math.PI * 2;
+      const ct = Math.cos(th), st = Math.sin(th);
+      const x = Math.sign(ct) * Math.pow(Math.abs(ct), 2 / p);
+      const y = Math.sign(st) * Math.pow(Math.abs(st), 2 / p);
+      i ? c.lineTo(cx + x * r, cy + y * r) : c.moveTo(cx + x * r, cy + y * r);
+    }
+    c.closePath();
+    fill ? c.fill() : c.stroke();
+  }
+  function prevPoly(c, cx, cy, r, n, rot, fill) {
+    c.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const th = rot + i / n * Math.PI * 2;
+      const x = cx + Math.cos(th) * r, y = cy + Math.sin(th) * r;
+      i ? c.lineTo(x, y) : c.moveTo(x, y);
+    }
+    c.closePath();
+    fill ? c.fill() : c.stroke();
+  }
+  const SHAPE_PREVIEW = {
+    polygon: (c, S, W) => {
+      const n = Math.max(3, Math.round(S("pgsides", 5)));
+      const r = W * 0.44 * (S("pgrad", 0.35) / 0.5);
+      c.lineWidth = Math.max(1.5, W * 0.09 * S("pgthick", 1));
+      prevPoly(c, W / 2, W / 2, r, n, -Math.PI / 2 + S("pgspin", 0) * 0.4, false);
+    },
+    concentric: (c, S, W) => {
+      const n = Math.max(3, Math.round(S("cosides", 6)));
+      const rings = Math.max(1, Math.min(5, Math.round(S("cocount", 6) / 1.6)));
+      c.lineWidth = Math.max(1, W * 0.075 * S("cothick", 0.4) * 2);
+      for (let i = 1; i <= rings; i++)
+        prevPoly(c, W / 2, W / 2, W * 0.44 * (i / rings), n, -Math.PI / 2, false);
+    },
+    shapegrid: (c, S, W) => {
+      // Three cells across whatever the real Density is: the thumbnail shows the CELL, and a
+      // 24x24 grid at 48px would be a grey smear.
+      const sq = S("sgsquare", 0), dot = S("sgdot", 0.3);
+      for (let gy = 0; gy < 3; gy++) for (let gx = 0; gx < 3; gx++)
+        prevSuper(c, W * (gx + 0.5) / 3, W * (gy + 0.5) / 3, W / 3 * 0.5 * (dot / 0.35), sq, true);
+    },
+    bounce: (c, S, W) => {
+      const n = Math.max(1, Math.min(4, Math.round(S("bncount", 4))));
+      const r = W * 0.5 * (S("bnrad", 0.09) / 0.14), sq = S("bnsquare", 0.6);
+      const at = [[0.30, 0.32], [0.70, 0.28], [0.36, 0.72], [0.74, 0.70]];
+      for (let i = 0; i < n; i++) prevSuper(c, W * at[i][0], W * at[i][1], r, sq, true);
+    },
+    solids: (c, S, W) => {
+      // Which PRIMITIVES are in play: Shape mix is how many of the six the effect draws from,
+      // so the thumbnail shows exactly those, in the shader's own order.
+      const mix = Math.max(1, Math.min(6, Math.round(S("sdmix", 6))));
+      const cols = mix <= 2 ? mix : 3, rows = Math.ceil(mix / cols);
+      const cw = W / cols, ch = W / rows, r = Math.min(cw, ch) * 0.34;
+      for (let i = 0; i < mix; i++) {
+        const cx = cw * (i % cols + 0.5), cy = ch * ((i / cols | 0) + 0.5);
+        if (i === 0) { c.beginPath(); c.arc(cx, cy, r, 0, 6.2832); c.fill(); }        // sphere
+        else if (i === 1) c.fillRect(cx - r * 0.8, cy - r * 0.8, r * 1.6, r * 1.6);   // box
+        else if (i === 2) {                                                            // torus
+          c.lineWidth = r * 0.62; c.beginPath(); c.arc(cx, cy, r * 0.68, 0, 6.2832); c.stroke();
+        } else if (i === 3) {                                                          // capsule
+          c.beginPath();
+          c.arc(cx, cy - r * 0.4, r * 0.55, Math.PI, 0);
+          c.arc(cx, cy + r * 0.4, r * 0.55, 0, Math.PI);
+          c.closePath(); c.fill();
+        } else if (i === 4) prevPoly(c, cx, cy, r, 4, -Math.PI / 2, true);             // octahedron
+        else {                                                                         // cylinder
+          c.fillRect(cx - r * 0.62, cy - r * 0.75, r * 1.24, r * 1.5);
+          c.beginPath(); c.ellipse(cx, cy - r * 0.75, r * 0.62, r * 0.26, 0, 0, 6.2832); c.fill();
+        }
+      }
+    },
+    vballs: (c, S, W) => {
+      // The four FORMATIONS, as the arrangement each one makes.
+      const form = Math.max(0, Math.min(3, Math.round(S("vbshape", 1))));
+      const dots = [];
+      if (form === 0) for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) dots.push([0.22 + x * 0.28, 0.22 + y * 0.28]);
+      else if (form === 1) for (let i = 0; i < 10; i++) {                       // sphere: a fibonacci shell
+        const z = 1 - 2 * (i + 0.5) / 10, rr = Math.sqrt(Math.max(0, 1 - z * z)), th = i * 2.39996;
+        dots.push([0.5 + Math.cos(th) * rr * 0.36, 0.5 + z * 0.36]);
+      } else if (form === 2) for (let i = 0; i < 9; i++) {                      // ring
+        const th = i / 9 * Math.PI * 2;
+        dots.push([0.5 + Math.cos(th) * 0.36, 0.5 + Math.sin(th) * 0.16]);
+      } else for (let i = 0; i < 10; i++) {                                     // helix
+        const f = i / 9;
+        dots.push([0.5 + Math.cos(f * 6.6) * 0.30, 0.14 + f * 0.72]);
+      }
+      const r = W * (form === 0 ? 0.07 : 0.06) * (S("vbsize", 0.3) / 0.3);
+      for (const d of dots) { c.beginPath(); c.arc(d[0] * W, d[1] * W, r, 0, 6.2832); c.fill(); }
+    },
+  };
+  function drawShapePrev(cv) {
+    const slot = +cv.dataset.pslot, group = cv.dataset.pgroup;
+    const fn = SHAPE_PREVIEW[group];
+    if (!fn) return;
+    const c = cv.getContext("2d"), W = SHAPE_PREV_PX;
+    c.clearRect(0, 0, W, W);
+    c.strokeStyle = "#ff9a3c"; c.fillStyle = "#ff9a3c"; c.lineJoin = "round";
+    // Slider values for THIS slot, defaulted so a control the group does not declare (or a
+    // block that has not been painted yet) never produces NaN geometry.
+    const S = (k, dflt) => {
+      const n = slot < 0 ? el(k + "-lo") : ctlIn(slot, k + "-lo");
+      const v = n ? +n.value : NaN;
+      return isFinite(v) ? v : dflt;
+    };
+    try { fn(c, S, W); } catch (e) {}
+  }
+  function refreshShapePrev(root) {
+    const host = root || breakout;
+    for (const cv of host.querySelectorAll("canvas.shape-prev")) drawShapePrev(cv);
+  }
+  function makeShapePrev(slot, key) {
+    const c = CONTROLS.find(x => x.key === key);
+    if (!c || !SHAPE_PREVIEW[c.group]) return null;
+    const cv = document.createElement("canvas");
+    cv.className = "shape-prev";
+    cv.width = cv.height = SHAPE_PREV_PX;
+    cv.dataset.pslot = String(slot);
+    cv.dataset.pgroup = c.group;
+    cv.title = (CTL_GROUPS[c.group] || c.group) + " — the shape these sliders make";
+    cv.setAttribute("aria-hidden", "true");
+    return cv;
+  }
   function dressBox(slot, key, box) {
     box.classList.add("poppable");
     // Title line, first child so it sits above the label. Only ever visible in
@@ -221,6 +477,14 @@
     hb.addEventListener("click", e => { e.stopPropagation(); openCtlHelp(key); });
     t.appendChild(hb);
     box.insertBefore(t, box.firstChild);
+    // The box's grid identity, and its drag handle. Same key shape as `popped`, so a layer
+    // reorder can remap both together.
+    box.dataset.brk = popKey(slot, key);
+    makeBoxGrab(box, ownTxt);
+    // Shape thumbnail, under the owner line and above the label, for the groups that make a
+    // shape. Null for everything else, so most boxes are unchanged.
+    const prev = makeShapePrev(slot, key);
+    if (prev) box.insertBefore(prev, t.nextSibling);
     // Bounds editor goes directly UNDER THE SLIDER, not at the foot of the box: min/max/step
     // describe that slider, so they belong with it rather than below the beat controls, which
     // are a different subject. A divider closes the block off from the Triggers section.
@@ -367,6 +631,16 @@
   // where it was and silently started showing (and editing) whichever layer slid into that slot,
   // while its "L3" title stayed right for the slot and wrong for the layer.
   function remapPopped(fn) {
+    // The grid positions are keyed the same way and move with their layer for the same
+    // reason the popped set does: you placed layer 2's Size box, not slot 1's.
+    const posWas = [...brkPos.entries()];
+    brkPos.clear();
+    for (const [pk, p] of posWas) {
+      const i = pk.indexOf("/"), sPart = pk.slice(0, i), k2 = pk.slice(i + 1);
+      if (sPart === "s") { brkPos.set(pk, p); continue; }
+      const n2 = fn(+sPart);
+      if (n2 >= 0) brkPos.set(popKey(n2, k2), p);
+    }
     const was = [...popped];
     popped.clear();
     for (const pk of was) {
@@ -443,6 +717,13 @@
       if (vis) anyVisible = true;
     }
     breakout.classList.toggle("empty", !anyVisible);
+    // Position what is now visible, then repaint the thumbnails. Layout first: a box that
+    // was display:none has no measurable height, so laying out before the visibility pass
+    // would stack the column on zeros.
+    layoutBreakout();
+    // A box that has just been shown, or whose layer changed effect underneath it, is
+    // carrying a stale thumbnail. Cheap: a handful of 48px canvases, only the visible ones.
+    refreshShapePrev();
   }
   // Nothing to restore any more: a box belongs to its SLOT and stays open until you close
   // it, so switching layers no longer takes any boxes away and there is nothing to put back.
@@ -624,6 +905,10 @@
   panel.addEventListener("input", onEdit);
   panel.addEventListener("change", onEdit);
   breakout.addEventListener("input", onEdit);    // popped controls live outside #panel — persist their edits too
+  // Shape thumbnails follow their sliders. Delegated on the column rather than bound per
+  // canvas: the whole group's values feed one picture, so a Sides edit has to repaint the
+  // Thickness box too, and a listener per slider would be N x N wiring for one redraw.
+  breakout.addEventListener("input", () => refreshShapePrev());
   breakout.addEventListener("change", onEdit);
 
   // Reset: restore *only the current effect's* settings (sliders, beat chips,

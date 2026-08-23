@@ -143,6 +143,39 @@
   // there is a single block it serves whichever layer is selected, so a slot test would
   // deaden every chip the moment you selected layer 2. Identity is true in both worlds, and
   // it also stops a synthetic dispatch writing across layers.
+  // ---- trigger fold ------------------------------------------------------------
+  // The trigger section shows itself the moment a chip is armed, which is right the first
+  // time and wrong afterwards: an armed slider you have finished tuning still spends most
+  // of the box on Shape, Duration and Tuning. The chevron on the Triggers heading collapses
+  // the lot INCLUDING THE CHIPS, armed or not.
+  //
+  // Keyed by control id, not by slot, because everything else about a trigger's UI already
+  // is (chipEls, pulseEls, refEls are singletons re-pointed on selection). Transient — not
+  // in fullSnapshot(), like every other fold.
+  //
+  // The armed state stays visible while folded: the menu row's .ctl-dot is outside this
+  // section, so a folded box still says the slider is wired to the beat.
+  const trigFolded = new Set();
+  // The chips and the chevron live in EVERY block, so they are painted across all of them;
+  // the body's visibility also depends on `any`, which only paintTuneRows knows, so that
+  // stays where it is and simply ANDs with the fold.
+  function trigFoldPaint(id) {
+    const folded = trigFolded.has(id);
+    for (let s = 0; s < STACK_MAX; s++) {
+      const w = W[s] && W[s][id];
+      if (!w || !w.trigChev) continue;
+      w.trigChev.textContent = folded ? "▸" : "▾";
+      w.trigChev.title = folded ? "Show the beat triggers" : "Hide the beat triggers";
+      w.trigChev.setAttribute("aria-expanded", folded ? "false" : "true");
+      if (w.trigWrap) w.trigWrap.style.display = folded ? "none" : "";
+      if (w.trigBody && folded) w.trigBody.style.display = "none";
+    }
+  }
+  function toggleTrigFold(id) {
+    trigFolded.has(id) ? trigFolded.delete(id) : trigFolded.add(id);
+    trigFoldPaint(id);
+    syncTrigTune();          // the body comes back only if something is still armed
+  }
   function makeChips(id, label, w) {
     if (!(id in beatReact)) beatReact[id] = { low: false, mid: false, high: false };
     const chips = w.chips = {};
@@ -193,6 +226,19 @@
     const trigT = document.createElement("div");
     trigT.className = "trig-t"; trigT.textContent = "Triggers";
     trigT.title = "Which beat bands make this slider jump";
+    // Fold chevron. It hides the chips too, so an armed slider can be put away completely.
+    const trigChev = document.createElement("b");
+    trigChev.className = "trig-chev"; trigChev.textContent = "▾";
+    trigChev.setAttribute("role", "button");
+    trigChev.setAttribute("tabindex", "0");
+    trigChev.setAttribute("aria-label", "Collapse beat triggers");
+    trigChev.title = "Hide the beat triggers";
+    const foldGo = e => { e.preventDefault(); e.stopPropagation(); toggleTrigFold(id); };
+    trigChev.addEventListener("click", foldGo);
+    // A <b> gets no keyboard activation from role=button alone -- same gap setOff documents.
+    trigChev.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") foldGo(e); });
+    trigT.appendChild(trigChev);
+    w.trigChev = trigChev; w.trigWrap = wrap;
     host.append(trigT, wrap);
     // THIS SLIDER'S OWN detector thresholds — Sensitivity, Floor and Refractory. They used to
     // be one Refractory group writing straight into beatCfg.refract[band], i.e. into the
@@ -375,6 +421,7 @@
     trigBody.style.display = "none";
     trigBody.append(shapeT, psel, durT, row, mrow, refWrap);
     refs.body = trigBody;
+    w.trigBody = trigBody;
     host.append(trigBody);
   }
   const plenFmt = v => (v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s");

@@ -1,0 +1,211 @@
+#!/usr/bin/env node
+// Break-out box BROWSER check: the free grid, the shape thumbnails and the trigger fold.
+// All three are live-DOM behaviour, so like tools/foldcycle-check.js this one needs a
+// browser -- which is why it is NOT named *probe.js: /deploy runs `node tools/*probe.js`
+// over the directory.
+//
+//   node tools/breakout-check.js <outdir> [dev-index.html]
+//
+// then run the printed msedge command. Every line is PASS/FAIL on stderr via CONSOLE.
+//
+// The traps this had to work around, all of them documented in CLAUDE.md and all of them
+// hit here: the layer rows are a fixed pool with the spares HIDDEN (so offsetParent, not
+// querySelectorAll length); a control only has a break-out box once it is POPPED, which
+// means clicking the real launcher rather than un-hiding anything; and the panel has to
+// stay open, which now also holds the auto-cycle timer so nothing swaps the scene mid-run.
+//
+// No backtick anywhere in the injected source, and it is assembled from arrays joined by an
+// explicit newline rather than template literals.
+const fs = require("fs");
+const path = require("path");
+const NL = String.fromCharCode(10);
+const Q = String.fromCharCode(39);
+
+const outDir = process.argv[2];
+const appFile = process.argv[3] || "dev-index.html";
+if (!outDir) { console.error("usage: node tools/breakout-check.js <outdir> [dev-index.html]"); process.exit(2); }
+fs.mkdirSync(outDir, { recursive: true });
+const app = fs.readFileSync(appFile, "utf8");
+
+const SEED = [
+  "(function(){",
+  "  try {",
+  "    localStorage.clear();",
+  "    localStorage.setItem(\"burnTheWeb.v1\", JSON.stringify({ panelOpen: true, cycle: false, tdur: [0, 0] }));",
+  "    localStorage.setItem(\"burnTheWeb.tutorial.v1\", \"1\");",
+  "    localStorage.setItem(\"burnTheWeb.credits.v1\", \"off\");",
+  "    localStorage.setItem(\"burnTheWeb.sync.v1\", JSON.stringify({ shows: 9, done: true }));",
+  "  } catch (e) {}",
+  "  window.__errs = 0;",
+  "  var ce = console.error;",
+  "  console.error = function(){ window.__errs++; ce.apply(console, arguments); };",
+  "  window.addEventListener(\"error\", function(){ window.__errs++; });",
+  "})();",
+].join(NL);
+
+const ASSERT = [
+  "(function(){",
+  "  var fails = 0;",
+  "  function ok(name, cond, extra){",
+  "    console.log((cond ? \"PASS  \" : \"FAIL  \") + name + (extra ? \"  [\" + extra + \"]\" : \"\"));",
+  "    if (!cond) fails++;",
+  "  }",
+  "  function vis(list){ return [].slice.call(list).filter(function(n){ return n.offsetParent !== null; }); }",
+  "  function pt(type, x, y){ return new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1 }); }",
+  "",
+  "  setTimeout(function(){",
+  "    ok(\"the app started clean\", window.__errs === 0, window.__errs + \" console errors\");",
+  "    // A shape family: put the one visible layer on Polygon, then unfold its block so the",
+  "    // launcher rows are reachable.",
+  "    var row = vis(document.querySelectorAll(\"select.lyr-name\"))[0];",
+  "    var opt = [].slice.call(row.options).filter(function(o){ return o.textContent.trim() === \"Polygon\"; })[0];",
+  "    if (!opt) { ok(\"Polygon is in the effect list\", false); return; }",
+  "    row.value = opt.value; row.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+  "    var chev = document.querySelector(\"#panel .lyr b.lyr-chev\");",
+  "    if (chev) chev.click();",
+  "",
+  "    setTimeout(function(){",
+  "      // ---- pop two of Polygon's sliders out ----",
+  "      var launchers = vis(document.querySelectorAll(\"#panel .ctl-row .ctl-pop\"));",
+  "      ok(\"the layer block offers pop-out launchers\", launchers.length > 2, launchers.length + \" launchers\");",
+  "      launchers[0].click();",
+  "      launchers[1].click();",
+  "      launchers[2].click();",
+  "      var boxes = [].slice.call(document.querySelectorAll(\"#breakout .ctl\"))",
+  "                    .filter(function(b){ return b.style.display !== \"none\"; });",
+  "      ok(\"three boxes opened\", boxes.length === 3, boxes.length + \" visible\");",
+  "      if (boxes.length < 3) { console.log(\"DONE fails=\" + fails); return; }",
+  "",
+  "      // ---- 1. the free grid ----",
+  "      var b0 = boxes[0];",
+  "      ok(\"a box is absolutely positioned\", getComputedStyle(b0).position === \"absolute\",",
+  "         getComputedStyle(b0).position);",
+  "      ok(\"the host does not eat clicks\", getComputedStyle(document.getElementById(\"breakout\")).pointerEvents === \"none\");",
+  "      ok(\"but a box does\", getComputedStyle(b0).pointerEvents === \"auto\");",
+  "      var startL = b0.offsetLeft, startT = b0.offsetTop;",
+  "      ok(\"an undragged box lands in the default column\", startL === 298 && startT === 58,",
+  "         startL + \",\" + startT);",
+  "      ok(\"and the second box stacks under it, not on top of it\",",
+  "         boxes[1].offsetTop > startT, boxes[1].offsetTop + \" vs \" + startT);",
+  "",
+  "      // Drag box 0 across the middle, to the lower right. It must anchor its RIGHT and",
+  "      // BOTTOM edges -- that is the ask: align to the new edge and grow inward.",
+  "      var h = b0.querySelector(\".ctl-owner .own-txt\");",
+  "      var W = window.innerWidth, H = window.innerHeight;",
+  "      h.dispatchEvent(pt(\"pointerdown\", startL + 20, startT + 6));",
+  "      h.dispatchEvent(pt(\"pointermove\", W - 180, H - 220));",
+  "      h.dispatchEvent(pt(\"pointerup\", W - 180, H - 220));",
+  "      ok(\"a dragged box anchors its RIGHT edge past the middle\",",
+  "         b0.style.right !== \"auto\" && b0.style.right !== \"\" && b0.style.left === \"auto\",",
+  "         \"left=\" + b0.style.left + \" right=\" + b0.style.right);",
+  "      ok(\"...and its BOTTOM edge past the middle\",",
+  "         b0.style.bottom !== \"auto\" && b0.style.bottom !== \"\" && b0.style.top === \"auto\",",
+  "         \"top=\" + b0.style.top + \" bottom=\" + b0.style.bottom);",
+  "      ok(\"it really moved to the far half\", b0.offsetLeft > W / 2 && b0.offsetTop > H / 2,",
+  "         b0.offsetLeft + \",\" + b0.offsetTop);",
+  "      // Snapped to a grid line: the anchored edge sits on a multiple of the cell width.",
+  "      var cw = W / 12, ch = H / 8;",
+  "      var edgeX = b0.offsetLeft + b0.offsetWidth, edgeY = b0.offsetTop + b0.offsetHeight;",
+  "      ok(\"the anchored corner sits on a grid line\",",
+  "         Math.abs(edgeX / cw - Math.round(edgeX / cw)) < 0.02 &&",
+  "         Math.abs(edgeY / ch - Math.round(edgeY / ch)) < 0.02,",
+  "         (edgeX / cw).toFixed(3) + \" / \" + (edgeY / ch).toFixed(3) + \" cells\");",
+  "      // The box it left behind must close the gap.",
+  "      ok(\"the column closes up behind it\", boxes[1].offsetTop === 58, String(boxes[1].offsetTop));",
+  "      // Drag it back across the middle: it has to flip to the LEFT edge, not keep a stale",
+  "      // right anchor -- that flip is the behaviour the whole snap exists for.",
+  "      h.dispatchEvent(pt(\"pointerdown\", b0.offsetLeft + 20, b0.offsetTop + 6));",
+  "      h.dispatchEvent(pt(\"pointermove\", 120, 120));",
+  "      h.dispatchEvent(pt(\"pointerup\", 120, 120));",
+  "      ok(\"dragging back across the middle flips it to the LEFT edge\",",
+  "         b0.style.left !== \"auto\" && b0.style.right === \"auto\",",
+  "         \"left=\" + b0.style.left + \" right=\" + b0.style.right);",
+  "      // Double-click the title returns it to the column.",
+  "      h.dispatchEvent(new MouseEvent(\"dblclick\", { bubbles: true }));",
+  "      ok(\"double-clicking the title puts it back in the column\",",
+  "         b0.offsetLeft === 298, String(b0.offsetLeft));",
+  "",
+  "      // ---- 2. the shape thumbnail ----",
+  "      var cv = b0.querySelector(\"canvas.shape-prev\");",
+  "      ok(\"a shape group's box carries a thumbnail\", !!cv);",
+  "      if (cv) {",
+  "        var g = cv.getContext(\"2d\");",
+  "        function ink(){",
+  "          var d = g.getImageData(0, 0, cv.width, cv.height).data, n = 0;",
+  "          for (var i = 3; i < d.length; i += 4) if (d[i] > 8) n++;",
+  "          return n;",
+  "        }",
+  "        // A HASH of the pixels, not a count of them. A 5-gon and a 12-gon outline have",
+  "        // nearly the same perimeter, so counting ink moved by 6 pixels out of 1650 and the",
+  "        // check would have passed against a thumbnail that never redrew at all.",
+  "        function sig(){",
+  "          var d = g.getImageData(0, 0, cv.width, cv.height).data, hsh = 2166136261;",
+  "          for (var i = 3; i < d.length; i += 4) { hsh ^= d[i]; hsh = Math.imul(hsh, 16777619); }",
+  "          return hsh >>> 0;",
+  "        }",
+  "        ok(\"it has drawn something\", ink() > 40, ink() + \" inked pixels\");",
+  "        var sides = [].slice.call(document.querySelectorAll(\"#breakout [data-k]\"))",
+  "                      .filter(function(e){ return e.getAttribute(\"data-k\") === \"pgsides-lo\"; })[0];",
+  "        if (!sides) { ok(\"the Polygon Sides slider is in a box\", false); }",
+  "        else {",
+  "          var was = sig();",
+  "          sides.value = \"12\"; sides.dispatchEvent(new Event(\"input\", { bubbles: true }));",
+  "          var now = sig();",
+  "          ok(\"the thumbnail follows its group's sliders\", now !== was, was + \" -> \" + now);",
+  "          // ...and it is EVERY box of the group, not just the one holding that slider.",
+  "          var others = boxes.filter(function(b){ return b !== b0 && b.querySelector(\"canvas.shape-prev\"); });",
+  "          ok(\"every box in the group shows the same figure\", others.length > 0,",
+  "             others.length + \" sibling thumbnails\");",
+  "        }",
+  "      }",
+  "",
+  "      // ---- 3. the trigger fold ----",
+  "      // NOT b0: the first Polygon slider is Sides, which is a `single` control, and single",
+  "      // controls suppress their triggers by design (wireRange: beat !== false && !single).",
+  "      // Asserting the fold on a box that correctly has no chips is a check of nothing.",
+  "      var bt = boxes.filter(function(b){ return b.querySelector(\".trig-chev\"); })[0];",
+  "      ok(\"a beat-armable box carries a fold chevron on its Triggers heading\", !!bt);",
+  "      ok(\"a single control still has NO trigger section\", !b0.querySelector(\".trig-chev\"),",
+  "         \"Sides is single\");",
+  "      var tchev = bt && bt.querySelector(\".trig-chev\");",
+  "      var chips = bt && bt.querySelector(\".bandchips\");",
+  "      ok(\"the chips start visible\", !!chips && chips.style.display !== \"none\");",
+  "      if (tchev && chips) {",
+  "        // ARM a band first: the point of the feature is folding an ARMED trigger away.",
+  "        var lband = chips.querySelector(\"button\");",
+  "        lband.click();",
+  "        var body = bt.querySelector(\".trig-body\");",
+  "        ok(\"arming a band opens the trigger body\", !!body && body.style.display !== \"none\",",
+  "           body ? (body.style.display || \"shown\") : \"no body\");",
+  "        tchev.click();",
+  "        ok(\"the chevron hides the chips even though a band is armed\",",
+  "           chips.style.display === \"none\", chips.style.display || \"shown\");",
+  "        ok(\"...and the trigger body with them\", !!body && body.style.display === \"none\",",
+  "           body ? (body.style.display || \"shown\") : \"no body\");",
+  "        ok(\"...but the band is still armed\", lband.classList.contains(\"on\"));",
+  "        tchev.click();",
+  "        ok(\"clicking again brings the armed trigger back\",",
+  "           chips.style.display !== \"none\" && !!body && body.style.display !== \"none\",",
+  "           \"chips=\" + (chips.style.display || \"shown\") + \" body=\" + (body.style.display || \"shown\"));",
+  "      }",
+  "",
+  "      ok(\"no console errors through all of it\", window.__errs === 0, window.__errs + \" errors\");",
+  "      console.log(\"DONE fails=\" + fails);",
+  "    }, 1200);",
+  "  }, 1800);",
+  "})();",
+].join(NL);
+
+let s = app.replace("<head>", "<head>" + NL + "<script>" + SEED + "<" + "/script>");
+s = s.replace("</body>", "<script>" + ASSERT + "<" + "/script>" + NL + "</body>");
+if (s === app) throw new Error("injection failed");
+const f = path.join(outDir, "breakout.html");
+fs.writeFileSync(f, s);
+console.log("wrote " + f);
+
+const abs = path.resolve(outDir).split(path.sep).join("/");
+console.log(NL + "run with:");
+console.log("  msedge --headless=new --disable-extensions --enable-logging=stderr --v=0"
+  + " --window-size=1600,1000 --virtual-time-budget=60000"
+  + " --user-data-dir=\"" + abs + "/ud-breakout\""
+  + " \"file:///" + abs + "/breakout.html\" 2>&1 | grep -oE " + Q + "\"(PASS|FAIL|DONE)[^\"]*\"" + Q);

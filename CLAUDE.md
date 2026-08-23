@@ -525,7 +525,38 @@ in click order. A thumb is only ever visible in the column.
   (POPPABLE pass) and must **`insertBefore` `.trig-t`** — the FIRST `.trig-t` is the Triggers
   heading. It carries no `border-top`. The trigger section exists only in a box.
 - `.ctl-owner` = `ctlOwner(key)` → `CTL_GROUPS[control.group]`, `"Filter · "` prefix for `f_*`.
-  Added in `POPPABLE.forEach`, not `ctlHTML`.
+  Added in `POPPABLE.forEach`, not `ctlHTML`. **It is also the DRAG HANDLE** (`.own-txt`,
+  `touch-action: none`).
+- **A SHAPE THUMBNAIL** heads the box for the six groups in `SHAPE_PREVIEW`
+  (`polygon`, `concentric`, `shapegrid`, `bounce`, `solids`, `vballs`). Keyed by **GROUP**,
+  not by control — the figure is made by the whole group, so every one of Polygon's boxes
+  shows the same shape and each says what its own slider acts on. It reads the **slider
+  values for its slot**, not the animated globals: the globals hold whichever layer drew
+  last (wrong for a non-selected layer's box) and a jittering thumbnail is harder to read
+  than the setting. Redrawn from a delegated `input` on `#breakout` and from
+  `refreshBreakout` — never per frame.
+- **The Triggers heading folds** (`trigFolded`, keyed by control id like every other
+  trigger singleton), hiding the CHIPS as well as the body, armed or not — the menu row's
+  `.ctl-dot` still says the slider is wired. `paintTuneRows` ANDs `any` with the fold.
+  A `single` control has no trigger section at all (`wireRange` suppresses it), so it has
+  no chevron either — asserting the fold on one is a check of nothing.
+
+**`#breakout` IS A FULL-SCREEN FREE GRID.** `position: fixed; inset: 0; pointer-events: none`,
+every visible box `position: absolute; pointer-events: auto`. **One positioning model, not
+two**: `layoutBreakout()` places the never-dragged boxes into the same 298/58 column (wrapping
+into a second column — a full-screen host cannot scroll) and the dragged ones from
+`brkPos`. Two layouts, or a second host, was the alternative — and a second host means adding
+its id to every `#panel …, #breakout …` control rule, the mistake recorded three times above.
+- Snap = a **12 × 8 grid over the viewport**, with **EDGE AFFINITY**: a box whose centre is in
+  the left half anchors its LEFT edge and grows right, past the middle it anchors its RIGHT
+  edge and grows left (same vertically). Crossing the middle therefore re-aligns it to the
+  near edge and it grows inward, and a corner box stays in its corner as its content grows.
+- `brkPos` is keyed like `popped` (`"<slot>/<key>"`) and **`remapPopped` must move both** — you
+  placed a LAYER's box, not a position's. Transient; never in `fullSnapshot()`.
+- Never reparent mid-drag (Chromium drops pointer capture); pin `left`/`top` for the drag and
+  write the anchor only on release. Double-click the title returns a box to the column.
+- Below **760px** the CSS puts the boxes back in flow as a bottom sheet and `layoutBreakout`
+  clears its inline offsets — `brkFree()` gates both.
 
 **Range editor** (`makeRangeEditor`): `min`/`max`/`step` + ↺ (→ `resetControl`). `rngApply` writes
 the attribute onto the real slider(s), re-clamps, dispatches `input` **on the slider** (the number
