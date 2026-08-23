@@ -239,6 +239,32 @@
       ch: Math.max(48, r.height / BRK_ROWS),
     };
   }
+  // The rects the overlap checks run against: every directly-placed visible box in the
+  // grid (slider boxes, scene boxes, layer boxes). Direct children only — the never-popped
+  // .ctl check rows nested inside a layer block are not placed boxes.
+  function brkRects(except) {
+    return [...breakout.querySelectorAll(":scope > .ctl.poppable")]
+      .filter(n => n !== except && n.style.display !== "none")
+      .map(n => n.getBoundingClientRect());
+  }
+  // Half a pixel of slack: grid maths and measured rects disagree by subpixels, and two
+  // boxes sharing an edge exactly must count as clear, not overlapping.
+  const rectClear = (x, y, w, h, taken) =>
+    taken.every(t => x + w <= t.left + 0.5 || x >= t.right - 0.5 || y + h <= t.top + 0.5 || y >= t.bottom - 0.5);
+  // A box's height rounded UP to the quarter-cell grid, gap included — the height layout
+  // gives it (min-height, border-box), so boxes anchored on grid lines leave a uniform
+  // BRK_GAP between rows instead of a different remainder per box.
+  function brkH(box, g) {
+    const q = g.ch / BRK_SUB, h = box ? (box.offsetHeight || 120) : 120;
+    return Math.ceil((h + BRK_GAP) / q) * q - BRK_GAP;
+  }
+  // Same for width: a slider box is already exactly one column (244 + 10 = 4 quarters),
+  // but the wider layer box (300px) is not, and un-rounded it pushes its neighbours off
+  // the gap rhythm — min-width wins over the CSS width, so this widens it onto the grid.
+  function brkW(box, g) {
+    const q = g.cw / BRK_SUB, w = box ? (box.offsetWidth || BRK_W) : BRK_W;
+    return Math.ceil((w + BRK_GAP) / q) * q - BRK_GAP;
+  }
   function brkPlace(node, p) {
     const g = brkGrid();
     const x = g.x0 + p.gx * g.cw / BRK_SUB, y = g.y0 + p.gy * g.ch / BRK_SUB;
@@ -285,23 +311,44 @@
   // column for the rest. Called from refreshBreakout (which knows what is visible), from
   // the end of a drag, and on resize.
   function layoutBreakout() {
+    const boxes = [...breakout.querySelectorAll(":scope > .ctl.poppable")];
     if (!brkFree()) {                       // bottom sheet: hand the boxes back to the CSS
-      for (const box of breakout.querySelectorAll(".ctl"))
-        box.style.left = box.style.right = box.style.top = box.style.bottom = "";
+      for (const box of boxes)
+        box.style.left = box.style.right = box.style.top = box.style.bottom =
+          box.style.minHeight = box.style.minWidth = "";
       return;
     }
     const g = brkGrid();
-    let x = g.x0, y = g.y0;
-    for (const box of breakout.querySelectorAll(".ctl")) {
-      if (box.style.display === "none") continue;
+    const vis = boxes.filter(b => b.style.display !== "none");
+    // Size every visible box to the grid first: clear the previous stretch (content may
+    // have shrunk), measure, round up to the quarter cell. Placement below then reads the
+    // rounded heights, so the spacing between stacked boxes is a uniform BRK_GAP.
+    for (const box of vis) {
+      box.style.minHeight = box.style.minWidth = "";
+      const hh = brkH(box, g), ww = brkW(box, g);
+      if (hh > box.offsetHeight) box.style.minHeight = hh + "px";
+      if (ww > box.offsetWidth) box.style.minWidth = ww + "px";
+    }
+    // Anchored boxes first, so the flow column can steer around them instead of stacking
+    // straight through — the overlap check the free grid was missing.
+    const placed = [], flow = [];
+    for (const box of vis) {
       const p = brkPos.get(box.dataset.brk || "");
-      if (p) { brkPlace(box, p); continue; }
-      // Measure AFTER the anchored ones are placed: offsetHeight is the same either way
-      // (the width is fixed), but reading it while the box is still display:none is not.
+      if (p) { brkPlace(box, p); placed.push(box.getBoundingClientRect()); }
+      else flow.push(box);
+    }
+    let x = g.x0, y = g.y0;
+    for (const box of flow) {
       const h = box.offsetHeight || 120;
-      if (y + h > window.innerHeight - BRK_EDGE && y > g.y0) { y = g.y0; x += g.cw; }
+      for (let guard = 0; guard < 64; guard++) {
+        if (y + h > window.innerHeight - BRK_EDGE && y > g.y0) { y = g.y0; x += g.cw; continue; }
+        const hit = placed.find(t => !rectClear(x, y, BRK_W, h, [t]));
+        if (!hit) break;
+        y = hit.bottom + BRK_GAP;
+      }
       box.style.left = x + "px"; box.style.top = y + "px";
       box.style.right = box.style.bottom = "auto";
+      placed.push(box.getBoundingClientRect());
       y += h + BRK_GAP;
     }
     // Floating panels keep their placement across a resize; the ones never dragged are
@@ -347,6 +394,20 @@
     document.body.classList.remove("brk-gridding");
     try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
     const p = brkSnap(node);
+    // A drop may not bury another box: nudge a quarter-cell at a time toward the middle
+    // until the spot is clear. Boxes only — the floating dialogs are large and deliberately
+    // layer over things.
+    // ponytail: pushes one direction only; a wall of boxes can pin it at the screen edge
+    // still overlapping — acceptable, the user is one drag away from fixing it.
+    if (node.classList.contains("poppable")) {
+      const taken = brkRects(node);
+      for (let i = 0; i < BRK_ROWS * BRK_SUB * 2; i++) {
+        brkPlace(node, p);
+        const r = node.getBoundingClientRect();
+        if (rectClear(r.left, r.top, r.width, r.height, taken)) break;
+        p.gy += p.bottom ? -1 : 1;
+      }
+    }
     brkPos.set(key, p);
     brkPlace(node, p);
     layoutBreakout();                       // the column closes the gap a box left behind
@@ -714,29 +775,63 @@
     syncPopBtns(slot, key);
     refreshBreakout();
   }
-  // Give a new box a grid anchor next to its layer's box: the first quarter-cell column to
-  // the right of it that no visible box already occupies at that row, wrapping down a row
-  // at a time. Only when the layer box is on screen -- otherwise the column is right.
+  // Give a new box a grid anchor next to its layer's box: the nearest clear quarter-cell
+  // column on EITHER side of it — right first at each distance, then left — wrapping down
+  // a row at a time. Only when the layer box is on screen -- otherwise the column is right.
   function placeBeside(slot, key, box) {
     const lb = breakout.querySelector('.lyr-box[data-slot="' + slot + '"]');
     if (!lb || lb.style.display === "none" || !brkFree()) return;
     const g = brkGrid(), r = lb.getBoundingClientRect();
-    const w = box ? (box.offsetWidth || BRK_W) : BRK_W, h = box ? (box.offsetHeight || 120) : 120;
-    const taken = [...breakout.querySelectorAll(".ctl.poppable")]
-      .filter(n => n !== box && n.style.display !== "none").map(n => n.getBoundingClientRect());
-    const clear = (x, y) => taken.every(t => x + w <= t.left || x >= t.right || y + h <= t.top || y >= t.bottom);
-    // candidate anchors: to the right of the layer box, then below it, on the quarter grid
+    const w = brkW(box, g), h = brkH(box, g);
+    const taken = brkRects(box);
     const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
-    const startX = Math.ceil((r.right + BRK_GAP - g.x0) / qx), startY = Math.round((r.top - g.y0) / qy);
+    const rightX = Math.ceil((r.right + BRK_GAP - g.x0) / qx);
+    const leftX = Math.floor((r.left - BRK_GAP - w - g.x0) / qx);
+    const startY = Math.round((r.top - g.y0) / qy);
     for (let row = 0; row < BRK_ROWS * BRK_SUB; row++) {
-      for (let col = 0; col < 6 * BRK_SUB; col++) {
-        const gx = startX + col, gy = startY + row;
-        const x = g.x0 + gx * qx, y = g.y0 + gy * qy;
-        if (x + w > window.innerWidth - BRK_EDGE) break;
-        if (y + h > window.innerHeight - BRK_EDGE) return;
-        if (clear(x, y)) { brkPos.set(key, { gx, gy, right: false, bottom: false }); return; }
+      const gy = startY + row, y = g.y0 + gy * qy;
+      if (y + h > window.innerHeight - BRK_EDGE) return;
+      for (let d = 0; d < 6 * BRK_SUB; d++) {
+        for (const gx of [rightX + d, leftX - d]) {
+          if (gx < 0) continue;                        // left of the grid origin: no home there
+          const x = g.x0 + gx * qx;
+          if (x + w > window.innerWidth - BRK_EDGE) continue;
+          if (rectClear(x, y, w, h, taken)) { brkPos.set(key, { gx, gy, right: false, bottom: false }); return; }
+        }
       }
     }
+  }
+  // A LAYER box opening for the FIRST time gets an anchor of its own, chosen far from the
+  // other open layer boxes: whole-cell candidates only (the strong grid lines), overlapping
+  // nothing visible, maximising the distance to the nearest other layer box — so two open
+  // layers land on opposite sides of the free area and each one's sliders have room to
+  // gather around it (placeBeside). Alone, it takes the first clear cell beside the panel.
+  // Reopening keeps the previous spot: the anchor survives in brkPos, and remapPopped
+  // already carries "<slot>/layer" keys through a reorder.
+  function placeLayerBox(slot, box) {
+    const key = slot + "/layer";
+    if (!brkFree() || brkPos.has(key)) return;
+    const g = brkGrid();
+    const w = brkW(box, g), h = brkH(box, g);
+    const others = [...breakout.querySelectorAll(":scope > .lyr-box")]
+      .filter(n => n !== box && n.style.display !== "none")
+      .map(n => n.getBoundingClientRect());
+    const taken = brkRects(box);
+    let best = null, bestScore = -Infinity;
+    for (let cy = 0; g.y0 + cy * g.ch + h <= window.innerHeight - BRK_EDGE; cy++) {
+      for (let cx = 0; g.x0 + cx * g.cw + w <= window.innerWidth - BRK_EDGE; cx++) {
+        const x = g.x0 + cx * g.cw, y = g.y0 + cy * g.ch;
+        if (!rectClear(x, y, w, h, taken)) continue;
+        const score = others.length
+          ? Math.min(...others.map(t => Math.hypot(x + w / 2 - (t.left + t.right) / 2,
+                                                   y + h / 2 - (t.top + t.bottom) / 2)))
+          : -(cx * 10 + cy);
+        if (score > bestScore) { bestScore = score; best = { gx: cx * BRK_SUB, gy: cy * BRK_SUB, right: false, bottom: false }; }
+      }
+    }
+    // Place it NOW, not just at the next layout: a second layer box opening in the same
+    // refresh pass measures the first one's rect, which must already be at its anchor.
+    if (best) { brkPos.set(key, best); brkPlace(box, best); }
   }
   function dockCtl(slot, key) {
     if (!isPopped(slot, key)) return;
@@ -817,7 +912,7 @@
       const slot = +box.dataset.slot;
       const vis = !!stack[slot] && openSlots.has(slot);
       box.style.display = vis ? "" : "none";
-      if (vis) anyVisible = true;
+      if (vis) { anyVisible = true; placeLayerBox(slot, box); }
     }
     for (let slot = 0; slot < STACK_MAX; slot++) {
       const shown = shownKeysFor(slot);
