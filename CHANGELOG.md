@@ -14,6 +14,15 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.40.1] — 2026-08-23
+
+### Changed
+
+- **Boxes snap to a finer grid.** The drag grid now has two levels: a faint quarter-cell
+  mesh the boxes actually snap to, so you can place one almost anywhere, and the strong lines
+  at every whole cell — flush with the panel, exactly one box apart — marking where the
+  neatest alignments are.
+
 ## [1.40.0] — 2026-08-23
 
 ### Changed
