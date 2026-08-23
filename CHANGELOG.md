@@ -14,6 +14,33 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.29.0] — 2026-08-23
+
+### Changed
+
+- **Mandelbulb is now flown from the INSIDE.** The camera no longer orbits the silhouette
+  at arm's length — it threads the canyons between the lobes, with the fractal closing over
+  your head. **Orbit speed** is how fast that flight winds through it (0 parks you, still
+  inside), **Glow** lights the walls and haloes a ray that only just misses, and **Power**
+  reshapes the structure around you as it drifts. Existing Mandelbulb scenes load with every
+  slider exactly as saved; what changed is where the camera stands.
+
+### Fixed
+
+- **Eight control groups showed the word "undefined" as their section heading** — Galaxy,
+  Harmonograph, Vector balls, Ocean, Black hole and Quaternion Julia, plus the Hex pixelate
+  and CRT phosphor filters. All eight are named now, and a group that ever loses its name
+  again falls back to something readable instead.
+
+### Internal
+
+- `tools/bulbprobe.js` — 17 assertions flying the real camera solver on a fake clock:
+  clearance held, never embedded in a wall, no teleports at any orbit speed or frame rate,
+  the flight contained in the shell, deterministic, per-layer (the escape offset rides
+  `PHASE_VARS`, so two Mandelbulb layers cannot share one camera), and the camera solving at
+  the same iteration count as the surface it dodges. Every one of those is a failure a
+  screenshot passes.
+
 ## [1.28.0] — 2026-08-14
 
 ### Added

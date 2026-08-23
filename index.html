@@ -2167,7 +2167,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.28.0",
+    version: "1.29.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -4045,12 +4045,17 @@
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
     // Mandelbulb: the power-N 3D fractal, raymarched with the standard distance
-    // estimator. Slow orbit via uPhase (the effect's own clock — the shared camera
-    // still composes on top through camProg like every effect). Heat = diffuse + rim
-    // on a hit, and a soft proximity halo on a miss so the silhouette glows.
+    // estimator — from INSIDE. The camera flies the canyons between the lobes instead of
+    // orbiting the silhouette, so uPos/uFwd come from the CPU (bulbSeed): keeping the
+    // camera in free space means evaluating the DE AROUND the path, which only the CPU
+    // side can do. The shader just builds the view basis and marches.
+    //
+    // Wide lens (1.15 against the Menger corridor's 1.4) — at arm's length from a wall a
+    // narrow one shows a single flat patch of surface, and the whole point of being in
+    // here is the structure closing over your head.
     const FS_BULB = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform float uPhase; uniform float uPower; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    uniform vec2 uSize; uniform vec3 uPos; uniform vec3 uFwd; uniform float uPower; uniform float uIter; uniform float uGlow; uniform float uZoom;
     out vec4 o;
     float bulbDE(vec3 p, float P, int it){
       vec3 z = p;
@@ -4072,35 +4077,40 @@
       float fw = uSize.x, fh = uSize.y;
       float ar = fw/fh;
       vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
-      float ca = cos(uPhase), sa = sin(uPhase);
-      float tilt = 0.35*sin(uPhase*0.7);
-      float ct = cos(tilt), st = sin(tilt);
-      vec3 ro = vec3(0.0, 0.0, -2.35);
-      vec3 rd = normalize(vec3(uv, 1.55));
-      // orbit: rotate the CAMERA about Y, with a slow nodding tilt about X
-      ro = vec3(ro.x*ca + ro.z*sa, ro.y, -ro.x*sa + ro.z*ca);
-      rd = vec3(rd.x*ca + rd.z*sa, rd.y, -rd.x*sa + rd.z*ca);
-      ro = vec3(ro.x, ro.y*ct - ro.z*st, ro.y*st + ro.z*ct);
-      rd = vec3(rd.x, rd.y*ct - rd.z*st, rd.y*st + rd.z*ct);
+      // View basis from the CPU heading. The path winds about the bulb's polar axis so the
+      // tangent is never near it, but guard anyway — a degenerate cross is a blank frame.
+      vec3 f = normalize(uFwd);
+      vec3 wup = abs(f.z) > 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+      vec3 rt = normalize(cross(wup, f));
+      vec3 up = cross(f, rt);
+      vec3 ro = uPos;
+      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.15);
       int it = int(uIter);
       float P = uPower;
-      float t = 0.0, halo = 9.0, heat = 0.0;
-      for (int i = 0; i < 64; i++){
+      float t = 0.0, halo = 9.0, heat = 0.0, steps = 0.0;
+      for (int i = 0; i < 80; i++){
         vec3 p = ro + rd*t;
         float d = bulbDE(p, P, it);
-        halo = min(halo, d/max(t, 0.3));
-        if (d < 0.0009*max(t, 0.4)){
-          float e = 0.0012*max(t, 0.4);
+        halo = min(halo, d/max(t, 0.25));
+        steps = float(i);
+        if (d < 0.001*max(t, 0.3)){
+          float e = 0.0012*max(t, 0.3);
           vec2 h = vec2(1.0, -1.0)*0.5773;
           vec3 nrm = normalize(h.xyy*bulbDE(p + h.xyy*e, P, it) + h.yyx*bulbDE(p + h.yyx*e, P, it)
                              + h.yxy*bulbDE(p + h.yxy*e, P, it) + h.xxx*bulbDE(p + h.xxx*e, P, it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.6, 0.7, -0.5))));
           float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
-          heat = (0.22 + 0.70*dif + uGlow*0.5*rim)*smoothstep(4.2, 1.4, t);
+          // Interior depth cues. The fog range is metres of BULB, not of the old 4.5-unit
+          // exterior shot; the step count stands in for ambient occlusion (a ray that
+          // needed many tiny steps was crawling down a crevice), which is what stops the
+          // canyons reading as one flat wall.
+          float fog = exp(-t*0.85);
+          float ao = 1.0 - steps/80.0;
+          heat = (0.16 + 0.72*dif + uGlow*0.5*rim)*(0.30 + 0.70*fog)*(0.45 + 0.55*ao);
           break;
         }
         t += d;
-        if (t > 4.5) break;
+        if (t > 3.2) break;
       }
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
@@ -5202,7 +5212,7 @@
     glProg.twister = camProg(VS_QUAD, FS_TWISTER, ["uSize", "uTime", "uCols", "uWidth", "uTwist", "uZoom"]);
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
-    glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
+    glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPos", "uFwd", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);
@@ -7899,13 +7909,121 @@
   }
 
   // ---- Mandelbulb: raymarched power-N fractal (shader effect) ----
+  // THE CAMERA LIVES INSIDE THE BULB, and that is why the flight path is here rather than
+  // in the shader: staying in free space means evaluating the DE AROUND the camera, and a
+  // fragment shader only ever knows about its own ray.
+  //
+  // The path is a helix winding about the bulb's polar axis, through the shell where all
+  // the structure is — and it is CORRECTED, not planned: each frame the camera is pushed
+  // out of anything solid along the DE gradient, which is the direction of the nearest
+  // free space (in a canyon that is sideways, so it threads the crevice instead of being
+  // shoved out through the roof).
+  //
+  // **The correction is warm-started from the last frame, and that is what makes it
+  // smooth.** Solved fresh from the helix each frame it is a discontinuous function of
+  // the phase — the escape route flips to a different pocket and the camera teleports
+  // (measured: 65 units per radian at the worst phase, against a mean of 3). Carrying the
+  // offset over means the solver starts where it already was, so it re-converges on the
+  // same pocket and the escape only has to track the drift. `bpOff*` therefore rides
+  // PHASE_VARS like every other accumulator: two Mandelbulb layers must not share one
+  // camera. The offset also decays back toward the helix, so a detour ends when the wall
+  // that caused it does, and the escape is RATE-LIMITED (and scaled by the orbit speed —
+  // a faster flight needs a faster dodge) so a newly-blocked spot is a swerve, not a jump.
+  //
   // The mirror marches every 3rd pixel and fills 3x3 blocks — a raymarch with a
   // transcendental DE is orders beyond the other mirrors, so this trades sharpness
-  // for a fallback that still moves. Steps 24 vs the shader's 64, iterations capped 6.
+  // for a fallback that still moves. Steps 24 vs the shader's 80, iterations capped 6
+  // (the CAMERA still solves at the shader's iteration count — a camera that disagrees
+  // with the surface it is flying past ends up embedded in it).
   let bpPower = 8, bpDetail = 7, bpSpin = 0.35, bpGlow = 0.5, bpPhase = 0;
+  let bpOffX = 0, bpOffY = 0, bpOffZ = 0;     // the escape offset — PHASE_VARS, per layer
+  const BULB_CLEAR = 0.12;                    // free space the camera keeps around itself
+  const BULB_RELAX = 0.5;                     // 1/s the offset decays back toward the helix
+  const BULB_OFFMAX = 0.9;                    // how far the escape may ever carry it off
+  const bpBase = [0, 0, 0], bpNext = [0, 0, 0];
+  // Where the free space IS. Below the shell the bulb is SOLID — swept at clearance 0.12,
+  // not one direction is free under r 1.16 at power 8 — so "inside" means inside the shell
+  // of lobes and canyons, not inside the ball. The radius that opens up moves with the
+  // power (0.68 at 2, 1.16 at 8, 1.20 at 12), and a helix pinned at one radius is either
+  // buried at high powers or orbiting empty space at low ones: 1.30 - 1.2/P tracks it.
+  const bulbShell = P => Math.max(0.6, Math.min(1.3, 1.3 - 1.2 / Math.max(1, P)));
+  function bulbBase(ph, P, out) {             // the uncorrected helix — pure, and smooth
+    const th = 1.5708 + 0.62 * Math.sin(ph * 0.31 + 0.7);
+    const rad = bulbShell(P) + 0.02 + 0.22 * Math.sin(ph * 0.23);
+    const s = Math.sin(th);
+    out[0] = rad * s * Math.cos(ph); out[1] = rad * s * Math.sin(ph); out[2] = rad * Math.cos(th);
+    return out;
+  }
   function bulbSeed(dt) {
     bpPhase += dt * bpSpin;
-    return { phase: bpPhase, power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
+    // Match the SHADER's iteration count exactly (int(uIter) truncates, and its loop caps
+    // at 12), so the surface the camera dodges is the surface that gets drawn.
+    const P = bpPower, it = Math.max(1, Math.min(12, Math.floor(bpDetail)));
+    const b = bulbBase(bpPhase, P, bpBase);
+    const dec = Math.exp(-dt * BULB_RELAX);
+    bpOffX *= dec; bpOffY *= dec; bpOffZ *= dec;
+    let x = b[0] + bpOffX, y = b[1] + bpOffY, z = b[2] + bpOffZ;
+    let moved = 0;
+    const cap = (2 + 6 * bpSpin) * dt;        // escape budget for this frame, in units
+    for (let k = 0; k < 8; k++) {
+      const d = bulbDE(x, y, z, P, it);
+      if (d >= BULB_CLEAR) break;
+      const e = 0.004;
+      const gx = bulbDE(x + e, y, z, P, it) - bulbDE(x - e, y, z, P, it);
+      const gy = bulbDE(x, y + e, z, P, it) - bulbDE(x, y - e, z, P, it);
+      const gz = bulbDE(x, y, z + e, P, it) - bulbDE(x, y, z - e, P, it);
+      const gn = Math.hypot(gx, gy, gz), rn = Math.hypot(x, y, z) || 1;
+      let took = 0;
+      // TWO candidate directions, in order: the DE gradient, then straight out from the
+      // origin. The gradient is the nearest way out and is what threads a crevice, but it
+      // is not always a way out at all — deep in the solid the iteration never escapes, dr
+      // runs away and the DE goes FLAT (every sample equal, gradient zero), and in a
+      // dead-end pocket it points along the valley rather than up it. Radially out is
+      // always a way out of a fractal centred on the origin, so it is the fallback and not
+      // the first choice: taken first it would shove the camera off every canyon wall.
+      for (let c = 0; c < 2 && !took; c++) {
+        const dx = c === 0 && gn > 1e-5 ? gx / gn : x / rn;
+        const dy = c === 0 && gn > 1e-5 ? gy / gn : y / rn;
+        const dz = c === 0 && gn > 1e-5 ? gz / gn : z / rn;
+        let s = (BULB_CLEAR - d) * 1.1;       // |grad| of a distance field is 1
+        if (moved + s > cap) s = cap - moved;
+        if (s <= 0) break;
+        // ACCEPT ONLY WHAT IMPROVES THE CLEARANCE. In a canyon narrower than 2·CLEAR no
+        // point has the clearance being asked for, and a solver that keeps stepping walks
+        // out of one wall straight into the far one and oscillates between them — which is
+        // how the camera ended up INSIDE the surface on 4 frames in 100. Halving a rejected
+        // step turns "unreachable" into "as free as this crevice gets".
+        for (let h = 0; h < 3 && s > 1e-4; h++) {
+          const nx = x + dx * s, ny = y + dy * s, nz = z + dz * s;
+          if (bulbDE(nx, ny, nz, P, it) > d) { x = nx; y = ny; z = nz; took = s; break; }
+          s *= 0.5;
+        }
+      }
+      if (!took) break;
+      moved += took;
+    }
+    bpOffX = x - b[0]; bpOffY = y - b[1]; bpOffZ = z - b[2];
+    const on = Math.hypot(bpOffX, bpOffY, bpOffZ);
+    if (on > BULB_OFFMAX) {                   // never let a detour become the path
+      const f = BULB_OFFMAX / on;
+      bpOffX *= f; bpOffY *= f; bpOffZ *= f;
+      x = b[0] + bpOffX; y = b[1] + bpOffY; z = b[2] + bpOffZ;
+    }
+    // Heading: the HELIX's tangent (smooth by construction — the corrected path is not,
+    // and a heading that jitters is worse than a camera that does), leaned toward the
+    // core so the walls fill the frame instead of sliding past the edge — measured: the
+    // fractal covers 51% of the screen leaning 0.75, 63% leaning 1.8, and past ~2.2 it is
+    // all wall and the travel stops reading. The lean breathes, between looking down the
+    // canyon and looking into it.
+    const n = bulbBase(bpPhase + 1e-3, P, bpNext);
+    let fx = n[0] - b[0], fy = n[1] - b[1], fz = n[2] - b[2];
+    let fl = Math.hypot(fx, fy, fz) || 1;
+    fx /= fl; fy /= fl; fz /= fl;
+    const rl = Math.hypot(x, y, z) || 1, lean = 1.8 + 0.8 * Math.sin(bpPhase * 0.19);
+    fx -= x / rl * lean; fy -= y / rl * lean; fz -= z / rl * lean;
+    fl = Math.hypot(fx, fy, fz) || 1;
+    return { px: x, py: y, pz: z, fx: fx / fl, fy: fy / fl, fz: fz / fl,
+             power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
   }
   function bulbDE(px, py, pz, P, it) {
     let zx = px, zy = py, zz = pz, dr = 1, r = 0;
@@ -7925,30 +8043,32 @@
   function bulb(dt) {                     // CPU fallback — mirrors FS_BULB, coarsely
     const s = bulbSeed(dt), ar = fw / fh;
     const it = Math.min(6, Math.round(s.iter)), P = s.power;
-    const ca = Math.cos(s.phase), sa = Math.sin(s.phase);
-    const tilt = 0.35 * Math.sin(s.phase * 0.7), ct = Math.cos(tilt), st = Math.sin(tilt);
+    // Same view basis the shader builds: world up is the bulb's polar axis unless the
+    // heading is near it, right = up x fwd, screen up = fwd x right.
+    const fx = s.fx, fy = s.fy, fz = s.fz;
+    const vert = Math.abs(fz) > 0.9, wx = 0, wy = vert ? 1 : 0, wz = vert ? 0 : 1;
+    let rx = wy * fz - wz * fy, ry = wz * fx - wx * fz, rz = wx * fy - wy * fx;
+    const rn = Math.hypot(rx, ry, rz) || 1; rx /= rn; ry /= rn; rz /= rn;
+    const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
     for (let y = 0; y < fh; y += 3) {
       for (let x = 0; x < fw; x += 3) {
         camPix(x, y);
-        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
-        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
-        let rox = 0, roy = 0, roz = -2.35;
-        const rl = Math.hypot(ux, uy, 1.55);
-        let rdx = ux / rl, rdy = uy / rl, rdz = 1.55 / rl;
-        let tx = rox * ca + roz * sa; roz = -rox * sa + roz * ca; rox = tx;
-        tx = rdx * ca + rdz * sa; rdz = -rdx * sa + rdz * ca; rdx = tx;
-        let ty = roy * ct - roz * st; roz = roy * st + roz * ct; roy = ty;
-        ty = rdy * ct - rdz * st; rdz = rdy * st + rdz * ct; rdy = ty;
+        const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const sy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rdx = rx * sx + ux * sy + fx * 1.15;
+        let rdy = ry * sx + uy * sy + fy * 1.15;
+        let rdz = rz * sx + uz * sy + fz * 1.15;
+        const rl = Math.hypot(rdx, rdy, rdz) || 1; rdx /= rl; rdy /= rl; rdz /= rl;
         let t = 0, halo = 9, heat = 0;
         for (let i = 0; i < 24; i++) {
-          const d = bulbDE(rox + rdx * t, roy + rdy * t, roz + rdz * t, P, it);
-          if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
-          if (d < 0.003 * Math.max(t, 0.4)) {
-            heat = (0.45 + s.glow * 0.3) * Math.max(0, 1 - (t - 1.4) / 2.8);   // flat shade — no normals on the fallback
+          const d = bulbDE(s.px + rdx * t, s.py + rdy * t, s.pz + rdz * t, P, it);
+          if (d / Math.max(t, 0.25) < halo) halo = d / Math.max(t, 0.25);
+          if (d < 0.003 * Math.max(t, 0.3)) {
+            heat = (0.42 + s.glow * 0.3) * (0.30 + 0.70 * Math.exp(-t * 0.85));   // flat shade — no normals on the fallback
             break;
           }
           t += d;
-          if (t > 4.5) break;
+          if (t > 3.2) break;
         }
         if (heat === 0) heat = s.glow * 0.35 * Math.exp(-halo * 55);
         const v = Math.min(1, heat) * 255;
@@ -10327,7 +10447,8 @@
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
-    boids: "Boids",
+    boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
+    bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
@@ -10337,6 +10458,7 @@
     f_lens: "Lens bubble", f_droste: "Droste zoom", f_kuwahara: "Oil paint",
     f_halftone: "Halftone", f_thresh: "Solarize", f_chroma: "Chromatic aberration",
     f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
+    f_hexpix: "Hex pixelate", f_crt: "CRT phosphor",
     palette: "Palette", banding: "Banding",
   };
   // Render the schema into ONE block, then index everything it made under `slot`. Group
@@ -10365,7 +10487,10 @@
           '<div class="ctl-grp' + (FOLDABLE_GROUPS.has(c.group) ? " foldable" : "")
           + '" data-k="grp-' + c.group + '" data-grp="' + c.group + '">'
           + (FOLDABLE_GROUPS.has(c.group) ? '<b class="grp-chev">▾</b>' : "")
-          + CTL_GROUPS[c.group] + "</div>");
+          // A group with no CTL_GROUPS entry used to render the string "undefined" as its
+          // heading — eight of them shipped that way. Fall back to the key, which is at least
+          // a name, and keep the table the place to make it a pretty one.
+          + (CTL_GROUPS[c.group] || c.group) + "</div>");
       }
       host.insertAdjacentHTML("beforeend", ctlHTML(c));
     });
@@ -10477,6 +10602,11 @@
     ["ltFront", () => ltFront, v => ltFront = v],
     ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
+    // The Mandelbulb camera flies INSIDE the fractal, and its escape offset is state the
+    // solver warm-starts from each frame — two bulb layers sharing one would fly one camera.
+    ["bpOffX", () => bpOffX, v => bpOffX = v],
+    ["bpOffY", () => bpOffY, v => bpOffY = v],
+    ["bpOffZ", () => bpOffZ, v => bpOffZ = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
     ["goTime", () => goTime, v => goTime = v],
     ["vbPhase", () => vbPhase, v => vbPhase = v],
@@ -11965,10 +12095,10 @@
       draw: dt => { if (useGL) { const s = stormSeed(dt); glShaderDraw("storm", u => { gl.uniform1f(u.uEnv, s.env); gl.uniform1f(u.uSeed, s.seed); gl.uniform1f(u.uBolts, s.bolts); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); gl.uniform1f(u.uFront, s.front); }); } else storm(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltspd: [12, 12], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
-    { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · raymarched 3D fractal",
-      help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, slowly orbited by the camera. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping). Detail adds fractal depth (and GPU cost), Orbit speed sets the camera's lap, Glow lights the silhouette and puts a halo on near-misses. The heaviest effect in the app — it wants a real GPU.",
+    { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · flight inside a 3D fractal",
+      help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, seen from INSIDE — the camera flies the canyons between the lobes, threading whatever gap the fractal leaves it and never quite touching the surface. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping around you). Detail adds fractal depth (and GPU cost), Orbit speed is how fast the flight winds through it, Glow lights the walls and puts a halo where a ray only just misses. The heaviest effect in the app — it wants a real GPU.",
       params: ["bppower", "bpdetail", "bpspin", "bpglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "bulb", "band"], bakesOwnZoom: true,
-      draw: dt => { if (useGL) { const s = bulbSeed(dt); glShaderDraw("bulb", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uPower, s.power); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else bulb(dt); },
+      draw: dt => { if (useGL) { const s = bulbSeed(dt); glShaderDraw("bulb", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uPower, s.power); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else bulb(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], bppower: [8, 8], bpdetail: [7, 7], bpspin: [0.35, 0.35], bpglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "flames", name: "Fractal flames", subtitle: "Fractal flames · IFS density",
@@ -18628,8 +18758,8 @@
       { n: "Afterglow", w: "storm", t: "Lightning storm only — how much each strike lights the sky behind it, and how much ambient glow remains between strikes." },
       { n: "Power", w: "bulb", t: "Mandelbulb only — the exponent in z → z^p + c, continuously variable. 8 is the classic bulb; low values melt it toward a sphere, high values bristle it with fine lobes, and fractional values morph between forms — drift the two thumbs apart and it never stops reshaping." },
       { n: "Detail", w: "bulb", t: "Mandelbulb only — how many fractal iterations the surface gets. More is crisper and more filigreed, and costs GPU directly." },
-      { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera circles the bulb, with a slow nod built in. 0 parks it." },
-      { n: "Glow", w: "bulb", t: "Mandelbulb only — silhouette lighting plus a halo where a ray only just misses the surface. High values wrap the bulb in fire." },
+      { n: "Orbit speed", w: "bulb", t: "Mandelbulb only — how fast the camera flies its lap through the inside of the bulb, winding about the polar axis while it rises and falls. 0 parks it, still inside." },
+      { n: "Glow", w: "bulb", t: "Mandelbulb only — rim lighting on the walls plus a halo where a ray only just misses the surface. High values fill the canyons with fire." },
       { n: "Arms", w: "galaxy", t: "Galaxy only — how many spiral arms the disc has. 2 is the common grand-design spiral, 1 gives a single sweeping arm, and higher counts give the flocculent many-armed look. Arm its L/M/H chips and the galaxy restructures on the beat." },
       { n: "Twist", w: "galaxy", t: "Galaxy only — how tightly the arms wind. An arm is a straight line in log-radius, so this is that line's slope: low values sweep the arms out into a barred, open spiral, high values wind them into a nearly circular ring. It is the single biggest change to the galaxy's character." },
       { n: "Spin", w: "galaxy", t: "Galaxy only — how fast the disc turns. The arms TRAIL, as real spiral arms do: their tips lag behind the direction of travel. What rotates is the spiral pattern rather than the stars themselves — a density wave — with a slow shear over it, which is what keeps the arms from winding themselves out of existence the way a true inner-faster rotation would within a minute. Negative runs it backwards, so the arms lead; unphysical, and there if you want it. 0 holds the disc still." },
