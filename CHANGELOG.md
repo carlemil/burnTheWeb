@@ -14,6 +14,24 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.42.0] — 2026-08-23
+
+### Added
+
+- **OVR blend mode.** Where this layer drew something it covers the layers below; where it
+  drew nothing they show through — the mode for a solid object that should hide what is
+  behind it. The **Glass ball ships with it**, so a **Metal ball is opaque** now: with the old
+  MAX blend a bright layer beneath showed straight through it, which read as transparent
+  metal. Switching an effect keeps a blend you picked by hand.
+- **Sliders land beside their layer.** Pop a slider out of an open layer box and it appears
+  next to that box instead of at the foot of the column.
+
+### Fixed
+
+- **"Share one 3D world" sat far from the rest of the settings** — it (and Show box / Random
+  seed) rendered as a stray floating box after the layer block moved into the grid. In line
+  with its group now.
+
 ## [1.41.0] — 2026-08-23
 
 ### Changed

@@ -607,7 +607,13 @@
   }
   #breakout.empty { display: none; }
   #panel.hidden ~ #breakout { display: none; }      /* hide the column when the menu is hidden */
-  #breakout .ctl {
+  /* `.ctl.poppable`, NOT `.ctl`: a box is a POPPED control. Every generated control is a
+     .ctl, and the ones that are never popped (the check-type controls -- Show box, Random
+     seed, Share one 3D world) live INSIDE the layer block, which now lives inside #breakout.
+     With a bare `.ctl` selector each of those rendered as its own absolutely-positioned,
+     bordered 244px box floating in the grid, which is how "Share one 3D world" shipped
+     sitting way off from the rest of the settings. */
+  #breakout .ctl.poppable {
     position: absolute; width: 244px; pointer-events: auto;
     margin: 0; padding: 12px 14px 12px 30px;
     background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
@@ -1684,7 +1690,7 @@
     }
     /* Back into flow: the grid needs room the narrow case does not have, so below this the
        boxes are a sheet again and layoutBreakout clears the inline offsets it set. */
-    #breakout .ctl { position: relative; flex: 0 0 auto; width: 244px; }
+    #breakout .ctl.poppable { position: relative; flex: 0 0 auto; width: 244px; }
     #breakout .ctl-owner .own-txt { cursor: default; }
   }
 </style>
@@ -2271,7 +2277,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.41.0",
+    version: "1.42.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -3537,9 +3543,19 @@
     uniform float uGain; uniform int uBlend;
     in vec2 vUv; out vec4 o;` + OKLAB_GLSL + `
     void main(){
-      vec3 col = texture(uLayer, vUv).rgb;               // this layer's finished colour
+      vec4 lay = texture(uLayer, vUv);
+      vec3 col = lay.rgb;                                // this layer's finished colour
       vec4 acc = texture(uAcc, vUv);
       float accW = acc.a * WMAX;
+      // OVER (20): coverage, not brightness, decides. lay.a is 1 where the effect drew a
+      // surface and 0 where it drew nothing (FS_PAL writes it), so a dark ball still covers
+      // a bright layer beneath it, and the empty space around it still shows that layer.
+      // It is the one mode that ignores the gain weighting: an object is either there or not.
+      if (uBlend == 20) {
+        vec3 c = clamp(col * uGain, 0.0, 1.0);
+        o = lay.a > 0.5 ? vec4(c, 1.0) : acc;
+        return;
+      }
       vec3 labC = srgb2oklab(col);
       float w = clamp(labC.x * uGain, 0.0, WMAX);        // weight = perceptual L · gain
       if (accW + w < 1.0e-4) { o = vec4(0.0); return; }  // nothing lit here yet
@@ -5922,7 +5938,11 @@
       // Heat boost: gamma-remap the heat toward the bright end (uCurve 0 = identity, byte-for-byte).
       float hb = uCurve > 0.0 ? pow(h, 1.0/(1.0 + uCurve)) : h;
       float idx = (floor(hb*255.0 + 0.5) + 0.5) / 256.0;
-      o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, 1.0);
+      // Alpha is COVERAGE -- 1 where the effect drew a surface, 0 where it drew nothing --
+      // which only the OVER blend reads. It was a constant 1.0 nobody used. An opaque object
+      // (a metal ball) needs it to cover the layer beneath instead of MAX-blending with it,
+      // which let a bright layer below show straight through the ball.
+      o = vec4(texture(uPal, vec2(idx, 0.5)).rgb, h > 0.0 ? 1.0 : 0.0);
     }`;
     // zoom about centre (fire modes); Julia passes zoom=1
     // Preset transitions. One pass, one mode uniform, run only while a transition is
@@ -6813,6 +6833,7 @@
     { id: "hsv",   label: "HSV", u: 16, tip: "Hyper-vivid — takes the greater lightness AND chroma of the two, hue from the punchier layer. Louder than OKL; overlaps read maximally bright and saturated." },
     { id: "avg",   label: "AVG", u: 17, tip: "Average — a plain 50/50 perceptual mean of both layers in OKLab. Soft and painterly, the calm opposite of the screen/add family." },
     { id: "cmp",   label: "CMP", u: 18, tip: "Complement push — overlaps rotate to the opposite hue of the dominant layer: reds bleed cyan, greens bleed magenta. Alien colour you can't get by mixing." },
+    { id: "over",  label: "OVR", u: 20, tip: "Over — where this layer drew something it COVERS the layers below; where it drew nothing they show through. The one to use for a solid object (a metal ball, a raymarched solid) that should hide what is behind it rather than glow through it." },
     { id: "cmax",  label: "CMX", u: 19, tip: "Channel max (Lighten) — takes the brighter of the two layers in EACH of red, green and blue independently. Unlike MAX (which keeps whichever whole layer is brighter), this mixes channels, so a red layer over a green one yields yellow where they overlap." },
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
@@ -12251,6 +12272,16 @@
       seedPath: null, seedRide: null, seedPts: null, showBox: null, world: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
+  // An effect may SHIP a blend (descriptor `blend`): Glass ball is "over", because a ball
+  // is an object that hides what is behind it and MAX let the layer beneath glow straight
+  // through it. Applied on a fresh item and on an effect switch -- but on a switch only
+  // while the layer still carries the OUTGOING effect's default, so a blend you chose by
+  // hand is never overwritten. Function declaration: called from setEffect, slices away.
+  function effectBlend(fx) { return (EFFECTS[fx] && EFFECTS[fx].blend) || "max"; }
+  function applyEffectBlend(L, prevFx) {
+    if (!L) return;
+    if (prevFx === undefined || L.blend === effectBlend(prevFx)) L.blend = effectBlend(L.fx);
+  }
   let stack = [newStackItem(0)], stackSel = 0;
   const selItem = () => stack[stackSel];
   // Display zoom is scene-level and applied ONCE, to the composite. An effect that
@@ -13943,6 +13974,9 @@
         else glassCPU(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], gbcount: [3, 3], gbsize: [0.62, 0.62], gbmat: [1, 1], gbior: [1.45, 1.45], gbglow: [0.5, 0.5],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      // OVER by default: a ball is an object that hides what is behind it. With MAX a bright
+      // layer beneath showed straight through a metal ball, which read as "transparent".
+      blend: "over",
       beat: {}, extras: { palette: "2", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
       help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
@@ -15268,6 +15302,7 @@
     if (stack.length >= STACK_MAX) return;
     freezeItem(stack[stackSel]);
     const L = newStackItem(fx === undefined ? effect : fx);
+    applyEffectBlend(L);              // the effect's shipped blend (Glass ball: over)
     // A fresh item is seeded from its effect's shipped defaults, not from the item that
     // happened to be selected — mergeState against its OWN effect, or every key that
     // effect declares would be dropped.
@@ -16621,12 +16656,14 @@
   // layer keeps running exactly as it was, so selecting a layer never changes the render.
   function setEffect(i, save = true, enter = true) {
     if (save && i !== effect && states[effect]) saveLiveMaps(effect);   // remember the outgoing effect's whole map family
+    const prevFx = stack[stackSel].fx;
     effect = i;
     // `effect` is the SELECTED stack item's effect — the one the menu edits. Every
     // editor-side use of it (shownKeys, refreshBreakout, resetControl, ctlOwner, the
     // cardioid button) keeps its exact meaning; only the render path reads
     // the stack. Assigned in this one place, so the two cannot drift apart.
     stack[stackSel].fx = i;
+    applyEffectBlend(stack[stackSel], prevFx);   // an effect's shipped blend, unless you chose one
     effectSel.value = i;              // the chooser follows, so selecting a layer shows its effect
     syncStackUI();                    // the selected row's name follows the chooser
     const fx = EFFECTS[i];
@@ -17374,8 +17411,35 @@
     popped.add(popKey(slot, key));
     const b = slot < 0 ? el("ctl-" + key) : ctlIn(slot, "ctl-" + key);
     if (b) breakout.appendChild(b);              // append ⇒ boxes stack top→down in click order
+    // Popped from an OPEN layer box ⇒ land beside it, not at the foot of the default
+    // column. You opened the layer to work on it, so its sliders belong next to it.
+    if (slot >= 0 && !brkPos.has(popKey(slot, key))) placeBeside(slot, popKey(slot, key), b);
     syncPopBtns(slot, key);
     refreshBreakout();
+  }
+  // Give a new box a grid anchor next to its layer's box: the first quarter-cell column to
+  // the right of it that no visible box already occupies at that row, wrapping down a row
+  // at a time. Only when the layer box is on screen -- otherwise the column is right.
+  function placeBeside(slot, key, box) {
+    const lb = breakout.querySelector('.lyr-box[data-slot="' + slot + '"]');
+    if (!lb || lb.style.display === "none" || !brkFree()) return;
+    const g = brkGrid(), r = lb.getBoundingClientRect();
+    const w = box ? (box.offsetWidth || BRK_W) : BRK_W, h = box ? (box.offsetHeight || 120) : 120;
+    const taken = [...breakout.querySelectorAll(".ctl.poppable")]
+      .filter(n => n !== box && n.style.display !== "none").map(n => n.getBoundingClientRect());
+    const clear = (x, y) => taken.every(t => x + w <= t.left || x >= t.right || y + h <= t.top || y >= t.bottom);
+    // candidate anchors: to the right of the layer box, then below it, on the quarter grid
+    const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
+    const startX = Math.ceil((r.right + BRK_GAP - g.x0) / qx), startY = Math.round((r.top - g.y0) / qy);
+    for (let row = 0; row < BRK_ROWS * BRK_SUB; row++) {
+      for (let col = 0; col < 6 * BRK_SUB; col++) {
+        const gx = startX + col, gy = startY + row;
+        const x = g.x0 + gx * qx, y = g.y0 + gy * qy;
+        if (x + w > window.innerWidth - BRK_EDGE) break;
+        if (y + h > window.innerHeight - BRK_EDGE) return;
+        if (clear(x, y)) { brkPos.set(key, { gx, gy, right: false, bottom: false }); return; }
+      }
+    }
   }
   function dockCtl(slot, key) {
     if (!isPopped(slot, key)) return;
