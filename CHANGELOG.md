@@ -14,6 +14,29 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.32.0] — 2026-08-23
+
+### Added
+
+- **Field of view** — a new per-layer camera slider, beside Camera X/Y/Z. Positive bows the
+  middle of the frame outward into a fisheye and drags the corners in; negative flattens it
+  into a telephoto; 0 is the normal lens. It works by moving where each pixel takes its colour
+  from, so it costs nothing and applies to every shader effect, and it is per layer — one
+  layer can bulge while another stays flat. Drift the two thumbs and the layer breathes.
+  Not offered on the point effects (Sierpiński, Trees, Boids and the rest), which stamp points
+  rather than sampling a coordinate.
+- **Ocean: Wave height and Reflection.** **Wave height** is real geometry now, not shading
+  (see below). **Reflection** mirrors the layer underneath the water, concentrated toward the
+  horizon the way a real reflection is — put the Ocean on top of another layer and that layer
+  appears in the sea.
+
+### Changed
+
+- **The Ocean's waves are really three-dimensional.** The surface is intersected ray by ray
+  instead of being painted onto a flat plane, so crests now hide the troughs behind them, the
+  horizon breaks up in a heavy sea, and Swell and Wave height change the shape of the water
+  rather than only its lighting.
+
 ## [1.31.0] — 2026-08-23
 
 ### Added

@@ -2188,7 +2188,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.31.0",
+    version: "1.32.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2614,6 +2614,18 @@
   // state (states[e].camrx/camry/camrz), and installStackItem pushes each layer's angles
   // in — plus camMat() — just before that layer renders.
   let camRX = 0, camRY = 0, camRZ = 0;
+  // FIELD OF VIEW, and it works the way the camera rotation does: by moving WHERE EACH PIXEL
+  // TAKES ITS COLOUR FROM, not by re-projecting anything. Positive pushes the sample outward
+  // with the square of the radius (a fisheye / wide lens), negative pulls it in (telephoto).
+  // Because it rides the shared camera it costs every shader effect one multiply and needs no
+  // per-effect code at all.
+  //
+  // SHADER EFFECTS ONLY, deliberately: it is an inverse map on the SAMPLE coordinate, and a
+  // point effect has no sample coordinate — it stamps a destination. Applying the same curve
+  // to a stamped point would bend it the opposite way for the same slider value, and applying
+  // the true inverse means solving a cubic per point. So `fov` is listed in the params of the
+  // 33 effects with a `draw` hook and not the 8 with a `stamp` one.
+  let camFov = 0;
   // CPU mirror of the shader camera. Rotating (x, y, 0) by Rz·Ry·Rx and dropping z is a
   // plain 2×2 map, so the whole camera collapses to four numbers — worth hoisting,
   // since the CPU mirrors would otherwise call trig six times per pixel. Recomputed
@@ -2627,14 +2639,19 @@
     camM[2] = cy * sz;  camM[3] = sx * sy * sz + cx * cz;
     return camM;
   }
-  const camOn = () => camRX !== 0 || camRY !== 0 || camRZ !== 0;   // skip the maths at rest
+  const camOn = () => camRX !== 0 || camRY !== 0 || camRZ !== 0 || camFov !== 0;   // skip the maths at rest
   // Rotate a pixel about the frame centre into camPX/camPY. The CPU mirrors call
   // this per pixel, so it writes scratch globals rather than returning a pair.
   // Mirrors the shader camera (camGlsl), which rotates gl_FragCoord the same way.
   let camPX = 0, camPY = 0;
   function camPix(x, y) {
     if (!camOn()) { camPX = x; camPY = y; return; }
-    const dx = x - fw * 0.5, dy = y - fh * 0.5;
+    let dx = x - fw * 0.5, dy = y - fh * 0.5;
+    if (camFov !== 0) {                // lens first, then rotation — same order as camFrag4
+      const half = fw * fw * 0.25 + fh * fh * 0.25;
+      const k = 1 + camFov * (dx * dx + dy * dy) / half;
+      dx *= k; dy *= k;
+    }
     camPX = camM[0] * dx + camM[1] * dy + fw * 0.5;
     camPY = camM[2] * dx + camM[3] * dy + fh * 0.5;
   }
@@ -3222,9 +3239,13 @@
   // A hoisted function, not a const: initGL() is called above this line, so a const
   // would still be in its temporal dead zone when camProg() first runs.
   function camGlsl() { return `
-    uniform vec3 uCam; uniform vec2 uCamSize;
+    uniform vec4 uCam; uniform vec2 uCamSize;
     vec4 camFrag4() {
       vec2 c = gl_FragCoord.xy - 0.5 * uCamSize;
+      // FIELD OF VIEW (uCam.w) — a radial scale on the SAMPLE coordinate, applied before the
+      // rotation so the two compose the same way here and in camPix. Normalised by the half
+      // diagonal, so the same slider gives the same lens at any resolution or aspect.
+      if (uCam.w != 0.0) c *= 1.0 + uCam.w*dot(c, c)/(0.25*dot(uCamSize, uCamSize));
       vec3 q = vec3(c, 0.0);
       float s, k;
       s = sin(uCam.x); k = cos(uCam.x); q = vec3(q.x, q.y * k - q.z * s, q.y * s + q.z * k);
@@ -4532,49 +4553,113 @@
     //
     // NB the heat buffer is Y-FLIPPED against the screen, so screen-UP is 0.5 - y/fh. This
     // effect has a horizon, so it is one of the ones that cares (see CLAUDE.md).
+     // Ocean: a marched swell that reflects the layers beneath it.
+    //
+    // THE SURFACE IS INTERSECTED, NOT PROJECTED. The first version solved one plane hit
+    // (t = camH / -rd.y) and displaced only the shading normal, which is cheap and is a
+    // lie: a crest could not hide the trough behind it, the horizon was a ruler-straight
+    // line whatever the sea state, and Swell changed the lighting without changing the
+    // shape. Marching the height field and refining the crossing gives real occlusion and
+    // a horizon that breaks up in a heavy sea, which is most of what makes water read as
+    // water rather than as a shaded plane.
+    //
+    // Two octave counts, deliberately: the march runs WAVE_OCT_MARCH octaves and the
+    // shading runs all six. The fine chop moves the silhouette by less than a pixel at any
+    // distance the march cares about, and paying for it 32 times per ray instead of once is
+    // the whole cost of the effect.
+    //
+    // REFLECTION comes from uBelow — the layers already merged underneath this one (see
+    // glBelowTex) — read through the same screen-space projection the Glass ball uses, and
+    // weighted by Fresnel, so it is a glancing sheen far off and almost nothing straight
+    // down. That is how water behaves and it is why the horizon is the bright part. With no
+    // layer beneath, uHasBelow is 0 and the sky term stands alone, exactly as before.
     const FS_OCEAN = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uSwell; uniform float uChop;
     uniform float uFoam; uniform float uWind; uniform float uZoom;
+    uniform float uHeight; uniform float uReflect;
+    uniform sampler2D uBelow; uniform float uHasBelow;
     out vec4 o;
+    const int WAVE_OCT_MARCH = 3;
+    const float CAM_H = 3.4;
+    // Height (0..1) and its two slopes, summed over 'oct' wave trains whose directions fan
+    // out from the wind so the sea interferes with itself instead of repeating.
+    void waves(vec2 p, int oct, out float h, out vec2 dh){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+      float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
+      h = 0.0; dh = vec2(0.0);
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        float ph = dot(p, dir)*frq + uTime*spd;
+        float s = sin(ph)*0.5 + 0.5;
+        h += amp*pow(s, uChop);
+        norm += amp;
+        float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+        dh += dw*dir;
+        amp *= 0.62; frq *= 1.87; spd *= 1.21;
+        dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+      }
+      h /= max(norm, 1e-4);
+    }
+    float envBelow(vec3 d){
+      vec2 uv = 0.5 + 0.5*d.xy/(abs(d.z) + 1.25);
+      vec3 c = texture(uBelow, clamp(uv, 0.002, 0.998)).rgb;
+      return dot(c, vec3(0.299, 0.587, 0.114));
+    }
     void main(){
       float fw = uSize.x, fh = uSize.y;
       vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)*2.0/uZoom;
       vec3 rd = normalize(vec3(q.x, q.y - 0.30, 1.35));
-      float camH = 3.4;
+      // Wave height in world units. Capped against the camera height: a swell taller than
+      // the viewpoint puts the camera underwater, where the march never crosses the surface
+      // and the whole frame goes to sky.
+      float amp = min(uHeight, CAM_H*0.55);
       float heat;
       if (rd.y > -0.004){
-        // Sky: a soft band brightening down toward the horizon, so the sea has something to
-        // meet. Kept dim — the water is the subject.
-        heat = 0.10*exp(-max(0.0, rd.y)*9.0);
+        heat = 0.10*exp(-max(0.0, rd.y)*9.0);      // sky: a soft band down toward the horizon
       } else {
-        float t = camH/(-rd.y);
-        vec2 p = rd.xz*t;
-        float fade = 1.0/(1.0 + t*t*0.0016);        // distance haze, also hides the aliasing
-        float wr = uWind*0.017453293;
-        vec2 dir = vec2(cos(wr), sin(wr));
-        float h = 0.0, dhx = 0.0, dhz = 0.0;
-        float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
-        for (int i = 0; i < 6; i++){
-          float ph = dot(p, dir)*frq + uTime*spd;
-          float s = sin(ph)*0.5 + 0.5;
-          float w = pow(s, uChop);
-          h += amp*w;
-          norm += amp;
-          // d/dp of amp*pow(s, chop): chop*s^(chop-1) * 0.5cos(ph) * frq, along dir
-          float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
-          dhx += dw*dir.x; dhz += dw*dir.y;
-          amp *= 0.62; frq *= 1.87; spd *= 1.21;
-          dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+        // MARCH. Geometric steps, because the near water needs fine sampling and the far
+        // water is a handful of pixels: a linear march either misses the first crest or
+        // spends thirty steps on the horizon.
+        float tHit = -1.0, tp = 0.6, dp = CAM_H;
+        for (int i = 1; i <= 32; i++){
+          float t = 0.6*pow(1.24, float(i));
+          vec3 p = vec3(0.0, CAM_H, 0.0) + rd*t;
+          float hh; vec2 dd;
+          waves(p.xz, WAVE_OCT_MARCH, hh, dd);
+          float d = p.y - hh*amp;
+          if (d < 0.0){
+            // One secant step between the last point above and this one below. A bisection
+            // loop is the textbook answer and is not worth it here: the surface is smooth
+            // between two steps this close and the error lands well under a pixel.
+            tHit = tp + (t - tp)*dp/max(dp - d, 1e-4);
+            break;
+          }
+          tp = t; dp = d;
+          if (t > 420.0) break;
         }
-        h /= norm;
-        vec3 n = normalize(vec3(-dhx*uSwell, 1.0, -dhz*uSwell));
-        float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
-        float slope = clamp(length(vec2(dhx, dhz))*uSwell*0.9, 0.0, 1.0);
-        // Foam rides the CRESTS: high water and steep face at once, which is where it breaks.
-        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), h*0.65 + slope*0.55);
-        heat = (0.10 + 0.48*h*h + 0.45*glint + 0.55*foam)*fade;
-        heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
+        if (tHit < 0.0){
+          heat = 0.10*exp(-max(0.0, rd.y)*9.0) + 0.16*exp(-abs(rd.y + 0.004)*260.0);
+        } else {
+          vec3 p = vec3(0.0, CAM_H, 0.0) + rd*tHit;
+          float hh; vec2 dd;
+          waves(p.xz, 6, hh, dd);                   // full detail for the shading normal
+          float fade = 1.0/(1.0 + tHit*tHit*0.0016);
+          vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
+          float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
+          float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
+          // Foam rides the CRESTS: high water and a steep face at once, which is where it breaks.
+          float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+          heat = (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
+          if (uHasBelow > 0.5 && uReflect > 0.0){
+            // Fresnel: water is a mirror at a glancing angle and nearly clear straight down,
+            // so the reflection concentrates toward the horizon by itself.
+            float fres = 0.02 + 0.98*pow(1.0 - max(0.0, dot(n, -rd)), 5.0);
+            heat += uReflect*fres*envBelow(reflect(rd, n))*fade;
+          }
+          heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
+        }
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
@@ -5449,7 +5534,7 @@
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
-    glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);
+    glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"]);
     glProg.vballs = camProg(VS_QUAD, FS_VBALLS, ["uSize", "uPhase", "uCount", "uShape", "uRad", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
@@ -5786,7 +5871,7 @@
     const P = glProg[name];
     gl.useProgram(P.p);
     gl.uniform2f(P.u.uSize, fw, fh);
-    if (P.u.uCam) { gl.uniform3f(P.u.uCam, camRX, camRY, camRZ); gl.uniform2f(P.u.uCamSize, fw, fh); }
+    if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
     setU(P.u);
     drawQuad();
   }
@@ -7951,11 +8036,20 @@
   // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
   // 2x2 block and four octaves instead of six.
   let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0;
+  let goHeight = 0.7, goReflect = 0.6;
   function oceanSeed(dt) {
     goTime += dt * goSpeed;
-    return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind, zoom };
+    return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind,
+             height: goHeight, reflect: goReflect, zoom };
   }
-  function oceanCPU(s) {                  // CPU fallback — mirrors FS_OCEAN
+  // CPU fallback. It keeps the ORIGINAL flat-plane intersection rather than mirroring the
+  // march, and that is a deliberate simplification, not an oversight: 32 steps x 3 wave
+  // octaves is ~100 sin/cos per pixel, which is a shader's budget and not a JS loop's. The
+  // fallback therefore shows a displaced-normal sea with no self-occlusion and no
+  // reflection — the fallback path renders one layer, so there is nothing beneath it to
+  // reflect in the first place.
+  // ponytail: flat-plane fallback; march it if anyone ever runs this without WebGL2 and minds.
+  function oceanCPU(s) {                  // CPU fallback — a simplified FS_OCEAN
     const ar = fw / fh, camH = 3.4;
     const wr = s.wind * Math.PI / 180;
     const ss = t => { const u = Math.max(0, Math.min(1, t)); return u * u * (3 - 2 * u); };
@@ -10200,6 +10294,8 @@
     { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
     { key: "gofoam", host: "fx", group: "ocean", type: "dual", label: "Foam", valId: "vGoFoam", min: 0.1, max: 1, step: 0.01, lo: 0.45, hi: 0.45, fmt: v => sig3(v), apply: v => goFoam = v, durScale: 10 },
+    { key: "goheight", host: "fx", group: "ocean", type: "dual", label: "Wave height", valId: "vGoHeight", min: 0.05, max: 1.8, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => goHeight = v, durScale: 10 },
+    { key: "goreflect", host: "fx", group: "ocean", type: "dual", label: "Reflection", valId: "vGoReflect", min: 0, max: 1.5, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => goReflect = v, durScale: 10 },
     { key: "gowind", host: "fx", group: "ocean", type: "dual", label: "Wind", valId: "vGoWind", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => goWind = v, durScale: 10 },
     { key: "bhtilt", host: "fx", group: "bhole", type: "dual", label: "Tilt", valId: "vBhTilt", min: 2, max: 80, step: 1, lo: 12, hi: 12, fmt: v => sig3(v) + "°", apply: v => bhTilt = v, durScale: 10 },
     { key: "bhouter", host: "fx", group: "bhole", type: "dual", label: "Disk size", valId: "vBhOuter", min: 4, max: 14, step: 0.1, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bhOuter = v, durScale: 10 },
@@ -10226,6 +10322,9 @@
     { key: "camrx", host: "fx", group: "camera", type: "dual", label: "Camera X", valId: "vCamRX", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRX = v * Math.PI / 180, durScale: 10 },
     { key: "camry", host: "fx", group: "camera", type: "dual", label: "Camera Y", valId: "vCamRY", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRY = v * Math.PI / 180, durScale: 10 },
     { key: "camrz", host: "fx", group: "camera", type: "dual", label: "Camera Z", valId: "vCamRZ", min: -180, max: 180, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => camRZ = v * Math.PI / 180, durScale: 10 },
+    // Field of view. Shown for the 33 SHADER effects only -- see the note on camFov: a
+    // point effect stamps a destination and has no sample coordinate to bend.
+    { key: "fov", host: "fx", group: "camera", type: "dual", label: "Field of view", valId: "vFov", min: -0.8, max: 2, step: 0.02, lo: 0, hi: 0, fmt: v => v === 0 ? "normal" : (v > 0 ? "wide " : "tele ") + sig3(Math.abs(v)), apply: v => camFov = v, durScale: 10 },
     { key: "randseed", host: "fx", group: "other", type: "check", label: "Random seed each reload" },
     // Palette cycle time, in seconds, as a [min,max] band: each morph holds for a
     // random time drawn from it (like Preset TTL). Collapsed to 0 = fixed palette.
@@ -12499,31 +12598,31 @@
       beat: {}, extras: { palette: "1", morph: false, showBox: false, randSeed: true } },
     { id: "animejulia", name: "AnimeJulia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { const s = juliaSeed(dt); if (useGL) glJulia(s); else julia(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [92, 92], rise: [130, 130], zoom: [1, 1], size: [1, 1], rot: [0, 0], layers: 1, rpm: [0.28, 0.28], ratio: [8.5, 8.5], inrad: [0.03, 0.03], outrad: [1, 1], phase: [0, 0], cardx: [0, 0], points: [1500, 1500] },
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "plasma", name: "Plasma", subtitle: "Plasma · sinusoidal interference",
       help: "An old-school plasma: several sine/cosine waves interfere across the screen and animate over time, coloured through the palette. Add banding for classic hard contour stripes.",
-      params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
+      params: ["pspeed", "pscale", "pwarp", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "plasma", "band"],
       bakesOwnZoom: true, draw: dt => { if (useGL) glPlasma(plasmaSeed(dt)); else plasma(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], zoom: [1, 1], pspeed: [0.5, 0.5], pscale: [0.9, 0.9], pwarp: [0.4, 0.4] },
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "tunnel", name: "Tunnel", subtitle: "Tunnel · demoscene flythrough",
       help: "A classic demoscene tunnel: the screen is polar-mapped so concentric rings rush toward the vanishing point. Fly speed drives you forward; Twist rotates the pipe.",
-      params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
+      params: ["tunspeed", "tuntwist", "tunrings", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "tunnel"], bakesOwnZoom: true,
       draw: dt => { const s = tunnelSeed(dt); if (useGL) glShaderDraw("tunnel", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uRings, s.rings); gl.uniform1f(u.uZoom, s.zoom); }); else tunnel(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], tunspeed: [0.6, 0.6], tuntwist: [0.1, 0.1], tunrings: [8, 8], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "metaballs", name: "Metaballs", subtitle: "Metaballs · gooey blobs",
       help: "Blobby fields that merge and split like lava-lamp goo — a sum of inverse-square fields from moving centres, soft-saturated. Turn up Banding for hard iso-contour shells.",
-      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
+      params: ["mbcount", "mbradius", "mbspeed", "mbgain", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "meta", "band"], bakesOwnZoom: true,
       draw: dt => { const s = metaSeed(dt); if (useGL) glShaderDraw("metaball", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRadius, s.radius); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); else metaballs(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], mbcount: [5, 5], mbradius: [0.16, 0.16], mbspeed: [0.6, 0.6], mbgain: [0.8, 0.8], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "burningship", name: "Burning Ship", subtitle: "Burning Ship · fractal",
       help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
-      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
+      params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       // `locus: "ship"` — the Orbit editor's backdrop. This effect folds Re·Im to its absolute
       // value, so the set of seeds that give a connected fractal is the Burning Ship set, not
       // the Mandelbrot set the other two cardioid effects share. Without this the editor drew
@@ -12535,37 +12634,37 @@
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "kaleidoscope", name: "Kaleidoscope", subtitle: "Kaleidoscope · mirrored symmetry",
       help: "A moving field folded into mirror-symmetric wedges, like looking down a kaleidoscope. Segments sets the symmetry, Spin rotates the whole thing, Flow animates the pattern. Add banding for sharp mandala rings.",
-      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
+      params: ["ksegments", "krotspeed", "knoisespeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "kaleido", "band"], bakesOwnZoom: true,
       draw: dt => { const s = kaleidoSeed(dt); if (useGL) glShaderDraw("kaleido", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSeg, s.seg); gl.uniform1f(u.uRot, s.rot); gl.uniform1f(u.uZoom, s.zoom); }); else kaleidoscope(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], ksegments: [6, 6], krotspeed: [0.1, 0.1], knoisespeed: [0.6, 0.6], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "rotozoom", name: "Rotozoomer", subtitle: "Rotozoomer · rotate + zoom",
       help: "The classic Amiga rotozoomer: a tiled grid texture spun and pulse-zoomed in real time. Rotation sets the spin, Zoom pulse the breathing scale, Tile density how fine the grid is.",
-      params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
+      params: ["rzrot", "rzzoom", "rztile", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "roto", "band"], bakesOwnZoom: true,
       draw: dt => { const s = rotozoomSeed(dt); if (useGL) glShaderDraw("rotozoom", u => { gl.uniform1f(u.uAngle, s.angle); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uTile, s.tile); gl.uniform1f(u.uZoom, s.zoom); }); else rotozoom(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], rzrot: [0.2, 0.2], rzzoom: [0.3, 0.3], rztile: [3, 3], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "munch", name: "Munching Squares", subtitle: "Munching squares · XOR pattern",
       help: "The hypnotic PDP-1 classic: each pixel is ((x XOR y) + time) masked to a value, mapped through the palette. Munch speed animates it, Square size sets the pixel chunkiness, Detail the wrap.",
-      params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold"], helpTags: ["all", "xor"], bakesOwnZoom: true,
+      params: ["xorspeed", "xorscale", "xormask", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "xor"], bakesOwnZoom: true,
       draw: dt => { const s = munchSeed(dt); if (useGL) glShaderDraw("munch", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uMask, s.mask); gl.uniform1f(u.uZoom, s.zoom); }); else munch(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], xorspeed: [12, 12], xorscale: [0.35, 0.35], xormask: [255, 255], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "moire", name: "Moiré", subtitle: "Moiré · interference shimmer",
       help: "Two sets of concentric rings drift over each other and interfere into shimmering moiré bands. Ring frequency sets how tight the rings are, Drift speed how fast the centres move, Blend fades between multiply and add.",
-      params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
+      params: ["mofreq", "modrift", "momix", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "moire", "band"], bakesOwnZoom: true,
       draw: dt => { const s = moireSeed(dt); if (useGL) glShaderDraw("moire", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uZoom, s.zoom); }); else moire(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], mofreq: [8, 8], modrift: [0.6, 0.6], momix: [0.3, 0.3], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "newton", name: "Newton", subtitle: "Newton fractal · root basins",
       help: "The Newton fractal: each pixel is coloured by which root of z³−1 Newton's method converges to, plus how many steps it took, giving three interlocking basins with fractal borders. Root spin rotates it; Relaxation warps the convergence.",
-      params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
+      params: ["nwspin", "nwrelax", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "newton", "band"], bakesOwnZoom: true,
       draw: dt => { const s = newtonSeed(dt); if (useGL) glShaderDraw("newton", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uRelax, s.relax); gl.uniform1f(u.uZoom, s.zoom); }); else newton(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], nwspin: [0.05, 0.05], nwrelax: [0.9, 0.9], zoom: [0.8, 0.8], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", subtitle: "Multibrot · power sweep",
       help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Power now sweeps CONTINUOUSLY — whole numbers give the classic sets (each adds a bulb of symmetry), and the fractions in between morph one into the next, with a characteristic straight seam ray where the fractional exponent's branch cut lies. The seed rides a blend of the two neighbouring whole-power cardioids, sprinting through the cusps and easing off between them.",
-      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
+      params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // juliaPower BEFORE juliaSeed: the orbit must ride this frame's power, not the last one's.
       draw: dt => { juliaPower = mbPower; const s = juliaSeed(dt); if (useGL) glShaderDraw("multibrot", u => { gl.uniform2f(u.uC, s.cx, s.cy); gl.uniform2f(u.uSpan, s.spanX, s.spanY); gl.uniform1f(u.uPower, mbPower); }); else multibrot(s); },
@@ -12573,7 +12672,7 @@
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "copperbars", name: "Copper Bars", subtitle: "Copper bars · raster sine bars",
       help: "The Amiga copper-bar effect: horizontal gradient bars sliding up and down on sine motion. Bar count, Bar speed and Bar width shape them; the Copper palette gives them their metallic sheen.",
-      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
+      params: ["cbcount", "cbspeed", "cbwidth", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "copper", "band"], bakesOwnZoom: true,
       draw: dt => { const s = copperSeed(dt); if (useGL) glShaderDraw("copper", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); else copperbars(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], cbcount: [5, 5], cbspeed: [0.6, 0.6], cbwidth: [0.08, 0.08], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
@@ -12586,38 +12685,38 @@
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
     { id: "polygon", name: "Polygon", subtitle: "Polygon · rotating N-gon",
       help: "A single rotating regular polygon drawn as a signed-distance field. Sides morphs triangle → square → … → circle; Size scales it, Spin rotates it (negative reverses), and Thickness hollows it out — 1 is solid, low values leave a thin outline. Arm Size or Spin to a beat to make it throb.",
-      params: ["pgsides", "pgrad", "pgthick", "pgspin", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      params: ["pgsides", "pgrad", "pgthick", "pgspin", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = polygonSeed(dt); if (useGL) glShaderDraw("polygon", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uSides, s.sides); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uZoom, s.zoom); }); else polygon(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], pgsides: [5, 5], pgrad: [0.35, 0.35], pgthick: [1, 1], pgspin: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
     { id: "shapegrid", name: "Shape grid", subtitle: "Shape grid · pulsing lattice",
       help: "A tiled lattice of one shape. Density sets how many cells fill the screen, Size the shape within each cell, Squareness morphs circle → square, and Pulse (with Pulse speed) makes every cell breathe out of phase with its neighbours. Reads like a pulsing dot-grid or checkerboard.",
-      params: ["sgcells", "sgdot", "sgsquare", "sgpulse", "sgspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      params: ["sgcells", "sgdot", "sgsquare", "sgpulse", "sgspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = shapegridSeed(dt); if (useGL) glShaderDraw("shapegrid", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCells, s.cells); gl.uniform1f(u.uDot, s.dot); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uPulse, s.pulse); gl.uniform1f(u.uZoom, s.zoom); }); else shapegrid(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], sgcells: [9, 9], sgdot: [0.3, 0.3], sgsquare: [0, 0], sgpulse: [0.35, 0.35], sgspeed: [1.2, 1.2], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "concentric", name: "Concentric rings", subtitle: "Concentric · shape tunnel",
       help: "Nested polygon (or circle) contours radiating out from the centre and marching outward over time — a hypnotic target / shape-tunnel. Sides sets the shape, Ring count how tightly packed the rings are, March speed how fast they travel (negative pulls inward), Thickness the ring width, and Spin rotates the whole thing.",
-      params: ["cosides", "cocount", "cothick", "cospeed", "cospin", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      params: ["cosides", "cocount", "cothick", "cospeed", "cospin", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = concentricSeed(dt); if (useGL) glShaderDraw("concentric", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSides, s.sides); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uZoom, s.zoom); }); else concentric(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], cosides: [6, 6], cocount: [6, 6], cothick: [0.4, 0.4], cospeed: [0.6, 0.6], cospin: [0.1, 0.1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "bounce", name: "Bouncing shapes", subtitle: "Bouncing shapes · DVD-logo drift",
       help: "A handful of shapes drifting and bouncing off the edges, DVD-logo style. Count sets how many, Size how big, Squareness morphs circle → square, and Speed how fast they travel. Tick a Fade pixel or Fire feedback filter to give them glowing trails.",
-      params: ["bncount", "bnrad", "bnsquare", "bnspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      params: ["bncount", "bnrad", "bnsquare", "bnspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
       draw: dt => { const s = bounceSeed(dt); if (useGL) glShaderDraw("bounce", u => { gl.uniform2fv(u.uPos, s.pos); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uZoom, s.zoom); }); else bounce(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], bncount: [4, 4], bnrad: [0.09, 0.09], bnsquare: [0.6, 0.6], bnspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "solids", name: "Bouncing solids", subtitle: "Solids · raymarched 3D",
       help: "Real 3D: a handful of solid primitives — sphere, box, doughnut, capsule, octahedron, cylinder — tumbling and ricocheting off the walls of an invisible room, raymarched as signed-distance fields and shaded into the palette by surface angle and depth. Count sets how many bodies, Size how big (which is also the radius they bounce on, so bigger ones turn sooner), Shape mix how many different primitives are in play (1 = all spheres, 6 = all six), Speed how fast they travel and Tumble how hard they spin — a wall hit converts slide into roll, so they kick into a tumble on an angled clip. Edge glow lights the silhouettes. Tick Fire or Fade pixel for trails.",
-      params: ["sdcount", "sdsize", "sdmix", "sdspeed", "sdspin", "sdrim", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "solids", "band"],
+      params: ["sdcount", "sdsize", "sdmix", "sdspeed", "sdspin", "sdrim", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "solids", "band"],
       bakesOwnZoom: true, solids: true,
       draw: dt => { const s = solidsSeed(dt); if (useGL) glShaderDraw("solids", u => { gl.uniform4fv(u.uPos, s.pos); gl.uniform4fv(u.uQuat, s.quat); gl.uniform1fv(u.uShape, s.shape); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRim, s.rim); gl.uniform1f(u.uZoom, s.zoom); }); else solids(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], sdcount: [5, 5], sdsize: [0.26, 0.26], sdmix: [6, 6], sdspeed: [1, 1], sdspin: [1, 1], sdrim: [0.55, 0.55], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "sunsurface", name: "Sun surface", subtitle: "Sun surface · solar granulation",
       help: "The boiling surface of the sun, as the Inouye Solar Telescope sees it: a full-screen field of bright convection cells separated by narrow dark lanes, each cell slowly drifting, deforming and brightening as it churns, with tiny bright points sparking in the lanes. Raise Sunspot to sink a dark spot into the middle — a near-black core ringed by fine filaments radiating out into the granulation. Fire-family palettes (Amber, Fire, Ember, Sunburst) give it its colour.",
-      params: ["sunscale", "sunspeed", "sunlane", "sunglow", "sunspot", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "sun", "band"], bakesOwnZoom: true,
+      params: ["sunscale", "sunspeed", "sunlane", "sunglow", "sunspot", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "sun", "band"], bakesOwnZoom: true,
       // Plasma-shaped draw: the clock advances exactly ONCE per frame on either path —
       // sun(dt) calls sunSeed itself, so nothing may pre-call it before the CPU branch.
       // (The metaballs-style `const s = seed(dt); ... else mirror(dt)` double-advances.)
@@ -12626,31 +12725,31 @@
       beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
     { id: "kefrens", name: "Kefrens bars", subtitle: "Kefrens · weaving ribbons",
       help: "The classic Amiga effect: vertical bars redrawn at a phase offset on every scanline, so the ribbons weave impossibly through each other. Bars sets how many, Sway how far they wander, Speed how fast, and Bar width how fat each ribbon is. Arm Sway or Speed to a beat to make them lash.",
-      params: ["kfbars", "kfsway", "kfspeed", "kfwidth", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "kefrens", "band"], bakesOwnZoom: true,
+      params: ["kfbars", "kfsway", "kfspeed", "kfwidth", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "kefrens", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = kefrensSeed(dt); glShaderDraw("kefrens", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uBars, s.bars); gl.uniform1f(u.uSway, s.sway); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uZoom, s.zoom); }); } else kefrens(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], kfbars: [6, 6], kfsway: [0.25, 0.25], kfspeed: [1, 1], kfwidth: [0.045, 0.045], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
     { id: "twister", name: "Twister", subtitle: "Twister · liquorice column",
       help: "The classic twisting column: a square bar wrung along its height, each face shaded by its angle, bright seams on the edges. Twist sets how hard it is wrung (negative reverses), Speed how fast it turns, Width how fat it is, and Columns puts up to three side by side, out of phase.",
-      params: ["twcols", "twwidth", "twtwist", "twspeed", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "twister", "band"], bakesOwnZoom: true,
+      params: ["twcols", "twwidth", "twtwist", "twspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "twister", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = twisterSeed(dt); glShaderDraw("twister", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCols, s.cols); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uZoom, s.zoom); }); } else twister(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], twcols: [1, 1], twwidth: [0.22, 0.22], twtwist: [2, 2], twspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
     { id: "cymatics", name: "Cymatics", subtitle: "Cymatics · Chladni plate",
       help: "Sand on a vibrating plate: bright lines trace the nodes of a standing wave, and the figure snaps into a new symmetry every time the mode changes. Mode is the wave number — drift its two thumbs apart for continuous morphing, or arm its chips so the figure JUMPS on the beat. Mode offset skews the pattern off square, Sharpness thins the lines, Shimmer makes the sand tremble.",
-      params: ["cymode", "cymoff", "cysharp", "cyshimmer", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "chladni", "band"], bakesOwnZoom: true,
+      params: ["cymode", "cymoff", "cysharp", "cyshimmer", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "chladni", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = cymaticsSeed(dt); glShaderDraw("cymatics", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uModeN, s.n); gl.uniform1f(u.uModeM, s.m); gl.uniform1f(u.uSharp, s.sharp); gl.uniform1f(u.uShim, s.shim); gl.uniform1f(u.uZoom, s.zoom); }); } else cymatics(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], cymode: [3, 3], cymoff: [1, 1], cysharp: [5, 5], cyshimmer: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "lightning", name: "Lightning storm", subtitle: "Lightning · beat-fired bolts",
       help: "Forked fractal bolts tearing down the screen, each one a fresh shape: a jagged main channel that splits into side branches on its way down, lighting up from the cloud to the ground with a hot racing tip — Strike speed is how fast it travels. Rate fires strikes on a clock; arm Strike's L/M/H chips and the BEAT fires them instead — a kick snaps Strike to full and the bolt decays over the Trigger duration, exactly like Shockwave's ring. Bolts sets how many strike at once, Afterglow how much the sky lights up.",
-      params: ["ltstrike", "ltrate", "ltspd", "ltbolts", "ltglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "storm", "band"], bakesOwnZoom: true,
+      params: ["ltstrike", "ltrate", "ltspd", "ltbolts", "ltglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "storm", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = stormSeed(dt); glShaderDraw("storm", u => { gl.uniform1f(u.uEnv, s.env); gl.uniform1f(u.uSeed, s.seed); gl.uniform1f(u.uBolts, s.bolts); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); gl.uniform1f(u.uFront, s.front); }); } else storm(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltspd: [12, 12], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · flight inside a 3D fractal",
       help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, seen from INSIDE — the camera flies the canyons between the lobes, threading whatever gap the fractal leaves it and never quite touching the surface. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping around you). Detail adds fractal depth (and GPU cost), Orbit speed is how fast the flight winds through it, Glow lights the walls and puts a halo where a ray only just misses. The heaviest effect in the app — it wants a real GPU.",
-      params: ["bppower", "bpdetail", "bpspin", "bpglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "bulb", "band"], bakesOwnZoom: true,
+      params: ["bppower", "bpdetail", "bpspin", "bpglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "bulb", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = bulbSeed(dt); glShaderDraw("bulb", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uPower, s.power); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else bulb(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], bppower: [8, 8], bpdetail: [7, 7], bpspin: [0.35, 0.35], bpglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
@@ -12672,26 +12771,26 @@
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "starfield", name: "Starfield", subtitle: "Starfield · hyperspace",
       help: "A 3D starfield flying past — six parallax depths of hash-placed stars, each twinkling on its own phase. Warp smears every star into a radial streak: arm its L/M/H chips and the kick punches to hyperspace, easing back as the pulse decays. Star density and Fly speed set the traffic, Twinkle the shimmer.",
-      params: ["stdensity", "stspeed", "stwarp", "sttwinkle", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "stars", "band"], bakesOwnZoom: true,
+      params: ["stdensity", "stspeed", "stwarp", "sttwinkle", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "stars", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = starsSeed(dt); glShaderDraw("stars", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uDensity, s.density); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uTwinkle, s.twinkle); gl.uniform1f(u.uZoom, s.zoom); }); } else stars(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], stdensity: [1.2, 1.2], stspeed: [1, 1], stwarp: [0, 0], sttwinkle: [0.8, 0.8], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "aurora", name: "Aurora", subtitle: "Aurora · northern lights",
       help: "Curtains of light hanging from the top of the sky, swaying on slow layered waves, each rippling and shimmering on its own phase over a faint horizon glow. Curtains sets how many, Sway how far the whole sky bends, Shimmer how restless the light is. Ice and Electric palettes were made for it; Verdant gives the green aurora.",
-      params: ["aucurtains", "ausway", "auspeed", "aushimmer", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "aurora", "band"], bakesOwnZoom: true,
+      params: ["aucurtains", "ausway", "auspeed", "aushimmer", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "aurora", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = auroraSeed(dt); glShaderDraw("aurora", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCurtains, s.curtains); gl.uniform1f(u.uSway, s.sway); gl.uniform1f(u.uShim, s.shim); gl.uniform1f(u.uZoom, s.zoom); }); } else aurora(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], aucurtains: [3, 3], ausway: [0.5, 0.5], auspeed: [1, 1], aushimmer: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "reactdiff", name: "Reaction-diffusion", subtitle: "Gray–Scott · living patterns",
       help: "Two chemicals feeding and killing each other on a dish, forming spots, stripes, coral and mazes that grow and never repeat. Feed and Kill choose the regime — tiny nudges cross into whole new pattern families, and some settings kill the culture outright; when everything dies, the dish quietly re-seeds itself, so exploring (or arming Feed's chips to let the beat push the culture into a new life) is always safe. Sim speed is how many chemistry steps run per frame. The state is ONE shared dish: two layers of it show the same culture.",
-      params: ["rdfeed", "rdkill", "rdspeed", "rdgain", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "rd", "band"], bakesOwnZoom: true,
+      params: ["rdfeed", "rdkill", "rdspeed", "rdgain", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "rd", "band"], bakesOwnZoom: true,
       onEnter: () => { rdNeedSeed = true; rdCpuSeed = true; },
       draw: dt => { const s = rdSeedFn(dt); if (useGL) { glRDTick(s.steps, s.feed, s.kill); glShaderDraw("rdshow", u => { bindTexUnit(0, glTex.rd[rdCur]); gl.uniform1i(u.uState, 0); gl.uniform1f(u.uGain, s.gain); gl.uniform1f(u.uZoom, s.zoom); }); } else rdCPU(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], rdfeed: [0.03, 0.03], rdkill: [0.062, 0.062], rdspeed: [8, 8], rdgain: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "menger", name: "Menger sponge", subtitle: "Menger · fractal city drive",
       help: "An endless lattice of Menger sponges — the 3D Sierpiński carpet — raymarched while the camera drives the streets between them, turning at intersections and swooping down to thread the carved tunnels straight through the sponges, on a wandering route that never repeats. Dive speed is the flight, Detail the fractal depth (and the GPU bill), Glow lights the canyon walls. Kin to Sierpiński: this is what its carpet looks like grown into a solid.",
-      params: ["mgdive", "mgrot", "mgiter", "mgglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "menger", "band"], bakesOwnZoom: true,
+      params: ["mgdive", "mgrot", "mgiter", "mgglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "menger", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = mengerSeed(dt); glShaderDraw("menger", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uRoll, s.roll); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else menger(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], mgdive: [0.5, 0.5], mgrot: [0.3, 0.3], mgiter: [4, 4], mgglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "3", morph: false, showBox: true, randSeed: true } },
@@ -12726,7 +12825,7 @@
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "vballs", name: "Vector balls", subtitle: "Vector balls · Amiga bobs in formation",
       help: "The Amiga classic: a rigid constellation of shaded spheres tumbling in 3D. Formation picks how they are arranged — Lattice (a cube of them), Sphere (an even shell), Ring or Helix — and the whole set turns as one body, so the shape reads only from how the balls occlude and shade each other. Balls sets how many, Ball size how fat (wind it up and they merge into a solid), Tumble how fast, Edge glow how hard the silhouettes are lit. Nearer balls are brighter, which is what separates the formation in depth.",
-      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["vbcount", "vbshape", "vbsize", "vbspin", "vbglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "vballs", "band"], bakesOwnZoom: true,
       draw: dt => { const s = vballsSeed(dt);
         if (useGL) glShaderDraw("vballs", u => { gl.uniform1f(u.uPhase, s.phase); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uShape, s.shape); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
@@ -12736,7 +12835,7 @@
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "glass", name: "Glass ball", subtitle: "Glass ball · raytraced spheres over the layers below",
       help: "Raytraced spheres that reflect and refract WHAT IS UNDERNEATH THEM. Put this layer on top of another one and the balls pick that layer's picture up: Metal mirrors it, Glass bends it through and turns it upside down the way a real ball does, Bubble is a thin shell that barely bends it but rings hard at the edge. Refraction is the glass's density — low is nearly water, high squeezes the whole scene into the middle of the ball. On its own, with no layer beneath, the balls fall back to reflecting a procedural room so the effect still stands up. The reflection is of BRIGHTNESS, not colour — everything is re-tinted by this layer's own palette.",
-      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "glass", "band"], bakesOwnZoom: true,
       draw: dt => { const s = glassSeed(dt);
         if (useGL) glShaderDraw("glass", u => {
@@ -12768,7 +12867,7 @@
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",
       help: "The inside of a doughnut, flown along the tube. The camera rides the pipe's centre line, so the wall wraps the whole frame and the curve of the ring keeps bringing new surface into view — you are always about to round a bend you can never quite see past. Flutes cuts lengthwise grooves into the pipe and Twist winds them into a spiral (both whole numbers, so the pattern closes on itself with no seam; set Flutes to 0 for a smooth pipe). Ring radius is how big the doughnut is — small values bend the tunnel hard and shorten the view, large ones straighten it out. Tube radius is how tight it is around you. Speed runs the flight, and negative reverses it.",
-      params: ["dnring", "dntube", "dnspeed", "dntwist", "dnflute", "dnglow", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["dnring", "dntube", "dnspeed", "dntwist", "dnflute", "dnglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "torus", "band"], bakesOwnZoom: true,
       draw: dt => { const s = torusSeed(dt);
         if (useGL) glShaderDraw("torus", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uRing, s.ring); gl.uniform1f(u.uTube, s.tube); gl.uniform1f(u.uTwist, s.twist); gl.uniform1f(u.uFlute, s.flute); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); });
@@ -12778,17 +12877,25 @@
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
       help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
-      params: ["goswell", "gochop", "gospeed", "gofoam", "gowind", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "ocean", "band"], bakesOwnZoom: true,
       draw: dt => { const s = oceanSeed(dt);
-        if (useGL) glShaderDraw("ocean", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSwell, s.swell); gl.uniform1f(u.uChop, s.chop); gl.uniform1f(u.uFoam, s.foam); gl.uniform1f(u.uWind, s.wind); gl.uniform1f(u.uZoom, s.zoom); });
+        if (useGL) glShaderDraw("ocean", u => {
+          gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSwell, s.swell); gl.uniform1f(u.uChop, s.chop);
+          gl.uniform1f(u.uFoam, s.foam); gl.uniform1f(u.uWind, s.wind); gl.uniform1f(u.uZoom, s.zoom);
+          gl.uniform1f(u.uHeight, s.height); gl.uniform1f(u.uReflect, s.reflect);
+          // The layers beneath, for the reflection. Bind a real texture either way — a
+          // sampler must point at a COMPLETE one even on the branch that never reads it.
+          bindTexUnit(3, glBelowTex || glTex.native); gl.uniform1i(u.uBelow, 3);
+          gl.uniform1f(u.uHasBelow, glBelowTex ? 1 : 0);
+        });
         else oceanCPU(s); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0],
+      defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0], goheight: [0.7, 0.7], goreflect: [0.6, 0.6],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",
       help: "An accretion disk seen through the hole's own gravity. The photons are integrated rather than drawn straight, so light from the FAR side of the disk is bent up over the top of the shadow and back under the bottom — those arcs closing round the dark centre are the whole point, and a straight-ray version would just be an ellipse. Tilt is the camera's height above the disk plane: low is the iconic nearly-edge-on view, high looks down on a plain ring. Beaming is the relativistic boost that makes the limb coming toward you far brighter than the one going away; wind it to 0 for an evenly lit disk. The disk orbits Keplerian, so the inside shears past the outside and the turbulence never repeats. Heavy: it wants a real GPU.",
-      params: ["bhtilt", "bhouter", "bhspin", "bhbeam", "bhorbit", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["bhtilt", "bhouter", "bhspin", "bhbeam", "bhorbit", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "bhole", "band"], bakesOwnZoom: true,
       draw: dt => { const s = bholeSeed(dt);
         if (useGL) glShaderDraw("bhole", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uOrbit, s.orbit); gl.uniform1f(u.uTilt, s.tilt); gl.uniform1f(u.uOuter, s.outer); gl.uniform1f(u.uBeam, s.beam); gl.uniform1f(u.uZoom, s.zoom); });
@@ -12798,7 +12905,7 @@
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
       help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
-      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
+      params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
       helpTags: ["all", "julia", "qjulia", "band"], bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // ONE juliaSeed() per frame, like the other three — the mirror takes the seed rather
       // than re-advancing it (juliaprobe pins both halves of that for every cardioid effect).
@@ -13794,6 +13901,7 @@
     // Camera X/Y/Z rotation is per-layer state now (was the scene-wide `cam`), so seed it into
     // every effect exactly like a filter default — an effect that named it would still win below.
     st.camrx = [0, 0]; st.camry = [0, 0]; st.camrz = [0, 0];
+    st.fov = [0, 0];         // neutral, so every scene saved before FOV existed renders identically
     st.heatboost = [0, 0];   // per-layer palette control, seeded like the camera so no effect descriptor needs it
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
@@ -13803,7 +13911,7 @@
   // installStackItem before it draws. There is no camera tween — the camera snaps per layer
   // like every other effect param. On the wire the four keys are grouped into a per-layer `cam`
   // node (splitLayerCam/joinLayerCam below); there is no camera object at the preset root.
-  const CAM_KEYS = ["zoom", "camrx", "camry", "camrz"];
+  const CAM_KEYS = ["zoom", "camrx", "camry", "camrz", "fov"];
   // A layer's camera (zoom + X/Y/Z rotation) is per-layer STATE — the four keys live in the
   // layer's `state` map with every other slider. On the WIRE they are grouped into a `cam`
   // sub-object per layer instead (layers[i].cam), so the serialized shape reads cleanly and the
@@ -19386,6 +19494,7 @@
       { n: "Ball size", w: "vballs", t: "Vector balls only — how fat each sphere is. Small keeps them clearly separate points of light; wind it up and neighbours overlap until the formation reads as one lumpy solid." },
       { n: "Tumble", w: "vballs", t: "Vector balls only — how fast the constellation turns. It yaws and pitches at different rates, so it never repeats a pose. 0 holds it still." },
       { n: "Edge glow", w: "vballs", t: "Vector balls only — lights the rim of each sphere where its surface turns away from you. Low is flat shading, high outlines every ball and the formation reads as a cloud of bright shells." },
+      { n: "Field of view", w: "all", t: "How wide a lens this layer is seen through. It works the way the Camera X/Y/Z sliders do — by moving where each pixel takes its colour from — so it costs nothing and applies to every shader effect: positive pushes the sample outward with the square of the radius, which is a fisheye that bows the middle out and drags the corners in; negative pulls it in, which is a telephoto that flattens the frame. 0 is the normal lens. Drift the two thumbs and the whole layer breathes in and out. It is per LAYER, so one layer can bulge while another stays flat. Not offered on the point effects (Sierpński, Trees, Boids and the rest) — those stamp points rather than sampling a coordinate, so there is nothing to bend." },
       { n: "Balls", w: "glass", t: "Glass ball only — how many spheres are in the air. Each drifts on its own pair of clocks, so they pass through each other's reflections rather than orbiting in formation." },
       { n: "Material", w: "glass", t: "Glass ball only. **Metal** is an opaque mirror — you see only what is behind you. **Glass** refracts the scene through both surfaces, so the layer underneath appears inside the ball, shrunk and turned over. **Bubble** is a thin shell: it barely bends what is behind it, but the rim rings bright. Metal reads best over a busy layer, Glass over a big simple one." },
       { n: "Refraction", w: "glass", t: "Glass ball only — how dense the glass is (its index of refraction). Around 1.05 is barely more than air and the scene passes almost straight through; 1.45 is real glass; past 2 the whole picture is squeezed into a bright knot at the centre of the ball. Only Glass and Bubble use it — Metal never lets a ray in." },
@@ -19402,6 +19511,8 @@
       { n: "Twist", w: "torus", t: "Doughnut only — how many extra turns the flutes make in one lap of the doughnut, so it winds the grooves into a spiral. Whole numbers only, and deliberately: the pattern has to close on itself after a full lap or there would be a seam running down the tunnel. 0 leaves the grooves running straight, and negative winds them the other way." },
       { n: "Flutes", w: "torus", t: "Doughnut only — how many lengthwise grooves are cut into the pipe. 0 is a smooth tube; higher counts give it a fluted, organ-pipe cross-section that the Twist can then spiral. Whole numbers, for the same reason Twist is." },
       { n: "Swell", w: "ocean", t: "Ocean only — how big the sea is. It scales the surface normals rather than the height, so raising it steepens every face at once: the glint gets sharper, the foam breaks earlier, and the water goes from a lazy roll to a heavy sea." },
+      { n: "Wave height", w: "ocean", t: "Ocean only — how tall the swell actually stands, in world units. This is real geometry, not shading: the surface is intersected ray by ray, so raising it makes crests hide the troughs behind them and breaks up the horizon line. It is capped short of the camera height — a sea taller than the viewpoint would put you underwater." },
+      { n: "Reflection", w: "ocean", t: "Ocean only — how strongly the water mirrors THE LAYER UNDERNEATH IT. Put the Ocean on top of another layer and that layer appears in the water, concentrated toward the horizon the way a real reflection is: water is a mirror at a glancing angle and nearly clear straight down. With nothing beneath it there is nothing to reflect and this does nothing. What comes back is brightness, so the reflection is tinted by the water's own palette." },
       { n: "Chop", w: "ocean", t: "Ocean only — how peaked the crests are. Each wave train is a sine raised to this power, so 1 is a bland sine swell with rounded tops, and higher values keep the troughs round while drawing the crests up to a point — which is what real water does. Drift the two thumbs and the sea builds and lays down again." },
       { n: "Speed", w: "torus", t: "Doughnut only — how fast the flight runs along the tube. Negative flies it backwards, and 0 parks you inside, still looking down the pipe." },
       { n: "Glow", w: "torus", t: "Doughnut only — grazing light on the wall, brightest where the surface turns away from you. High values light the far bend before you reach it." },
