@@ -14,6 +14,17 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.39.0] — 2026-08-23
+
+### Added
+
+- **A pulse plot in every slider box's Triggers section**, under the Shape picker: a small
+  graph of what the slider will actually do when a beat lands — resting on the low thumb,
+  the snap up to the high thumb, and the fall back along the chosen curve. You can now see
+  that Bounce overshoots and Steps holds without arming anything. It is drawn from the same
+  formula the animation uses, on the slider's own range, so a slider whose thumbs sit
+  together plots a flat line — because a trigger on it does nothing.
+
 ## [1.38.0] — 2026-08-23
 
 ### Added
