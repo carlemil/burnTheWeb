@@ -14,6 +14,28 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.36.0] — 2026-08-23
+
+### Added
+
+- **Share one 3D world** — a new per-layer tick on **Ocean** and **Glass ball**. Turn it on for
+  both and their geometry is traced as **one scene** instead of two separate pictures: the balls
+  really sit in the water, refracting and reflecting it, reflected back in it, hidden by the
+  waves in front of them, with a real waterline cutting across them. **Place X / Y / Z** and
+  **World scale** say where each layer's geometry stands (the water is at height 0), and the
+  camera comes from the lowest layer that has joined — its Camera X/Y/Z, Zoom and Field of view
+  now move the whole world.
+  Each layer keeps its own palette, so the water seen inside the ball is tinted like the ball.
+  Off by default, so every scene you already have is unchanged; the effects you fly *inside*
+  (Mandelbulb, Menger sponge, Doughnut) cannot join, since they have no shared viewpoint.
+
+### Changed
+
+- **The Ocean's Reflection slider does more.** Up to 1 it behaves like water, weighted so the
+  reflection concentrates toward the horizon; **above 1 it lifts toward a flat mirror**, which is
+  there because a camera this close to the surface sees the near sea too steeply for the physical
+  amount to show. The slider now reaches 2, and the shipped setting is unchanged.
+
 ## [1.35.0] — 2026-08-23
 
 ### Added
