@@ -1000,6 +1000,14 @@
     // TWO MARCHES, NOT ONE. The SDF union is sphere-traced and the Ocean is a height field
     // with a geometric step law; they want different steps, so each is marched with the
     // code it already had and the nearer hit wins. Occlusion falls out of that comparison.
+    // W_GB / W_SD / W_QJ / W_VB ARE INJECTED, one per group, and they are the difference
+    // between this shader linking in 3 seconds and 64. The driver's backend does not care
+    // how many groups a frame USES -- it optimises everything worldMap can reach, at every
+    // call site, and the cost compounds: ocean+glass links in 3.5s, adding solids and
+    // Quaternion Julia takes it to 25s, all five to 64s. (Not loop unrolling -- rewriting
+    // every march bound as a uniform, which is unrollable-proof, changed nothing.) So the
+    // groups that have not joined are #if'd out of existence before the source is compiled,
+    // and worldProgFor builds one program per COMBINATION.
     const FS_WORLD = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uZoom;
@@ -1055,6 +1063,7 @@
     // local units through world space, overshoots, and punches holes in the object — which
     // reads as a broken shader rather than as a missing factor. worldprobe pins it.
     float glassDE(vec3 p){
+#if W_GB
       vec3 pl = (p - uGbPlace.xyz)/uGbPlace.w;
       float d = 1e9;
       for (int i = 0; i < 5; i++){
@@ -1062,6 +1071,9 @@
         d = min(d, length(pl - ballAt(i, uGbTime)) - uGbRad);
       }
       return d*uGbPlace.w;
+#else
+      return 1e9;
+#endif
     }
     // Bouncing solids, verbatim from FS_SOLIDS: the bodies carry a quaternion, and an
     // implicit surface has no vertices to hold an orientation, so each SAMPLE is un-rotated
@@ -1078,6 +1090,7 @@
       return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
     }
     float solidsDE(vec3 p){
+#if W_SD
       vec3 pl = (p - uSdPlace.xyz)/uSdPlace.w;
       float d = 1e9; int n = int(uSdCount);
       for (int i = 0; i < 8; i++){
@@ -1085,6 +1098,9 @@
         d = min(d, shapeDist(int(uSdShape[i]), toBody(uSdQuat[i], pl - uSdPos[i].xyz), uSdPos[i].w));
       }
       return d*uSdPlace.w;
+#else
+      return 1e9;
+#endif
     }
     // Quaternion Julia, verbatim from FS_QJULIA.
     vec4 qsqr(vec4 a){ return vec4(a.x*a.x - dot(a.yzw, a.yzw), 2.0*a.x*a.yzw); }
@@ -1103,6 +1119,7 @@
       return 0.25*sqrt(mz2/md2)*log(max(mz2, 1e-12));
     }
     float qjuliaDE(vec3 p){
+#if W_QJ
       vec3 pl = (p - uQjPlace.xyz)/uQjPlace.w;
       // THE OBJECT TUMBLES HERE. Standalone, this effect orbits its CAMERA about the solid;
       // in a shared world the camera belongs to everyone, so the same rotation has to move
@@ -1117,6 +1134,9 @@
       float br = length(pl) - 2.0;
       if (br > 0.0) return br*uQjPlace.w;
       return qjDE(qjLift(pl, uQjSlice, cos(uQjCut), sin(uQjCut)), uQjC, int(uQjIter))*uQjPlace.w;
+#else
+      return 1e9;
+#endif
     }
     // Vector balls, and the one participant that needed NEW geometry. Standalone it is a
     // projected sprite rasteriser -- it never had a distance function, it z-sorts discs --
@@ -1146,6 +1166,7 @@
       return vec3(cos(a)*0.95, (u - 0.5)*3.0, sin(a)*0.95);
     }
     float vballsDE(vec3 p){
+#if W_VB
       vec3 pl = (p - uVbPlace.xyz)/uVbPlace.w;
       // UN-TUMBLE THE SAMPLE rather than rotating 48 centres: the formation turns as one
       // rigid body, so one inverse rotation of the point replaces N of the constellation.
@@ -1166,15 +1187,26 @@
         d = min(d, length(q - vbForm(float(i), uVbCount, int(uVbShape))) - uVbRad);
       }
       return d*uVbPlace.w;
+#else
+      return 1e9;
+#endif
     }
     // The SDF union. Returns distance and the ID of whatever is nearest. Each group is
     // gated by its own On uniform, so a kind that has not joined costs one compare.
     vec2 worldMap(vec3 p){
       float d = 1e9, id = 0.0;
+#if W_GB
       if (uGbOn > 0.5){ float g = glassDE(p); if (g < d){ d = g; id = uGbId; } }
+#endif
+#if W_SD
       if (uSdOn > 0.5){ float g = solidsDE(p); if (g < d){ d = g; id = uSdId; } }
+#endif
+#if W_QJ
       if (uQjOn > 0.5){ float g = qjuliaDE(p); if (g < d){ d = g; id = uQjId; } }
+#endif
+#if W_VB
       if (uVbOn > 0.5){ float g = vballsDE(p); if (g < d){ d = g; id = uVbId; } }
+#endif
       return vec2(d, id);
     }
     vec3 sdfNormal(vec3 p){
@@ -1300,6 +1332,10 @@
           heat = mix(heat, envRay(p, reflect(rd, n))/(1.0 + t*t*0.0016), w);
         }
         heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);      // the bright line at the horizon
+#if !W_GB
+      } else {
+        heat = shade0(id, ro + rd*t, rd, t);
+#else
       } else if (!(id == uGbId && uGbOn > 0.5)){
         // Solids and Quaternion Julia are opaque and shade exactly as they do standalone.
         // They are in the world to be SEEN by the reflective ones and to occlude them --
@@ -1342,6 +1378,7 @@
                + (0.14 + uGbGlow*0.9)*rim;
         }
       }
+#endif
       o = vec4(clamp(heat, 0.0, 0.92), id/255.0, 0.0, 1.0);
     }`;
     // Hand one layer its own pixels out of the world G-buffer. Everything downstream —

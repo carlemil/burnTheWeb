@@ -112,7 +112,8 @@ const ok = (name, cond, detail) => {
        b.indexOf("(p - " + pl + ".xyz)/" + pl + ".w") >= 0);
     // EVERY return path, including qjuliaDE's bounding-sphere shortcut -- that one is the
     // easy miss, because it reads as a plain early-out rather than as a distance.
-    const rets = b.match(/return [^;]+;/g) || [];
+    // The #else stub is a return that must NOT be scaled -- 1e9 means "not here".
+    const rets = (b.match(/return [^;]+;/g) || []).filter(r => r.indexOf("1e9") < 0);
     const scaled = rets.filter(r => r.indexOf(pl + ".w") >= 0);
     ok(fn + " multiplies EVERY returned distance back by it",
        rets.length > 0 && scaled.length === rets.length,
@@ -143,10 +144,13 @@ const ok = (name, cond, detail) => {
      bare.indexOf("worldPlan = planWorld(live)") >= 0 &&
      bare.indexOf("worldPlan = planWorld(live)") < bare.indexOf("for (let li = 0"),
      "renderPrevScene calls this a second time per frame with a different stack");
-  ok("the world is drawn before the layer loop", bare.indexOf("glWorldDraw(worldPlan, dt)") >= 0 &&
-     bare.indexOf("glWorldDraw(worldPlan, dt)") < bare.indexOf("for (let li = 0"));
-  ok("...and it is handed the REAL dt, not 0", /glWorldDraw\(worldPlan, dt\)/.test(rsc),
+  ok("the world is drawn before the layer loop", bare.indexOf("glWorldDraw(worldPlan, dt, P)") >= 0 &&
+     bare.indexOf("glWorldDraw(worldPlan, dt, P)") < bare.indexOf("for (let li = 0"));
+  ok("...and it is handed the REAL dt, not 0", rsc.indexOf("glWorldDraw(worldPlan, dt, P)") >= 0,
      "a joined layer's fx.draw never runs, so this is the only place its clock advances");
+  ok("a world with no program yet falls back to the layers drawing themselves",
+     /if \(!P \|\| !P\.p\) worldPlan = null;/.test(rsc),
+     "otherwise the tab freezes for the length of the link");
   const draw = slice("  function glWorldDraw(", "  function glWorldPick(");
   ok("the ocean's clock is advanced there", /oceanSeed\(dt\)/.test(draw));
   ok("and the glass ball's", /glassSeed\(dt\)/.test(draw));
@@ -176,6 +180,48 @@ const ok = (name, cond, detail) => {
      owners.slice().sort().join(",") === EXPECT.join(","), owners.join(",") || "none");
   for (const flight of ["mandelbulb", "menger", "torus"])
     ok(flight + " cannot join -- it is flown from the inside", owners.indexOf(flight) < 0);
+}
+
+// --- 6. the startup cost, which is the bug this section exists for -----------------
+// The world shader is enormous and the driver's backend optimises everything it can reach,
+// not what a frame uses: ocean+glass links in 3.5s, all five in 64s. Linking it at boot
+// froze the page for over two minutes. Both halves of the fix are pinned here because both
+// failed silently the first time.
+{
+  const init = slice("  function initGL() {", "  function glResize(");
+  ok("initGL does NOT build the world program", init.indexOf("camProg(VS_QUAD, FS_WORLD") < 0,
+     "linking it at boot cost every visitor up to 64 seconds of frozen page");
+  ok("...but it does hand the sources out", /worldVs = VS_QUAD; worldFsBase = FS_WORLD;/.test(init),
+     "every FS_*/VS_QUAD constant is local to initGL, so a builder outside it sees none of them");
+
+  // `var` AND no initialiser. initGL() is called from palette.js, two slices above the
+  // pipeline, so a `let` is a TDZ crash and a `var` WITH an initialiser is worse: the
+  // hoisted binding lets initGL assign, then the declaration runs later and wipes it, and
+  // the shader compiles from an empty string. Both happened.
+  // indexOf, not a regex -- see the note above about escapes in this file. Each of these
+  // must read exactly "var <name>;" with nothing after it.
+  for (const v of ["worldProgs", "worldPar", "worldVs, worldFsBase"]) {
+    const nm = v.split(",")[0];
+    ok(nm + " is declared with var, not let", src.indexOf("let " + nm) < 0,
+       "initGL() is called from palette.js, two slices above -- a let is a TDZ crash");
+    ok(nm + " carries NO initialiser", src.indexOf("var " + v + ";") >= 0,
+       "a var WITH one is worse: initGL assigns, then this line runs later and wipes it");
+  }
+
+
+  const wpf = slice("  function worldProgFor(", "  // `dt` is not optional.");
+  ok("the program is keyed by the COMBINATION of joined groups",
+     /\["gb", "sd", "qj", "vb"\]\.filter/.test(wpf), "so two effects never pay for the other three");
+  ok("LINK_STATUS is not read until the driver says it is done",
+     wpf.indexOf("COMPLETION_STATUS_KHR") < wpf.indexOf("gl.LINK_STATUS"),
+     "reading it early IS the stall -- it blocks until the link finishes");
+  ok("a failed link is remembered, not retried every frame", /e\.prog = \{ p: null/.test(wpf));
+
+  const ws = slice("  function worldSource(", "  // Returns the linked program");
+  ok("the defines are injected after #version, which must stay line 1",
+     /replace\("#version 300 es" \+ WNL, "#version 300 es" \+ def\)/.test(ws));
+  ok("...and are built without a newline ESCAPE", /String\.fromCharCode\(10\)/.test(src),
+     "an escaped newline written into this file has collapsed into a real one four times");
 }
 
 console.log("");

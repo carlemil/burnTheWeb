@@ -151,6 +151,22 @@ it renders unchanged.
   outputting the hit test alone) and the picture showed nothing. Its `uReflect` is also
   two-part — physical up to 1, lifting toward a flat mirror above — because at this camera
   height the near sea is viewed far too steeply for the honest amount to read.
+- **THE WORLD PROGRAM IS NEVER BUILT AT STARTUP.** The driver's backend optimises everything
+  `worldMap` can reach, not what a frame uses, and the cost compounds: ocean+glass links in
+  3.5 s, +solids+qjulia 25 s, all five **64 s** — synchronously, at boot, which is the hang
+  v1.37.0 shipped. (Not loop unrolling: rewriting every march bound as a uniform changed
+  nothing.) Two fixes, both needed. **`#if W_GB/W_SD/W_QJ/W_VB` gate every group** and
+  `worldProgFor` assembles one program per COMBINATION, so two effects never pay for the other
+  three; and the link is **asynchronous** via `KHR_parallel_shader_compile` —
+  `COMPLETION_STATUS_KHR` is polled and `LINK_STATUS` is not read until it says done (reading
+  it early IS the stall). `planWorld`'s result is dropped while the program is pending, so the
+  joined layers draw themselves for a few frames and the world appears when ready.
+- **`worldProgs`/`worldPar`/`worldVs`/`worldFsBase` are `var` WITH NO INITIALISER**, and both
+  halves cost a bug. `initGL()` is called from `palette.js`, two slices above the pipeline: a
+  `let` is a TDZ crash (blank page), and a `var` *with* an initialiser is worse because it
+  fails silently — initGL assigns, the declaration line runs later and wipes it, and the
+  shader compiles from an empty string (`1:1 syntax error` every frame, black canvas). Every
+  `FS_*`/`VS_QUAD` is **local to initGL**, which is why it hands the sources out.
 - **`WORLD_KINDS` is the roster**: `ocean`, `glass`, `solids`, `qjulia`, `vballs`. One layer
   per kind (first in stack order); a second Glass ball layer renders standalone. The interior
   flights can never be added — they have nowhere to stand in someone else's world, and
@@ -1651,6 +1667,13 @@ Plasma + Fire ~3/4. **Re-run a mismatch 2–3 times.**
 shader effects are bit-reproducible; **point effects are not** — gate those on logic. **Inject
 before the app**, into `<head>`. **Do not clear the rAF queue** — `frame()` re-arms itself. Stub
 `Math.random`; read pixels with `readPixels` in the **same task** as the last frame.
+
+**A SYNCHRONOUS STALL IS INVISIBLE TO EVERY HEADLESS CHECK EXCEPT THE WALL CLOCK.** v1.37.0
+linked a shader at boot that the driver took 64 seconds to optimise. No error, DOM fine, every
+probe green — and the browser checks passed too, reading "17 frames, 45 fps", because
+`--virtual-time-budget` simply waits through a blocking call. **`tools/startup-check.sh`** is
+the gate: real GPU, real seconds, fails past 20. `/deploy` runs it. The cause and the two
+fixes are under *The shared 3D world*.
 
 **A CSS TRANSITION DOES NOT ADVANCE UNDER VIRTUAL TIME.** It runs on real time, which
 `--virtual-time-budget` skips past, so a fade read 400 virtual ms after the class goes on

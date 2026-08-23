@@ -591,13 +591,15 @@
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPos", "uFwd", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.torus = camProg(VS_QUAD, FS_TORUS, ["uSize", "uPos", "uFwd", "uRing", "uTube", "uTwist", "uFlute", "uGlow", "uZoom"]);
-    // camProg, so the owning layer's camera rotation, zoom and FOV orbit the whole world.
-    glProg.world = camProg(VS_QUAD, FS_WORLD, ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
-      "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
-      "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace",
-      "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
-      "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace",
-      "uVbOn", "uVbId", "uVbPhase", "uVbCount", "uVbShape", "uVbRad", "uVbGlow", "uVbPlace"]);
+    // NOT the world program: it is built lazily, per combination of joined effects, and
+    // linked off the critical path (worldProgFor). Linking it here cost every visitor 3.5
+    // seconds of frozen startup at best and 64 at worst, for a shader most scenes never use.
+    //
+    // The SOURCES have to be handed out, though: every FS_*/VS_QUAD constant is local to
+    // initGL, so a builder living outside it sees none of them. (camGlsl/camProg are module
+    // scope and need no help.) A lost context takes every cached program with it.
+    worldVs = VS_QUAD; worldFsBase = FS_WORLD;
+    worldProgs = {}; worldPar = null;
     glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
@@ -1324,14 +1326,86 @@
   // Draw the world once, into glTex.world. The OWNER — the lowest joined layer — has
   // already been installed by the caller, so camRX/camRY/camRZ, camFov and zoom are its
   // own: the shared camera is a real camera the user can still fly, not a fixed one.
+  // ---- the world program: lazy, per combination, and linked in the background ---------
+  // THE BACKEND OPTIMISES EVERYTHING THE SHADER CAN REACH, not what a frame uses. Measured
+  // on this driver: ocean+glass links in 3.5s, +solids+qjulia 25s, all five 64s. Building it
+  // at startup therefore froze the page for a minute on a feature almost no scene enables --
+  // which is exactly what it did, and what this replaces.
+  //
+  // Two fixes, both needed. The source is assembled per COMBINATION with the absent groups
+  // #if'd out, so a scene using two effects never pays for the other three. And the link is
+  // ASYNCHRONOUS where KHR_parallel_shader_compile exists: `planWorld` reports nothing until
+  // the program is ready, so the joined layers keep drawing themselves and the world simply
+  // appears a few seconds later instead of freezing the tab.
+  // `var` AND NO INITIALISER, both load-bearing, and this cost two bugs to get right.
+  // `initGL()` is called from palette.js -- two slices ABOVE this one -- so a `let` here
+  // leaves these in the temporal dead zone when it runs ("Cannot access 'worldProgs' before
+  // initialization", i.e. a blank page). And a `var` WITH an initialiser is worse, because
+  // it fails silently: the hoisted binding lets initGL assign fine, and then this line
+  // executes later and wipes it, so the world shader compiles from an empty string and
+  // throws `1:1 syntax error` on every frame. Exactly the trap bindFbo's curFbo documents.
+  // initGL is the one place these are set.
+  var worldProgs;                       // "gb|sd" -> { p, pending } | { p, prog }
+  var worldPar;                         // the parallel-compile extension, looked up once
+  var worldVs, worldFsBase;             // shader sources -- they are local to initGL
+  const WORLD_UNIFORMS = ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
+    "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
+    "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace",
+    "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
+    "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace",
+    "uVbOn", "uVbId", "uVbPhase", "uVbCount", "uVbShape", "uVbRad", "uVbGlow", "uVbPlace"];
+  // The defines go immediately after #version, which must stay the very first line of a
+  // GLSL ES 3.0 source. Built with fromCharCode rather than an escape: this file is edited
+  // through shell heredocs and a written-out newline escape has collapsed into a REAL
+  // newline four times in one sitting, each time breaking the string it sat in.
+  const WNL = String.fromCharCode(10);
+  function worldSource(key) {
+    const on = f => (key.indexOf(f) >= 0 ? "1" : "0");
+    const def = WNL + "#define W_GB " + on("gb")
+              + WNL + "#define W_SD " + on("sd")
+              + WNL + "#define W_QJ " + on("qj")
+              + WNL + "#define W_VB " + on("vb") + WNL;
+    return worldFsBase.replace("#version 300 es" + WNL, "#version 300 es" + def);
+  }
+  // Returns the linked program, or null while it is still being built.
+  function worldProgFor(plan) {
+    const key = ["gb", "sd", "qj", "vb"].filter(k => plan[k]).join("|") || "oc";
+    let e = worldProgs[key];
+    if (e && e.prog) return e.prog;
+    if (!e) {
+        if (worldPar === null) worldPar = gl.getExtension("KHR_parallel_shader_compile") || false;
+      const vs = glCompile(gl.VERTEX_SHADER, worldVs);
+      // Same rewrite camProg does, so the shared camera still applies.
+      const fsSrc = worldSource(key).replace(/gl_FragCoord/g, "fragCam")
+        .replace("void main(){", camGlsl() + WNL + "    void main(){ vec4 fragCam = camFrag4();");
+      const fs = glCompile(gl.FRAGMENT_SHADER, fsSrc);
+      const p = gl.createProgram();
+      gl.attachShader(p, vs); gl.attachShader(p, fs);
+      gl.linkProgram(p);                 // do NOT read LINK_STATUS yet -- that is the stall
+      e = worldProgs[key] = { p, pending: true };
+    }
+    // Poll. Without the extension there is no way to ask, so take the hit once, here, rather
+    // than at startup: the user has just opted in and a pause they caused is legible.
+    if (worldPar && !gl.getProgramParameter(e.p, worldPar.COMPLETION_STATUS_KHR)) return null;
+    if (!gl.getProgramParameter(e.p, gl.LINK_STATUS)) {
+      console.error("world program link failed: " + gl.getProgramInfoLog(e.p));
+      e.prog = { p: null, u: {} };       // remember the failure; never retry every frame
+      return null;
+    }
+    const u = {};
+    for (const n of WORLD_UNIFORMS.concat(["uCam", "uCamSize"])) u[n] = gl.getUniformLocation(e.p, n);
+    e.prog = { p: e.p, u };
+    e.pending = false;
+    return e.prog;
+  }
+
   // `dt` is not optional. A joined layer's fx.draw(dt) never runs — that is the whole
   // point — so this is the ONLY place its clock still advances. Passing 0 here freezes the
   // effect: the waves stop moving and the balls stop drifting, on geometry that otherwise
   // renders perfectly, which is a hard thing to see in a screenshot.
-  function glWorldDraw(plan, dt) {
+  function glWorldDraw(plan, dt, P) {
     bindFbo(glFbo.world, fw, fh);
     gl.disable(gl.BLEND);
-    const P = glProg.world;
     gl.useProgram(P.p);
     gl.uniform2f(P.u.uSize, fw, fh);
     if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
@@ -1427,9 +1501,15 @@
     // the lowest joined layer -- is installed first, because its camera IS the world's.
     worldPlan = planWorld(live);
     if (worldPlan) {
-      const owner = worldPlan.ids.keys().next().value;
-      installStackItem(owner); installPhase(owner);
-      glWorldDraw(worldPlan, dt);
+      // Null while the program is still linking -- the joined layers then draw themselves
+      // for a few frames instead of the tab freezing, and the world appears when it is ready.
+      const P = worldProgFor(worldPlan);
+      if (!P || !P.p) worldPlan = null;
+      else {
+        const owner = worldPlan.ids.keys().next().value;
+        installStackItem(owner); installPhase(owner);
+        glWorldDraw(worldPlan, dt, P);
+      }
     }
     let acc = 0;
     bindFbo(glFbo.color[0], fw, fh);

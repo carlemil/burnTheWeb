@@ -126,7 +126,19 @@ Or in one go, so a new probe is picked up automatically:
 for f in tools/*probe.js; do node "$f" dev-index.html >/dev/null || echo "RED: $f"; done
 ```
 
-If any probe fails, **stop and report it** rather than deploying.
+Then the **startup-time gate**, which no probe can stand in for:
+
+```
+bash tools/startup-check.sh dev-index.html
+```
+
+It loads the built page headless on the real GPU and fails if the first frame takes more
+than 20 seconds of **wall-clock** time. v1.37.0 shipped a shader the driver took 64 seconds
+to link at boot — the page looked hung, every probe was green, and the browser checks
+passed too, because `--virtual-time-budget` waits through a synchronous stall. Only the
+clock on the wall sees a hang.
+
+If any probe or the gate fails, **stop and report it** rather than deploying.
 
 ## 5. Commit, tag and push
 
