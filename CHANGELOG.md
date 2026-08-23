@@ -14,6 +14,17 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.40.0] — 2026-08-23
+
+### Changed
+
+- **Every layer's block is now three tabs: Effect, Filters, Palette.** Effect holds the
+  effect's own sliders, the Orbit editor and Reset; Filters holds that layer's filter chain;
+  Palette holds the swatch strip, Reverse colours, Background, the palette cycle and Banding.
+  The open tab is the same for every layer, so selecting a different layer keeps you on the
+  same tab; popped-out slider boxes stay in view whichever tab is open. The tabs replace the
+  palette fold chevron from 1.30.0 — a tab is a fold with a name.
+
 ## [1.39.0] — 2026-08-23
 
 ### Added
