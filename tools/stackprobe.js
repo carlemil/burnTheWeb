@@ -84,7 +84,7 @@ const ordered = (body, ...needles) => {
 // ---- 2. the persistence edge of the stack ----------------------------------------
 {
   const itemOut = noComments(cut("  function stackItemOut(", "  function stackOut()"));
-  for (const k of ["anim", "phase", "fxOff", "solids", "boids", "tetras"])
+  for (const k of ["anim", "phase", "fxOff", "solids", "boids", "tetras", "worldFade"])
     ok(!new RegExp("\\b" + k + "\\s*:").test(itemOut),
        "stackItemOut never serialises `" + k + "` (transient / runtime-only)");
 

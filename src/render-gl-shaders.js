@@ -1384,6 +1384,14 @@
     // Hand one layer its own pixels out of the world G-buffer. Everything downstream —
     // feedback, palette, post chain, blend — then behaves exactly as it does for an effect
     // that drew itself.
+    // Crossfade between a layer's own heat and its world slice, for the handover while the
+    // world program links (and back again when a layer leaves). mix in HEAT space, before the
+    // palette, so the fade is one picture becoming another rather than two pictures added.
+    const FS_WORLDMIX = `#version 300 es
+    precision highp float;
+    uniform sampler2D uA; uniform sampler2D uB; uniform float uT;
+    in vec2 vUv; out vec4 o;
+    void main(){ o = vec4(mix(texture(uA, vUv).r, texture(uB, vUv).r, uT), 0.0, 0.0, 1.0); }`;
     const FS_WORLDPICK = `#version 300 es
     precision highp float;
     uniform sampler2D uSrc; uniform vec2 uSize; uniform float uId;

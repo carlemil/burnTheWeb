@@ -157,7 +157,22 @@ const ok = (name, cond, detail) => {
 
   const rlh = noComments(slice("  function renderLayerHeat(", "  // Map a layer's heat"));
   ok("a joined layer picks instead of drawing itself",
-     /if \(wid\) glWorldPick\(wid\);/.test(rlh) && /else \{ fx\.draw\(dt\); capturePhase\(L\); \}/.test(rlh));
+     rlh.indexOf("if (fade >= 1) glWorldPick(wid);") >= 0 &&
+     rlh.indexOf("else if (fade <= 0) { fx.draw(dt); capturePhase(L); }") >= 0);
+  // THE HANDOVER CROSSFADE. The switch between a layer's own picture and its world slice
+  // was a hard cut right at the moment the feature turned on. Mid-fade both are rendered
+  // and mixed in heat space; the two clock rules below are what keep that honest.
+  ok("mid-fade, the own draw lands in a side buffer so the pick can keep glTex.layer",
+     rlh.indexOf("glFbo.layer = glFbo.worldOwn; glTex.layer = glTex.worldOwn;") >= 0 &&
+     rlh.indexOf("glFbo.layer = swap; glTex.layer = swapT;") >= 0);
+  ok("...and the own draw gets dt 0 while a world is live, so the clocks are not stepped twice",
+     rlh.indexOf("fx.draw(wid ? 0 : dt);") >= 0, "the world pass already advanced them");
+  ok("...but still advances them when no world is ready", rlh.indexOf("if (!wid) capturePhase(L);") >= 0);
+  const fs = slice("  const WORLD_FADE_S", "  function glWorldMix(");
+  ok("a layer with no fade state SNAPS to its current side",
+     /L\.worldFade == null \? \(inWorld \? 1 : 0\)/.test(fs),
+     "a scene that loads already joined must not fade in from nothing");
+  ok("the fade is clamped to 0..1", /Math\.max\(0, Math\.min\(1,/.test(fs));
 }
 
 // --- 5. joining is opt-in, so every existing scene is unchanged ------------------

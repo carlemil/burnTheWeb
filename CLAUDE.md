@@ -161,6 +161,15 @@ it renders unchanged.
   `COMPLETION_STATUS_KHR` is polled and `LINK_STATUS` is not read until it says done (reading
   it early IS the stall). `planWorld`'s result is dropped while the program is pending, so the
   joined layers draw themselves for a few frames and the world appears when ready.
+- **The handover is a CROSSFADE, not a cut.** `L.worldFade` (transient, on the layer object,
+  `WORLD_FADE_S` 0.45 s each way) eases toward 1 while the layer is in a *ready* world and
+  toward 0 otherwise; strictly between, `renderLayerHeat` renders BOTH — the own draw into
+  `glTex.worldOwn` (swapping `glFbo.layer` for the call, since `fx.draw` writes it and the
+  pick needs it), then the pick — and `FS_WORLDMIX` blends them in heat space so it is one
+  picture becoming another rather than two added. **Clock rule**: while a world is live the own
+  draw gets `dt` 0 (the world pass already advanced the layer's clocks); with no world ready it
+  gets the real `dt` and captures. A layer with no fade state **snaps** to its side, so a
+  scene that loads already joined does not fade in from black.
 - **`worldProgs`/`worldPar`/`worldVs`/`worldFsBase` are `var` WITH NO INITIALISER**, and both
   halves cost a bug. `initGL()` is called from `palette.js`, two slices above the pipeline: a
   `let` is a TDZ crash (blank page), and a `var` *with* an initialiser is worse because it

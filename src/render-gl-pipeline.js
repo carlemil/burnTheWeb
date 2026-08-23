@@ -601,6 +601,7 @@
     worldVs = VS_QUAD; worldFsBase = FS_WORLD;
     worldProgs = {}; worldPar = null;
     glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
+    glProg.worldmix = makeProg(VS_QUAD, FS_WORLDMIX, ["uA", "uB", "uT"]);
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
@@ -722,6 +723,9 @@
     // label and interpolating two of them invents a third that belongs to no layer.
     glTex.world = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glFbo.world = createFbo(glTex.world);
+    // A layer's OWN draw, kept aside for the length of a world crossfade (see worldFade).
+    glTex.worldOwn = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    glFbo.worldOwn = createFbo(glTex.worldOwn);
     glTex.screen = [
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
@@ -778,6 +782,7 @@
     resizeTex(glTex.color[1], fw, fh);
     resizeTex(glTex.layerCol, fw, fh);
     resizeTex(glTex.world, fw, fh);
+    resizeTex(glTex.worldOwn, fw, fh);
     // Display-sized, not fire-sized — see the declaration. Guarded because glResize
     // can run before the canvas has been laid out.
     const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
@@ -1194,8 +1199,22 @@
     // with every other participant's, so all that is left is to take its own pixels out of
     // the shared G-buffer. Everything below this line is identical either way.
     const wid = worldPlan && worldPlan.ids.get(L);
-    if (wid) glWorldPick(wid);
-    else { fx.draw(dt); capturePhase(L); }         // → glTex.layer (params installed above)
+    const fade = worldFadeStep(L, !!wid, dt);
+    if (fade >= 1) glWorldPick(wid);                               // fully in the world
+    else if (fade <= 0) { fx.draw(dt); capturePhase(L); }          // fully its own (→ glTex.layer)
+    else {
+      // MID-FADE: both pictures, then mix. The own draw goes to a side buffer, because
+      // fx.draw writes glTex.layer and the pick needs that as its target. The own draw still
+      // advances the layer's clocks when no world is ready (wid null); when one is, the world
+      // pass already advanced them and this draw runs with dt 0 so they are not stepped twice.
+      const swap = glFbo.layer, swapT = glTex.layer;
+      glFbo.layer = glFbo.worldOwn; glTex.layer = glTex.worldOwn;
+      fx.draw(wid ? 0 : dt); if (!wid) capturePhase(L);
+      glFbo.layer = swap; glTex.layer = swapT;
+      if (wid) glWorldPick(wid);
+      else { bindFbo(glFbo.layer, fw, fh); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+      glWorldMix(glTex.worldOwn, fade);
+    }
     if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
     let cur = layerCur[slot];
     for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
@@ -1484,6 +1503,31 @@
     bindTexUnit(0, glTex.world); gl.uniform1i(P.u.uSrc, 0);
     gl.uniform2f(P.u.uSize, fw, fh);
     gl.uniform1f(P.u.uId, id);
+    drawQuad();
+  }
+  // ---- the handover crossfade -------------------------------------------------------
+  // A joined layer has two possible pictures: its own draw (what shows while the world
+  // program is still linking, or after it leaves the world) and its slice of the world. The
+  // switch between them used to be a cut -- the last frame of one, the first of the other --
+  // which read as a glitch exactly at the moment the feature turned on. `worldFade` holds a
+  // 0..1 blend per layer that eases toward 1 while the layer is in a ready world and toward
+  // 0 otherwise; while it is strictly between, BOTH pictures are rendered and mixed in heat
+  // space. Transient, per layer object: it is not scene data and it follows the layer.
+  const WORLD_FADE_S = 0.45;            // seconds, either direction
+  function worldFadeStep(L, inWorld, dt) {
+    const f = L.worldFade == null ? (inWorld ? 1 : 0) : L.worldFade;   // a fresh layer snaps
+    const g = Math.max(0, Math.min(1, f + (inWorld ? dt : -dt) / WORLD_FADE_S));
+    L.worldFade = g;
+    return g;
+  }
+  function glWorldMix(ownTex, t) {
+    bindFbo(glFbo.layer, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg.worldmix;
+    gl.useProgram(P.p);
+    bindTexUnit(0, ownTex); gl.uniform1i(P.u.uA, 0);
+    bindTexUnit(1, glTex.layer); gl.uniform1i(P.u.uB, 1);   // the pick already landed here
+    gl.uniform1f(P.u.uT, t);
     drawQuad();
   }
   // Has this layer joined the shared world? Same selected -> stored -> descriptor fallback
