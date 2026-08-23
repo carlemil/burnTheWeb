@@ -730,6 +730,7 @@
     for (const [pk, p] of posWas) {
       const i = pk.indexOf("/"), sPart = pk.slice(0, i), k2 = pk.slice(i + 1);
       if (sPart === "s") { brkPos.set(pk, p); continue; }
+      // "<slot>/layer" is a LAYER box (its whole settings block); it remaps with the rest.
       const n2 = fn(+sPart);
       if (n2 >= 0) brkPos.set(popKey(n2, k2), p);
     }
@@ -782,6 +783,15 @@
   }, true);
   function refreshBreakout() {
     let anyVisible = false;
+    // The LAYER boxes: a whole layer's settings block, open while its slot is in openSlots
+    // (the same set the rows' +/- toggles). Shown here so they go through the one layout
+    // pass with the slider boxes and snap on the same grid.
+    for (const box of breakout.querySelectorAll(".lyr-box")) {
+      const slot = +box.dataset.slot;
+      const vis = !!stack[slot] && openSlots.has(slot);
+      box.style.display = vis ? "" : "none";
+      if (vis) anyVisible = true;
+    }
     for (let slot = 0; slot < STACK_MAX; slot++) {
       const shown = shownKeysFor(slot);
       for (const key of POPPABLE) {

@@ -196,9 +196,45 @@
   // is nothing to rescue — and the hazard it guarded cannot recur, because both the rows and
   // the blocks outlive every call. Each block belongs to its own row permanently; this only
   // has to install it the first time.
+  // The block no longer lives in its row: it lives in a BOX IN THE GRID, like a popped
+  // slider, so a layer's whole settings panel can be dragged anywhere on screen and snapped.
+  // The wrapper is a `.ctl` with `data-slot`, which is all the break-out engine needs --
+  // selection on press (the capture-phase handler on #breakout), the owner line as a drag
+  // handle, layout and snap -- so the engine does not know it is holding a layer. Built
+  // once per slot, permanent, like the rows.
+  const lyrBoxes = [];
   function adoptLayerCtl(slot, row) {
     const block = blocks[slot];
-    if (block && row && block.parentNode !== row) row.appendChild(block);
+    if (!block) return;
+    let box = lyrBoxes[slot];
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "ctl poppable lyr-box";
+      box.dataset.slot = String(slot);
+      box.dataset.brk = slot + "/layer";           // the grid key, same shape as a slider's
+      const t = document.createElement("div");
+      t.className = "ctl-owner";
+      const ownTxt = document.createElement("span");
+      ownTxt.className = "own-txt";
+      t.appendChild(ownTxt);
+      // The same close/dock button a slider box carries, closing the layer from the box end.
+      const close = document.createElement("button");
+      close.type = "button"; close.className = "ctl-pop";
+      close.textContent = "−";
+      close.title = "Close this layer's settings";
+      close.setAttribute("aria-label", close.title);
+      close.addEventListener("click", e => { e.stopPropagation(); openSlots.delete(slot); syncStackUI(); });
+      t.appendChild(close);
+      box.appendChild(t);
+      box.appendChild(block);
+      makeBoxGrab(box, ownTxt);
+      breakout.appendChild(box);
+      lyrBoxes[slot] = box;
+    }
+    // The owner line names the layer and its effect; re-stamped every paint because both
+    // change under a reorder or an effect switch.
+    const L = stack[slot];
+    box.querySelector(".own-txt").textContent = "L" + (slot + 1) + (L ? " · " + EFFECTS[L.fx].name : "");
   }
   // The rows are a FIXED POOL of STACK_MAX, keyed by slot, built exactly once and never
   // destroyed — `lyrRows[slot] = {row, …}` holding each row's own widgets. syncStackUI
@@ -451,8 +487,14 @@
       // number can be open at once and a click meant to reach one layer's controls should not
       // rearrange the others. Unfolding does still select, so the layer you just opened to
       // look at is the one you are editing.
-      const chev = document.createElement("b");
-      chev.className = "lyr-chev";
+      // THE SAME +/- A SLIDER ROW CARRIES, on the right, and it does the same thing: opens
+      // this layer's settings as a box in the grid. It is the ONLY thing that opens a layer:
+      // selecting one does not, because any number can be open at once and a click meant to
+      // reach one layer's controls should not rearrange the others. Opening does still
+      // select, so the layer you just opened is the one you are editing.
+      const chev = document.createElement("button");
+      chev.type = "button";
+      chev.className = "ctl-pop lyr-pop";
       // stopPropagation on pointerdown, or the row's capture-phase handler would select first
       // and re-run syncStackUI underneath this click.
       chev.addEventListener("pointerdown", e => e.stopPropagation());
@@ -462,9 +504,9 @@
         if (openSlots.has(j)) { openSlots.delete(j); syncStackUI(); }
         else { openSlots.add(j); selectStack(j); syncStackUI(); }   // selectStack no-ops if already selected
       });
-      // A grid child, but an EXPLICITLY PLACED one (column 1 / row 1 — see .lyr-chev). Appended
-      // without placement it takes the next auto cell and shifts the chooser, the mute row and
-      // the blend row each one along, which visibly collapses the row.
+      // A grid child, EXPLICITLY PLACED (last column, row 1 -- see .lyr-pop). Appended without
+      // placement it takes the next auto cell and shifts the chooser, the mute row and the
+      // blend row each one along, which visibly collapses the row.
       row.appendChild(chev);
 
       lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev };
@@ -490,7 +532,7 @@
       const open = openSlots.has(slot);
       r.row.classList.toggle("sel", slot === stackSel);
       r.row.classList.toggle("muted", !!L.mute);
-      r.row.classList.toggle("folded", !open);
+      r.row.classList.toggle("open", open);
       setOff(r.grab, stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
@@ -501,8 +543,8 @@
       setOff(r.rm, stack.length <= 1);
       const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
       r.sel.value = bm.id; r.sel.title = bm.tip;
-      r.chev.textContent = open ? "▾" : "▸";
-      r.chev.title = open ? "Hide this layer's settings" : "Show this layer's settings";
+      r.chev.textContent = open ? "−" : "+";   // the same glyph pair a slider row shows
+      r.chev.title = open ? "Close this layer's settings" : "Open this layer's settings in the grid";
       r.chev.setAttribute("aria-label", r.chev.title);
       r.chev.setAttribute("aria-expanded", String(open));
       // Each layer's row carries ITS OWN controls, so a row reads as one complete object:
@@ -511,6 +553,7 @@
       adoptLayerCtl(slot, r.row);
     }
     setOff(el("addlayer"), stack.length >= STACK_MAX);
+    refreshBreakout();                 // the layer boxes show/hide with openSlots
     // The old box is empty now — hide the chrome rather than showing a stray heading over
     // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
     // first syncStackUI moves it into a row.

@@ -110,7 +110,7 @@ const ASSERT_JS = [
   "    ok(\"Effect is open and the other two hidden at rest\",",
   "       panes(\"fx\").every(function(n){ return !n.hidden; }) && panes(\"flt\").every(function(n){ return n.hidden; }) && panes(\"pal\").every(function(n){ return n.hidden; }));",
   "    // Unfold the first row so a tab is actually clickable, then click Palette on it.",
-  "    var chev = document.querySelector(\"#panel .lyr b.lyr-chev\"); if (chev) chev.click();",
+  "    var chev = document.querySelector(\"#panel .lyr button.lyr-pop\"); if (chev) chev.click();",
   "    var palBtn = [].slice.call(document.querySelectorAll(\"[data-k=tab-btn-pal]\")).filter(function(n){ return n.offsetParent !== null; })[0];",
   "    ok(\"a Palette tab is on screen once a row is unfolded\", !!palBtn);",
   "    if (palBtn) {",

@@ -60,7 +60,7 @@
      #help-btn opens the help panel, which the ☰ menu also offers) — only the chrome is gone,
      so nothing needs null-guarding. The first .box supplies its own top margin. */
   #panel h1, #panel .sub { display: none; }
-  #panel label, #menubar label { display: block; margin: 10px 0 3px; opacity: .85; }
+  #panel label, #menubar label, #breakout .lyr-box label { display: block; margin: 10px 0 3px; opacity: .85; }
   /* Control appearance is scoped to both the menu and the pop-out column so a
      control keeps its styling after it moves into a break-out box (#breakout). */
   #panel .val, #breakout .val, #menubar .val { float: right; color: #ffcf87; opacity: 1; }
@@ -98,7 +98,7 @@
      thumb pseudo-element, so a merely invisible thumb would still be draggable, and this
      also takes it out of the tab order and the a11y tree. */
   #panel .dual.single .thumb-hi, #breakout .dual.single .thumb-hi { display: none; }
-  #panel select, #menubar select {
+  #panel select, #menubar select, #breakout .lyr-box select {
     width: 100%;
     margin: 0;
     padding: 5px 7px;
@@ -109,7 +109,7 @@
     font: 12px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     cursor: pointer;
   }
-  #panel select option, #menubar select option { background: #1a0f08; color: #ffcf87; }
+  #panel select option, #menubar select option, #breakout .lyr-box select option { background: #1a0f08; color: #ffcf87; }
   /* Palette preview picker: a gradient swatch per palette, replacing the plain
      dropdown (the <select> stays as the value store, hidden once JS builds these). */
   /* ONE column: a swatch is a gradient with its name written over it, so width is what
@@ -224,7 +224,7 @@
   .pl-cyc:focus-visible {
     outline: 2px solid #ffb15a; outline-offset: 1px;
   }
-  #panel .check, #menubar .check {
+  #panel .check, #menubar .check, #breakout .lyr-box .check {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -232,7 +232,7 @@
     cursor: pointer;
     opacity: .9;
   }
-  #panel .check input, #menubar .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
+  #panel .check input, #menubar .check input, #breakout .lyr-box .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   /* Under "Auto-cycle scenes": the cycler is gated on the panel being hidden, and this is the
      one line that says so. Indented to the checkbox's label text (15px box + 8px gap). */
   #panel .cycle-note { margin: 2px 0 0 23px; font-size: 10px; opacity: .5; font-style: italic; }
@@ -875,7 +875,7 @@
     /* Three rows: the effect name gets a line of its own, the mute/gain/remove controls sit
        under it, and the blend mode has its own row below that. The name is the one thing you
        actually read when scanning a stack, so it never shares a line. */
-    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px;
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px;
     align-items: center;
     padding: 6px 7px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
     background: rgba(255, 140, 40, 0.05); cursor: pointer;
@@ -943,44 +943,41 @@
      under the header it belongs to.
      Keyed on the CLASS, not an id: there are STACK_MAX of them. Nothing inside carries an id
      either — see the template. */
-  /* Fold a layer shut without deselecting it — with the controls inline, an open layer is
-     tall and the rows below it are a long scroll away. The block is HIDDEN, never removed: it
-     stays in the row and in the document, so every ctl() lookup keeps working. */
-  /* The fold control, in the row's UPPER-LEFT CORNER, on EVERY row — clicking an unselected
-     layer's chevron selects it and opens it, so the same control both opens and closes.
-     Explicitly placed at column 1 / row 1, and that placement is what lets it be a grid child
-     at all: appended without one it takes the next auto cell and pushes the chooser, the mute
-     row and the blend row a cell along each, which visibly collapses the row.
-     `b.lyr-chev`, not `.lyr-chev`: `#panel .lyr b` gives every <b> in a row the mute/x button
-     chrome (border, background, `font: 10px/1`) and outranks a plain class selector, so a
-     class-only rule renders it as a 10px mark in a little box. The reset strips that chrome —
-     this is a marker, not a control to press. */
-  #panel .lyr b.lyr-chev {
-    grid-column: 1; grid-row: 1; justify-self: center; align-self: center;
-    width: 15px; height: 18px; cursor: pointer; color: #ffb15a; opacity: .8;
-    font: 20px/1 monospace; padding: 0; border: 0; background: none;   /* 2x, and not a button */
-    display: flex; align-items: center; justify-content: center; user-select: none;
+  /* THE +/- ON THE RIGHT of every row, the same control a slider row carries, doing the same
+     thing: it opens this layer's whole settings block as a BOX IN THE GRID beside the panel.
+     An explicitly placed grid child (last column, row 1), or it takes the next auto cell and
+     shifts the chooser, the mute row and the blend row along. `button.lyr-pop` at this
+     specificity because the generic panel button rule wants to dress it; the .ctl-pop
+     class supplies the +/- glyph exactly as it does on a slider row. */
+  #panel .lyr button.lyr-pop {
+    grid-column: 3; grid-row: 1; justify-self: end; align-self: center;
+    width: 16px; height: 16px; padding: 0; margin: 0;
   }
-  #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
+  /* The name stays in column 2 beside the button; the control row and the blend row span
+     BOTH content columns, so the third column only costs the name line its 16px. Without
+     these two the auto-placement packs them into column 2 and the row narrows and wraps. */
+  #panel .lyr > select.lyr-name { grid-column: 2; grid-row: 1; }
+  #panel .lyr > .lyr-ctl { grid-column: 2 / 4; grid-row: 2; }
+  #panel .lyr > .lyr-blend { grid-column: 2 / 4; grid-row: 3; }
   /* The three tabs at the top of a layer block: Effect / Filters / Palette. A strip of flat
      buttons over a hairline; the open one is brighter and carries the underline. They are
      <button>s inside a .lyr, so they need the same button-chrome reset the chevron does --
      `#panel .lyr b` does not apply (these are buttons), but the generic panel button rule
      further up gives them a border and fill that the strip must not have. */
-  #panel .lyr-tabs {
+  #panel .lyr-tabs, #breakout .lyr-box .lyr-tabs {
     display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
     margin: 4px 0 8px; border-bottom: 1px solid rgba(255, 140, 40, 0.28);
   }
-  #panel .lyr-tabs .lyr-tab {
+  #panel .lyr-tabs .lyr-tab, #breakout .lyr-box .lyr-tabs .lyr-tab {
     appearance: none; -webkit-appearance: none; width: auto; margin: 0;
     padding: 5px 0 6px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
     background: none; color: #ffb15a; opacity: .55; cursor: pointer;
     font: 10px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     letter-spacing: .12em; text-transform: uppercase;
   }
-  #panel .lyr-tabs .lyr-tab:hover { opacity: .85; background: none; }
-  #panel .lyr-tabs .lyr-tab.on { opacity: 1; border-bottom-color: #ff7a1a; color: #ffcf87; }
-  #panel .lyr-pane[hidden] { display: none; }
+  #panel .lyr-tabs .lyr-tab:hover, #breakout .lyr-box .lyr-tabs .lyr-tab:hover { opacity: .85; background: none; }
+  #panel .lyr-tabs .lyr-tab.on, #breakout .lyr-box .lyr-tabs .lyr-tab.on { opacity: 1; border-bottom-color: #ff7a1a; color: #ffcf87; }
+  #panel .lyr-pane[hidden], #breakout .lyr-box .lyr-pane[hidden] { display: none; }
   /* The trigger-section fold, on the "Triggers" heading inside a break-out box. Scoped
      to #breakout because that is the only place the trigger section exists. */
   #breakout .trig-chev {
@@ -999,25 +996,15 @@
   }
   /* ...so the handle starts below it. Every row has a chevron, so every handle drops a row. */
   #panel .lyr > .lyr-grab { grid-row: 2 / 4; }
-  #panel .lyr.folded > .lyrblock { display: none; }
-  #panel .lyr > .lyrblock {
-    grid-column: 1 / -1;
-    margin: 6px -7px -6px;                    /* out to the row's padding edges */
-    padding: 8px 8px 7px;
-    border-top: 1px solid rgba(255, 140, 40, 0.28);
-    background: rgba(0, 0, 0, 0.18);
-    border-radius: 0 0 6px 6px;
-    cursor: default;                          /* the ROW is clickable; its contents are not */
-  }
-  /* NOTHING overrides the row's padding-bottom. An OPEN row is squared off by the block's own
-     `margin-bottom: -6px` above, which lands its edge exactly on the border whether the row is
-     selected or not; a FOLDED row has no block, so the 6px padding is all that holds its floor
-     up. A `.lyr.sel { padding-bottom: 0 }` used to sit here, from when only the selected row
-     carried a block — same specificity as `.lyr.folded` and later in the file, so it won, and
-     selecting a folded row visibly shrank it by 6px. Any per-state padding here has to name
-     `:not(.folded)`. */
-  #panel .lyr > .lyrblock > label:first-child,
-  #panel .lyr > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
+  /* A LAYER BOX in the grid: the .lyrblock wrapped in a .ctl like a popped slider's, so the
+     break-out engine drags, snaps and selects it without knowing what it holds. Wider than a
+     slider box -- a whole layer's controls want the room -- and scrollable past the viewport
+     height, which a slider box never needs. The inner block keeps the control-appearance
+     rules that were scoped to `#panel .lyr > .lyrblock`, re-homed here. */
+  #breakout .ctl.lyr-box { width: 300px; max-height: calc(100vh - 72px); overflow-y: auto; overscroll-behavior: contain; }
+  #breakout .ctl.lyr-box > .lyrblock { cursor: default; }
+  #breakout .ctl.lyr-box > .lyrblock > label:first-child,
+  #breakout .ctl.lyr-box > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
   /* Emptied by the move: hide the heading rather than leave it over nothing. It stays in the
      DOM because it is where the blocks are parked between being built and being adopted into
      their rows, and it holds the two value-store <select>s. */
@@ -1051,86 +1038,86 @@
   #panel #addlayer.off { opacity: .4; cursor: default; }
   /* One column. Two columns fitted the checkboxes but not their names, and once each
      filter grew a foldable body there was nowhere sensible for it to open into. */
-  #panel .lyrblock [data-k="filterlist"] { margin: 2px 0 4px; }
+  #panel .lyrblock [data-k="filterlist"], #breakout .lyr-box .lyrblock [data-k="filterlist"] { margin: 2px 0 4px; }
   /* One filter: a <details> whose summary carries the chevron, the tick and the name,
      and whose body holds that filter's own params — so they fold away with it instead
      of stacking up in one long list below. */
-  #panel .filter-sec > summary {
+  #panel .filter-sec > summary, #breakout .lyr-box .filter-sec > summary {
     display: flex; align-items: center; gap: 6px;
     margin: 3px 0 0; padding: 1px 0; cursor: pointer; list-style: none;
   }
-  #panel .filter-sec > summary::-webkit-details-marker { display: none; }
-  #panel .filter-sec > summary::before {                                  /* 2x the old 11px */
+  #panel .filter-sec > summary::-webkit-details-marker, #breakout .lyr-box .filter-sec > summary::-webkit-details-marker { display: none; }
+  #panel .filter-sec > summary::before, #breakout .lyr-box .filter-sec > summary::before {                                  /* 2x the old 11px */
     content: "▸"; opacity: .75; font-size: 22px; line-height: 0; width: 14px;
     color: #ffb15a; display: inline-block; text-align: center;
   }
-  #panel .filter-sec[open] > summary::before { content: "▾"; }
-  #panel .filter-sec > summary input { margin: 0; }
-  #panel .filter-sec > summary .filter-name { flex: 1 1 auto; min-width: 0; }
+  #panel .filter-sec[open] > summary::before, #breakout .lyr-box .filter-sec[open] > summary::before { content: "▾"; }
+  #panel .filter-sec > summary input, #breakout .lyr-box .filter-sec > summary input { margin: 0; }
+  #panel .filter-sec > summary .filter-name, #breakout .lyr-box .filter-sec > summary .filter-name { flex: 1 1 auto; min-width: 0; }
   /* Nothing ticked ⇒ nothing to configure: grey the row and drop the chevron, so an
      empty body can't be opened onto. */
-  #panel .filter-sec.idle > summary { opacity: .62; }
-  #panel .filter-sec.idle > summary::before { visibility: hidden; }
-  #panel .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
+  #panel .filter-sec.idle > summary, #breakout .lyr-box .filter-sec.idle > summary { opacity: .62; }
+  #panel .filter-sec.idle > summary::before, #breakout .lyr-box .filter-sec.idle > summary::before { visibility: hidden; }
+  #panel .filter-sec.off > summary, #breakout .lyr-box .filter-sec.off > summary { opacity: .35; }        /* not available on Canvas2D */
   /* The bypass eye: mute a filter in place, keeping its position in the chain and its
      settings. ✕ beside it REMOVES; this only silences, which is what you want when you are
      working out what a filter is contributing. Open eye = acting, closed eye = muted. */
-  #panel .filter-sec > summary .filter-by {
+  #panel .filter-sec > summary .filter-by, #breakout .lyr-box .filter-sec > summary .filter-by {
     display: inline-flex; align-items: center; justify-content: center;
     flex: 0 0 auto; width: 16px; height: 16px; padding: 0; border: 0; background: none;
     color: #ffb15a; font: 13px/1 monospace; cursor: pointer; opacity: .8;
   }
-  #panel .filter-sec > summary .filter-by > svg { display: block; }
-  #panel .filter-sec > summary .filter-by:hover { opacity: 1; }
+  #panel .filter-sec > summary .filter-by > svg, #breakout .lyr-box .filter-sec > summary .filter-by > svg { display: block; }
+  #panel .filter-sec > summary .filter-by:hover, #breakout .lyr-box .filter-sec > summary .filter-by:hover { opacity: 1; }
   /* A muted row stays legible — it is still part of the chain and you still want to read and
      drag it — but its name is struck through, the same "off but present" language the mute
      button uses on a layer. */
-  #panel .filter-sec.bypassed > summary .filter-name { text-decoration: line-through; opacity: .55; }
-  #panel .filter-sec.bypassed > summary .filter-by { opacity: .55; }
-  #panel .filter-sec .filter-body { padding: 0 0 4px 14px; }
+  #panel .filter-sec.bypassed > summary .filter-name, #breakout .lyr-box .filter-sec.bypassed > summary .filter-name { text-decoration: line-through; opacity: .55; }
+  #panel .filter-sec.bypassed > summary .filter-by, #breakout .lyr-box .filter-sec.bypassed > summary .filter-by { opacity: .55; }
+  #panel .filter-sec .filter-body, #breakout .lyr-box .filter-sec .filter-body { padding: 0 0 4px 14px; }
   /* ---- the chain: drag handle, remove, and the Add button --------------------------
      The list shows only the filters you have added, in the order they run. The handle is
      the same ⠿ the layer rows use, and the drag is the same gesture (see makeFilterGrab). */
-  #panel .filter-grab {
+  #panel .filter-grab, #breakout .lyr-box .filter-grab {
     flex: 0 0 auto; width: 13px; cursor: grab; color: #ffb15a; opacity: .5;
     font-size: 11px; line-height: 1; text-align: center; touch-action: none;
   }
-  #panel .filter-grab:hover { opacity: 1; }
-  #panel .filter-sec.solo .filter-grab { opacity: .18; cursor: default; }   /* nothing to reorder against */
-  #panel .filter-sec.dragging {
+  #panel .filter-grab:hover, #breakout .lyr-box .filter-grab:hover { opacity: 1; }
+  #panel .filter-sec.solo .filter-grab, #breakout .lyr-box .filter-sec.solo .filter-grab { opacity: .18; cursor: default; }   /* nothing to reorder against */
+  #panel .filter-sec.dragging, #breakout .lyr-box .filter-sec.dragging {
     position: relative; z-index: 3; opacity: .92;
     background: rgba(255, 122, 26, 0.12); border-radius: 5px;
   }
-  #panel .filter-drop { height: 2px; margin: 2px 0; background: #ff8c28; border-radius: 1px; }
+  #panel .filter-drop, #breakout .lyr-box .filter-drop { height: 2px; margin: 2px 0; background: #ff8c28; border-radius: 1px; }
   /* Where one pipeline stage ends and the next begins. A row can only be dragged within its
      own run, so the line has to be visible or the constraint reads as a broken drag. */
-  #panel .filter-div {
+  #panel .filter-div, #breakout .lyr-box .filter-div {
     margin: 6px 0 3px; padding-top: 5px; border-top: 1px dashed rgba(255, 140, 40, 0.28);
     color: #ffb15a; opacity: .5; font-size: 9px; letter-spacing: .04em;
   }
   /* Why a drop snapped back. Shown for a few seconds after the drag, then faded out. */
-  #panel .filter-note {
+  #panel .filter-note, #breakout .lyr-box .filter-note {
     max-height: 0; overflow: hidden; opacity: 0;
     text-transform: none; letter-spacing: 0; font-size: 9.5px; line-height: 1.45;
     color: #ffcf87; transition: max-height .18s, opacity .18s, margin-top .18s;
   }
-  #panel .filter-note.on { max-height: 4em; opacity: .95; margin-top: 4px; }
+  #panel .filter-note.on, #breakout .lyr-box .filter-note.on { max-height: 4em; opacity: .95; margin-top: 4px; }
   @keyframes fltbump {
     0% { transform: translateX(0); } 25% { transform: translateX(5px); }
     60% { transform: translateX(-3px); } 100% { transform: translateX(0); }
   }
-  #panel .filter-sec.bump { animation: fltbump .32s ease-out; }
-  #panel .filter-rm {
+  #panel .filter-sec.bump, #breakout .lyr-box .filter-sec.bump { animation: fltbump .32s ease-out; }
+  #panel .filter-rm, #breakout .lyr-box .filter-rm {
     flex: 0 0 auto; width: 16px; height: 16px; padding: 0; background: none; border: 0;
     color: #ffb15a; opacity: .4; cursor: pointer; font-size: 11px; line-height: 1;
   }
-  #panel .filter-rm:hover { opacity: 1; color: #ff9a4a; }
-  #panel .filter-add {
+  #panel .filter-rm:hover, #breakout .lyr-box .filter-rm:hover { opacity: 1; color: #ff9a4a; }
+  #panel .filter-add, #breakout .lyr-box .filter-add {
     display: block; width: 100%; margin: 6px 0 2px; padding: 4px 8px;
     background: rgba(255, 122, 26, 0.1); border: 1px dashed rgba(255, 140, 40, 0.45);
     border-radius: 6px; color: #ffcf87; font: 11px/1.3 inherit; cursor: pointer; text-align: center;
   }
-  #panel .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
+  #panel .filter-add:hover, #breakout .lyr-box .filter-add:hover { background: rgba(255, 122, 26, 0.24); border-style: solid; }
   /* ---- the "Add filter" / "Palettes in use" pickers ---- */
   /* Docked TOP-LEFT beside the panel (same 58px top line, at the #breakout column's 298px),
      not centered: these are panel tools, so they attach next to the menu boxes they came
@@ -1200,10 +1187,10 @@
     border-radius: 4px; color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
-  #panel .filter-chk { margin: 4px 0 0; }
-  #panel .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
+  #panel .filter-chk, #breakout .lyr-box .filter-chk { margin: 4px 0 0; }
+  #panel .filter-chk.off, #breakout .lyr-box .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
-  #panel .ctl-grp {
+  #panel .ctl-grp, #breakout .lyr-box .ctl-grp {
     margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
     color: #ffb15a; opacity: .7; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   }
@@ -1216,20 +1203,20 @@
   #panel [data-k="fxctl"] > .ctl-grp.grp-first { margin-top: 4px; padding-top: 0; border-top: none; }
   /* A foldable group heading (Camera) is a control, so it says so: pointer, and it brightens on
      hover like every other pressable thing in the panel. */
-  #panel .ctl-grp.foldable { cursor: pointer; user-select: none; }
-  #panel .ctl-grp.foldable:hover { opacity: 1; }
+  #panel .ctl-grp.foldable, #breakout .lyr-box .ctl-grp.foldable { cursor: pointer; user-select: none; }
+  #panel .ctl-grp.foldable:hover, #breakout .lyr-box .ctl-grp.foldable:hover { opacity: 1; }
   /* 2x like every other chevron in the app, and `line-height: 0` so the bigger glyph cannot
      grow the heading's line box (the layer-row one uses 1 instead, because as a FLEX item a
      zero line box collapses it to a sliver — this one is inline in a block, so 0 is right). */
-  #panel .ctl-grp.foldable .grp-chev {
+  #panel .ctl-grp.foldable .grp-chev, #breakout .lyr-box .ctl-grp.foldable .grp-chev {
     display: inline-block; width: 12px; margin-right: 2px;
     font: 20px/0 monospace; vertical-align: -1px; opacity: .8;
     transition: transform .12s ease;
   }
   /* Folded points right (closed), open points down — the same reading as the panel boxes. */
-  #panel .ctl-grp.foldable.folded .grp-chev { transform: rotate(-90deg); }
+  #panel .ctl-grp.foldable.folded .grp-chev, #breakout .lyr-box .ctl-grp.foldable.folded .grp-chev { transform: rotate(-90deg); }
   /* the "what this group of filters does" caption under a filter-group heading */
-  #panel .filter-grp-d {
+  #panel .filter-grp-d, #breakout .lyr-box .filter-grp-d {
     text-transform: none; letter-spacing: 0; font-size: 9px; margin-top: 2px;
     color: #ffcf87; opacity: .75;
   }
@@ -1246,19 +1233,19 @@
   }
   #panel #help-btn:hover { background: rgba(255, 122, 26, 0.35); }
   /* A small inline ? next to a label (e.g. Presets), reusing the panel help modal. */
-  #panel .lbl-help {
+  #panel .lbl-help, #breakout .lyr-box .lbl-help {
     width: 15px; height: 15px; padding: 0; margin-left: 5px; vertical-align: 1px;
     border-radius: 50%; border: 1px solid rgba(255, 140, 40, 0.45);
     background: rgba(255, 122, 26, 0.12); color: #ffb15a; font: bold 9px/1 ui-monospace, monospace;
     cursor: pointer; opacity: .75;
   }
-  #panel .lbl-help:hover { background: rgba(255, 122, 26, 0.32); opacity: 1; }
+  #panel .lbl-help:hover, #breakout .lyr-box .lbl-help:hover { background: rgba(255, 122, 26, 0.32); opacity: 1; }
   /* The eye variant (palette inspector). An emoji glyph needs more room than a "?" and
      ignores `color`, so it gets its own size and a slightly dimmer resting opacity to sit
      at the same visual weight as the amber ? buttons beside it. */
-  #panel .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; display: inline-flex; align-items: center; justify-content: center; }
-  #panel .lbl-eye > svg { display: block; }
-  #panel .lbl-eye:hover { opacity: 1; }
+  #panel .lbl-eye, #breakout .lyr-box .lbl-eye { width: 17px; height: 17px; font-size: 10px; opacity: .68; display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lbl-eye > svg, #breakout .lyr-box .lbl-eye > svg { display: block; }
+  #panel .lbl-eye:hover, #breakout .lyr-box .lbl-eye:hover { opacity: 1; }
   /* Data-structure tree inside the help modal. */
   #help .help-tree {
     margin: 4px 0 12px; padding: 11px 13px; overflow-x: auto;
@@ -15365,9 +15352,45 @@
   // is nothing to rescue — and the hazard it guarded cannot recur, because both the rows and
   // the blocks outlive every call. Each block belongs to its own row permanently; this only
   // has to install it the first time.
+  // The block no longer lives in its row: it lives in a BOX IN THE GRID, like a popped
+  // slider, so a layer's whole settings panel can be dragged anywhere on screen and snapped.
+  // The wrapper is a `.ctl` with `data-slot`, which is all the break-out engine needs --
+  // selection on press (the capture-phase handler on #breakout), the owner line as a drag
+  // handle, layout and snap -- so the engine does not know it is holding a layer. Built
+  // once per slot, permanent, like the rows.
+  const lyrBoxes = [];
   function adoptLayerCtl(slot, row) {
     const block = blocks[slot];
-    if (block && row && block.parentNode !== row) row.appendChild(block);
+    if (!block) return;
+    let box = lyrBoxes[slot];
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "ctl poppable lyr-box";
+      box.dataset.slot = String(slot);
+      box.dataset.brk = slot + "/layer";           // the grid key, same shape as a slider's
+      const t = document.createElement("div");
+      t.className = "ctl-owner";
+      const ownTxt = document.createElement("span");
+      ownTxt.className = "own-txt";
+      t.appendChild(ownTxt);
+      // The same close/dock button a slider box carries, closing the layer from the box end.
+      const close = document.createElement("button");
+      close.type = "button"; close.className = "ctl-pop";
+      close.textContent = "−";
+      close.title = "Close this layer's settings";
+      close.setAttribute("aria-label", close.title);
+      close.addEventListener("click", e => { e.stopPropagation(); openSlots.delete(slot); syncStackUI(); });
+      t.appendChild(close);
+      box.appendChild(t);
+      box.appendChild(block);
+      makeBoxGrab(box, ownTxt);
+      breakout.appendChild(box);
+      lyrBoxes[slot] = box;
+    }
+    // The owner line names the layer and its effect; re-stamped every paint because both
+    // change under a reorder or an effect switch.
+    const L = stack[slot];
+    box.querySelector(".own-txt").textContent = "L" + (slot + 1) + (L ? " · " + EFFECTS[L.fx].name : "");
   }
   // The rows are a FIXED POOL of STACK_MAX, keyed by slot, built exactly once and never
   // destroyed — `lyrRows[slot] = {row, …}` holding each row's own widgets. syncStackUI
@@ -15620,8 +15643,14 @@
       // number can be open at once and a click meant to reach one layer's controls should not
       // rearrange the others. Unfolding does still select, so the layer you just opened to
       // look at is the one you are editing.
-      const chev = document.createElement("b");
-      chev.className = "lyr-chev";
+      // THE SAME +/- A SLIDER ROW CARRIES, on the right, and it does the same thing: opens
+      // this layer's settings as a box in the grid. It is the ONLY thing that opens a layer:
+      // selecting one does not, because any number can be open at once and a click meant to
+      // reach one layer's controls should not rearrange the others. Opening does still
+      // select, so the layer you just opened is the one you are editing.
+      const chev = document.createElement("button");
+      chev.type = "button";
+      chev.className = "ctl-pop lyr-pop";
       // stopPropagation on pointerdown, or the row's capture-phase handler would select first
       // and re-run syncStackUI underneath this click.
       chev.addEventListener("pointerdown", e => e.stopPropagation());
@@ -15631,9 +15660,9 @@
         if (openSlots.has(j)) { openSlots.delete(j); syncStackUI(); }
         else { openSlots.add(j); selectStack(j); syncStackUI(); }   // selectStack no-ops if already selected
       });
-      // A grid child, but an EXPLICITLY PLACED one (column 1 / row 1 — see .lyr-chev). Appended
-      // without placement it takes the next auto cell and shifts the chooser, the mute row and
-      // the blend row each one along, which visibly collapses the row.
+      // A grid child, EXPLICITLY PLACED (last column, row 1 -- see .lyr-pop). Appended without
+      // placement it takes the next auto cell and shifts the chooser, the mute row and the
+      // blend row each one along, which visibly collapses the row.
       row.appendChild(chev);
 
       lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev };
@@ -15659,7 +15688,7 @@
       const open = openSlots.has(slot);
       r.row.classList.toggle("sel", slot === stackSel);
       r.row.classList.toggle("muted", !!L.mute);
-      r.row.classList.toggle("folded", !open);
+      r.row.classList.toggle("open", open);
       setOff(r.grab, stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
@@ -15670,8 +15699,8 @@
       setOff(r.rm, stack.length <= 1);
       const bm = BLEND_BY_ID[L.blend] || BLEND_MODES[0];
       r.sel.value = bm.id; r.sel.title = bm.tip;
-      r.chev.textContent = open ? "▾" : "▸";
-      r.chev.title = open ? "Hide this layer's settings" : "Show this layer's settings";
+      r.chev.textContent = open ? "−" : "+";   // the same glyph pair a slider row shows
+      r.chev.title = open ? "Close this layer's settings" : "Open this layer's settings in the grid";
       r.chev.setAttribute("aria-label", r.chev.title);
       r.chev.setAttribute("aria-expanded", String(open));
       // Each layer's row carries ITS OWN controls, so a row reads as one complete object:
@@ -15680,6 +15709,7 @@
       adoptLayerCtl(slot, r.row);
     }
     setOff(el("addlayer"), stack.length >= STACK_MAX);
+    refreshBreakout();                 // the layer boxes show/hide with openSlots
     // The old box is empty now — hide the chrome rather than showing a stray heading over
     // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
     // first syncStackUI moves it into a row.
@@ -17366,6 +17396,7 @@
     for (const [pk, p] of posWas) {
       const i = pk.indexOf("/"), sPart = pk.slice(0, i), k2 = pk.slice(i + 1);
       if (sPart === "s") { brkPos.set(pk, p); continue; }
+      // "<slot>/layer" is a LAYER box (its whole settings block); it remaps with the rest.
       const n2 = fn(+sPart);
       if (n2 >= 0) brkPos.set(popKey(n2, k2), p);
     }
@@ -17418,6 +17449,15 @@
   }, true);
   function refreshBreakout() {
     let anyVisible = false;
+    // The LAYER boxes: a whole layer's settings block, open while its slot is in openSlots
+    // (the same set the rows' +/- toggles). Shown here so they go through the one layout
+    // pass with the slider boxes and snap on the same grid.
+    for (const box of breakout.querySelectorAll(".lyr-box")) {
+      const slot = +box.dataset.slot;
+      const vis = !!stack[slot] && openSlots.has(slot);
+      box.style.display = vis ? "" : "none";
+      if (vis) anyVisible = true;
+    }
     for (let slot = 0; slot < STACK_MAX; slot++) {
       const shown = shownKeysFor(slot);
       for (const key of POPPABLE) {
@@ -21424,9 +21464,10 @@
     { head: "Layers", art: TUT_ART.layers,
       body: "A scene can stack up to <b>four effects</b> into one picture. Each layer keeps its own "
         + "effect, palette, camera and filters, and they are blended together in perceptual colour "
-        + "space — so a plasma can wash under a fractal and the two really do mix. The chevron on a "
-        + "layer's row opens its controls, split into three tabs — <b>Effect</b>, <b>Filters</b> and "
-        + "<b>Palette</b> — the eye mutes it, and the handle drags it up or down the stack." },
+        + "space — so a plasma can wash under a fractal and the two really do mix. The <b>+</b> on a "
+        + "layer's row opens its controls as a box beside the panel, split into three tabs — "
+        + "<b>Effect</b>, <b>Filters</b> and <b>Palette</b> — the eye mutes it, and the handle drags it "
+        + "up or down the stack." },
     { head: "Sliders drift", art: TUT_ART.slider,
       body: "Most sliders have <b>two thumbs</b>: they are a low and a high bound, and the live value "
         + "wanders erratically between them. That drift is where a lot of the movement comes from — "

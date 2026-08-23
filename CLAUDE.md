@@ -873,8 +873,14 @@ filters, palette. `buildControls` routes by `host`: `"band"` → `#bandctl`, `"p
 **`buildPresetList()`** — the choke point every selection path goes through.
 
 ### One control block PER LAYER
-A `.lyrblock` cloned from `<template id="lyrblock">`, `STACK_MAX` of them, built at startup and
-living permanently in their row. Any number open at once. No `#lyrctl`, no `parkLayerCtl`.
+A `.lyrblock` cloned from `<template id="lyrblock">`, `STACK_MAX` of them, built at startup —
+and **living permanently in a BOX IN THE GRID** (`#breakout .ctl.lyr-box[data-slot]`, built by
+`adoptLayerCtl`), not in the row. The row's **`+`/`−` on the right** (`button.lyr-pop`, the same
+control a slider row carries) toggles `openSlots`, and `refreshBreakout` shows a layer box iff
+its slot is in that set. The box is an ordinary `.ctl` with `data-slot` and `data-brk
+"<slot>/layer"`, so the break-out engine drags, snaps, selects (the capture-phase handler on
+`#breakout`) and remaps it on reorder without knowing what it holds. Any number open at once.
+No `#lyrctl`, no `parkLayerCtl`.
 
 - **Nothing inside a block carries an `id`.** They carry the same string on **`data-k`**, resolved
   via **`ctl(k)`** (selected), **`ctlIn(slot, k)`** (one), **`ctlEach(k)`** (all). The STRING never
@@ -899,17 +905,18 @@ living permanently in their row. Any number open at once. No `#lyrctl`, no `park
 - **`selectStack`'s order is load-bearing**: `freezeItem` → `stackSel = j` → `pointMaps(j)` → rest.
 - Selection = capture-phase **`pointerdown` AND `focusin`** on the row; pointer alone leaves a
   keyboard hole.
-- Fold via **chevron** (`openSlots`, `.lyr.folded > .lyrblock { display: none }`) — it only HIDES.
-  **Every layer starts folded**, `openSlots` starts empty, and **selecting does not unfold**.
-  Unfolding does select. `dropOpen`/`moveOpen` remap on remove and drag.
-- **NOTHING may override the row's `padding-bottom`.** An open row is squared off by the block's
-  `margin-bottom: -6px`; a folded row has no block, so the 6px padding is its whole floor. Any
-  per-state padding must name `:not(.folded)`.
-- **The chevron is on EVERY row, upper-left**, and both opens and closes. **Explicitly PLACED grid
-  child** (`grid-column: 1; grid-row: 1`), else it takes the next auto cell and collapses the row;
-  the drag handle drops to `grid-row: 2 / 4`. Styled **`#panel .lyr b.lyr-chev`** (`#panel .lyr b`
-  outranks a plain class). **Every chevron in the app is 2x** (~20–22px); `::before` ones pin
-  `line-height: 0`, the layer one uses `line-height: 1`.
+- Open via the row's **`+`** (`openSlots`) — the box is hidden, never destroyed. **Every layer
+  starts closed**, `openSlots` starts empty, and **selecting does not open**. Opening does
+  select. `dropOpen`/`moveOpen` remap on remove and drag, and `remapPopped` carries the box's
+  grid position with them.
+- **The row is a 3-column grid and EVERY child is explicitly placed** (`grab` col 1 rows 1–3,
+  `select.lyr-name` col 2 row 1, `.lyr-ctl` cols 2–4 row 2, `.lyr-blend` cols 2–4 row 3,
+  `button.lyr-pop` col 3 row 1). Appending the button last without a placement let
+  auto-flow take row 1 col 3 first; the name narrowed, the control rows wrapped into column 2
+  and the panel grew a horizontal scrollbar. Styled `#panel .lyr button.lyr-pop`.
+- **The block's CSS is scoped `#panel …, #breakout .lyr-box …`** — 46 rules were widened in one
+  pass when the block moved. A rule that names only `#panel` no longer reaches it.
+- **Every chevron in the app is 2x** (~20–22px); `::before` ones pin `line-height: 0`.
 - **`#effect` is hidden here, not deleted** — it stays the effect value store.
 - First *visible* group heading's top border via **`.grp-first`, set by `markFirstGroup()`** —
   **not `:first-child`**.
