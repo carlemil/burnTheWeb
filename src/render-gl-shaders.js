@@ -1022,7 +1022,7 @@
     uniform vec4 uSdPlace;
     uniform float uQjOn; uniform float uQjId; uniform float uQjPhase; uniform float uQjSlice;
     uniform float uQjCut; uniform float uQjIter; uniform float uQjGlow;
-    uniform vec4 uQjC; uniform vec4 uQjPlace;
+    uniform vec4 uQjC; uniform vec4 uQjPlace; uniform vec3 uQjRot;
     uniform float uVbOn; uniform float uVbId; uniform float uVbPhase; uniform float uVbCount;
     uniform float uVbShape; uniform float uVbRad; uniform float uVbGlow;
     uniform vec4 uVbPlace;
@@ -1128,6 +1128,12 @@
       pl = vec3(pl.x*c1 + pl.z*s1, pl.y, -pl.x*s1 + pl.z*c1);
       float tl = 0.32*sin(uQjPhase*0.6), c2 = cos(tl), s2 = sin(tl);
       pl = vec3(pl.x, pl.y*c2 - pl.z*s2, pl.y*s2 + pl.z*c2);
+      // The object's own orientation (Pitch/Yaw/Roll + tumble) -- with the camera fixed this
+      // is the only way to turn the solid. Same three rotations, same order, as qjOrient.
+      float c3, s3;
+      c3 = cos(uQjRot.x); s3 = sin(uQjRot.x); pl = vec3(pl.x, pl.y*c3 - pl.z*s3, pl.y*s3 + pl.z*c3);
+      c3 = cos(uQjRot.y); s3 = sin(uQjRot.y); pl = vec3(pl.x*c3 + pl.z*s3, pl.y, -pl.x*s3 + pl.z*c3);
+      c3 = cos(uQjRot.z); s3 = sin(uQjRot.z); pl = vec3(pl.x*c3 - pl.y*s3, pl.x*s3 + pl.y*c3, pl.z);
       // Outside |q| = 2 the escape-time estimate says nothing useful, so hand back the
       // distance TO the bounding sphere: a valid bound, and the thing that stops the
       // marcher crawling step by step through vacuum on its way in.
@@ -1335,6 +1341,7 @@
 #if !W_GB
       } else {
         heat = shade0(id, ro + rd*t, rd, t);
+      }
 #else
       } else if (!(id == uGbId && uGbOn > 0.5)){
         // Solids and Quaternion Julia are opaque and shade exactly as they do standalone.
@@ -1620,7 +1627,19 @@
     precision highp float;
     uniform vec2 uSize; uniform vec4 uC; uniform float uPhase; uniform float uSlice;
     uniform float uCut; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    uniform vec3 uRot;
     out vec4 o;
+    // The object's own orientation (Pitch/Yaw/Roll + tumble), applied to the SAMPLE point:
+    // an implicit surface has no vertices to rotate, so the ray is un-rotated instead. Same
+    // three rotations, same order, as qjuliaDE in the shared world, so a scene set up here
+    // looks the same after it joins.
+    vec3 qjOrient(vec3 p, vec3 r){
+      float c, s;
+      c = cos(r.x); s = sin(r.x); p = vec3(p.x, p.y*c - p.z*s, p.y*s + p.z*c);
+      c = cos(r.y); s = sin(r.y); p = vec3(p.x*c + p.z*s, p.y, -p.x*s + p.z*c);
+      c = cos(r.z); s = sin(r.z); p = vec3(p.x*c - p.y*s, p.x*s + p.y*c, p.z);
+      return p;
+    }
     vec4 qsqr(vec4 a){ return vec4(a.x*a.x - dot(a.yzw, a.yzw), 2.0*a.x*a.yzw); }
     // Lift a 3D sample point into the 4D domain through the rotated cutting hyperplane.
     vec4 qjLift(vec3 p, float s, float ca, float sa){
@@ -1662,7 +1681,7 @@
         float t = max(0.0, -b - sd), tMax = -b + sd;
         for (int i = 0; i < 96; i++){
           if (t > tMax) break;
-          vec3 p = ro + rd*t;
+          vec3 p = qjOrient(ro + rd*t, uRot);
           float d = qjDE(qjLift(p, uSlice, kc, ks), c, it);
           halo = min(halo, d/max(t, 0.3));
           if (d < 0.0006*max(t, 0.5)){

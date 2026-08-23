@@ -176,6 +176,18 @@ it renders unchanged.
   fails silently — initGL assigns, the declaration line runs later and wipes it, and the
   shader compiles from an empty string (`1:1 syntax error` every frame, black canvas). Every
   `FS_*`/`VS_QUAD` is **local to initGL**, which is why it hands the sources out.
+- **The world shader is SIXTEEN shaders.** A brace that is only unbalanced when a group is
+  ABSENT compiles fine in every manual test that has it present — `W_GB=0` shipped with an
+  unclosed `else {` for three releases, and every world without a Glass ball died with
+  `0:398 syntax error` on every frame, silently (a failed link draws nothing). `worldprobe`
+  preprocesses all 16 and counts braces; **`tools/worldcompile-check.js` compiles all 16 on
+  the real GPU** and `/deploy` runs it. When editing FS_WORLD, run that, not a screenshot of
+  the one combination you happen to be looking at.
+- **Quaternion Julia carries its own orientation** (`qjpitch/yaw/roll` + `qjtumx/y/z`, rates
+  accumulating into `qjTx/Ty/Tz` on `PHASE_VARS`): with the world's camera fixed it is the only
+  way to turn the solid. It applies in BOTH modes — `qjOrient()` in `FS_QJULIA`, the same three
+  rotations in the same order inside `qjuliaDE` in the world — so a scene set up standalone
+  keeps its pose when it joins. `worldprobe` asserts the order matches.
 - **`WORLD_KINDS` is the roster**: `ocean`, `glass`, `solids`, `qjulia`, `vballs`. One layer
   per kind (first in stack order); a second Glass ball layer renders standalone. The interior
   flights can never be added — they have nowhere to stand in someone else's world, and

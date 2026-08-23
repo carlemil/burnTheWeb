@@ -138,7 +138,20 @@ to link at boot — the page looked hung, every probe was green, and the browser
 passed too, because `--virtual-time-budget` waits through a synchronous stall. Only the
 clock on the wall sees a hang.
 
-If any probe or the gate fails, **stop and report it** rather than deploying.
+And the **world-shader compile check** — all sixteen `#if` combinations on the real GPU:
+
+```
+node tools/worldcompile-check.js <scratchdir> dev-index.html    # then run the printed msedge line
+```
+
+The world shader is really sixteen shaders, one per combination of joined effects, and a
+brace that is only unbalanced when a group is *absent* compiles fine in every manual test
+that has it present. v1.37.1–1.37.3 shipped with `W_GB=0` unclosed, so every shared world
+without a Glass ball failed silently. `worldprobe` has a static brace count that catches
+that class; the GPU compile is the complete claim.
+
+If any probe, the gate or the compile check fails, **stop and report it** rather than
+deploying.
 
 ## 5. Commit, tag and push
 

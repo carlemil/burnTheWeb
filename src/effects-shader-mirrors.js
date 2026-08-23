@@ -1088,11 +1088,23 @@
   // in by the descriptor (juliaSeed) exactly like the other cardioid effects — this must
   // NOT advance the orbit itself, or the Canvas2D path runs it at double speed.
   let qjSlice = 0, qjCut = 0, qjDetail = 8, qjSpin = 0.3, qjGlow = 0.5, qjPhase = 0;
+  // ORIENTATION. Standalone, the effect orbits its camera (qjPhase drives the yaw, with a
+  // built-in nod); in the shared 3D world the camera belongs to every layer, so the same
+  // rotation moves the OBJECT instead -- and with the camera fixed there was no way to turn
+  // the solid at all. These three angles plus the per-axis tumble rates are that control.
+  // They apply in BOTH modes, to the same thing (the object's frame relative to the viewer),
+  // so a scene set up standalone looks the same after joining. qjTum* accumulate per frame
+  // like qjPhase and ride PHASE_VARS with it.
+  let qjPitch = 0, qjYaw = 0, qjRoll = 0, qjTumX = 0, qjTumY = 0, qjTumZ = 0;
+  let qjTx = 0, qjTy = 0, qjTz = 0;
   function qjuliaSeed(dt) {
     qjPhase += dt * qjSpin;
+    qjTx += dt * qjTumX; qjTy += dt * qjTumY; qjTz += dt * qjTumZ;
     // qjCut is stored in DEGREES (it is an angle the user sets); the shader and the mirror
     // both want radians, and converting once here keeps the two from disagreeing.
-    return { phase: qjPhase, slice: qjSlice, cut: qjCut * Math.PI / 180, iter: qjDetail, glow: qjGlow, zoom };
+    const D = Math.PI / 180;
+    return { phase: qjPhase, slice: qjSlice, cut: qjCut * D, iter: qjDetail, glow: qjGlow, zoom,
+             rx: qjPitch * D + qjTx, ry: qjYaw * D + qjTy, rz: qjRoll * D + qjTz };
   }
   // iq's quaternion-Julia distance estimate. md2 tracks |dz|^2, which is exact for z^2+c
   // because the derivative is 2z and only its magnitude matters.
@@ -1134,7 +1146,11 @@
           let t = Math.max(0, -b - sd);
           const tMax = -b + sd;
           for (let i = 0; i < 32 && t <= tMax; i++) {
-            const px = rox + rdx * t, py = roy + rdy * t, pz = roz + rdz * t;
+            let px = rox + rdx * t, py = roy + rdy * t, pz = roz + rdz * t;
+            // the object's orientation, same three rotations in the same order as qjOrient
+            { let c = Math.cos(s.rx), sn = Math.sin(s.rx), q = py * c - pz * sn; pz = py * sn + pz * c; py = q; }
+            { let c = Math.cos(s.ry), sn = Math.sin(s.ry), q = px * c + pz * sn; pz = -px * sn + pz * c; px = q; }
+            { let c = Math.cos(s.rz), sn = Math.sin(s.rz), q = px * c - py * sn; py = px * sn + py * c; px = q; }
             const d = qjDE(px * kc - s.slice * ks, py, pz, px * ks + s.slice * kc, cx, cy, cz, cw, it);
             if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
             if (d < 0.003 * Math.max(t, 0.5)) {

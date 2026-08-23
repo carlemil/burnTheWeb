@@ -239,6 +239,74 @@ const ok = (name, cond, detail) => {
      "an escaped newline written into this file has collapsed into a real one four times");
 }
 
+// --- 7. every #if combination has balanced braces -----------------------------------
+// The world shader is sixteen shaders, and a brace that is only unbalanced when a group
+// is ABSENT compiles fine in every manual test that has it present. W_GB=0 shipped with an
+// unclosed `else {`, so every world without a Glass ball died with "0:398 syntax error" on
+// every frame -- silently, because a failed link draws nothing. tools/worldcompile-check.js
+// compiles all sixteen on a real GPU; this is the cheap static half of the same claim.
+// No regex literals in here: see the note at the top of this file about escapes.
+{
+  const body = slice("    const FS_WORLD = ", "    const FS_WORLDPICK = ");
+  const src0 = body.slice(body.indexOf("#version 300 es"), body.lastIndexOf(String.fromCharCode(96)));
+  function preprocess(flags) {
+    const out = [], stack = [];
+    for (const line of src0.split(NL)) {
+      const t = line.trim();
+      if (t.indexOf("#if ") === 0) {
+        const expr = t.slice(4).trim();
+        const neg = expr.indexOf("!") === 0;
+        const name = neg ? expr.slice(1) : expr;
+        stack.push(flags[name] ? !neg : neg);
+        continue;
+      }
+      if (t === "#else") { stack.push(!stack.pop()); continue; }
+      if (t === "#endif") { stack.pop(); continue; }
+      if (stack.every(Boolean)) out.push(line);
+    }
+    return out.join(NL);
+  }
+  const stripComments = txt => txt.split(NL).map(l => { const i = l.indexOf("//"); return i < 0 ? l : l.slice(0, i); }).join(NL);
+  const count = (txt, ch) => txt.split(ch).length - 1;
+  let worst = null;
+  for (let m = 0; m < 16; m++) {
+    const flags = { W_GB: m & 1, W_SD: m & 2, W_QJ: m & 4, W_VB: m & 8 };
+    const txt = stripComments(preprocess(flags));
+    const open = count(txt, "{"), close = count(txt, "}");
+    if (open !== close && !worst)
+      worst = "GB" + (m & 1 ? 1 : 0) + " SD" + (m & 2 ? 1 : 0) + " QJ" + (m & 4 ? 1 : 0) + " VB" + (m & 8 ? 1 : 0) + ": " + open + " open vs " + close + " close";
+  }
+  ok("every #if combination of the world shader has balanced braces", !worst, worst || "16 of 16");
+}
+
+// --- 8. Quaternion Julia's orientation reaches the world -------------------------------
+{
+  const world = slice("    const FS_WORLD = ", "    const FS_WORLDPICK = ");
+  ok("the world applies the object's Pitch/Yaw/Roll", world.indexOf("uQjRot") >= 0,
+     "with the camera fixed these are the only way to turn the solid");
+  const qj = slice("    const FS_QJULIA = ", "    const FS_VBALLS = ");
+  ok("...and so does the standalone shader, so joining does not change the pose", qj.indexOf("qjOrient(") >= 0);
+  // Same three rotations in the same order, or a scene set up standalone turns when joined.
+  // The axis letters are read off the cos(...) calls in order of appearance.
+  const axesOf = txt => {
+    const out = []; let i = 0;
+    for (;;) {
+      i = txt.indexOf("cos(", i); if (i < 0) break;
+      const arg = txt.slice(i + 4, txt.indexOf(")", i));
+      if (arg.indexOf("uQjRot.") === 0 || arg.indexOf("r.") === 0) out.push(arg.slice(-1));
+      i += 4;
+    }
+    return out.join("");
+  };
+  const standalone = axesOf(qj.slice(qj.indexOf("vec3 qjOrient("), qj.indexOf("vec4 qsqr(")));
+  const inWorld = axesOf(world.slice(world.indexOf("float qjuliaDE(")));
+  ok("both apply them in the same order", standalone === "xyz" && inWorld.slice(-3) === "xyz",
+     standalone + " / " + inWorld.slice(-3));
+  for (const v of ["qjTx", "qjTy", "qjTz"])
+    ok(v + " rides PHASE_VARS", src.indexOf('["' + v + '", () => ' + v + ', v => ' + v + ' = v]') >= 0,
+       "or two Quaternion Julia layers tumble in lock-step");
+}
+
 console.log("");
 console.log(fail ? (fail + " FAILED, " + pass + " passed") : ("all " + pass + " passed"));
 process.exit(fail ? 1 : 0);
