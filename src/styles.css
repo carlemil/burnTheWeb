@@ -335,7 +335,7 @@
   #panel .verline .ver-t, #panel .verline .ver-v { display: block; }
   #panel .verline .ver-v { opacity: .7; }
   #panel .verline:hover { opacity: .8; }
-  [data-k="reset"], [data-k="cardbtn"], #addlayer {
+  [data-k="cardbtn"], #addlayer {
     margin-top: 8px;
     width: 100%;
     padding: 7px 0;
@@ -348,7 +348,7 @@
     cursor: pointer;
     transition: background .15s;
   }
-  [data-k="reset"]:hover, [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
+  [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
   /* Per-tab ⚄ Random / ↺ Reset pair heading each layer-tab pane. Same family as the big
      Reset button above, halved: two side-by-side, quieter resting tone. Scoped to both
      hosts like every block rule — the block lives in a layer box in #breakout. */

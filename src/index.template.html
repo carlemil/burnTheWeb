@@ -271,22 +271,21 @@
   </div>
   <!-- EFFECT -->
   <div data-k="tab-fx" class="lyr-pane" role="tabpanel">
-  <!-- Per-tab tools: ⚄ nudges every one of this tab's sliders a little (and sometimes arms
-       a beat trigger on one of them); ↺ puts the tab's sliders — values, ranges, triggers —
+  <!-- Per-tab tools: ⚄ rolls every one of this tab's sliders to a random value in its
+       range (and sometimes arms a beat trigger on one of them); ↺ puts the tab's sliders — values, ranges, triggers —
        back to this effect's defaults. One pair per pane, wired per slot. -->
   <div class="tab-tools">
-    <button type="button" data-k="rnd-fx" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rnd-fx" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-fx" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
   </div>
   <div data-k="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button data-k="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
-  <button data-k="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
   </div>
   <!-- FILTERS: this layer's chain (feedback + post). -->
   <div data-k="tab-flt" class="lyr-pane" role="tabpanel" hidden>
   <div class="tab-tools">
-    <button type="button" data-k="rnd-flt" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rnd-flt" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-flt" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to their defaults">↺ Reset</button>
   </div>
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
@@ -298,7 +297,7 @@
        currentColor, like the eye icons. -->
   <div data-k="tab-pal" class="lyr-pane" role="tabpanel" hidden>
   <div class="tab-tools">
-    <button type="button" data-k="rnd-pal" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rnd-pal" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-pal" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
   </div>
   <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>

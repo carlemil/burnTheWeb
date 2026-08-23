@@ -965,8 +965,13 @@ the bleed. Filters and seedPts still fall back to the **descriptor default** on 
 **PER LAYER** (`lyrTab` is an array by slot): it shipped shared for one release, and the layer
 boxes made that wrong — side-by-side workspaces must not flip each other's tabs. The block (`.lyr-tabs`, panes
 `[data-k="tab-fx|tab-flt|tab-pal"]`) over the three runs of controls the block always had:
-`fxctl` + Orbit editor + Reset; `filterlist` + `filterctl`; swatches + Reverse + Background +
-cycle + **banding** (a filter over the palette, so it lives there). **Which tab is open is ONE
+`fxctl` + Orbit editor; `filterlist` + `filterctl`; swatches + Reverse + Background +
+cycle + **banding** (a filter over the palette, so it lives there). Every pane opens with a
+**⚄ Random / ↺ Reset tools row** (`rnd-<t>`/`rst-<t>`): Random rolls the pane's sliders
+uniformly in-range and sometimes arms a trigger; on Filters it also coin-flip-adds filters
+(cap 5), on Palette it rolls the palette + sometimes Reverse. Reset = `resetControl` over the
+pane's keys, plus the default chain on Filters. The old bottom "Reset this effect" button is
+REMOVED — extras (palette memory, morph, show-box) are deliberately no longer one button away. **Which tab is open is ONE
 value for every block** (`lyrTab`, `syncLyrTabs`), like the group folds — a tab is a way of
 looking at a layer, and selecting another layer must not also switch what you are looking at.
 Transient, never in `fullSnapshot()`. **It REPLACED the palette fold**: a tab is a fold with a

@@ -124,7 +124,7 @@ const ASSERT_JS = [
   "      ok(\"the Palette tab holds the swatches, cycle AND banding\",",
   "         !!panes(\"pal\")[0].querySelector(\"[data-k=palswatches]\") && !!panes(\"pal\")[0].querySelector(\"[data-k=palctl]\") && !!panes(\"pal\")[0].querySelector(\"[data-k=bandctl]\"));",
   "      ok(\"the Filters tab holds the chain\", !!panes(\"flt\")[0].querySelector(\"[data-k=filterlist]\"));",
-  "      ok(\"the Effect tab holds the sliders and Reset\", !!panes(\"fx\")[0].querySelector(\"[data-k=fxctl]\") && !!panes(\"fx\")[0].querySelector(\"[data-k=reset]\"));",
+  "      ok(\"the Effect tab holds the sliders and the tools row\", !!panes(\"fx\")[0].querySelector(\"[data-k=fxctl]\") && !!panes(\"fx\")[0].querySelector(\"[data-k=rnd-fx]\") && !!panes(\"fx\")[0].querySelector(\"[data-k=rst-fx]\"));",
   "      ok(\"the open tab is marked\", palBtn.classList.contains(\"on\") && palBtn.getAttribute(\"aria-selected\") === \"true\");",
   "      // Selecting ANOTHER layer must not change the tab.",
   "      var rows = [].slice.call(document.querySelectorAll(\"#panel .lyr\")).filter(function(r){ return r.offsetParent !== null; });",

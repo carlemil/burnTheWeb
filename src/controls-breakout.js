@@ -745,21 +745,56 @@
       });
   }));
   // ---- per-tab Random / Reset ----------------------------------------------------
-  // ⚄ nudges every slider the tab currently shows for this layer by a small fraction of
-  // its range (the browser snaps each write to the slider's own step, so a `single`
-  // control moves by whole numbers or not at all), and SOMETIMES arms one beat trigger
-  // on a random armable slider — whose thumbs the same pass just jiggled, so the trigger
-  // arrives with slightly-adjusted values rather than defaults. ↺ runs resetControl over
-  // the same keys: value, range, chips, pulse — the whole tab back to the effect's
-  // defaults. The buttons live inside the layer box, so the capture-phase pointerdown on
-  // #breakout has already selected the layer by the time the click runs — the block is
-  // live, which is what the chip handlers and resetControl require.
+  // ⚄ rolls every slider the tab currently shows for this layer to a fresh uniform value
+  // anywhere in its range — not a nudge around where it was (the browser snaps each write
+  // to the slider's own step, so a `single` control still lands on whole numbers) — and
+  // SOMETIMES arms one beat trigger on a random armable slider, which arrives with the
+  // freshly-rolled thumbs as its values. ↺ runs resetControl over the same keys: value,
+  // range, chips, pulse — the whole tab back to the effect's defaults. The buttons live
+  // inside the layer box, so the capture-phase pointerdown on #breakout has already
+  // selected the layer by the time the click runs — the block is live, which is what the
+  // chip handlers and resetControl require.
   function tabKeys(pane) {
     return [...pane.querySelectorAll(".ctl-row")]
       .filter(r => r.offsetParent !== null && r.dataset.k && r.dataset.k.indexOf("row-") === 0)
       .map(r => r.dataset.k.slice(4));
   }
-  function jiggleTab(slot, pane) {
+  function jiggleTab(slot, pane, t) {
+    // The Filters tab's Random also GROWS the chain: a coin flip to add one random
+    // not-yet-added filter, repeated until a flip says stop or the layer holds 5 —
+    // enough to get somewhere interesting without burying the effect. Added first, so
+    // the value pass below rolls the newcomers' params along with everything else.
+    if (t === "flt") {
+      let grew = false;
+      while (activeFilterIds().length < 5 && Math.random() < 0.5) {
+        const have = new Set(activeFilterIds());
+        const pool = FILTERS.map(f => f.id).filter(id => !have.has(id));
+        if (!pool.length) break;
+        setFilterOn(pool[(Math.random() * pool.length) | 0], true);
+        grew = true;
+      }
+      // setFilterOn persists but, unlike a picker click, never passes through the
+      // delegated onEdit — fold the new chain into the selected preset by hand,
+      // exactly as chipEdited does for the chips.
+      if (grew && persistReady && !applyingPreset) { autosavePreset(); persist(); }
+    }
+    // The Palette tab's Random also rolls the PALETTE itself — a fresh pick from the
+    // in-use set, through the same value-store-plus-bubbling-change path a swatch click
+    // takes — and flips Reverse colours about a third of the time. The cycle, hold,
+    // heat-boost and banding sliders are pane sliders, so the value pass below covers them.
+    if (t === "pal") {
+      const cur = +paletteSel.value, pool = [];
+      for (let i = 0; i < PALETTES.length; i++) if (palInUse(i) && i !== cur) pool.push(i);
+      if (pool.length) {
+        paletteSel.value = String(pool[(Math.random() * pool.length) | 0]);
+        paletteSel.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      const rev = ctlIn(slot, "palrev");
+      if (rev && Math.random() < 0.35) {
+        rev.checked = !rev.checked;
+        rev.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
     const armable = [];
     for (const key of tabKeys(pane)) {
       const els = ctlRangeInputsIn(slot, key);
@@ -768,8 +803,7 @@
       for (const inp of (SINGLE_KEYS.has(key) ? els.slice(0, 1) : els)) {
         const mn = +inp.min, mx = +inp.max;
         if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
-        const d = (Math.random() * 2 - 1) * 0.08 * (mx - mn);
-        inp.value = String(Math.min(mx, Math.max(mn, +inp.value + d)));
+        inp.value = String(mn + Math.random() * (mx - mn));
         inp.dispatchEvent(new Event("input", { bubbles: true }));
       }
       const w = W[slot] && W[slot][key];
@@ -781,7 +815,17 @@
       if (off.length) chips[off[(Math.random() * off.length) | 0]].click();
     }
   }
-  function resetTab(pane) {
+  function resetTab(pane, t) {
+    // The Filters tab's chain first: back to this effect's default list (usually empty),
+    // so Reset undoes what Random added as well as what it retuned. Removing a filter
+    // hides its rows, so this runs before tabKeys reads what the pane still shows.
+    if (t === "flt") {
+      const want = new Set(presetFilters(effect));
+      let changed = false;
+      for (const id of activeFilterIds()) if (!want.has(id)) { setFilterOn(id, false); changed = true; }
+      for (const id of want) if (!activeFilterIds().includes(id)) { setFilterOn(id, true); changed = true; }
+      if (changed && persistReady && !applyingPreset) { autosavePreset(); persist(); }
+    }
     for (const key of tabKeys(pane)) resetControl(key);
     rngSyncAll();               // the in-box min/max fields follow the restored bounds
   }
@@ -789,8 +833,8 @@
     const pane = ctlIn(slot, "tab-" + t);
     const rnd = ctlIn(slot, "rnd-" + t), rst = ctlIn(slot, "rst-" + t);
     if (!pane || !rnd || !rst) continue;
-    rnd.addEventListener("click", e => { e.stopPropagation(); jiggleTab(slot, pane); });
-    rst.addEventListener("click", e => { e.stopPropagation(); resetTab(pane); });
+    rnd.addEventListener("click", e => { e.stopPropagation(); jiggleTab(slot, pane, t); });
+    rst.addEventListener("click", e => { e.stopPropagation(); resetTab(pane, t); });
   }
 
   // The launcher rows and beat dots are the last per-block pieces to exist, so install
@@ -1214,39 +1258,10 @@
   breakout.addEventListener("input", () => refreshShapePrev());
   breakout.addEventListener("change", onEdit);
 
-  // Reset: restore *only the current effect's* settings (sliders, beat chips,
-  // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
-  // change the effect, other effects, or the shared controls (auto-cycle, panel).
-  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "reset").addEventListener("click", () => {
-    // Confirm first — this throws away every change to the effect (values, ranges, beat
-    // wiring, palette) and is not undoable.
-    if (!confirm("Reset " + EFFECTS[effect].name + " to its shipped defaults?\nYour changes to this effect (sliders, ranges, beats, palette) will be lost.")) return;
-    states[effect] = presetState(effect);
-    beatStates[effect] = presetBeat(effect);
-    pulseStates[effect] = presetPulse(effect);
-    plenStates[effect] = presetPlen(effect);
-    btuneStates[effect] = presetBtune();
-    extras[effect] = presetExtra(effect);
-    // Shipped BOUNDS too, matching the per-slider ↺ — this used to reset every value
-    // and leave a slider you had widened still widened, so "reset" left the control
-    // measurably not as it ships. Same scope as the values above (every key in this
-    // effect's defaults, filter params included), and bounds go first so loadState's
-    // values validate against them rather than the custom ones.
-    for (const key in states[effect])
-      for (const inp of ctlRangeInputs(key)) {
-        const o = rngShipped(rngKeyOf(inp));    // this effect's own bounds where it declares them
-        if (o) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
-      }
-    loadState(effect);                // apply to the live sliders
-    loadBeat(effect);                 // ...the live chips
-    loadPulse(effect);                // ...the live pulse shapes
-    loadPlen(effect);                 // ...and their lengths
-    loadBtune(effect);                // ...and their detector thresholds, back to inheriting
-    loadExtra(effect);                // ...and palette/morph/show-box/TTL
-    rngSyncAll();                     // the in-box min/max fields follow the restored bounds
-    refreshControlVisibility();       // clear the modified-from-default dots (and blocked state) now everything is back to shipped
-    persist();
-  });
+  // The old bottom-of-tab "Reset this effect" button is gone — the per-tab ↺ Reset in the
+  // tools row (resetTab, above) replaced it by request. resetControl covers what it did per
+  // slider (value, range, chips, pulse); what it alone reached — extras (palette, morph,
+  // show-box, TTL) and the beat-tuning map — is deliberately no longer one button away.
 
   // Beat chips dominate the share blob: every control × L/M/H for every effect,
   // almost all false — ~90% of the JSON, which pushed share URLs past 49k chars.
