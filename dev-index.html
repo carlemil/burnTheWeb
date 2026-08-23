@@ -958,26 +958,25 @@
     display: flex; align-items: center; justify-content: center; user-select: none;
   }
   #panel .lyr b.lyr-chev:hover { opacity: 1; background: none; }
-  /* The palette-section fold: the LAYER ROW'S CHEVRON, reproduced. Same 15x18 cell, same
-     20px monospace glyph, same colour, opacity and hover — and, like `.lyr-chev`, a bare
-     marker in a grid cell BESIDE its label rather than a child of it. Inside the <label> the
-     label's own click/focus chrome boxed it like a button, which is what this layout fixes.
-     Two controls that do the same thing should not read as two different affordances. */
-  #panel .pal-head { display: grid; grid-template-columns: 15px 1fr; align-items: center; gap: 4px; margin-top: 10px; }
-  #panel .pal-head > label { margin: 0; }
-  /* `#panel .lyr b.pal-chev`, at THAT specificity, for the reason `.lyr-chev` spells out:
-     the palette block lives inside a layer row, and `#panel .lyr b` (further down) gives
-     every <b> in a row the mute/✕ button chrome — 10px font, 1px border, dark fill, 4px
-     padding. A plain `.pal-chev` rule loses to it and the chevron renders as a little boxed
-     button, which is exactly what this was shipped looking like. The reset below strips
-     that chrome the way the layer chevron's rule does. */
-  #panel .lyr b.pal-chev {
-    grid-column: 1; justify-self: center; align-self: center;
-    width: 15px; height: 18px; cursor: pointer; color: #ffb15a; opacity: .8;
-    font: 20px/1 monospace; padding: 0; border: 0; border-radius: 0; background: none; outline: none;
-    display: flex; align-items: center; justify-content: center; user-select: none;
+  /* The three tabs at the top of a layer block: Effect / Filters / Palette. A strip of flat
+     buttons over a hairline; the open one is brighter and carries the underline. They are
+     <button>s inside a .lyr, so they need the same button-chrome reset the chevron does --
+     `#panel .lyr b` does not apply (these are buttons), but the generic panel button rule
+     further up gives them a border and fill that the strip must not have. */
+  #panel .lyr-tabs {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
+    margin: 4px 0 8px; border-bottom: 1px solid rgba(255, 140, 40, 0.28);
   }
-  #panel .lyr b.pal-chev:hover, #panel .lyr b.pal-chev:focus-visible { opacity: 1; background: none; }
+  #panel .lyr-tabs .lyr-tab {
+    appearance: none; -webkit-appearance: none; width: auto; margin: 0;
+    padding: 5px 0 6px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+    background: none; color: #ffb15a; opacity: .55; cursor: pointer;
+    font: 10px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  #panel .lyr-tabs .lyr-tab:hover { opacity: .85; background: none; }
+  #panel .lyr-tabs .lyr-tab.on { opacity: 1; border-bottom-color: #ff7a1a; color: #ffcf87; }
+  #panel .lyr-pane[hidden] { display: none; }
   /* The trigger-section fold, on the "Triggers" heading inside a break-out box. Scoped
      to #breakout because that is the only place the trigger section exists. */
   #breakout .trig-chev {
@@ -1940,26 +1939,34 @@
        inert — getElementById cannot see into it — so the authored copy can never be mistaken
        for a live one. -->
   <template id="lyrblock"><div class="lyrblock">
+  <!-- THREE TABS per layer -- Effect / Filters / Palette -- over the three runs of controls
+       the block always had. The strip is plain buttons with data-tab; which one is open is
+       ONE module-level value shared by every block (like the group folds), transient, and
+       never in fullSnapshot(). Nothing inside carries an id: data-k throughout, like every
+       other node in the block. -->
+  <div class="lyr-tabs" role="tablist">
+    <button type="button" class="lyr-tab on" data-k="tab-btn-fx" data-tab="fx" role="tab" aria-selected="true">Effect</button>
+    <button type="button" class="lyr-tab" data-k="tab-btn-flt" data-tab="flt" role="tab" aria-selected="false">Filters</button>
+    <button type="button" class="lyr-tab" data-k="tab-btn-pal" data-tab="pal" role="tab" aria-selected="false">Palette</button>
+  </div>
+  <!-- EFFECT -->
+  <div data-k="tab-fx" class="lyr-pane" role="tabpanel">
   <div data-k="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button data-k="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
   <button data-k="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
-  <!-- This layer's filters (feedback + post). -->
+  </div>
+  <!-- FILTERS: this layer's chain (feedback + post). -->
+  <div data-k="tab-flt" class="lyr-pane" role="tabpanel" hidden>
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
-  <!-- This layer's palette: ramp, cycle, reverse, background, banding. -->
+  </div>
+  <!-- PALETTE: ramp, cycle, reverse, background, banding. -->
   <!-- A MAGNIFIER, not the old 👁 eye: the eye became the visibility-toggle glyph (layer
        mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
        currentColor, like the eye icons. -->
-  <!-- The chevron COLLAPSES the palette body (swatches, reverse, background, cycle) — the
-       tallest run of furniture in the block, and the part you stop needing once the colours
-       are settled. One boolean drives every block at once, the same policy the group folds
-       use, and it is transient: not in fullSnapshot(), so it never rides a scene or a link. -->
-  <!-- The chevron is a SIBLING of the label, not a child. Inside it, the label's own
-       click-and-focus chrome wrapped it in a box; beside it, it is exactly the layer
-       row's chevron: a bare <b> marker in its own grid cell. -->
-  <div class="pal-head"><b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b><label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label></div>
-  <div data-k="palbody">
+  <div data-k="tab-pal" class="lyr-pane" role="tabpanel" hidden>
+  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -1968,8 +1975,7 @@
     <select data-k="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
   <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
-  <!-- Banding lives under the palette fold too: it is a filter over the palette, so it
-       belongs to the section the chevron names. -->
+  <!-- Banding is a filter over the palette, so it lives on the Palette tab. -->
   <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </div>
   </div></template>
@@ -13260,28 +13266,27 @@
                         set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
   const worldChk = { get checked() { const n = ctl("world"); return !!n && n.checked; },
                      set checked(v) { for (const n of ctlEach("world")) n.checked = v; } };
-  // ---- palette fold ----------------------------------------------------------
-  // The palette body (swatches, Reverse, Background, cycle) is the tallest run of furniture
-  // in a layer block and the first thing you stop needing once the colours are settled.
-  // ONE boolean for every block, not one per slot: the same policy the group folds use
-  // ("folds apply to every block at once"), and it keeps a reorder from carrying a fold to
-  // a layer that never had one. Transient — not in fullSnapshot(), so it never rides a
-  // scene, a share link or a backup, exactly like every other fold in the app.
-  let palFolded = false;
-  function syncPalFold() {
-    for (const n of ctlEach("palbody")) n.style.display = palFolded ? "none" : "";
-    for (const n of ctlEach("pal-fold")) {
-      n.textContent = palFolded ? "▸" : "▾";
-      n.title = palFolded ? "Show the palette controls" : "Hide the palette controls";
-      n.setAttribute("aria-label", palFolded ? "Expand palette" : "Collapse palette");
-      n.setAttribute("aria-expanded", palFolded ? "false" : "true");
+  // ---- layer tabs: Effect / Filters / Palette -------------------------------------
+  // Which tab is open is ONE value for every block, like the group folds: a tab is a way of
+  // looking at a layer, and switching layers should not also switch what you are looking
+  // at. Transient -- not in fullSnapshot(), so it never rides a scene, a link or a backup.
+  // The tab REPLACED the palette fold: a tab is a fold with a name, and two ways to hide
+  // the same controls is one too many.
+  const LYR_TABS = ["fx", "flt", "pal"];
+  let lyrTab = "fx";
+  function syncLyrTabs() {
+    for (const t of LYR_TABS) {
+      const on = t === lyrTab;
+      for (const n of ctlEach("tab-" + t)) n.hidden = !on;
+      for (const n of ctlEach("tab-btn-" + t)) { n.classList.toggle("on", on); n.setAttribute("aria-selected", on ? "true" : "false"); }
     }
   }
-  function togglePalFold(e) {
-    // Inside a <label>, so a bare click would fall through to the label's own activation.
-    e.preventDefault(); e.stopPropagation();
-    palFolded = !palFolded;
-    syncPalFold();
+  function setLyrTab(t) {
+    if (LYR_TABS.indexOf(t) < 0 || t === lyrTab) return;
+    lyrTab = t;
+    syncLyrTabs();
+    // Break-out boxes are NOT tied to the tab: you popped a slider out precisely so it
+    // stays in view whatever the block is showing.
   }
   for (let slot = 0; slot < STACK_MAX; slot++) {
     ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
@@ -13291,14 +13296,15 @@
     // it has to reach the render immediately rather than waiting for a reselect.
     ctlIn(slot, "world").addEventListener("change", () => { if (stack[stackSel]) stack[stackSel].world = worldChk.checked; });
     ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
-    const pf = ctlIn(slot, "pal-fold");
-    pf.addEventListener("click", togglePalFold);
-    // A <b> takes no keyboard activation of its own (role=button + tabindex only makes it
-    // focusable), so Enter/Space have to be wired by hand — the same gap `setOff` documents
-    // for the row controls.
-    pf.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") togglePalFold(e); });
+    for (const t of LYR_TABS) {
+      const btn = ctlIn(slot, "tab-btn-" + t);
+      // stopPropagation on click only: the row's capture-phase pointerdown still selects the
+      // layer (clicking a tab IS reaching for that layer), but the click must not bubble to
+      // anything that would treat it as an edit.
+      if (btn) btn.addEventListener("click", e => { e.stopPropagation(); setLyrTab(t); });
+    }
   }
-  syncPalFold();
+  syncLyrTabs();
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");
@@ -21404,7 +21410,8 @@
       body: "A scene can stack up to <b>four effects</b> into one picture. Each layer keeps its own "
         + "effect, palette, camera and filters, and they are blended together in perceptual colour "
         + "space — so a plasma can wash under a fractal and the two really do mix. The chevron on a "
-        + "layer's row opens its controls, the eye mutes it, and the handle drags it up or down the stack." },
+        + "layer's row opens its controls, split into three tabs — <b>Effect</b>, <b>Filters</b> and "
+        + "<b>Palette</b> — the eye mutes it, and the handle drags it up or down the stack." },
     { head: "Sliders drift", art: TUT_ART.slider,
       body: "Most sliders have <b>two thumbs</b>: they are a low and a high bound, and the live value "
         + "wanders erratically between them. That drift is where a lot of the movement comes from — "

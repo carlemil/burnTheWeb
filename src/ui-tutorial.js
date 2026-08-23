@@ -137,7 +137,8 @@
       body: "A scene can stack up to <b>four effects</b> into one picture. Each layer keeps its own "
         + "effect, palette, camera and filters, and they are blended together in perceptual colour "
         + "space — so a plasma can wash under a fractal and the two really do mix. The chevron on a "
-        + "layer's row opens its controls, the eye mutes it, and the handle drags it up or down the stack." },
+        + "layer's row opens its controls, split into three tabs — <b>Effect</b>, <b>Filters</b> and "
+        + "<b>Palette</b> — the eye mutes it, and the handle drags it up or down the stack." },
     { head: "Sliders drift", art: TUT_ART.slider,
       body: "Most sliders have <b>two thumbs</b>: they are a low and a high bound, and the live value "
         + "wanders erratically between them. That drift is where a lot of the movement comes from — "

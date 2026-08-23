@@ -259,26 +259,34 @@
        inert — getElementById cannot see into it — so the authored copy can never be mistaken
        for a live one. -->
   <template id="lyrblock"><div class="lyrblock">
+  <!-- THREE TABS per layer -- Effect / Filters / Palette -- over the three runs of controls
+       the block always had. The strip is plain buttons with data-tab; which one is open is
+       ONE module-level value shared by every block (like the group folds), transient, and
+       never in fullSnapshot(). Nothing inside carries an id: data-k throughout, like every
+       other node in the block. -->
+  <div class="lyr-tabs" role="tablist">
+    <button type="button" class="lyr-tab on" data-k="tab-btn-fx" data-tab="fx" role="tab" aria-selected="true">Effect</button>
+    <button type="button" class="lyr-tab" data-k="tab-btn-flt" data-tab="flt" role="tab" aria-selected="false">Filters</button>
+    <button type="button" class="lyr-tab" data-k="tab-btn-pal" data-tab="pal" role="tab" aria-selected="false">Palette</button>
+  </div>
+  <!-- EFFECT -->
+  <div data-k="tab-fx" class="lyr-pane" role="tabpanel">
   <div data-k="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button data-k="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
   <button data-k="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
-  <!-- This layer's filters (feedback + post). -->
+  </div>
+  <!-- FILTERS: this layer's chain (feedback + post). -->
+  <div data-k="tab-flt" class="lyr-pane" role="tabpanel" hidden>
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
   <div data-k="filterctl"><!-- each filter's params, shown while it is ticked --></div>
-  <!-- This layer's palette: ramp, cycle, reverse, background, banding. -->
+  </div>
+  <!-- PALETTE: ramp, cycle, reverse, background, banding. -->
   <!-- A MAGNIFIER, not the old 👁 eye: the eye became the visibility-toggle glyph (layer
        mute, filter bypass), so an eye here read as "hide the palette". Inline SVG on
        currentColor, like the eye icons. -->
-  <!-- The chevron COLLAPSES the palette body (swatches, reverse, background, cycle) — the
-       tallest run of furniture in the block, and the part you stop needing once the colours
-       are settled. One boolean drives every block at once, the same policy the group folds
-       use, and it is transient: not in fullSnapshot(), so it never rides a scene or a link. -->
-  <!-- The chevron is a SIBLING of the label, not a child. Inside it, the label's own
-       click-and-focus chrome wrapped it in a box; beside it, it is exactly the layer
-       row's chevron: a bare <b> marker in its own grid cell. -->
-  <div class="pal-head"><b data-k="pal-fold" class="pal-chev" role="button" tabindex="0" title="Hide the palette controls" aria-label="Collapse palette">▾</b><label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label></div>
-  <div data-k="palbody">
+  <div data-k="tab-pal" class="lyr-pane" role="tabpanel" hidden>
+  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -287,8 +295,7 @@
     <select data-k="palbg" style="width:auto;flex:0 0 auto;margin:0"><option value="palette">Palette</option><option value="black">Black</option><option value="white">White</option></select>
   </label>
   <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
-  <!-- Banding lives under the palette fold too: it is a filter over the palette, so it
-       belongs to the section the chevron names. -->
+  <!-- Banding is a filter over the palette, so it lives on the Palette tab. -->
   <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
   </div>
   </div></template>

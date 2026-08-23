@@ -920,17 +920,18 @@ but to the **descriptor default** for filters and seedPts (the runtime fallback 
 legacy never-selected layer with null palette re-tints with same-effect edits until first
 selection captures it. Documented at `layerPalIndex`.
 
-**Palette fold** — the `▾` beside the block's `Palette` label collapses `[data-k="palbody"]`
-(swatches, Reverse, Background, cycle **and banding** — banding is a filter over the palette, so
-it belongs to the section the chevron names). **ONE module-level boolean for every block**, like
-the group folds, and **transient** — not in `fullSnapshot()`. **It is a SIBLING of the label
-(`.pal-head`, a two-column grid), not a child** — inside the label it picked up the label's own
-click chrome. And it is styled **`#panel .lyr b.pal-chev`**, at that specificity, for the reason
-`.lyr-chev` spells out: the palette block lives inside a layer row, and **`#panel .lyr b` gives
-every `<b>` in a row the mute/✕ button chrome** (10px font, 1px border, dark fill) — a plain
-`.pal-chev` rule loses to it and the chevron ships as a little boxed button, which it did. The
-`<b>` still needs an explicit Enter/Space keydown: `role="button"` only makes it focusable.
-`foldcycle-check` asserts the two chevrons compute identically on eight properties.
+**Each layer block has THREE TABS — Effect / Filters / Palette** (`.lyr-tabs`, panes
+`[data-k="tab-fx|tab-flt|tab-pal"]`) over the three runs of controls the block always had:
+`fxctl` + Orbit editor + Reset; `filterlist` + `filterctl`; swatches + Reverse + Background +
+cycle + **banding** (a filter over the palette, so it lives there). **Which tab is open is ONE
+value for every block** (`lyrTab`, `syncLyrTabs`), like the group folds — a tab is a way of
+looking at a layer, and selecting another layer must not also switch what you are looking at.
+Transient, never in `fullSnapshot()`. **It REPLACED the palette fold**: a tab is a fold with a
+name, and two ways to hide the same controls is one too many. Break-out boxes are deliberately
+**not** tied to the tab — you popped a slider out precisely so it stays in view. The tab
+buttons `stopPropagation` on `click` only; the row's capture-phase `pointerdown` still selects
+the layer, because clicking a tab IS reaching for that layer. `foldcycle-check` pins the
+pane contents and the "selecting another layer keeps the tab" rule.
 
 **Reverse colours** (`#palrev`) — **per layer**: live `paletteReverse` for the selected layer,
 `L.paletteRev` otherwise (`layerPalRev(L)`), `extras[e].paletteRev` as single-layer fallback. Flips

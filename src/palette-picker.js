@@ -241,28 +241,27 @@
                         set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
   const worldChk = { get checked() { const n = ctl("world"); return !!n && n.checked; },
                      set checked(v) { for (const n of ctlEach("world")) n.checked = v; } };
-  // ---- palette fold ----------------------------------------------------------
-  // The palette body (swatches, Reverse, Background, cycle) is the tallest run of furniture
-  // in a layer block and the first thing you stop needing once the colours are settled.
-  // ONE boolean for every block, not one per slot: the same policy the group folds use
-  // ("folds apply to every block at once"), and it keeps a reorder from carrying a fold to
-  // a layer that never had one. Transient — not in fullSnapshot(), so it never rides a
-  // scene, a share link or a backup, exactly like every other fold in the app.
-  let palFolded = false;
-  function syncPalFold() {
-    for (const n of ctlEach("palbody")) n.style.display = palFolded ? "none" : "";
-    for (const n of ctlEach("pal-fold")) {
-      n.textContent = palFolded ? "▸" : "▾";
-      n.title = palFolded ? "Show the palette controls" : "Hide the palette controls";
-      n.setAttribute("aria-label", palFolded ? "Expand palette" : "Collapse palette");
-      n.setAttribute("aria-expanded", palFolded ? "false" : "true");
+  // ---- layer tabs: Effect / Filters / Palette -------------------------------------
+  // Which tab is open is ONE value for every block, like the group folds: a tab is a way of
+  // looking at a layer, and switching layers should not also switch what you are looking
+  // at. Transient -- not in fullSnapshot(), so it never rides a scene, a link or a backup.
+  // The tab REPLACED the palette fold: a tab is a fold with a name, and two ways to hide
+  // the same controls is one too many.
+  const LYR_TABS = ["fx", "flt", "pal"];
+  let lyrTab = "fx";
+  function syncLyrTabs() {
+    for (const t of LYR_TABS) {
+      const on = t === lyrTab;
+      for (const n of ctlEach("tab-" + t)) n.hidden = !on;
+      for (const n of ctlEach("tab-btn-" + t)) { n.classList.toggle("on", on); n.setAttribute("aria-selected", on ? "true" : "false"); }
     }
   }
-  function togglePalFold(e) {
-    // Inside a <label>, so a bare click would fall through to the label's own activation.
-    e.preventDefault(); e.stopPropagation();
-    palFolded = !palFolded;
-    syncPalFold();
+  function setLyrTab(t) {
+    if (LYR_TABS.indexOf(t) < 0 || t === lyrTab) return;
+    lyrTab = t;
+    syncLyrTabs();
+    // Break-out boxes are NOT tied to the tab: you popped a slider out precisely so it
+    // stays in view whatever the block is showing.
   }
   for (let slot = 0; slot < STACK_MAX; slot++) {
     ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
@@ -272,14 +271,15 @@
     // it has to reach the render immediately rather than waiting for a reselect.
     ctlIn(slot, "world").addEventListener("change", () => { if (stack[stackSel]) stack[stackSel].world = worldChk.checked; });
     ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
-    const pf = ctlIn(slot, "pal-fold");
-    pf.addEventListener("click", togglePalFold);
-    // A <b> takes no keyboard activation of its own (role=button + tabindex only makes it
-    // focusable), so Enter/Space have to be wired by hand — the same gap `setOff` documents
-    // for the row controls.
-    pf.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") togglePalFold(e); });
+    for (const t of LYR_TABS) {
+      const btn = ctlIn(slot, "tab-btn-" + t);
+      // stopPropagation on click only: the row's capture-phase pointerdown still selects the
+      // layer (clicking a tab IS reaching for that layer), but the click must not bubble to
+      // anything that would treat it as an edit.
+      if (btn) btn.addEventListener("click", e => { e.stopPropagation(); setLyrTab(t); });
+    }
   }
-  syncPalFold();
+  syncLyrTabs();
   // Resolution = render downscale (cfg.scale): higher divisor ⇒ coarser + faster.
   // Global (not per-effect); reallocates buffers via resize().
   const resSel = el("res");
