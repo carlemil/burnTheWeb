@@ -933,7 +933,8 @@
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
-    boids: "Boids",
+    boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
+    bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
@@ -943,6 +944,7 @@
     f_lens: "Lens bubble", f_droste: "Droste zoom", f_kuwahara: "Oil paint",
     f_halftone: "Halftone", f_thresh: "Solarize", f_chroma: "Chromatic aberration",
     f_barrel: "Barrel distortion", f_scanlines: "Scanlines", f_vignette: "Vignette", f_grain: "Film grain",
+    f_hexpix: "Hex pixelate", f_crt: "CRT phosphor",
     palette: "Palette", banding: "Banding",
   };
   // Render the schema into ONE block, then index everything it made under `slot`. Group
@@ -971,7 +973,10 @@
           '<div class="ctl-grp' + (FOLDABLE_GROUPS.has(c.group) ? " foldable" : "")
           + '" data-k="grp-' + c.group + '" data-grp="' + c.group + '">'
           + (FOLDABLE_GROUPS.has(c.group) ? '<b class="grp-chev">▾</b>' : "")
-          + CTL_GROUPS[c.group] + "</div>");
+          // A group with no CTL_GROUPS entry used to render the string "undefined" as its
+          // heading — eight of them shipped that way. Fall back to the key, which is at least
+          // a name, and keep the table the place to make it a pretty one.
+          + (CTL_GROUPS[c.group] || c.group) + "</div>");
       }
       host.insertAdjacentHTML("beforeend", ctlHTML(c));
     });
@@ -1083,6 +1088,11 @@
     ["ltFront", () => ltFront, v => ltFront = v],
     ["ltSeedPrev", () => ltSeedPrev, v => ltSeedPrev = v],
     ["bpPhase", () => bpPhase, v => bpPhase = v],
+    // The Mandelbulb camera flies INSIDE the fractal, and its escape offset is state the
+    // solver warm-starts from each frame — two bulb layers sharing one would fly one camera.
+    ["bpOffX", () => bpOffX, v => bpOffX = v],
+    ["bpOffY", () => bpOffY, v => bpOffY = v],
+    ["bpOffZ", () => bpOffZ, v => bpOffZ = v],
     ["qjPhase", () => qjPhase, v => qjPhase = v],
     ["goTime", () => goTime, v => goTime = v],
     ["vbPhase", () => vbPhase, v => vbPhase = v],

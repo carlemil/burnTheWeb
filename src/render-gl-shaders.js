@@ -876,12 +876,17 @@
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
     // Mandelbulb: the power-N 3D fractal, raymarched with the standard distance
-    // estimator. Slow orbit via uPhase (the effect's own clock — the shared camera
-    // still composes on top through camProg like every effect). Heat = diffuse + rim
-    // on a hit, and a soft proximity halo on a miss so the silhouette glows.
+    // estimator — from INSIDE. The camera flies the canyons between the lobes instead of
+    // orbiting the silhouette, so uPos/uFwd come from the CPU (bulbSeed): keeping the
+    // camera in free space means evaluating the DE AROUND the path, which only the CPU
+    // side can do. The shader just builds the view basis and marches.
+    //
+    // Wide lens (1.15 against the Menger corridor's 1.4) — at arm's length from a wall a
+    // narrow one shows a single flat patch of surface, and the whole point of being in
+    // here is the structure closing over your head.
     const FS_BULB = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform float uPhase; uniform float uPower; uniform float uIter; uniform float uGlow; uniform float uZoom;
+    uniform vec2 uSize; uniform vec3 uPos; uniform vec3 uFwd; uniform float uPower; uniform float uIter; uniform float uGlow; uniform float uZoom;
     out vec4 o;
     float bulbDE(vec3 p, float P, int it){
       vec3 z = p;
@@ -903,35 +908,40 @@
       float fw = uSize.x, fh = uSize.y;
       float ar = fw/fh;
       vec2 uv = vec2((gl_FragCoord.x/fw - 0.5)*ar, gl_FragCoord.y/fh - 0.5)*2.0/uZoom;
-      float ca = cos(uPhase), sa = sin(uPhase);
-      float tilt = 0.35*sin(uPhase*0.7);
-      float ct = cos(tilt), st = sin(tilt);
-      vec3 ro = vec3(0.0, 0.0, -2.35);
-      vec3 rd = normalize(vec3(uv, 1.55));
-      // orbit: rotate the CAMERA about Y, with a slow nodding tilt about X
-      ro = vec3(ro.x*ca + ro.z*sa, ro.y, -ro.x*sa + ro.z*ca);
-      rd = vec3(rd.x*ca + rd.z*sa, rd.y, -rd.x*sa + rd.z*ca);
-      ro = vec3(ro.x, ro.y*ct - ro.z*st, ro.y*st + ro.z*ct);
-      rd = vec3(rd.x, rd.y*ct - rd.z*st, rd.y*st + rd.z*ct);
+      // View basis from the CPU heading. The path winds about the bulb's polar axis so the
+      // tangent is never near it, but guard anyway — a degenerate cross is a blank frame.
+      vec3 f = normalize(uFwd);
+      vec3 wup = abs(f.z) > 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+      vec3 rt = normalize(cross(wup, f));
+      vec3 up = cross(f, rt);
+      vec3 ro = uPos;
+      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.15);
       int it = int(uIter);
       float P = uPower;
-      float t = 0.0, halo = 9.0, heat = 0.0;
-      for (int i = 0; i < 64; i++){
+      float t = 0.0, halo = 9.0, heat = 0.0, steps = 0.0;
+      for (int i = 0; i < 80; i++){
         vec3 p = ro + rd*t;
         float d = bulbDE(p, P, it);
-        halo = min(halo, d/max(t, 0.3));
-        if (d < 0.0009*max(t, 0.4)){
-          float e = 0.0012*max(t, 0.4);
+        halo = min(halo, d/max(t, 0.25));
+        steps = float(i);
+        if (d < 0.001*max(t, 0.3)){
+          float e = 0.0012*max(t, 0.3);
           vec2 h = vec2(1.0, -1.0)*0.5773;
           vec3 nrm = normalize(h.xyy*bulbDE(p + h.xyy*e, P, it) + h.yyx*bulbDE(p + h.yyx*e, P, it)
                              + h.yxy*bulbDE(p + h.yxy*e, P, it) + h.xxx*bulbDE(p + h.xxx*e, P, it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.6, 0.7, -0.5))));
           float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
-          heat = (0.22 + 0.70*dif + uGlow*0.5*rim)*smoothstep(4.2, 1.4, t);
+          // Interior depth cues. The fog range is metres of BULB, not of the old 4.5-unit
+          // exterior shot; the step count stands in for ambient occlusion (a ray that
+          // needed many tiny steps was crawling down a crevice), which is what stops the
+          // canyons reading as one flat wall.
+          float fog = exp(-t*0.85);
+          float ao = 1.0 - steps/80.0;
+          heat = (0.16 + 0.72*dif + uGlow*0.5*rim)*(0.30 + 0.70*fog)*(0.45 + 0.55*ao);
           break;
         }
         t += d;
-        if (t > 4.5) break;
+        if (t > 3.2) break;
       }
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);

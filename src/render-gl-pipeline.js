@@ -589,7 +589,7 @@
     glProg.twister = camProg(VS_QUAD, FS_TWISTER, ["uSize", "uTime", "uCols", "uWidth", "uTwist", "uZoom"]);
     glProg.cymatics = camProg(VS_QUAD, FS_CYMATICS, ["uSize", "uTime", "uModeN", "uModeM", "uSharp", "uShim", "uZoom"]);
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
-    glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPhase", "uPower", "uIter", "uGlow", "uZoom"]);
+    glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPos", "uFwd", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom"]);

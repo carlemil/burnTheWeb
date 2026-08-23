@@ -1144,13 +1144,121 @@
   }
 
   // ---- Mandelbulb: raymarched power-N fractal (shader effect) ----
+  // THE CAMERA LIVES INSIDE THE BULB, and that is why the flight path is here rather than
+  // in the shader: staying in free space means evaluating the DE AROUND the camera, and a
+  // fragment shader only ever knows about its own ray.
+  //
+  // The path is a helix winding about the bulb's polar axis, through the shell where all
+  // the structure is — and it is CORRECTED, not planned: each frame the camera is pushed
+  // out of anything solid along the DE gradient, which is the direction of the nearest
+  // free space (in a canyon that is sideways, so it threads the crevice instead of being
+  // shoved out through the roof).
+  //
+  // **The correction is warm-started from the last frame, and that is what makes it
+  // smooth.** Solved fresh from the helix each frame it is a discontinuous function of
+  // the phase — the escape route flips to a different pocket and the camera teleports
+  // (measured: 65 units per radian at the worst phase, against a mean of 3). Carrying the
+  // offset over means the solver starts where it already was, so it re-converges on the
+  // same pocket and the escape only has to track the drift. `bpOff*` therefore rides
+  // PHASE_VARS like every other accumulator: two Mandelbulb layers must not share one
+  // camera. The offset also decays back toward the helix, so a detour ends when the wall
+  // that caused it does, and the escape is RATE-LIMITED (and scaled by the orbit speed —
+  // a faster flight needs a faster dodge) so a newly-blocked spot is a swerve, not a jump.
+  //
   // The mirror marches every 3rd pixel and fills 3x3 blocks — a raymarch with a
   // transcendental DE is orders beyond the other mirrors, so this trades sharpness
-  // for a fallback that still moves. Steps 24 vs the shader's 64, iterations capped 6.
+  // for a fallback that still moves. Steps 24 vs the shader's 80, iterations capped 6
+  // (the CAMERA still solves at the shader's iteration count — a camera that disagrees
+  // with the surface it is flying past ends up embedded in it).
   let bpPower = 8, bpDetail = 7, bpSpin = 0.35, bpGlow = 0.5, bpPhase = 0;
+  let bpOffX = 0, bpOffY = 0, bpOffZ = 0;     // the escape offset — PHASE_VARS, per layer
+  const BULB_CLEAR = 0.12;                    // free space the camera keeps around itself
+  const BULB_RELAX = 0.5;                     // 1/s the offset decays back toward the helix
+  const BULB_OFFMAX = 0.9;                    // how far the escape may ever carry it off
+  const bpBase = [0, 0, 0], bpNext = [0, 0, 0];
+  // Where the free space IS. Below the shell the bulb is SOLID — swept at clearance 0.12,
+  // not one direction is free under r 1.16 at power 8 — so "inside" means inside the shell
+  // of lobes and canyons, not inside the ball. The radius that opens up moves with the
+  // power (0.68 at 2, 1.16 at 8, 1.20 at 12), and a helix pinned at one radius is either
+  // buried at high powers or orbiting empty space at low ones: 1.30 - 1.2/P tracks it.
+  const bulbShell = P => Math.max(0.6, Math.min(1.3, 1.3 - 1.2 / Math.max(1, P)));
+  function bulbBase(ph, P, out) {             // the uncorrected helix — pure, and smooth
+    const th = 1.5708 + 0.62 * Math.sin(ph * 0.31 + 0.7);
+    const rad = bulbShell(P) + 0.02 + 0.22 * Math.sin(ph * 0.23);
+    const s = Math.sin(th);
+    out[0] = rad * s * Math.cos(ph); out[1] = rad * s * Math.sin(ph); out[2] = rad * Math.cos(th);
+    return out;
+  }
   function bulbSeed(dt) {
     bpPhase += dt * bpSpin;
-    return { phase: bpPhase, power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
+    // Match the SHADER's iteration count exactly (int(uIter) truncates, and its loop caps
+    // at 12), so the surface the camera dodges is the surface that gets drawn.
+    const P = bpPower, it = Math.max(1, Math.min(12, Math.floor(bpDetail)));
+    const b = bulbBase(bpPhase, P, bpBase);
+    const dec = Math.exp(-dt * BULB_RELAX);
+    bpOffX *= dec; bpOffY *= dec; bpOffZ *= dec;
+    let x = b[0] + bpOffX, y = b[1] + bpOffY, z = b[2] + bpOffZ;
+    let moved = 0;
+    const cap = (2 + 6 * bpSpin) * dt;        // escape budget for this frame, in units
+    for (let k = 0; k < 8; k++) {
+      const d = bulbDE(x, y, z, P, it);
+      if (d >= BULB_CLEAR) break;
+      const e = 0.004;
+      const gx = bulbDE(x + e, y, z, P, it) - bulbDE(x - e, y, z, P, it);
+      const gy = bulbDE(x, y + e, z, P, it) - bulbDE(x, y - e, z, P, it);
+      const gz = bulbDE(x, y, z + e, P, it) - bulbDE(x, y, z - e, P, it);
+      const gn = Math.hypot(gx, gy, gz), rn = Math.hypot(x, y, z) || 1;
+      let took = 0;
+      // TWO candidate directions, in order: the DE gradient, then straight out from the
+      // origin. The gradient is the nearest way out and is what threads a crevice, but it
+      // is not always a way out at all — deep in the solid the iteration never escapes, dr
+      // runs away and the DE goes FLAT (every sample equal, gradient zero), and in a
+      // dead-end pocket it points along the valley rather than up it. Radially out is
+      // always a way out of a fractal centred on the origin, so it is the fallback and not
+      // the first choice: taken first it would shove the camera off every canyon wall.
+      for (let c = 0; c < 2 && !took; c++) {
+        const dx = c === 0 && gn > 1e-5 ? gx / gn : x / rn;
+        const dy = c === 0 && gn > 1e-5 ? gy / gn : y / rn;
+        const dz = c === 0 && gn > 1e-5 ? gz / gn : z / rn;
+        let s = (BULB_CLEAR - d) * 1.1;       // |grad| of a distance field is 1
+        if (moved + s > cap) s = cap - moved;
+        if (s <= 0) break;
+        // ACCEPT ONLY WHAT IMPROVES THE CLEARANCE. In a canyon narrower than 2·CLEAR no
+        // point has the clearance being asked for, and a solver that keeps stepping walks
+        // out of one wall straight into the far one and oscillates between them — which is
+        // how the camera ended up INSIDE the surface on 4 frames in 100. Halving a rejected
+        // step turns "unreachable" into "as free as this crevice gets".
+        for (let h = 0; h < 3 && s > 1e-4; h++) {
+          const nx = x + dx * s, ny = y + dy * s, nz = z + dz * s;
+          if (bulbDE(nx, ny, nz, P, it) > d) { x = nx; y = ny; z = nz; took = s; break; }
+          s *= 0.5;
+        }
+      }
+      if (!took) break;
+      moved += took;
+    }
+    bpOffX = x - b[0]; bpOffY = y - b[1]; bpOffZ = z - b[2];
+    const on = Math.hypot(bpOffX, bpOffY, bpOffZ);
+    if (on > BULB_OFFMAX) {                   // never let a detour become the path
+      const f = BULB_OFFMAX / on;
+      bpOffX *= f; bpOffY *= f; bpOffZ *= f;
+      x = b[0] + bpOffX; y = b[1] + bpOffY; z = b[2] + bpOffZ;
+    }
+    // Heading: the HELIX's tangent (smooth by construction — the corrected path is not,
+    // and a heading that jitters is worse than a camera that does), leaned toward the
+    // core so the walls fill the frame instead of sliding past the edge — measured: the
+    // fractal covers 51% of the screen leaning 0.75, 63% leaning 1.8, and past ~2.2 it is
+    // all wall and the travel stops reading. The lean breathes, between looking down the
+    // canyon and looking into it.
+    const n = bulbBase(bpPhase + 1e-3, P, bpNext);
+    let fx = n[0] - b[0], fy = n[1] - b[1], fz = n[2] - b[2];
+    let fl = Math.hypot(fx, fy, fz) || 1;
+    fx /= fl; fy /= fl; fz /= fl;
+    const rl = Math.hypot(x, y, z) || 1, lean = 1.8 + 0.8 * Math.sin(bpPhase * 0.19);
+    fx -= x / rl * lean; fy -= y / rl * lean; fz -= z / rl * lean;
+    fl = Math.hypot(fx, fy, fz) || 1;
+    return { px: x, py: y, pz: z, fx: fx / fl, fy: fy / fl, fz: fz / fl,
+             power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
   }
   function bulbDE(px, py, pz, P, it) {
     let zx = px, zy = py, zz = pz, dr = 1, r = 0;
@@ -1170,30 +1278,32 @@
   function bulb(dt) {                     // CPU fallback — mirrors FS_BULB, coarsely
     const s = bulbSeed(dt), ar = fw / fh;
     const it = Math.min(6, Math.round(s.iter)), P = s.power;
-    const ca = Math.cos(s.phase), sa = Math.sin(s.phase);
-    const tilt = 0.35 * Math.sin(s.phase * 0.7), ct = Math.cos(tilt), st = Math.sin(tilt);
+    // Same view basis the shader builds: world up is the bulb's polar axis unless the
+    // heading is near it, right = up x fwd, screen up = fwd x right.
+    const fx = s.fx, fy = s.fy, fz = s.fz;
+    const vert = Math.abs(fz) > 0.9, wx = 0, wy = vert ? 1 : 0, wz = vert ? 0 : 1;
+    let rx = wy * fz - wz * fy, ry = wz * fx - wx * fz, rz = wx * fy - wy * fx;
+    const rn = Math.hypot(rx, ry, rz) || 1; rx /= rn; ry /= rn; rz /= rn;
+    const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
     for (let y = 0; y < fh; y += 3) {
       for (let x = 0; x < fw; x += 3) {
         camPix(x, y);
-        const ux = (camPX / fw - 0.5) * ar * 2 / s.zoom;
-        const uy = (camPY / fh - 0.5) * 2 / s.zoom;
-        let rox = 0, roy = 0, roz = -2.35;
-        const rl = Math.hypot(ux, uy, 1.55);
-        let rdx = ux / rl, rdy = uy / rl, rdz = 1.55 / rl;
-        let tx = rox * ca + roz * sa; roz = -rox * sa + roz * ca; rox = tx;
-        tx = rdx * ca + rdz * sa; rdz = -rdx * sa + rdz * ca; rdx = tx;
-        let ty = roy * ct - roz * st; roz = roy * st + roz * ct; roy = ty;
-        ty = rdy * ct - rdz * st; rdz = rdy * st + rdz * ct; rdy = ty;
+        const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
+        const sy = (camPY / fh - 0.5) * 2 / s.zoom;
+        let rdx = rx * sx + ux * sy + fx * 1.15;
+        let rdy = ry * sx + uy * sy + fy * 1.15;
+        let rdz = rz * sx + uz * sy + fz * 1.15;
+        const rl = Math.hypot(rdx, rdy, rdz) || 1; rdx /= rl; rdy /= rl; rdz /= rl;
         let t = 0, halo = 9, heat = 0;
         for (let i = 0; i < 24; i++) {
-          const d = bulbDE(rox + rdx * t, roy + rdy * t, roz + rdz * t, P, it);
-          if (d / Math.max(t, 0.3) < halo) halo = d / Math.max(t, 0.3);
-          if (d < 0.003 * Math.max(t, 0.4)) {
-            heat = (0.45 + s.glow * 0.3) * Math.max(0, 1 - (t - 1.4) / 2.8);   // flat shade — no normals on the fallback
+          const d = bulbDE(s.px + rdx * t, s.py + rdy * t, s.pz + rdz * t, P, it);
+          if (d / Math.max(t, 0.25) < halo) halo = d / Math.max(t, 0.25);
+          if (d < 0.003 * Math.max(t, 0.3)) {
+            heat = (0.42 + s.glow * 0.3) * (0.30 + 0.70 * Math.exp(-t * 0.85));   // flat shade — no normals on the fallback
             break;
           }
           t += d;
-          if (t > 4.5) break;
+          if (t > 3.2) break;
         }
         if (heat === 0) heat = s.glow * 0.35 * Math.exp(-halo * 55);
         const v = Math.min(1, heat) * 255;
