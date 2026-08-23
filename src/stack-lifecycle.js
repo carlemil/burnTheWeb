@@ -81,6 +81,7 @@
     if (ctlIn(slot, "palrev")) ctlIn(slot, "palrev").checked = !!(L.paletteRev != null ? L.paletteRev : px.paletteRev);
     if (ctlIn(slot, "palbg")) ctlIn(slot, "palbg").value = bgOk(L.paletteBg != null ? L.paletteBg : px.paletteBg);
     if (ctlIn(slot, "showbox")) ctlIn(slot, "showbox").checked = !!(L.showBox != null ? L.showBox : px.showBox);
+    if (ctlIn(slot, "world")) ctlIn(slot, "world").checked = !!(L.world != null ? L.world : px.world);
     if (ctlIn(slot, "cardbtn")) ctlIn(slot, "cardbtn").style.display = EFFECTS[L.fx].cardioid ? "" : "none";
     // This layer's filter chain — membership, order and the stage divider.
     const own = new Set(filtersOk(L.filters) || presetFilters(L.fx));
@@ -676,7 +677,7 @@
   const extras = {};
   function presetExtra(e) {
     const x = EFFECTS[e].extras;
-    return { palette: x.palette, paletteRev: !!x.paletteRev, paletteBg: bgOk(x.paletteBg), morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, filters: presetFilters(e),
+    return { palette: x.palette, paletteRev: !!x.paletteRev, paletteBg: bgOk(x.paletteBg), morph: x.morph, showBox: x.showBox, world: x.world === true, randSeed: x.randSeed, filters: presetFilters(e),
       seedPath: seedModeOk(x.seedPath), seedRide: x.seedRide !== false, seedPts: seedPtsOk(x.seedPts) };
   }
   // Freehand control points are free-form scene data (they ride in localStorage, presets,
@@ -712,7 +713,7 @@
   function initExtras() { EFFECTS.forEach((_, k) => extras[k] = presetExtra(k)); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
+    extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, world: worldChk.checked, randSeed: randSeedChk.checked,
       filters: activeFilterIds(),        // the user's drag order, not registry order
       // Seed-path config for the selected effect. Points are rounded to trim share links.
       seedPath: seedPathMode, seedRide: seedRideOn, seedPts: seedPts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) };
@@ -746,6 +747,7 @@
     L.paletteBg = paletteBg;
     captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
     L.showBox = showBoxChk.checked;   // the wireframe box is per-layer, not per-effect
+    L.world = worldChk.checked;       // ...and so is joining the shared 3D world
     L.filters = activeFilterIds();    // the user's drag order, not registry order
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
@@ -763,6 +765,7 @@
     // the same load-order trap the seed path documents below.
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;
     showBoxChk.checked = showBox;
+    worldChk.checked = L.world != null ? !!L.world : fx.world === true;
     installSeedPath(L);              // seed globals = this layer's orbit path, before the persist-freeze
   }
   // Push a layer's palette + filters onto the live globals. Called after setEffect for
@@ -789,6 +792,7 @@
     palbgSel.value = paletteBg;
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;   // per-layer, not per-effect
     showBoxChk.checked = showBox;
+    worldChk.checked = L.world != null ? !!L.world : fx.world === true;
     installSeedPath(L);              // seed globals = this layer's orbit path
     seedHistory = []; seedDragIdx = -1; seedHover = -1;   // fresh editing session per layer
     syncOrbitUI();                   // reflect this layer's mode / ride / points in the editor

@@ -532,7 +532,7 @@
     return { effect: effectId(L.fx), state, cam, beat: L.beat, pulse: L.pulse,
       plen: L.plen, btune: L.btune, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
-      showBox: L.showBox, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      showBox: L.showBox, world: L.world, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -574,6 +574,7 @@
       L.seedRide = r.seedRide != null ? r.seedRide !== false : (tex.seedRide != null ? tex.seedRide !== false : null);
       L.seedPts = r.seedPts != null ? seedPtsOk(r.seedPts) : (tex.seedPts != null ? seedPtsOk(tex.seedPts) : null);
       L.showBox = r.showBox != null ? !!r.showBox : (tex.showBox != null ? !!tex.showBox : null);
+      L.world = r.world != null ? !!r.world : (tex.world != null ? !!tex.world : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
       // orderFilters, NOT FILTERS.filter: the stored list is the USER'S drag order and the
       // chain is a sequence, not a sorted set — re-sorting it here threw the order away on

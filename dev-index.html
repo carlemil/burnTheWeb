@@ -2699,6 +2699,12 @@
   // the true inverse means solving a cubic per point. So `fov` is listed in the params of the
   // 33 effects with a `draw` hook and not the 8 with a `stamp` one.
   let camFov = 0;
+  // WHERE A LAYER'S GEOMETRY SITS IN THE SHARED 3D WORLD (see glWorldDraw). The world's
+  // frame is the Ocean's — camera at y = 3.4, water at y = 0 — so an object needs telling
+  // where to stand in it. Per layer, like the camera angles: two joined layers place their
+  // own geometry independently. Defaults put it a few units ahead and above the water, so
+  // ticking the box produces something visible rather than something behind you.
+  let wldX = 0, wldY = 1.6, wldZ = 6, wldScale = 1.2;
   // CPU mirror of the shader camera. Rotating (x, y, 0) by Rz·Ry·Rx and dropping z is a
   // plain 2×2 map, so the whole camera collapses to four numbers — worth hoisting,
   // since the CPU mirrors would otherwise call trig six times per pixel. Recomputed
@@ -4292,6 +4298,260 @@
     // (x, y, z, slice) sample, and winding it round trades the real axis for the fourth one
     // and walks through cross-sections nothing in 3D can show.
     //
+    // ---- THE SHARED 3D WORLD ------------------------------------------------------
+    // One raymarch over the geometry of SEVERAL LAYERS AT ONCE, so a Glass ball genuinely
+    // reflects in the Ocean and the Ocean genuinely reflects in the ball. Layers are
+    // independent full-screen passes everywhere else in this file; an effect could already
+    // READ what was beneath it (glBelowTex), but that is a screen-space sample of a flat
+    // picture — one-directional, with no occlusion and no contact line where a ball meets
+    // the water. This traces both objects as one scene.
+    //
+    // PER-LAYER PALETTES SURVIVE BECAUSE THE OUTPUT IS A G-BUFFER, not a picture: heat in
+    // .r and an object ID in .g. A trivial mask pass (FS_WORLDPICK) then hands each layer
+    // only its own pixels, and everything downstream — that layer's feedback chain, its
+    // palette, its post filters, the OKLab merge — carries on knowing nothing about this.
+    //
+    // THE CAMERA IS THE OCEAN'S: at (0, CAM_H, 0) looking +z with its downward tilt. A
+    // world needs a ground and a horizon and that is the only participant that has one, so
+    // it is the canonical frame whether or not an Ocean layer is present. Everything else
+    // is PLACED into it (uGbPlace = xyz offset, w scale). This shader still goes through
+    // camProg, so the owning layer's Camera X/Y/Z, Zoom and Field of view orbit the whole
+    // world — no new camera controls, and none of the old ones stop working.
+    //
+    // Reflected light is written into the REFLECTOR's layer, so the water seen inside the
+    // ball is tinted by the BALL's palette. That is the rule glBelowTex already follows and
+    // it is what keeps a split by primary-hit ID coherent — a pixel belongs to exactly one
+    // layer, whatever it happens to be showing.
+    //
+    // TWO MARCHES, NOT ONE. The SDF union is sphere-traced and the Ocean is a height field
+    // with a geometric step law; they want different steps, so each is marched with the
+    // code it already had and the nearer hit wins. Occlusion falls out of that comparison.
+    const FS_WORLD = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uZoom;
+    uniform float uOcOn; uniform float uOcId; uniform float uTime; uniform float uSwell;
+    uniform float uChop; uniform float uFoam; uniform float uWind; uniform float uHeight;
+    uniform float uReflect;
+    uniform float uGbOn; uniform float uGbId; uniform float uGbTime; uniform float uGbCount;
+    uniform float uGbRad; uniform float uGbMat; uniform float uGbIor; uniform float uGbGlow;
+    uniform vec4 uGbPlace;
+    out vec4 o;
+    const int WAVE_OCT_MARCH = 3;
+    const float CAM_H = 3.4;
+
+    // ---- geometry, lifted from the two effects' own shaders ----
+    void waves(vec2 p, int oct, out float h, out vec2 dh){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+      float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
+      h = 0.0; dh = vec2(0.0);
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        float ph = dot(p, dir)*frq + uTime*spd;
+        float s = sin(ph)*0.5 + 0.5;
+        h += amp*pow(s, uChop);
+        norm += amp;
+        float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+        dh += dw*dir;
+        amp *= 0.62; frq *= 1.87; spd *= 1.21;
+        dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+      }
+      h /= max(norm, 1e-4);
+    }
+    float waveAmp(){ return min(uHeight, CAM_H*0.55); }
+    vec3 ballAt(int i, float t){
+      float f = float(i);
+      float a = t*(0.60 + 0.13*f) + f*2.39996;
+      float b = t*(0.41 + 0.09*f) + f*1.11700;
+      return vec3(1.25*sin(a) + 0.35*sin(b*1.7),
+                  0.85*sin(b) + 0.25*cos(a*1.3),
+                  0.60*cos(a*0.8 + f));
+    }
+    // p_local = (p_world - offset)/scale, and the distance comes back MULTIPLIED BY SCALE.
+    // Dropping that multiply is the classic placed-SDF bug: the marcher then takes steps in
+    // local units through world space, overshoots, and punches holes in the object — which
+    // reads as a broken shader rather than as a missing factor. worldprobe pins it.
+    float glassDE(vec3 p){
+      vec3 pl = (p - uGbPlace.xyz)/uGbPlace.w;
+      float d = 1e9;
+      for (int i = 0; i < 5; i++){
+        if (float(i) >= uGbCount) break;
+        d = min(d, length(pl - ballAt(i, uGbTime)) - uGbRad);
+      }
+      return d*uGbPlace.w;
+    }
+    // The SDF union. Returns distance and the ID of whatever is nearest.
+    vec2 worldMap(vec3 p){
+      float d = 1e9, id = 0.0;
+      if (uGbOn > 0.5){ float g = glassDE(p); if (g < d){ d = g; id = uGbId; } }
+      return vec2(d, id);
+    }
+    vec3 sdfNormal(vec3 p){
+      vec2 e = vec2(1.0, -1.0)*0.0015;
+      return normalize(e.xyy*worldMap(p + e.xyy).x + e.yyx*worldMap(p + e.yyx).x
+                     + e.yxy*worldMap(p + e.yxy).x + e.xxx*worldMap(p + e.xxx).x);
+    }
+    // Sphere-trace the SDF union. -1 = nothing.
+    float traceSdf(vec3 ro, vec3 rd, int steps, out float id){
+      float t = 0.02; id = 0.0;
+      for (int i = 0; i < 96; i++){
+        if (i >= steps) break;
+        vec2 m = worldMap(ro + rd*t);
+        if (m.x < 0.0015*max(t, 1.0)){ id = m.y; return t; }
+        t += m.x;
+        if (t > 90.0) break;
+      }
+      return -1.0;
+    }
+    // March the water. Geometric steps for the same reason FS_OCEAN uses them: near water
+    // needs fine sampling and far water is a handful of pixels.
+    float traceOcean(vec3 ro, vec3 rd, int steps){
+      if (uOcOn < 0.5 || rd.y > -0.004) return -1.0;
+      float amp = waveAmp(), tp = 0.6, dp = ro.y;
+      for (int i = 1; i <= 32; i++){
+        if (i > steps) break;
+        float t = 0.6*pow(1.24, float(i));
+        vec3 p = ro + rd*t;
+        float hh; vec2 dd;
+        waves(p.xz, WAVE_OCT_MARCH, hh, dd);
+        float d = p.y - hh*amp;
+        if (d < 0.0) return tp + (t - tp)*dp/max(dp - d, 1e-4);
+        tp = t; dp = d;
+        if (t > 420.0) break;
+      }
+      return -1.0;
+    }
+    // Nearest of the two, so a ball in front of a wave hides it and a wave in front of a
+    // ball hides that.
+    float traceWorld(vec3 ro, vec3 rd, int sdfSteps, int ocSteps, out float id){
+      float ti = traceSdf(ro, rd, sdfSteps, id);
+      float to = traceOcean(ro, rd, ocSteps);
+      if (to > 0.0 && (ti < 0.0 || to < ti)){ id = uOcId; return to; }
+      return ti;
+    }
+    float skyOf(vec3 d){
+      float sky = 0.10*exp(-max(0.0, d.y)*9.0);
+      float sun = pow(max(0.0, dot(normalize(d), normalize(vec3(0.40, 0.62, -0.68)))), 60.0);
+      return clamp(sky + 0.55*sun, 0.0, 1.0);
+    }
+    // Shading with NO further bounce -- what a reflection ray sees. GLSL has no recursion,
+    // so the one bounce is unrolled into shade0 (sky as its environment) and shade1 below.
+    float shade0(float id, vec3 p, vec3 rd, float t){
+      if (id == uOcId){
+        float hh; vec2 dd;
+        waves(p.xz, 6, hh, dd);
+        vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
+        float fade = 1.0/(1.0 + t*t*0.0016);
+        float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
+        float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
+        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+        return (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
+      }
+      vec3 n = sdfNormal(p);
+      float face = max(0.0, dot(n, -rd));
+      return 0.10 + 0.55*face + (0.06 + uGbGlow*0.55)*pow(1.0 - face, 2.0);
+    }
+    float envRay(vec3 ro, vec3 rd){
+      float id;
+      float t = traceWorld(ro + rd*0.02, rd, 48, 24, id);
+      if (t < 0.0) return skyOf(rd);
+      return shade0(id, ro + rd*t, rd, t);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      // The OCEAN's screen convention: +y is up, which is the negation the y-flipped heat
+      // buffer needs. Every placed object inherits it.
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)*2.0/uZoom;
+      vec3 ro = vec3(0.0, CAM_H, 0.0);
+      vec3 rd = normalize(vec3(q.x, q.y - 0.30, 1.35));
+      float id;
+      float t = traceWorld(ro, rd, 96, 32, id);
+      float heat = 0.0;
+      if (t < 0.0){
+        // NOTHING HIT: the sky belongs to the water's layer when there is one, so the
+        // horizon and the ball's layer do not both paint the same empty pixels in two
+        // different palettes.
+        heat = uOcOn > 0.5 ? 0.10*exp(-max(0.0, rd.y)*9.0) : 0.0;
+        id = uOcOn > 0.5 ? uOcId : 0.0;
+      } else if (id == uOcId){
+        vec3 p = ro + rd*t;
+        float hh; vec2 dd;
+        waves(p.xz, 6, hh, dd);
+        vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
+        heat = shade0(uOcId, p, rd, t);
+        if (uReflect > 0.0){
+          // A REAL reflection ray now, not a screen-space guess: this is what puts the ball
+          // in the water.
+          //
+          // FRESNEL ALONE IS TOO HONEST HERE. It is what makes water read as water, and at
+          // this camera height (3.4 above the surface) it also means the near sea is viewed
+          // far too steeply to show anything: a metal ball sitting in the water measured a
+          // 15% brightening of an already-bright ripple, which is invisible. So the slider
+          // does two jobs — up to 1.0 it scales the physical reflection, and ABOVE 1.0 it
+          // lifts the curve toward a flat mirror. 0..1 is a sea, 2 is polished, and the
+          // shipped 0.6 is exactly what it was.
+          float fres = 0.02 + 0.98*pow(1.0 - max(0.0, dot(n, -rd)), 5.0);
+          float w = min(uReflect, 1.0)*mix(fres, 1.0, clamp(uReflect - 1.0, 0.0, 1.0));
+          // MIX, NOT ADD. A reflection REPLACES the surface in proportion to Fresnel; adding
+          // it means a mirror image landing on an already-bright ripple clamps out and
+          // vanishes, which is exactly what happened — the ray was hitting the ball
+          // perfectly (verified by outputting the hit test alone) and the picture showed
+          // nothing. Both terms carry the same distance fade, so they mix at like for like.
+          heat = mix(heat, envRay(p, reflect(rd, n))/(1.0 + t*t*0.0016), w);
+        }
+        heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);      // the bright line at the horizon
+      } else {
+        vec3 p = ro + rd*t;
+        vec3 n = sdfNormal(p);
+        float face = max(0.0, dot(n, -rd));
+        float fres = pow(1.0 - face, 5.0);
+        float rim = pow(1.0 - face, 2.0);                // the wide term that makes a ball a ball
+        vec3 refl = reflect(rd, n);
+        if (uGbMat < 0.5){
+          heat = envRay(p, refl)*0.90 + (0.06 + uGbGlow*0.55)*rim;
+        } else if (uGbMat < 1.5){
+          vec3 r1 = refract(rd, n, 1.0/uGbIor);
+          // Exit through the far side of the same ball. Placed geometry, so the centre has
+          // to come back out of the placement rather than being read from a uniform.
+          vec3 pl = (p - uGbPlace.xyz)/uGbPlace.w;
+          vec3 cl = vec3(0.0);
+          float bd = 1e9;
+          for (int i = 0; i < 5; i++){
+            if (float(i) >= uGbCount) break;
+            vec3 ci = ballAt(i, uGbTime);
+            float di = abs(length(pl - ci) - uGbRad);
+            if (di < bd){ bd = di; cl = ci; }
+          }
+          vec3 ctr = uGbPlace.xyz + cl*uGbPlace.w;
+          vec3 pe = p - 2.0*dot(p - ctr, r1)*r1;
+          vec3 n2 = normalize(pe - ctr);
+          vec3 r2 = refract(r1, -n2, uGbIor);
+          if (dot(r2, r2) < 0.001) r2 = reflect(r1, -n2);
+          heat = mix(envRay(pe, r2)*0.78, envRay(p, refl), clamp(fres*1.6, 0.0, 1.0))
+               + (0.06 + uGbGlow*0.70)*rim;
+        } else {
+          vec3 r1 = refract(rd, n, 1.0/uGbIor);
+          vec3 thin = normalize(mix(rd, r1, 0.30));
+          heat = mix(envRay(p, thin)*0.60, envRay(p, refl), clamp(0.20 + fres*2.0, 0.0, 1.0))
+               + (0.14 + uGbGlow*0.9)*rim;
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 0.92), id/255.0, 0.0, 1.0);
+    }`;
+    // Hand one layer its own pixels out of the world G-buffer. Everything downstream —
+    // feedback, palette, post chain, blend — then behaves exactly as it does for an effect
+    // that drew itself.
+    const FS_WORLDPICK = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uId;
+    out vec4 o;
+    void main(){
+      vec4 s = texture(uSrc, gl_FragCoord.xy/uSize);
+      // Exact ID compare with a half-step tolerance: the buffer is RGBA8, so an id rides as
+      // id/255 and comes back within half a quantum. A fuzzy compare here would bleed one
+      // layer's heat into another's palette.
+      o = vec4(s.r*step(abs(s.g*255.0 - uId), 0.5), 0.0, 0.0, 1.0);
+    }`;
     // Glass ball: raytraced spheres that REFLECT AND REFRACT THE LAYERS BENEATH THEM.
     //
     // Analytic, not raymarched. A sphere is the one primitive with a closed-form ray
@@ -4769,7 +5029,11 @@
             // Fresnel: water is a mirror at a glancing angle and nearly clear straight down,
             // so the reflection concentrates toward the horizon by itself.
             float fres = 0.02 + 0.98*pow(1.0 - max(0.0, dot(n, -rd)), 5.0);
-            heat += uReflect*fres*envBelow(reflect(rd, n))*fade;
+            // Same two-part curve the shared world uses, so the slider means one thing in
+            // both places: physical up to 1.0, lifting toward a flat mirror above it.
+            float w = min(uReflect, 1.0)*mix(fres, 1.0, clamp(uReflect - 1.0, 0.0, 1.0));
+            // mix, not add — see the note in FS_WORLD's ocean branch.
+            heat = mix(heat, envBelow(reflect(rd, n))*fade, w);
           }
           heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
         }
@@ -5644,6 +5908,11 @@
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPos", "uFwd", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.torus = camProg(VS_QUAD, FS_TORUS, ["uSize", "uPos", "uFwd", "uRing", "uTube", "uTwist", "uFlute", "uGlow", "uZoom"]);
+    // camProg, so the owning layer's camera rotation, zoom and FOV orbit the whole world.
+    glProg.world = camProg(VS_QUAD, FS_WORLD, ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
+      "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
+      "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace"]);
+    glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
@@ -5761,6 +6030,10 @@
     // One layer's palette-mapped colour, before its own post-filter chain runs on it.
     glTex.layerCol = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.layerCol = createFbo(glTex.layerCol);
+    // The shared world's G-buffer: heat in .r, object ID in .g. NEAREST, because an ID is a
+    // label and interpolating two of them invents a third that belongs to no layer.
+    glTex.world = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    glFbo.world = createFbo(glTex.world);
     glTex.screen = [
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
@@ -5816,6 +6089,7 @@
     resizeTex(glTex.color[0], fw, fh);
     resizeTex(glTex.color[1], fw, fh);
     resizeTex(glTex.layerCol, fw, fh);
+    resizeTex(glTex.world, fw, fh);
     // Display-sized, not fire-sized — see the declaration. Guarded because glResize
     // can run before the canvas has been laid out.
     const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
@@ -6228,7 +6502,12 @@
       layerCur[slot] = cur;
       return glTex.heatL[slot][cur];
     }
-    fx.draw(dt); capturePhase(L);                  // → glTex.layer (params installed above)
+    // A JOINED LAYER DOES NOT DRAW ITSELF -- glWorldDraw already traced its geometry along
+    // with every other participant's, so all that is left is to take its own pixels out of
+    // the shared G-buffer. Everything below this line is identical either way.
+    const wid = worldPlan && worldPlan.ids.get(L);
+    if (wid) glWorldPick(wid);
+    else { fx.draw(dt); capturePhase(L); }         // → glTex.layer (params installed above)
     if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
     let cur = layerCur[slot];
     for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
@@ -6320,8 +6599,110 @@
   // one during a transition. It replaces `stack.indexOf(L)`, which returns -1 for a
   // DETACHED item and is the one line that has to change for this to work at all — every
   // per-slot lookup below would silently read heatL[-1] and the whole scene would vanish.
+  // ---- the shared 3D world ---------------------------------------------------------
+  // Layers that have joined (`layerWorld(L)`) are not drawn by their own effect at all:
+  // ONE pass traces all of their geometry together, so a Glass ball reflects in the Ocean
+  // and the Ocean reflects in the ball, with real occlusion and a real contact line. The
+  // pass writes a G-BUFFER — heat in .r, object ID in .g — and each joined layer then picks
+  // its own pixels out of it (glWorldPick). Everything downstream is untouched: the layer's
+  // feedback chain, its palette, its post filters and the OKLab merge never learn that the
+  // heat arrived from a shared trace rather than from `fx.draw(dt)`.
+  //
+  // ONE LAYER PER EFFECT KIND joins, and the first in stack order wins. A second Glass ball
+  // layer renders standalone as it always did. Supporting N of a kind means every uniform
+  // here becoming an array and the inner loop paying for all of them; it is a real
+  // extension, not a hard one, and it is not what makes the feature work.
+  // ponytail: one ocean + one ball in the world; arrays if anyone ever wants two of a kind.
+  //
+  // GL only. The Canvas2D fallback renders a single item and has nowhere to put a merged
+  // scene, so on that path every effect draws itself exactly as before.
+  const WORLD_KINDS = { ocean: "oc", glass: "gb" };     // effect id -> uniform prefix
+  let worldPlan = null;                 // { ids: Map<layer, id>, oc: L|null, gb: L|null }
+  // Which joined layers are in this frame's world, and what ID each one owns. IDs start at
+  // 1: 0 is "nothing was hit", so a layer can never be handed the background.
+  function planWorld(live) {
+    let plan = null, next = 1;
+    for (const L of live) {
+      const kind = WORLD_KINDS[EFFECTS[L.fx].id];
+      if (!kind || !layerWorld(L)) continue;
+      if (!plan) plan = { ids: new Map(), oc: null, gb: null };
+      if (plan[kind]) continue;         // one per kind, first in stack order
+      plan[kind] = L;
+      plan.ids.set(L, next++);
+    }
+    return plan;
+  }
+  // Draw the world once, into glTex.world. The OWNER — the lowest joined layer — has
+  // already been installed by the caller, so camRX/camRY/camRZ, camFov and zoom are its
+  // own: the shared camera is a real camera the user can still fly, not a fixed one.
+  // `dt` is not optional. A joined layer's fx.draw(dt) never runs — that is the whole
+  // point — so this is the ONLY place its clock still advances. Passing 0 here freezes the
+  // effect: the waves stop moving and the balls stop drifting, on geometry that otherwise
+  // renders perfectly, which is a hard thing to see in a screenshot.
+  function glWorldDraw(plan, dt) {
+    bindFbo(glFbo.world, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg.world;
+    gl.useProgram(P.p);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
+    gl.uniform1f(P.u.uZoom, zoom);
+    const oc = plan.oc, gb = plan.gb;
+    gl.uniform1f(P.u.uOcOn, oc ? 1 : 0);
+    gl.uniform1f(P.u.uOcId, oc ? plan.ids.get(oc) : 0);
+    if (oc) {
+      installStackItem(oc); installPhase(oc);
+      const s = oceanSeed(dt);          // this layer's clock, advanced here and nowhere else
+      gl.uniform1f(P.u.uTime, s.t); gl.uniform1f(P.u.uSwell, s.swell);
+      gl.uniform1f(P.u.uChop, s.chop); gl.uniform1f(P.u.uFoam, s.foam);
+      gl.uniform1f(P.u.uWind, s.wind); gl.uniform1f(P.u.uHeight, s.height);
+      gl.uniform1f(P.u.uReflect, s.reflect);
+      capturePhase(oc);
+    }
+    gl.uniform1f(P.u.uGbOn, gb ? 1 : 0);
+    gl.uniform1f(P.u.uGbId, gb ? plan.ids.get(gb) : 0);
+    if (gb) {
+      installStackItem(gb); installPhase(gb);
+      const s = glassSeed(dt);          // ...likewise
+      gl.uniform1f(P.u.uGbTime, s.t); gl.uniform1f(P.u.uGbCount, s.count);
+      gl.uniform1f(P.u.uGbRad, s.rad); gl.uniform1f(P.u.uGbMat, s.mat);
+      gl.uniform1f(P.u.uGbIor, s.ior); gl.uniform1f(P.u.uGbGlow, s.glow);
+      gl.uniform4f(P.u.uGbPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(gb);
+    }
+    drawQuad();
+  }
+  // One joined layer's share of the world, into glTex.layer — the same texture fx.draw()
+  // would have written, so renderLayerHeat continues without knowing the difference.
+  function glWorldPick(id) {
+    bindFbo(glFbo.layer, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg.worldpick;
+    gl.useProgram(P.p);
+    bindTexUnit(0, glTex.world); gl.uniform1i(P.u.uSrc, 0);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    gl.uniform1f(P.u.uId, id);
+    drawQuad();
+  }
+  // Has this layer joined the shared world? Same selected -> stored -> descriptor fallback
+  // as layerShowBox, and default FALSE so every scene saved before this renders unchanged.
+  function layerWorld(L) {
+    if (L === stack[stackSel]) return worldChk.checked;
+    if (L.world != null) return !!L.world;
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    return fx.world === true;
+  }
   function renderStackColor(live, dt, now, ticks, base) {
     const b0 = base || 0;
+    // THE WORLD IS TRACED ONCE, before any layer. It has to be: a joined layer's heat is a
+    // slice of it, so it cannot be built while the layers are being walked. The owner --
+    // the lowest joined layer -- is installed first, because its camera IS the world's.
+    worldPlan = planWorld(live);
+    if (worldPlan) {
+      const owner = worldPlan.ids.keys().next().value;
+      installStackItem(owner); installPhase(owner);
+      glWorldDraw(worldPlan, dt);
+    }
     let acc = 0;
     bindFbo(glFbo.color[0], fw, fh);
     gl.disable(gl.BLEND);
@@ -10463,7 +10844,7 @@
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
     { key: "gofoam", host: "fx", group: "ocean", type: "dual", label: "Foam", valId: "vGoFoam", min: 0.1, max: 1, step: 0.01, lo: 0.45, hi: 0.45, fmt: v => sig3(v), apply: v => goFoam = v, durScale: 10 },
     { key: "goheight", host: "fx", group: "ocean", type: "dual", label: "Wave height", valId: "vGoHeight", min: 0.05, max: 1.8, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => goHeight = v, durScale: 10 },
-    { key: "goreflect", host: "fx", group: "ocean", type: "dual", label: "Reflection", valId: "vGoReflect", min: 0, max: 1.5, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => goReflect = v, durScale: 10 },
+    { key: "goreflect", host: "fx", group: "ocean", type: "dual", label: "Reflection", valId: "vGoReflect", min: 0, max: 2, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => goReflect = v, durScale: 10 },
     { key: "gowind", host: "fx", group: "ocean", type: "dual", label: "Wind", valId: "vGoWind", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => goWind = v, durScale: 10 },
     { key: "bhtilt", host: "fx", group: "bhole", type: "dual", label: "Tilt", valId: "vBhTilt", min: 2, max: 80, step: 1, lo: 12, hi: 12, fmt: v => sig3(v) + "°", apply: v => bhTilt = v, durScale: 10 },
     { key: "bhouter", host: "fx", group: "bhole", type: "dual", label: "Disk size", valId: "vBhOuter", min: 4, max: 14, step: 0.1, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bhOuter = v, durScale: 10 },
@@ -10493,6 +10874,14 @@
     // Field of view. Shown for the 33 SHADER effects only -- see the note on camFov: a
     // point effect stamps a destination and has no sample coordinate to bend.
     { key: "fov", host: "fx", group: "camera", type: "dual", label: "Field of view", valId: "vFov", min: -0.8, max: 2, step: 0.02, lo: 0, hi: 0, fmt: v => v === 0 ? "normal" : (v > 0 ? "wide " : "tele ") + sig3(Math.abs(v)), apply: v => camFov = v, durScale: 10 },
+    // The shared 3D world. `world` is per LAYER and defaults OFF, so every scene saved
+    // before it renders unchanged; the four placements say where this layer's geometry
+    // stands in the Ocean's frame (water at y=0, camera at y=3.4).
+    { key: "world", host: "fx", group: "world", type: "check", label: "Share one 3D world" },
+    { key: "wldx", host: "fx", group: "world", type: "dual", label: "Place X", valId: "vWldX", min: -12, max: 12, step: 0.1, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => wldX = v, durScale: 10 },
+    { key: "wldy", host: "fx", group: "world", type: "dual", label: "Place Y", valId: "vWldY", min: -2, max: 10, step: 0.05, lo: 1.6, hi: 1.6, fmt: v => sig3(v), apply: v => wldY = v, durScale: 10 },
+    { key: "wldz", host: "fx", group: "world", type: "dual", label: "Place Z", valId: "vWldZ", min: 1, max: 40, step: 0.1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => wldZ = v, durScale: 10 },
+    { key: "wldscale", host: "fx", group: "world", type: "dual", label: "World scale", valId: "vWldScale", min: 0.1, max: 6, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => wldScale = v, durScale: 10 },
     { key: "randseed", host: "fx", group: "other", type: "check", label: "Random seed each reload" },
     // Palette cycle time, in seconds, as a [min,max] band: each morph holds for a
     // random time drawn from it (like Preset TTL). Collapsed to 0 = fixed palette.
@@ -11234,7 +11623,7 @@
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
     boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
-    torus: "Doughnut", trees: "Trees", glass: "Glass ball",
+    torus: "Doughnut", trees: "Trees", glass: "Glass ball", world: "Shared 3D world",
     bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
@@ -11450,7 +11839,7 @@
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
     return { fx, state: null, beat: null, pulse: null, plen: null, btune: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
-      seedPath: null, seedRide: null, seedPts: null, showBox: null,
+      seedPath: null, seedRide: null, seedPts: null, showBox: null, world: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   let stack = [newStackItem(0)], stackSel = 0;
@@ -12399,6 +12788,8 @@
                        set checked(v) { for (const n of ctlEach("showbox")) n.checked = v; } };
   const randSeedChk = { get checked() { const n = ctl("randseed"); return !!n && n.checked; },
                         set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
+  const worldChk = { get checked() { const n = ctl("world"); return !!n && n.checked; },
+                     set checked(v) { for (const n of ctlEach("world")) n.checked = v; } };
   // ---- palette fold ----------------------------------------------------------
   // The palette body (swatches, Reverse, Background, cycle) is the tallest run of furniture
   // in a layer block and the first thing you stop needing once the colours are settled.
@@ -12426,6 +12817,9 @@
     ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
     // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
     ctlIn(slot, "randseed").addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
+    // Joining or leaving the shared world changes which layers are traced together, so
+    // it has to reach the render immediately rather than waiting for a reselect.
+    ctlIn(slot, "world").addEventListener("change", () => { if (stack[stackSel]) stack[stackSel].world = worldChk.checked; });
     ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
     const pf = ctlIn(slot, "pal-fold");
     pf.addEventListener("click", togglePalFold);
@@ -13066,7 +13460,7 @@
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "glass", name: "Glass ball", subtitle: "Glass ball · raytraced spheres over the layers below",
       help: "Raytraced spheres that reflect and refract WHAT IS UNDERNEATH THEM. Put this layer on top of another one and the balls pick that layer's picture up: Metal mirrors it, Glass bends it through and turns it upside down the way a real ball does, Bubble is a thin shell that barely bends it but rings hard at the edge. Refraction is the glass's density — low is nearly water, high squeezes the whole scene into the middle of the ball. On its own, with no layer beneath, the balls fall back to reflecting a procedural room so the effect still stands up. The reflection is of BRIGHTNESS, not colour — everything is re-tinted by this layer's own palette.",
-      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "glass", "band"], bakesOwnZoom: true,
       draw: dt => { const s = glassSeed(dt);
         if (useGL) glShaderDraw("glass", u => {
@@ -13082,7 +13476,7 @@
         else glassCPU(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], gbcount: [3, 3], gbsize: [0.62, 0.62], gbmat: [1, 1], gbior: [1.45, 1.45], gbglow: [0.5, 0.5],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
       help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
       params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
@@ -13108,7 +13502,7 @@
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
       help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
-      params: ["goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "ocean", "band"], bakesOwnZoom: true,
       draw: dt => { const s = oceanSeed(dt);
         if (useGL) glShaderDraw("ocean", u => {
@@ -13123,7 +13517,7 @@
         else oceanCPU(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0], goheight: [0.7, 0.7], goreflect: [0.6, 0.6],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",
       help: "An accretion disk seen through the hole's own gravity. The photons are integrated rather than drawn straight, so light from the FAR side of the disk is bent up over the top of the shadow and back under the bottom — those arcs closing round the dark centre are the whole point, and a straight-ray version would just be an ellipse. Tilt is the camera's height above the disk plane: low is the iconic nearly-edge-on view, high looks down on a plain ring. Beaming is the relativistic boost that makes the limb coming toward you far brighter than the one going away; wind it to 0 for an evenly lit disk. The disk orbits Keplerian, so the inside shears past the outside and the turbulence never repeats. Heavy: it wants a real GPU.",
       params: ["bhtilt", "bhouter", "bhspin", "bhbeam", "bhorbit", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -14375,6 +14769,7 @@
     if (ctlIn(slot, "palrev")) ctlIn(slot, "palrev").checked = !!(L.paletteRev != null ? L.paletteRev : px.paletteRev);
     if (ctlIn(slot, "palbg")) ctlIn(slot, "palbg").value = bgOk(L.paletteBg != null ? L.paletteBg : px.paletteBg);
     if (ctlIn(slot, "showbox")) ctlIn(slot, "showbox").checked = !!(L.showBox != null ? L.showBox : px.showBox);
+    if (ctlIn(slot, "world")) ctlIn(slot, "world").checked = !!(L.world != null ? L.world : px.world);
     if (ctlIn(slot, "cardbtn")) ctlIn(slot, "cardbtn").style.display = EFFECTS[L.fx].cardioid ? "" : "none";
     // This layer's filter chain — membership, order and the stage divider.
     const own = new Set(filtersOk(L.filters) || presetFilters(L.fx));
@@ -14970,7 +15365,7 @@
   const extras = {};
   function presetExtra(e) {
     const x = EFFECTS[e].extras;
-    return { palette: x.palette, paletteRev: !!x.paletteRev, paletteBg: bgOk(x.paletteBg), morph: x.morph, showBox: x.showBox, randSeed: x.randSeed, filters: presetFilters(e),
+    return { palette: x.palette, paletteRev: !!x.paletteRev, paletteBg: bgOk(x.paletteBg), morph: x.morph, showBox: x.showBox, world: x.world === true, randSeed: x.randSeed, filters: presetFilters(e),
       seedPath: seedModeOk(x.seedPath), seedRide: x.seedRide !== false, seedPts: seedPtsOk(x.seedPts) };
   }
   // Freehand control points are free-form scene data (they ride in localStorage, presets,
@@ -15006,7 +15401,7 @@
   function initExtras() { EFFECTS.forEach((_, k) => extras[k] = presetExtra(k)); }
   initExtras();
   function saveExtra(e) {
-    extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, randSeed: randSeedChk.checked,
+    extras[e] = { palette: paletteSel.value, paletteRev: paletteReverse, paletteBg: paletteBg, morph: palCycleOn(), showBox: showBoxChk.checked, world: worldChk.checked, randSeed: randSeedChk.checked,
       filters: activeFilterIds(),        // the user's drag order, not registry order
       // Seed-path config for the selected effect. Points are rounded to trim share links.
       seedPath: seedPathMode, seedRide: seedRideOn, seedPts: seedPts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) };
@@ -15040,6 +15435,7 @@
     L.paletteBg = paletteBg;
     captureSeed(L);                   // the layer's orbit path (mode / ride / freehand points)
     L.showBox = showBoxChk.checked;   // the wireframe box is per-layer, not per-effect
+    L.world = worldChk.checked;       // ...and so is joining the shared 3D world
     L.filters = activeFilterIds();    // the user's drag order, not registry order
   }
   // Put a layer's palette + filter SET onto the live globals — just the two values
@@ -15057,6 +15453,7 @@
     // the same load-order trap the seed path documents below.
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;
     showBoxChk.checked = showBox;
+    worldChk.checked = L.world != null ? !!L.world : fx.world === true;
     installSeedPath(L);              // seed globals = this layer's orbit path, before the persist-freeze
   }
   // Push a layer's palette + filters onto the live globals. Called after setEffect for
@@ -15083,6 +15480,7 @@
     palbgSel.value = paletteBg;
     showBox = L.showBox != null ? !!L.showBox : fx.showBox !== false;   // per-layer, not per-effect
     showBoxChk.checked = showBox;
+    worldChk.checked = L.world != null ? !!L.world : fx.world === true;
     installSeedPath(L);              // seed globals = this layer's orbit path
     seedHistory = []; seedDragIdx = -1; seedHover = -1;   // fresh editing session per layer
     syncOrbitUI();                   // reflect this layer's mode / ride / points in the editor
@@ -17591,7 +17989,7 @@
     return { effect: effectId(L.fx), state, cam, beat: L.beat, pulse: L.pulse,
       plen: L.plen, btune: L.btune, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
-      showBox: L.showBox, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      showBox: L.showBox, world: L.world, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -17633,6 +18031,7 @@
       L.seedRide = r.seedRide != null ? r.seedRide !== false : (tex.seedRide != null ? tex.seedRide !== false : null);
       L.seedPts = r.seedPts != null ? seedPtsOk(r.seedPts) : (tex.seedPts != null ? seedPtsOk(tex.seedPts) : null);
       L.showBox = r.showBox != null ? !!r.showBox : (tex.showBox != null ? !!tex.showBox : null);
+      L.world = r.world != null ? !!r.world : (tex.world != null ? !!tex.world : null);
       const fset = filtersOk(r.filters) || filtersOk(tex.filters);
       // orderFilters, NOT FILTERS.filter: the stored list is the USER'S drag order and the
       // chain is a sequence, not a sorted set — re-sorting it here threw the order away on
@@ -20117,6 +20516,11 @@
       { n: "Tumble", w: "vballs", t: "Vector balls only — how fast the constellation turns. It yaws and pitches at different rates, so it never repeats a pose. 0 holds it still." },
       { n: "Edge glow", w: "vballs", t: "Vector balls only — lights the rim of each sphere where its surface turns away from you. Low is flat shading, high outlines every ball and the formation reads as a cloud of bright shells." },
       { n: "Field of view", w: "all", t: "How wide a lens this layer is seen through. It works the way the Camera X/Y/Z sliders do — by moving where each pixel takes its colour from — so it costs nothing and applies to every shader effect: positive pushes the sample outward with the square of the radius, which is a fisheye that bows the middle out and drags the corners in; negative pulls it in, which is a telephoto that flattens the frame. 0 is the normal lens. Drift the two thumbs and the whole layer breathes in and out. It is per LAYER, so one layer can bulge while another stays flat. The point effects (Sierpński, Trees, Boids and the rest) get it too, through the inverse of the same curve — they stamp a position rather than sampling one, so the lens has to be run backwards for them, which is what makes a stamped layer and a shader layer bow the SAME way at the same setting. A wide lens pulls a stamped picture in from the corners, so expect dark edges where a shader effect would simply show you more; a long one folds the far field away entirely and those points are dropped, which is what being outside the frame means." },
+      { n: "Share one 3D world", w: "all", t: "Traces this layer's geometry TOGETHER with every other layer that has it ticked, as one scene, instead of drawing it on its own. Tick it on an Ocean and a Glass ball and the balls really sit in the water: the water is reflected and refracted through them, they are reflected back in it, each hides the other where it should, and there is a real waterline across them. Only the effects that can share a viewpoint offer it — the ones you fly INSIDE (Mandelbulb, Menger sponge, Doughnut) never can. Each layer keeps its own palette, so the water seen inside the ball is tinted like the ball; that is deliberate, and it is the same rule the rest of the app follows. The camera comes from the lowest layer that has joined — its Camera X/Y/Z, Zoom and Field of view now move the whole world." },
+      { n: "Place X", w: "all", t: "Where this layer's geometry stands in the shared world, left to right. The world is the Ocean's: the water is at height 0 and the camera floats above it looking out to sea." },
+      { n: "Place Y", w: "all", t: "How high this layer's geometry stands in the shared world. 0 is the waterline — set it low and a ball is half submerged, with the surface cutting across it and its reflection right beneath." },
+      { n: "Place Z", w: "all", t: "How far out to sea this layer's geometry stands. Near objects are big and steeply lit; far ones sit toward the horizon where the water is most reflective, so that is where a mirror image reads most strongly." },
+      { n: "World scale", w: "all", t: "How big this layer's geometry is in the shared world. It scales the whole arrangement, not one object, so the balls spread apart as they grow." },
       { n: "Balls", w: "glass", t: "Glass ball only — how many spheres are in the air. Each drifts on its own pair of clocks, so they pass through each other's reflections rather than orbiting in formation." },
       { n: "Material", w: "glass", t: "Glass ball only. **Metal** is an opaque mirror — you see only what is behind you. **Glass** refracts the scene through both surfaces, so the layer underneath appears inside the ball, shrunk and turned over. **Bubble** is a thin shell: it barely bends what is behind it, but the rim rings bright. Metal reads best over a busy layer, Glass over a big simple one." },
       { n: "Refraction", w: "glass", t: "Glass ball only — how dense the glass is (its index of refraction). Around 1.05 is barely more than air and the scene passes almost straight through; 1.45 is real glass; past 2 the whole picture is squeezed into a bright knot at the centre of the ball. Only Glass and Bubble use it — Metal never lets a ray in." },
@@ -20134,7 +20538,7 @@
       { n: "Flutes", w: "torus", t: "Doughnut only — how many lengthwise grooves are cut into the pipe. 0 is a smooth tube; higher counts give it a fluted, organ-pipe cross-section that the Twist can then spiral. Whole numbers, for the same reason Twist is." },
       { n: "Swell", w: "ocean", t: "Ocean only — how big the sea is. It scales the surface normals rather than the height, so raising it steepens every face at once: the glint gets sharper, the foam breaks earlier, and the water goes from a lazy roll to a heavy sea." },
       { n: "Wave height", w: "ocean", t: "Ocean only — how tall the swell actually stands, in world units. This is real geometry, not shading: the surface is intersected ray by ray, so raising it makes crests hide the troughs behind them and breaks up the horizon line. It is capped short of the camera height — a sea taller than the viewpoint would put you underwater." },
-      { n: "Reflection", w: "ocean", t: "Ocean only — how strongly the water mirrors THE LAYER UNDERNEATH IT. Put the Ocean on top of another layer and that layer appears in the water, concentrated toward the horizon the way a real reflection is: water is a mirror at a glancing angle and nearly clear straight down. With nothing beneath it there is nothing to reflect and this does nothing. What comes back is brightness, so the reflection is tinted by the water's own palette." },
+      { n: "Reflection", w: "ocean", t: "Ocean only — how strongly the water mirrors what is around it: the layer underneath, or — if the Ocean has joined the shared 3D world — a real traced reflection of the other objects in it. Up to 1 it behaves like water, weighted by Fresnel so it concentrates toward the horizon; ABOVE 1 it lifts toward a flat mirror, which is there because a camera this close to the surface sees the near sea too steeply for the physical amount to show. Put the Ocean on top of another layer and that layer appears in the water, concentrated toward the horizon the way a real reflection is: water is a mirror at a glancing angle and nearly clear straight down. With nothing beneath it there is nothing to reflect and this does nothing. What comes back is brightness, so the reflection is tinted by the water's own palette." },
       { n: "Chop", w: "ocean", t: "Ocean only — how peaked the crests are. Each wave train is a sine raised to this power, so 1 is a bland sine swell with rounded tops, and higher values keep the troughs round while drawing the crests up to a point — which is what real water does. Drift the two thumbs and the sea builds and lays down again." },
       { n: "Speed", w: "torus", t: "Doughnut only — how fast the flight runs along the tube. Negative flies it backwards, and 0 parks you inside, still looking down the pipe." },
       { n: "Glow", w: "torus", t: "Doughnut only — grazing light on the wall, brightest where the surface turns away from you. High values light the far bend before you reach it." },

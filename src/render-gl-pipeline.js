@@ -591,6 +591,11 @@
     glProg.storm = camProg(VS_QUAD, FS_STORM, ["uSize", "uEnv", "uSeed", "uBolts", "uGlow", "uZoom", "uFront"]);
     glProg.bulb = camProg(VS_QUAD, FS_BULB, ["uSize", "uPos", "uFwd", "uPower", "uIter", "uGlow", "uZoom"]);
     glProg.torus = camProg(VS_QUAD, FS_TORUS, ["uSize", "uPos", "uFwd", "uRing", "uTube", "uTwist", "uFlute", "uGlow", "uZoom"]);
+    // camProg, so the owning layer's camera rotation, zoom and FOV orbit the whole world.
+    glProg.world = camProg(VS_QUAD, FS_WORLD, ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
+      "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
+      "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace"]);
+    glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
@@ -708,6 +713,10 @@
     // One layer's palette-mapped colour, before its own post-filter chain runs on it.
     glTex.layerCol = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.layerCol = createFbo(glTex.layerCol);
+    // The shared world's G-buffer: heat in .r, object ID in .g. NEAREST, because an ID is a
+    // label and interpolating two of them invents a third that belongs to no layer.
+    glTex.world = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    glFbo.world = createFbo(glTex.world);
     glTex.screen = [
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
       createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
@@ -763,6 +772,7 @@
     resizeTex(glTex.color[0], fw, fh);
     resizeTex(glTex.color[1], fw, fh);
     resizeTex(glTex.layerCol, fw, fh);
+    resizeTex(glTex.world, fw, fh);
     // Display-sized, not fire-sized — see the declaration. Guarded because glResize
     // can run before the canvas has been laid out.
     const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
@@ -1175,7 +1185,12 @@
       layerCur[slot] = cur;
       return glTex.heatL[slot][cur];
     }
-    fx.draw(dt); capturePhase(L);                  // → glTex.layer (params installed above)
+    // A JOINED LAYER DOES NOT DRAW ITSELF -- glWorldDraw already traced its geometry along
+    // with every other participant's, so all that is left is to take its own pixels out of
+    // the shared G-buffer. Everything below this line is identical either way.
+    const wid = worldPlan && worldPlan.ids.get(L);
+    if (wid) glWorldPick(wid);
+    else { fx.draw(dt); capturePhase(L); }         // → glTex.layer (params installed above)
     if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
     let cur = layerCur[slot];
     for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
@@ -1267,8 +1282,110 @@
   // one during a transition. It replaces `stack.indexOf(L)`, which returns -1 for a
   // DETACHED item and is the one line that has to change for this to work at all — every
   // per-slot lookup below would silently read heatL[-1] and the whole scene would vanish.
+  // ---- the shared 3D world ---------------------------------------------------------
+  // Layers that have joined (`layerWorld(L)`) are not drawn by their own effect at all:
+  // ONE pass traces all of their geometry together, so a Glass ball reflects in the Ocean
+  // and the Ocean reflects in the ball, with real occlusion and a real contact line. The
+  // pass writes a G-BUFFER — heat in .r, object ID in .g — and each joined layer then picks
+  // its own pixels out of it (glWorldPick). Everything downstream is untouched: the layer's
+  // feedback chain, its palette, its post filters and the OKLab merge never learn that the
+  // heat arrived from a shared trace rather than from `fx.draw(dt)`.
+  //
+  // ONE LAYER PER EFFECT KIND joins, and the first in stack order wins. A second Glass ball
+  // layer renders standalone as it always did. Supporting N of a kind means every uniform
+  // here becoming an array and the inner loop paying for all of them; it is a real
+  // extension, not a hard one, and it is not what makes the feature work.
+  // ponytail: one ocean + one ball in the world; arrays if anyone ever wants two of a kind.
+  //
+  // GL only. The Canvas2D fallback renders a single item and has nowhere to put a merged
+  // scene, so on that path every effect draws itself exactly as before.
+  const WORLD_KINDS = { ocean: "oc", glass: "gb" };     // effect id -> uniform prefix
+  let worldPlan = null;                 // { ids: Map<layer, id>, oc: L|null, gb: L|null }
+  // Which joined layers are in this frame's world, and what ID each one owns. IDs start at
+  // 1: 0 is "nothing was hit", so a layer can never be handed the background.
+  function planWorld(live) {
+    let plan = null, next = 1;
+    for (const L of live) {
+      const kind = WORLD_KINDS[EFFECTS[L.fx].id];
+      if (!kind || !layerWorld(L)) continue;
+      if (!plan) plan = { ids: new Map(), oc: null, gb: null };
+      if (plan[kind]) continue;         // one per kind, first in stack order
+      plan[kind] = L;
+      plan.ids.set(L, next++);
+    }
+    return plan;
+  }
+  // Draw the world once, into glTex.world. The OWNER — the lowest joined layer — has
+  // already been installed by the caller, so camRX/camRY/camRZ, camFov and zoom are its
+  // own: the shared camera is a real camera the user can still fly, not a fixed one.
+  // `dt` is not optional. A joined layer's fx.draw(dt) never runs — that is the whole
+  // point — so this is the ONLY place its clock still advances. Passing 0 here freezes the
+  // effect: the waves stop moving and the balls stop drifting, on geometry that otherwise
+  // renders perfectly, which is a hard thing to see in a screenshot.
+  function glWorldDraw(plan, dt) {
+    bindFbo(glFbo.world, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg.world;
+    gl.useProgram(P.p);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
+    gl.uniform1f(P.u.uZoom, zoom);
+    const oc = plan.oc, gb = plan.gb;
+    gl.uniform1f(P.u.uOcOn, oc ? 1 : 0);
+    gl.uniform1f(P.u.uOcId, oc ? plan.ids.get(oc) : 0);
+    if (oc) {
+      installStackItem(oc); installPhase(oc);
+      const s = oceanSeed(dt);          // this layer's clock, advanced here and nowhere else
+      gl.uniform1f(P.u.uTime, s.t); gl.uniform1f(P.u.uSwell, s.swell);
+      gl.uniform1f(P.u.uChop, s.chop); gl.uniform1f(P.u.uFoam, s.foam);
+      gl.uniform1f(P.u.uWind, s.wind); gl.uniform1f(P.u.uHeight, s.height);
+      gl.uniform1f(P.u.uReflect, s.reflect);
+      capturePhase(oc);
+    }
+    gl.uniform1f(P.u.uGbOn, gb ? 1 : 0);
+    gl.uniform1f(P.u.uGbId, gb ? plan.ids.get(gb) : 0);
+    if (gb) {
+      installStackItem(gb); installPhase(gb);
+      const s = glassSeed(dt);          // ...likewise
+      gl.uniform1f(P.u.uGbTime, s.t); gl.uniform1f(P.u.uGbCount, s.count);
+      gl.uniform1f(P.u.uGbRad, s.rad); gl.uniform1f(P.u.uGbMat, s.mat);
+      gl.uniform1f(P.u.uGbIor, s.ior); gl.uniform1f(P.u.uGbGlow, s.glow);
+      gl.uniform4f(P.u.uGbPlace, wldX, wldY, wldZ, Math.max(0.05, wldScale));
+      capturePhase(gb);
+    }
+    drawQuad();
+  }
+  // One joined layer's share of the world, into glTex.layer — the same texture fx.draw()
+  // would have written, so renderLayerHeat continues without knowing the difference.
+  function glWorldPick(id) {
+    bindFbo(glFbo.layer, fw, fh);
+    gl.disable(gl.BLEND);
+    const P = glProg.worldpick;
+    gl.useProgram(P.p);
+    bindTexUnit(0, glTex.world); gl.uniform1i(P.u.uSrc, 0);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    gl.uniform1f(P.u.uId, id);
+    drawQuad();
+  }
+  // Has this layer joined the shared world? Same selected -> stored -> descriptor fallback
+  // as layerShowBox, and default FALSE so every scene saved before this renders unchanged.
+  function layerWorld(L) {
+    if (L === stack[stackSel]) return worldChk.checked;
+    if (L.world != null) return !!L.world;
+    const fx = extras[L.fx] || presetExtra(L.fx);
+    return fx.world === true;
+  }
   function renderStackColor(live, dt, now, ticks, base) {
     const b0 = base || 0;
+    // THE WORLD IS TRACED ONCE, before any layer. It has to be: a joined layer's heat is a
+    // slice of it, so it cannot be built while the layers are being walked. The owner --
+    // the lowest joined layer -- is installed first, because its camera IS the world's.
+    worldPlan = planWorld(live);
+    if (worldPlan) {
+      const owner = worldPlan.ids.keys().next().value;
+      installStackItem(owner); installPhase(owner);
+      glWorldDraw(worldPlan, dt);
+    }
     let acc = 0;
     bindFbo(glFbo.color[0], fw, fh);
     gl.disable(gl.BLEND);

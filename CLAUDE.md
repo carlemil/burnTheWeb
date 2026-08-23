@@ -122,6 +122,38 @@ is capped at `CAM_H*0.55`: a swell taller than the viewpoint puts the camera und
 march never crosses, and the frame goes to sky. **The CPU mirror keeps the flat plane** and
 says so — 32 steps × 3 octaves is a shader's budget, not a JS loop's.
 
+### The shared 3D world (layers traced as ONE scene)
+Layers are independent full-screen passes; `glBelowTex` lets one READ what is beneath it, but
+that is screen-space — one-directional, no occlusion, no contact line. **`FS_WORLD` traces
+several layers' geometry together**, so a Glass ball reflects in the Ocean *and* the Ocean
+reflects in the ball. Opt-in per layer (`world`, **default off**), so every scene saved before
+it renders unchanged.
+- **The output is a G-BUFFER, not a picture**: heat in `.r`, object **ID** in `.g`. `FS_WORLDPICK`
+  then hands each layer only its own pixels, and everything downstream — feedback, palette, post
+  chain, OKLab merge — is untouched. **That is what keeps per-layer palettes.** `glTex.world` is
+  **NEAREST** (interpolating two IDs invents a third), the compare is `step(|g*255 − id|, 0.5)`
+  (anything looser bleeds heat between palettes), and **ID 0 is "nothing hit"** so no layer holds it.
+- **A joined layer's `fx.draw(dt)` never runs**, so `glWorldDraw(plan, dt)` is the ONLY place its
+  clock still advances. Passing 0 renders perfect geometry that never moves — shipped that way
+  once; it reads as a paused scene, not a missing argument.
+- **A placed SDF is `de_local((p − offset)/scale) * scale`.** Drop the multiply and the marcher
+  steps in local units through world space, overshoots, and punches holes in the object.
+- **The camera is the OCEAN's** (`(0, CAM_H, 0)`, +z, −0.30 tilt) — the only participant with a
+  ground and a horizon. `FS_WORLD` still goes through `camProg`, so the **lowest joined layer's**
+  camera group orbits the whole world and no control stops working.
+- **TWO marches, not one**: the SDF union is sphere-traced, the Ocean is a height field with a
+  geometric step law, and the nearer hit wins. Occlusion falls out of that comparison.
+- **Reflected light lands in the REFLECTOR's layer** — water seen inside the ball is tinted by
+  the ball's palette. Same rule `glBelowTex` follows; it is what makes a split by primary-hit ID
+  coherent.
+- **Reflection composites with `mix`, not `+=`.** Adding it means a mirror image landing on a
+  bright ripple clamps out and vanishes: the ray was hitting the ball perfectly (verified by
+  outputting the hit test alone) and the picture showed nothing. Its `uReflect` is also
+  two-part — physical up to 1, lifting toward a flat mirror above — because at this camera
+  height the near sea is viewed far too steeply for the honest amount to read.
+- One kind per world (first in stack order); a second Glass ball layer renders standalone.
+  GL only — the Canvas2D fallback renders one item. `tools/worldprobe.js`.
+
 ### Doughnut / Trees (the two effects with a cheap invariant worth pinning)
 - **Doughnut** needs no DE-escape solver — unlike the Mandelbulb the free space is known, so the
   path is the tube's centre circle plus a wobble capped at `DN_WOB` 0.30 of the tube against a

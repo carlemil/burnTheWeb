@@ -192,7 +192,7 @@
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
     { key: "gofoam", host: "fx", group: "ocean", type: "dual", label: "Foam", valId: "vGoFoam", min: 0.1, max: 1, step: 0.01, lo: 0.45, hi: 0.45, fmt: v => sig3(v), apply: v => goFoam = v, durScale: 10 },
     { key: "goheight", host: "fx", group: "ocean", type: "dual", label: "Wave height", valId: "vGoHeight", min: 0.05, max: 1.8, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => goHeight = v, durScale: 10 },
-    { key: "goreflect", host: "fx", group: "ocean", type: "dual", label: "Reflection", valId: "vGoReflect", min: 0, max: 1.5, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => goReflect = v, durScale: 10 },
+    { key: "goreflect", host: "fx", group: "ocean", type: "dual", label: "Reflection", valId: "vGoReflect", min: 0, max: 2, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => goReflect = v, durScale: 10 },
     { key: "gowind", host: "fx", group: "ocean", type: "dual", label: "Wind", valId: "vGoWind", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => goWind = v, durScale: 10 },
     { key: "bhtilt", host: "fx", group: "bhole", type: "dual", label: "Tilt", valId: "vBhTilt", min: 2, max: 80, step: 1, lo: 12, hi: 12, fmt: v => sig3(v) + "°", apply: v => bhTilt = v, durScale: 10 },
     { key: "bhouter", host: "fx", group: "bhole", type: "dual", label: "Disk size", valId: "vBhOuter", min: 4, max: 14, step: 0.1, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bhOuter = v, durScale: 10 },
@@ -222,6 +222,14 @@
     // Field of view. Shown for the 33 SHADER effects only -- see the note on camFov: a
     // point effect stamps a destination and has no sample coordinate to bend.
     { key: "fov", host: "fx", group: "camera", type: "dual", label: "Field of view", valId: "vFov", min: -0.8, max: 2, step: 0.02, lo: 0, hi: 0, fmt: v => v === 0 ? "normal" : (v > 0 ? "wide " : "tele ") + sig3(Math.abs(v)), apply: v => camFov = v, durScale: 10 },
+    // The shared 3D world. `world` is per LAYER and defaults OFF, so every scene saved
+    // before it renders unchanged; the four placements say where this layer's geometry
+    // stands in the Ocean's frame (water at y=0, camera at y=3.4).
+    { key: "world", host: "fx", group: "world", type: "check", label: "Share one 3D world" },
+    { key: "wldx", host: "fx", group: "world", type: "dual", label: "Place X", valId: "vWldX", min: -12, max: 12, step: 0.1, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => wldX = v, durScale: 10 },
+    { key: "wldy", host: "fx", group: "world", type: "dual", label: "Place Y", valId: "vWldY", min: -2, max: 10, step: 0.05, lo: 1.6, hi: 1.6, fmt: v => sig3(v), apply: v => wldY = v, durScale: 10 },
+    { key: "wldz", host: "fx", group: "world", type: "dual", label: "Place Z", valId: "vWldZ", min: 1, max: 40, step: 0.1, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => wldZ = v, durScale: 10 },
+    { key: "wldscale", host: "fx", group: "world", type: "dual", label: "World scale", valId: "vWldScale", min: 0.1, max: 6, step: 0.05, lo: 1.2, hi: 1.2, fmt: v => sig3(v) + "×", apply: v => wldScale = v, durScale: 10 },
     { key: "randseed", host: "fx", group: "other", type: "check", label: "Random seed each reload" },
     // Palette cycle time, in seconds, as a [min,max] band: each morph holds for a
     // random time drawn from it (like Preset TTL). Collapsed to 0 = fixed palette.
@@ -963,7 +971,7 @@
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
     boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
-    torus: "Doughnut", trees: "Trees", glass: "Glass ball",
+    torus: "Doughnut", trees: "Trees", glass: "Glass ball", world: "Shared 3D world",
     bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",

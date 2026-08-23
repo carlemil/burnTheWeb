@@ -239,6 +239,8 @@
                        set checked(v) { for (const n of ctlEach("showbox")) n.checked = v; } };
   const randSeedChk = { get checked() { const n = ctl("randseed"); return !!n && n.checked; },
                         set checked(v) { for (const n of ctlEach("randseed")) n.checked = v; } };
+  const worldChk = { get checked() { const n = ctl("world"); return !!n && n.checked; },
+                     set checked(v) { for (const n of ctlEach("world")) n.checked = v; } };
   // ---- palette fold ----------------------------------------------------------
   // The palette body (swatches, Reverse, Background, cycle) is the tallest run of furniture
   // in a layer block and the first thing you stop needing once the colours are settled.
@@ -266,6 +268,9 @@
     ctlIn(slot, "showbox").addEventListener("change", () => showBox = showBoxChk.checked);
     // Toggling it re-rolls immediately (on ⇒ jump somewhere random; off ⇒ back to 0).
     ctlIn(slot, "randseed").addEventListener("change", () => { randSeed = randSeedChk.checked; reseedJulia(); });
+    // Joining or leaving the shared world changes which layers are traced together, so
+    // it has to reach the render immediately rather than waiting for a reselect.
+    ctlIn(slot, "world").addEventListener("change", () => { if (stack[stackSel]) stack[stackSel].world = worldChk.checked; });
     ctlIn(slot, "pal-detail-btn").addEventListener("click", openPalDetail);
     const pf = ctlIn(slot, "pal-fold");
     pf.addEventListener("click", togglePalFold);

@@ -972,6 +972,260 @@
     // (x, y, z, slice) sample, and winding it round trades the real axis for the fourth one
     // and walks through cross-sections nothing in 3D can show.
     //
+    // ---- THE SHARED 3D WORLD ------------------------------------------------------
+    // One raymarch over the geometry of SEVERAL LAYERS AT ONCE, so a Glass ball genuinely
+    // reflects in the Ocean and the Ocean genuinely reflects in the ball. Layers are
+    // independent full-screen passes everywhere else in this file; an effect could already
+    // READ what was beneath it (glBelowTex), but that is a screen-space sample of a flat
+    // picture — one-directional, with no occlusion and no contact line where a ball meets
+    // the water. This traces both objects as one scene.
+    //
+    // PER-LAYER PALETTES SURVIVE BECAUSE THE OUTPUT IS A G-BUFFER, not a picture: heat in
+    // .r and an object ID in .g. A trivial mask pass (FS_WORLDPICK) then hands each layer
+    // only its own pixels, and everything downstream — that layer's feedback chain, its
+    // palette, its post filters, the OKLab merge — carries on knowing nothing about this.
+    //
+    // THE CAMERA IS THE OCEAN'S: at (0, CAM_H, 0) looking +z with its downward tilt. A
+    // world needs a ground and a horizon and that is the only participant that has one, so
+    // it is the canonical frame whether or not an Ocean layer is present. Everything else
+    // is PLACED into it (uGbPlace = xyz offset, w scale). This shader still goes through
+    // camProg, so the owning layer's Camera X/Y/Z, Zoom and Field of view orbit the whole
+    // world — no new camera controls, and none of the old ones stop working.
+    //
+    // Reflected light is written into the REFLECTOR's layer, so the water seen inside the
+    // ball is tinted by the BALL's palette. That is the rule glBelowTex already follows and
+    // it is what keeps a split by primary-hit ID coherent — a pixel belongs to exactly one
+    // layer, whatever it happens to be showing.
+    //
+    // TWO MARCHES, NOT ONE. The SDF union is sphere-traced and the Ocean is a height field
+    // with a geometric step law; they want different steps, so each is marched with the
+    // code it already had and the nearer hit wins. Occlusion falls out of that comparison.
+    const FS_WORLD = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uZoom;
+    uniform float uOcOn; uniform float uOcId; uniform float uTime; uniform float uSwell;
+    uniform float uChop; uniform float uFoam; uniform float uWind; uniform float uHeight;
+    uniform float uReflect;
+    uniform float uGbOn; uniform float uGbId; uniform float uGbTime; uniform float uGbCount;
+    uniform float uGbRad; uniform float uGbMat; uniform float uGbIor; uniform float uGbGlow;
+    uniform vec4 uGbPlace;
+    out vec4 o;
+    const int WAVE_OCT_MARCH = 3;
+    const float CAM_H = 3.4;
+
+    // ---- geometry, lifted from the two effects' own shaders ----
+    void waves(vec2 p, int oct, out float h, out vec2 dh){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+      float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
+      h = 0.0; dh = vec2(0.0);
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        float ph = dot(p, dir)*frq + uTime*spd;
+        float s = sin(ph)*0.5 + 0.5;
+        h += amp*pow(s, uChop);
+        norm += amp;
+        float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+        dh += dw*dir;
+        amp *= 0.62; frq *= 1.87; spd *= 1.21;
+        dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+      }
+      h /= max(norm, 1e-4);
+    }
+    float waveAmp(){ return min(uHeight, CAM_H*0.55); }
+    vec3 ballAt(int i, float t){
+      float f = float(i);
+      float a = t*(0.60 + 0.13*f) + f*2.39996;
+      float b = t*(0.41 + 0.09*f) + f*1.11700;
+      return vec3(1.25*sin(a) + 0.35*sin(b*1.7),
+                  0.85*sin(b) + 0.25*cos(a*1.3),
+                  0.60*cos(a*0.8 + f));
+    }
+    // p_local = (p_world - offset)/scale, and the distance comes back MULTIPLIED BY SCALE.
+    // Dropping that multiply is the classic placed-SDF bug: the marcher then takes steps in
+    // local units through world space, overshoots, and punches holes in the object — which
+    // reads as a broken shader rather than as a missing factor. worldprobe pins it.
+    float glassDE(vec3 p){
+      vec3 pl = (p - uGbPlace.xyz)/uGbPlace.w;
+      float d = 1e9;
+      for (int i = 0; i < 5; i++){
+        if (float(i) >= uGbCount) break;
+        d = min(d, length(pl - ballAt(i, uGbTime)) - uGbRad);
+      }
+      return d*uGbPlace.w;
+    }
+    // The SDF union. Returns distance and the ID of whatever is nearest.
+    vec2 worldMap(vec3 p){
+      float d = 1e9, id = 0.0;
+      if (uGbOn > 0.5){ float g = glassDE(p); if (g < d){ d = g; id = uGbId; } }
+      return vec2(d, id);
+    }
+    vec3 sdfNormal(vec3 p){
+      vec2 e = vec2(1.0, -1.0)*0.0015;
+      return normalize(e.xyy*worldMap(p + e.xyy).x + e.yyx*worldMap(p + e.yyx).x
+                     + e.yxy*worldMap(p + e.yxy).x + e.xxx*worldMap(p + e.xxx).x);
+    }
+    // Sphere-trace the SDF union. -1 = nothing.
+    float traceSdf(vec3 ro, vec3 rd, int steps, out float id){
+      float t = 0.02; id = 0.0;
+      for (int i = 0; i < 96; i++){
+        if (i >= steps) break;
+        vec2 m = worldMap(ro + rd*t);
+        if (m.x < 0.0015*max(t, 1.0)){ id = m.y; return t; }
+        t += m.x;
+        if (t > 90.0) break;
+      }
+      return -1.0;
+    }
+    // March the water. Geometric steps for the same reason FS_OCEAN uses them: near water
+    // needs fine sampling and far water is a handful of pixels.
+    float traceOcean(vec3 ro, vec3 rd, int steps){
+      if (uOcOn < 0.5 || rd.y > -0.004) return -1.0;
+      float amp = waveAmp(), tp = 0.6, dp = ro.y;
+      for (int i = 1; i <= 32; i++){
+        if (i > steps) break;
+        float t = 0.6*pow(1.24, float(i));
+        vec3 p = ro + rd*t;
+        float hh; vec2 dd;
+        waves(p.xz, WAVE_OCT_MARCH, hh, dd);
+        float d = p.y - hh*amp;
+        if (d < 0.0) return tp + (t - tp)*dp/max(dp - d, 1e-4);
+        tp = t; dp = d;
+        if (t > 420.0) break;
+      }
+      return -1.0;
+    }
+    // Nearest of the two, so a ball in front of a wave hides it and a wave in front of a
+    // ball hides that.
+    float traceWorld(vec3 ro, vec3 rd, int sdfSteps, int ocSteps, out float id){
+      float ti = traceSdf(ro, rd, sdfSteps, id);
+      float to = traceOcean(ro, rd, ocSteps);
+      if (to > 0.0 && (ti < 0.0 || to < ti)){ id = uOcId; return to; }
+      return ti;
+    }
+    float skyOf(vec3 d){
+      float sky = 0.10*exp(-max(0.0, d.y)*9.0);
+      float sun = pow(max(0.0, dot(normalize(d), normalize(vec3(0.40, 0.62, -0.68)))), 60.0);
+      return clamp(sky + 0.55*sun, 0.0, 1.0);
+    }
+    // Shading with NO further bounce -- what a reflection ray sees. GLSL has no recursion,
+    // so the one bounce is unrolled into shade0 (sky as its environment) and shade1 below.
+    float shade0(float id, vec3 p, vec3 rd, float t){
+      if (id == uOcId){
+        float hh; vec2 dd;
+        waves(p.xz, 6, hh, dd);
+        vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
+        float fade = 1.0/(1.0 + t*t*0.0016);
+        float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
+        float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
+        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+        return (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
+      }
+      vec3 n = sdfNormal(p);
+      float face = max(0.0, dot(n, -rd));
+      return 0.10 + 0.55*face + (0.06 + uGbGlow*0.55)*pow(1.0 - face, 2.0);
+    }
+    float envRay(vec3 ro, vec3 rd){
+      float id;
+      float t = traceWorld(ro + rd*0.02, rd, 48, 24, id);
+      if (t < 0.0) return skyOf(rd);
+      return shade0(id, ro + rd*t, rd, t);
+    }
+    void main(){
+      float fw = uSize.x, fh = uSize.y;
+      // The OCEAN's screen convention: +y is up, which is the negation the y-flipped heat
+      // buffer needs. Every placed object inherits it.
+      vec2 q = vec2((gl_FragCoord.x/fw - 0.5)*(fw/fh), 0.5 - gl_FragCoord.y/fh)*2.0/uZoom;
+      vec3 ro = vec3(0.0, CAM_H, 0.0);
+      vec3 rd = normalize(vec3(q.x, q.y - 0.30, 1.35));
+      float id;
+      float t = traceWorld(ro, rd, 96, 32, id);
+      float heat = 0.0;
+      if (t < 0.0){
+        // NOTHING HIT: the sky belongs to the water's layer when there is one, so the
+        // horizon and the ball's layer do not both paint the same empty pixels in two
+        // different palettes.
+        heat = uOcOn > 0.5 ? 0.10*exp(-max(0.0, rd.y)*9.0) : 0.0;
+        id = uOcOn > 0.5 ? uOcId : 0.0;
+      } else if (id == uOcId){
+        vec3 p = ro + rd*t;
+        float hh; vec2 dd;
+        waves(p.xz, 6, hh, dd);
+        vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
+        heat = shade0(uOcId, p, rd, t);
+        if (uReflect > 0.0){
+          // A REAL reflection ray now, not a screen-space guess: this is what puts the ball
+          // in the water.
+          //
+          // FRESNEL ALONE IS TOO HONEST HERE. It is what makes water read as water, and at
+          // this camera height (3.4 above the surface) it also means the near sea is viewed
+          // far too steeply to show anything: a metal ball sitting in the water measured a
+          // 15% brightening of an already-bright ripple, which is invisible. So the slider
+          // does two jobs — up to 1.0 it scales the physical reflection, and ABOVE 1.0 it
+          // lifts the curve toward a flat mirror. 0..1 is a sea, 2 is polished, and the
+          // shipped 0.6 is exactly what it was.
+          float fres = 0.02 + 0.98*pow(1.0 - max(0.0, dot(n, -rd)), 5.0);
+          float w = min(uReflect, 1.0)*mix(fres, 1.0, clamp(uReflect - 1.0, 0.0, 1.0));
+          // MIX, NOT ADD. A reflection REPLACES the surface in proportion to Fresnel; adding
+          // it means a mirror image landing on an already-bright ripple clamps out and
+          // vanishes, which is exactly what happened — the ray was hitting the ball
+          // perfectly (verified by outputting the hit test alone) and the picture showed
+          // nothing. Both terms carry the same distance fade, so they mix at like for like.
+          heat = mix(heat, envRay(p, reflect(rd, n))/(1.0 + t*t*0.0016), w);
+        }
+        heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);      // the bright line at the horizon
+      } else {
+        vec3 p = ro + rd*t;
+        vec3 n = sdfNormal(p);
+        float face = max(0.0, dot(n, -rd));
+        float fres = pow(1.0 - face, 5.0);
+        float rim = pow(1.0 - face, 2.0);                // the wide term that makes a ball a ball
+        vec3 refl = reflect(rd, n);
+        if (uGbMat < 0.5){
+          heat = envRay(p, refl)*0.90 + (0.06 + uGbGlow*0.55)*rim;
+        } else if (uGbMat < 1.5){
+          vec3 r1 = refract(rd, n, 1.0/uGbIor);
+          // Exit through the far side of the same ball. Placed geometry, so the centre has
+          // to come back out of the placement rather than being read from a uniform.
+          vec3 pl = (p - uGbPlace.xyz)/uGbPlace.w;
+          vec3 cl = vec3(0.0);
+          float bd = 1e9;
+          for (int i = 0; i < 5; i++){
+            if (float(i) >= uGbCount) break;
+            vec3 ci = ballAt(i, uGbTime);
+            float di = abs(length(pl - ci) - uGbRad);
+            if (di < bd){ bd = di; cl = ci; }
+          }
+          vec3 ctr = uGbPlace.xyz + cl*uGbPlace.w;
+          vec3 pe = p - 2.0*dot(p - ctr, r1)*r1;
+          vec3 n2 = normalize(pe - ctr);
+          vec3 r2 = refract(r1, -n2, uGbIor);
+          if (dot(r2, r2) < 0.001) r2 = reflect(r1, -n2);
+          heat = mix(envRay(pe, r2)*0.78, envRay(p, refl), clamp(fres*1.6, 0.0, 1.0))
+               + (0.06 + uGbGlow*0.70)*rim;
+        } else {
+          vec3 r1 = refract(rd, n, 1.0/uGbIor);
+          vec3 thin = normalize(mix(rd, r1, 0.30));
+          heat = mix(envRay(p, thin)*0.60, envRay(p, refl), clamp(0.20 + fres*2.0, 0.0, 1.0))
+               + (0.14 + uGbGlow*0.9)*rim;
+        }
+      }
+      o = vec4(clamp(heat, 0.0, 0.92), id/255.0, 0.0, 1.0);
+    }`;
+    // Hand one layer its own pixels out of the world G-buffer. Everything downstream —
+    // feedback, palette, post chain, blend — then behaves exactly as it does for an effect
+    // that drew itself.
+    const FS_WORLDPICK = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uId;
+    out vec4 o;
+    void main(){
+      vec4 s = texture(uSrc, gl_FragCoord.xy/uSize);
+      // Exact ID compare with a half-step tolerance: the buffer is RGBA8, so an id rides as
+      // id/255 and comes back within half a quantum. A fuzzy compare here would bleed one
+      // layer's heat into another's palette.
+      o = vec4(s.r*step(abs(s.g*255.0 - uId), 0.5), 0.0, 0.0, 1.0);
+    }`;
     // Glass ball: raytraced spheres that REFLECT AND REFRACT THE LAYERS BENEATH THEM.
     //
     // Analytic, not raymarched. A sphere is the one primitive with a closed-form ray
@@ -1449,7 +1703,11 @@
             // Fresnel: water is a mirror at a glancing angle and nearly clear straight down,
             // so the reflection concentrates toward the horizon by itself.
             float fres = 0.02 + 0.98*pow(1.0 - max(0.0, dot(n, -rd)), 5.0);
-            heat += uReflect*fres*envBelow(reflect(rd, n))*fade;
+            // Same two-part curve the shared world uses, so the slider means one thing in
+            // both places: physical up to 1.0, lifting toward a flat mirror above it.
+            float w = min(uReflect, 1.0)*mix(fres, 1.0, clamp(uReflect - 1.0, 0.0, 1.0));
+            // mix, not add — see the note in FS_WORLD's ocean branch.
+            heat = mix(heat, envBelow(reflect(rd, n))*fade, w);
           }
           heat += 0.16*exp(-abs(rd.y + 0.004)*260.0);   // bright line right at the horizon
         }

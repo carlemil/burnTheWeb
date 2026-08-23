@@ -21,7 +21,10 @@ all sharing one palette + glow + banding pipeline —
   fluted doughnut, a four-dimensional quaternion Julia solid, and an
   infinite Menger-sponge dive.
 
-Stack up to four of them into one scene, each with its own palette and filters.
+Stack up to four of them into one scene, each with its own palette and filters — and tick
+**Share one 3D world** on two of them to have their geometry traced *together*, so a glass
+ball really sits in the ocean: reflecting it, refracted by it, and hidden by it where it
+should be.
 The whole thing burns, flickers, and morphs continuously — and every effect can
 **react to whatever music you're playing**.
 

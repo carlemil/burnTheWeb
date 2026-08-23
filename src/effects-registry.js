@@ -260,7 +260,7 @@
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "glass", name: "Glass ball", subtitle: "Glass ball · raytraced spheres over the layers below",
       help: "Raytraced spheres that reflect and refract WHAT IS UNDERNEATH THEM. Put this layer on top of another one and the balls pick that layer's picture up: Metal mirrors it, Glass bends it through and turns it upside down the way a real ball does, Bubble is a thin shell that barely bends it but rings hard at the edge. Refraction is the glass's density — low is nearly water, high squeezes the whole scene into the middle of the ball. On its own, with no layer beneath, the balls fall back to reflecting a procedural room so the effect still stands up. The reflection is of BRIGHTNESS, not colour — everything is re-tinted by this layer's own palette.",
-      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["gbcount", "gbsize", "gbmat", "gbior", "gbglow", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "glass", "band"], bakesOwnZoom: true,
       draw: dt => { const s = glassSeed(dt);
         if (useGL) glShaderDraw("glass", u => {
@@ -276,7 +276,7 @@
         else glassCPU(dt); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], gbcount: [3, 3], gbsize: [0.62, 0.62], gbmat: [1, 1], gbior: [1.45, 1.45], gbglow: [0.5, 0.5],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
       help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
       params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
@@ -302,7 +302,7 @@
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
       help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
-      params: ["goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      params: ["goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "ocean", "band"], bakesOwnZoom: true,
       draw: dt => { const s = oceanSeed(dt);
         if (useGL) glShaderDraw("ocean", u => {
@@ -317,7 +317,7 @@
         else oceanCPU(s); },
       defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0], goheight: [0.7, 0.7], goreflect: [0.6, 0.6],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
+      beat: {}, extras: { palette: "1", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",
       help: "An accretion disk seen through the hole's own gravity. The photons are integrated rather than drawn straight, so light from the FAR side of the disk is bent up over the top of the shadow and back under the bottom — those arcs closing round the dark centre are the whole point, and a straight-ray version would just be an ellipse. Tilt is the camera's height above the disk plane: low is the iconic nearly-edge-on view, high looks down on a plain ring. Beaming is the relativistic boost that makes the limb coming toward you far brighter than the one going away; wind it to 0 for an evenly lit disk. The disk orbits Keplerian, so the inside shears past the outside and the turbulence never repeats. Heavy: it wants a real GPU.",
       params: ["bhtilt", "bhouter", "bhspin", "bhbeam", "bhorbit", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],

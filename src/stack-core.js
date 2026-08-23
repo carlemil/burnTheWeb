@@ -19,7 +19,7 @@
     // here: this runs at `let stack = […]` before EFFECTS / presetExtra exist (TDZ).
     return { fx, state: null, beat: null, pulse: null, plen: null, btune: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
-      seedPath: null, seedRide: null, seedPts: null, showBox: null,
+      seedPath: null, seedRide: null, seedPts: null, showBox: null, world: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   let stack = [newStackItem(0)], stackSel = 0;

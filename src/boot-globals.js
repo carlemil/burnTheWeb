@@ -308,6 +308,12 @@
   // the true inverse means solving a cubic per point. So `fov` is listed in the params of the
   // 33 effects with a `draw` hook and not the 8 with a `stamp` one.
   let camFov = 0;
+  // WHERE A LAYER'S GEOMETRY SITS IN THE SHARED 3D WORLD (see glWorldDraw). The world's
+  // frame is the Ocean's — camera at y = 3.4, water at y = 0 — so an object needs telling
+  // where to stand in it. Per layer, like the camera angles: two joined layers place their
+  // own geometry independently. Defaults put it a few units ahead and above the water, so
+  // ticking the box produces something visible rather than something behind you.
+  let wldX = 0, wldY = 1.6, wldZ = 6, wldScale = 1.2;
   // CPU mirror of the shader camera. Rotating (x, y, 0) by Rz·Ry·Rx and dropping z is a
   // plain 2×2 map, so the whole camera collapses to four numbers — worth hoisting,
   // since the CPU mirrors would otherwise call trig six times per pixel. Recomputed
