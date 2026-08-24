@@ -615,6 +615,24 @@
       return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x),
                  mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y);
     }
+    float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123); }
+    float vnoise3(vec3 p){
+      vec3 i = floor(p), f = fract(p);
+      vec3 u = f * f * (3.0 - 2.0 * f);
+      float a = mix(mix(h31(i), h31(i + vec3(1.0, 0.0, 0.0)), u.x),
+                    mix(h31(i + vec3(0.0, 1.0, 0.0)), h31(i + vec3(1.0, 1.0, 0.0)), u.x), u.y);
+      float b = mix(mix(h31(i + vec3(0.0, 0.0, 1.0)), h31(i + vec3(1.0, 0.0, 1.0)), u.x),
+                    mix(h31(i + vec3(0.0, 1.0, 1.0)), h31(i + vec3(1.0, 1.0, 1.0)), u.x), u.y);
+      return mix(a, b, u.z);
+    }
+    float fbm3(vec3 p, int oct){
+      float a = 0.5, s = 0.0, n = 0.0;
+      for (int i = 0; i < 8; i++) {
+        if (i >= oct) break;
+        s += a * vnoise3(p); n += a; p *= 2.03; a *= 0.5;
+      }
+      return n > 0.0 ? s / n : 0.0;
+    }
     float fbm(vec2 p, int oct){
       float a = 0.5, s = 0.0, n = 0.0;
       for (int i = 0; i < 8; i++) {
@@ -829,6 +847,120 @@
         if (t > 12.0) break;
       }
       heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // ---- Batch C: participating media, scattering, and a landscape ---------------------
+    // VOLUMETRIC CLOUDS. The first effect here with genuine participating media: the ray does
+    // not look for a SURFACE, it integrates density along its length and lets light through
+    // according to how much it has already passed. Ocean is a height field and Metaballs is an
+    // implicit surface -- both answer "where does this ray stop"; this one answers "how much
+    // did it collect on the way", which is a different question and the reason clouds have
+    // never been possible here before.
+    const FS_CLOUDS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCover; uniform float uScale;
+    uniform float uOct; uniform float uLight; uniform float uZoom;
+    out vec4 o;
+    ${SH_NOISE}
+    float density(vec3 p, float sc, float cov, int oct, float t){
+      float d = fbm3(p * sc + vec3(0.0, 0.0, t * 0.12), oct);
+      return clamp((d - (1.0 - cov)) * 2.4, 0.0, 1.0);
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro = vec3(0.0, 0.0, uTime * 0.35);
+      vec3 rd = normalize(vec3(uv, 1.2));
+      int oct = int(clamp(uOct, 1.0, 6.0));
+      float sc = max(0.15, uScale);
+      vec3 sun = normalize(vec3(0.6, 0.7, -0.3));
+      float trans = 1.0, acc = 0.0, t = 0.6;
+      for (int i = 0; i < 48; i++) {
+        vec3 p = ro + rd * t;
+        float d = density(p, sc, uCover, oct, uTime);
+        if (d > 0.01) {
+          // A SHORT LIGHT MARCH, not a shadow ray: five taps toward the sun is enough to make
+          // a cloud look lit from one side, and it is the whole difference between a volume
+          // and a grey fog.
+          float sh = 0.0;
+          for (int j = 1; j <= 5; j++) sh += density(p + sun * float(j) * 0.16, sc, uCover, oct, uTime);
+          float lit = exp(-sh * 0.55 * uLight);
+          acc += d * trans * (0.15 + 0.95 * lit) * 0.30;
+          trans *= exp(-d * 0.55);
+          if (trans < 0.02) break;
+        }
+        t += 0.13;
+      }
+      o = vec4(clamp(acc, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // GOD RAYS / light shafts. Screen-space radial scatter: step from each pixel TOWARD the
+    // light, sampling an occluder as you go, so wherever something blocks the view you get the
+    // shadow cast through the air rather than on a surface. Anamorphic streaks (a filter)
+    // spreads a highlight sideways; this builds the beam back to its source.
+    const FS_GODRAY = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uDecay; uniform float uWeight;
+    uniform float uScale; uniform float uSpread; uniform float uZoom;
+    out vec4 o;
+    ${SH_NOISE}
+    float occl(vec2 p, float sc, float t){
+      float f = fbm(p * sc + vec2(t * 0.06, t * 0.03), 5);
+      return smoothstep(0.46, 0.62, f);            // the silhouette that blocks the light
+    }
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x / uSize.x - 0.5) * asp, gl_FragCoord.y / uSize.y - 0.5) / uZoom;
+      vec2 lp = vec2(sin(uTime * 0.21) * 0.30, cos(uTime * 0.17) * 0.18);
+      vec2 step = (uv - lp) * (max(0.05, uSpread) / 40.0);
+      vec2 p = uv;
+      float illum = 0.0, decay = 1.0;
+      for (int i = 0; i < 40; i++) {
+        p -= step;
+        illum += (1.0 - occl(p, max(0.2, uScale), uTime)) * decay;
+        decay *= clamp(uDecay, 0.80, 0.999);
+      }
+      illum *= uWeight / 40.0;
+      // the source itself, so the shafts have something to come from
+      float core = exp(-length(uv - lp) * 9.0);
+      o = vec4(clamp(illum + core, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // RAYMARCHED TERRAIN: the landscape counterpart to Ocean, and it borrows Ocean's idea of
+    // a geometric step law -- near ground wants fine sampling, far ground is a few pixels --
+    // rather than a fixed step, which is what keeps a horizon from costing 500 samples.
+    const FS_TERRAIN = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uHeight; uniform float uScale;
+    uniform float uOct; uniform float uFog; uniform float uZoom;
+    out vec4 o;
+    ${SH_NOISE}
+    float land(vec2 p, float sc, float h, int oct){ return fbm(p * sc, oct) * h; }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      uv.y = -uv.y;                                // the heat buffer is Y-FLIPPED (see CLAUDE.md)
+      int oct = int(clamp(uOct, 1.0, 7.0));
+      float sc = max(0.05, uScale), h = max(0.05, uHeight);
+      vec3 ro = vec3(0.0, h * 0.55 + 0.6, uTime * 0.5);
+      vec3 rd = normalize(vec3(uv, 1.3));
+      float t = 0.4, hit = -1.0;
+      for (int i = 0; i < 90; i++) {
+        vec3 p = ro + rd * t;
+        float d = p.y - land(p.xz, sc, h, oct);
+        if (d < 0.003 * t) { hit = t; break; }
+        t += max(0.02, d * 0.45);                  // geometric: far ground costs less
+        if (t > 40.0) break;
+      }
+      float heat;
+      if (hit < 0.0) {
+        heat = 0.06 + 0.16 * smoothstep(0.4, -0.1, uv.y);   // sky, brighter toward the horizon
+      } else {
+        vec3 p = ro + rd * hit;
+        float e = 0.02 * max(1.0, hit);
+        vec3 n = normalize(vec3(land(p.xz - vec2(e, 0.0), sc, h, oct) - land(p.xz + vec2(e, 0.0), sc, h, oct),
+                                2.0 * e,
+                                land(p.xz - vec2(0.0, e), sc, h, oct) - land(p.xz + vec2(0.0, e), sc, h, oct)));
+        float dif = max(0.0, dot(n, normalize(vec3(0.6, 0.55, -0.4))));
+        heat = 0.18 + 0.75 * dif;
+        heat = mix(heat, 0.16, clamp(hit * uFog * 0.04, 0.0, 1.0));   // distance fog
+      }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
     const FS_SHAPEGRID = `#version 300 es

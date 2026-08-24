@@ -737,6 +737,9 @@
     glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.clouds = camProg(VS_QUAD, FS_CLOUDS, ["uSize", "uTime", "uCover", "uScale", "uOct", "uLight", "uZoom"]);
+    glProg.godray = camProg(VS_QUAD, FS_GODRAY, ["uSize", "uTime", "uDecay", "uWeight", "uScale", "uSpread", "uZoom"]);
+    glProg.terrain = camProg(VS_QUAD, FS_TERRAIN, ["uSize", "uTime", "uHeight", "uScale", "uOct", "uFog", "uZoom"]);
     glProg.apollo = camProg(VS_QUAD, FS_APOLLO, ["uSize", "uTime", "uScale", "uIter", "uGlow", "uZoom", "uThin"]);
     glProg.mbox = camProg(VS_QUAD, FS_MBOX, ["uSize", "uTime", "uScale", "uIter", "uGlow", "uZoom", "uFold"]);
     glProg.gyroid = camProg(VS_QUAD, FS_GYROID, ["uSize", "uTime", "uFreq", "uThick", "uGlow", "uZoom", "uWarp"]);

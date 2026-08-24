@@ -6,6 +6,82 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  // ---- Batch C mirrors: volume, scatter and landscape, all deliberately thinned ---------
+  // A 48-step volume march with a 5-tap light march per step is ~240 noise evaluations per
+  // PIXEL -- a shader's budget, not a JS loop's. These keep the shape (a lit cloud field, a
+  // radial shaft, a lit horizon) at a fraction of the samples, and say so. Every one writes
+  // every cell.
+  function shVNoise3(x, y, z) {
+    const iz = Math.floor(z), fz = z - iz, uz = fz * fz * (3 - 2 * fz);
+    return shVNoise(x + iz * 37.1, y + iz * 17.3) * (1 - uz) + shVNoise(x + (iz + 1) * 37.1, y + (iz + 1) * 17.3) * uz;
+  }
+  let clCover = 0.55, clScale = 1.1, clOct = 4, clLight = 1, clSpeed = 1, clTime = 0;
+  function cloudsSeed(dt) { clTime += dt * clSpeed; return { t: clTime, cover: clCover, scale: clScale, oct: clOct, light: clLight, zoom }; }
+  function clouds(s) {
+    const sc = Math.max(0.15, s.scale);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX - 0.5 * fw) / fh / s.zoom, uy = (camPY - 0.5 * fh) / fh / s.zoom;
+      const rl = Math.hypot(ux, uy, 1.2);
+      const rx = ux / rl, ry = uy / rl, rz = 1.2 / rl;
+      let t = 0.6, trans = 1, acc = 0;
+      for (let i = 0; i < 14; i++) {          // 14 steps, not 48
+        const px = rx * t, py = ry * t, pz = s.t * 0.35 + rz * t;
+        const d = Math.max(0, Math.min(1, (shVNoise3(px * sc, py * sc, pz * sc + s.t * 0.12) - (1 - s.cover)) * 2.4));
+        if (d > 0.01) { acc += d * trans * 0.5; trans *= Math.exp(-d * 0.6); if (trans < 0.02) break; }
+        t += 0.42;
+      }
+      fire[idx++] = Math.max(0, Math.min(1, acc)) * 255;
+    }
+  }
+  let grDecay = 0.96, grWeight = 1.1, grScale = 2.2, grSpread = 1, grSpeed = 1, grTime = 0;
+  function godraySeed(dt) { grTime += dt * grSpeed; return { t: grTime, decay: grDecay, weight: grWeight, scale: grScale, spread: grSpread, zoom }; }
+  function godray(s) {
+    const asp = fw / fh, sc = Math.max(0.2, s.scale);
+    const lx = Math.sin(s.t * 0.21) * 0.30, ly = Math.cos(s.t * 0.17) * 0.18;
+    const dec = Math.max(0.8, Math.min(0.999, s.decay));
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX / fw - 0.5) * asp / s.zoom, uy = (camPY / fh - 0.5) / s.zoom;
+      const sx = (ux - lx) * (Math.max(0.05, s.spread) / 12), sy = (uy - ly) * (Math.max(0.05, s.spread) / 12);
+      let px = ux, py = uy, illum = 0, decay = 1;
+      for (let i = 0; i < 12; i++) {          // 12 steps, not 40
+        px -= sx; py -= sy;
+        const f = shVNoise(px * sc + s.t * 0.06, py * sc + s.t * 0.03);
+        illum += (1 - Math.max(0, Math.min(1, (f - 0.46) / 0.16))) * decay;
+        decay *= dec;
+      }
+      const core = Math.exp(-Math.hypot(ux - lx, uy - ly) * 9);
+      fire[idx++] = Math.max(0, Math.min(1, illum * s.weight / 12 + core)) * 255;
+    }
+  }
+  let teHeight = 1.6, teScale = 0.55, teOct = 5, teFog = 1, teSpeed = 1, teTime = 0;
+  function terrainSeed(dt) { teTime += dt * teSpeed; return { t: teTime, height: teHeight, scale: teScale, oct: teOct, fog: teFog, zoom }; }
+  function terrain(s) {
+    const sc = Math.max(0.05, s.scale), h = Math.max(0.05, s.height);
+    const oy = h * 0.55 + 0.6, oz = s.t * 0.5;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX - 0.5 * fw) / fh / s.zoom, uy = -(camPY - 0.5 * fh) / fh / s.zoom;
+      const rl = Math.hypot(ux, uy, 1.3);
+      const rx = ux / rl, ry = uy / rl, rz = 1.3 / rl;
+      let t = 0.4, hit = -1;
+      for (let i = 0; i < 26; i++) {          // 26 steps, not 90
+        const py = oy + ry * t;
+        const d = py - shVNoise(rx * t * sc, (oz + rz * t) * sc) * h;
+        if (d < 0.02 * t) { hit = t; break; }
+        t += Math.max(0.06, d * 0.6);
+        if (t > 40) break;
+      }
+      let heat;
+      if (hit < 0) heat = 0.06 + 0.16 * Math.max(0, Math.min(1, (0.4 - uy) / 0.5));
+      else heat = Math.max(0, 0.18 + 0.6 * (1 - Math.min(1, hit * s.fog * 0.04)));
+      fire[idx++] = Math.max(0, Math.min(1, heat)) * 255;
+    }
+  }
   // ---- Batch B: three fractal raymarchers, and their deliberately coarse mirrors --------
   // 90 march steps x a 12-iteration distance estimator is a shader's budget, not a JS loop's,
   // so each mirror marches far fewer steps at fewer iterations: the silhouette survives, the

@@ -4089,6 +4089,24 @@
       return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x),
                  mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y);
     }
+    float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123); }
+    float vnoise3(vec3 p){
+      vec3 i = floor(p), f = fract(p);
+      vec3 u = f * f * (3.0 - 2.0 * f);
+      float a = mix(mix(h31(i), h31(i + vec3(1.0, 0.0, 0.0)), u.x),
+                    mix(h31(i + vec3(0.0, 1.0, 0.0)), h31(i + vec3(1.0, 1.0, 0.0)), u.x), u.y);
+      float b = mix(mix(h31(i + vec3(0.0, 0.0, 1.0)), h31(i + vec3(1.0, 0.0, 1.0)), u.x),
+                    mix(h31(i + vec3(0.0, 1.0, 1.0)), h31(i + vec3(1.0, 1.0, 1.0)), u.x), u.y);
+      return mix(a, b, u.z);
+    }
+    float fbm3(vec3 p, int oct){
+      float a = 0.5, s = 0.0, n = 0.0;
+      for (int i = 0; i < 8; i++) {
+        if (i >= oct) break;
+        s += a * vnoise3(p); n += a; p *= 2.03; a *= 0.5;
+      }
+      return n > 0.0 ? s / n : 0.0;
+    }
     float fbm(vec2 p, int oct){
       float a = 0.5, s = 0.0, n = 0.0;
       for (int i = 0; i < 8; i++) {
@@ -4303,6 +4321,120 @@
         if (t > 12.0) break;
       }
       heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // ---- Batch C: participating media, scattering, and a landscape ---------------------
+    // VOLUMETRIC CLOUDS. The first effect here with genuine participating media: the ray does
+    // not look for a SURFACE, it integrates density along its length and lets light through
+    // according to how much it has already passed. Ocean is a height field and Metaballs is an
+    // implicit surface -- both answer "where does this ray stop"; this one answers "how much
+    // did it collect on the way", which is a different question and the reason clouds have
+    // never been possible here before.
+    const FS_CLOUDS = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uCover; uniform float uScale;
+    uniform float uOct; uniform float uLight; uniform float uZoom;
+    out vec4 o;
+    ${SH_NOISE}
+    float density(vec3 p, float sc, float cov, int oct, float t){
+      float d = fbm3(p * sc + vec3(0.0, 0.0, t * 0.12), oct);
+      return clamp((d - (1.0 - cov)) * 2.4, 0.0, 1.0);
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro = vec3(0.0, 0.0, uTime * 0.35);
+      vec3 rd = normalize(vec3(uv, 1.2));
+      int oct = int(clamp(uOct, 1.0, 6.0));
+      float sc = max(0.15, uScale);
+      vec3 sun = normalize(vec3(0.6, 0.7, -0.3));
+      float trans = 1.0, acc = 0.0, t = 0.6;
+      for (int i = 0; i < 48; i++) {
+        vec3 p = ro + rd * t;
+        float d = density(p, sc, uCover, oct, uTime);
+        if (d > 0.01) {
+          // A SHORT LIGHT MARCH, not a shadow ray: five taps toward the sun is enough to make
+          // a cloud look lit from one side, and it is the whole difference between a volume
+          // and a grey fog.
+          float sh = 0.0;
+          for (int j = 1; j <= 5; j++) sh += density(p + sun * float(j) * 0.16, sc, uCover, oct, uTime);
+          float lit = exp(-sh * 0.55 * uLight);
+          acc += d * trans * (0.15 + 0.95 * lit) * 0.30;
+          trans *= exp(-d * 0.55);
+          if (trans < 0.02) break;
+        }
+        t += 0.13;
+      }
+      o = vec4(clamp(acc, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // GOD RAYS / light shafts. Screen-space radial scatter: step from each pixel TOWARD the
+    // light, sampling an occluder as you go, so wherever something blocks the view you get the
+    // shadow cast through the air rather than on a surface. Anamorphic streaks (a filter)
+    // spreads a highlight sideways; this builds the beam back to its source.
+    const FS_GODRAY = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uDecay; uniform float uWeight;
+    uniform float uScale; uniform float uSpread; uniform float uZoom;
+    out vec4 o;
+    ${SH_NOISE}
+    float occl(vec2 p, float sc, float t){
+      float f = fbm(p * sc + vec2(t * 0.06, t * 0.03), 5);
+      return smoothstep(0.46, 0.62, f);            // the silhouette that blocks the light
+    }
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 uv = vec2((gl_FragCoord.x / uSize.x - 0.5) * asp, gl_FragCoord.y / uSize.y - 0.5) / uZoom;
+      vec2 lp = vec2(sin(uTime * 0.21) * 0.30, cos(uTime * 0.17) * 0.18);
+      vec2 step = (uv - lp) * (max(0.05, uSpread) / 40.0);
+      vec2 p = uv;
+      float illum = 0.0, decay = 1.0;
+      for (int i = 0; i < 40; i++) {
+        p -= step;
+        illum += (1.0 - occl(p, max(0.2, uScale), uTime)) * decay;
+        decay *= clamp(uDecay, 0.80, 0.999);
+      }
+      illum *= uWeight / 40.0;
+      // the source itself, so the shafts have something to come from
+      float core = exp(-length(uv - lp) * 9.0);
+      o = vec4(clamp(illum + core, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // RAYMARCHED TERRAIN: the landscape counterpart to Ocean, and it borrows Ocean's idea of
+    // a geometric step law -- near ground wants fine sampling, far ground is a few pixels --
+    // rather than a fixed step, which is what keeps a horizon from costing 500 samples.
+    const FS_TERRAIN = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uHeight; uniform float uScale;
+    uniform float uOct; uniform float uFog; uniform float uZoom;
+    out vec4 o;
+    ${SH_NOISE}
+    float land(vec2 p, float sc, float h, int oct){ return fbm(p * sc, oct) * h; }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      uv.y = -uv.y;                                // the heat buffer is Y-FLIPPED (see CLAUDE.md)
+      int oct = int(clamp(uOct, 1.0, 7.0));
+      float sc = max(0.05, uScale), h = max(0.05, uHeight);
+      vec3 ro = vec3(0.0, h * 0.55 + 0.6, uTime * 0.5);
+      vec3 rd = normalize(vec3(uv, 1.3));
+      float t = 0.4, hit = -1.0;
+      for (int i = 0; i < 90; i++) {
+        vec3 p = ro + rd * t;
+        float d = p.y - land(p.xz, sc, h, oct);
+        if (d < 0.003 * t) { hit = t; break; }
+        t += max(0.02, d * 0.45);                  // geometric: far ground costs less
+        if (t > 40.0) break;
+      }
+      float heat;
+      if (hit < 0.0) {
+        heat = 0.06 + 0.16 * smoothstep(0.4, -0.1, uv.y);   // sky, brighter toward the horizon
+      } else {
+        vec3 p = ro + rd * hit;
+        float e = 0.02 * max(1.0, hit);
+        vec3 n = normalize(vec3(land(p.xz - vec2(e, 0.0), sc, h, oct) - land(p.xz + vec2(e, 0.0), sc, h, oct),
+                                2.0 * e,
+                                land(p.xz - vec2(0.0, e), sc, h, oct) - land(p.xz + vec2(0.0, e), sc, h, oct)));
+        float dif = max(0.0, dot(n, normalize(vec3(0.6, 0.55, -0.4))));
+        heat = 0.18 + 0.75 * dif;
+        heat = mix(heat, 0.16, clamp(hit * uFog * 0.04, 0.0, 1.0));   // distance fog
+      }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
     const FS_SHAPEGRID = `#version 300 es
@@ -6736,6 +6868,9 @@
     glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.clouds = camProg(VS_QUAD, FS_CLOUDS, ["uSize", "uTime", "uCover", "uScale", "uOct", "uLight", "uZoom"]);
+    glProg.godray = camProg(VS_QUAD, FS_GODRAY, ["uSize", "uTime", "uDecay", "uWeight", "uScale", "uSpread", "uZoom"]);
+    glProg.terrain = camProg(VS_QUAD, FS_TERRAIN, ["uSize", "uTime", "uHeight", "uScale", "uOct", "uFog", "uZoom"]);
     glProg.apollo = camProg(VS_QUAD, FS_APOLLO, ["uSize", "uTime", "uScale", "uIter", "uGlow", "uZoom", "uThin"]);
     glProg.mbox = camProg(VS_QUAD, FS_MBOX, ["uSize", "uTime", "uScale", "uIter", "uGlow", "uZoom", "uFold"]);
     glProg.gyroid = camProg(VS_QUAD, FS_GYROID, ["uSize", "uTime", "uFreq", "uThick", "uGlow", "uZoom", "uWarp"]);
@@ -10226,6 +10361,82 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  // ---- Batch C mirrors: volume, scatter and landscape, all deliberately thinned ---------
+  // A 48-step volume march with a 5-tap light march per step is ~240 noise evaluations per
+  // PIXEL -- a shader's budget, not a JS loop's. These keep the shape (a lit cloud field, a
+  // radial shaft, a lit horizon) at a fraction of the samples, and say so. Every one writes
+  // every cell.
+  function shVNoise3(x, y, z) {
+    const iz = Math.floor(z), fz = z - iz, uz = fz * fz * (3 - 2 * fz);
+    return shVNoise(x + iz * 37.1, y + iz * 17.3) * (1 - uz) + shVNoise(x + (iz + 1) * 37.1, y + (iz + 1) * 17.3) * uz;
+  }
+  let clCover = 0.55, clScale = 1.1, clOct = 4, clLight = 1, clSpeed = 1, clTime = 0;
+  function cloudsSeed(dt) { clTime += dt * clSpeed; return { t: clTime, cover: clCover, scale: clScale, oct: clOct, light: clLight, zoom }; }
+  function clouds(s) {
+    const sc = Math.max(0.15, s.scale);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX - 0.5 * fw) / fh / s.zoom, uy = (camPY - 0.5 * fh) / fh / s.zoom;
+      const rl = Math.hypot(ux, uy, 1.2);
+      const rx = ux / rl, ry = uy / rl, rz = 1.2 / rl;
+      let t = 0.6, trans = 1, acc = 0;
+      for (let i = 0; i < 14; i++) {          // 14 steps, not 48
+        const px = rx * t, py = ry * t, pz = s.t * 0.35 + rz * t;
+        const d = Math.max(0, Math.min(1, (shVNoise3(px * sc, py * sc, pz * sc + s.t * 0.12) - (1 - s.cover)) * 2.4));
+        if (d > 0.01) { acc += d * trans * 0.5; trans *= Math.exp(-d * 0.6); if (trans < 0.02) break; }
+        t += 0.42;
+      }
+      fire[idx++] = Math.max(0, Math.min(1, acc)) * 255;
+    }
+  }
+  let grDecay = 0.96, grWeight = 1.1, grScale = 2.2, grSpread = 1, grSpeed = 1, grTime = 0;
+  function godraySeed(dt) { grTime += dt * grSpeed; return { t: grTime, decay: grDecay, weight: grWeight, scale: grScale, spread: grSpread, zoom }; }
+  function godray(s) {
+    const asp = fw / fh, sc = Math.max(0.2, s.scale);
+    const lx = Math.sin(s.t * 0.21) * 0.30, ly = Math.cos(s.t * 0.17) * 0.18;
+    const dec = Math.max(0.8, Math.min(0.999, s.decay));
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX / fw - 0.5) * asp / s.zoom, uy = (camPY / fh - 0.5) / s.zoom;
+      const sx = (ux - lx) * (Math.max(0.05, s.spread) / 12), sy = (uy - ly) * (Math.max(0.05, s.spread) / 12);
+      let px = ux, py = uy, illum = 0, decay = 1;
+      for (let i = 0; i < 12; i++) {          // 12 steps, not 40
+        px -= sx; py -= sy;
+        const f = shVNoise(px * sc + s.t * 0.06, py * sc + s.t * 0.03);
+        illum += (1 - Math.max(0, Math.min(1, (f - 0.46) / 0.16))) * decay;
+        decay *= dec;
+      }
+      const core = Math.exp(-Math.hypot(ux - lx, uy - ly) * 9);
+      fire[idx++] = Math.max(0, Math.min(1, illum * s.weight / 12 + core)) * 255;
+    }
+  }
+  let teHeight = 1.6, teScale = 0.55, teOct = 5, teFog = 1, teSpeed = 1, teTime = 0;
+  function terrainSeed(dt) { teTime += dt * teSpeed; return { t: teTime, height: teHeight, scale: teScale, oct: teOct, fog: teFog, zoom }; }
+  function terrain(s) {
+    const sc = Math.max(0.05, s.scale), h = Math.max(0.05, s.height);
+    const oy = h * 0.55 + 0.6, oz = s.t * 0.5;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const ux = (camPX - 0.5 * fw) / fh / s.zoom, uy = -(camPY - 0.5 * fh) / fh / s.zoom;
+      const rl = Math.hypot(ux, uy, 1.3);
+      const rx = ux / rl, ry = uy / rl, rz = 1.3 / rl;
+      let t = 0.4, hit = -1;
+      for (let i = 0; i < 26; i++) {          // 26 steps, not 90
+        const py = oy + ry * t;
+        const d = py - shVNoise(rx * t * sc, (oz + rz * t) * sc) * h;
+        if (d < 0.02 * t) { hit = t; break; }
+        t += Math.max(0.06, d * 0.6);
+        if (t > 40) break;
+      }
+      let heat;
+      if (hit < 0) heat = 0.06 + 0.16 * Math.max(0, Math.min(1, (0.4 - uy) / 0.5));
+      else heat = Math.max(0, 0.18 + 0.6 * (1 - Math.min(1, hit * s.fog * 0.04)));
+      fire[idx++] = Math.max(0, Math.min(1, heat)) * 255;
+    }
+  }
   // ---- Batch B: three fractal raymarchers, and their deliberately coarse mirrors --------
   // 90 march steps x a 12-iteration distance estimator is a shader's budget, not a JS loop's,
   // so each mirror marches far fewer steps at fewer iterations: the silhouette survives, the
@@ -12001,6 +12212,21 @@
     // Density is a continuous zoom, not a count: the shader scales the grid by it
     // (g = p*uCells, cell = floor(g)), so a fractional value renders correctly and drifting
     // between two thumbs slides the grid smoothly instead of popping at each integer.
+    { key: "clcover", host: "fx", group: "clouds", type: "dual", label: "Cover", valId: "vClCover", min: 0.1, max: 1, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => clCover = v, durScale: 10 },
+    { key: "clscale", host: "fx", group: "clouds", type: "dual", label: "Scale", valId: "vClScale", min: 0.15, max: 4, step: 0.05, lo: 1.1, hi: 1.1, fmt: v => sig3(v), apply: v => clScale = v, durScale: 10 },
+    { key: "cloct", host: "fx", group: "clouds", type: "dual", label: "Detail", valId: "vClOct", min: 1, max: 6, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => clOct = Math.round(v), durScale: 10 },
+    { key: "cllight", host: "fx", group: "clouds", type: "dual", label: "Sun", valId: "vClLight", min: 0, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => clLight = v, durScale: 10 },
+    { key: "clspeed", host: "fx", group: "clouds", type: "dual", label: "Drift", valId: "vClSpeed", min: 0, max: 4, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => clSpeed = v, durScale: 10 },
+    { key: "grdecay", host: "fx", group: "godray", type: "dual", label: "Reach", valId: "vGrDecay", min: 0.8, max: 0.999, step: 0.001, lo: 0.96, hi: 0.96, fmt: v => sig3(v), apply: v => grDecay = v, durScale: 10 },
+    { key: "grweight", host: "fx", group: "godray", type: "dual", label: "Brightness", valId: "vGrWeight", min: 0, max: 3, step: 0.01, lo: 1.1, hi: 1.1, fmt: v => sig3(v), apply: v => grWeight = v, durScale: 10 },
+    { key: "grscale", host: "fx", group: "godray", type: "dual", label: "Cloud scale", valId: "vGrScale", min: 0.2, max: 8, step: 0.05, lo: 2.2, hi: 2.2, fmt: v => sig3(v), apply: v => grScale = v, durScale: 10 },
+    { key: "grspread", host: "fx", group: "godray", type: "dual", label: "Spread", valId: "vGrSpread", min: 0.05, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => grSpread = v, durScale: 10 },
+    { key: "grspeed", host: "fx", group: "godray", type: "dual", label: "Drift", valId: "vGrSpeed", min: 0, max: 4, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => grSpeed = v, durScale: 10 },
+    { key: "teheight", host: "fx", group: "terrain", type: "dual", label: "Relief", valId: "vTeHeight", min: 0.05, max: 5, step: 0.05, lo: 1.6, hi: 1.6, fmt: v => sig3(v), apply: v => teHeight = v, durScale: 10 },
+    { key: "tescale", host: "fx", group: "terrain", type: "dual", label: "Scale", valId: "vTeScale", min: 0.05, max: 3, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => teScale = v, durScale: 10 },
+    { key: "teoct", host: "fx", group: "terrain", type: "dual", label: "Detail", valId: "vTeOct", min: 1, max: 7, step: 1, lo: 5, hi: 5, fmt: v => sig3(Math.round(v)), apply: v => teOct = Math.round(v), durScale: 10 },
+    { key: "tefog", host: "fx", group: "terrain", type: "dual", label: "Haze", valId: "vTeFog", min: 0, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => teFog = v, durScale: 10 },
+    { key: "tespeed", host: "fx", group: "terrain", type: "dual", label: "Fly speed", valId: "vTeSpeed", min: 0, max: 4, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => teSpeed = v, durScale: 10 },
     { key: "apscale", host: "fx", group: "apollo", type: "dual", label: "Packing", valId: "vApScale", min: 0.7, max: 1.6, step: 0.01, lo: 1.15, hi: 1.15, fmt: v => sig3(v), apply: v => apScale = v, durScale: 10 },
     { key: "apiter", host: "fx", group: "apollo", type: "dual", label: "Detail", valId: "vApIter", min: 3, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => apIter = Math.round(v), durScale: 10 },
     { key: "apthin", host: "fx", group: "apollo", type: "dual", label: "Halo", valId: "vApThin", min: 0.2, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => apThin = v, durScale: 10 },
@@ -12943,7 +13169,7 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", apollo: "Apollonian gasket", mbox: "Mandelbox", gyroid: "Gyroid", voronoi: "Voronoi cells", warpnoise: "Flow noise", truchet: "Truchet tiles", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    attractor: "Attractor", clouds: "Volumetric clouds", godray: "God rays", terrain: "Terrain", apollo: "Apollonian gasket", mbox: "Mandelbox", gyroid: "Gyroid", voronoi: "Voronoi cells", warpnoise: "Flow noise", truchet: "Truchet tiles", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
@@ -13085,6 +13311,9 @@
     ["moTime", () => moTime, v => moTime = v],
     ["nwPhase", () => nwPhase, v => nwPhase = v],
     ["cbTime", () => cbTime, v => cbTime = v],
+    ["clTime", () => clTime, v => clTime = v],
+    ["grTime", () => grTime, v => grTime = v],
+    ["teTime", () => teTime, v => teTime = v],
     ["apTime", () => apTime, v => apTime = v],
     ["mbTime", () => mbTime, v => mbTime = v],
     ["gyTime", () => gyTime, v => gyTime = v],
@@ -14779,6 +15008,24 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
+    { id: "clouds", name: "Volumetric clouds", subtitle: "Clouds · marched participating media",
+      help: "Real volume: the ray does not look for a surface, it integrates DENSITY along its length and lets light through according to how much it has already passed — which is why the clouds have depth and a lit side rather than being a flat noise field. Every other 3D effect here answers *where does this ray stop*; this one answers *how much did it collect on the way*. **Cover** is how much of the sky is filled (low leaves scattered wisps, high closes it over), Scale the size of the formations, Detail the octaves (and most of the cost), Sun how hard the light falls off through the depth — turn it down for flat overcast, up for towering lit banks. Drift moves the field past you.",
+      params: ["clcover", "clscale", "cloct", "cllight", "clspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = cloudsSeed(dt); if (useGL) glShaderDraw("clouds", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCover, s.cover); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uOct, s.oct); gl.uniform1f(u.uLight, s.light); gl.uniform1f(u.uZoom, s.zoom); }); else clouds(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], clcover: [0.55, 0.55], clscale: [1.1, 1.1], cloct: [4, 4], cllight: [1, 1], clspeed: [1, 1] },
+      beat: {}, extras: { palette: "10", morph: false } },
+    { id: "godray", name: "God rays", subtitle: "God rays · volumetric light shafts",
+      help: "Shafts of light thrown through gaps in a drifting occluder — the beams you see when sun comes through cloud or a window. It is built by stepping from every pixel back TOWARD the source and asking what blocked the way, so the shadow is cast through the AIR rather than onto a surface. **Reach** is how far a shaft travels before it fades (the single most important knob — near 1 the beams cross the whole frame), Brightness how strong they are, Cloud scale the size of the gaps they come through, Spread how wide the fan opens.",
+      params: ["grdecay", "grweight", "grscale", "grspread", "grspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = godraySeed(dt); if (useGL) glShaderDraw("godray", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uDecay, s.decay); gl.uniform1f(u.uWeight, s.weight); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uSpread, s.spread); gl.uniform1f(u.uZoom, s.zoom); }); else godray(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], grdecay: [0.96, 0.96], grweight: [1.1, 1.1], grscale: [2.2, 2.2], grspread: [1, 1], grspeed: [1, 1] },
+      beat: {}, extras: { palette: "1", morph: false } },
+    { id: "terrain", name: "Terrain", subtitle: "Terrain · raymarched landscape",
+      help: "A fractal landscape flown at low altitude, raymarched as a height field with distance haze — the ground counterpart to Ocean, and it uses the same trick: the step length grows with distance, because near ground needs fine sampling and far ground is only a few pixels wide. **Relief** is how tall the mountains stand, Scale how far apart they are (low gives vast rolling country, high a crowded range), Detail the octaves of erosion, Haze how quickly distance washes it out, Fly speed how fast you travel.",
+      params: ["teheight", "tescale", "teoct", "tefog", "tespeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = terrainSeed(dt); if (useGL) glShaderDraw("terrain", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uHeight, s.height); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uOct, s.oct); gl.uniform1f(u.uFog, s.fog); gl.uniform1f(u.uZoom, s.zoom); }); else terrain(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], teheight: [1.6, 1.6], tescale: [0.55, 0.55], teoct: [5, 5], tefog: [1, 1], tespeed: [1, 1] },
+      beat: {}, extras: { palette: "8", morph: false } },
     { id: "apollo", name: "Apollonian gasket", subtitle: "Apollonian · recursive sphere packing",
       help: "An infinite packing of spheres, each nestled in the gap between the last three, raymarched from inside the gasket. It is built by INVERSION rather than by iteration of a power: each step reflects the point through a sphere and folds it back into the unit cell, so the structure repeats at every scale without ever being drawn twice. **Packing** is the inversion radius and the shape knob — small values open the gaps out, large ones pack them tight and the whole thing turns into filigree. Detail is how many folds (and how much GPU), Halo how tightly the near-miss glow hugs the surface, Glow how bright it burns.",
       params: ["apscale", "apiter", "apthin", "apglow", "apspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
