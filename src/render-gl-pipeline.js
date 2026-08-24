@@ -730,11 +730,14 @@
     // A layer's OWN draw, kept aside for the length of a world crossfade (see worldFade).
     glTex.worldOwn = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glFbo.worldOwn = createFbo(glTex.worldOwn);
-    glTex.screen = [
-      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
-      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
-    ];
-    glFbo.screen = [createFbo(glTex.screen[0]), createFbo(glTex.screen[1])];
+    // ...and the OUTPUT of the crossfade between the two, which has to be a THIRD buffer:
+    // glWorldMix reads the pick (glTex.layer) and writes the blend, and a pass may not sample
+    // the texture attached to its own target. It did exactly that for three releases — a
+    // WebGL2 feedback loop, so the driver rejected the draw and it silently did nothing:
+    // joining a world read as a cut instead of a 0.45s fade, and LEAVING one showed the layer
+    // black for the whole fade (the branch below clears glTex.layer first).
+    glTex.worldMix = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    glFbo.worldMix = createFbo(glTex.worldMix);
     // The outgoing frame, frozen at the moment of the switch (see transBegin).
     glTex.prev = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.prev = createFbo(glTex.prev);
@@ -787,11 +790,7 @@
     resizeTex(glTex.layerCol, fw, fh);
     resizeTex(glTex.world, fw, fh);
     resizeTex(glTex.worldOwn, fw, fh);
-    // Display-sized, not fire-sized — see the declaration. Guarded because glResize
-    // can run before the canvas has been laid out.
-    const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
-    resizeTex(glTex.screen[0], sw, sh);
-    resizeTex(glTex.screen[1], sw, sh);
+    resizeTex(glTex.worldMix, fw, fh);
   }
   function glClearHeat() {
     gl.disable(gl.BLEND);
@@ -1221,6 +1220,10 @@
     // the shared G-buffer. Everything below this line is identical either way.
     const wid = worldPlan && worldPlan.ids.get(L);
     const fade = worldFadeStep(L, !!wid, dt);
+    // Where this layer's fresh heat ended up. Normally glTex.layer; mid-fade the mix has to
+    // write a third buffer (see glWorldMix), so everything downstream reads THIS, not the
+    // global. Getting that wrong is silent — the blend simply does not appear.
+    let outTex = glTex.layer;
     if (fade >= 1) glWorldPick(wid);                               // fully in the world
     else if (fade <= 0) { fx.draw(dt); capturePhase(L); }          // fully its own (→ glTex.layer)
     else {
@@ -1234,15 +1237,15 @@
       glFbo.layer = swap; glTex.layer = swapT;
       if (wid) glWorldPick(wid);
       else { bindFbo(glFbo.layer, fw, fh); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
-      glWorldMix(glTex.worldOwn, fade);
+      outTex = glWorldMix(glTex.worldOwn, fade);
     }
-    if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
+    if (!chain.length) return outTex;              // no feedback: colour the scratch directly
     let cur = layerCur[slot];
     for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
     bindFbo(glFbo.heatL[slot][cur], fw, fh);       // MAX the fresh shader output onto it
     const P = glProg.merge;
     gl.useProgram(P.p);
-    bindTexUnit(0, glTex.layer); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
+    bindTexUnit(0, outTex); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
     gl.enable(gl.BLEND); gl.blendEquation(gl.MAX);
     drawQuad();
     gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ZERO);
@@ -1575,8 +1578,12 @@
     L.worldFade = g;
     return g;
   }
+  // Blend the layer's own draw against its slice of the world, and RETURN the buffer it
+  // landed in. The output is glTex.worldMix and not glTex.layer because glTex.layer is an
+  // INPUT here (the pick landed there) — targeting it would be a feedback loop and the draw
+  // would be dropped. Callers must use the returned texture, not glTex.layer.
   function glWorldMix(ownTex, t) {
-    bindFbo(glFbo.layer, fw, fh);
+    bindFbo(glFbo.worldMix, fw, fh);
     gl.disable(gl.BLEND);
     const P = glProg.worldmix;
     gl.useProgram(P.p);
@@ -1584,6 +1591,7 @@
     bindTexUnit(1, glTex.layer); gl.uniform1i(P.u.uB, 1);   // the pick already landed here
     gl.uniform1f(P.u.uT, t);
     drawQuad();
+    return glTex.worldMix;
   }
   // Has this layer joined the shared world? Same selected -> stored -> descriptor fallback
   // as layerShowBox, and default FALSE so every scene saved before this renders unchanged.
@@ -1615,14 +1623,31 @@
     gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
     for (let li = 0; li < live.length; li++) {
-      const L = live[li], slot = b0 + li, fx = EFFECTS[L.fx];
+      // SLOT IS THE LAYER'S POSITION IN ITS STACK, NOT ITS POSITION AMONG THE LIVE ONES.
+      // heatL/layerCur/layerPal are persistent per-slot state — retained heat and a palette
+      // morph clock — so numbering by live index hands them to a different layer the moment
+      // one is muted: mute the top of [A,B,C,D] and B inherits A's trails and A's palette
+      // clock. It also disagreed with frame-loop's single-layer path, which has always used
+      // stack.indexOf. The `base` argument exists because indexOf is -1 for a DETACHED item,
+      // so resolve against the array this call is actually walking.
+      const L = live[li], fx = EFFECTS[L.fx];
+      // b0, NOT the `base` parameter: the ramp const below used to be called `base` too, so
+      // naming the parameter here read it in its own temporal dead zone and threw on every
+      // frame of a world join. b0 is `base || 0` captured above the loop and says the same
+      // thing (0 live, STACK_MAX outgoing). The shadow itself is gone now — see `ramp`.
+      const home = b0 ? prevStack : stack;
+      const at = home ? home.indexOf(L) : -1;
+      const slot = b0 + (at >= 0 ? at : li);
       // What is underneath THIS layer, for the effects that reflect it. Set before the heat
       // render because that is when the effect's draw() runs; the accumulator is not written
       // again until glOkMerge below, so it is safe to sample.
       glBelowTex = li > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
-      const base = stepLayerPal(slot, layerPalIndex(L), now, L);
-      bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
+      // `ramp`, not `base` — it shadowed this function's own `base` parameter, which made
+      // any reference to the parameter inside this loop a TDZ throw rather than a wrong
+      // value. That is not hypothetical: it cost a frame-by-frame crash on world join.
+      const ramp = stepLayerPal(slot, layerPalIndex(L), now, L);
+      bakeLayerBytes(ramp, now, palScratch, layerPalRev(L), layerPalBg(L));
       gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
       const colTex = glLayerPostChain(L, glColorizeLayer(heatTex, glTex.palL[slot]));
@@ -1831,16 +1856,12 @@
     gl.uniform1f(glProg.comp.u.uBloom, 0);
     drawQuad();
   }
-  // One screen pass. Same shape as postPass, but uSize is the DISPLAY size rather
-  // than the fire grid — a scanline count means nothing against fw/fh.
-  function screenPass(name, src, w, h, setU) {
-    const P = glProg[name];
-    gl.useProgram(P.p);
-    bindTexUnit(0, src); gl.uniform1i(P.u.uSrc, 0);
-    if (P.u.uSize) gl.uniform2f(P.u.uSize, w, h);
-    if (setU) setU(P.u);
-    drawQuad();
-  }
+  // The screen stage is EMPTY (Barrel, Scanlines, Vignette, Film grain and Bloom are all
+  // per-layer `post` passes now), so its helper `screenPass` and its two display-resolution
+  // RGBA8 buffers (glTex.screen / glFbo.screen) are gone with it — the buffers were the
+  // largest allocation in the file, ~29MB at 1440p and ~66MB at 4K, reallocated on every
+  // resize event, and nothing had sampled them since the stage emptied. The seam that is
+  // deliberately kept is SCENE_FILTER_IDS/KEYS, which is a WIRE-format seam, not this.
 
   // ---- WebGL context loss: pause GL work, rebuild on restore ----
   if (useGL) {

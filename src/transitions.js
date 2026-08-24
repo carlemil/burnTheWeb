@@ -273,6 +273,30 @@
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
+  // EVERY SLIDER AN EFFECT SHOWS MUST RESOLVE IN presetState(e), or it is silently dropped:
+  // saveState/mergeState only ever walk the keys presetState seeds, so a params-but-not-
+  // defaults slider never persists AND never installs per layer — it silently keeps whichever
+  // layer was selected last. That has shipped twice (camrx/camry/camrz, then wldx/wldy/wldz/
+  // wldscale), both times invisible until someone noticed a value not surviving a reload.
+  //
+  // This is assertRegistry's check by rights, but it cannot live there: effects-registry.js
+  // loads two slices ABOVE filters.js, so calling presetState at that point reads
+  // FILTER_DEFAULTS in its TDZ and kills startup. It lives here, directly under the function
+  // it validates, which is also the file that has to change when a new key is seeded.
+  //
+  // `check` controls are exempt BY DESIGN: showbox, randseed and world are extras
+  // (L.showBox / L.world / extras.randSeed), not state, so they are correctly absent.
+  (function assertPresetStateCovers() {
+    EFFECTS.forEach((f, i) => {
+      const st = presetState(i);
+      (f.params || []).forEach(k => {
+        const c = CONTROLS.find(x => x.key === k);
+        if (!c || c.type === "check") return;
+        if (st[k] === undefined)
+          console.warn(f.id + ": params has '" + k + "' but presetState does not seed it — it will not persist or install per layer");
+      });
+    });
+  })();
   // Camera zoom + X/Y/Z rotation are PER-LAYER state (see isSceneCtl / presetState) — each
   // stacked effect carries its own angles in its state map, installed into camRX/RY/RZ by
   // installStackItem before it draws. There is no camera tween — the camera snaps per layer

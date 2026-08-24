@@ -80,17 +80,27 @@
   function creditDraw() {
     const g = creditLayer();
     if (!g) return;
-    const w = window.innerWidth, h = window.innerHeight;
-    if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
-    g.clearRect(0, 0, w, h);
     // The scene title is NOT drawn here any more — it is a DOM element in the top button row
     // (#scenebanner, see sceneBannerTick). It is chrome, so it belongs with the chrome: immune
     // to the filters and the camera without having to be an overlay canvas, crisp at any
     // render resolution, and free of the frame entirely. This canvas is the credits' alone.
+    //
+    // THE EARLY-OUT COMES FIRST, before the innerWidth read and the clearRect. It used to sit
+    // below them, so an expired overlay still resized and cleared a full-screen canvas on every
+    // frame for the life of the session — and worse, reading `window.innerWidth` FLUSHES the
+    // layout that the frame counter's textContent write has just dirtied, which made this a
+    // forced synchronous layout once per frame on a canvas that is display:none.
     if (creditLeft <= 0) {                     // done: clear once, then get out of the way
-      if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
+      if (creditPainted) {
+        const w0 = creditCv.width, h0 = creditCv.height;
+        g.clearRect(0, 0, w0, h0);
+        creditCv.style.display = "none"; creditPainted = false;
+      }
       return;
     }
+    const w = window.innerWidth, h = window.innerHeight;
+    if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
+    g.clearRect(0, 0, w, h);
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
     drawCredits(g, w, h, creditAlpha());
   }

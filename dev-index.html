@@ -3434,8 +3434,35 @@
       .replace("void main(){", camGlsl() + "\n    void main(){ vec4 fragCam = camFrag4();");
     return makeProg(vsSrc, src, names.concat(["uCam", "uCamSize"]));
   }
+  // THE VERTEX SHADER IS COMPILED ONCE PER SOURCE, NOT ONCE PER PROGRAM. There are only two
+  // (VS_QUAD and VS_PTS) across ~72 programs, so compiling per call meant ~71 redundant
+  // compiles of one identical string at boot — each with its own synchronous COMPILE_STATUS
+  // read, which is the call that forces the driver to finish.
+  //
+  // Keyed by source text and rebuilt by initGL: a shader object belongs to the context that
+  // created it, and initGL runs again on `webglcontextrestored`, so a stale entry here would
+  // hand a dead shader to every program built after a context loss.
+  //
+  // `var` WITH NO INITIALISER, exactly like worldProgs/worldPar — initGL() is called from
+  // palette.js, a slice ABOVE this one, so a `const` here is read in its temporal dead zone
+  // on the very first call and the page dies with "Cannot access 'vsCache' before
+  // initialization" (measured: it does). A `var` WITH an initialiser would be worse still —
+  // initGL would fill it, then this line would run later and silently wipe it. vsClearCache
+  // is what creates it, and initGL calls that before it builds anything.
+  var vsCache;
+  function vsClearCache() { vsCache = new Map(); }
+  function vsFor(src) {
+    let s = vsCache.get(src);
+    if (!s) { s = glCompile(gl.VERTEX_SHADER, src); vsCache.set(src, s); }
+    return s;
+  }
   function makeProg(vsSrc, fsSrc, names) {
-    const p = glLink(glCompile(gl.VERTEX_SHADER, vsSrc), glCompile(gl.FRAGMENT_SHADER, fsSrc));
+    const fs = glCompile(gl.FRAGMENT_SHADER, fsSrc);
+    const p = glLink(vsFor(vsSrc), fs);
+    // The linked program keeps its own reference, so this only drops the app's — without it
+    // ~72 fragment shader objects leak for the life of the context. The cached VERTEX shader
+    // is deliberately NOT deleted: it is reused by every program still to be built.
+    gl.deleteShader(fs);
     const u = {};
     for (const n of names) u[n] = gl.getUniformLocation(p, n);
     return { p, u };
@@ -3478,6 +3505,9 @@
   function drawQuad() { gl.bindVertexArray(quadVao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 
   function initGL() {
+    // A fresh context invalidates every shader object the old one made, and this runs again
+    // on `webglcontextrestored` — so drop the cache before anything asks it for a shader.
+    vsClearCache();
     // full-screen triangle (no vertex buffer; positions from gl_VertexID)
     const VS_QUAD = `#version 300 es
     out vec2 vUv;
@@ -6347,11 +6377,14 @@
     // A layer's OWN draw, kept aside for the length of a world crossfade (see worldFade).
     glTex.worldOwn = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glFbo.worldOwn = createFbo(glTex.worldOwn);
-    glTex.screen = [
-      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
-      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
-    ];
-    glFbo.screen = [createFbo(glTex.screen[0]), createFbo(glTex.screen[1])];
+    // ...and the OUTPUT of the crossfade between the two, which has to be a THIRD buffer:
+    // glWorldMix reads the pick (glTex.layer) and writes the blend, and a pass may not sample
+    // the texture attached to its own target. It did exactly that for three releases — a
+    // WebGL2 feedback loop, so the driver rejected the draw and it silently did nothing:
+    // joining a world read as a cut instead of a 0.45s fade, and LEAVING one showed the layer
+    // black for the whole fade (the branch below clears glTex.layer first).
+    glTex.worldMix = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    glFbo.worldMix = createFbo(glTex.worldMix);
     // The outgoing frame, frozen at the moment of the switch (see transBegin).
     glTex.prev = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.prev = createFbo(glTex.prev);
@@ -6404,11 +6437,7 @@
     resizeTex(glTex.layerCol, fw, fh);
     resizeTex(glTex.world, fw, fh);
     resizeTex(glTex.worldOwn, fw, fh);
-    // Display-sized, not fire-sized — see the declaration. Guarded because glResize
-    // can run before the canvas has been laid out.
-    const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
-    resizeTex(glTex.screen[0], sw, sh);
-    resizeTex(glTex.screen[1], sw, sh);
+    resizeTex(glTex.worldMix, fw, fh);
   }
   function glClearHeat() {
     gl.disable(gl.BLEND);
@@ -6838,6 +6867,10 @@
     // the shared G-buffer. Everything below this line is identical either way.
     const wid = worldPlan && worldPlan.ids.get(L);
     const fade = worldFadeStep(L, !!wid, dt);
+    // Where this layer's fresh heat ended up. Normally glTex.layer; mid-fade the mix has to
+    // write a third buffer (see glWorldMix), so everything downstream reads THIS, not the
+    // global. Getting that wrong is silent — the blend simply does not appear.
+    let outTex = glTex.layer;
     if (fade >= 1) glWorldPick(wid);                               // fully in the world
     else if (fade <= 0) { fx.draw(dt); capturePhase(L); }          // fully its own (→ glTex.layer)
     else {
@@ -6851,15 +6884,15 @@
       glFbo.layer = swap; glTex.layer = swapT;
       if (wid) glWorldPick(wid);
       else { bindFbo(glFbo.layer, fw, fh); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
-      glWorldMix(glTex.worldOwn, fade);
+      outTex = glWorldMix(glTex.worldOwn, fade);
     }
-    if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
+    if (!chain.length) return outTex;              // no feedback: colour the scratch directly
     let cur = layerCur[slot];
     for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
     bindFbo(glFbo.heatL[slot][cur], fw, fh);       // MAX the fresh shader output onto it
     const P = glProg.merge;
     gl.useProgram(P.p);
-    bindTexUnit(0, glTex.layer); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
+    bindTexUnit(0, outTex); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
     gl.enable(gl.BLEND); gl.blendEquation(gl.MAX);
     drawQuad();
     gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ZERO);
@@ -7192,8 +7225,12 @@
     L.worldFade = g;
     return g;
   }
+  // Blend the layer's own draw against its slice of the world, and RETURN the buffer it
+  // landed in. The output is glTex.worldMix and not glTex.layer because glTex.layer is an
+  // INPUT here (the pick landed there) — targeting it would be a feedback loop and the draw
+  // would be dropped. Callers must use the returned texture, not glTex.layer.
   function glWorldMix(ownTex, t) {
-    bindFbo(glFbo.layer, fw, fh);
+    bindFbo(glFbo.worldMix, fw, fh);
     gl.disable(gl.BLEND);
     const P = glProg.worldmix;
     gl.useProgram(P.p);
@@ -7201,6 +7238,7 @@
     bindTexUnit(1, glTex.layer); gl.uniform1i(P.u.uB, 1);   // the pick already landed here
     gl.uniform1f(P.u.uT, t);
     drawQuad();
+    return glTex.worldMix;
   }
   // Has this layer joined the shared world? Same selected -> stored -> descriptor fallback
   // as layerShowBox, and default FALSE so every scene saved before this renders unchanged.
@@ -7232,14 +7270,31 @@
     gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
     for (let li = 0; li < live.length; li++) {
-      const L = live[li], slot = b0 + li, fx = EFFECTS[L.fx];
+      // SLOT IS THE LAYER'S POSITION IN ITS STACK, NOT ITS POSITION AMONG THE LIVE ONES.
+      // heatL/layerCur/layerPal are persistent per-slot state — retained heat and a palette
+      // morph clock — so numbering by live index hands them to a different layer the moment
+      // one is muted: mute the top of [A,B,C,D] and B inherits A's trails and A's palette
+      // clock. It also disagreed with frame-loop's single-layer path, which has always used
+      // stack.indexOf. The `base` argument exists because indexOf is -1 for a DETACHED item,
+      // so resolve against the array this call is actually walking.
+      const L = live[li], fx = EFFECTS[L.fx];
+      // b0, NOT the `base` parameter: the ramp const below used to be called `base` too, so
+      // naming the parameter here read it in its own temporal dead zone and threw on every
+      // frame of a world join. b0 is `base || 0` captured above the loop and says the same
+      // thing (0 live, STACK_MAX outgoing). The shadow itself is gone now — see `ramp`.
+      const home = b0 ? prevStack : stack;
+      const at = home ? home.indexOf(L) : -1;
+      const slot = b0 + (at >= 0 ? at : li);
       // What is underneath THIS layer, for the effects that reflect it. Set before the heat
       // render because that is when the effect's draw() runs; the accumulator is not written
       // again until glOkMerge below, so it is safe to sample.
       glBelowTex = li > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
-      const base = stepLayerPal(slot, layerPalIndex(L), now, L);
-      bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
+      // `ramp`, not `base` — it shadowed this function's own `base` parameter, which made
+      // any reference to the parameter inside this loop a TDZ throw rather than a wrong
+      // value. That is not hypothetical: it cost a frame-by-frame crash on world join.
+      const ramp = stepLayerPal(slot, layerPalIndex(L), now, L);
+      bakeLayerBytes(ramp, now, palScratch, layerPalRev(L), layerPalBg(L));
       gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
       const colTex = glLayerPostChain(L, glColorizeLayer(heatTex, glTex.palL[slot]));
@@ -7448,16 +7503,12 @@
     gl.uniform1f(glProg.comp.u.uBloom, 0);
     drawQuad();
   }
-  // One screen pass. Same shape as postPass, but uSize is the DISPLAY size rather
-  // than the fire grid — a scanline count means nothing against fw/fh.
-  function screenPass(name, src, w, h, setU) {
-    const P = glProg[name];
-    gl.useProgram(P.p);
-    bindTexUnit(0, src); gl.uniform1i(P.u.uSrc, 0);
-    if (P.u.uSize) gl.uniform2f(P.u.uSize, w, h);
-    if (setU) setU(P.u);
-    drawQuad();
-  }
+  // The screen stage is EMPTY (Barrel, Scanlines, Vignette, Film grain and Bloom are all
+  // per-layer `post` passes now), so its helper `screenPass` and its two display-resolution
+  // RGBA8 buffers (glTex.screen / glFbo.screen) are gone with it — the buffers were the
+  // largest allocation in the file, ~29MB at 1440p and ~66MB at 4K, reallocated on every
+  // resize event, and nothing had sampled them since the stage emptied. The seam that is
+  // deliberately kept is SCENE_FILTER_IDS/KEYS, which is a WIRE-format seam, not this.
 
   // ---- WebGL context loss: pause GL work, rebuild on restore ----
   if (useGL) {
@@ -14198,6 +14249,10 @@
       for (const k in (f.ranges || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": ranges references unknown control '" + k + "'");
       for (const k in (f.ranges || {})) if (SINGLE_KEYS.has(k)) console.warn(f.id + ": ranges overrides single control '" + k + "' — its bounds must stay whole");
     });
+    // The params ⊆ presetState check that belongs here CANNOT live here: it has to call
+    // presetState, whose FILTER_DEFAULTS is a `const` two slices below (filters.js), so
+    // calling it at this slice's load time is a TDZ crash. It runs instead as
+    // assertPresetStateCovers(), immediately after presetState in transitions.js.
     // A single control is a dual with its thumbs pinned, so it only makes sense on an integer
     // grid: a fractional step, bound or default would put every snapped value off it.
     const whole = n => typeof n === "number" && n === Math.round(n);
@@ -14444,17 +14499,27 @@
   function creditDraw() {
     const g = creditLayer();
     if (!g) return;
-    const w = window.innerWidth, h = window.innerHeight;
-    if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
-    g.clearRect(0, 0, w, h);
     // The scene title is NOT drawn here any more — it is a DOM element in the top button row
     // (#scenebanner, see sceneBannerTick). It is chrome, so it belongs with the chrome: immune
     // to the filters and the camera without having to be an overlay canvas, crisp at any
     // render resolution, and free of the frame entirely. This canvas is the credits' alone.
+    //
+    // THE EARLY-OUT COMES FIRST, before the innerWidth read and the clearRect. It used to sit
+    // below them, so an expired overlay still resized and cleared a full-screen canvas on every
+    // frame for the life of the session — and worse, reading `window.innerWidth` FLUSHES the
+    // layout that the frame counter's textContent write has just dirtied, which made this a
+    // forced synchronous layout once per frame on a canvas that is display:none.
     if (creditLeft <= 0) {                     // done: clear once, then get out of the way
-      if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
+      if (creditPainted) {
+        const w0 = creditCv.width, h0 = creditCv.height;
+        g.clearRect(0, 0, w0, h0);
+        creditCv.style.display = "none"; creditPainted = false;
+      }
       return;
     }
+    const w = window.innerWidth, h = window.innerHeight;
+    if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
+    g.clearRect(0, 0, w, h);
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
     drawCredits(g, w, h, creditAlpha());
   }
@@ -15196,6 +15261,30 @@
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
+  // EVERY SLIDER AN EFFECT SHOWS MUST RESOLVE IN presetState(e), or it is silently dropped:
+  // saveState/mergeState only ever walk the keys presetState seeds, so a params-but-not-
+  // defaults slider never persists AND never installs per layer — it silently keeps whichever
+  // layer was selected last. That has shipped twice (camrx/camry/camrz, then wldx/wldy/wldz/
+  // wldscale), both times invisible until someone noticed a value not surviving a reload.
+  //
+  // This is assertRegistry's check by rights, but it cannot live there: effects-registry.js
+  // loads two slices ABOVE filters.js, so calling presetState at that point reads
+  // FILTER_DEFAULTS in its TDZ and kills startup. It lives here, directly under the function
+  // it validates, which is also the file that has to change when a new key is seeded.
+  //
+  // `check` controls are exempt BY DESIGN: showbox, randseed and world are extras
+  // (L.showBox / L.world / extras.randSeed), not state, so they are correctly absent.
+  (function assertPresetStateCovers() {
+    EFFECTS.forEach((f, i) => {
+      const st = presetState(i);
+      (f.params || []).forEach(k => {
+        const c = CONTROLS.find(x => x.key === k);
+        if (!c || c.type === "check") return;
+        if (st[k] === undefined)
+          console.warn(f.id + ": params has '" + k + "' but presetState does not seed it — it will not persist or install per layer");
+      });
+    });
+  })();
   // Camera zoom + X/Y/Z rotation are PER-LAYER state (see isSceneCtl / presetState) — each
   // stacked effect carries its own angles in its state map, installed into camRX/RY/RZ by
   // installStackItem before it draws. There is no camera tween — the camera snaps per layer

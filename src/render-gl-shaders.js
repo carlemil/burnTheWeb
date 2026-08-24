@@ -52,8 +52,35 @@
       .replace("void main(){", camGlsl() + "\n    void main(){ vec4 fragCam = camFrag4();");
     return makeProg(vsSrc, src, names.concat(["uCam", "uCamSize"]));
   }
+  // THE VERTEX SHADER IS COMPILED ONCE PER SOURCE, NOT ONCE PER PROGRAM. There are only two
+  // (VS_QUAD and VS_PTS) across ~72 programs, so compiling per call meant ~71 redundant
+  // compiles of one identical string at boot — each with its own synchronous COMPILE_STATUS
+  // read, which is the call that forces the driver to finish.
+  //
+  // Keyed by source text and rebuilt by initGL: a shader object belongs to the context that
+  // created it, and initGL runs again on `webglcontextrestored`, so a stale entry here would
+  // hand a dead shader to every program built after a context loss.
+  //
+  // `var` WITH NO INITIALISER, exactly like worldProgs/worldPar — initGL() is called from
+  // palette.js, a slice ABOVE this one, so a `const` here is read in its temporal dead zone
+  // on the very first call and the page dies with "Cannot access 'vsCache' before
+  // initialization" (measured: it does). A `var` WITH an initialiser would be worse still —
+  // initGL would fill it, then this line would run later and silently wipe it. vsClearCache
+  // is what creates it, and initGL calls that before it builds anything.
+  var vsCache;
+  function vsClearCache() { vsCache = new Map(); }
+  function vsFor(src) {
+    let s = vsCache.get(src);
+    if (!s) { s = glCompile(gl.VERTEX_SHADER, src); vsCache.set(src, s); }
+    return s;
+  }
   function makeProg(vsSrc, fsSrc, names) {
-    const p = glLink(glCompile(gl.VERTEX_SHADER, vsSrc), glCompile(gl.FRAGMENT_SHADER, fsSrc));
+    const fs = glCompile(gl.FRAGMENT_SHADER, fsSrc);
+    const p = glLink(vsFor(vsSrc), fs);
+    // The linked program keeps its own reference, so this only drops the app's — without it
+    // ~72 fragment shader objects leak for the life of the context. The cached VERTEX shader
+    // is deliberately NOT deleted: it is reused by every program still to be built.
+    gl.deleteShader(fs);
     const u = {};
     for (const n of names) u[n] = gl.getUniformLocation(p, n);
     return { p, u };
@@ -96,6 +123,9 @@
   function drawQuad() { gl.bindVertexArray(quadVao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 
   function initGL() {
+    // A fresh context invalidates every shader object the old one made, and this runs again
+    // on `webglcontextrestored` — so drop the cache before anything asks it for a shader.
+    vsClearCache();
     // full-screen triangle (no vertex buffer; positions from gl_VertexID)
     const VS_QUAD = `#version 300 es
     out vec2 vUv;

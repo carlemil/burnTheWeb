@@ -159,11 +159,22 @@ const ordered = (body, ...needles) => {
   ok(/prevStack = stack/.test(begin), "...and keeps it");
   ok(/prevStack = null/.test(step), "transStep drops the outgoing stack when the blend ends");
 
-  // The one line that had to change for any of this to work.
-  ok(!/stack\.indexOf\(L\)/.test(noComments(rsc)),
-     "renderStackColor no longer resolves a slot with stack.indexOf (which is -1 when detached)");
-  ok(/const L = live\[li\], slot = b0 \+ li/.test(rsc),
-     "...it takes the slot from the base offset and the loop index");
+  // THE SLOT RULE. heatL/layerCur/layerPal are persistent per-slot state, so the slot has to
+  // identify the LAYER, not its position among the unmuted ones -- numbering by live index
+  // handed a muted-past layer's retained heat and palette clock to whichever layer moved up.
+  // But a bare stack.indexOf is -1 for a DETACHED (outgoing) item, which is why the `base`
+  // argument exists at all. So: resolve against the array this call is walking, and guard.
+  ok(!/[^v]stack\.indexOf\(L\)/.test(noComments(rsc)),
+     "renderStackColor does not resolve a slot with a bare stack.indexOf (which is -1 when detached)");
+  // b0, not the `base` parameter: the ramp const inside the loop was called `base` too, so
+  // naming the parameter there read it in its own TDZ and threw on every frame of a world
+  // join. b0 is `base || 0`, captured above the loop, and says the same thing.
+  ok(/b0 \? prevStack : stack/.test(noComments(rsc)),
+     "...it resolves against prevStack for a detached item and stack for a live one");
+  ok(!/const base = stepLayerPal/.test(noComments(rsc)),
+     "...and the per-layer ramp does not shadow the `base` parameter (that shadow was the TDZ)");
+  ok(/at >= 0 \? at : li/.test(noComments(rsc)),
+     "...and still falls back to the loop index if the layer is in neither");
   ok(/renderStackColor\(plive, dt, now, ticks, STACK_MAX\)/.test(rps),
      "renderPrevScene renders the outgoing stack into the SECOND half of the per-slot buffers");
   ok(/glFbo\.prev/.test(rps), "...and lands it in glTex.prev, where the transition pass reads it");

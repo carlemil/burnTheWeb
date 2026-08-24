@@ -364,6 +364,10 @@
       for (const k in (f.ranges || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": ranges references unknown control '" + k + "'");
       for (const k in (f.ranges || {})) if (SINGLE_KEYS.has(k)) console.warn(f.id + ": ranges overrides single control '" + k + "' — its bounds must stay whole");
     });
+    // The params ⊆ presetState check that belongs here CANNOT live here: it has to call
+    // presetState, whose FILTER_DEFAULTS is a `const` two slices below (filters.js), so
+    // calling it at this slice's load time is a TDZ crash. It runs instead as
+    // assertPresetStateCovers(), immediately after presetState in transitions.js.
     // A single control is a dual with its thumbs pinned, so it only makes sense on an integer
     // grid: a fractional step, bound or default would put every snapped value off it.
     const whole = n => typeof n === "number" && n === Math.round(n);
