@@ -71,10 +71,6 @@
     { key: "cbspeed", host: "fx", group: "copper", type: "dual", label: "Bar speed", valId: "vCbSpeed", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cbSpeed = v, durScale: 10 },
     { key: "cbwidth", host: "fx", group: "copper", type: "dual", label: "Bar width", valId: "vCbWidth", min: 0.02, max: 0.3, step: 0.005, lo: 0.12, hi: 0.12, fmt: v => sig3(v), apply: v => cbWidth = v, durScale: 10 },
     // Geometric shapes — Polygon
-    { key: "pgsides", host: "fx", group: "polygon", type: "dual", single: true, label: "Sides", valId: "vPgSides", min: 3, max: 12, step: 1, lo: 5, hi: 5, fmt: v => sig3(v), apply: v => pgSides = Math.round(v), durScale: 10 },
-    { key: "pgrad", host: "fx", group: "polygon", type: "dual", label: "Size", valId: "vPgRad", min: 0.1, max: 0.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => pgRad = v, durScale: 10 },
-    { key: "pgthick", host: "fx", group: "polygon", type: "dual", label: "Thickness", valId: "vPgThick", min: 0, max: 1, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => pgThick = v, durScale: 10 },
-    { key: "pgspin", host: "fx", group: "polygon", type: "dual", label: "Spin", valId: "vPgSpin", min: -2, max: 2, step: 0.05, lo: 0.4, hi: 0.4, fmt: v => sig3(v) + "×", apply: v => pgSpinSpeed = v, durScale: 10 },
     // Shape grid
     // Density is a continuous zoom, not a count: the shader scales the grid by it
     // (g = p*uCells, cell = floor(g)), so a fractional value renders correctly and drifting
@@ -990,7 +986,7 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", polygon: "Polygon", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    attractor: "Attractor", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
@@ -1132,7 +1128,6 @@
     ["moTime", () => moTime, v => moTime = v],
     ["nwPhase", () => nwPhase, v => nwPhase = v],
     ["cbTime", () => cbTime, v => cbTime = v],
-    ["pgSpin", () => pgSpin, v => pgSpin = v],
     ["sgTime", () => sgTime, v => sgTime = v],
     ["coTime", () => coTime, v => coTime = v],
     ["coSpin", () => coSpin, v => coSpin = v],

@@ -593,20 +593,6 @@
     // the palette + glow like every other effect. All aspect-correct against fw/fh and
     // bake their own zoom (uZoom). camProg wraps them, so gl_FragCoord carries the camera.
     // Polygon: one rotating regular N-gon; uThick hollows it (1 = filled, →0 = thin ring).
-    const FS_POLYGON = `#version 300 es
-    precision highp float;
-    uniform vec2 uSize; uniform float uSpin; uniform float uSides; uniform float uRad; uniform float uThick; uniform float uZoom;
-    out vec4 o;
-    const float TAU = 6.2831853;
-    void main(){
-      vec2 p = gl_FragCoord.xy/uSize - 0.5; p.x *= uSize.x/uSize.y; p /= uZoom;
-      float a = atan(p.y, p.x) + uSpin, seg = TAU/uSides;
-      float rp = length(p) * cos(mod(a, seg) - seg*0.5) / cos(seg*0.5);   // circumradius coord: = uRad on the edge
-      float aa = 1.5/uSize.y, ir = uRad*(1.0 - uThick);
-      // smoothstep needs edge0 < edge1 (edge0 >= edge1 is UB in GLSL), so ascend + invert.
-      float heat = clamp(smoothstep(ir-aa, ir+aa, rp) - smoothstep(uRad-aa, uRad+aa, rp), 0.0, 1.0);
-      o = vec4(heat, 0.0, 0.0, 1.0);
-    }`;
     // Shape grid: a tiled lattice of one shape (circle↔square via uSquare), each cell
     // pulsing in size out of phase with its neighbours.
     const FS_SHAPEGRID = `#version 300 es

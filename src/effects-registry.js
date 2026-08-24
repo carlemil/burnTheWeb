@@ -108,12 +108,6 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
-    { id: "polygon", name: "Polygon", subtitle: "Polygon · rotating N-gon",
-      help: "A single rotating regular polygon drawn as a signed-distance field. Sides morphs triangle → square → … → circle; Size scales it, Spin rotates it (negative reverses), and Thickness hollows it out — 1 is solid, low values leave a thin outline. Arm Size or Spin to a beat to make it throb.",
-      params: ["pgsides", "pgrad", "pgthick", "pgspin", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
-      draw: dt => { const s = polygonSeed(dt); if (useGL) glShaderDraw("polygon", u => { gl.uniform1f(u.uSpin, s.spin); gl.uniform1f(u.uSides, s.sides); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uZoom, s.zoom); }); else polygon(s); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], pgsides: [5, 5], pgrad: [0.35, 0.35], pgthick: [1, 1], pgspin: [0.4, 0.4], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
-      beat: {}, extras: { palette: "8", morph: false, showBox: true, randSeed: true } },
     { id: "shapegrid", name: "Shape grid", subtitle: "Shape grid · pulsing lattice",
       help: "A tiled lattice of one shape. Density sets how many cells fill the screen, Size the shape within each cell, Squareness morphs circle → square, and Pulse (with Pulse speed) makes every cell breathe out of phase with its neighbours. Reads like a pulsing dot-grid or checkerboard.",
       params: ["sgcells", "sgdot", "sgsquare", "sgpulse", "sgspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
@@ -385,9 +379,21 @@
   // presets. Everything in memory stays a numeric index; convert only at the
   // serialize/deserialize edge (persist/backup/share out, applyBlob/restore in).
   const LEGACY_EFFECT_IDS = ["sirpinfyer", "tetrafyer", "animejulia", "plasma"];   // old index → id, for blobs saved before ids existed
+  // RETIRED EFFECTS, mapped to their nearest surviving relative. An id that resolves to -1 is
+  // DROPPED by every caller -- mergeLayers loses the layer, validatePresetList loses the whole
+  // scene -- so simply deleting a descriptor silently damages every saved scene, share link and
+  // backup that used it. Retiring one means naming its heir here instead, and this is the single
+  // choke point all the decode paths already funnel through.
+  //
+  // Polygon -> Concentric rings: a single N-gon outline is the one-ring case of nested N-gon
+  // contours, so the layer keeps its shape family rather than becoming something unrelated.
+  // NOTE it is NOT in LEGACY_EFFECT_IDS above (that list is positional, and only covers the
+  // four ids that predate string ids), so nothing numeric depended on its index.
+  const RETIRED_EFFECT_IDS = { polygon: "concentric" };
   const effectId = idx => (EFFECTS[idx] || EFFECTS[0]).id;
   function effectIndexFromId(v) {                 // id (or a legacy number) → current numeric index, or -1
     if (typeof v === "number") v = LEGACY_EFFECT_IDS[v];
+    if (RETIRED_EFFECT_IDS[v]) v = RETIRED_EFFECT_IDS[v];   // a retired effect becomes its heir, never -1
     return EFFECTS.findIndex(f => f.id === v);
   }
   // ---- THE per-effect-map registry ---------------------------------------------------

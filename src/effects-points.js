@@ -6,18 +6,6 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
-  let pgSides = 5, pgRad = 0.35, pgThick = 1, pgSpinSpeed = 0.4, pgSpin = 0;
-  function polygonSeed(dt) { pgSpin += dt * pgSpinSpeed; return { spin: pgSpin, sides: pgSides, rad: pgRad, thick: pgThick, zoom }; }
-  function polygon(s) {
-    const seg = SH_TAU / s.sides, cs = Math.cos(seg * 0.5), asp = fw / fh, aa = 1.5 / fh, ir = s.rad * (1 - s.thick);
-    let idx = 0;
-    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
-      camPix(x, y);
-      const px = (camPX / fw - 0.5) * asp / s.zoom, py = (camPY / fh - 0.5) / s.zoom;
-      const a = Math.atan2(py, px) + s.spin, rp = Math.hypot(px, py) * Math.cos(shMod(a, seg) - seg * 0.5) / cs;
-      fire[idx++] = Math.max(0, Math.min(1, shStep(s.rad + aa, s.rad - aa, rp) - shStep(ir + aa, ir - aa, rp))) * 255;
-    }
-  }
   // Shape grid: a tiled lattice of circles↔squares, each cell pulsing out of phase.
   let sgCells = 9, sgDot = 0.3, sgSquare = 0, sgPulse = 0.35, sgSpeed = 1.2, sgTime = 0;
   function shapegridSeed(dt) { sgTime += dt * sgSpeed; return { t: sgTime, cells: sgCells, dot: sgDot, square: sgSquare, pulse: sgPulse, zoom }; }

@@ -60,7 +60,7 @@ const by = k => P.CONTROLS.find(c => c.key === k);
 // it is that someone adds `points` to it and quietly kills a ranged, beat-armable
 // control that ships advertising both. Changing this list should be a deliberate edit.
 const EXPECT = [
-  "mbcount", "ksegments", "cbcount", "pgsides", "cosides", "bncount", "sdcount",
+  "mbcount", "ksegments", "cbcount", "cosides", "bncount", "sdcount",
   "sdmix", "kfbars", "twcols", "ltbolts", "bpdetail", "flvar", "aucurtains", "rdspeed",
   "mgiter", "wedgeseg", "poster", "mirror", "pxdir", "cellstates", "kuwrad", "qjdetail",
   "vbcount", "vbshape", "gxarms",

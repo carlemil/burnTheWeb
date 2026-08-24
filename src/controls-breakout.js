@@ -490,8 +490,8 @@
   // picture of a seven-sided ring rather than two numbers you have to imagine.
   //
   // Keyed by GROUP, not by control, because the shape is made by the whole group together:
-  // the Polygon preview has to see Sides and Size and Thickness at once, and every one of
-  // Polygon's boxes shows the same figure. That is deliberate — each box then shows what its
+  // the Concentric rings preview has to see Sides and Count and Thickness at once, and every
+  // one of that group's boxes shows the same figure. That is deliberate — each box then shows what its
   // own slider is acting on.
   //
   // It reads the SLIDER VALUES, not the animated globals. Two reasons: the globals hold
@@ -529,12 +529,6 @@
     fill ? c.fill() : c.stroke();
   }
   const SHAPE_PREVIEW = {
-    polygon: (c, S, W) => {
-      const n = Math.max(3, Math.round(S("pgsides", 5)));
-      const r = W * 0.44 * (S("pgrad", 0.35) / 0.5);
-      c.lineWidth = Math.max(1.5, W * 0.09 * S("pgthick", 1));
-      prevPoly(c, W / 2, W / 2, r, n, -Math.PI / 2 + S("pgspin", 0) * 0.4, false);
-    },
     concentric: (c, S, W) => {
       const n = Math.max(3, Math.round(S("cosides", 6)));
       const rings = Math.max(1, Math.min(5, Math.round(S("cocount", 6) / 1.6)));
