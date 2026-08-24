@@ -139,7 +139,9 @@
   // wiring, long before the FILTERS registry block is evaluated.
   let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
     edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10,
-    embAmt = 1.6, embAng = 135, embMix = 0.4;
+    embAmt = 1.6, embAng = 135, embMix = 0.4,
+    dithLvl = 4, dithAmt = 1, rblAmt = 1, rblMix = 0.7, polAmt = 1, polRep = 1,
+    ascCell = 8, ascMix = 1, invAmt = 1, dblAmt = 24, dblAng = 0, anaAmt = 1, anaLen = 90;
   // Feedback warps (Echo / Zoom feedback / Swirl / Diffuse). Each carries its own
   // Keep, so it decays standalone instead of saturating to white when it is the only
   // feedback filter ticked — Fade is a separate filter you may or may not stack.

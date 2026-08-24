@@ -134,6 +134,138 @@
       vec3 lit = clamp(src * (1.0 + 2.0 * g), 0.0, 1.0);   // same relief, palette kept
       o = vec4(mix(lit, grey, clamp(uMix, 0.0, 1.0)), 1.0);
     }`;
+    // ORDERED DITHER. Posterize flattens the ramp into bands and stops; this quantises the
+    // SAME way but offsets each pixel's threshold by a 4x4 Bayer matrix first, so the error
+    // scatters into a stipple instead of a hard edge. That stipple is the whole Amiga/Atari
+    // look, and it is the one thing you cannot get by stacking the filters already here.
+    // The matrix is COMPUTED, not tabled: bayer(2n) = 4*bayer(n) + bayer(2), recursively.
+    const FS_DITHER = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uLevels; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    float bayer2(vec2 a){ return mod(2.0 * a.x + 3.0 * a.y, 4.0); }
+    float bayer4(vec2 p){
+      vec2 q = floor(mod(p, 4.0));
+      return (4.0 * bayer2(floor(q * 0.5)) + bayer2(mod(q, 2.0))) / 16.0;
+    }
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      float n = max(2.0, uLevels) - 1.0;
+      float b = bayer4(gl_FragCoord.xy) - 0.5;
+      o = vec4(clamp(floor(c * n + b * uAmount + 0.5) / n, 0.0, 1.0), 1.0);
+    }`;
+    // RADIAL BLUR: smear each pixel along the line from the centre, so light appears to
+    // stream outward. Blur/sharpen is isotropic and Zoom feedback accumulates over TIME;
+    // this is the single-frame streak neither of them can make.
+    const FS_RBLUR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount; uniform float uMix;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 c = vUv - 0.5;
+      vec3 sum = vec3(0.0);
+      const int N = 14;
+      for (int i = 0; i < N; i++) {
+        float t = float(i) / float(N - 1);
+        sum += texture(uSrc, 0.5 + c * (1.0 - uAmount * t * 0.25)).rgb;
+      }
+      sum /= float(N);
+      o = vec4(mix(texture(uSrc, vUv).rgb, sum, clamp(uMix, 0.0, 1.0)), 1.0);
+    }`;
+    // POLAR WARP: read the frame in polar coordinates, so horizontal bands become rings and
+    // vertical structure becomes spokes. Repeat folds the angle, which turns any picture into
+    // a rosette. Nothing else here remaps the coordinate space this way -- Twist and Wedge
+    // bend it, Droste scales it, this one changes what the two axes MEAN.
+    const FS_POLAR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uRepeat;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float r = clamp(length(c) * 2.0, 0.0, 1.0);
+      float a = atan(c.y, c.x) * 0.15915494 + 0.5;
+      vec2 pu = vec2(fract(a * max(1.0, uRepeat)), r);
+      o = vec4(mix(texture(uSrc, vUv).rgb, texture(uSrc, pu).rgb, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // ASCII MOSAIC: quantise each cell's brightness to one of seven glyphs. Halftone is the
+    // DOT version of this idea; a character grid reads completely differently. The glyphs are
+    // 3x5 bit masks held as ints -- no atlas texture to allocate, upload or resize.
+    const FS_ASCII = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uCell; uniform float uMix;
+    in vec2 vUv; out vec4 o;
+    int glyphAt(int lvl){
+      if (lvl <= 0) return 0;
+      if (lvl == 1) return 8192;
+      if (lvl == 2) return 1040;
+      if (lvl == 3) return 1488;
+      if (lvl == 4) return 3960;
+      if (lvl == 5) return 12282;
+      return 32767;
+    }
+    void main(){
+      float cs = max(3.0, uCell);
+      vec2 cell = floor(gl_FragCoord.xy / cs);
+      vec2 inCell = fract(gl_FragCoord.xy / cs);
+      vec3 c = texture(uSrc, (cell + 0.5) * cs / uSize).rgb;
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      int mask = glyphAt(int(clamp(l * 7.0, 0.0, 6.0)));
+      ivec2 g = ivec2(floor(inCell * vec2(3.0, 5.0)));
+      int bit = (4 - g.y) * 3 + g.x;
+      float on = ((mask >> bit) & 1) == 1 ? 1.0 : 0.0;
+      o = vec4(mix(texture(uSrc, vUv).rgb, c * on, clamp(uMix, 0.0, 1.0)), 1.0);
+    }`;
+    // INVERT. Solarize only folds the top of the ramp back down; this is the plain negative,
+    // on a slider so it can be crossfaded or beat-flicked.
+    const FS_INVERT = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      o = vec4(mix(c, 1.0 - c, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // DIRECTIONAL BLUR: a straight smear along one angle -- motion blur without motion.
+    // Blur/sharpen is a symmetric kernel; this one has a direction, and pairs with Emboss,
+    // which has one too.
+    const FS_DBLUR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uAngle;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 d = vec2(cos(uAngle), sin(uAngle)) * uAmount / uSize;
+      vec3 sum = vec3(0.0); float wsum = 0.0;
+      const int N = 12;
+      for (int i = -N; i <= N; i++) {
+        float f = float(i) / float(N);
+        float w = 1.0 - abs(f);
+        sum += texture(uSrc, vUv + d * f).rgb * w;
+        wsum += w;
+      }
+      o = vec4(sum / wsum, 1.0);
+    }`;
+    // ANAMORPHIC STREAKS: the horizontal flare bars a spherical lens throws off a highlight.
+    // Bloom spreads a bright pixel evenly in every direction; this spreads it along ONE axis,
+    // which is why the two read as different kinds of light rather than as two blurs. Bright
+    // -passed first, or the whole frame smears sideways instead of just the highlights.
+    const FS_ANAMORPH = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uLen;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 src = texture(uSrc, vUv).rgb;
+      vec3 sum = vec3(0.0); float wsum = 0.0;
+      const int N = 16;
+      for (int i = -N; i <= N; i++) {
+        float f = float(i) / float(N);
+        float w = 1.0 - abs(f);
+        vec3 c = texture(uSrc, vUv + vec2(f * uLen / uSize.x, 0.0)).rgb;
+        sum += max(c - vec3(0.55), vec3(0.0)) * w;
+        wsum += w;
+      }
+      o = vec4(clamp(src + sum / wsum * uAmount * 4.0, 0.0, 1.0), 1.0);
+    }`;
     // Rotate uv about the centre by an amount that falls off with radius — the middle
     // of the image spins and the rim stays put, so straight structure curls into it.
     const FS_TWIST = `#version 300 es
@@ -647,6 +779,13 @@
     glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
     glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
     glProg.emboss = makeProg(VS_QUAD, FS_EMBOSS, ["uSrc", "uSize", "uAmount", "uAngle", "uMix"]);
+    glProg.dither = makeProg(VS_QUAD, FS_DITHER, ["uSrc", "uLevels", "uAmount"]);
+    glProg.rblur = makeProg(VS_QUAD, FS_RBLUR, ["uSrc", "uAmount", "uMix"]);
+    glProg.polar = makeProg(VS_QUAD, FS_POLAR, ["uSrc", "uSize", "uAmount", "uRepeat"]);
+    glProg.ascii = makeProg(VS_QUAD, FS_ASCII, ["uSrc", "uSize", "uCell", "uMix"]);
+    glProg.invert = makeProg(VS_QUAD, FS_INVERT, ["uSrc", "uAmount"]);
+    glProg.dblur = makeProg(VS_QUAD, FS_DBLUR, ["uSrc", "uSize", "uAmount", "uAngle"]);
+    glProg.anamorph = makeProg(VS_QUAD, FS_ANAMORPH, ["uSrc", "uSize", "uAmount", "uLen"]);
     glProg.twist = makeProg(VS_QUAD, FS_TWIST, ["uSrc", "uSize", "uAmount"]);
     glProg.wedge = makeProg(VS_QUAD, FS_WEDGE, ["uSrc", "uSize", "uSeg", "uRot"]);
     glProg.glitch = makeProg(VS_QUAD, FS_GLITCH, ["uSrc", "uSize", "uAmount", "uRows", "uTime"]);
