@@ -75,6 +75,15 @@
     // Density is a continuous zoom, not a count: the shader scales the grid by it
     // (g = p*uCells, cell = floor(g)), so a fractional value renders correctly and drifting
     // between two thumbs slides the grid smoothly instead of popping at each integer.
+    { key: "phcount", host: "fx", group: "physarum", type: "dual", label: "Agents", valId: "vPhCount", min: 200, max: 6000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(Math.round(v)), apply: v => phCount = Math.round(v), durScale: 10 },
+    { key: "phsense", host: "fx", group: "physarum", type: "dual", label: "Sense", valId: "vPhSense", min: 1, max: 30, step: 1, lo: 9, hi: 9, fmt: v => sig3(Math.round(v)) + "px", apply: v => phSense = Math.round(v), durScale: 10 },
+    { key: "phturn", host: "fx", group: "physarum", type: "dual", label: "Turn", valId: "vPhTurn", min: 0.05, max: 1.6, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => phTurn = v, durScale: 10 },
+    { key: "phdecay", host: "fx", group: "physarum", type: "dual", label: "Trail life", valId: "vPhDecay", min: 0.5, max: 0.995, step: 0.005, lo: 0.88, hi: 0.88, fmt: v => sig3(v), apply: v => phDecay = v, durScale: 10 },
+    { key: "phspeed", host: "fx", group: "physarum", type: "dual", label: "Speed", valId: "vPhSpeed", min: 0.1, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => phSpeed = v, durScale: 10 },
+    { key: "cucount", host: "fx", group: "curl", type: "dual", label: "Particles", valId: "vCuCount", min: 200, max: 8000, step: 50, lo: 900, hi: 900, fmt: v => sig3(Math.round(v)), apply: v => cuCount = Math.round(v), durScale: 10 },
+    { key: "cuscale", host: "fx", group: "curl", type: "dual", label: "Field scale", valId: "vCuScale", min: 0.2, max: 8, step: 0.05, lo: 2.2, hi: 2.2, fmt: v => sig3(v), apply: v => cuScale = v, durScale: 10 },
+    { key: "cuspeed", host: "fx", group: "curl", type: "dual", label: "Flow", valId: "vCuSpeed", min: 0.05, max: 4, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => cuSpeed = v, durScale: 10 },
+    { key: "culife", host: "fx", group: "curl", type: "dual", label: "Lifetime", valId: "vCuLife", min: 0.2, max: 10, step: 0.1, lo: 2.5, hi: 2.5, fmt: v => sig3(v) + "s", apply: v => cuLife = v, durScale: 10 },
     { key: "clcover", host: "fx", group: "clouds", type: "dual", label: "Cover", valId: "vClCover", min: 0.1, max: 1, step: 0.01, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => clCover = v, durScale: 10 },
     { key: "clscale", host: "fx", group: "clouds", type: "dual", label: "Scale", valId: "vClScale", min: 0.15, max: 4, step: 0.05, lo: 1.1, hi: 1.1, fmt: v => sig3(v), apply: v => clScale = v, durScale: 10 },
     { key: "cloct", host: "fx", group: "clouds", type: "dual", label: "Detail", valId: "vClOct", min: 1, max: 6, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => clOct = Math.round(v), durScale: 10 },
@@ -1032,7 +1041,7 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", clouds: "Volumetric clouds", godray: "God rays", terrain: "Terrain", apollo: "Apollonian gasket", mbox: "Mandelbox", gyroid: "Gyroid", voronoi: "Voronoi cells", warpnoise: "Flow noise", truchet: "Truchet tiles", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    attractor: "Attractor", physarum: "Slime mould", curl: "Curl flow", clouds: "Volumetric clouds", godray: "God rays", terrain: "Terrain", apollo: "Apollonian gasket", mbox: "Mandelbox", gyroid: "Gyroid", voronoi: "Voronoi cells", warpnoise: "Flow noise", truchet: "Truchet tiles", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",

@@ -800,6 +800,10 @@
     // Boids follow the identical arrangement: the flock is a list on the layer, not a
     // scalar clock, so it can't ride PHASE_VARS either.
     if (EFFECTS[L.fx].boids) installBoids(L);
+    // Same rule as boids/solids/tetras: the agents live on the LAYER, so two layers of the
+    // same effect do not share one culture and render as a single brighter copy.
+    if (EFFECTS[L.fx].physarum) installPhysarum(L);
+    if (EFFECTS[L.fx].curl) installCurl(L);
   }
   // Seed-path config is PER-LAYER (L.seedPath/seedRide/seedPts), so two layers of the same
   // effect keep separate orbits. The render loop installs each layer's config into the seed

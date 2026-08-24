@@ -6,6 +6,138 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  // ---- Batch D: Physarum and curl-noise flow, both agent simulations --------------------
+  // PHYSARUM (slime mould): each agent samples the trail map ahead-left, ahead and ahead-right,
+  // turns toward whichever is strongest, moves, and deposits. Nothing tells them to make
+  // networks -- the veins, the loops and the pruning are all emergent from those four lines,
+  // which is why it looks alive in a way a particle system does not.
+  //
+  // The trail map is its OWN buffer, not the heat buffer. Reading heat back would mean a GPU
+  // readback every frame on the GL path, and the trail needs its own decay and blur anyway --
+  // the heat buffer is shared with every other layer and is cleared by the feedback rules.
+  const PHY_MAX = 6000, PHY_W = 420, PHY_H = 236;
+  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phAgents = null;
+  function ensurePhy(P, n, salt) {
+    if (!P.a || P.a.length !== n * 3) {
+      P.a = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const h = shHash21(i * 3.7 + salt, i * 1.3 + salt * 2.1);
+        const h2 = shHash21(i * 9.1 + salt * 5, i * 0.7 + salt);
+        P.a[i * 3] = h; P.a[i * 3 + 1] = h2; P.a[i * 3 + 2] = h * 6.2831;
+      }
+    }
+    // THE TRAIL MAP HAS ITS OWN FIXED RESOLUTION, not the heat grid's. At full resolution it
+    // is ~1.4M cells, and stamping the lit ones meant millions of plot() calls against an
+    // 8192-point blit buffer -- the network formed correctly and then arrived nearly black
+    // because almost every point was dropped. At 420x236 a vein is a few thousand cells,
+    // which is a budget the point pipeline actually has.
+    if (!P.tr) { P.tr = new Float32Array(PHY_W * PHY_H); P.tw = PHY_W; P.th = PHY_H; }
+  }
+  function installPhysarum(L) {
+    L.physarum = L.physarum || {};
+    ensurePhy(L.physarum, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), stack.indexOf(L) + 1);
+    phAgents = L.physarum;
+  }
+  function physarumStamp(xL, xR, yT, yB, n) {
+    const P = phAgents;
+    if (!P) return;
+    ensurePhy(P, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), 1);
+    const A = P.a, tr = P.tr, W = P.tw, H = P.th, N = A.length / 3;
+    const sense = Math.max(1, phSense), turn = phTurn, step = 0.6 + phSpeed * 1.4;
+    const at = (x, y) => tr[((y % H) + H) % H * W + (((x % W) + W) % W)];
+    for (let i = 0; i < N; i++) {
+      const x = A[i * 3] * W, y = A[i * 3 + 1] * H, a = A[i * 3 + 2];
+      // three sensors: ahead-left, ahead, ahead-right
+      const fl = at((x + Math.cos(a - 0.6) * sense) | 0, (y + Math.sin(a - 0.6) * sense) | 0);
+      const fc = at((x + Math.cos(a) * sense) | 0, (y + Math.sin(a) * sense) | 0);
+      const fr = at((x + Math.cos(a + 0.6) * sense) | 0, (y + Math.sin(a + 0.6) * sense) | 0);
+      let na = a;
+      if (fc >= fl && fc >= fr) { /* straight on */ }
+      else if (fl > fr) na = a - turn;
+      else if (fr > fl) na = a + turn;
+      else na = a + (shHash21(i, fc) - 0.5) * turn * 2;
+      const nx = x + Math.cos(na) * step, ny = y + Math.sin(na) * step;
+      A[i * 3] = ((nx / W) % 1 + 1) % 1;            // wrap, so the culture never runs out of dish
+      A[i * 3 + 1] = ((ny / H) % 1 + 1) % 1;
+      A[i * 3 + 2] = na;
+      const ix = A[i * 3] * W | 0, iy = A[i * 3 + 1] * H | 0;
+      tr[iy * W + ix] = Math.min(1, tr[iy * W + ix] + 0.5);
+    }
+    // decay + a cheap 3-tap blur along x, which is what turns dots into veins
+    const keep = Math.max(0.5, Math.min(0.995, phDecay));
+    const sx = (xR - xL) / W, sy = (yB - yT) / H;
+    for (let y2 = 0; y2 < H; y2++) {
+      const row = y2 * W;
+      let prev = tr[row + W - 1];
+      for (let x2 = 0; x2 < W; x2++) {
+        const cur = tr[row + x2], nxt = tr[row + (x2 + 1) % W];
+        const v = (prev * 0.25 + cur * 0.5 + nxt * 0.25) * keep;
+        prev = cur; tr[row + x2] = v;
+        // Only the LIT cells are stamped. The threshold is what keeps this inside the point
+        // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
+        if (v > 0.06) plot(xL + x2 * sx, yT + y2 * sy, Math.min(255, v * 420));
+      }
+    }
+  }
+  // CURL-NOISE FLOW. The velocity field is the CURL of a noise field, which is divergence-free
+  // by construction -- so particles never pile up or thin out, they only swirl. That is the
+  // difference between this and dragging points along a plain noise gradient, which drains.
+  const CURL_MAX = 8000;
+  let cuCount = 900, cuScale = 2.2, cuSpeed = 1, cuLife = 2.5, cuField = null;
+  function ensureCurl(C, n, salt) {
+    if (!C.p || C.p.length !== n * 3) {
+      C.p = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        C.p[i * 3] = shHash21(i * 2.1 + salt, i * 5.7 + salt);
+        C.p[i * 3 + 1] = shHash21(i * 7.3 + salt * 3, i * 1.9 + salt);
+        C.p[i * 3 + 2] = shHash21(i * 4.4 + salt, i * 8.1) * cuLife;
+      }
+    }
+  }
+  function installCurl(L) {
+    L.curl = L.curl || {};
+    ensureCurl(L.curl, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), stack.indexOf(L) + 1);
+    cuField = L.curl;
+  }
+  function curlStamp(xL, xR, yT, yB, n) {
+    const C = cuField;
+    if (!C) return;
+    ensureCurl(C, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), 1);
+    const P = C.p, N = P.length / 3, sc = Math.max(0.2, cuScale);
+    const dt = 1 / Math.max(30, cfg.burn), e = 0.02;
+    // 0.012, not 0.35. At the first value a particle crossed the frame in about a dozen
+    // ticks, so almost every one was out of bounds and respawning every frame -- which is
+    // precisely a field of random dots, and is what the first render showed.
+    const spd = cuSpeed * 0.055;
+    C.t = (C.t || 0) + dt * cuSpeed * 0.3;
+    const life = Math.max(0.2, cuLife);
+    // SUB-STEPS, PLOTTED. A divergence-free field never clumps -- that is the whole point of
+    // it -- so the instantaneous positions are always an even scatter no matter how good the
+    // flow is. The structure lives in the PATH, so each particle is advanced in several small
+    // steps per tick and every one is stamped, which draws the streamline itself.
+    // 8 sub-steps x 900 particles = 7200 stamps, just inside the 8192-point blit buffer.
+    // Those two numbers are tied: raising either past that silently drops stamps.
+    const SUB = 8;
+    for (let i = 0; i < N; i++) {
+      let x = P[i * 3], y = P[i * 3 + 1];
+      let age = P[i * 3 + 2] - dt;
+      for (let k = 0; k < SUB; k++) {
+        // curl of a scalar noise field: (dN/dy, -dN/dx) -- divergence-free in 2D
+        const nx1 = shVNoise(x * sc, (y + e) * sc + C.t), nx0 = shVNoise(x * sc, (y - e) * sc + C.t);
+        const ny1 = shVNoise((x + e) * sc, y * sc + C.t), ny0 = shVNoise((x - e) * sc, y * sc + C.t);
+        const vx = (nx1 - nx0) / (2 * e), vy = -(ny1 - ny0) / (2 * e);
+        x += vx * spd * dt; y += vy * spd * dt;
+        plot(xL + x * (xR - xL), yT + y * (yB - yT), POINT_HEAT);
+      }
+      if (age <= 0 || x < -0.1 || x > 1.1 || y < -0.1 || y > 1.1) {
+        // respawn, so the field keeps being explored rather than settling into its attractors
+        x = shHash21(i * 1.7 + C.t * 13, i * 3.1 + C.t * 7);
+        y = shHash21(i * 9.4 + C.t * 5, i * 6.2 + C.t * 11);
+        age = life * (0.4 + 0.6 * shHash21(i, C.t));
+      }
+      P[i * 3] = x; P[i * 3 + 1] = y; P[i * 3 + 2] = age;
+    }
+  }
   // ---- Batch C mirrors: volume, scatter and landscape, all deliberately thinned ---------
   // A 48-step volume march with a 5-tap light march per step is ~240 noise evaluations per
   // PIXEL -- a shader's budget, not a JS loop's. These keep the shape (a lit cloud field, a

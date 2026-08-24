@@ -108,6 +108,28 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
+    { id: "physarum", name: "Slime mould", subtitle: "Physarum · agents that build networks",
+      help: "Thousands of agents, each doing one stupid thing: look ahead-left, ahead and ahead-right at the trail everyone has left behind, turn toward whichever smells strongest, step forward and deposit a little more. Nothing instructs them to build anything — the veins, the loops, the junctions and the pruning are all EMERGENT, which is why it looks alive in a way a particle system never does. **Sense** is how far ahead they look (the single biggest change in character: short gives fine felted mats, long gives bold highways), Turn how sharply they can steer, Trail life how long a deposit survives — low starves the network back to wandering, high lets it set into a permanent map. Agents is the population. Try a Fade or Fire filter over it.",
+      params: ["phcount", "phsense", "phturn", "phdecay", "phspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      helpTags: ["all"], bakesOwnZoom: true, physarum: true,
+      stamp: (xL, xR, yT, yB, n) => physarumStamp(xL, xR, yT, yB, n),
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1, points: [2000, 2000],
+        phcount: [2500, 2500], phsense: [9, 9], phturn: [0.5, 0.5], phdecay: [0.88, 0.88], phspeed: [1, 1] },
+      beat: {}, extras: { palette: "11", morph: false } },
+    { id: "curl", name: "Curl flow", subtitle: "Curl noise · divergence-free particles",
+      help: "Particles carried by the CURL of a noise field. That matters: a curl field is divergence-free, so the flow can swirl and braid but can never pile particles up or drain a region empty — which is exactly what happens if you drag points along a plain noise gradient instead, and why this reads as smoke or water rather than as dots sliding downhill. **Field scale** sets how big the eddies are, Flow how fast, Lifetime how long a particle lives before it is respawned somewhere new (short keeps the whole field being explored, long lets long filaments draw themselves). Pairs naturally with a Fade pixel filter for streaks.",
+      params: ["cucount", "cuscale", "cuspeed", "culife", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      helpTags: ["all"], bakesOwnZoom: true, curl: true,
+      stamp: (xL, xR, yT, yB, n) => curlStamp(xL, xR, yT, yB, n),
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1, points: [3000, 3000],
+        cucount: [900, 900], cuscale: [2.2, 2.2], cuspeed: [1, 1], culife: [2.5, 2.5] },
+      // SHIPS WITH Fade pixel, and it has to. The heat buffer is rewritten every frame, so
+      // without retention you see one tick's stamps -- and because a curl field is
+      // divergence-free it never clumps, which means those stamps are an even scatter no
+      // matter how good the flow is. The structure IS the path, so the path has to persist.
+      // Measured the other way first: at 3000 particles with no filter it rendered as static
+      // noise and looked broken.
+      beat: {}, extras: { palette: "12", morph: false, filters: ["fade"] } },
     { id: "clouds", name: "Volumetric clouds", subtitle: "Clouds · marched participating media",
       help: "Real volume: the ray does not look for a surface, it integrates DENSITY along its length and lets light through according to how much it has already passed — which is why the clouds have depth and a lit side rather than being a flat noise field. Every other 3D effect here answers *where does this ray stop*; this one answers *how much did it collect on the way*. **Cover** is how much of the sky is filled (low leaves scattered wisps, high closes it over), Scale the size of the formations, Detail the octaves (and most of the cost), Sun how hard the light falls off through the depth — turn it down for flat overcast, up for towering lit banks. Drift moves the field past you.",
       params: ["clcover", "clscale", "cloct", "cllight", "clspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
