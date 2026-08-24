@@ -737,6 +737,9 @@
     glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.voronoi = camProg(VS_QUAD, FS_VORONOI, ["uSize", "uTime", "uCells", "uEdge", "uJit", "uZoom"]);
+    glProg.warpnoise = camProg(VS_QUAD, FS_WARPNOISE, ["uSize", "uTime", "uScale", "uWarp", "uOct", "uZoom"]);
+    glProg.truchet = camProg(VS_QUAD, FS_TRUCHET, ["uSize", "uTime", "uCells", "uWidth", "uFlip", "uZoom"]);
     glProg.shapegrid = camProg(VS_QUAD, FS_SHAPEGRID, ["uSize", "uTime", "uCells", "uDot", "uSquare", "uPulse", "uZoom"]);
     glProg.concentric = camProg(VS_QUAD, FS_CONCENTRIC, ["uSize", "uTime", "uSides", "uCount", "uThick", "uSpin", "uZoom"]);
     glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);

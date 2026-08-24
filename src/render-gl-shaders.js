@@ -595,6 +595,102 @@
     // Polygon: one rotating regular N-gon; uThick hollows it (1 = filled, →0 = thin ring).
     // Shape grid: a tiled lattice of one shape (circle↔square via uSquare), each cell
     // pulsing in size out of phase with its neighbours.
+    // ---- THE SHARED NOISE TOOLKIT ---------------------------------------------------
+    // There was no hash/noise/fbm anywhere in this file before: every pattern effect here is
+    // built from sines (Plasma, Moire, Copper bars) or from an exact map (the fractals), and
+    // sines cannot make the soft irregular fields the last decade of shader work is built on.
+    // Written ONCE and interpolated into the sources below; the volumetric effects want the
+    // same block, so it is deliberately general rather than tuned to any one caller.
+    //
+    // Value noise, not gradient noise: one hash and a smoothstep blend per cell, which is
+    // about half the cost of Perlin and indistinguishable once it is inside an fbm.
+    const SH_NOISE = `
+    float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+    vec2 h22(vec2 p){
+      return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453123);
+    }
+    float vnoise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x),
+                 mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y);
+    }
+    float fbm(vec2 p, int oct){
+      float a = 0.5, s = 0.0, n = 0.0;
+      for (int i = 0; i < 8; i++) {
+        if (i >= oct) break;
+        s += a * vnoise(p); n += a; p *= 2.03; a *= 0.5;   // 2.03, not 2: an exact
+      }                                                     // doubling lines the octaves up
+      return n > 0.0 ? s / n : 0.0;                         // and the lattice shows through
+    }`;
+    // VORONOI / WORLEY. Nothing here measures cellular distance -- Reaction-diffusion is a
+    // PDE and Cellular automaton is a filter over heat. F1 alone gives blobs; F2 - F1 is the
+    // crack between cells, which is the shattered-glass look, and Edge crossfades the two.
+    const FS_VORONOI = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uTime; uniform float uCells;
+    uniform float uEdge; uniform float uJit; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    ${SH_NOISE}
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 p = vec2((vUv.x - 0.5) * asp, vUv.y - 0.5) / uZoom * max(1.0, uCells);
+      vec2 g = floor(p), f = p - g;
+      float f1 = 8.0, f2 = 8.0;
+      for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+        vec2 off = vec2(float(i), float(j));
+        vec2 seed = h22(g + off);
+        // each cell's point wanders on its own phase, so the pattern is never static
+        vec2 pt = off + 0.5 + (sin(uTime + seed * 6.2831) * 0.5) * clamp(uJit, 0.0, 1.0);
+        float d = length(pt - f);
+        if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) { f2 = d; }
+      }
+      float blob = 1.0 - clamp(f1, 0.0, 1.0);
+      float crack = clamp((f2 - f1) * 1.6, 0.0, 1.0);
+      o = vec4(mix(blob, crack, clamp(uEdge, 0.0, 1.0)), 0.0, 0.0, 1.0);
+    }`;
+    // DOMAIN-WARPED FBM -- noise whose INPUT is displaced by more noise, twice. It is the
+    // difference between "clouds" and the marbled, flowing fields modern shader work is full
+    // of, and it cannot be approximated with sines however many you stack.
+    const FS_WARPNOISE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uTime; uniform float uScale;
+    uniform float uWarp; uniform float uOct; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    ${SH_NOISE}
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 p = vec2((vUv.x - 0.5) * asp, vUv.y - 0.5) / uZoom * max(0.2, uScale);
+      int oct = int(clamp(uOct, 1.0, 8.0));
+      vec2 q = vec2(fbm(p + vec2(0.0, uTime * 0.15), oct), fbm(p + vec2(5.2, 1.3), oct));
+      vec2 r = vec2(fbm(p + uWarp * q + vec2(1.7, 9.2) + uTime * 0.1, oct),
+                    fbm(p + uWarp * q + vec2(8.3, 2.8), oct));
+      float v = fbm(p + uWarp * r, oct);
+      o = vec4(clamp(v * 1.4, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // TRUCHET TILES: each cell holds one of two quarter-arc pairs, chosen by a hash, and the
+    // arcs meet at every edge -- so an endless woven maze falls out of a per-cell coin flip.
+    // Cheap, and completely unlike anything else in the registry.
+    const FS_TRUCHET = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uTime; uniform float uCells;
+    uniform float uWidth; uniform float uFlip; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    ${SH_NOISE}
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 p = vec2((vUv.x - 0.5) * asp, vUv.y - 0.5) / uZoom * max(1.0, uCells);
+      vec2 g = floor(p), f = p - g - 0.5;
+      // The flip is a hash THRESHOLD, not a hash: sliding the threshold with time makes tiles
+      // turn over one at a time instead of the whole grid re-rolling at once.
+      float hv = h21(g);
+      if (hv < fract(uTime * 0.07 + uFlip)) f.x = -f.x;
+      // two quarter arcs of radius 1/2, centred on opposite corners
+      float d = min(abs(length(f - vec2(0.5, 0.5)) - 0.5),
+                    abs(length(f + vec2(0.5, 0.5)) - 0.5));
+      float w = max(0.01, uWidth * 0.5);
+      o = vec4(1.0 - smoothstep(w * 0.5, w, d), 0.0, 0.0, 1.0);
+    }`;
     const FS_SHAPEGRID = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uCells; uniform float uDot; uniform float uSquare; uniform float uPulse; uniform float uZoom;

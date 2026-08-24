@@ -4069,6 +4069,102 @@
     // Polygon: one rotating regular N-gon; uThick hollows it (1 = filled, →0 = thin ring).
     // Shape grid: a tiled lattice of one shape (circle↔square via uSquare), each cell
     // pulsing in size out of phase with its neighbours.
+    // ---- THE SHARED NOISE TOOLKIT ---------------------------------------------------
+    // There was no hash/noise/fbm anywhere in this file before: every pattern effect here is
+    // built from sines (Plasma, Moire, Copper bars) or from an exact map (the fractals), and
+    // sines cannot make the soft irregular fields the last decade of shader work is built on.
+    // Written ONCE and interpolated into the sources below; the volumetric effects want the
+    // same block, so it is deliberately general rather than tuned to any one caller.
+    //
+    // Value noise, not gradient noise: one hash and a smoothstep blend per cell, which is
+    // about half the cost of Perlin and indistinguishable once it is inside an fbm.
+    const SH_NOISE = `
+    float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+    vec2 h22(vec2 p){
+      return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453123);
+    }
+    float vnoise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x),
+                 mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y);
+    }
+    float fbm(vec2 p, int oct){
+      float a = 0.5, s = 0.0, n = 0.0;
+      for (int i = 0; i < 8; i++) {
+        if (i >= oct) break;
+        s += a * vnoise(p); n += a; p *= 2.03; a *= 0.5;   // 2.03, not 2: an exact
+      }                                                     // doubling lines the octaves up
+      return n > 0.0 ? s / n : 0.0;                         // and the lattice shows through
+    }`;
+    // VORONOI / WORLEY. Nothing here measures cellular distance -- Reaction-diffusion is a
+    // PDE and Cellular automaton is a filter over heat. F1 alone gives blobs; F2 - F1 is the
+    // crack between cells, which is the shattered-glass look, and Edge crossfades the two.
+    const FS_VORONOI = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uTime; uniform float uCells;
+    uniform float uEdge; uniform float uJit; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    ${SH_NOISE}
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 p = vec2((vUv.x - 0.5) * asp, vUv.y - 0.5) / uZoom * max(1.0, uCells);
+      vec2 g = floor(p), f = p - g;
+      float f1 = 8.0, f2 = 8.0;
+      for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+        vec2 off = vec2(float(i), float(j));
+        vec2 seed = h22(g + off);
+        // each cell's point wanders on its own phase, so the pattern is never static
+        vec2 pt = off + 0.5 + (sin(uTime + seed * 6.2831) * 0.5) * clamp(uJit, 0.0, 1.0);
+        float d = length(pt - f);
+        if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) { f2 = d; }
+      }
+      float blob = 1.0 - clamp(f1, 0.0, 1.0);
+      float crack = clamp((f2 - f1) * 1.6, 0.0, 1.0);
+      o = vec4(mix(blob, crack, clamp(uEdge, 0.0, 1.0)), 0.0, 0.0, 1.0);
+    }`;
+    // DOMAIN-WARPED FBM -- noise whose INPUT is displaced by more noise, twice. It is the
+    // difference between "clouds" and the marbled, flowing fields modern shader work is full
+    // of, and it cannot be approximated with sines however many you stack.
+    const FS_WARPNOISE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uTime; uniform float uScale;
+    uniform float uWarp; uniform float uOct; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    ${SH_NOISE}
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 p = vec2((vUv.x - 0.5) * asp, vUv.y - 0.5) / uZoom * max(0.2, uScale);
+      int oct = int(clamp(uOct, 1.0, 8.0));
+      vec2 q = vec2(fbm(p + vec2(0.0, uTime * 0.15), oct), fbm(p + vec2(5.2, 1.3), oct));
+      vec2 r = vec2(fbm(p + uWarp * q + vec2(1.7, 9.2) + uTime * 0.1, oct),
+                    fbm(p + uWarp * q + vec2(8.3, 2.8), oct));
+      float v = fbm(p + uWarp * r, oct);
+      o = vec4(clamp(v * 1.4, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // TRUCHET TILES: each cell holds one of two quarter-arc pairs, chosen by a hash, and the
+    // arcs meet at every edge -- so an endless woven maze falls out of a per-cell coin flip.
+    // Cheap, and completely unlike anything else in the registry.
+    const FS_TRUCHET = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uTime; uniform float uCells;
+    uniform float uWidth; uniform float uFlip; uniform float uZoom;
+    in vec2 vUv; out vec4 o;
+    ${SH_NOISE}
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 p = vec2((vUv.x - 0.5) * asp, vUv.y - 0.5) / uZoom * max(1.0, uCells);
+      vec2 g = floor(p), f = p - g - 0.5;
+      // The flip is a hash THRESHOLD, not a hash: sliding the threshold with time makes tiles
+      // turn over one at a time instead of the whole grid re-rolling at once.
+      float hv = h21(g);
+      if (hv < fract(uTime * 0.07 + uFlip)) f.x = -f.x;
+      // two quarter arcs of radius 1/2, centred on opposite corners
+      float d = min(abs(length(f - vec2(0.5, 0.5)) - 0.5),
+                    abs(length(f + vec2(0.5, 0.5)) - 0.5));
+      float w = max(0.01, uWidth * 0.5);
+      o = vec4(1.0 - smoothstep(w * 0.5, w, d), 0.0, 0.0, 1.0);
+    }`;
     const FS_SHAPEGRID = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uCells; uniform float uDot; uniform float uSquare; uniform float uPulse; uniform float uZoom;
@@ -6462,6 +6558,9 @@
     glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.voronoi = camProg(VS_QUAD, FS_VORONOI, ["uSize", "uTime", "uCells", "uEdge", "uJit", "uZoom"]);
+    glProg.warpnoise = camProg(VS_QUAD, FS_WARPNOISE, ["uSize", "uTime", "uScale", "uWarp", "uOct", "uZoom"]);
+    glProg.truchet = camProg(VS_QUAD, FS_TRUCHET, ["uSize", "uTime", "uCells", "uWidth", "uFlip", "uZoom"]);
     glProg.shapegrid = camProg(VS_QUAD, FS_SHAPEGRID, ["uSize", "uTime", "uCells", "uDot", "uSquare", "uPulse", "uZoom"]);
     glProg.concentric = camProg(VS_QUAD, FS_CONCENTRIC, ["uSize", "uTime", "uSides", "uCount", "uThick", "uSpin", "uZoom"]);
     glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
@@ -9939,6 +10038,71 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  // ---- Batch A: the three noise/pattern effects, and the CPU value-noise they share ----
+  // The mirrors are honest but coarse: one octave where the shader runs up to eight, and no
+  // domain warp at all in the warp mirror. That is the Ocean rule -- a fallback that keeps the
+  // shape of the thing rather than pretending to be it -- and it is why they still write EVERY
+  // cell, which the MAX-merge in the CPU path depends on.
+  function shHash21(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123; return s - Math.floor(s); }
+  function shVNoise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+    const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+    const a = shHash21(ix, iy), b = shHash21(ix + 1, iy), c = shHash21(ix, iy + 1), d = shHash21(ix + 1, iy + 1);
+    return (a + (b - a) * ux) + ((c + (d - c) * ux) - (a + (b - a) * ux)) * uy;
+  }
+  let voCells = 6, voEdge = 0.6, voJit = 0.7, voSpeed = 0.5, voTime = 0;
+  function voronoiSeed(dt) { voTime += dt * voSpeed; return { t: voTime, cells: voCells, edge: voEdge, jit: voJit, zoom }; }
+  function voronoi(s) {
+    const asp = fw / fh;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom * Math.max(1, s.cells);
+      const py = (camPY / fh - 0.5) / s.zoom * Math.max(1, s.cells);
+      const gx = Math.floor(px), gy = Math.floor(py), fx = px - gx, fy = py - gy;
+      let f1 = 8, f2 = 8;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+        const sx = shHash21(gx + i, gy + j), sy = shHash21(gx + i + 37, gy + j + 17);
+        const ox = i + 0.5 + Math.sin(s.t + sx * 6.2831) * 0.5 * s.jit;
+        const oy = j + 0.5 + Math.sin(s.t + sy * 6.2831) * 0.5 * s.jit;
+        const d = Math.hypot(ox - fx, oy - fy);
+        if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d;
+      }
+      const blob = 1 - Math.min(1, f1), crack = Math.min(1, (f2 - f1) * 1.6);
+      fire[idx++] = (blob + (crack - blob) * Math.min(1, s.edge)) * 255;
+    }
+  }
+  let wnScale = 3, wnWarp = 4, wnOct = 5, wnSpeed = 1, wnTime = 0;
+  function warpnoiseSeed(dt) { wnTime += dt * wnSpeed; return { t: wnTime, scale: wnScale, warp: wnWarp, oct: wnOct, zoom }; }
+  function warpnoise(s) {
+    const asp = fw / fh;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom * Math.max(0.2, s.scale);
+      const py = (camPY / fh - 0.5) / s.zoom * Math.max(0.2, s.scale);
+      const qx = shVNoise(px, py + s.t * 0.15), qy = shVNoise(px + 5.2, py + 1.3);
+      fire[idx++] = Math.max(0, Math.min(1, shVNoise(px + s.warp * qx, py + s.warp * qy) * 1.4)) * 255;
+    }
+  }
+  let truCells = 6, truWidth = 0.35, truFlip = 0.5, truSpeed = 1, truTime = 0;
+  function truchetSeed(dt) { truTime += dt * truSpeed; return { t: truTime, cells: truCells, width: truWidth, flip: truFlip, zoom }; }
+  function truchet(s) {
+    const asp = fw / fh, w = Math.max(0.01, s.width * 0.5);
+    const thr = (s.t * 0.07 + s.flip) - Math.floor(s.t * 0.07 + s.flip);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom * Math.max(1, s.cells);
+      const py = (camPY / fh - 0.5) / s.zoom * Math.max(1, s.cells);
+      const gx = Math.floor(px), gy = Math.floor(py);
+      let fx = px - gx - 0.5; const fy = py - gy - 0.5;
+      if (shHash21(gx, gy) < thr) fx = -fx;
+      const d = Math.min(Math.abs(Math.hypot(fx - 0.5, fy - 0.5) - 0.5),
+                         Math.abs(Math.hypot(fx + 0.5, fy + 0.5) - 0.5));
+      fire[idx++] = Math.max(0, Math.min(1, 1 - shStep(w * 0.5, w, d))) * 255;
+    }
+  }
   // Shape grid: a tiled lattice of circles↔squares, each cell pulsing out of phase.
   let sgCells = 9, sgDot = 0.3, sgSquare = 0, sgPulse = 0.35, sgSpeed = 1.2, sgTime = 0;
   function shapegridSeed(dt) { sgTime += dt * sgSpeed; return { t: sgTime, cells: sgCells, dot: sgDot, square: sgSquare, pulse: sgPulse, zoom }; }
@@ -11547,6 +11711,18 @@
     // Density is a continuous zoom, not a count: the shader scales the grid by it
     // (g = p*uCells, cell = floor(g)), so a fractional value renders correctly and drifting
     // between two thumbs slides the grid smoothly instead of popping at each integer.
+    { key: "vocells", host: "fx", group: "voronoi", type: "dual", label: "Cells", valId: "vVoCells", min: 1, max: 24, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => voCells = v, durScale: 10 },
+    { key: "voedge", host: "fx", group: "voronoi", type: "dual", label: "Edge", valId: "vVoEdge", min: 0, max: 1, step: 0.01, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => voEdge = v, durScale: 10 },
+    { key: "vojit", host: "fx", group: "voronoi", type: "dual", label: "Wander", valId: "vVoJit", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => voJit = v, durScale: 10 },
+    { key: "vospeed", host: "fx", group: "voronoi", type: "dual", label: "Speed", valId: "vVoSpeed", min: 0, max: 3, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => voSpeed = v, durScale: 10 },
+    { key: "wnscale", host: "fx", group: "warpnoise", type: "dual", label: "Scale", valId: "vWnScale", min: 0.2, max: 10, step: 0.1, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => wnScale = v, durScale: 10 },
+    { key: "wnwarp", host: "fx", group: "warpnoise", type: "dual", label: "Warp", valId: "vWnWarp", min: 0, max: 10, step: 0.1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => wnWarp = v, durScale: 10 },
+    { key: "wnoct", host: "fx", group: "warpnoise", type: "dual", label: "Detail", valId: "vWnOct", min: 1, max: 8, step: 1, lo: 5, hi: 5, fmt: v => sig3(Math.round(v)), apply: v => wnOct = Math.round(v), durScale: 10 },
+    { key: "wnspeed", host: "fx", group: "warpnoise", type: "dual", label: "Flow", valId: "vWnSpeed", min: 0, max: 4, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => wnSpeed = v, durScale: 10 },
+    { key: "trucells", host: "fx", group: "truchet", type: "dual", label: "Tiles", valId: "vTruCells", min: 1, max: 24, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => truCells = v, durScale: 10 },
+    { key: "truwidth", host: "fx", group: "truchet", type: "dual", label: "Line width", valId: "vTruWidth", min: 0.02, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => truWidth = v, durScale: 10 },
+    { key: "truflip", host: "fx", group: "truchet", type: "dual", label: "Weave", valId: "vTruFlip", min: 0, max: 1, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => truFlip = v, durScale: 10 },
+    { key: "truspeed", host: "fx", group: "truchet", type: "dual", label: "Turn rate", valId: "vTruSpeed", min: 0, max: 4, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => truSpeed = v, durScale: 10 },
     { key: "sgcells", host: "fx", group: "shapegrid", type: "dual", label: "Density", valId: "vSgCells", min: 2, max: 24, step: 1, lo: 9, hi: 9, fmt: v => sig3(v), apply: v => sgCells = v, durScale: 10 },
     { key: "sgdot", host: "fx", group: "shapegrid", type: "dual", label: "Size", valId: "vSgDot", min: 0.05, max: 0.6, step: 0.01, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => sgDot = v, durScale: 10 },
     { key: "sgsquare", host: "fx", group: "shapegrid", type: "dual", label: "Squareness", valId: "vSgSquare", min: 0, max: 1, step: 0.02, lo: 0, hi: 0, fmt: v => sig3(v), apply: v => sgSquare = v, durScale: 10 },
@@ -12458,7 +12634,7 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    attractor: "Attractor", voronoi: "Voronoi cells", warpnoise: "Flow noise", truchet: "Truchet tiles", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
@@ -12600,6 +12776,9 @@
     ["moTime", () => moTime, v => moTime = v],
     ["nwPhase", () => nwPhase, v => nwPhase = v],
     ["cbTime", () => cbTime, v => cbTime = v],
+    ["voTime", () => voTime, v => voTime = v],
+    ["wnTime", () => wnTime, v => wnTime = v],
+    ["truTime", () => truTime, v => truTime = v],
     ["sgTime", () => sgTime, v => sgTime = v],
     ["coTime", () => coTime, v => coTime = v],
     ["coSpin", () => coSpin, v => coSpin = v],
@@ -14288,6 +14467,24 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
+    { id: "voronoi", name: "Voronoi cells", subtitle: "Voronoi · cracked cellular field",
+      help: "A cellular field: space is divided between wandering seed points, and every pixel is coloured by how far it is from the nearest one. **Edge** is the character knob — at 0 you get soft blobs (distance to the nearest seed), at 1 the crack BETWEEN cells (the gap between nearest and second-nearest), which is the shattered-glass look. Cells sets how many, Wander how far each seed drifts from its home, Speed how fast. Nothing else here measures cellular distance — Reaction-diffusion is a chemical simulation and Cellular automaton is a filter over heat.",
+      params: ["vocells", "voedge", "vojit", "vospeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = voronoiSeed(dt); if (useGL) glShaderDraw("voronoi", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCells, s.cells); gl.uniform1f(u.uEdge, s.edge); gl.uniform1f(u.uJit, s.jit); gl.uniform1f(u.uZoom, s.zoom); }); else voronoi(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], vocells: [6, 6], voedge: [0.6, 0.6], vojit: [0.7, 0.7], vospeed: [0.5, 0.5] },
+      beat: {}, extras: { palette: "2", morph: false } },
+    { id: "warpnoise", name: "Flow noise", subtitle: "Flow noise · domain-warped fbm",
+      help: "Fractal noise whose INPUT is displaced by more noise, twice over — the marbled, slowly-flowing field that most modern shader work is built on. **Warp** is what makes it: at 0 it is plain cloud noise, and as it rises the field folds into itself and grows filaments and eddies. Scale is how big the features are, Detail how many octaves (and how much GPU), Flow how fast it moves. Plasma is built from sines and cannot make this shape however many you stack.",
+      params: ["wnscale", "wnwarp", "wnoct", "wnspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = warpnoiseSeed(dt); if (useGL) glShaderDraw("warpnoise", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uOct, s.oct); gl.uniform1f(u.uZoom, s.zoom); }); else warpnoise(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], wnscale: [3, 3], wnwarp: [4, 4], wnoct: [5, 5], wnspeed: [1, 1] },
+      beat: {}, extras: { palette: "4", morph: false } },
+    { id: "truchet", name: "Truchet tiles", subtitle: "Truchet · woven arc maze",
+      help: "Every tile holds one of two quarter-arc pairs, picked by a coin flip, and because the arcs always meet at the tile edges an endless woven maze falls out of it. **Weave** slides the threshold that decides which way each tile faces, so tiles turn over one at a time rather than the whole grid re-rolling — drift it, or arm it to a beat, and the maze re-knits itself continuously. Tiles sets the grid, Line width the ribbon, Turn rate how fast the flipping travels.",
+      params: ["trucells", "truwidth", "truflip", "truspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = truchetSeed(dt); if (useGL) glShaderDraw("truchet", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCells, s.cells); gl.uniform1f(u.uWidth, s.width); gl.uniform1f(u.uFlip, s.flip); gl.uniform1f(u.uZoom, s.zoom); }); else truchet(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], trucells: [6, 6], truwidth: [0.35, 0.35], truflip: [0.5, 0.5], truspeed: [1, 1] },
+      beat: {}, extras: { palette: "9", morph: false } },
     { id: "shapegrid", name: "Shape grid", subtitle: "Shape grid · pulsing lattice",
       help: "A tiled lattice of one shape. Density sets how many cells fill the screen, Size the shape within each cell, Squareness morphs circle → square, and Pulse (with Pulse speed) makes every cell breathe out of phase with its neighbours. Reads like a pulsing dot-grid or checkerboard.",
       params: ["sgcells", "sgdot", "sgsquare", "sgpulse", "sgspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,

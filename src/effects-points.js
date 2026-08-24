@@ -6,6 +6,71 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  // ---- Batch A: the three noise/pattern effects, and the CPU value-noise they share ----
+  // The mirrors are honest but coarse: one octave where the shader runs up to eight, and no
+  // domain warp at all in the warp mirror. That is the Ocean rule -- a fallback that keeps the
+  // shape of the thing rather than pretending to be it -- and it is why they still write EVERY
+  // cell, which the MAX-merge in the CPU path depends on.
+  function shHash21(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123; return s - Math.floor(s); }
+  function shVNoise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+    const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+    const a = shHash21(ix, iy), b = shHash21(ix + 1, iy), c = shHash21(ix, iy + 1), d = shHash21(ix + 1, iy + 1);
+    return (a + (b - a) * ux) + ((c + (d - c) * ux) - (a + (b - a) * ux)) * uy;
+  }
+  let voCells = 6, voEdge = 0.6, voJit = 0.7, voSpeed = 0.5, voTime = 0;
+  function voronoiSeed(dt) { voTime += dt * voSpeed; return { t: voTime, cells: voCells, edge: voEdge, jit: voJit, zoom }; }
+  function voronoi(s) {
+    const asp = fw / fh;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom * Math.max(1, s.cells);
+      const py = (camPY / fh - 0.5) / s.zoom * Math.max(1, s.cells);
+      const gx = Math.floor(px), gy = Math.floor(py), fx = px - gx, fy = py - gy;
+      let f1 = 8, f2 = 8;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+        const sx = shHash21(gx + i, gy + j), sy = shHash21(gx + i + 37, gy + j + 17);
+        const ox = i + 0.5 + Math.sin(s.t + sx * 6.2831) * 0.5 * s.jit;
+        const oy = j + 0.5 + Math.sin(s.t + sy * 6.2831) * 0.5 * s.jit;
+        const d = Math.hypot(ox - fx, oy - fy);
+        if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d;
+      }
+      const blob = 1 - Math.min(1, f1), crack = Math.min(1, (f2 - f1) * 1.6);
+      fire[idx++] = (blob + (crack - blob) * Math.min(1, s.edge)) * 255;
+    }
+  }
+  let wnScale = 3, wnWarp = 4, wnOct = 5, wnSpeed = 1, wnTime = 0;
+  function warpnoiseSeed(dt) { wnTime += dt * wnSpeed; return { t: wnTime, scale: wnScale, warp: wnWarp, oct: wnOct, zoom }; }
+  function warpnoise(s) {
+    const asp = fw / fh;
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom * Math.max(0.2, s.scale);
+      const py = (camPY / fh - 0.5) / s.zoom * Math.max(0.2, s.scale);
+      const qx = shVNoise(px, py + s.t * 0.15), qy = shVNoise(px + 5.2, py + 1.3);
+      fire[idx++] = Math.max(0, Math.min(1, shVNoise(px + s.warp * qx, py + s.warp * qy) * 1.4)) * 255;
+    }
+  }
+  let truCells = 6, truWidth = 0.35, truFlip = 0.5, truSpeed = 1, truTime = 0;
+  function truchetSeed(dt) { truTime += dt * truSpeed; return { t: truTime, cells: truCells, width: truWidth, flip: truFlip, zoom }; }
+  function truchet(s) {
+    const asp = fw / fh, w = Math.max(0.01, s.width * 0.5);
+    const thr = (s.t * 0.07 + s.flip) - Math.floor(s.t * 0.07 + s.flip);
+    let idx = 0;
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      camPix(x, y);
+      const px = (camPX / fw - 0.5) * asp / s.zoom * Math.max(1, s.cells);
+      const py = (camPY / fh - 0.5) / s.zoom * Math.max(1, s.cells);
+      const gx = Math.floor(px), gy = Math.floor(py);
+      let fx = px - gx - 0.5; const fy = py - gy - 0.5;
+      if (shHash21(gx, gy) < thr) fx = -fx;
+      const d = Math.min(Math.abs(Math.hypot(fx - 0.5, fy - 0.5) - 0.5),
+                         Math.abs(Math.hypot(fx + 0.5, fy + 0.5) - 0.5));
+      fire[idx++] = Math.max(0, Math.min(1, 1 - shStep(w * 0.5, w, d))) * 255;
+    }
+  }
   // Shape grid: a tiled lattice of circles↔squares, each cell pulsing out of phase.
   let sgCells = 9, sgDot = 0.3, sgSquare = 0, sgPulse = 0.35, sgSpeed = 1.2, sgTime = 0;
   function shapegridSeed(dt) { sgTime += dt * sgSpeed; return { t: sgTime, cells: sgCells, dot: sgDot, square: sgSquare, pulse: sgPulse, zoom }; }
