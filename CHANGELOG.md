@@ -14,6 +14,53 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.45.0] — 2026-08-24
+
+### Changed
+- **⚄ Random now roams the whole slider range.** It used to nudge each slider a little
+  either side of where it already was; it now rolls a fresh value anywhere between that
+  slider's own min and max, so one press can genuinely restage a layer.
+- **Random on the Filters tab also builds a chain.** A coin flip adds one filter you have
+  not got, repeated at the same odds until it says stop or the layer holds five — so a few
+  presses grow a real chain instead of only retuning the filters already there. The tab's
+  ↺ Reset now puts the chain back to the effect's default as well as the values.
+- **Random on the Palette tab rolls the palette itself** — a fresh pick from the palettes
+  you have in use, and about one press in three also flips Reverse colours. Cycle, hold,
+  heat boost and banding ride the same full-range roll.
+- **The old "Reset this effect" button at the foot of the Effect tab is gone**, replaced by
+  the per-tab ↺ Reset at the top of each tab.
+
+### Fixed
+- **Palette cycle and hold are per layer again.** Every layer's palette morph was running on
+  whichever layer you happened to have selected: pinning the selected layer's cycle froze the
+  whole stack, and its duration drove every other layer. Each layer now keeps its own timing,
+  which is what the per-layer sliders always implied.
+- **The shared-3D-world crossfade never actually ran.** Joining a world cut in instead of
+  fading over 0.45s, and — the visible half — *leaving* one left that layer completely black
+  for the length of the fade. The blend was being drawn into a buffer it was also reading
+  from, so it was silently discarded.
+- **Muting a layer no longer hands its trails to another layer.** Retained heat and the
+  palette morph clock were kept per stack position but numbered by position among the
+  *unmuted* layers, so muting one made the next layer inherit its ghost — obvious on any
+  scene using Fire, Echo or the other trail filters.
+- **Place X/Y/Z and World scale are saved.** (Shipped in 1.44.0; the guard that stops that
+  whole class of slider going unsaved arrived with this release — see Internal.)
+
+### Internal
+- `assertPresetStateCovers` warns at load if an effect shows a slider that `presetState` does
+  not seed — the defect that silently lost the camera rotations, and later the world
+  placement, twice over. It cannot live in `assertRegistry`: that slice loads before the
+  filter defaults exist, so calling `presetState` there dies in a temporal dead zone.
+- New `tools/world-check.js`: joining and leaving a shared world must raise zero console
+  errors. Neither existing world tool runs a frame, which is why a rejected draw and a
+  per-frame exception both sat undetected — each invisible to a screenshot.
+- Deleted the two display-resolution buffers left behind when the whole-scene filter stage
+  emptied: the largest allocation in the renderer (~29MB at 1440p, ~66MB at 4K) with nothing
+  reading it, reallocated on every window resize.
+- `creditDraw` no longer clears a full-screen canvas on every frame for the life of the
+  session, which also removes a forced layout flush per frame; the vertex shader is compiled
+  once rather than once per program, and fragment shaders are released after linking.
+
 ## [1.44.0] — 2026-08-23
 
 ### Added

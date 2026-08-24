@@ -353,7 +353,7 @@
   #panel .verline .ver-t, #panel .verline .ver-v { display: block; }
   #panel .verline .ver-v { opacity: .7; }
   #panel .verline:hover { opacity: .8; }
-  [data-k="reset"], [data-k="cardbtn"], #addlayer {
+  [data-k="cardbtn"], #addlayer {
     margin-top: 8px;
     width: 100%;
     padding: 7px 0;
@@ -366,7 +366,7 @@
     cursor: pointer;
     transition: background .15s;
   }
-  [data-k="reset"]:hover, [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
+  [data-k="cardbtn"]:hover, #addlayer:hover { background: rgba(255, 122, 26, 0.3); }
   /* Per-tab ⚄ Random / ↺ Reset pair heading each layer-tab pane. Same family as the big
      Reset button above, halved: two side-by-side, quieter resting tone. Scoped to both
      hosts like every block rule — the block lives in a layer box in #breakout. */
@@ -1968,22 +1968,21 @@
   </div>
   <!-- EFFECT -->
   <div data-k="tab-fx" class="lyr-pane" role="tabpanel">
-  <!-- Per-tab tools: ⚄ nudges every one of this tab's sliders a little (and sometimes arms
-       a beat trigger on one of them); ↺ puts the tab's sliders — values, ranges, triggers —
+  <!-- Per-tab tools: ⚄ rolls every one of this tab's sliders to a random value in its
+       range (and sometimes arms a beat trigger on one of them); ↺ puts the tab's sliders — values, ranges, triggers —
        back to this effect's defaults. One pair per pane, wired per slot. -->
   <div class="tab-tools">
-    <button type="button" data-k="rnd-fx" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rnd-fx" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-fx" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
   </div>
   <div data-k="fxctl"><!-- per-effect slider controls generated from the CONTROLS schema --></div>
   <!-- Only for the effects seeded from a Mandelbrot point (descriptor: cardioid) -->
   <button data-k="cardbtn" type="button" title="Choose and edit the seed's orbit — cardioid, circle or a freehand loop — over the Mandelbrot set">Orbit editor</button>
-  <button data-k="reset" type="button" title="Put this effect back the way it ships: every slider's value and range, its beat chips, pulse shapes and lengths, and its palette. Other effects and the shared controls are left alone.">Reset this effect</button>
   </div>
   <!-- FILTERS: this layer's chain (feedback + post). -->
   <div data-k="tab-flt" class="lyr-pane" role="tabpanel" hidden>
   <div class="tab-tools">
-    <button type="button" data-k="rnd-flt" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rnd-flt" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-flt" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to their defaults">↺ Reset</button>
   </div>
   <div data-k="filterlist"><!-- checkboxes generated from the FILTERS registry --></div>
@@ -1995,7 +1994,7 @@
        currentColor, like the eye icons. -->
   <div data-k="tab-pal" class="lyr-pane" role="tabpanel" hidden>
   <div class="tab-tools">
-    <button type="button" data-k="rnd-pal" class="tab-rnd" title="Nudge every slider on this tab a little, up or down — and sometimes arm a beat trigger">⚄ Random</button>
+    <button type="button" data-k="rnd-pal" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-pal" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
   </div>
   <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
@@ -2312,7 +2311,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.44.0",
+    version: "1.45.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -3435,8 +3434,35 @@
       .replace("void main(){", camGlsl() + "\n    void main(){ vec4 fragCam = camFrag4();");
     return makeProg(vsSrc, src, names.concat(["uCam", "uCamSize"]));
   }
+  // THE VERTEX SHADER IS COMPILED ONCE PER SOURCE, NOT ONCE PER PROGRAM. There are only two
+  // (VS_QUAD and VS_PTS) across ~72 programs, so compiling per call meant ~71 redundant
+  // compiles of one identical string at boot — each with its own synchronous COMPILE_STATUS
+  // read, which is the call that forces the driver to finish.
+  //
+  // Keyed by source text and rebuilt by initGL: a shader object belongs to the context that
+  // created it, and initGL runs again on `webglcontextrestored`, so a stale entry here would
+  // hand a dead shader to every program built after a context loss.
+  //
+  // `var` WITH NO INITIALISER, exactly like worldProgs/worldPar — initGL() is called from
+  // palette.js, a slice ABOVE this one, so a `const` here is read in its temporal dead zone
+  // on the very first call and the page dies with "Cannot access 'vsCache' before
+  // initialization" (measured: it does). A `var` WITH an initialiser would be worse still —
+  // initGL would fill it, then this line would run later and silently wipe it. vsClearCache
+  // is what creates it, and initGL calls that before it builds anything.
+  var vsCache;
+  function vsClearCache() { vsCache = new Map(); }
+  function vsFor(src) {
+    let s = vsCache.get(src);
+    if (!s) { s = glCompile(gl.VERTEX_SHADER, src); vsCache.set(src, s); }
+    return s;
+  }
   function makeProg(vsSrc, fsSrc, names) {
-    const p = glLink(glCompile(gl.VERTEX_SHADER, vsSrc), glCompile(gl.FRAGMENT_SHADER, fsSrc));
+    const fs = glCompile(gl.FRAGMENT_SHADER, fsSrc);
+    const p = glLink(vsFor(vsSrc), fs);
+    // The linked program keeps its own reference, so this only drops the app's — without it
+    // ~72 fragment shader objects leak for the life of the context. The cached VERTEX shader
+    // is deliberately NOT deleted: it is reused by every program still to be built.
+    gl.deleteShader(fs);
     const u = {};
     for (const n of names) u[n] = gl.getUniformLocation(p, n);
     return { p, u };
@@ -3479,6 +3505,9 @@
   function drawQuad() { gl.bindVertexArray(quadVao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 
   function initGL() {
+    // A fresh context invalidates every shader object the old one made, and this runs again
+    // on `webglcontextrestored` — so drop the cache before anything asks it for a shader.
+    vsClearCache();
     // full-screen triangle (no vertex buffer; positions from gl_VertexID)
     const VS_QUAD = `#version 300 es
     out vec2 vUv;
@@ -6348,11 +6377,14 @@
     // A layer's OWN draw, kept aside for the length of a world crossfade (see worldFade).
     glTex.worldOwn = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
     glFbo.worldOwn = createFbo(glTex.worldOwn);
-    glTex.screen = [
-      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
-      createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE),
-    ];
-    glFbo.screen = [createFbo(glTex.screen[0]), createFbo(glTex.screen[1])];
+    // ...and the OUTPUT of the crossfade between the two, which has to be a THIRD buffer:
+    // glWorldMix reads the pick (glTex.layer) and writes the blend, and a pass may not sample
+    // the texture attached to its own target. It did exactly that for three releases — a
+    // WebGL2 feedback loop, so the driver rejected the draw and it silently did nothing:
+    // joining a world read as a cut instead of a 0.45s fade, and LEAVING one showed the layer
+    // black for the whole fade (the branch below clears glTex.layer first).
+    glTex.worldMix = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    glFbo.worldMix = createFbo(glTex.worldMix);
     // The outgoing frame, frozen at the moment of the switch (see transBegin).
     glTex.prev = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.prev = createFbo(glTex.prev);
@@ -6405,11 +6437,7 @@
     resizeTex(glTex.layerCol, fw, fh);
     resizeTex(glTex.world, fw, fh);
     resizeTex(glTex.worldOwn, fw, fh);
-    // Display-sized, not fire-sized — see the declaration. Guarded because glResize
-    // can run before the canvas has been laid out.
-    const sw = Math.max(1, canvas.width), sh = Math.max(1, canvas.height);
-    resizeTex(glTex.screen[0], sw, sh);
-    resizeTex(glTex.screen[1], sw, sh);
+    resizeTex(glTex.worldMix, fw, fh);
   }
   function glClearHeat() {
     gl.disable(gl.BLEND);
@@ -6726,10 +6754,27 @@
     if (L === stack[stackSel]) return activeIds;
     return filtersOk(L.filters) || new Set(presetFilters(L.fx));
   }
-  // Advance ONE layer's palette clock and return its current base ramp. Reuses the
-  // global cycle/hold timing (morphMs/holdMs) but keeps its own from/to/target, so
-  // layers drift out of phase with each other and with the selected-layer morph.
-  function stepLayerPal(slot, palIdx, now) {
+  // Advance ONE layer's palette clock and return its current base ramp.
+  //
+  // TIMING IS PER LAYER, and it has to be read through `bandOf(L, …)`. It used to call
+  // morphMs()/holdMs()/palCycleOn(), which read `ctl("palcycle-lo")` — the SELECTED
+  // layer's live thumbs — so every layer cycled on whichever layer you happened to have
+  // selected: pinning the selected layer's cycle froze the whole stack, and its duration
+  // drove everybody. The from/to/target state was already per slot, which is why this
+  // looked like "the palette sliders are linked between layers" rather than an obvious
+  // crash. Same accessor updateAnims uses: the DOM for the selected layer, L.state for
+  // the rest.
+  function palBandOf(L, key, dflt) {
+    const b = L ? bandOf(L, key) : null;
+    if (!b) return dflt;
+    return [Math.min(b[0], b[1]), Math.max(b[0], b[1])];
+  }
+  function stepLayerPal(slot, palIdx, now, L) {
+    const cyc = palBandOf(L, "palcycle", palCycleBand());
+    const hld = palBandOf(L, "palhold", palHoldBand());
+    const cycleOn = cyc[1] > 0;                                  // fixed palette when the band tops out at 0
+    const dur = () => Math.max(0.2, cyc[0] + Math.random() * (cyc[1] - cyc[0])) * 1000;
+    const hold = () => (hld[0] + Math.random() * (hld[1] - hld[0])) * 1000;
     let st = layerPal[slot];
     if (!st) st = layerPal[slot] = { pal: -1, cur: new Float32Array(768), from: null, to: null, tIdx: 0, start: 0, dur: 1, hold: 0 };
     if (st.pal !== palIdx) {                       // first use, or the user changed this layer's palette
@@ -6737,20 +6782,20 @@
       if (st.pal < 0) st.cur.set(target);          // first use snaps; a later change morphs from current
       st.from = Float32Array.from(st.cur);
       st.to = target; st.tIdx = palIdx; st.pal = palIdx;
-      st.start = now; st.dur = morphMs(); st.hold = 0;
+      st.start = now; st.dur = dur(); st.hold = 0;
     }
-    if (!palCycleOn()) { st.cur.set(st.to); return st.cur; }   // pinned: rest on the chosen palette
+    if (!cycleOn) { st.cur.set(st.to); return st.cur; }   // pinned: rest on the chosen palette
     if (st.hold) {
       if (now < st.hold) return st.cur;
       st.hold = 0; st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
-      st.start = now; st.dur = morphMs();
+      st.start = now; st.dur = dur();
     }
     let f = (now - st.start) / st.dur;
     if (f >= 1) {
-      const h = holdMs();
+      const h = hold();
       if (h > 0) { st.cur.set(st.to); st.hold = now + h; return st.cur; }
       st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
-      st.start = now; st.dur = morphMs(); f = 0;
+      st.start = now; st.dur = dur(); f = 0;
     }
     const from = st.from, to = st.to, cur = st.cur;
     for (let i = 0; i < 768; i++) cur[i] = from[i] + (to[i] - from[i]) * f;
@@ -6822,6 +6867,10 @@
     // the shared G-buffer. Everything below this line is identical either way.
     const wid = worldPlan && worldPlan.ids.get(L);
     const fade = worldFadeStep(L, !!wid, dt);
+    // Where this layer's fresh heat ended up. Normally glTex.layer; mid-fade the mix has to
+    // write a third buffer (see glWorldMix), so everything downstream reads THIS, not the
+    // global. Getting that wrong is silent — the blend simply does not appear.
+    let outTex = glTex.layer;
     if (fade >= 1) glWorldPick(wid);                               // fully in the world
     else if (fade <= 0) { fx.draw(dt); capturePhase(L); }          // fully its own (→ glTex.layer)
     else {
@@ -6835,15 +6884,15 @@
       glFbo.layer = swap; glTex.layer = swapT;
       if (wid) glWorldPick(wid);
       else { bindFbo(glFbo.layer, fw, fh); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
-      glWorldMix(glTex.worldOwn, fade);
+      outTex = glWorldMix(glTex.worldOwn, fade);
     }
-    if (!chain.length) return glTex.layer;         // no feedback: colour the scratch directly
+    if (!chain.length) return outTex;              // no feedback: colour the scratch directly
     let cur = layerCur[slot];
     for (let t = 0; t < ticks; t++) cur = glLayerBeginHeat(slot, cur, chain);   // advance retained heat
     bindFbo(glFbo.heatL[slot][cur], fw, fh);       // MAX the fresh shader output onto it
     const P = glProg.merge;
     gl.useProgram(P.p);
-    bindTexUnit(0, glTex.layer); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
+    bindTexUnit(0, outTex); gl.uniform1i(P.u.uSrc, 0); gl.uniform1f(P.u.uGain, 1);
     gl.enable(gl.BLEND); gl.blendEquation(gl.MAX);
     drawQuad();
     gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ZERO);
@@ -7176,8 +7225,12 @@
     L.worldFade = g;
     return g;
   }
+  // Blend the layer's own draw against its slice of the world, and RETURN the buffer it
+  // landed in. The output is glTex.worldMix and not glTex.layer because glTex.layer is an
+  // INPUT here (the pick landed there) — targeting it would be a feedback loop and the draw
+  // would be dropped. Callers must use the returned texture, not glTex.layer.
   function glWorldMix(ownTex, t) {
-    bindFbo(glFbo.layer, fw, fh);
+    bindFbo(glFbo.worldMix, fw, fh);
     gl.disable(gl.BLEND);
     const P = glProg.worldmix;
     gl.useProgram(P.p);
@@ -7185,6 +7238,7 @@
     bindTexUnit(1, glTex.layer); gl.uniform1i(P.u.uB, 1);   // the pick already landed here
     gl.uniform1f(P.u.uT, t);
     drawQuad();
+    return glTex.worldMix;
   }
   // Has this layer joined the shared world? Same selected -> stored -> descriptor fallback
   // as layerShowBox, and default FALSE so every scene saved before this renders unchanged.
@@ -7216,14 +7270,31 @@
     gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);   // empty accumulator
     for (let li = 0; li < live.length; li++) {
-      const L = live[li], slot = b0 + li, fx = EFFECTS[L.fx];
+      // SLOT IS THE LAYER'S POSITION IN ITS STACK, NOT ITS POSITION AMONG THE LIVE ONES.
+      // heatL/layerCur/layerPal are persistent per-slot state — retained heat and a palette
+      // morph clock — so numbering by live index hands them to a different layer the moment
+      // one is muted: mute the top of [A,B,C,D] and B inherits A's trails and A's palette
+      // clock. It also disagreed with frame-loop's single-layer path, which has always used
+      // stack.indexOf. The `base` argument exists because indexOf is -1 for a DETACHED item,
+      // so resolve against the array this call is actually walking.
+      const L = live[li], fx = EFFECTS[L.fx];
+      // b0, NOT the `base` parameter: the ramp const below used to be called `base` too, so
+      // naming the parameter here read it in its own temporal dead zone and threw on every
+      // frame of a world join. b0 is `base || 0` captured above the loop and says the same
+      // thing (0 live, STACK_MAX outgoing). The shadow itself is gone now — see `ramp`.
+      const home = b0 ? prevStack : stack;
+      const at = home ? home.indexOf(L) : -1;
+      const slot = b0 + (at >= 0 ? at : li);
       // What is underneath THIS layer, for the effects that reflect it. Set before the heat
       // render because that is when the effect's draw() runs; the accumulator is not written
       // again until glOkMerge below, so it is safe to sample.
       glBelowTex = li > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
-      const base = stepLayerPal(slot, layerPalIndex(L), now);
-      bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
+      // `ramp`, not `base` — it shadowed this function's own `base` parameter, which made
+      // any reference to the parameter inside this loop a TDZ throw rather than a wrong
+      // value. That is not hypothetical: it cost a frame-by-frame crash on world join.
+      const ramp = stepLayerPal(slot, layerPalIndex(L), now, L);
+      bakeLayerBytes(ramp, now, palScratch, layerPalRev(L), layerPalBg(L));
       gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
       const colTex = glLayerPostChain(L, glColorizeLayer(heatTex, glTex.palL[slot]));
@@ -7432,16 +7503,12 @@
     gl.uniform1f(glProg.comp.u.uBloom, 0);
     drawQuad();
   }
-  // One screen pass. Same shape as postPass, but uSize is the DISPLAY size rather
-  // than the fire grid — a scanline count means nothing against fw/fh.
-  function screenPass(name, src, w, h, setU) {
-    const P = glProg[name];
-    gl.useProgram(P.p);
-    bindTexUnit(0, src); gl.uniform1i(P.u.uSrc, 0);
-    if (P.u.uSize) gl.uniform2f(P.u.uSize, w, h);
-    if (setU) setU(P.u);
-    drawQuad();
-  }
+  // The screen stage is EMPTY (Barrel, Scanlines, Vignette, Film grain and Bloom are all
+  // per-layer `post` passes now), so its helper `screenPass` and its two display-resolution
+  // RGBA8 buffers (glTex.screen / glFbo.screen) are gone with it — the buffers were the
+  // largest allocation in the file, ~29MB at 1440p and ~66MB at 4K, reallocated on every
+  // resize event, and nothing had sampled them since the stage emptied. The seam that is
+  // deliberately kept is SCENE_FILTER_IDS/KEYS, which is a WIRE-format seam, not this.
 
   // ---- WebGL context loss: pause GL work, rebuild on restore ----
   if (useGL) {
@@ -10524,7 +10591,7 @@
     // own clock by stepLayerPal — the same per-layer machinery renderStackColor uses.
     if (renderOther) {
       const slot = stack.indexOf(renderL);
-      composePalette(now, stepLayerPal(slot, layerPalIndex(renderL), now), layerPalRev(renderL), layerPalBg(renderL));
+      composePalette(now, stepLayerPal(slot, layerPalIndex(renderL), now, renderL), layerPalRev(renderL), layerPalBg(renderL));
       bandLive = bandLevel > 0.001;
     } else if (!morphing && (bandLevel > 0.001 || bandLive)) {
       composePalette(now);
@@ -14182,6 +14249,10 @@
       for (const k in (f.ranges || {})) if (!ctlKeys.has(k)) console.warn(f.id + ": ranges references unknown control '" + k + "'");
       for (const k in (f.ranges || {})) if (SINGLE_KEYS.has(k)) console.warn(f.id + ": ranges overrides single control '" + k + "' — its bounds must stay whole");
     });
+    // The params ⊆ presetState check that belongs here CANNOT live here: it has to call
+    // presetState, whose FILTER_DEFAULTS is a `const` two slices below (filters.js), so
+    // calling it at this slice's load time is a TDZ crash. It runs instead as
+    // assertPresetStateCovers(), immediately after presetState in transitions.js.
     // A single control is a dual with its thumbs pinned, so it only makes sense on an integer
     // grid: a fractional step, bound or default would put every snapped value off it.
     const whole = n => typeof n === "number" && n === Math.round(n);
@@ -14428,17 +14499,27 @@
   function creditDraw() {
     const g = creditLayer();
     if (!g) return;
-    const w = window.innerWidth, h = window.innerHeight;
-    if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
-    g.clearRect(0, 0, w, h);
     // The scene title is NOT drawn here any more — it is a DOM element in the top button row
     // (#scenebanner, see sceneBannerTick). It is chrome, so it belongs with the chrome: immune
     // to the filters and the camera without having to be an overlay canvas, crisp at any
     // render resolution, and free of the frame entirely. This canvas is the credits' alone.
+    //
+    // THE EARLY-OUT COMES FIRST, before the innerWidth read and the clearRect. It used to sit
+    // below them, so an expired overlay still resized and cleared a full-screen canvas on every
+    // frame for the life of the session — and worse, reading `window.innerWidth` FLUSHES the
+    // layout that the frame counter's textContent write has just dirtied, which made this a
+    // forced synchronous layout once per frame on a canvas that is display:none.
     if (creditLeft <= 0) {                     // done: clear once, then get out of the way
-      if (creditPainted) { creditCv.style.display = "none"; creditPainted = false; }
+      if (creditPainted) {
+        const w0 = creditCv.width, h0 = creditCv.height;
+        g.clearRect(0, 0, w0, h0);
+        creditCv.style.display = "none"; creditPainted = false;
+      }
       return;
     }
+    const w = window.innerWidth, h = window.innerHeight;
+    if (creditCv.width !== w || creditCv.height !== h) { creditCv.width = w; creditCv.height = h; }
+    g.clearRect(0, 0, w, h);
     if (!creditPainted) { creditCv.style.display = "block"; creditPainted = true; }
     drawCredits(g, w, h, creditAlpha());
   }
@@ -15180,6 +15261,30 @@
     for (const id in d) { const v = d[id]; st[id] = Array.isArray(v) ? v.slice() : v; }
     return st;
   }
+  // EVERY SLIDER AN EFFECT SHOWS MUST RESOLVE IN presetState(e), or it is silently dropped:
+  // saveState/mergeState only ever walk the keys presetState seeds, so a params-but-not-
+  // defaults slider never persists AND never installs per layer — it silently keeps whichever
+  // layer was selected last. That has shipped twice (camrx/camry/camrz, then wldx/wldy/wldz/
+  // wldscale), both times invisible until someone noticed a value not surviving a reload.
+  //
+  // This is assertRegistry's check by rights, but it cannot live there: effects-registry.js
+  // loads two slices ABOVE filters.js, so calling presetState at that point reads
+  // FILTER_DEFAULTS in its TDZ and kills startup. It lives here, directly under the function
+  // it validates, which is also the file that has to change when a new key is seeded.
+  //
+  // `check` controls are exempt BY DESIGN: showbox, randseed and world are extras
+  // (L.showBox / L.world / extras.randSeed), not state, so they are correctly absent.
+  (function assertPresetStateCovers() {
+    EFFECTS.forEach((f, i) => {
+      const st = presetState(i);
+      (f.params || []).forEach(k => {
+        const c = CONTROLS.find(x => x.key === k);
+        if (!c || c.type === "check") return;
+        if (st[k] === undefined)
+          console.warn(f.id + ": params has '" + k + "' but presetState does not seed it — it will not persist or install per layer");
+      });
+    });
+  })();
   // Camera zoom + X/Y/Z rotation are PER-LAYER state (see isSceneCtl / presetState) — each
   // stacked effect carries its own angles in its state map, installed into camRX/RY/RZ by
   // installStackItem before it draws. There is no camera tween — the camera snaps per layer
@@ -17595,21 +17700,56 @@
       });
   }));
   // ---- per-tab Random / Reset ----------------------------------------------------
-  // ⚄ nudges every slider the tab currently shows for this layer by a small fraction of
-  // its range (the browser snaps each write to the slider's own step, so a `single`
-  // control moves by whole numbers or not at all), and SOMETIMES arms one beat trigger
-  // on a random armable slider — whose thumbs the same pass just jiggled, so the trigger
-  // arrives with slightly-adjusted values rather than defaults. ↺ runs resetControl over
-  // the same keys: value, range, chips, pulse — the whole tab back to the effect's
-  // defaults. The buttons live inside the layer box, so the capture-phase pointerdown on
-  // #breakout has already selected the layer by the time the click runs — the block is
-  // live, which is what the chip handlers and resetControl require.
+  // ⚄ rolls every slider the tab currently shows for this layer to a fresh uniform value
+  // anywhere in its range — not a nudge around where it was (the browser snaps each write
+  // to the slider's own step, so a `single` control still lands on whole numbers) — and
+  // SOMETIMES arms one beat trigger on a random armable slider, which arrives with the
+  // freshly-rolled thumbs as its values. ↺ runs resetControl over the same keys: value,
+  // range, chips, pulse — the whole tab back to the effect's defaults. The buttons live
+  // inside the layer box, so the capture-phase pointerdown on #breakout has already
+  // selected the layer by the time the click runs — the block is live, which is what the
+  // chip handlers and resetControl require.
   function tabKeys(pane) {
     return [...pane.querySelectorAll(".ctl-row")]
       .filter(r => r.offsetParent !== null && r.dataset.k && r.dataset.k.indexOf("row-") === 0)
       .map(r => r.dataset.k.slice(4));
   }
-  function jiggleTab(slot, pane) {
+  function jiggleTab(slot, pane, t) {
+    // The Filters tab's Random also GROWS the chain: a coin flip to add one random
+    // not-yet-added filter, repeated until a flip says stop or the layer holds 5 —
+    // enough to get somewhere interesting without burying the effect. Added first, so
+    // the value pass below rolls the newcomers' params along with everything else.
+    if (t === "flt") {
+      let grew = false;
+      while (activeFilterIds().length < 5 && Math.random() < 0.5) {
+        const have = new Set(activeFilterIds());
+        const pool = FILTERS.map(f => f.id).filter(id => !have.has(id));
+        if (!pool.length) break;
+        setFilterOn(pool[(Math.random() * pool.length) | 0], true);
+        grew = true;
+      }
+      // setFilterOn persists but, unlike a picker click, never passes through the
+      // delegated onEdit — fold the new chain into the selected preset by hand,
+      // exactly as chipEdited does for the chips.
+      if (grew && persistReady && !applyingPreset) { autosavePreset(); persist(); }
+    }
+    // The Palette tab's Random also rolls the PALETTE itself — a fresh pick from the
+    // in-use set, through the same value-store-plus-bubbling-change path a swatch click
+    // takes — and flips Reverse colours about a third of the time. The cycle, hold,
+    // heat-boost and banding sliders are pane sliders, so the value pass below covers them.
+    if (t === "pal") {
+      const cur = +paletteSel.value, pool = [];
+      for (let i = 0; i < PALETTES.length; i++) if (palInUse(i) && i !== cur) pool.push(i);
+      if (pool.length) {
+        paletteSel.value = String(pool[(Math.random() * pool.length) | 0]);
+        paletteSel.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      const rev = ctlIn(slot, "palrev");
+      if (rev && Math.random() < 0.35) {
+        rev.checked = !rev.checked;
+        rev.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
     const armable = [];
     for (const key of tabKeys(pane)) {
       const els = ctlRangeInputsIn(slot, key);
@@ -17618,8 +17758,7 @@
       for (const inp of (SINGLE_KEYS.has(key) ? els.slice(0, 1) : els)) {
         const mn = +inp.min, mx = +inp.max;
         if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
-        const d = (Math.random() * 2 - 1) * 0.08 * (mx - mn);
-        inp.value = String(Math.min(mx, Math.max(mn, +inp.value + d)));
+        inp.value = String(mn + Math.random() * (mx - mn));
         inp.dispatchEvent(new Event("input", { bubbles: true }));
       }
       const w = W[slot] && W[slot][key];
@@ -17631,7 +17770,17 @@
       if (off.length) chips[off[(Math.random() * off.length) | 0]].click();
     }
   }
-  function resetTab(pane) {
+  function resetTab(pane, t) {
+    // The Filters tab's chain first: back to this effect's default list (usually empty),
+    // so Reset undoes what Random added as well as what it retuned. Removing a filter
+    // hides its rows, so this runs before tabKeys reads what the pane still shows.
+    if (t === "flt") {
+      const want = new Set(presetFilters(effect));
+      let changed = false;
+      for (const id of activeFilterIds()) if (!want.has(id)) { setFilterOn(id, false); changed = true; }
+      for (const id of want) if (!activeFilterIds().includes(id)) { setFilterOn(id, true); changed = true; }
+      if (changed && persistReady && !applyingPreset) { autosavePreset(); persist(); }
+    }
     for (const key of tabKeys(pane)) resetControl(key);
     rngSyncAll();               // the in-box min/max fields follow the restored bounds
   }
@@ -17639,8 +17788,8 @@
     const pane = ctlIn(slot, "tab-" + t);
     const rnd = ctlIn(slot, "rnd-" + t), rst = ctlIn(slot, "rst-" + t);
     if (!pane || !rnd || !rst) continue;
-    rnd.addEventListener("click", e => { e.stopPropagation(); jiggleTab(slot, pane); });
-    rst.addEventListener("click", e => { e.stopPropagation(); resetTab(pane); });
+    rnd.addEventListener("click", e => { e.stopPropagation(); jiggleTab(slot, pane, t); });
+    rst.addEventListener("click", e => { e.stopPropagation(); resetTab(pane, t); });
   }
 
   // The launcher rows and beat dots are the last per-block pieces to exist, so install
@@ -18064,39 +18213,10 @@
   breakout.addEventListener("input", () => refreshShapePrev());
   breakout.addEventListener("change", onEdit);
 
-  // Reset: restore *only the current effect's* settings (sliders, beat chips,
-  // palette, auto-morph, show-box and TTL) to their preset defaults. It doesn't
-  // change the effect, other effects, or the shared controls (auto-cycle, panel).
-  for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "reset").addEventListener("click", () => {
-    // Confirm first — this throws away every change to the effect (values, ranges, beat
-    // wiring, palette) and is not undoable.
-    if (!confirm("Reset " + EFFECTS[effect].name + " to its shipped defaults?\nYour changes to this effect (sliders, ranges, beats, palette) will be lost.")) return;
-    states[effect] = presetState(effect);
-    beatStates[effect] = presetBeat(effect);
-    pulseStates[effect] = presetPulse(effect);
-    plenStates[effect] = presetPlen(effect);
-    btuneStates[effect] = presetBtune();
-    extras[effect] = presetExtra(effect);
-    // Shipped BOUNDS too, matching the per-slider ↺ — this used to reset every value
-    // and leave a slider you had widened still widened, so "reset" left the control
-    // measurably not as it ships. Same scope as the values above (every key in this
-    // effect's defaults, filter params included), and bounds go first so loadState's
-    // values validate against them rather than the custom ones.
-    for (const key in states[effect])
-      for (const inp of ctlRangeInputs(key)) {
-        const o = rngShipped(rngKeyOf(inp));    // this effect's own bounds where it declares them
-        if (o) { inp.min = o.min; inp.max = o.max; inp.step = o.step; }
-      }
-    loadState(effect);                // apply to the live sliders
-    loadBeat(effect);                 // ...the live chips
-    loadPulse(effect);                // ...the live pulse shapes
-    loadPlen(effect);                 // ...and their lengths
-    loadBtune(effect);                // ...and their detector thresholds, back to inheriting
-    loadExtra(effect);                // ...and palette/morph/show-box/TTL
-    rngSyncAll();                     // the in-box min/max fields follow the restored bounds
-    refreshControlVisibility();       // clear the modified-from-default dots (and blocked state) now everything is back to shipped
-    persist();
-  });
+  // The old bottom-of-tab "Reset this effect" button is gone — the per-tab ↺ Reset in the
+  // tools row (resetTab, above) replaced it by request. resetControl covers what it did per
+  // slider (value, range, chips, pulse); what it alone reached — extras (palette, morph,
+  // show-box, TTL) and the beat-tuning map — is deliberately no longer one button away.
 
   // Beat chips dominate the share blob: every control × L/M/H for every effect,
   // almost all false — ~90% of the JSON, which pushed share URLs past 49k chars.
