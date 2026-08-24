@@ -300,7 +300,7 @@
     { key: "drdepth", host: "filter", group: "f_droste", type: "dual", label: "Depth", valId: "vDrDepth", min: 1.3, max: 4, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v), apply: v => drosteDepth = v, durScale: 10 },
     { key: "drtwist", host: "filter", group: "f_droste", type: "dual", label: "Spiral", valId: "vDrTwist", min: -1.5, max: 1.5, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => drosteTwist = v, durScale: 10 },
     { key: "kuwrad", host: "filter", group: "f_kuwahara", type: "dual", single: true, label: "Brush size", valId: "vKuwRad", min: 1, max: 6, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)) + "px", apply: v => kuwRad = Math.round(v), durScale: 10 },
-    { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
+    { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => { bloomRaw = v; bloomAmt = filterOn("bloom") ? v : 0; }, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.32, hi: 0.32, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
     { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 1, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
@@ -950,7 +950,7 @@
   function applyFilters() {
     syncFilterUI();
     refreshControlVisibility();
-    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // the slider's apply respects this too
+    bloomRaw = +el("bloom-lo").value; bloomAmt = filterOn("bloom") ? bloomRaw : 0;   // the slider's apply respects this too
     acc = 0;
     // Only wipe when nothing carries heat over — Fade alone still retains it.
     if (!hasFeedback()) { if (fire) fire.fill(0); if (fireNext) fireNext.fill(0); }

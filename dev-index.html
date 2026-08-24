@@ -2573,6 +2573,14 @@
   // every scene was authored under, so it stays the default everywhere.
   const BLOOM_DEFAULT = 0.35;
   let bloomAmt = BLOOM_DEFAULT;
+  // The SAME slider, ungated. `bloomAmt` is zeroed when the current filter set has no Bloom,
+  // which is right for the Canvas2D composite (one picture, one chain) and WRONG per layer:
+  // on the stacked GL path `filterOn` answers for the SELECTED layer -- renderFilters is null
+  // there by construction -- so a non-selected layer's glow was silenced by a chain that is
+  // not its own, and clicking another layer row changed the picture. glBloomPass reads this
+  // instead; it only ever runs when the drawing layer's own chain contains Bloom, so the gate
+  // was redundant there as well as wrong.
+  let bloomRaw = BLOOM_DEFAULT;
   // Which post-FX filters are on for the live effect. Declared up here (and read
   // through a hoisted function) because bindRange runs a slider's apply() during
   // wiring, long before the FILTERS registry block is evaluated.
@@ -7376,7 +7384,9 @@
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, src); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
-    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    // bloomRaw, NOT bloomAmt: this pass only runs when the DRAWING layer's own chain holds
+    // Bloom, so it needs the slider, not the slider gated by whichever layer is selected.
+    gl.uniform1f(glProg.comp.u.uBloom, bloomRaw);
     drawQuad();
   }
   // Reaction–diffusion driver: seed the dish on demand, then K Gray–Scott steps
@@ -11543,7 +11553,7 @@
     { key: "drdepth", host: "filter", group: "f_droste", type: "dual", label: "Depth", valId: "vDrDepth", min: 1.3, max: 4, step: 0.05, lo: 2, hi: 2, fmt: v => sig3(v), apply: v => drosteDepth = v, durScale: 10 },
     { key: "drtwist", host: "filter", group: "f_droste", type: "dual", label: "Spiral", valId: "vDrTwist", min: -1.5, max: 1.5, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => drosteTwist = v, durScale: 10 },
     { key: "kuwrad", host: "filter", group: "f_kuwahara", type: "dual", single: true, label: "Brush size", valId: "vKuwRad", min: 1, max: 6, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)) + "px", apply: v => kuwRad = Math.round(v), durScale: 10 },
-    { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bloomAmt = filterOn("bloom") ? v : 0, durScale: 10 },
+    { key: "bloom", host: "filter", group: "f_bloom", type: "dual", label: "Strength", valId: "vBloom", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => { bloomRaw = v; bloomAmt = filterOn("bloom") ? v : 0; }, durScale: 10 },
     { key: "barrel", host: "filter", group: "f_barrel", type: "dual", label: "Amount", valId: "vBarrel", min: 0, max: 0.6, step: 0.01, lo: 0.32, hi: 0.32, fmt: v => sig3(v), apply: v => barrelAmt = v, durScale: 10 },
     { key: "scan", host: "filter", group: "f_scanlines", type: "dual", label: "Amount", valId: "vScan", min: 0, max: 1, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => scanAmt = v, durScale: 10 },
     { key: "scancount", host: "filter", group: "f_scanlines", type: "dual", label: "Lines", valId: "vScanCount", min: 60, max: 800, step: 1, lo: 240, hi: 240, fmt: v => sig3(v), apply: v => scanCount = v, durScale: 10 },
@@ -12193,7 +12203,7 @@
   function applyFilters() {
     syncFilterUI();
     refreshControlVisibility();
-    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // the slider's apply respects this too
+    bloomRaw = +el("bloom-lo").value; bloomAmt = filterOn("bloom") ? bloomRaw : 0;   // the slider's apply respects this too
     acc = 0;
     // Only wipe when nothing carries heat over — Fade alone still retains it.
     if (!hasFeedback()) { if (fire) fire.fill(0); if (fireNext) fireNext.fill(0); }
@@ -15390,14 +15400,18 @@
       el(k + "-hi").dispatchEvent(new Event("input"));
     }
     syncFilterUI();                  // the scene-filter checkboxes follow sceneOn
-    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;
+    bloomRaw = +el("bloom-lo").value; bloomAmt = filterOn("bloom") ? bloomRaw : 0;
   }
   function initStates() { EFFECTS.forEach((_, k) => states[k] = presetState(k)); }
   initStates();
   function saveState(e) {
     const st = states[e];
     for (const id in st) {
-      if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global (sceneFx), not per-effect
+      // NO SKIP HERE, deliberately -- saveState is a WRITE of the live DOM into states[e],
+      // and the seven shared keys must keep flowing that way or a single-layer scene (whose
+      // state rides top-level, not in a `layers` array) would stop persisting its glow and
+      // scanlines entirely. The asymmetry is the point: loadState below SKIPS them, because
+      // reading them back per effect is what let selecting a layer retune the whole scene.
       st[id] = Array.isArray(st[id])
         ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
         : +ctl(id).value;
@@ -15407,7 +15421,7 @@
     suppressPersist = true;           // the per-slider input events below would
     const st = states[e];             // otherwise persist a half-loaded state
     for (const id in st) {
-      if (SCENE_FILTER_KEYS.includes(id)) continue;   // don't reload scene-filter values on a switch — they're scene-global
+      if (SHARED_FILTER_KEYS.has(id)) continue;   // scene-wide: see saveState above
       const v = st[id];
       if (Array.isArray(v)) {
         ctl(id + "-lo").value = v[0]; ctl(id + "-hi").value = v[1];
@@ -15474,6 +15488,12 @@
     applyLayerRangesTo(slot, L.ranges);
     const st = L.state || {};
     for (const id in W[slot]) {
+      // A SHARED key belongs to the whole scene, and its node is a SINGLETON: W[0] carries
+      // the seven scene keys (wireRange registers them and ctlIn falls through to
+      // getElementById), so painting a non-selected block from its own frozen record used to
+      // retune the entire picture's Burn/Bloom/Barrel/Scanlines/Vignette/Grain — an editing
+      // action changing the render, which is the one thing selection must never do.
+      if (SHARED_FILTER_KEYS.has(id)) continue;
       // singlePair here as well as in mergeState: this is the one site that writes slider
       // values WITHOUT dispatching `input`, so wireRange's mirror listener never runs.
       const w = W[slot][id], v = singlePair(id, st[id]);
@@ -16267,7 +16287,7 @@
     // them (cpuBlocked), so they stay ticked-but-greyed and survive a round trip.
     activeIds = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // per-layer, then descriptor default — never runtime extras[L.fx] (see layerFeedbackChain)
     syncFilterUI();
-    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // bloom follows this layer's filters
+    bloomRaw = +el("bloom-lo").value; bloomAmt = filterOn("bloom") ? bloomRaw : 0;   // bloom follows this layer's filters
     refreshControlVisibility();       // filter param rows follow the active list
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
     morphOnce = false;                // cancel a pending one-shot morph from a prior switch
@@ -19025,6 +19045,18 @@
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
     freezeItem(stack[stackSel]);
+    // THE SHARED AMOUNTS GO ON EVERY LAYER, from the live scene, before serialising.
+    // They belong to the whole scene but ride each layer's `state` on the wire, and only the
+    // SELECTED layer is ever frozen — so an edit made with layer 2 up reached layer 2's
+    // record and nowhere else, while the load side (installStack) reads layer 0's. Net
+    // effect: the glow you just set was silently back to default on the next reload.
+    // Measured before this line existed; it is not a hypothetical.
+    for (const k of SHARED_FILTER_KEYS) {
+      const lo = el(k + "-lo"), hi = el(k + "-hi");
+      if (!lo || !hi) continue;
+      const v = [+lo.value, +hi.value];
+      for (const L of stack) if (L.state) L.state[k] = v.slice();
+    }
     const out = stack.map(stackItemOut);
     thawItem(stack[stackSel]);                   // put the selected item back on the DOM
     return out;
@@ -19125,7 +19157,32 @@
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed
     pointMaps(0);
+    // CAPTURED BEFORE THE THAW: thawItem NULLS L.state, so reading stack[0].state after it
+    // silently yields nothing and every scene would open on the shipped defaults.
+    const shared0 = {};
+    for (const k of SHARED_FILTER_KEYS) {
+      const v = stack[0].state && stack[0].state[k];
+      if (Array.isArray(v)) shared0[k] = v;
+    }
     thawItem(stack[0]);
+    // THE SCENE-WIDE FILTER AMOUNTS, SEEDED ONCE FROM THE BOTTOM LAYER. loadState skips
+    // SHARED_FILTER_KEYS now, so without this nothing would install them at all and every
+    // loaded scene would open on the shipped defaults instead of its own glow and scanlines.
+    //
+    // Layer 0 is not an arbitrary pick: it reproduces exactly what used to happen by
+    // accident. installStack has always thawed item 0 and then let loadState write from
+    // ITS state, so layer 0's copy is the one every existing scene has been rendering with
+    // — reading any other layer here would change how saved scenes look.
+    //
+    // They still ride every layer's `state` on the wire (freezeItem does not skip them),
+    // which is the format saved scenes already use and what this reads back.
+    for (const k in shared0) {
+      const v = shared0[k], lo = el(k + "-lo"), hi = el(k + "-hi");
+      if (!lo || !hi) continue;
+      lo.value = v[0]; hi.value = v[1];
+      lo.dispatchEvent(new Event("input"));    // the applies are what reach cfg.burn / bloomRaw / …
+      hi.dispatchEvent(new Event("input"));
+    }
     // Every slot holds a DIFFERENT layer now, so every block has to be repainted. Missing
     // this is silent: the records are right, so the render is right and only the panel lies.
     // It lives here rather than in applyPreset so presetprobe's structural check — that

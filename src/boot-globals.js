@@ -126,6 +126,14 @@
   // every scene was authored under, so it stays the default everywhere.
   const BLOOM_DEFAULT = 0.35;
   let bloomAmt = BLOOM_DEFAULT;
+  // The SAME slider, ungated. `bloomAmt` is zeroed when the current filter set has no Bloom,
+  // which is right for the Canvas2D composite (one picture, one chain) and WRONG per layer:
+  // on the stacked GL path `filterOn` answers for the SELECTED layer -- renderFilters is null
+  // there by construction -- so a non-selected layer's glow was silenced by a chain that is
+  // not its own, and clicking another layer row changed the picture. glBloomPass reads this
+  // instead; it only ever runs when the drawing layer's own chain contains Bloom, so the gate
+  // was redundant there as well as wrong.
+  let bloomRaw = BLOOM_DEFAULT;
   // Which post-FX filters are on for the live effect. Declared up here (and read
   // through a hoisted function) because bindRange runs a slider's apply() during
   // wiring, long before the FILTERS registry block is evaluated.

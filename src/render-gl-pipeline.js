@@ -1729,7 +1729,9 @@
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, src); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
-    gl.uniform1f(glProg.comp.u.uBloom, bloomAmt);
+    // bloomRaw, NOT bloomAmt: this pass only runs when the DRAWING layer's own chain holds
+    // Bloom, so it needs the slider, not the slider gated by whichever layer is selected.
+    gl.uniform1f(glProg.comp.u.uBloom, bloomRaw);
     drawQuad();
   }
   // Reaction–diffusion driver: seed the dish on demand, then K Gray–Scott steps

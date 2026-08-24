@@ -531,6 +531,18 @@
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
     freezeItem(stack[stackSel]);
+    // THE SHARED AMOUNTS GO ON EVERY LAYER, from the live scene, before serialising.
+    // They belong to the whole scene but ride each layer's `state` on the wire, and only the
+    // SELECTED layer is ever frozen — so an edit made with layer 2 up reached layer 2's
+    // record and nowhere else, while the load side (installStack) reads layer 0's. Net
+    // effect: the glow you just set was silently back to default on the next reload.
+    // Measured before this line existed; it is not a hypothetical.
+    for (const k of SHARED_FILTER_KEYS) {
+      const lo = el(k + "-lo"), hi = el(k + "-hi");
+      if (!lo || !hi) continue;
+      const v = [+lo.value, +hi.value];
+      for (const L of stack) if (L.state) L.state[k] = v.slice();
+    }
     const out = stack.map(stackItemOut);
     thawItem(stack[stackSel]);                   // put the selected item back on the DOM
     return out;
@@ -631,7 +643,32 @@
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed
     pointMaps(0);
+    // CAPTURED BEFORE THE THAW: thawItem NULLS L.state, so reading stack[0].state after it
+    // silently yields nothing and every scene would open on the shipped defaults.
+    const shared0 = {};
+    for (const k of SHARED_FILTER_KEYS) {
+      const v = stack[0].state && stack[0].state[k];
+      if (Array.isArray(v)) shared0[k] = v;
+    }
     thawItem(stack[0]);
+    // THE SCENE-WIDE FILTER AMOUNTS, SEEDED ONCE FROM THE BOTTOM LAYER. loadState skips
+    // SHARED_FILTER_KEYS now, so without this nothing would install them at all and every
+    // loaded scene would open on the shipped defaults instead of its own glow and scanlines.
+    //
+    // Layer 0 is not an arbitrary pick: it reproduces exactly what used to happen by
+    // accident. installStack has always thawed item 0 and then let loadState write from
+    // ITS state, so layer 0's copy is the one every existing scene has been rendering with
+    // — reading any other layer here would change how saved scenes look.
+    //
+    // They still ride every layer's `state` on the wire (freezeItem does not skip them),
+    // which is the format saved scenes already use and what this reads back.
+    for (const k in shared0) {
+      const v = shared0[k], lo = el(k + "-lo"), hi = el(k + "-hi");
+      if (!lo || !hi) continue;
+      lo.value = v[0]; hi.value = v[1];
+      lo.dispatchEvent(new Event("input"));    // the applies are what reach cfg.burn / bloomRaw / …
+      hi.dispatchEvent(new Event("input"));
+    }
     // Every slot holds a DIFFERENT layer now, so every block has to be repainted. Missing
     // this is silent: the records are right, so the render is right and only the panel lies.
     // It lives here rather than in applyPreset so presetprobe's structural check — that

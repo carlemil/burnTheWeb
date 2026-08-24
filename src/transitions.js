@@ -402,14 +402,18 @@
       el(k + "-hi").dispatchEvent(new Event("input"));
     }
     syncFilterUI();                  // the scene-filter checkboxes follow sceneOn
-    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;
+    bloomRaw = +el("bloom-lo").value; bloomAmt = filterOn("bloom") ? bloomRaw : 0;
   }
   function initStates() { EFFECTS.forEach((_, k) => states[k] = presetState(k)); }
   initStates();
   function saveState(e) {
     const st = states[e];
     for (const id in st) {
-      if (SCENE_FILTER_KEYS.includes(id)) continue;   // scene-filter values are global (sceneFx), not per-effect
+      // NO SKIP HERE, deliberately -- saveState is a WRITE of the live DOM into states[e],
+      // and the seven shared keys must keep flowing that way or a single-layer scene (whose
+      // state rides top-level, not in a `layers` array) would stop persisting its glow and
+      // scanlines entirely. The asymmetry is the point: loadState below SKIPS them, because
+      // reading them back per effect is what let selecting a layer retune the whole scene.
       st[id] = Array.isArray(st[id])
         ? [+ctl(id + "-lo").value, +ctl(id + "-hi").value]
         : +ctl(id).value;
@@ -419,7 +423,7 @@
     suppressPersist = true;           // the per-slider input events below would
     const st = states[e];             // otherwise persist a half-loaded state
     for (const id in st) {
-      if (SCENE_FILTER_KEYS.includes(id)) continue;   // don't reload scene-filter values on a switch — they're scene-global
+      if (SHARED_FILTER_KEYS.has(id)) continue;   // scene-wide: see saveState above
       const v = st[id];
       if (Array.isArray(v)) {
         ctl(id + "-lo").value = v[0]; ctl(id + "-hi").value = v[1];

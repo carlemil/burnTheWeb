@@ -54,6 +54,12 @@
     applyLayerRangesTo(slot, L.ranges);
     const st = L.state || {};
     for (const id in W[slot]) {
+      // A SHARED key belongs to the whole scene, and its node is a SINGLETON: W[0] carries
+      // the seven scene keys (wireRange registers them and ctlIn falls through to
+      // getElementById), so painting a non-selected block from its own frozen record used to
+      // retune the entire picture's Burn/Bloom/Barrel/Scanlines/Vignette/Grain — an editing
+      // action changing the render, which is the one thing selection must never do.
+      if (SHARED_FILTER_KEYS.has(id)) continue;
       // singlePair here as well as in mergeState: this is the one site that writes slider
       // values WITHOUT dispatching `input`, so wireRange's mirror listener never runs.
       const w = W[slot][id], v = singlePair(id, st[id]);
@@ -847,7 +853,7 @@
     // them (cpuBlocked), so they stay ticked-but-greyed and survive a round trip.
     activeIds = filtersOk(L.filters) || new Set(presetFilters(L.fx));   // per-layer, then descriptor default — never runtime extras[L.fx] (see layerFeedbackChain)
     syncFilterUI();
-    bloomAmt = filterOn("bloom") ? +el("bloom-lo").value : 0;   // bloom follows this layer's filters
+    bloomRaw = +el("bloom-lo").value; bloomAmt = filterOn("bloom") ? bloomRaw : 0;   // bloom follows this layer's filters
     refreshControlVisibility();       // filter param rows follow the active list
     nextSwitch = 0;                   // restart the auto-cycle countdown on a scene switch
     morphOnce = false;                // cancel a pending one-shot morph from a prior switch
