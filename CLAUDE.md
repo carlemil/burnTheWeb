@@ -151,6 +151,21 @@ it renders unchanged.
   outputting the hit test alone) and the picture showed nothing. Its `uReflect` is also
   two-part — physical up to 1, lifting toward a flat mirror above — because at this camera
   height the near sea is viewed far too steeply for the honest amount to read.
+- **THE OTHER ~72 PROGRAMS *ARE* BUILT AT STARTUP, AND THAT IS FINE — MEASURED.** The obvious
+  follow-up to the v1.37.0 story is "make the ten raymarchers lazy too". It was measured and
+  it is NOT worth it: whole cold boot is **4 s wall**, and an A/B with all ten raymarcher
+  `camProg` lines deleted moved it by at most ~1 s against ±1 s of run-to-run noise. The
+  prize was bounded at 2–3 s to begin with, not 64. Moving them off boot would also remove
+  the only thing that catches a typo in a raymarcher — `glCompile`/`glLink` THROW at boot and
+  `breakout-check` asserts zero console errors, and no probe cycles every effect and renders
+  it. **Do not reopen this without a sub-second timer** (`startup-check.sh` reports whole
+  seconds, so it cannot resolve the question it would be asked).
+  - `makeProg` compiles `VS_QUAD` **once** now (`vsFor`, keyed by source) and deletes each
+    fragment shader after linking. Correct, but **not a speed-up**: boot stayed at 4 s. The
+    1 s readings taken while proving it were a **dead page** — a TDZ crash meant `initGL`
+    threw before compiling anything. A page that fails early looks exactly like a fast one to
+    a wall-clock gate.
+  - `vsCache` is a **`var` with no initialiser**, for the reason the next bullet gives.
 - **THE WORLD PROGRAM IS NEVER BUILT AT STARTUP.** The driver's backend optimises everything
   `worldMap` can reach, not what a frame uses, and the cost compounds: ocean+glass links in
   3.5 s, +solids+qjulia 25 s, all five **64 s** — synchronously, at boot, which is the hang
@@ -161,6 +176,15 @@ it renders unchanged.
   `COMPLETION_STATUS_KHR` is polled and `LINK_STATUS` is not read until it says done (reading
   it early IS the stall). `planWorld`'s result is dropped while the program is pending, so the
   joined layers draw themselves for a few frames and the world appears when ready.
+- **`glWorldMix` WRITES A THIRD BUFFER (`glTex.worldMix`) AND RETURNS IT.** It reads the pick,
+  which lives in `glTex.layer`, so it may not target `glFbo.layer` — that is the same texture,
+  and WebGL2 rejects a draw that samples its own colour attachment. It did exactly that for
+  three releases and the draw was **silently dropped**: joining a world read as a cut, and
+  LEAVING one showed the layer black for the whole 0.45 s (that branch clears `glTex.layer`
+  first, then mixes into nothing). `renderLayerHeat` therefore tracks `outTex` and everything
+  downstream reads THAT, never the global. **`tools/world-check.js`** is the gate — neither
+  `worldprobe` (static source) nor `worldcompile-check` (compiles, never runs a frame) can see
+  a rejected draw, and it is invisible to a screenshot.
 - **The handover is a CROSSFADE, not a cut.** `L.worldFade` (transient, on the layer object,
   `WORLD_FADE_S` 0.45 s each way) eases toward 1 while the layer is in a *ready* world and
   toward 0 otherwise; strictly between, `renderLayerHeat` renders BOTH — the own draw into
@@ -825,8 +849,13 @@ the Escape branch (`ui-diagnostics.js`), the `body.ui-hidden` selector (ONE list
 second copy for `#galdlg` is what hid the problem), the sticky-header selectors, and the
 `padding-top` waiver.
 - **The panel-tool dialogs dock TOP-LEFT beside the panel** (margin 58px/298px, the `#breakout`
-  column line): the three pickers (`#fltdlg`, `#palpickdlg`, `#transpickdlg`), the Palette editor
-  (`#paledlg`), the Palette inspector (`#paldlg`). Reading/flow dialogs (Help, Gallery, Restore)
+  column line): two of the three pickers (`#fltdlg`, `#transpickdlg`), the Palette editor
+  (`#paledlg`), the Palette inspector (`#paldlg`). **`#palpickdlg` is the exception — it CENTRES**
+  and sits at `z-index: 21`, above the other tool panels, because choosing which palettes a scene
+  may use is a decision about the picture rather than a panel tool. It has its own copies of the
+  shell and `.flt-box` rules (identical but for the margin and the flex alignment), is out of the
+  760px undock (already centred) but stays in that block's width clamp, and is still NOT modal —
+  no backdrop, no focus trap, still in all four dialog lists. Reading/flow dialogs (Help, Gallery, Restore)
   stay centered. Their `h2` has **no right margin**, their header tone matches the box tint, and the
   × is pulled 12px into the side padding and 12px down.
 - Button is `position: sticky` + `float: right`, **not `absolute`**. **The box gives up its
@@ -934,6 +963,18 @@ No `#lyrctl`, no `parkLayerCtl`.
   shipped sitting away from the rest of the settings.
 - **A slider popped from an OPEN layer box lands beside it** (`placeBeside`: first clear
   quarter-cell to the right, wrapping down), not at the foot of the default column.
+
+**Each layer carries a TINT COLOUR** (`L.tint`) marking its row, its settings box and every
+slider box popped out of it — with several boxes spread over the grid, the 9px `L2 · PLASMA`
+label was the only thing tying one to its layer. It is an **INDEX into `CONFIG.layerTint`,
+never a colour string**: the value reaches CSS as the `--lyr` custom property and a layer can
+arrive from a share link, so `tintOk` accepts nothing but an in-range integer. `null` = auto
+from the slot, so every scene saved before it colour-codes itself and nothing needed
+migrating. It tints the **edge and the title only** — the palette is amber on near-black and
+the tints are not. `syncPopOwners` stamps it beside the layer number it already re-stamps,
+and **`syncStackUI` calls that**, because add/remove/scene-load change which layer a slot
+holds just as much as a drag does. The swatch **skips colours the other layers show** — the
+point is telling two layers apart.
 
 **Blend on the wire is per layer; an effect may SHIP one** (descriptor `blend`, read by
 `effectBlend`/`applyEffectBlend`). Glass ball ships `"over"`. Applied on a fresh item and on
@@ -1109,6 +1150,36 @@ palette+filters live; `captureLayerExtras` reads them back. **Switching layers m
 palette, banding, camera, display zoom. Most filter params are LAYER keys; only
 `SHARED_FILTER_KEYS` are scene-wide: `burn`, `bloom`, `barrel`, `scan`, `scancount`, `vignette`,
 `grain`. Scene keys apply immediately; layer keys are computed, then `installStackItem(L)` pushes
+
+**THE SEVEN SHARED KEYS ARE STORED PER LAYER AND RENDERED SCENE-WIDE, and four sites have to
+agree about that.** They ride every layer's `state` on the wire (that is the format saved
+scenes already use, and `freezeItem` deliberately does NOT skip them), but there is one live
+value for the picture and its nodes are **singletons** — `W[0]` holds them, because `ctlIn`
+falls through to `getElementById`. So:
+- **`saveState` WRITES them** (no skip) — a single-layer scene's state rides top-level rather
+  than in a `layers` array, so skipping here would stop it persisting its glow entirely.
+- **`loadState` and `paintBlock` SKIP them** (`SHARED_FILTER_KEYS`, *not* the deliberately
+  empty `SCENE_FILTER_KEYS`, which is the whole-scene-filter WIRE seam `migrateSceneFx`
+  needs). Both used to write them, so selecting a layer or switching an effect retuned the
+  whole picture's Burn/Bloom/Barrel/Scanlines/Vignette/Grain. **An editing action must never
+  change the render.**
+- **`stackOut` STAMPS the live values onto every layer** before serialising. Only the
+  SELECTED layer is ever frozen, so an edit made with layer 2 up reached layer 2's record and
+  nowhere else — while the load side reads layer 0's, and silently discarded it.
+- **`installStack` SEEDS the singletons from layer 0** after the thaw, capturing them
+  **BEFORE** it (`thawItem` NULLS `L.state`). Layer 0 is not arbitrary: installStack has
+  always thawed item 0 and let `loadState` write from its state, so that is the copy every
+  existing scene has been rendering with. Reading any other layer changes how saved scenes
+  look.
+- **`bloomAmt` is GATED, `bloomRaw` is NOT**, and `glBloomPass` reads `bloomRaw`. The gate is
+  `filterOn("bloom")`, which answers for the SELECTED layer — `renderFilters` is null on the
+  stacked path by construction — so a layer with Bloom in its own chain rendered at strength
+  0 whenever the selected layer lacked it. `bloomAmt` keeps its meaning for the Canvas2D
+  composite, which really is one picture with one chain.
+- **Still ONE value for the scene**: two layers cannot have different Vignette amounts.
+  Making them per-layer means reclassifying out of `SHARED_FILTER_KEYS`, and the normal case
+  (a value set with layer 0 selected, the others still on the shipped seed) would then load
+  looking different — a MAJOR bump. It needs a wire marker and a migration.
 them before that item draws. **Feedback params are read during propagation, before
 `installStackItem` in the single-layer path** — that branch calls `installStackItem(live[0])` up
 front.
