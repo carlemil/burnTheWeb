@@ -139,6 +139,14 @@
       help: "Sobel outline — traces the shapes instead of filling them.",
       defaults: { edge: [0.7, 0.7] },
       gl: src => postPass("edge", src, u => gl.uniform1f(u.uAmount, edgeAmt)) },
+    { id: "emboss", cpuOk: false, name: "Emboss", stage: "post", params: ["embamt", "embang", "embmix"],
+      help: "Lights the picture from one side so contours stand up like stamped metal. Edge outlines a shape from every direction at once; this one has a light angle, so one side of a contour lights and the other darkens. Metal 0 keeps the palette and uses the relief as shading; Metal 1 is the classic grey stamp — which also lifts flat black to mid grey, so on a dark scene keep it low.",
+      defaults: { embamt: [1.6, 1.6], embang: [135, 135], embmix: [0.4, 0.4] },
+      gl: src => postPass("emboss", src, u => {
+        gl.uniform1f(u.uAmount, embAmt);
+        gl.uniform1f(u.uAngle, embAng * Math.PI / 180);
+        gl.uniform1f(u.uMix, embMix);
+      }) },
     { id: "poster", cpuOk: false, name: "Posterize", stage: "post", params: ["poster"],
       help: "Quantise the colours into flat bands.",
       defaults: { poster: [3, 3] },

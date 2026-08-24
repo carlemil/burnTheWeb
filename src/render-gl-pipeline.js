@@ -112,6 +112,28 @@
       float e = clamp(sqrt(gx*gx + gy*gy) * uAmount, 0.0, 1.0);
       o = vec4(mix(texture(uSrc, vUv).rgb, vec3(e), clamp(uAmount, 0.0, 1.0)), 1.0);
     }`;
+    // EMBOSS: a relief lit from one side. Not the same idea as Edge, which takes the
+    // MAGNITUDE of the gradient and so outlines a shape from every direction at once; this
+    // takes its SIGN along one axis, so one side of a contour lights and the other darkens
+    // and the picture reads as stamped metal.
+    //
+    // Two ways to land it, on one slider. A grey relief (uMix 1) is the classic look but
+    // throws the palette away, which in this app is most of the picture -- so uMix 0 keeps
+    // the colour and uses the same gradient as SHADING on it. In between is usually best.
+    const FS_EMBOSS = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uAngle; uniform float uMix;
+    in vec2 vUv; out vec4 o;
+    float lum(vec2 uv){ vec3 c = texture(uSrc, uv).rgb; return dot(c, vec3(0.299, 0.587, 0.114)); }
+    void main(){
+      vec2 t = 1.5 / uSize;                     // a step and a half reads chunkier than one texel
+      vec2 d = vec2(cos(uAngle), sin(uAngle)) * t;
+      float g = (lum(vUv + d) - lum(vUv - d)) * uAmount;
+      vec3 src = texture(uSrc, vUv).rgb;
+      vec3 grey = vec3(clamp(0.5 + g, 0.0, 1.0));          // stamped metal, palette gone
+      vec3 lit = clamp(src * (1.0 + 2.0 * g), 0.0, 1.0);   // same relief, palette kept
+      o = vec4(mix(lit, grey, clamp(uMix, 0.0, 1.0)), 1.0);
+    }`;
     // Rotate uv about the centre by an amount that falls off with radius — the middle
     // of the image spins and the rim stays put, so straight structure curls into it.
     const FS_TWIST = `#version 300 es
@@ -624,6 +646,7 @@
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
     glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
     glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
+    glProg.emboss = makeProg(VS_QUAD, FS_EMBOSS, ["uSrc", "uSize", "uAmount", "uAngle", "uMix"]);
     glProg.twist = makeProg(VS_QUAD, FS_TWIST, ["uSrc", "uSize", "uAmount"]);
     glProg.wedge = makeProg(VS_QUAD, FS_WEDGE, ["uSrc", "uSize", "uSeg", "uRot"]);
     glProg.glitch = makeProg(VS_QUAD, FS_GLITCH, ["uSrc", "uSize", "uAmount", "uRows", "uTime"]);

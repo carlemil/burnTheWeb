@@ -138,7 +138,8 @@
   // through a hoisted function) because bindRange runs a slider's apply() during
   // wiring, long before the FILTERS registry block is evaluated.
   let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
-    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10;
+    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10,
+    embAmt = 1.6, embAng = 135, embMix = 0.4;
   // Feedback warps (Echo / Zoom feedback / Swirl / Diffuse). Each carries its own
   // Keep, so it decays standalone instead of saturating to white when it is the only
   // feedback filter ticked — Fade is a separate filter you may or may not stack.
