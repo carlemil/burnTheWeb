@@ -1108,10 +1108,27 @@
     if (L === stack[stackSel]) return activeIds;
     return filtersOk(L.filters) || new Set(presetFilters(L.fx));
   }
-  // Advance ONE layer's palette clock and return its current base ramp. Reuses the
-  // global cycle/hold timing (morphMs/holdMs) but keeps its own from/to/target, so
-  // layers drift out of phase with each other and with the selected-layer morph.
-  function stepLayerPal(slot, palIdx, now) {
+  // Advance ONE layer's palette clock and return its current base ramp.
+  //
+  // TIMING IS PER LAYER, and it has to be read through `bandOf(L, …)`. It used to call
+  // morphMs()/holdMs()/palCycleOn(), which read `ctl("palcycle-lo")` — the SELECTED
+  // layer's live thumbs — so every layer cycled on whichever layer you happened to have
+  // selected: pinning the selected layer's cycle froze the whole stack, and its duration
+  // drove everybody. The from/to/target state was already per slot, which is why this
+  // looked like "the palette sliders are linked between layers" rather than an obvious
+  // crash. Same accessor updateAnims uses: the DOM for the selected layer, L.state for
+  // the rest.
+  function palBandOf(L, key, dflt) {
+    const b = L ? bandOf(L, key) : null;
+    if (!b) return dflt;
+    return [Math.min(b[0], b[1]), Math.max(b[0], b[1])];
+  }
+  function stepLayerPal(slot, palIdx, now, L) {
+    const cyc = palBandOf(L, "palcycle", palCycleBand());
+    const hld = palBandOf(L, "palhold", palHoldBand());
+    const cycleOn = cyc[1] > 0;                                  // fixed palette when the band tops out at 0
+    const dur = () => Math.max(0.2, cyc[0] + Math.random() * (cyc[1] - cyc[0])) * 1000;
+    const hold = () => (hld[0] + Math.random() * (hld[1] - hld[0])) * 1000;
     let st = layerPal[slot];
     if (!st) st = layerPal[slot] = { pal: -1, cur: new Float32Array(768), from: null, to: null, tIdx: 0, start: 0, dur: 1, hold: 0 };
     if (st.pal !== palIdx) {                       // first use, or the user changed this layer's palette
@@ -1119,20 +1136,20 @@
       if (st.pal < 0) st.cur.set(target);          // first use snaps; a later change morphs from current
       st.from = Float32Array.from(st.cur);
       st.to = target; st.tIdx = palIdx; st.pal = palIdx;
-      st.start = now; st.dur = morphMs(); st.hold = 0;
+      st.start = now; st.dur = dur(); st.hold = 0;
     }
-    if (!palCycleOn()) { st.cur.set(st.to); return st.cur; }   // pinned: rest on the chosen palette
+    if (!cycleOn) { st.cur.set(st.to); return st.cur; }   // pinned: rest on the chosen palette
     if (st.hold) {
       if (now < st.hold) return st.cur;
       st.hold = 0; st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
-      st.start = now; st.dur = morphMs();
+      st.start = now; st.dur = dur();
     }
     let f = (now - st.start) / st.dur;
     if (f >= 1) {
-      const h = holdMs();
+      const h = hold();
       if (h > 0) { st.cur.set(st.to); st.hold = now + h; return st.cur; }
       st.from = st.to; st.tIdx = pickOther(st.tIdx); st.to = paletteRGB(st.tIdx);
-      st.start = now; st.dur = morphMs(); f = 0;
+      st.start = now; st.dur = dur(); f = 0;
     }
     const from = st.from, to = st.to, cur = st.cur;
     for (let i = 0; i < 768; i++) cur[i] = from[i] + (to[i] - from[i]) * f;
@@ -1604,7 +1621,7 @@
       // again until glOkMerge below, so it is safe to sample.
       glBelowTex = li > 0 ? glTex.color[acc] : null;
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
-      const base = stepLayerPal(slot, layerPalIndex(L), now);
+      const base = stepLayerPal(slot, layerPalIndex(L), now, L);
       bakeLayerBytes(base, now, palScratch, layerPalRev(L), layerPalBg(L));
       gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);

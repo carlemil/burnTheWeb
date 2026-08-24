@@ -197,7 +197,7 @@
     // own clock by stepLayerPal — the same per-layer machinery renderStackColor uses.
     if (renderOther) {
       const slot = stack.indexOf(renderL);
-      composePalette(now, stepLayerPal(slot, layerPalIndex(renderL), now), layerPalRev(renderL), layerPalBg(renderL));
+      composePalette(now, stepLayerPal(slot, layerPalIndex(renderL), now, renderL), layerPalRev(renderL), layerPalBg(renderL));
       bandLive = bandLevel > 0.001;
     } else if (!morphing && (bandLevel > 0.001 || bandLive)) {
       composePalette(now);
