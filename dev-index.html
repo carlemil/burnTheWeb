@@ -12798,9 +12798,30 @@
   // per-layer passes now, so both the group and the box had nothing to hold. Putting a filter
   // back on the whole scene means re-adding a host and a FILTER_LISTS entry as well as an id
   // to SCENE_FILTER_IDS — the id seam alone no longer has anywhere to render.
+  // WHICH GROUP EACH FILTER BELONGS TO -- the same table treatment as EFFECT_CATS, and for
+  // the same reason: 37 filters under one caption is a list you scroll rather than read.
+  // filterGroup used to return a single constant, left from when whole-scene filters had to
+  // be separated from per-layer ones; that distinction is gone, so the caption carried no
+  // information. Registry order still decides RUN order -- this only changes the picker.
+  const FILTER_CATS = [
+    { name: "Trails & feedback", desc: "what the previous frame leaves behind",
+      ids: ["fire", "fade", "diffuse", "echo", "zoomfb", "swirl", "cellular"] },
+    { name: "Warp & distort", desc: "move the pixels somewhere else",
+      ids: ["twist", "wedge", "polar", "lens", "droste", "mirror", "shock", "barrel"] },
+    { name: "Stylise", desc: "redraw it as something else",
+      ids: ["poster", "dither", "halftone", "ascii", "kuwahara", "edge", "emboss", "pixelate", "hexpix", "crt", "scanlines"] },
+    { name: "Colour & tone", desc: "same shapes, different colour",
+      ids: ["thresh", "invert", "chroma", "vignette", "grain"] },
+    { name: "Blur & light", desc: "spread it, streak it, glow it",
+      ids: ["soften", "dblur", "rblur", "anamorph", "bloom", "glitch", "pixsort"] },
+  ];
+  const FILTER_CAT_OF = {};
+  FILTER_CATS.forEach((c, gi) => c.ids.forEach(id => FILTER_CAT_OF[id] = gi));
   function filterGroup(f) {
-    return { key: "layer", title: "Per-effect · heat, trails & image",
-             desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
+    const gi = FILTER_CAT_OF[f.id];
+    const c = gi === undefined ? null : FILTER_CATS[gi];
+    return c ? { key: c.name, title: c.name, desc: c.desc }
+             : { key: "other", title: "Other", desc: "" };
   }
   // One <details> per filter: a grab handle + name in the summary, that filter's own params
   // in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's .ctl-row
@@ -13144,7 +13165,7 @@
     if (!dlg) return;
     filterPickKey = key;
     el("flt-title").textContent = "Filters for this layer";
-    el("flt-hint").textContent = "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
+    el("flt-hint").textContent = "Each layer runs its own chain. Grouped by what they do to the picture; the order you add them in is the order they run, and you can drag them to reorder.";
     buildFilterPicker();
     dlg.classList.remove("hidden");
   }
@@ -13162,14 +13183,26 @@
     FILTERS.forEach(f => {
       if (filterListOf(f).key !== filterPickKey) return;
       // Sub-captions inside the picker only — the menu list itself is one flat chain.
-      const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
-      let g = groups.find(x => x.s === s);
-      if (!g) groups.push(g = { s, items: [] });
+      // BY KIND, from FILTER_CATS, not by pipeline stage. Stage split 37 filters into two
+      // buckets ("Heat & trails" and "Image"), and "Image" was thirty of them — a caption
+      // that tells you nothing is a caption you scroll past. What you actually want to know
+      // is whether a thing warps, stylises, blurs or recolours.
+      const cat = filterGroup(f);
+      let g = groups.find(x => x.s === cat.title);
+      if (!g) groups.push(g = { s: cat.title, desc: cat.desc, items: [] });
       g.items.push(f);
+    });
+    // FILTER_CATS order, not first-seen registry order: the table is where the grouping is
+    // designed, so it is also where the reading order is decided.
+    const catOrder = FILTER_CATS.map(c => c.name);
+    groups.sort((a, b) => {
+      const ia = catOrder.indexOf(a.s), ib = catOrder.indexOf(b.s);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
     groups.forEach(g => {
       const h = document.createElement("div");
       h.className = "flt-stage"; h.textContent = g.s;
+      if (g.desc) h.title = g.desc;
       host.appendChild(h);
       g.items.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
       const lab = document.createElement("label");
@@ -15506,9 +15539,60 @@
   // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
   // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime
   // `effect` is an index into it, and each option carries that index as its value.
+  // WHICH GROUP EACH EFFECT BELONGS TO, in one table rather than a field on 51 descriptors:
+  // the point of a grouping is to see it whole and rebalance it, which you cannot do when it
+  // is one line inside each of 51 objects. Order here is the order the menus show; effects
+  // are sorted by NAME inside each group. An id missing from this table falls into "Other"
+  // rather than disappearing from the list, which is the safe way to be wrong.
+  const EFFECT_CATS = [
+    { name: "Fractals", desc: "the classic escape-time sets and their 3D relatives",
+      ids: ["animejulia", "burningship", "multibrot", "newton", "mandelbulb", "qjulia", "menger", "apollo", "mbox", "flames", "sirpinfyer", "tetrafyer"] },
+    { name: "3D & raymarched", desc: "solids, surfaces and landscapes traced through space",
+      ids: ["solids", "glass", "ocean", "terrain", "gyroid", "torus", "bhole", "vballs", "clouds"] },
+    { name: "Demoscene classics", desc: "the effects the scene has been writing since the 90s",
+      ids: ["plasma", "tunnel", "copperbars", "kefrens", "twister", "rotozoom", "munch", "moire", "metaballs", "starfield", "kaleidoscope"] },
+    { name: "Patterns & noise", desc: "fields, tilings and shapes built from a formula",
+      ids: ["voronoi", "warpnoise", "truchet", "shapegrid", "concentric", "bounce", "cymatics", "reactdiff", "harmonograph"] },
+    { name: "Nature & simulation", desc: "things that grow, flock, flow or weather",
+      ids: ["boids", "physarum", "curl", "trees", "galaxy", "aurora", "lightning", "sunsurface", "attractor", "godray"] },
+  ];
+  // id -> group index, built once. Anything unlisted sorts last, under "Other".
+  const EFFECT_CAT_OF = {};
+  EFFECT_CATS.forEach((c, gi) => c.ids.forEach(id => EFFECT_CAT_OF[id] = gi));
+  // The menus' shape: [{ name, items:[effectIndex] }], groups in table order, effects by name
+  // inside each. Display only -- every option still carries the registry INDEX as its value,
+  // because that is what `effect` is at runtime.
+  function effectsGrouped() {
+    const out = EFFECT_CATS.map(c => ({ name: c.name, desc: c.desc, items: [] }));
+    const other = { name: "Other", desc: "", items: [] };
+    EFFECTS.forEach((f, i) => {
+      const gi = EFFECT_CAT_OF[f.id];
+      (gi === undefined ? other : out[gi]).items.push(i);
+    });
+    if (other.items.length) out.push(other);
+    for (const g of out) g.items.sort((a, b) => EFFECTS[a].name.localeCompare(EFFECTS[b].name) || a - b);
+    return out.filter(g => g.items.length);
+  }
+  // Fill one <select> with grouped <optgroup>s. Both effect dropdowns go through here, so
+  // they cannot drift apart -- they did not share a builder before, only a sort.
+  function fillEffectSelect(sel, withTitles) {
+    sel.textContent = "";
+    for (const g of effectsGrouped()) {
+      const og = document.createElement("optgroup");
+      og.label = g.name;
+      if (g.desc) og.title = g.desc;
+      for (const i of g.items) {
+        const o = document.createElement("option");
+        o.value = String(i); o.textContent = EFFECTS[i].name;
+        if (withTitles) o.title = EFFECTS[i].subtitle;
+        og.appendChild(o);
+      }
+      sel.appendChild(og);
+    }
+  }
   const effectsByName = () => EFFECTS.map((_, i) => i)
     .sort((a, b) => EFFECTS[a].name.localeCompare(EFFECTS[b].name) || a - b);
-  effectsByName().forEach(i => effectSel.appendChild(new Option(EFFECTS[i].name, String(i))));
+  fillEffectSelect(effectSel, false);
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
   // isn't a real control) at load instead of as a silent runtime break. Warns only.
   (function assertRegistry() {
@@ -17145,11 +17229,7 @@
       // rather than the pick that caused it.
       const nm = document.createElement("select");
       nm.className = "lyr-name";
-      effectsByName().forEach(i => {        // by name, like #effect; the value is still the index
-        const o = document.createElement("option");
-        o.value = String(i); o.textContent = EFFECTS[i].name; o.title = EFFECTS[i].subtitle;
-        nm.appendChild(o);
-      });
+      fillEffectSelect(nm, true);           // grouped, like #effect; the value is still the index
       nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row
       nm.addEventListener("change", e => {
         e.stopPropagation();

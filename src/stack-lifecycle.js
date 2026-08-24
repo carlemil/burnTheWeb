@@ -401,11 +401,7 @@
       // rather than the pick that caused it.
       const nm = document.createElement("select");
       nm.className = "lyr-name";
-      effectsByName().forEach(i => {        // by name, like #effect; the value is still the index
-        const o = document.createElement("option");
-        o.value = String(i); o.textContent = EFFECTS[i].name; o.title = EFFECTS[i].subtitle;
-        nm.appendChild(o);
-      });
+      fillEffectSelect(nm, true);           // grouped, like #effect; the value is still the index
       nm.addEventListener("click", e => e.stopPropagation());   // picking ≠ selecting the row
       nm.addEventListener("change", e => {
         e.stopPropagation();

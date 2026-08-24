@@ -419,9 +419,60 @@
   // DISPLAY order only: every effect dropdown lists by name (twenty-odd effects in registry
   // order are a pile to hunt through), while EFFECTS keeps its own order — the runtime
   // `effect` is an index into it, and each option carries that index as its value.
+  // WHICH GROUP EACH EFFECT BELONGS TO, in one table rather than a field on 51 descriptors:
+  // the point of a grouping is to see it whole and rebalance it, which you cannot do when it
+  // is one line inside each of 51 objects. Order here is the order the menus show; effects
+  // are sorted by NAME inside each group. An id missing from this table falls into "Other"
+  // rather than disappearing from the list, which is the safe way to be wrong.
+  const EFFECT_CATS = [
+    { name: "Fractals", desc: "the classic escape-time sets and their 3D relatives",
+      ids: ["animejulia", "burningship", "multibrot", "newton", "mandelbulb", "qjulia", "menger", "apollo", "mbox", "flames", "sirpinfyer", "tetrafyer"] },
+    { name: "3D & raymarched", desc: "solids, surfaces and landscapes traced through space",
+      ids: ["solids", "glass", "ocean", "terrain", "gyroid", "torus", "bhole", "vballs", "clouds"] },
+    { name: "Demoscene classics", desc: "the effects the scene has been writing since the 90s",
+      ids: ["plasma", "tunnel", "copperbars", "kefrens", "twister", "rotozoom", "munch", "moire", "metaballs", "starfield", "kaleidoscope"] },
+    { name: "Patterns & noise", desc: "fields, tilings and shapes built from a formula",
+      ids: ["voronoi", "warpnoise", "truchet", "shapegrid", "concentric", "bounce", "cymatics", "reactdiff", "harmonograph"] },
+    { name: "Nature & simulation", desc: "things that grow, flock, flow or weather",
+      ids: ["boids", "physarum", "curl", "trees", "galaxy", "aurora", "lightning", "sunsurface", "attractor", "godray"] },
+  ];
+  // id -> group index, built once. Anything unlisted sorts last, under "Other".
+  const EFFECT_CAT_OF = {};
+  EFFECT_CATS.forEach((c, gi) => c.ids.forEach(id => EFFECT_CAT_OF[id] = gi));
+  // The menus' shape: [{ name, items:[effectIndex] }], groups in table order, effects by name
+  // inside each. Display only -- every option still carries the registry INDEX as its value,
+  // because that is what `effect` is at runtime.
+  function effectsGrouped() {
+    const out = EFFECT_CATS.map(c => ({ name: c.name, desc: c.desc, items: [] }));
+    const other = { name: "Other", desc: "", items: [] };
+    EFFECTS.forEach((f, i) => {
+      const gi = EFFECT_CAT_OF[f.id];
+      (gi === undefined ? other : out[gi]).items.push(i);
+    });
+    if (other.items.length) out.push(other);
+    for (const g of out) g.items.sort((a, b) => EFFECTS[a].name.localeCompare(EFFECTS[b].name) || a - b);
+    return out.filter(g => g.items.length);
+  }
+  // Fill one <select> with grouped <optgroup>s. Both effect dropdowns go through here, so
+  // they cannot drift apart -- they did not share a builder before, only a sort.
+  function fillEffectSelect(sel, withTitles) {
+    sel.textContent = "";
+    for (const g of effectsGrouped()) {
+      const og = document.createElement("optgroup");
+      og.label = g.name;
+      if (g.desc) og.title = g.desc;
+      for (const i of g.items) {
+        const o = document.createElement("option");
+        o.value = String(i); o.textContent = EFFECTS[i].name;
+        if (withTitles) o.title = EFFECTS[i].subtitle;
+        og.appendChild(o);
+      }
+      sel.appendChild(og);
+    }
+  }
   const effectsByName = () => EFFECTS.map((_, i) => i)
     .sort((a, b) => EFFECTS[a].name.localeCompare(EFFECTS[b].name) || a - b);
-  effectsByName().forEach(i => effectSel.appendChild(new Option(EFFECTS[i].name, String(i))));
+  fillEffectSelect(effectSel, false);
   // Dev sanity check: catch a mis-authored descriptor (dup id, param/default that
   // isn't a real control) at load instead of as a silent runtime break. Warns only.
   (function assertRegistry() {

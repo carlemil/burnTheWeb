@@ -490,9 +490,30 @@
   // per-layer passes now, so both the group and the box had nothing to hold. Putting a filter
   // back on the whole scene means re-adding a host and a FILTER_LISTS entry as well as an id
   // to SCENE_FILTER_IDS — the id seam alone no longer has anywhere to render.
+  // WHICH GROUP EACH FILTER BELONGS TO -- the same table treatment as EFFECT_CATS, and for
+  // the same reason: 37 filters under one caption is a list you scroll rather than read.
+  // filterGroup used to return a single constant, left from when whole-scene filters had to
+  // be separated from per-layer ones; that distinction is gone, so the caption carried no
+  // information. Registry order still decides RUN order -- this only changes the picker.
+  const FILTER_CATS = [
+    { name: "Trails & feedback", desc: "what the previous frame leaves behind",
+      ids: ["fire", "fade", "diffuse", "echo", "zoomfb", "swirl", "cellular"] },
+    { name: "Warp & distort", desc: "move the pixels somewhere else",
+      ids: ["twist", "wedge", "polar", "lens", "droste", "mirror", "shock", "barrel"] },
+    { name: "Stylise", desc: "redraw it as something else",
+      ids: ["poster", "dither", "halftone", "ascii", "kuwahara", "edge", "emboss", "pixelate", "hexpix", "crt", "scanlines"] },
+    { name: "Colour & tone", desc: "same shapes, different colour",
+      ids: ["thresh", "invert", "chroma", "vignette", "grain"] },
+    { name: "Blur & light", desc: "spread it, streak it, glow it",
+      ids: ["soften", "dblur", "rblur", "anamorph", "bloom", "glitch", "pixsort"] },
+  ];
+  const FILTER_CAT_OF = {};
+  FILTER_CATS.forEach((c, gi) => c.ids.forEach(id => FILTER_CAT_OF[id] = gi));
   function filterGroup(f) {
-    return { key: "layer", title: "Per-effect · heat, trails & image",
-             desc: "each layer keeps its own fire, fade and warp, and is filtered on its own before they blend" };
+    const gi = FILTER_CAT_OF[f.id];
+    const c = gi === undefined ? null : FILTER_CATS[gi];
+    return c ? { key: c.name, title: c.name, desc: c.desc }
+             : { key: "other", title: "Other", desc: "" };
   }
   // One <details> per filter: a grab handle + name in the summary, that filter's own params
   // in the body. Must run BEFORE the POPPABLE pass, which inserts each slider's .ctl-row
@@ -836,7 +857,7 @@
     if (!dlg) return;
     filterPickKey = key;
     el("flt-title").textContent = "Filters for this layer";
-    el("flt-hint").textContent = "Each layer runs its own. Heat & trails act on the fire before the effect draws; image filters act on the picture after — so the list keeps them in that order.";
+    el("flt-hint").textContent = "Each layer runs its own chain. Grouped by what they do to the picture; the order you add them in is the order they run, and you can drag them to reorder.";
     buildFilterPicker();
     dlg.classList.remove("hidden");
   }
@@ -854,14 +875,26 @@
     FILTERS.forEach(f => {
       if (filterListOf(f).key !== filterPickKey) return;
       // Sub-captions inside the picker only — the menu list itself is one flat chain.
-      const s = f.stage === "feedback" ? "Heat & trails" : (isSceneFilter(f.id) ? "Whole scene" : "Image");
-      let g = groups.find(x => x.s === s);
-      if (!g) groups.push(g = { s, items: [] });
+      // BY KIND, from FILTER_CATS, not by pipeline stage. Stage split 37 filters into two
+      // buckets ("Heat & trails" and "Image"), and "Image" was thirty of them — a caption
+      // that tells you nothing is a caption you scroll past. What you actually want to know
+      // is whether a thing warps, stylises, blurs or recolours.
+      const cat = filterGroup(f);
+      let g = groups.find(x => x.s === cat.title);
+      if (!g) groups.push(g = { s: cat.title, desc: cat.desc, items: [] });
       g.items.push(f);
+    });
+    // FILTER_CATS order, not first-seen registry order: the table is where the grouping is
+    // designed, so it is also where the reading order is decided.
+    const catOrder = FILTER_CATS.map(c => c.name);
+    groups.sort((a, b) => {
+      const ia = catOrder.indexOf(a.s), ib = catOrder.indexOf(b.s);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
     groups.forEach(g => {
       const h = document.createElement("div");
       h.className = "flt-stage"; h.textContent = g.s;
+      if (g.desc) h.title = g.desc;
       host.appendChild(h);
       g.items.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
       const lab = document.createElement("label");
