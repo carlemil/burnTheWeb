@@ -4165,6 +4165,146 @@
       float w = max(0.01, uWidth * 0.5);
       o = vec4(1.0 - smoothstep(w * 0.5, w, d), 0.0, 0.0, 1.0);
     }`;
+    // ---- Batch B: three modern fractal distance estimators ---------------------------
+    // Shared camera: a slow orbit looking at the origin. All three are centred solids, so
+    // there is no flight path to solve (unlike the Mandelbulb, which has to thread canyons) --
+    // the camera simply circles and the fractal turns inside the frame.
+    const SH_ORBIT = `
+    void orbitCam(float t, float dist, float lift, out vec3 ro, out mat3 basis){
+      ro = vec3(sin(t) * dist, lift + sin(t * 0.37) * dist * 0.25, cos(t) * dist);
+      vec3 f = normalize(-ro);
+      vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f));
+      basis = mat3(r, cross(f, r), f);
+    }`;
+    // APOLLONIAN GASKET: invert the point through a sphere, fold it back into the unit cell,
+    // repeat. Every iteration multiplies a scale factor, and dividing by it at the end turns
+    // the folded distance back into a real one -- which is what makes an infinitely recursive
+    // sphere packing marchable at all.
+    const FS_APOLLO = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uScale; uniform float uIter;
+    uniform float uGlow; uniform float uZoom; uniform float uThin;
+    out vec4 o;
+    ${SH_ORBIT}
+    float apolloDE(vec3 p, float k, int it){
+      float s = 1.0;
+      for (int i = 0; i < 12; i++) {
+        if (i >= it) break;
+        p = -1.0 + 2.0 * fract(0.5 * p + 0.5);      // fold into the unit cell
+        float r2 = dot(p, p);
+        float f = k / max(r2, 0.02);                 // sphere inversion
+        p *= f; s *= f;
+      }
+      return 0.35 * abs(p.y) / s;                    // undo the accumulated scale
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro; mat3 b; orbitCam(uTime * 0.2, 3.4, 0.35, ro, b);
+      vec3 rd = normalize(b * vec3(uv, 1.7));
+      int it = int(clamp(uIter, 3.0, 12.0));
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 90; i++) {
+        vec3 p = ro + rd * t;
+        float d = apolloDE(p, uScale, it);
+        halo = min(halo, d / max(t, 0.25));
+        if (d < 0.0015 * max(t, 0.3)) {
+          float e = 0.002 * max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0) * 0.5773;
+          vec3 nrm = normalize(h.xyy * apolloDE(p + h.xyy * e, uScale, it) + h.yyx * apolloDE(p + h.yyx * e, uScale, it) + h.yxy * apolloDE(p + h.yxy * e, uScale, it) + h.xxx * apolloDE(p + h.xxx * e, uScale, it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65 * dif) * smoothstep(9.0, 0.6, t);
+          break;
+        }
+        t += d * 0.85;
+        if (t > 9.0) break;
+      }
+      heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // MANDELBOX: box-fold then sphere-fold then scale, which is a completely different family
+    // from the Mandelbulb's power map -- it makes hard architectural shells rather than organic
+    // lobes. Negative Scale values give the classic hollow forms.
+    const FS_MBOX = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uScale; uniform float uIter;
+    uniform float uGlow; uniform float uZoom; uniform float uFold;
+    out vec4 o;
+    ${SH_ORBIT}
+    float mboxDE(vec3 p, float sc, float fold, int it){
+      vec3 z = p; float dr = 1.0;
+      float minR2 = 0.25;
+      for (int i = 0; i < 12; i++) {
+        if (i >= it) break;
+        z = clamp(z, -fold, fold) * 2.0 * fold - z;            // box fold
+        float r2 = dot(z, z);
+        if (r2 < minR2) { float g = 1.0 / minR2; z *= g; dr *= g; }
+        else if (r2 < 1.0) { float g = 1.0 / r2; z *= g; dr *= g; }   // sphere fold
+        z = z * sc + p; dr = dr * abs(sc) + 1.0;
+      }
+      return length(z) / abs(dr);
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro; mat3 b; orbitCam(uTime * 0.17, 6.5, 0.6, ro, b);
+      vec3 rd = normalize(b * vec3(uv, 1.4));
+      int it = int(clamp(uIter, 3.0, 12.0));
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 90; i++) {
+        vec3 p = ro + rd * t;
+        float d = mboxDE(p, uScale, max(0.5, uFold), it);
+        halo = min(halo, d / max(t, 0.25));
+        if (d < 0.0015 * max(t, 0.3)) {
+          float e = 0.002 * max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0) * 0.5773;
+          vec3 nrm = normalize(h.xyy * mboxDE(p + h.xyy * e, uScale, max(0.5, uFold), it) + h.yyx * mboxDE(p + h.yyx * e, uScale, max(0.5, uFold), it) + h.yxy * mboxDE(p + h.yxy * e, uScale, max(0.5, uFold), it) + h.xxx * mboxDE(p + h.xxx * e, uScale, max(0.5, uFold), it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65 * dif) * smoothstep(20.0, 0.6, t);
+          break;
+        }
+        t += d * 0.85;
+        if (t > 20.0) break;
+      }
+      heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // GYROID: a triply-periodic minimal surface, and the whole distance estimator is one line.
+    // It is not a fractal at all -- it is an infinite smooth lattice -- which is exactly why it
+    // sits well beside the other two rather than competing with them.
+    const FS_GYROID = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uFreq; uniform float uThick;
+    uniform float uGlow; uniform float uZoom; uniform float uWarp;
+    out vec4 o;
+    ${SH_ORBIT}
+    float gyroidDE(vec3 p, float f, float th, float w, float t){
+      vec3 q = p * f + vec3(sin(t * 0.3) * w, cos(t * 0.23) * w, 0.0);
+      float g = dot(sin(q), cos(q.zxy));
+      float sheet = (abs(g) - th) / (f * 1.7);     // /f keeps it a usable distance bound
+      return max(sheet, length(p) - 1.7);          // clipped to a ball, so it can be FRAMED
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro; mat3 b; orbitCam(uTime * 0.15, 4.6, 0.0, ro, b);   // clear of the 1.7 clip ball, so it frames
+      vec3 rd = normalize(b * vec3(uv, 1.5));
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 80; i++) {
+        vec3 p = ro + rd * t;
+        float d = gyroidDE(p, max(0.4, uFreq), uThick, uWarp, uTime);
+        halo = min(halo, d / max(t, 0.25));
+        if (d < 0.0015 * max(t, 0.3)) {
+          float e = 0.002 * max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0) * 0.5773;
+          vec3 nrm = normalize(h.xyy * gyroidDE(p + h.xyy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yyx * gyroidDE(p + h.yyx * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yxy * gyroidDE(p + h.yxy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.xxx * gyroidDE(p + h.xxx * e, max(0.4, uFreq), uThick, uWarp, uTime));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65 * dif) * smoothstep(12.0, 0.6, t);
+          break;
+        }
+        t += d * 0.85;
+        if (t > 12.0) break;
+      }
+      heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     const FS_SHAPEGRID = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uCells; uniform float uDot; uniform float uSquare; uniform float uPulse; uniform float uZoom;
@@ -4553,7 +4693,7 @@
       vec3 rt = normalize(cross(wup, f));
       vec3 up = cross(f, rt);
       vec3 ro = uPos;
-      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.15);
+      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.73);
       int it = int(uIter);
       float P = uPower;
       float t = 0.0, halo = 9.0, heat = 0.0, steps = 0.0;
@@ -6596,6 +6736,9 @@
     glProg.newton = camProg(VS_QUAD, FS_NEWTON, ["uSize", "uSpin", "uRelax", "uZoom"]);
     glProg.multibrot = camProg(VS_QUAD, FS_MULTIBROT, ["uSize", "uC", "uSpan", "uPower"]);
     glProg.copper = camProg(VS_QUAD, FS_COPPER, ["uSize", "uTime", "uCount", "uWidth", "uZoom"]);
+    glProg.apollo = camProg(VS_QUAD, FS_APOLLO, ["uSize", "uTime", "uScale", "uIter", "uGlow", "uZoom", "uThin"]);
+    glProg.mbox = camProg(VS_QUAD, FS_MBOX, ["uSize", "uTime", "uScale", "uIter", "uGlow", "uZoom", "uFold"]);
+    glProg.gyroid = camProg(VS_QUAD, FS_GYROID, ["uSize", "uTime", "uFreq", "uThick", "uGlow", "uZoom", "uWarp"]);
     glProg.voronoi = camProg(VS_QUAD, FS_VORONOI, ["uSize", "uTime", "uCells", "uEdge", "uJit", "uZoom"]);
     glProg.warpnoise = camProg(VS_QUAD, FS_WARPNOISE, ["uSize", "uTime", "uScale", "uWarp", "uOct", "uZoom"]);
     glProg.truchet = camProg(VS_QUAD, FS_TRUCHET, ["uSize", "uTime", "uCells", "uWidth", "uFlip", "uZoom"]);
@@ -9789,6 +9932,7 @@
   // with the surface it is flying past ends up embedded in it).
   let bpPower = 8, bpDetail = 7, bpSpin = 0.35, bpGlow = 0.5, bpPhase = 0;
   let bpOffX = 0, bpOffY = 0, bpOffZ = 0;     // the escape offset — PHASE_VARS, per layer
+  let bpDist = 2.5, bpLift = 0.8;             // orbit radius and height (see bulbBase)
   const BULB_CLEAR = 0.12;                    // free space the camera keeps around itself
   const BULB_RELAX = 0.5;                     // 1/s the offset decays back toward the helix
   const BULB_OFFMAX = 0.9;                    // how far the escape may ever carry it off
@@ -9799,11 +9943,20 @@
   // power (0.68 at 2, 1.16 at 8, 1.20 at 12), and a helix pinned at one radius is either
   // buried at high powers or orbiting empty space at low ones: 1.30 - 1.2/P tracks it.
   const bulbShell = P => Math.max(0.6, Math.min(1.3, 1.3 - 1.2 / Math.max(1, P)));
-  function bulbBase(ph, P, out) {             // the uncorrected helix — pure, and smooth
-    const th = 1.5708 + 0.62 * Math.sin(ph * 0.31 + 0.7);
-    const rad = bulbShell(P) + 0.02 + 0.22 * Math.sin(ph * 0.23);
-    const s = Math.sin(th);
-    out[0] = rad * s * Math.cos(ph); out[1] = rad * s * Math.sin(ph); out[2] = rad * Math.cos(th);
+  function bulbBase(ph, P, out) {             // the uncorrected orbit — pure, and smooth
+    // AN ORBIT AROUND THE SOLID, not a flight through it. It used to ride bulbShell(P) plus a
+    // margin, i.e. it skimmed the outer surface, which framed a wall rather than a fractal.
+    // The bulb is centred on the origin and at power 8 its surface stays inside r ~ 1.2, so
+    // Distance 2.5 frames the whole thing; 2.0 is close, and below ~1.2 the camera is inside
+    // the solid -- where the iteration never escapes, the DE goes FLAT and there is nothing to
+    // draw. That is why "put the camera in the middle looking out" has no answer: a Mandelbulb
+    // has no hollow middle, it is densest at the centre.
+    //
+    // NOTE the up axis here is Z (see FS_BULB's basis), so out[2] is the height.
+    const rad = Math.max(0.9, bpDist);
+    out[0] = rad * Math.cos(ph);
+    out[1] = rad * Math.sin(ph);
+    out[2] = bpLift + 0.10 * rad * Math.sin(ph * 0.23);
     return out;
   }
   function bulbSeed(dt) {
@@ -9867,13 +10020,10 @@
     // fractal covers 51% of the screen leaning 0.75, 63% leaning 1.8, and past ~2.2 it is
     // all wall and the travel stops reading. The lean breathes, between looking down the
     // canyon and looking into it.
-    const n = bulbBase(bpPhase + 1e-3, P, bpNext);
-    let fx = n[0] - b[0], fy = n[1] - b[1], fz = n[2] - b[2];
+    // LOOK AT THE ORIGIN. The old heading was the helix tangent leaned toward the core, which
+    // is what a canyon flight wants; an orbit that frames the solid simply aims at it.
+    let fx = -x, fy = -y, fz = -z;
     let fl = Math.hypot(fx, fy, fz) || 1;
-    fx /= fl; fy /= fl; fz /= fl;
-    const rl = Math.hypot(x, y, z) || 1, lean = 1.8 + 0.8 * Math.sin(bpPhase * 0.19);
-    fx -= x / rl * lean; fy -= y / rl * lean; fz -= z / rl * lean;
-    fl = Math.hypot(fx, fy, fz) || 1;
     return { px: x, py: y, pz: z, fx: fx / fl, fy: fy / fl, fz: fz / fl,
              power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
   }
@@ -9907,9 +10057,9 @@
         camPix(x, y);
         const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
         const sy = (camPY / fh - 0.5) * 2 / s.zoom;
-        let rdx = rx * sx + ux * sy + fx * 1.15;
-        let rdy = ry * sx + uy * sy + fy * 1.15;
-        let rdz = rz * sx + uz * sy + fz * 1.15;
+        let rdx = rx * sx + ux * sy + fx * 1.73;
+        let rdy = ry * sx + uy * sy + fy * 1.73;
+        let rdz = rz * sx + uz * sy + fz * 1.73;
         const rl = Math.hypot(rdx, rdy, rdz) || 1; rdx /= rl; rdy /= rl; rdz /= rl;
         let t = 0, halo = 9, heat = 0;
         for (let i = 0; i < 24; i++) {
@@ -10076,6 +10226,80 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  // ---- Batch B: three fractal raymarchers, and their deliberately coarse mirrors --------
+  // 90 march steps x a 12-iteration distance estimator is a shader's budget, not a JS loop's,
+  // so each mirror marches far fewer steps at fewer iterations: the silhouette survives, the
+  // filigree does not. Same trade the Ocean mirror documents. They still write EVERY cell.
+  function bMarch(fw2, fh2, de, dist, lift, t, zoom2, steps) {
+    const ro = [Math.sin(t) * dist, lift + Math.sin(t * 0.37) * dist * 0.25, Math.cos(t) * dist];
+    const fl = Math.hypot(ro[0], ro[1], ro[2]) || 1;
+    const f = [-ro[0] / fl, -ro[1] / fl, -ro[2] / fl];
+    const rx = f[2], rz = -f[0], rl = Math.hypot(rx, rz) || 1;
+    const r = [rx / rl, 0, rz / rl];
+    const u = [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]];
+    let idx = 0;
+    for (let y = 0; y < fh2; y++) for (let x = 0; x < fw2; x++) {
+      camPix(x, y);
+      const ux = (camPX - 0.5 * fw2) / fh2 / zoom2, uy = (camPY - 0.5 * fh2) / fh2 / zoom2;
+      let dx = r[0] * ux + u[0] * uy + f[0] * 1.4;
+      let dy = r[1] * ux + u[1] * uy + f[1] * 1.4;
+      let dz = r[2] * ux + u[2] * uy + f[2] * 1.4;
+      const dl = Math.hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl;
+      let tt = 0, hit = 0;
+      for (let i = 0; i < steps; i++) {
+        const d = de(ro[0] + dx * tt, ro[1] + dy * tt, ro[2] + dz * tt);
+        if (d < 0.01) { hit = 1 - i / steps; break; }
+        tt += d * 0.9;
+        if (tt > 14) break;
+      }
+      fire[idx++] = Math.max(0, Math.min(1, hit)) * 255;
+    }
+  }
+  let apScale = 1.15, apIter = 8, apGlow = 0.6, apThin = 1, apSpeed = 1, apTime = 0;
+  function apolloSeed(dt) { apTime += dt * apSpeed; return { t: apTime, scale: apScale, iter: apIter, glow: apGlow, thin: apThin, zoom }; }
+  function apollo(s) {
+    const it = Math.max(3, Math.min(6, Math.round(s.iter)));
+    bMarch(fw, fh, (x, y, z) => {
+      let px = x, py = y, pz = z, sc = 1;
+      for (let i = 0; i < it; i++) {
+        px = -1 + 2 * (px * 0.5 + 0.5 - Math.floor(px * 0.5 + 0.5));
+        py = -1 + 2 * (py * 0.5 + 0.5 - Math.floor(py * 0.5 + 0.5));
+        pz = -1 + 2 * (pz * 0.5 + 0.5 - Math.floor(pz * 0.5 + 0.5));
+        const f = s.scale / Math.max(px * px + py * py + pz * pz, 0.02);
+        px *= f; py *= f; pz *= f; sc *= f;
+      }
+      return 0.35 * Math.abs(py) / sc;
+    }, 2.4, 0.2, s.t * 0.2, s.zoom, 26);
+  }
+  let bxScale = -1.7, bxIter = 8, bxGlow = 0.5, bxFold = 1, bxSpeed = 1, bxTime = 0;
+  function mboxSeedFn(dt) { bxTime += dt * bxSpeed; return { t: bxTime, scale: bxScale, iter: bxIter, glow: bxGlow, fold: bxFold, zoom }; }
+  function mbox(s) {
+    const it = Math.max(3, Math.min(6, Math.round(s.iter))), fo = Math.max(0.5, s.fold);
+    bMarch(fw, fh, (X, Y, Z) => {
+      let zx = X, zy = Y, zz = Z, dr = 1;
+      for (let i = 0; i < it; i++) {
+        zx = Math.min(Math.max(zx, -fo), fo) * 2 * fo - zx;
+        zy = Math.min(Math.max(zy, -fo), fo) * 2 * fo - zy;
+        zz = Math.min(Math.max(zz, -fo), fo) * 2 * fo - zz;
+        const r2 = zx * zx + zy * zy + zz * zz;
+        if (r2 < 0.25) { const g = 4; zx *= g; zy *= g; zz *= g; dr *= g; }
+        else if (r2 < 1) { const g = 1 / r2; zx *= g; zy *= g; zz *= g; dr *= g; }
+        zx = zx * s.scale + X; zy = zy * s.scale + Y; zz = zz * s.scale + Z;
+        dr = dr * Math.abs(s.scale) + 1;
+      }
+      return Math.hypot(zx, zy, zz) / Math.abs(dr);
+    }, 6.5, 0.6, s.t * 0.17, s.zoom, 26);
+  }
+  let gyFreq = 2.2, gyThick = 0.35, gyGlow = 0.5, gyWarp = 0.6, gySpeed = 1, gyTime = 0;
+  function gyroidSeed(dt) { gyTime += dt * gySpeed; return { t: gyTime, freq: gyFreq, thick: gyThick, glow: gyGlow, warp: gyWarp, zoom }; }
+  function gyroid(s) {
+    const f = Math.max(0.4, s.freq);
+    bMarch(fw, fh, (x, y, z) => {
+      const qx = x * f + Math.sin(s.t * 0.3) * s.warp, qy = y * f + Math.cos(s.t * 0.23) * s.warp, qz = z * f;
+      const g = Math.sin(qx) * Math.cos(qz) + Math.sin(qy) * Math.cos(qx) + Math.sin(qz) * Math.cos(qy);
+      return Math.max((Math.abs(g) - s.thick) / (f * 1.7), Math.hypot(x, y, z) - 1.7);
+    }, 4.6, 0, s.t * 0.15, s.zoom, 30);
+  }
   // ---- Batch A: the three noise/pattern effects, and the CPU value-noise they share ----
   // The mirrors are honest but coarse: one octave where the shader runs up to eight, and no
   // domain warp at all in the warp mirror. That is the Ocean rule -- a fallback that keeps the
@@ -11777,6 +12001,21 @@
     // Density is a continuous zoom, not a count: the shader scales the grid by it
     // (g = p*uCells, cell = floor(g)), so a fractional value renders correctly and drifting
     // between two thumbs slides the grid smoothly instead of popping at each integer.
+    { key: "apscale", host: "fx", group: "apollo", type: "dual", label: "Packing", valId: "vApScale", min: 0.7, max: 1.6, step: 0.01, lo: 1.15, hi: 1.15, fmt: v => sig3(v), apply: v => apScale = v, durScale: 10 },
+    { key: "apiter", host: "fx", group: "apollo", type: "dual", label: "Detail", valId: "vApIter", min: 3, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => apIter = Math.round(v), durScale: 10 },
+    { key: "apthin", host: "fx", group: "apollo", type: "dual", label: "Halo", valId: "vApThin", min: 0.2, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => apThin = v, durScale: 10 },
+    { key: "apglow", host: "fx", group: "apollo", type: "dual", label: "Glow", valId: "vApGlow", min: 0, max: 2, step: 0.01, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => apGlow = v, durScale: 10 },
+    { key: "apspeed", host: "fx", group: "apollo", type: "dual", label: "Orbit speed", valId: "vApSpeed", min: 0, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => apSpeed = v, durScale: 10 },
+    { key: "bxscale", host: "fx", group: "mbox", type: "dual", label: "Scale", valId: "vMbScale", min: -3, max: 3, step: 0.01, lo: -1.7, hi: -1.7, fmt: v => sig3(v), apply: v => bxScale = v, durScale: 10 },
+    { key: "bxfold", host: "fx", group: "mbox", type: "dual", label: "Fold", valId: "vMbFold", min: 0.5, max: 2, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => bxFold = v, durScale: 10 },
+    { key: "bxiter", host: "fx", group: "mbox", type: "dual", label: "Detail", valId: "vMbIter", min: 3, max: 12, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => bxIter = Math.round(v), durScale: 10 },
+    { key: "bxglow", host: "fx", group: "mbox", type: "dual", label: "Glow", valId: "vMbGlow", min: 0, max: 2, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => bxGlow = v, durScale: 10 },
+    { key: "bxspeed", host: "fx", group: "mbox", type: "dual", label: "Orbit speed", valId: "vMbSpeed", min: 0, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bxSpeed = v, durScale: 10 },
+    { key: "gyfreq", host: "fx", group: "gyroid", type: "dual", label: "Cell size", valId: "vGyFreq", min: 0.4, max: 6, step: 0.05, lo: 2.2, hi: 2.2, fmt: v => sig3(v), apply: v => gyFreq = v, durScale: 10 },
+    { key: "gythick", host: "fx", group: "gyroid", type: "dual", label: "Thickness", valId: "vGyThick", min: 0, max: 1.2, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => gyThick = v, durScale: 10 },
+    { key: "gywarp", host: "fx", group: "gyroid", type: "dual", label: "Drift", valId: "vGyWarp", min: 0, max: 3, step: 0.01, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => gyWarp = v, durScale: 10 },
+    { key: "gyglow", host: "fx", group: "gyroid", type: "dual", label: "Glow", valId: "vGyGlow", min: 0, max: 2, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => gyGlow = v, durScale: 10 },
+    { key: "gyspeed", host: "fx", group: "gyroid", type: "dual", label: "Orbit speed", valId: "vGySpeed", min: 0, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => gySpeed = v, durScale: 10 },
     { key: "vocells", host: "fx", group: "voronoi", type: "dual", label: "Cells", valId: "vVoCells", min: 1, max: 24, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v), apply: v => voCells = v, durScale: 10 },
     { key: "voedge", host: "fx", group: "voronoi", type: "dual", label: "Edge", valId: "vVoEdge", min: 0, max: 1, step: 0.01, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => voEdge = v, durScale: 10 },
     { key: "vojit", host: "fx", group: "voronoi", type: "dual", label: "Wander", valId: "vVoJit", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => voJit = v, durScale: 10 },
@@ -11842,6 +12081,8 @@
     { key: "ltspd", host: "fx", group: "storm", type: "dual", label: "Strike speed", valId: "vLtSpd", min: 2, max: 40, step: 0.5, lo: 12, hi: 12, fmt: v => sig3(v) + "×", apply: v => ltSpdV = v, durScale: 10 },
     { key: "ltbolts", host: "fx", group: "storm", type: "dual", single: true, label: "Bolts", valId: "vLtBolts", min: 1, max: 5, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => ltBoltsV = Math.round(v), durScale: 10 },
     { key: "ltglow", host: "fx", group: "storm", type: "dual", label: "Afterglow", valId: "vLtGlow", min: 0, max: 1, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => ltGlowV = v, durScale: 10 },
+    { key: "bpdist", host: "fx", group: "bulb", type: "dual", label: "Distance", valId: "vBpDist", min: 1.3, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => bpDist = v, durScale: 10 },
+    { key: "bplift", host: "fx", group: "bulb", type: "dual", label: "Height", valId: "vBpLift", min: -3, max: 3, step: 0.05, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => bpLift = v, durScale: 10 },
     { key: "bppower", host: "fx", group: "bulb", type: "dual", label: "Power", valId: "vBpPower", min: 2, max: 12, step: 0.05, lo: 8, hi: 8, fmt: v => sig3(v), apply: v => bpPower = v, durScale: 10 },
     { key: "bpdetail", host: "fx", group: "bulb", type: "dual", single: true, label: "Detail", valId: "vBpDetail", min: 3, max: 12, step: 1, lo: 7, hi: 7, fmt: v => sig3(Math.round(v)), apply: v => bpDetail = Math.round(v), durScale: 10 },
     { key: "bpspin", host: "fx", group: "bulb", type: "dual", label: "Orbit speed", valId: "vBpSpin", min: 0, max: 2, step: 0.02, lo: 0.35, hi: 0.35, fmt: v => sig3(v) + "×", apply: v => bpSpin = v, durScale: 10 },
@@ -12702,7 +12943,7 @@
     shape: "Shape & motion", cardioid: "Cardioid seed", plasma: "Plasma", tunnel: "Tunnel",
     metaball: "Metaballs", kaleido: "Kaleidoscope", rotozoom: "Rotozoomer", munch: "Munching squares",
     moire: "Moiré", newton: "Newton", multibrot: "Multibrot", copper: "Copper bars",
-    attractor: "Attractor", voronoi: "Voronoi cells", warpnoise: "Flow noise", truchet: "Truchet tiles", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
+    attractor: "Attractor", apollo: "Apollonian gasket", mbox: "Mandelbox", gyroid: "Gyroid", voronoi: "Voronoi cells", warpnoise: "Flow noise", truchet: "Truchet tiles", shapegrid: "Shape grid", concentric: "Concentric rings", bounce: "Bouncing shapes",
     solids: "Bouncing solids", sun: "Sun surface", kefrens: "Kefrens bars", twister: "Twister",
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
@@ -12835,7 +13076,7 @@
     ["plasmaTime", () => plasmaTime, v => plasmaTime = v],
     ["tunTime", () => tunTime, v => tunTime = v],
     ["tunTwistPhase", () => tunTwistPhase, v => tunTwistPhase = v],
-    ["mbTime", () => mbTime, v => mbTime = v],
+    ["bxTime", () => bxTime, v => bxTime = v],
     ["kRotPhase", () => kRotPhase, v => kRotPhase = v],
     ["kNoiseTime", () => kNoiseTime, v => kNoiseTime = v],
     ["rzAngle", () => rzAngle, v => rzAngle = v],
@@ -12844,6 +13085,9 @@
     ["moTime", () => moTime, v => moTime = v],
     ["nwPhase", () => nwPhase, v => nwPhase = v],
     ["cbTime", () => cbTime, v => cbTime = v],
+    ["apTime", () => apTime, v => apTime = v],
+    ["mbTime", () => mbTime, v => mbTime = v],
+    ["gyTime", () => gyTime, v => gyTime = v],
     ["voTime", () => voTime, v => voTime = v],
     ["wnTime", () => wnTime, v => wnTime = v],
     ["truTime", () => truTime, v => truTime = v],
@@ -14535,6 +14779,24 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], ata: [1.3, 1.3], atb: [-2.4, -2.4], atc: [2.3, 2.3], atd: [-2.2, -2.2], atjit: [0.5, 0.5], points: [6000, 6000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
+    { id: "apollo", name: "Apollonian gasket", subtitle: "Apollonian · recursive sphere packing",
+      help: "An infinite packing of spheres, each nestled in the gap between the last three, raymarched from inside the gasket. It is built by INVERSION rather than by iteration of a power: each step reflects the point through a sphere and folds it back into the unit cell, so the structure repeats at every scale without ever being drawn twice. **Packing** is the inversion radius and the shape knob — small values open the gaps out, large ones pack them tight and the whole thing turns into filigree. Detail is how many folds (and how much GPU), Halo how tightly the near-miss glow hugs the surface, Glow how bright it burns.",
+      params: ["apscale", "apiter", "apthin", "apglow", "apspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = apolloSeed(dt); if (useGL) glShaderDraw("apollo", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uThin, s.thin); gl.uniform1f(u.uZoom, s.zoom); }); else apollo(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], apscale: [1.15, 1.15], apiter: [8, 8], apthin: [1, 1], apglow: [0.6, 0.6], apspeed: [1, 1] },
+      beat: {}, extras: { palette: "7", morph: false } },
+    { id: "mbox", name: "Mandelbox", subtitle: "Mandelbox · box-fold fractal",
+      help: "The Mandelbulb's architectural cousin. Where the bulb runs a POWER map and grows organic lobes, this folds space — reflect anything outside a box back in, invert anything inside a small sphere, scale, repeat — and the result is hard-edged: corridors, shells and rooms rather than petals. **Scale** is the whole character, and NEGATIVE values are the famous ones (the shipped -1.7 hollows it into chambers); push it positive and it collapses toward a solid block. Fold sets the size of the box being folded against, Detail how many iterations.",
+      params: ["bxscale", "bxfold", "bxiter", "bxglow", "bxspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = mboxSeedFn(dt); if (useGL) glShaderDraw("mbox", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uFold, s.fold); gl.uniform1f(u.uZoom, s.zoom); }); else mbox(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], bxscale: [-1.7, -1.7], bxfold: [1, 1], bxiter: [8, 8], bxglow: [0.5, 0.5], bxspeed: [1, 1] },
+      beat: {}, extras: { palette: "3", morph: false } },
+    { id: "gyroid", name: "Gyroid", subtitle: "Gyroid · infinite minimal surface",
+      help: "A triply-periodic minimal surface — the sheet that soap film makes when it divides space into two interlocking labyrinths that never touch. It is NOT a fractal: it is one smooth infinite lattice, which is why it reads so differently from the two beside it. The entire surface is one line of trigonometry, so it is also the cheapest 3D effect here. **Cell size** sets the scale of the weave, Thickness how solid the sheet is (thin gives a delicate membrane, thick closes the gaps into tunnels), Drift slides the lattice past the camera.",
+      params: ["gyfreq", "gythick", "gywarp", "gyglow", "gyspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
+      draw: dt => { const s = gyroidSeed(dt); if (useGL) glShaderDraw("gyroid", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uFreq, s.freq); gl.uniform1f(u.uThick, s.thick); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uWarp, s.warp); gl.uniform1f(u.uZoom, s.zoom); }); else gyroid(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], gyfreq: [2.2, 2.2], gythick: [0.35, 0.35], gywarp: [0.6, 0.6], gyglow: [0.5, 0.5], gyspeed: [1, 1] },
+      beat: {}, extras: { palette: "5", morph: false } },
     { id: "voronoi", name: "Voronoi cells", subtitle: "Voronoi · cracked cellular field",
       help: "A cellular field: space is divided between wandering seed points, and every pixel is coloured by how far it is from the nearest one. **Edge** is the character knob — at 0 you get soft blobs (distance to the nearest seed), at 1 the crack BETWEEN cells (the gap between nearest and second-nearest), which is the shattered-glass look. Cells sets how many, Wander how far each seed drifts from its home, Speed how fast. Nothing else here measures cellular distance — Reaction-diffusion is a chemical simulation and Cellular automaton is a filter over heat.",
       params: ["vocells", "voedge", "vojit", "vospeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
@@ -14612,10 +14874,10 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], ltstrike: [0, 0], ltrate: [0.5, 0.5], ltspd: [12, 12], ltbolts: [2, 2], ltglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     { id: "mandelbulb", name: "Mandelbulb", subtitle: "Mandelbulb · flight inside a 3D fractal",
-      help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, seen from INSIDE — the camera flies the canyons between the lobes, threading whatever gap the fractal leaves it and never quite touching the surface. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping around you). Detail adds fractal depth (and GPU cost), Orbit speed is how fast the flight winds through it, Glow lights the walls and puts a halo where a ray only just misses. The heaviest effect in the app — it wants a real GPU.",
-      params: ["bppower", "bpdetail", "bpspin", "bpglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "bulb", "band"], bakesOwnZoom: true,
+      help: "The 3D Mandelbrot: z → z^p + c run in spherical coordinates and raymarched as a solid, with the camera in a slow orbit around it. **Distance** is how far out that orbit sits: the bulb is centred on the origin and its surface stays inside about 1.2, so 2.5 frames the whole solid, 1.5 flies you close over the lobes, and below about 1.2 you are inside it — where the iteration never escapes and there is nothing left to draw, because a Mandelbulb has no hollow middle. Height lifts the orbit off the equator, which shows the lobed structure far better than looking at it dead-on. Power reshapes it continuously — 8 is the classic bulb, low values melt it toward a sphere, high values bristle it, and the fractions in between morph smoothly (drift Power's two thumbs apart and the bulb never stops reshaping around you). Detail adds fractal depth (and GPU cost), Orbit speed is how fast the flight winds through it, Glow lights the walls and puts a halo where a ray only just misses. The heaviest effect in the app — it wants a real GPU.",
+      params: ["bpdist", "bplift", "bppower", "bpdetail", "bpspin", "bpglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "bulb", "band"], bakesOwnZoom: true,
       draw: dt => { if (useGL) { const s = bulbSeed(dt); glShaderDraw("bulb", u => { gl.uniform3f(u.uPos, s.px, s.py, s.pz); gl.uniform3f(u.uFwd, s.fx, s.fy, s.fz); gl.uniform1f(u.uPower, s.power); gl.uniform1f(u.uIter, s.iter); gl.uniform1f(u.uGlow, s.glow); gl.uniform1f(u.uZoom, s.zoom); }); } else bulb(dt); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], bppower: [8, 8], bpdetail: [7, 7], bpspin: [0.35, 0.35], bpglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bpdist: [2.5, 2.5], bplift: [0.8, 0.8], bppower: [8, 8], bpdetail: [7, 7], bpspin: [0.35, 0.35], bpglow: [0.5, 0.5], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "flames", name: "Fractal flames", subtitle: "Fractal flames · IFS density",
       help: "An iterated function system in the Apophysis / Electric Sheep style: the chaos game bounces between two slowly-morphing affine maps, a nonlinear Variation bends every step, and each landing ADDS heat — so the dense heart of the orbit burns white while the wisps stay faint. Variation picks the fold (Spherical and Swirl are the classics), Morph speed orbits the coefficients, Point glow sets how much each landing adds, and Points the density budget.",

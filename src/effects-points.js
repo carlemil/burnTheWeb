@@ -6,6 +6,80 @@
   const shMod = (a, b) => a - b * Math.floor(a / b);                 // GLSL mod (handles negatives)
   const shStep = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };  // smoothstep (works either direction)
   // Polygon: one rotating regular N-gon; thick=1 filled, →0 a thin outline.
+  // ---- Batch B: three fractal raymarchers, and their deliberately coarse mirrors --------
+  // 90 march steps x a 12-iteration distance estimator is a shader's budget, not a JS loop's,
+  // so each mirror marches far fewer steps at fewer iterations: the silhouette survives, the
+  // filigree does not. Same trade the Ocean mirror documents. They still write EVERY cell.
+  function bMarch(fw2, fh2, de, dist, lift, t, zoom2, steps) {
+    const ro = [Math.sin(t) * dist, lift + Math.sin(t * 0.37) * dist * 0.25, Math.cos(t) * dist];
+    const fl = Math.hypot(ro[0], ro[1], ro[2]) || 1;
+    const f = [-ro[0] / fl, -ro[1] / fl, -ro[2] / fl];
+    const rx = f[2], rz = -f[0], rl = Math.hypot(rx, rz) || 1;
+    const r = [rx / rl, 0, rz / rl];
+    const u = [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]];
+    let idx = 0;
+    for (let y = 0; y < fh2; y++) for (let x = 0; x < fw2; x++) {
+      camPix(x, y);
+      const ux = (camPX - 0.5 * fw2) / fh2 / zoom2, uy = (camPY - 0.5 * fh2) / fh2 / zoom2;
+      let dx = r[0] * ux + u[0] * uy + f[0] * 1.4;
+      let dy = r[1] * ux + u[1] * uy + f[1] * 1.4;
+      let dz = r[2] * ux + u[2] * uy + f[2] * 1.4;
+      const dl = Math.hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl;
+      let tt = 0, hit = 0;
+      for (let i = 0; i < steps; i++) {
+        const d = de(ro[0] + dx * tt, ro[1] + dy * tt, ro[2] + dz * tt);
+        if (d < 0.01) { hit = 1 - i / steps; break; }
+        tt += d * 0.9;
+        if (tt > 14) break;
+      }
+      fire[idx++] = Math.max(0, Math.min(1, hit)) * 255;
+    }
+  }
+  let apScale = 1.15, apIter = 8, apGlow = 0.6, apThin = 1, apSpeed = 1, apTime = 0;
+  function apolloSeed(dt) { apTime += dt * apSpeed; return { t: apTime, scale: apScale, iter: apIter, glow: apGlow, thin: apThin, zoom }; }
+  function apollo(s) {
+    const it = Math.max(3, Math.min(6, Math.round(s.iter)));
+    bMarch(fw, fh, (x, y, z) => {
+      let px = x, py = y, pz = z, sc = 1;
+      for (let i = 0; i < it; i++) {
+        px = -1 + 2 * (px * 0.5 + 0.5 - Math.floor(px * 0.5 + 0.5));
+        py = -1 + 2 * (py * 0.5 + 0.5 - Math.floor(py * 0.5 + 0.5));
+        pz = -1 + 2 * (pz * 0.5 + 0.5 - Math.floor(pz * 0.5 + 0.5));
+        const f = s.scale / Math.max(px * px + py * py + pz * pz, 0.02);
+        px *= f; py *= f; pz *= f; sc *= f;
+      }
+      return 0.35 * Math.abs(py) / sc;
+    }, 2.4, 0.2, s.t * 0.2, s.zoom, 26);
+  }
+  let bxScale = -1.7, bxIter = 8, bxGlow = 0.5, bxFold = 1, bxSpeed = 1, bxTime = 0;
+  function mboxSeedFn(dt) { bxTime += dt * bxSpeed; return { t: bxTime, scale: bxScale, iter: bxIter, glow: bxGlow, fold: bxFold, zoom }; }
+  function mbox(s) {
+    const it = Math.max(3, Math.min(6, Math.round(s.iter))), fo = Math.max(0.5, s.fold);
+    bMarch(fw, fh, (X, Y, Z) => {
+      let zx = X, zy = Y, zz = Z, dr = 1;
+      for (let i = 0; i < it; i++) {
+        zx = Math.min(Math.max(zx, -fo), fo) * 2 * fo - zx;
+        zy = Math.min(Math.max(zy, -fo), fo) * 2 * fo - zy;
+        zz = Math.min(Math.max(zz, -fo), fo) * 2 * fo - zz;
+        const r2 = zx * zx + zy * zy + zz * zz;
+        if (r2 < 0.25) { const g = 4; zx *= g; zy *= g; zz *= g; dr *= g; }
+        else if (r2 < 1) { const g = 1 / r2; zx *= g; zy *= g; zz *= g; dr *= g; }
+        zx = zx * s.scale + X; zy = zy * s.scale + Y; zz = zz * s.scale + Z;
+        dr = dr * Math.abs(s.scale) + 1;
+      }
+      return Math.hypot(zx, zy, zz) / Math.abs(dr);
+    }, 6.5, 0.6, s.t * 0.17, s.zoom, 26);
+  }
+  let gyFreq = 2.2, gyThick = 0.35, gyGlow = 0.5, gyWarp = 0.6, gySpeed = 1, gyTime = 0;
+  function gyroidSeed(dt) { gyTime += dt * gySpeed; return { t: gyTime, freq: gyFreq, thick: gyThick, glow: gyGlow, warp: gyWarp, zoom }; }
+  function gyroid(s) {
+    const f = Math.max(0.4, s.freq);
+    bMarch(fw, fh, (x, y, z) => {
+      const qx = x * f + Math.sin(s.t * 0.3) * s.warp, qy = y * f + Math.cos(s.t * 0.23) * s.warp, qz = z * f;
+      const g = Math.sin(qx) * Math.cos(qz) + Math.sin(qy) * Math.cos(qx) + Math.sin(qz) * Math.cos(qy);
+      return Math.max((Math.abs(g) - s.thick) / (f * 1.7), Math.hypot(x, y, z) - 1.7);
+    }, 4.6, 0, s.t * 0.15, s.zoom, 30);
+  }
   // ---- Batch A: the three noise/pattern effects, and the CPU value-noise they share ----
   // The mirrors are honest but coarse: one octave where the shader runs up to eight, and no
   // domain warp at all in the warp mirror. That is the Ocean rule -- a fallback that keeps the

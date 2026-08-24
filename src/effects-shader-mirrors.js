@@ -1197,6 +1197,7 @@
   // with the surface it is flying past ends up embedded in it).
   let bpPower = 8, bpDetail = 7, bpSpin = 0.35, bpGlow = 0.5, bpPhase = 0;
   let bpOffX = 0, bpOffY = 0, bpOffZ = 0;     // the escape offset — PHASE_VARS, per layer
+  let bpDist = 2.5, bpLift = 0.8;             // orbit radius and height (see bulbBase)
   const BULB_CLEAR = 0.12;                    // free space the camera keeps around itself
   const BULB_RELAX = 0.5;                     // 1/s the offset decays back toward the helix
   const BULB_OFFMAX = 0.9;                    // how far the escape may ever carry it off
@@ -1207,11 +1208,20 @@
   // power (0.68 at 2, 1.16 at 8, 1.20 at 12), and a helix pinned at one radius is either
   // buried at high powers or orbiting empty space at low ones: 1.30 - 1.2/P tracks it.
   const bulbShell = P => Math.max(0.6, Math.min(1.3, 1.3 - 1.2 / Math.max(1, P)));
-  function bulbBase(ph, P, out) {             // the uncorrected helix — pure, and smooth
-    const th = 1.5708 + 0.62 * Math.sin(ph * 0.31 + 0.7);
-    const rad = bulbShell(P) + 0.02 + 0.22 * Math.sin(ph * 0.23);
-    const s = Math.sin(th);
-    out[0] = rad * s * Math.cos(ph); out[1] = rad * s * Math.sin(ph); out[2] = rad * Math.cos(th);
+  function bulbBase(ph, P, out) {             // the uncorrected orbit — pure, and smooth
+    // AN ORBIT AROUND THE SOLID, not a flight through it. It used to ride bulbShell(P) plus a
+    // margin, i.e. it skimmed the outer surface, which framed a wall rather than a fractal.
+    // The bulb is centred on the origin and at power 8 its surface stays inside r ~ 1.2, so
+    // Distance 2.5 frames the whole thing; 2.0 is close, and below ~1.2 the camera is inside
+    // the solid -- where the iteration never escapes, the DE goes FLAT and there is nothing to
+    // draw. That is why "put the camera in the middle looking out" has no answer: a Mandelbulb
+    // has no hollow middle, it is densest at the centre.
+    //
+    // NOTE the up axis here is Z (see FS_BULB's basis), so out[2] is the height.
+    const rad = Math.max(0.9, bpDist);
+    out[0] = rad * Math.cos(ph);
+    out[1] = rad * Math.sin(ph);
+    out[2] = bpLift + 0.10 * rad * Math.sin(ph * 0.23);
     return out;
   }
   function bulbSeed(dt) {
@@ -1275,13 +1285,10 @@
     // fractal covers 51% of the screen leaning 0.75, 63% leaning 1.8, and past ~2.2 it is
     // all wall and the travel stops reading. The lean breathes, between looking down the
     // canyon and looking into it.
-    const n = bulbBase(bpPhase + 1e-3, P, bpNext);
-    let fx = n[0] - b[0], fy = n[1] - b[1], fz = n[2] - b[2];
+    // LOOK AT THE ORIGIN. The old heading was the helix tangent leaned toward the core, which
+    // is what a canyon flight wants; an orbit that frames the solid simply aims at it.
+    let fx = -x, fy = -y, fz = -z;
     let fl = Math.hypot(fx, fy, fz) || 1;
-    fx /= fl; fy /= fl; fz /= fl;
-    const rl = Math.hypot(x, y, z) || 1, lean = 1.8 + 0.8 * Math.sin(bpPhase * 0.19);
-    fx -= x / rl * lean; fy -= y / rl * lean; fz -= z / rl * lean;
-    fl = Math.hypot(fx, fy, fz) || 1;
     return { px: x, py: y, pz: z, fx: fx / fl, fy: fy / fl, fz: fz / fl,
              power: bpPower, iter: bpDetail, glow: bpGlow, zoom };
   }
@@ -1315,9 +1322,9 @@
         camPix(x, y);
         const sx = (camPX / fw - 0.5) * ar * 2 / s.zoom;
         const sy = (camPY / fh - 0.5) * 2 / s.zoom;
-        let rdx = rx * sx + ux * sy + fx * 1.15;
-        let rdy = ry * sx + uy * sy + fy * 1.15;
-        let rdz = rz * sx + uz * sy + fz * 1.15;
+        let rdx = rx * sx + ux * sy + fx * 1.73;
+        let rdy = ry * sx + uy * sy + fy * 1.73;
+        let rdz = rz * sx + uz * sy + fz * 1.73;
         const rl = Math.hypot(rdx, rdy, rdz) || 1; rdx /= rl; rdy /= rl; rdz /= rl;
         let t = 0, halo = 9, heat = 0;
         for (let i = 0; i < 24; i++) {

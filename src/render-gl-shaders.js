@@ -691,6 +691,146 @@
       float w = max(0.01, uWidth * 0.5);
       o = vec4(1.0 - smoothstep(w * 0.5, w, d), 0.0, 0.0, 1.0);
     }`;
+    // ---- Batch B: three modern fractal distance estimators ---------------------------
+    // Shared camera: a slow orbit looking at the origin. All three are centred solids, so
+    // there is no flight path to solve (unlike the Mandelbulb, which has to thread canyons) --
+    // the camera simply circles and the fractal turns inside the frame.
+    const SH_ORBIT = `
+    void orbitCam(float t, float dist, float lift, out vec3 ro, out mat3 basis){
+      ro = vec3(sin(t) * dist, lift + sin(t * 0.37) * dist * 0.25, cos(t) * dist);
+      vec3 f = normalize(-ro);
+      vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f));
+      basis = mat3(r, cross(f, r), f);
+    }`;
+    // APOLLONIAN GASKET: invert the point through a sphere, fold it back into the unit cell,
+    // repeat. Every iteration multiplies a scale factor, and dividing by it at the end turns
+    // the folded distance back into a real one -- which is what makes an infinitely recursive
+    // sphere packing marchable at all.
+    const FS_APOLLO = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uScale; uniform float uIter;
+    uniform float uGlow; uniform float uZoom; uniform float uThin;
+    out vec4 o;
+    ${SH_ORBIT}
+    float apolloDE(vec3 p, float k, int it){
+      float s = 1.0;
+      for (int i = 0; i < 12; i++) {
+        if (i >= it) break;
+        p = -1.0 + 2.0 * fract(0.5 * p + 0.5);      // fold into the unit cell
+        float r2 = dot(p, p);
+        float f = k / max(r2, 0.02);                 // sphere inversion
+        p *= f; s *= f;
+      }
+      return 0.35 * abs(p.y) / s;                    // undo the accumulated scale
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro; mat3 b; orbitCam(uTime * 0.2, 3.4, 0.35, ro, b);
+      vec3 rd = normalize(b * vec3(uv, 1.7));
+      int it = int(clamp(uIter, 3.0, 12.0));
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 90; i++) {
+        vec3 p = ro + rd * t;
+        float d = apolloDE(p, uScale, it);
+        halo = min(halo, d / max(t, 0.25));
+        if (d < 0.0015 * max(t, 0.3)) {
+          float e = 0.002 * max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0) * 0.5773;
+          vec3 nrm = normalize(h.xyy * apolloDE(p + h.xyy * e, uScale, it) + h.yyx * apolloDE(p + h.yyx * e, uScale, it) + h.yxy * apolloDE(p + h.yxy * e, uScale, it) + h.xxx * apolloDE(p + h.xxx * e, uScale, it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65 * dif) * smoothstep(9.0, 0.6, t);
+          break;
+        }
+        t += d * 0.85;
+        if (t > 9.0) break;
+      }
+      heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // MANDELBOX: box-fold then sphere-fold then scale, which is a completely different family
+    // from the Mandelbulb's power map -- it makes hard architectural shells rather than organic
+    // lobes. Negative Scale values give the classic hollow forms.
+    const FS_MBOX = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uScale; uniform float uIter;
+    uniform float uGlow; uniform float uZoom; uniform float uFold;
+    out vec4 o;
+    ${SH_ORBIT}
+    float mboxDE(vec3 p, float sc, float fold, int it){
+      vec3 z = p; float dr = 1.0;
+      float minR2 = 0.25;
+      for (int i = 0; i < 12; i++) {
+        if (i >= it) break;
+        z = clamp(z, -fold, fold) * 2.0 * fold - z;            // box fold
+        float r2 = dot(z, z);
+        if (r2 < minR2) { float g = 1.0 / minR2; z *= g; dr *= g; }
+        else if (r2 < 1.0) { float g = 1.0 / r2; z *= g; dr *= g; }   // sphere fold
+        z = z * sc + p; dr = dr * abs(sc) + 1.0;
+      }
+      return length(z) / abs(dr);
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro; mat3 b; orbitCam(uTime * 0.17, 6.5, 0.6, ro, b);
+      vec3 rd = normalize(b * vec3(uv, 1.4));
+      int it = int(clamp(uIter, 3.0, 12.0));
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 90; i++) {
+        vec3 p = ro + rd * t;
+        float d = mboxDE(p, uScale, max(0.5, uFold), it);
+        halo = min(halo, d / max(t, 0.25));
+        if (d < 0.0015 * max(t, 0.3)) {
+          float e = 0.002 * max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0) * 0.5773;
+          vec3 nrm = normalize(h.xyy * mboxDE(p + h.xyy * e, uScale, max(0.5, uFold), it) + h.yyx * mboxDE(p + h.yyx * e, uScale, max(0.5, uFold), it) + h.yxy * mboxDE(p + h.yxy * e, uScale, max(0.5, uFold), it) + h.xxx * mboxDE(p + h.xxx * e, uScale, max(0.5, uFold), it));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65 * dif) * smoothstep(20.0, 0.6, t);
+          break;
+        }
+        t += d * 0.85;
+        if (t > 20.0) break;
+      }
+      heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
+    // GYROID: a triply-periodic minimal surface, and the whole distance estimator is one line.
+    // It is not a fractal at all -- it is an infinite smooth lattice -- which is exactly why it
+    // sits well beside the other two rather than competing with them.
+    const FS_GYROID = `#version 300 es
+    precision highp float;
+    uniform vec2 uSize; uniform float uTime; uniform float uFreq; uniform float uThick;
+    uniform float uGlow; uniform float uZoom; uniform float uWarp;
+    out vec4 o;
+    ${SH_ORBIT}
+    float gyroidDE(vec3 p, float f, float th, float w, float t){
+      vec3 q = p * f + vec3(sin(t * 0.3) * w, cos(t * 0.23) * w, 0.0);
+      float g = dot(sin(q), cos(q.zxy));
+      float sheet = (abs(g) - th) / (f * 1.7);     // /f keeps it a usable distance bound
+      return max(sheet, length(p) - 1.7);          // clipped to a ball, so it can be FRAMED
+    }
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uSize) / uSize.y / uZoom;
+      vec3 ro; mat3 b; orbitCam(uTime * 0.15, 4.6, 0.0, ro, b);   // clear of the 1.7 clip ball, so it frames
+      vec3 rd = normalize(b * vec3(uv, 1.5));
+      float t = 0.0, halo = 9.0, heat = 0.0;
+      for (int i = 0; i < 80; i++) {
+        vec3 p = ro + rd * t;
+        float d = gyroidDE(p, max(0.4, uFreq), uThick, uWarp, uTime);
+        halo = min(halo, d / max(t, 0.25));
+        if (d < 0.0015 * max(t, 0.3)) {
+          float e = 0.002 * max(t, 0.3);
+          vec2 h = vec2(1.0, -1.0) * 0.5773;
+          vec3 nrm = normalize(h.xyy * gyroidDE(p + h.xyy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yyx * gyroidDE(p + h.yyx * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yxy * gyroidDE(p + h.yxy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.xxx * gyroidDE(p + h.xxx * e, max(0.4, uFreq), uThick, uWarp, uTime));
+          float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
+          heat = (0.20 + 0.65 * dif) * smoothstep(12.0, 0.6, t);
+          break;
+        }
+        t += d * 0.85;
+        if (t > 12.0) break;
+      }
+      heat += uGlow * 0.45 * exp(-halo * 16.0);
+      o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
+    }`;
     const FS_SHAPEGRID = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uCells; uniform float uDot; uniform float uSquare; uniform float uPulse; uniform float uZoom;
@@ -1079,7 +1219,7 @@
       vec3 rt = normalize(cross(wup, f));
       vec3 up = cross(f, rt);
       vec3 ro = uPos;
-      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.15);
+      vec3 rd = normalize(rt*uv.x + up*uv.y + f*1.73);
       int it = int(uIter);
       float P = uPower;
       float t = 0.0, halo = 9.0, heat = 0.0, steps = 0.0;

@@ -86,14 +86,14 @@ function screenFill(s, P, it) {
   let hit = 0, tot = 0;
   for (let iy = 0; iy < 9; iy++) for (let ix = 0; ix < 16; ix++) {
     const u = ((ix + 0.5) / 16 - 0.5) * 2 * 1.78, v = ((iy + 0.5) / 9 - 0.5) * 2;
-    const rd = nrm([rt[0] * u + up[0] * v + f[0] * 1.15, rt[1] * u + up[1] * v + f[1] * 1.15,
-                    rt[2] * u + up[2] * v + f[2] * 1.15]);
+    const rd = nrm([rt[0] * u + up[0] * v + f[0] * 1.73, rt[1] * u + up[1] * v + f[1] * 1.73,
+                    rt[2] * u + up[2] * v + f[2] * 1.73]);
     let t = 0; tot++;
     for (let k = 0; k < 90; k++) {
       const d = M.bulbDE(s.px + rd[0] * t, s.py + rd[1] * t, s.pz + rd[2] * t, P, it);
       if (d < 0.0008 * Math.max(t, 0.3)) { hit++; break; }
       t += d;
-      if (t > 3.2) break;
+      if (t > 5.0) break;
     }
   }
   return hit / tot;
@@ -112,10 +112,16 @@ ok("shipped flight never embeds", shipped.embedded === 0, (shipped.embedded * 10
 ok("no teleports at the shipped speed", shipped.maxStep < 0.12,
    "max step " + shipped.maxStep.toFixed(4) + " units/frame");
 
-// 3. Inside, not orbiting. Both halves matter: a radius within the shell, and a screen
-// the fractal actually fills. The old exterior camera sat at 2.35 and filled a sixth.
-ok("the camera stays within the shell", shipped.maxR < 1.6,
+// 3. OUTSIDE, framing the solid -- deliberately the opposite of what this asserted before.
+// The effect flew the canyons between the lobes for several releases; it now orbits and
+// frames the whole bulb, because the interior it was reaching for does not exist. A
+// Mandelbulb is DENSEST at its centre: inside the surface the iteration never escapes, the
+// DE goes flat, and there is nothing to draw. So the contract is the reverse -- the orbit
+// stays clear of the shell, and `shipped.embedded === 0` above is what proves it never gets in.
+ok("the camera orbits OUTSIDE the shell", shipped.minR > 1.3,
    "radius " + shipped.minR.toFixed(2) + "…" + shipped.maxR.toFixed(2));
+ok("...and stays near the Distance it was given", shipped.maxR < 4.0,
+   "max " + shipped.maxR.toFixed(2));
 {
   M.reset();
   let sum = 0, min = 1, n = 0;
@@ -125,7 +131,10 @@ ok("the camera stays within the shell", shipped.maxR < 1.6,
     const q = screenFill(s, 8, 7);
     sum += q; min = Math.min(min, q); n++;
   }
-  ok("the fractal fills the frame", sum / n > 0.4 && min > 0.2,
+  // Framed, not filled. Skimming the shell filled half the screen with wall; an orbit that
+  // shows the whole solid necessarily leaves sky around it, so the bar is "clearly present in
+  // every frame", not "covers the screen". Zero here would mean the camera is pointed away.
+  ok("the fractal is framed in every sampled frame", sum / n > 0.10 && min > 0.05,
      "mean " + (sum / n * 100).toFixed(0) + "%  worst " + (min * 100).toFixed(0) + "%");
 }
 
@@ -174,7 +183,10 @@ for (const fps of [144, 60, 30, 15, 4]) {
   for (let i = 0; i < 60; i++) same = same && b[i].px === c[i].px && b[i].py === c[i].py && b[i].pz === c[i].pz;
   ok("the flight is deterministic", same);
   const off = Math.hypot(mid[0], mid[1], mid[2]);
-  ok("the offset is real state, and bounded", off > 1e-6 && off <= M.BULB_OFFMAX + 1e-9,
+  // The escape solver is now INERT on the shipped orbit, and that is correct: it exists to
+  // push the camera out of the solid, and an orbit at 2.5 is never in it. So the assertion is
+  // that it stays bounded (it must never run away), not that it is doing anything.
+  ok("the escape offset stays bounded", off <= M.BULB_OFFMAX + 1e-9,
      "|offset| " + off.toFixed(3) + " at phase " + midPhase.toFixed(2));
 }
 
