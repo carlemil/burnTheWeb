@@ -225,6 +225,9 @@
     // branch cut when flute·twist is a whole number. A fractional twist draws a seam.
     // Trees. Count/Depth/Splits are single -- they count things, and a fractional branch
     // count is not a shape. Depth is also what the segment budget clamps (see TR_SEG_MAX).
+    { key: "trwidth", host: "fx", group: "trees", type: "dual", label: "Branch width", valId: "vTrWidth", min: 0, max: 10, step: 0.5, lo: 3, hi: 3, fmt: v => sig3(v) + "px", apply: v => trWidth = v, durScale: 10 },
+    { key: "trtaper", host: "fx", group: "trees", type: "dual", label: "Width taper", valId: "vTrTaper", min: 0.2, max: 1, step: 0.01, lo: 0.62, hi: 0.62, fmt: v => sig3(v), apply: v => trTaper = v, durScale: 10 },
+    { key: "trcurve", host: "fx", group: "trees", type: "dual", label: "Bend", valId: "vTrCurve", min: 0, max: 2, step: 0.01, lo: 0.45, hi: 0.45, fmt: v => sig3(v), apply: v => trCurve = v, durScale: 10 },
     { key: "trcount", host: "fx", group: "trees", type: "dual", single: true, label: "Trees", valId: "vTrCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => trCount = Math.round(v), durScale: 10 },
     { key: "trdepth", host: "fx", group: "trees", type: "dual", single: true, label: "Depth", valId: "vTrDepth", min: 3, max: 11, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)), apply: v => trDepth = Math.round(v), durScale: 10 },
     { key: "trsplit", host: "fx", group: "trees", type: "dual", single: true, label: "Splits", valId: "vTrSplit", min: 2, max: 4, step: 1, lo: 2, hi: 2, fmt: v => sig3(Math.round(v)), apply: v => trSplit = Math.round(v), durScale: 10 },

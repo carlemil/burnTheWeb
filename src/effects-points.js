@@ -745,6 +745,12 @@
   // from Math.random and never from the chaos PRNG (which the stamp loop re-seeds).
   let trCount = 3, trDepth = 8, trSplit = 2, trAngle = 28, trShrink = 0.72,
       trSway = 0.35, trSpeed = 1, trPhase = 0;
+  // DECLARED AFTER the line above, not before it, and the reason is the probe: treeprobe
+  // slices this file from that declaration to the end of treeStamp and EVALUATES the slice,
+  // so anything treeStamp reads has to live inside the cut. Put these first and the probe
+  // dies on an undefined; write the marker's text into a comment above it and the plain
+  // indexOf finds the comment instead. Both were measured, in that order.
+  let trWidth = 3, trTaper = 0.62, trCurve = 0.45;
   // A whole tree is redrawn every tick, so the segment count is the cost. It is
   // split^depth, which reaches 4^11 = four million at the slider extremes — the sliders
   // cannot be allowed to multiply into that, so the DEPTH is clamped to whatever keeps the
@@ -820,10 +826,43 @@
                            + 0.45 * Math.sin(trPhase * 2.7 + trHash(id + 9973) * 6.2));
         const a = ba + sway;
         const ex = bx + Math.sin(a) * bl, ey = by - Math.cos(a) * bl;   // row 0 is the TOP, so up is -y
+        // WIDTH, TAPER AND BEND -- the three things that turn a wireframe into a tree.
+        //
+        // The branch was already a continuous LINE (the descriptor's own note says 30000
+        // points is about one per pixel); what it was not was THICK. Each sample now stamps a
+        // perpendicular span, tapering generation by generation so the trunk is solid and the
+        // twigs stay fine. A constant width looks like pipe cleaners, which is most of why an
+        // untapered tree never reads as one.
+        //
+        // BEND is the spline question, answered. Sway is added to each branch's ANGLE as it is
+        // built, so a branch is a rigid stick pivoted at its joint and the whole bend lives in
+        // the joints -- fine at Depth 8 where they are dense, visibly polygonal at low Depth.
+        // A quadratic Bezier with one control point pushed perpendicular by the local sway
+        // makes the bough itself flex, which is both what a real branch does and what fixes
+        // the low-Depth case. Two lines of maths, no allocation, and Bend 0 is the old
+        // straight stick exactly. (buildSeedSpline is NOT reused: it is a closed periodic
+        // Catmull-Rom with an arc-length LUT, the wrong shape for an open two-point branch.)
+        const wid = Math.max(0, trWidth) * Math.pow(Math.max(0.05, trTaper), d);
+        const half = Math.max(0, wid * 0.5);
+        const px = -(ey - by), py = ex - bx;                 // perpendicular to the branch
+        const pl = Math.hypot(px, py) || 1;
+        const nx = px / pl, ny = py / pl;
+        // control point for the bow: the midpoint pushed sideways by this branch's own sway
+        const cxb = (bx + ex) * 0.5 + nx * sway * bl * trCurve;
+        const cyb = (by + ey) * 0.5 + ny * sway * bl * trCurve;
         const pts = Math.max(1, Math.round(bl * perUnit));
+        const span = Math.max(0, Math.round(half));
         for (let k = 0; k <= pts; k++) {
-          const f = k / pts;
-          plot(bx + (ex - bx) * f, by + (ey - by) * f, heat);
+          const f = k / pts, g = 1 - f;
+          // quadratic Bezier; at trCurve 0 the control point IS the midpoint, so this
+          // reduces to the straight interpolation it replaces.
+          const sx2 = g * g * bx + 2 * g * f * cxb + f * f * ex;
+          const sy2 = g * g * by + 2 * g * f * cyb + f * f * ey;
+          plot(sx2, sy2, heat);
+          for (let w = 1; w <= span; w++) {
+            plot(sx2 + nx * w, sy2 + ny * w, heat);
+            plot(sx2 - nx * w, sy2 - ny * w, heat);
+          }
         }
         if (d + 1 >= maxD) continue;
         const childLen = bl * shrink;

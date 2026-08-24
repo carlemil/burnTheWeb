@@ -351,8 +351,8 @@
       blend: "over",
       beat: {}, extras: { palette: "2", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
-      help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
-      params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. **Branch width** makes them solid rather than a wireframe, and **Width taper** shrinks it generation by generation so the trunk is thick and the twigs stay fine — a constant width looks like pipe cleaners and is most of why an untapered tree never reads as one. **Bend** bows each bough along its own length instead of leaving all the flex in the joints, which is what a real branch does and what stops low Depth settings looking polygonal; at 0 the branches are straight sticks, as they were. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
+      params: ["trcount", "trdepth", "trsplit", "trangle", "trshrink", "trwidth", "trtaper", "trcurve", "trsway", "trspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
       helpTags: ["all", "trees"], bakesOwnZoom: true,
       stamp: (xL, xR, yT, yB, n) => treeStamp(xL, xR, yT, yB, n),
       // TREES OWN THEIR POINTS RANGE, and it is high for a reason: this effect draws LINES,
@@ -360,7 +360,7 @@
       // scattered. Three default trees are ~26k pixels of branch at full resolution, so the
       // shared 2500 default drew a dotted wireframe. 30000 is roughly one point per pixel.
       ranges: { points: { min: 4000, max: 60000 } },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], trcount: [3, 3], trdepth: [8, 8], trsplit: [2, 2], trangle: [28, 28], trshrink: [0.72, 0.72], trsway: [0.35, 0.35], trspeed: [1, 1],
+      defaults: { palcycle: [0, 0], palhold: [0, 0], trwidth: [3, 3], trtaper: [0.62, 0.62], trcurve: [0.45, 0.45], trcount: [3, 3], trdepth: [8, 8], trsplit: [2, 2], trangle: [28, 28], trshrink: [0.72, 0.72], trsway: [0.35, 0.35], trspeed: [1, 1],
         points: [30000, 30000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",
