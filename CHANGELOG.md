@@ -14,6 +14,33 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.47.0] — 2026-08-24
+
+### Added
+- **Two "swell" trigger shapes.** Every shape until now snapped a slider to its high thumb the
+  instant a beat landed and then fell away. **Swell** and **Late swell** do the opposite: they
+  start low on the beat, rise to the high thumb partway through, and fall back — so a kick can
+  now raise a value instead of only dropping it. Swell peaks halfway through the pulse, Late
+  swell three quarters of the way. Give them a longer Duration than the default 200ms, or the
+  rise is too quick to see.
+
+### Changed
+- **Each layer's box opens in its own corner**: layer 1 top-left, layer 2 top-right, layer 3
+  bottom-left, layer 4 bottom-right. Always the same corner for the same layer, so you learn
+  where to look. Dragging a box still overrides it and is still remembered.
+- **A layer's sliders gather around that layer's box** and never open on top of another box.
+  With the layer closed they cluster on its corner instead.
+- **Closing a layer with the − on its row now closes its slider boxes too**, and pressing +
+  again brings the whole arrangement back — the same boxes, in the same places.
+- **The layer rows are tinted with each layer's colour** — a faint wash normally and a brighter
+  fill on the selected one — so the list and the boxes read as one thing.
+- Layer boxes are now at most half the window tall, since two of them share a column.
+
+### Fixed
+- A slider box could open on top of the very layer box it belonged to, and layers 3 and 4 could
+  miss their corners and land in the middle of the screen. Both came from boxes being measured
+  before they were sized.
+
 ## [1.46.0] — 2026-08-24
 
 ### Added
