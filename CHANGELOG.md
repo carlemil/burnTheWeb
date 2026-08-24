@@ -14,6 +14,56 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.50.0] — 2026-08-24
+
+### Added
+**Eleven new effects**, taking the roster to 51. They are grouped in the menu now (see below),
+so this list follows those groups:
+
+- **3D & raymarched** — **Volumetric clouds** (real participating media: the ray integrates
+  density along its length instead of looking for a surface, so the clouds have depth and a lit
+  side), **Terrain** (a fractal landscape flown at low altitude, with distance haze), and
+  **Gyroid** (a triply-periodic minimal surface — the sheet soap film makes dividing space into
+  two labyrinths that never touch).
+- **Fractals** — **Apollonian gasket** (an infinite sphere packing built by inversion) and
+  **Mandelbox** (box-fold and sphere-fold: the Mandelbulb's architectural cousin, all corridors
+  and shells where the bulb grows lobes — try negative Scale values).
+- **Patterns & noise** — **Voronoi cells** (Edge crossfades soft blobs into the cracked
+  shattered-glass look), **Flow noise** (noise whose input is warped by more noise — raise Warp
+  and the field grows filaments and eddies), and **Truchet tiles** (a woven arc maze that
+  re-knits itself as Weave drifts).
+- **Nature & simulation** — **Slime mould** (thousands of agents that follow each other's
+  trails; the veins, junctions and pruning are entirely emergent), **Curl flow** (particles
+  carried by a divergence-free field, so it swirls and braids but never clumps) and **God rays**
+  (light shafts thrown through gaps in drifting cloud).
+
+Also new: **Bouncing shapes** now draws seven different shapes — circle/square, triangle,
+pentagon, hexagon, star, ring and cross — each object picking one and spinning on its own axis.
+**Shape mix** controls how many kinds are in play; set it to 1 for the old single-shape look.
+
+**Trees** gained **Branch width**, **Width taper** and **Bend**: the branches are solid and
+tapered now rather than a one-pixel wireframe, and Bend bows each bough along its own length
+instead of leaving all the flex in the joints — which is what stops low Depth settings looking
+polygonal.
+
+### Changed
+- **The effect menu is grouped**: Fractals, 3D & raymarched, Demoscene classics, Patterns &
+  noise, Nature & simulation. **The filter picker is grouped too** — Trails & feedback, Warp &
+  distort, Stylise, Colour & tone, Blur & light — replacing two captions that put thirty of the
+  filters under one heading.
+- **The Mandelbulb is framed rather than skimmed.** The camera used to ride just off the
+  surface, filling the screen with wall; it now orbits the whole solid at a settable
+  **Distance** (2.5 by default) and **Height**. Pull Distance down to about 1.5 to fly low over
+  the lobes — below about 1.2 you are inside the solid, where there is nothing to draw, because
+  a Mandelbulb has no hollow middle.
+- **⚔ Random on the Effect tab now stays near each slider's default** most of the time, with
+  occasional larger swings, instead of rolling flat across the whole range. Filters and Palette
+  are unchanged — a flat roll suits those.
+- **AnimeJulia is now just Julia.** Saved scenes and share links are unaffected.
+
+### Removed
+- **Polygon** has been retired; scenes that used it now load that layer as **Concentric rings**.
+
 ## [1.49.0] — 2026-08-24
 
 ### Added
