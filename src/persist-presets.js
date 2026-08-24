@@ -526,7 +526,8 @@
     return { effect: effectId(L.fx), state, cam, beat: L.beat, pulse: L.pulse,
       plen: L.plen, btune: L.btune, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
-      showBox: L.showBox, world: L.world, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      showBox: L.showBox, world: L.world, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute,
+      tint: L.tint };   // an INDEX or null, never a colour string -- see tintOk
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -596,6 +597,9 @@
       L.blend = blendOk(r.blend);
       L.gain = gainOk(r.gain);
       L.mute = !!r.mute;
+      // Absent or junk ⇒ null ⇒ auto-from-slot, so every scene written before the tint
+      // existed colour-codes itself on load and nothing needed migrating.
+      L.tint = tintOk(r.tint);
       out.push(L);
     }
     if (!out.length) {                           // pre-feature preset, or every item dropped

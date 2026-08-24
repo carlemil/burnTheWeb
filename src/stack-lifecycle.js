@@ -422,6 +422,29 @@
       lyrctl.className = "lyr-ctl";
       row.appendChild(lyrctl);
 
+      // The tint swatch. INSIDE .lyr-ctl, not a direct child of the row: the row is a
+      // 3-column grid where every child is explicitly placed, and appending an unplaced one
+      // lets auto-flow take a cell, which narrows the effect chooser and wraps the control
+      // rows into column 2 — that is how the panel grew a horizontal scrollbar once before.
+      const tint = document.createElement("b");
+      tint.className = "lyr-tint";
+      tint.addEventListener("click", e => {
+        e.stopPropagation();
+        const L = stack[j]; if (!L) return;
+        // Cycle, like the blend steppers, but SKIP whatever the other layers are already
+        // showing: the point of the colour is telling two layers apart, so handing this one
+        // its neighbour's colour defeats the feature. Starts from what is showing, so the
+        // first click on an auto-coloured layer moves it off its slot colour, not onto it.
+        // Falls back to the plain next colour when every one is taken (4 tints, 4 slots).
+        const taken = new Set(stack.map((o, i) => i === j ? -1 : layerTintIdx(o, i)));
+        const from = layerTintIdx(L, j);
+        let next = (from + 1) % LYR_TINT.length;
+        for (let n = 0; n < LYR_TINT.length && taken.has(next); n++) next = (next + 1) % LYR_TINT.length;
+        L.tint = next;
+        syncStackUI(); persist(); autosavePreset();
+      });
+      lyrctl.appendChild(tint);
+
       const mute = document.createElement("b");
       mute.className = "lyr-eye";
       mute.setAttribute("aria-label", "Layer visibility");
@@ -532,7 +555,7 @@
       // blend row each one along, which visibly collapses the row.
       row.appendChild(chev);
 
-      lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev };
+      lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev, tint };
       host.appendChild(row);
     }
   }
@@ -559,6 +582,20 @@
       setOff(r.grab, stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
+      // THE TINT, PUSHED AS A CSS CUSTOM PROPERTY rather than as per-element styles: one
+      // write per node and the whole look lives in the stylesheet. It goes on the row and on
+      // the layer's own box; syncPopOwners does the popped slider boxes, because it already
+      // walks slot x key re-stamping owner text after a reorder and would otherwise be the
+      // one place the colour rotted.
+      const tintCol = layerTint(L, slot);
+      r.row.style.setProperty("--lyr", tintCol);
+      if (r.tint) {
+        r.tint.style.setProperty("--lyr", tintCol);
+        r.tint.title = "This layer's colour — click to change it";
+        r.tint.setAttribute("aria-label", r.tint.title);
+      }
+      const lbx = lyrBoxes[slot];
+      if (lbx) lbx.style.setProperty("--lyr", tintCol);
       r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
       r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");
@@ -576,6 +613,11 @@
       adoptLayerCtl(slot, r.row);
     }
     setOff(el("addlayer"), stack.length >= STACK_MAX);
+    // The popped slider boxes carry their layer's NUMBER and its COLOUR, both of which go
+    // stale whenever a slot changes hands. The drag handler called this itself; adding,
+    // removing and loading a scene change the mapping just as much, and syncStackUI is the
+    // one function all of them go through.
+    syncPopOwners();
     refreshBreakout();                 // the layer boxes show/hide with openSlots
     // The old box is empty now — hide the chrome rather than showing a stray heading over
     // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the

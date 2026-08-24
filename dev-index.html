@@ -910,6 +910,36 @@
      removed, so nothing is ever destroyed under a pointer. `display: grid` above outranks
      the UA's [hidden] rule, so hiding needs saying explicitly. */
   #panel .lyr[hidden] { display: none; }
+  /* ---- THE PER-LAYER TINT --------------------------------------------------------------
+     `--lyr` is pushed onto the row, the layer's own box and every popped slider box that
+     belongs to it (syncStackUI + syncPopOwners). With four layer boxes and their sliders
+     scattered over the grid, the 9px "L2 · PLASMA" label is the only thing tying a box to
+     its layer, and a colour reads from the corner of the eye where the label does not.
+
+     It tints the EDGE and the TITLE, never body text or a background: the app's palette is
+     amber on near-black and the tints are not, so colouring a value or a slider would make
+     it either unreadable or louder than the picture. A fallback keeps every rule valid on a
+     node that never got the property. */
+  #panel .lyr { border-left: 3px solid var(--lyr, rgba(255, 140, 40, 0.22)); }
+  #breakout .ctl.poppable { border-left: 3px solid var(--lyr, rgba(255, 140, 40, 0.35)); }
+  #breakout .ctl-owner { color: var(--lyr, #ffb15a); }
+  /* A scene control's box belongs to no layer, so it keeps the house amber -- that IS the
+     signal that it is scene-wide rather than one layer's. It carries no data-slot. */
+  #breakout .ctl.poppable:not([data-slot]) {
+    border-left-color: rgba(255, 140, 40, 0.35);
+  }
+  #breakout .ctl.poppable:not([data-slot]) .ctl-owner { color: #ffb15a; }
+  /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the
+     other <b> row controls beside it (they are not buttons, so they need the explicit
+     cursor and the disabled-state handling `.lyr b.off` gives them). */
+  #panel .lyr .lyr-tint {
+    flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--lyr, #ffb15a); border: 1px solid rgba(0, 0, 0, 0.45);
+    cursor: pointer; opacity: .9;
+  }
+  #panel .lyr .lyr-tint:hover { opacity: 1; box-shadow: 0 0 7px var(--lyr, #ffb15a); }
+
+
   /* The selected layer is the one the Effect chooser and every slider below edit, so it
      has to be unmistakable — everything else in the box refers to it. */
   #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
@@ -1148,12 +1178,22 @@
   /* Docked TOP-LEFT beside the panel (same 58px top line, at the #breakout column's 298px),
      not centered: these are panel tools, so they attach next to the menu boxes they came
      from instead of covering the middle of the picture. */
-  #fltdlg, #palpickdlg, #transpickdlg {
+  #fltdlg, #transpickdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
     background: transparent; pointer-events: none;   /* only the box itself is interactive */
   }
+  /* THE PALETTE PICKER IS THE ONE THAT CENTRES. Its siblings are panel tools that attach
+     beside the menu box they came from; choosing which palettes a whole scene may use is a
+     decision about the picture, so it sits over the picture. z-index above the other tool
+     panels too, so opening it from a break-out box does not bury it. Still `pointer-events:
+     none` on the shell (the canvas stays clickable around it) and still NOT modal -- it has
+     no backdrop, does not trap focus, and is used while the scene runs. */
+  #palpickdlg {
+    position: fixed; inset: 0; z-index: 21; display: flex; align-items: center; justify-content: center;
+    background: transparent; pointer-events: none;
+  }
   #fltdlg.hidden, #palpickdlg.hidden, #transpickdlg.hidden { display: none; }
-  #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box {
+  #fltdlg .flt-box, #transpickdlg .flt-box {
     position: relative; pointer-events: auto;
     margin: 58px 14px 14px 298px;
     width: min(90vw, 430px); max-height: calc(100vh - 72px); overflow-y: auto;
@@ -1166,6 +1206,18 @@
   /* No margin-right for the close button: it floats, so the title wraps around it — a
      right margin only shrank the h2's box, which left the header's box-shadow bleed 22px
      short of the box's right edge (a strip of raw content showed beside the ×). */
+  /* Identical to the docked box above in every appearance property -- only the margin
+     differs, because this one is centred by its shell rather than docked to the 298px line. */
+  #palpickdlg .flt-box {
+    position: relative; pointer-events: auto;
+    margin: 14px;
+    width: min(90vw, 430px); max-height: calc(100vh - 72px); overflow-y: auto;
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
+    border-radius: 12px; padding: 20px 22px 18px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
+    color: #ffdcb0; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
   #fltdlg h2, #palpickdlg h2, #transpickdlg h2 {
     margin: 0 0 8px; color: #ffb15a; font-size: 15px;
     text-shadow: 0 0 12px rgba(255, 120, 20, 0.6);
@@ -1695,7 +1747,9 @@
      it. */
   @media (max-width: 760px) {
     /* Undock: same 14px gutter as the panel, centred in what is left. */
-    #fltdlg, #palpickdlg, #transpickdlg { justify-content: center; }
+    /* #palpickdlg is centred at every width already, so it is not in this undock -- but its
+       box stays in the width clamp below so a phone still fits it. */
+    #fltdlg, #transpickdlg { justify-content: center; }
     #fltdlg .flt-box, #palpickdlg .flt-box, #transpickdlg .flt-box,
     #paledlg .pale-box, #paldlg .pal-box {
       margin: 58px 14px 14px; width: min(92vw, 430px); max-width: calc(100vw - 28px);
@@ -2323,6 +2377,17 @@
 
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
     scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
+
+    // --- the colour that says WHICH LAYER a box belongs to ---
+    // With several layer boxes and their sliders scattered over the grid, "L2 · Plasma" in
+    // 9px uppercase is the only thing tying a box to its layer. A colour reads at a glance
+    // and from the corner of the eye, which the label does not.
+    //
+    // One per stack slot, assigned by position on creation and overridable per layer. Picked
+    // to stay legible against the app's amber-on-near-black and to be distinguishable from
+    // each other at a 1px border width — amber is deliberately NOT among them, or the tint
+    // would disappear into the untinted chrome. Order matters: slot 0 takes the first.
+    layerTint: ["#5ac8ff", "#7fe08a", "#ff7ad4", "#ffd24a"],
 
     // --- startup credits overlay, and the per-scene title that follows it ---
     // The scene title rides the SAME canvas and the same rendered-time countdown, so it is
@@ -12452,6 +12517,11 @@
     return { fx, state: null, beat: null, pulse: null, plen: null, btune: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
       seedPath: null, seedRide: null, seedPts: null, showBox: null, world: null,
+      // Which colour marks this layer's row and boxes. An INDEX into LYR_TINT, never a
+      // colour string: the value reaches CSS, and a scene from someone else is untrusted
+      // input. null ⇒ "not chosen", which layerTint() resolves from the slot, so a scene
+      // saved before this renders and reads exactly as it did.
+      tint: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   // An effect may SHIP a blend (descriptor `blend`): Glass ball is "over", because a ball
@@ -12481,6 +12551,24 @@
   // Its old job — one un-baked point layer beside a baking shader layer un-zoomed the point
   // layer — is gone with it: every layer zooms itself now, so a mixed stack is correct.
   const stackZoom = () => stack.some(L => !L.mute && EFFECTS[L.fx].bakesOwnZoom) ? 1 : zoom;
+  // ---- the per-layer tint -----------------------------------------------------------
+  // The colour that marks a layer's row and every box belonging to it. A layer stores an
+  // INDEX (L.tint) or null; null means "auto", resolved from the slot so a fresh scene is
+  // colour-coded without anybody choosing anything and a scene saved before this looks the
+  // same as it always did.
+  //
+  // tintOk is the validator at the trust boundary: this value ends up in a CSS custom
+  // property, and a layer can arrive from a share link, so nothing but an in-range integer
+  // index is ever accepted. A colour STRING is never stored, which is what makes that safe.
+  const LYR_TINT = CONFIG.layerTint;
+  function tintOk(v) {
+    return (typeof v === "number" && v === Math.round(v) && v >= 0 && v < LYR_TINT.length) ? v : null;
+  }
+  function layerTintIdx(L, slot) {
+    const t = L ? tintOk(L.tint) : null;
+    return t == null ? ((slot | 0) % LYR_TINT.length) : t;
+  }
+  const layerTint = (L, slot) => LYR_TINT[layerTintIdx(L, slot)];
   // The four accessors that make the "DOM is the selected item's store" rule work.
   // With a one-item stack they all short-circuit to today's singletons on every call,
   // which is what makes the stack refactor inert rather than merely tested.
@@ -15856,6 +15944,29 @@
       lyrctl.className = "lyr-ctl";
       row.appendChild(lyrctl);
 
+      // The tint swatch. INSIDE .lyr-ctl, not a direct child of the row: the row is a
+      // 3-column grid where every child is explicitly placed, and appending an unplaced one
+      // lets auto-flow take a cell, which narrows the effect chooser and wraps the control
+      // rows into column 2 — that is how the panel grew a horizontal scrollbar once before.
+      const tint = document.createElement("b");
+      tint.className = "lyr-tint";
+      tint.addEventListener("click", e => {
+        e.stopPropagation();
+        const L = stack[j]; if (!L) return;
+        // Cycle, like the blend steppers, but SKIP whatever the other layers are already
+        // showing: the point of the colour is telling two layers apart, so handing this one
+        // its neighbour's colour defeats the feature. Starts from what is showing, so the
+        // first click on an auto-coloured layer moves it off its slot colour, not onto it.
+        // Falls back to the plain next colour when every one is taken (4 tints, 4 slots).
+        const taken = new Set(stack.map((o, i) => i === j ? -1 : layerTintIdx(o, i)));
+        const from = layerTintIdx(L, j);
+        let next = (from + 1) % LYR_TINT.length;
+        for (let n = 0; n < LYR_TINT.length && taken.has(next); n++) next = (next + 1) % LYR_TINT.length;
+        L.tint = next;
+        syncStackUI(); persist(); autosavePreset();
+      });
+      lyrctl.appendChild(tint);
+
       const mute = document.createElement("b");
       mute.className = "lyr-eye";
       mute.setAttribute("aria-label", "Layer visibility");
@@ -15966,7 +16077,7 @@
       // blend row each one along, which visibly collapses the row.
       row.appendChild(chev);
 
-      lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev };
+      lyrRows[slot] = { row, grab, nm, mute, gn, rm, sel, chev, tint };
       host.appendChild(row);
     }
   }
@@ -15993,6 +16104,20 @@
       setOff(r.grab, stack.length < 2);
       r.nm.value = String(L.fx);
       r.nm.title = "This layer's effect — " + EFFECTS[L.fx].subtitle;
+      // THE TINT, PUSHED AS A CSS CUSTOM PROPERTY rather than as per-element styles: one
+      // write per node and the whole look lives in the stylesheet. It goes on the row and on
+      // the layer's own box; syncPopOwners does the popped slider boxes, because it already
+      // walks slot x key re-stamping owner text after a reorder and would otherwise be the
+      // one place the colour rotted.
+      const tintCol = layerTint(L, slot);
+      r.row.style.setProperty("--lyr", tintCol);
+      if (r.tint) {
+        r.tint.style.setProperty("--lyr", tintCol);
+        r.tint.title = "This layer's colour — click to change it";
+        r.tint.setAttribute("aria-label", r.tint.title);
+      }
+      const lbx = lyrBoxes[slot];
+      if (lbx) lbx.style.setProperty("--lyr", tintCol);
       r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
       r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");
@@ -16010,6 +16135,11 @@
       adoptLayerCtl(slot, r.row);
     }
     setOff(el("addlayer"), stack.length >= STACK_MAX);
+    // The popped slider boxes carry their layer's NUMBER and its COLOUR, both of which go
+    // stale whenever a slot changes hands. The drag handler called this itself; adding,
+    // removing and loading a scene change the mapping just as much, and syncStackUI is the
+    // one function all of them go through.
+    syncPopOwners();
     refreshBreakout();                 // the layer boxes show/hide with openSlots
     // The old box is empty now — hide the chrome rather than showing a stray heading over
     // nothing. Kept in the DOM: it is where #lyrctl is authored, and where it sits until the
@@ -17170,10 +17300,18 @@
   // The layer number is the one part of a box title that changes while the box is open — a
   // reorder moves the layer it belongs to — so it is re-stamped rather than baked in.
   function syncPopOwners() {
-    for (let slot = 0; slot < STACK_MAX; slot++) for (const key of POPPABLE) {
-      const box = ctlIn(slot, "ctl-" + key);
-      const t = box && box.querySelector(".ctl-owner .own-txt");
-      if (t) t.textContent = ctlOwner(slot, key);
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      // The layer's colour, alongside its number, and for the same reason: both are facts
+      // about WHICH layer this box belongs to, and both go stale when the stack is reordered.
+      // Stamped here rather than in refreshBreakout so the two can never disagree.
+      const col = stack[slot] ? layerTint(stack[slot], slot) : "";
+      for (const key of POPPABLE) {
+        const box = ctlIn(slot, "ctl-" + key);
+        if (!box) continue;
+        if (col) box.style.setProperty("--lyr", col);
+        const t = box.querySelector(".ctl-owner .own-txt");
+        if (t) t.textContent = ctlOwner(slot, key);
+      }
     }
   }
   // The box's own furniture — owner line, bounds editor, dock button. Split out because the
@@ -19040,7 +19178,8 @@
     return { effect: effectId(L.fx), state, cam, beat: L.beat, pulse: L.pulse,
       plen: L.plen, btune: L.btune, palette: L.palette, paletteRev: L.paletteRev, paletteBg: L.paletteBg,
       seedPath: L.seedPath, seedRide: L.seedRide, seedPts: L.seedPts, ranges: L.ranges,
-      showBox: L.showBox, world: L.world, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute };
+      showBox: L.showBox, world: L.world, filters: L.filters, blend: L.blend, gain: L.gain, mute: !!L.mute,
+      tint: L.tint };   // an INDEX or null, never a colour string -- see tintOk
   }
   function stackOut() {
     if (stack.length <= 1) return null;          // one item ⇒ emit nothing
@@ -19110,6 +19249,9 @@
       L.blend = blendOk(r.blend);
       L.gain = gainOk(r.gain);
       L.mute = !!r.mute;
+      // Absent or junk ⇒ null ⇒ auto-from-slot, so every scene written before the tint
+      // existed colour-codes itself on load and nothing needed migrating.
+      L.tint = tintOk(r.tint);
       out.push(L);
     }
     if (!out.length) {                           // pre-feature preset, or every item dropped

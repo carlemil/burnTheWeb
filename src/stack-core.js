@@ -20,6 +20,11 @@
     return { fx, state: null, beat: null, pulse: null, plen: null, btune: null,
       palette: null, paletteRev: null, paletteBg: null, filters: null, ranges: null,
       seedPath: null, seedRide: null, seedPts: null, showBox: null, world: null,
+      // Which colour marks this layer's row and boxes. An INDEX into LYR_TINT, never a
+      // colour string: the value reaches CSS, and a scene from someone else is untrusted
+      // input. null ⇒ "not chosen", which layerTint() resolves from the slot, so a scene
+      // saved before this renders and reads exactly as it did.
+      tint: null,
       blend: "max", gain: 1, mute: false, anim: {}, phase: Object.assign({}, PHASE_INIT) };
   }
   // An effect may SHIP a blend (descriptor `blend`): Glass ball is "over", because a ball
@@ -49,6 +54,24 @@
   // Its old job — one un-baked point layer beside a baking shader layer un-zoomed the point
   // layer — is gone with it: every layer zooms itself now, so a mixed stack is correct.
   const stackZoom = () => stack.some(L => !L.mute && EFFECTS[L.fx].bakesOwnZoom) ? 1 : zoom;
+  // ---- the per-layer tint -----------------------------------------------------------
+  // The colour that marks a layer's row and every box belonging to it. A layer stores an
+  // INDEX (L.tint) or null; null means "auto", resolved from the slot so a fresh scene is
+  // colour-coded without anybody choosing anything and a scene saved before this looks the
+  // same as it always did.
+  //
+  // tintOk is the validator at the trust boundary: this value ends up in a CSS custom
+  // property, and a layer can arrive from a share link, so nothing but an in-range integer
+  // index is ever accepted. A colour STRING is never stored, which is what makes that safe.
+  const LYR_TINT = CONFIG.layerTint;
+  function tintOk(v) {
+    return (typeof v === "number" && v === Math.round(v) && v >= 0 && v < LYR_TINT.length) ? v : null;
+  }
+  function layerTintIdx(L, slot) {
+    const t = L ? tintOk(L.tint) : null;
+    return t == null ? ((slot | 0) % LYR_TINT.length) : t;
+  }
+  const layerTint = (L, slot) => LYR_TINT[layerTintIdx(L, slot)];
   // The four accessors that make the "DOM is the selected item's store" rule work.
   // With a one-item stack they all short-circuit to today's singletons on every call,
   // which is what makes the stack refactor inert rather than merely tested.

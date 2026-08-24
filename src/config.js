@@ -30,6 +30,17 @@
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
     scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
 
+    // --- the colour that says WHICH LAYER a box belongs to ---
+    // With several layer boxes and their sliders scattered over the grid, "L2 · Plasma" in
+    // 9px uppercase is the only thing tying a box to its layer. A colour reads at a glance
+    // and from the corner of the eye, which the label does not.
+    //
+    // One per stack slot, assigned by position on creation and overridable per layer. Picked
+    // to stay legible against the app's amber-on-near-black and to be distinguishable from
+    // each other at a 1px border width — amber is deliberately NOT among them, or the tint
+    // would disappear into the untinted chrome. Order matters: slot 0 takes the first.
+    layerTint: ["#5ac8ff", "#7fe08a", "#ff7ad4", "#ffd24a"],
+
     // --- startup credits overlay, and the per-scene title that follows it ---
     // The scene title rides the SAME canvas and the same rendered-time countdown, so it is
     // configured here beside them. Shorter than the credits on purpose: it fires on every

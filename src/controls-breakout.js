@@ -195,10 +195,18 @@
   // The layer number is the one part of a box title that changes while the box is open — a
   // reorder moves the layer it belongs to — so it is re-stamped rather than baked in.
   function syncPopOwners() {
-    for (let slot = 0; slot < STACK_MAX; slot++) for (const key of POPPABLE) {
-      const box = ctlIn(slot, "ctl-" + key);
-      const t = box && box.querySelector(".ctl-owner .own-txt");
-      if (t) t.textContent = ctlOwner(slot, key);
+    for (let slot = 0; slot < STACK_MAX; slot++) {
+      // The layer's colour, alongside its number, and for the same reason: both are facts
+      // about WHICH layer this box belongs to, and both go stale when the stack is reordered.
+      // Stamped here rather than in refreshBreakout so the two can never disagree.
+      const col = stack[slot] ? layerTint(stack[slot], slot) : "";
+      for (const key of POPPABLE) {
+        const box = ctlIn(slot, "ctl-" + key);
+        if (!box) continue;
+        if (col) box.style.setProperty("--lyr", col);
+        const t = box.querySelector(".ctl-owner .own-txt");
+        if (t) t.textContent = ctlOwner(slot, key);
+      }
     }
   }
   // The box's own furniture — owner line, bounds editor, dock button. Split out because the
