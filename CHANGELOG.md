@@ -14,6 +14,31 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.48.0] — 2026-08-24
+
+### Added
+Eight new filters, all under **+ Add filter** on a layer's Filters tab. Each one earns its
+place by doing something you could not get by stacking the filters already there:
+
+- **Emboss** — lights the picture from one side so contours stand up like stamped metal.
+  Edge outlines a shape from every direction at once; this has a light angle, so one side of
+  a contour lights and the other darkens. **Metal** 0 keeps the palette and uses the relief as
+  shading, 1 is the classic grey stamp — which also lifts flat black to mid grey, so keep it
+  low on a dark scene.
+- **Ordered dither** — quantises to a few levels like Posterize, but scatters the error
+  through a Bayer matrix so the bands break into a stipple. The Amiga / Atari look.
+- **Radial blur** — smears each pixel along the line from the centre, so light streams
+  outward. A single frame's streak, where Zoom feedback builds one up over time.
+- **Polar warp** — reads the frame in polar coordinates: horizontal bands become rings,
+  vertical structure becomes spokes. **Repeat** folds the angle into a rosette.
+- **ASCII mosaic** — each cell becomes one of seven glyphs picked by its brightness,
+  keeping the cell's colour. Halftone is the dot version of the same idea.
+- **Invert** — the plain negative, on a slider, so it can be crossfaded, drifted or flicked
+  by a beat.
+- **Directional blur** — a straight smear along one angle: motion blur without the motion.
+- **Anamorphic streaks** — the horizontal flare bars a lens throws off a highlight. Bloom
+  spreads light in every direction; this spreads it along one axis only.
+
 ## [1.47.0] — 2026-08-24
 
 ### Added

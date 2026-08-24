@@ -2381,7 +2381,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.47.0",
+    version: "1.48.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2666,7 +2666,10 @@
   // through a hoisted function) because bindRange runs a slider's apply() during
   // wiring, long before the FILTERS registry block is evaluated.
   let fadeKeep = 0.94, pixelBlock = 6, softenAmt = -0.6, softenRad = 1.5,
-    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10;
+    edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10,
+    embAmt = 1.6, embAng = 135, embMix = 0.4,
+    dithLvl = 4, dithAmt = 1, rblAmt = 1, rblMix = 0.7, polAmt = 1, polRep = 1,
+    ascCell = 8, ascMix = 1, invAmt = 1, dblAmt = 24, dblAng = 0, anaAmt = 1, anaLen = 90;
   // Feedback warps (Echo / Zoom feedback / Swirl / Diffuse). Each carries its own
   // Keep, so it decays standalone instead of saturating to white when it is the only
   // feedback filter ticked — Fade is a separate filter you may or may not stack.
@@ -5848,6 +5851,160 @@
       float e = clamp(sqrt(gx*gx + gy*gy) * uAmount, 0.0, 1.0);
       o = vec4(mix(texture(uSrc, vUv).rgb, vec3(e), clamp(uAmount, 0.0, 1.0)), 1.0);
     }`;
+    // EMBOSS: a relief lit from one side. Not the same idea as Edge, which takes the
+    // MAGNITUDE of the gradient and so outlines a shape from every direction at once; this
+    // takes its SIGN along one axis, so one side of a contour lights and the other darkens
+    // and the picture reads as stamped metal.
+    //
+    // Two ways to land it, on one slider. A grey relief (uMix 1) is the classic look but
+    // throws the palette away, which in this app is most of the picture -- so uMix 0 keeps
+    // the colour and uses the same gradient as SHADING on it. In between is usually best.
+    const FS_EMBOSS = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uAngle; uniform float uMix;
+    in vec2 vUv; out vec4 o;
+    float lum(vec2 uv){ vec3 c = texture(uSrc, uv).rgb; return dot(c, vec3(0.299, 0.587, 0.114)); }
+    void main(){
+      vec2 t = 1.5 / uSize;                     // a step and a half reads chunkier than one texel
+      vec2 d = vec2(cos(uAngle), sin(uAngle)) * t;
+      float g = (lum(vUv + d) - lum(vUv - d)) * uAmount;
+      vec3 src = texture(uSrc, vUv).rgb;
+      vec3 grey = vec3(clamp(0.5 + g, 0.0, 1.0));          // stamped metal, palette gone
+      vec3 lit = clamp(src * (1.0 + 2.0 * g), 0.0, 1.0);   // same relief, palette kept
+      o = vec4(mix(lit, grey, clamp(uMix, 0.0, 1.0)), 1.0);
+    }`;
+    // ORDERED DITHER. Posterize flattens the ramp into bands and stops; this quantises the
+    // SAME way but offsets each pixel's threshold by a 4x4 Bayer matrix first, so the error
+    // scatters into a stipple instead of a hard edge. That stipple is the whole Amiga/Atari
+    // look, and it is the one thing you cannot get by stacking the filters already here.
+    // The matrix is COMPUTED, not tabled: bayer(2n) = 4*bayer(n) + bayer(2), recursively.
+    const FS_DITHER = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uLevels; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    float bayer2(vec2 a){ return mod(2.0 * a.x + 3.0 * a.y, 4.0); }
+    float bayer4(vec2 p){
+      vec2 q = floor(mod(p, 4.0));
+      return (4.0 * bayer2(floor(q * 0.5)) + bayer2(mod(q, 2.0))) / 16.0;
+    }
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      float n = max(2.0, uLevels) - 1.0;
+      float b = bayer4(gl_FragCoord.xy) - 0.5;
+      o = vec4(clamp(floor(c * n + b * uAmount + 0.5) / n, 0.0, 1.0), 1.0);
+    }`;
+    // RADIAL BLUR: smear each pixel along the line from the centre, so light appears to
+    // stream outward. Blur/sharpen is isotropic and Zoom feedback accumulates over TIME;
+    // this is the single-frame streak neither of them can make.
+    const FS_RBLUR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount; uniform float uMix;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 c = vUv - 0.5;
+      vec3 sum = vec3(0.0);
+      const int N = 14;
+      for (int i = 0; i < N; i++) {
+        float t = float(i) / float(N - 1);
+        sum += texture(uSrc, 0.5 + c * (1.0 - uAmount * t * 0.25)).rgb;
+      }
+      sum /= float(N);
+      o = vec4(mix(texture(uSrc, vUv).rgb, sum, clamp(uMix, 0.0, 1.0)), 1.0);
+    }`;
+    // POLAR WARP: read the frame in polar coordinates, so horizontal bands become rings and
+    // vertical structure becomes spokes. Repeat folds the angle, which turns any picture into
+    // a rosette. Nothing else here remaps the coordinate space this way -- Twist and Wedge
+    // bend it, Droste scales it, this one changes what the two axes MEAN.
+    const FS_POLAR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uRepeat;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec2 c = vUv - 0.5; c.x *= asp;
+      float r = clamp(length(c) * 2.0, 0.0, 1.0);
+      float a = atan(c.y, c.x) * 0.15915494 + 0.5;
+      vec2 pu = vec2(fract(a * max(1.0, uRepeat)), r);
+      o = vec4(mix(texture(uSrc, vUv).rgb, texture(uSrc, pu).rgb, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // ASCII MOSAIC: quantise each cell's brightness to one of seven glyphs. Halftone is the
+    // DOT version of this idea; a character grid reads completely differently. The glyphs are
+    // 3x5 bit masks held as ints -- no atlas texture to allocate, upload or resize.
+    const FS_ASCII = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uCell; uniform float uMix;
+    in vec2 vUv; out vec4 o;
+    int glyphAt(int lvl){
+      if (lvl <= 0) return 0;
+      if (lvl == 1) return 8192;
+      if (lvl == 2) return 1040;
+      if (lvl == 3) return 1488;
+      if (lvl == 4) return 3960;
+      if (lvl == 5) return 12282;
+      return 32767;
+    }
+    void main(){
+      float cs = max(3.0, uCell);
+      vec2 cell = floor(gl_FragCoord.xy / cs);
+      vec2 inCell = fract(gl_FragCoord.xy / cs);
+      vec3 c = texture(uSrc, (cell + 0.5) * cs / uSize).rgb;
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      int mask = glyphAt(int(clamp(l * 7.0, 0.0, 6.0)));
+      ivec2 g = ivec2(floor(inCell * vec2(3.0, 5.0)));
+      int bit = (4 - g.y) * 3 + g.x;
+      float on = ((mask >> bit) & 1) == 1 ? 1.0 : 0.0;
+      o = vec4(mix(texture(uSrc, vUv).rgb, c * on, clamp(uMix, 0.0, 1.0)), 1.0);
+    }`;
+    // INVERT. Solarize only folds the top of the ramp back down; this is the plain negative,
+    // on a slider so it can be crossfaded or beat-flicked.
+    const FS_INVERT = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform float uAmount;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 c = texture(uSrc, vUv).rgb;
+      o = vec4(mix(c, 1.0 - c, clamp(uAmount, 0.0, 1.0)), 1.0);
+    }`;
+    // DIRECTIONAL BLUR: a straight smear along one angle -- motion blur without motion.
+    // Blur/sharpen is a symmetric kernel; this one has a direction, and pairs with Emboss,
+    // which has one too.
+    const FS_DBLUR = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uAngle;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec2 d = vec2(cos(uAngle), sin(uAngle)) * uAmount / uSize;
+      vec3 sum = vec3(0.0); float wsum = 0.0;
+      const int N = 12;
+      for (int i = -N; i <= N; i++) {
+        float f = float(i) / float(N);
+        float w = 1.0 - abs(f);
+        sum += texture(uSrc, vUv + d * f).rgb * w;
+        wsum += w;
+      }
+      o = vec4(sum / wsum, 1.0);
+    }`;
+    // ANAMORPHIC STREAKS: the horizontal flare bars a spherical lens throws off a highlight.
+    // Bloom spreads a bright pixel evenly in every direction; this spreads it along ONE axis,
+    // which is why the two read as different kinds of light rather than as two blurs. Bright
+    // -passed first, or the whole frame smears sideways instead of just the highlights.
+    const FS_ANAMORPH = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uLen;
+    in vec2 vUv; out vec4 o;
+    void main(){
+      vec3 src = texture(uSrc, vUv).rgb;
+      vec3 sum = vec3(0.0); float wsum = 0.0;
+      const int N = 16;
+      for (int i = -N; i <= N; i++) {
+        float f = float(i) / float(N);
+        float w = 1.0 - abs(f);
+        vec3 c = texture(uSrc, vUv + vec2(f * uLen / uSize.x, 0.0)).rgb;
+        sum += max(c - vec3(0.55), vec3(0.0)) * w;
+        wsum += w;
+      }
+      o = vec4(clamp(src + sum / wsum * uAmount * 4.0, 0.0, 1.0), 1.0);
+    }`;
     // Rotate uv about the centre by an amount that falls off with radius — the middle
     // of the image spins and the rim stays put, so straight structure curls into it.
     const FS_TWIST = `#version 300 es
@@ -6360,6 +6517,14 @@
     glProg.mirror = makeProg(VS_QUAD, FS_MIRROR, ["uSrc", "uMode"]);
     glProg.soften = makeProg(VS_QUAD, FS_SOFTEN, ["uSrc", "uSize", "uRadius", "uAmount"]);
     glProg.edge = makeProg(VS_QUAD, FS_EDGE, ["uSrc", "uSize", "uAmount"]);
+    glProg.emboss = makeProg(VS_QUAD, FS_EMBOSS, ["uSrc", "uSize", "uAmount", "uAngle", "uMix"]);
+    glProg.dither = makeProg(VS_QUAD, FS_DITHER, ["uSrc", "uLevels", "uAmount"]);
+    glProg.rblur = makeProg(VS_QUAD, FS_RBLUR, ["uSrc", "uAmount", "uMix"]);
+    glProg.polar = makeProg(VS_QUAD, FS_POLAR, ["uSrc", "uSize", "uAmount", "uRepeat"]);
+    glProg.ascii = makeProg(VS_QUAD, FS_ASCII, ["uSrc", "uSize", "uCell", "uMix"]);
+    glProg.invert = makeProg(VS_QUAD, FS_INVERT, ["uSrc", "uAmount"]);
+    glProg.dblur = makeProg(VS_QUAD, FS_DBLUR, ["uSrc", "uSize", "uAmount", "uAngle"]);
+    glProg.anamorph = makeProg(VS_QUAD, FS_ANAMORPH, ["uSrc", "uSize", "uAmount", "uLen"]);
     glProg.twist = makeProg(VS_QUAD, FS_TWIST, ["uSrc", "uSize", "uAmount"]);
     glProg.wedge = makeProg(VS_QUAD, FS_WEDGE, ["uSrc", "uSize", "uSeg", "uRot"]);
     glProg.glitch = makeProg(VS_QUAD, FS_GLITCH, ["uSrc", "uSize", "uAmount", "uRows", "uTime"]);
@@ -11612,6 +11777,22 @@
     { key: "soften", host: "filter", group: "f_soften", type: "dual", label: "Amount", valId: "vSoften", min: -1, max: 2, step: 0.01, lo: -1, hi: -1, fmt: v => v < 0 ? "blur " + sig3(-v) : "sharp " + sig3(v), apply: v => softenAmt = v, durScale: 10 },
     { key: "softrad", host: "filter", group: "f_soften", type: "dual", label: "Radius", valId: "vSoftRad", min: 0.5, max: 6, step: 0.1, lo: 5.5, hi: 5.5, fmt: v => sig3(v) + "px", apply: v => softenRad = v, durScale: 10 },
     { key: "edge", host: "filter", group: "f_edge", type: "dual", label: "Amount", valId: "vEdge", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => edgeAmt = v, durScale: 10 },
+    { key: "embamt", host: "filter", group: "f_emboss", type: "dual", label: "Depth", valId: "vEmbAmt", min: 0, max: 4, step: 0.05, lo: 1.6, hi: 1.6, fmt: v => sig3(v), apply: v => embAmt = v, durScale: 10 },
+    { key: "embang", host: "filter", group: "f_emboss", type: "dual", label: "Light angle", valId: "vEmbAng", min: 0, max: 360, step: 1, lo: 135, hi: 135, fmt: v => sig3(v) + "°", apply: v => embAng = v, durScale: 10 },
+    { key: "embmix", host: "filter", group: "f_emboss", type: "dual", label: "Metal", valId: "vEmbMix", min: 0, max: 1, step: 0.01, lo: 0.4, hi: 0.4, fmt: v => sig3(v), apply: v => embMix = v, durScale: 10 },
+    { key: "dithlvl", host: "filter", group: "f_dither", type: "dual", label: "Levels", valId: "vDithLvl", min: 2, max: 12, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => dithLvl = Math.round(v), durScale: 10 },
+    { key: "dithamt", host: "filter", group: "f_dither", type: "dual", label: "Stipple", valId: "vDithAmt", min: 0, max: 2, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => dithAmt = v, durScale: 10 },
+    { key: "rblamt", host: "filter", group: "f_rblur", type: "dual", label: "Streak", valId: "vRblAmt", min: 0, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => rblAmt = v, durScale: 10 },
+    { key: "rblmix", host: "filter", group: "f_rblur", type: "dual", label: "Mix", valId: "vRblMix", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => rblMix = v, durScale: 10 },
+    { key: "polamt", host: "filter", group: "f_polar", type: "dual", label: "Amount", valId: "vPolAmt", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => polAmt = v, durScale: 10 },
+    { key: "polrep", host: "filter", group: "f_polar", type: "dual", label: "Repeat", valId: "vPolRep", min: 1, max: 12, step: 1, lo: 1, hi: 1, fmt: v => sig3(Math.round(v)) + "\u00d7", apply: v => polRep = Math.round(v), durScale: 10 },
+    { key: "ascell", host: "filter", group: "f_ascii", type: "dual", label: "Cell", valId: "vAscCell", min: 3, max: 24, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "px", apply: v => ascCell = Math.round(v), durScale: 10 },
+    { key: "ascmix", host: "filter", group: "f_ascii", type: "dual", label: "Mix", valId: "vAscMix", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => ascMix = v, durScale: 10 },
+    { key: "invamt", host: "filter", group: "f_invert", type: "dual", label: "Amount", valId: "vInvAmt", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => invAmt = v, durScale: 10 },
+    { key: "dblamt", host: "filter", group: "f_dblur", type: "dual", label: "Length", valId: "vDblAmt", min: 0, max: 80, step: 1, lo: 24, hi: 24, fmt: v => sig3(v) + "px", apply: v => dblAmt = v, durScale: 10 },
+    { key: "dblang", host: "filter", group: "f_dblur", type: "dual", label: "Angle", valId: "vDblAng", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "\u00b0", apply: v => dblAng = v, durScale: 10 },
+    { key: "anaamt", host: "filter", group: "f_anamorph", type: "dual", label: "Strength", valId: "vAnaAmt", min: 0, max: 3, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => anaAmt = v, durScale: 10 },
+    { key: "analen", host: "filter", group: "f_anamorph", type: "dual", label: "Spread", valId: "vAnaLen", min: 10, max: 400, step: 1, lo: 90, hi: 90, fmt: v => sig3(v) + "px", apply: v => anaLen = v, durScale: 10 },
     { key: "poster", host: "filter", group: "f_poster", type: "dual", single: true, label: "Levels", valId: "vPoster", min: 2, max: 16, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => posterLevels = Math.round(v), durScale: 10 },
     { key: "halfdot", host: "filter", group: "f_halftone", type: "dual", label: "Dot size", valId: "vHalfDot", min: 2, max: 20, step: 0.5, lo: 6, hi: 6, fmt: v => sig3(v) + "px", apply: v => halfDot = v, durScale: 10 },
     { key: "halfamt", host: "filter", group: "f_halftone", type: "dual", label: "Amount", valId: "vHalfAmt", min: 0, max: 1, step: 0.01, lo: 0.9, hi: 0.9, fmt: v => sig3(v), apply: v => halfAmt = v, durScale: 10 },
@@ -14930,6 +15111,42 @@
       help: "Sobel outline — traces the shapes instead of filling them.",
       defaults: { edge: [0.7, 0.7] },
       gl: src => postPass("edge", src, u => gl.uniform1f(u.uAmount, edgeAmt)) },
+    { id: "emboss", cpuOk: false, name: "Emboss", stage: "post", params: ["embamt", "embang", "embmix"],
+      help: "Lights the picture from one side so contours stand up like stamped metal. Edge outlines a shape from every direction at once; this one has a light angle, so one side of a contour lights and the other darkens. Metal 0 keeps the palette and uses the relief as shading; Metal 1 is the classic grey stamp — which also lifts flat black to mid grey, so on a dark scene keep it low.",
+      defaults: { embamt: [1.6, 1.6], embang: [135, 135], embmix: [0.4, 0.4] },
+      gl: src => postPass("emboss", src, u => {
+        gl.uniform1f(u.uAmount, embAmt);
+        gl.uniform1f(u.uAngle, embAng * Math.PI / 180);
+        gl.uniform1f(u.uMix, embMix);
+      }) },
+    { id: "dither", cpuOk: false, name: "Ordered dither", stage: "post", params: ["dithlvl", "dithamt"],
+      help: "Quantises to a few Levels like Posterize, but scatters the error through a 4x4 Bayer matrix first, so the bands break into a stipple instead of hard edges - the Amiga / Atari look. Stipple 0 is plain Posterize; past 1 the dots start to dominate.",
+      defaults: { dithlvl: [4, 4], dithamt: [1, 1] },
+      gl: src => postPass("dither", src, u => { gl.uniform1f(u.uLevels, dithLvl); gl.uniform1f(u.uAmount, dithAmt); }) },
+    { id: "rblur", cpuOk: false, name: "Radial blur", stage: "post", params: ["rblamt", "rblmix"],
+      help: "Smears every pixel along the line from the centre, so the light appears to stream outward. Blur / sharpen spreads evenly and Zoom feedback builds up over time; this is the single-frame streak.",
+      defaults: { rblamt: [1, 1], rblmix: [0.7, 0.7] },
+      gl: src => postPass("rblur", src, u => { gl.uniform1f(u.uAmount, rblAmt); gl.uniform1f(u.uMix, rblMix); }) },
+    { id: "polar", cpuOk: false, name: "Polar warp", stage: "post", params: ["polamt", "polrep"],
+      help: "Reads the frame in polar coordinates: horizontal bands become rings and vertical structure becomes spokes. Repeat folds the angle, which turns almost anything into a rosette.",
+      defaults: { polamt: [1, 1], polrep: [1, 1] },
+      gl: src => postPass("polar", src, u => { gl.uniform1f(u.uAmount, polAmt); gl.uniform1f(u.uRepeat, polRep); }) },
+    { id: "ascii", cpuOk: false, name: "ASCII mosaic", stage: "post", params: ["ascell", "ascmix"],
+      help: "Replaces each cell with one of seven glyphs picked by its brightness, keeping the cell's colour. Halftone is the dot version of the same idea; a character grid reads quite differently.",
+      defaults: { ascell: [8, 8], ascmix: [1, 1] },
+      gl: src => postPass("ascii", src, u => { gl.uniform1f(u.uCell, ascCell); gl.uniform1f(u.uMix, ascMix); }) },
+    { id: "invert", cpuOk: false, name: "Invert", stage: "post", params: ["invamt"],
+      help: "The plain negative, on a slider - so it can be crossfaded, drifted, or flicked by a beat. Solarize only folds the top of the ramp back down; this turns the whole thing over.",
+      defaults: { invamt: [1, 1] },
+      gl: src => postPass("invert", src, u => gl.uniform1f(u.uAmount, invAmt)) },
+    { id: "dblur", cpuOk: false, name: "Directional blur", stage: "post", params: ["dblamt", "dblang"],
+      help: "A straight smear along one angle - motion blur without the motion. Blur / sharpen uses a symmetric kernel; this one has a direction, so it can rake the picture the same way Emboss lights it.",
+      defaults: { dblamt: [24, 24], dblang: [0, 0] },
+      gl: src => postPass("dblur", src, u => { gl.uniform1f(u.uAmount, dblAmt); gl.uniform1f(u.uAngle, dblAng * Math.PI / 180); }) },
+    { id: "anamorph", cpuOk: false, name: "Anamorphic streaks", stage: "post", params: ["anaamt", "analen"],
+      help: "The horizontal flare bars a spherical lens throws off a bright highlight. Bloom spreads a highlight evenly in every direction; this spreads it along one axis only, so the two read as different kinds of light rather than two blurs.",
+      defaults: { anaamt: [1, 1], analen: [90, 90] },
+      gl: src => postPass("anamorph", src, u => { gl.uniform1f(u.uAmount, anaAmt); gl.uniform1f(u.uLen, anaLen); }) },
     { id: "poster", cpuOk: false, name: "Posterize", stage: "post", params: ["poster"],
       help: "Quantise the colours into flat bands.",
       defaults: { poster: [3, 3] },
