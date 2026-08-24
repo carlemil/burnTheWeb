@@ -1112,7 +1112,14 @@ present in `chipEls`.
 **Beat pulse**: `updateAnims` snaps an armed slider to the high thumb and decays `a.pulse` linearly
 1→0 over `pulseLen[id]` seconds (`.plen`, `PLEN_MIN`–`PLEN_MAX`, default `PULSE_DROP` = 0.2s).
 `pulseShape[id]` reshapes it: `a.apply(mn + shape(a.pulse)*(mx-mn))`. Every `PULSE_SHAPES` fn maps
-`[0,1]→[0,1]` with `f(0)=0`, `f(1)=1`; `snap` is identity. `pulseEls`/`syncPulse` mirror
+`[0,1]→[0,1]` with **`f(0)=0`**; `snap` is identity.
+- **`f(0)=0` is the load-bearing half** — the pulse rests at 0 once it has run out, so a shape
+  that is non-zero there pins the slider at the high thumb permanently.
+- **`f(1)=1` is only a CONVENTION**, and `swell`/`bloom` deliberately break it. It makes a
+  shape a pure *release* (high the instant the beat lands, then falling), which is why for a
+  long time there was no way to make a beat swell a slider up — the naive inversion `1 - p`
+  is not a swell, it is the permanent pin above. A hump (0 at the beat, 1 partway through,
+  0 at rest) satisfies the real constraint and is what those two are. `pulseEls`/`syncPulse` mirror
 `chipEls`/`syncChips`; `plenEls`/`syncPlen`/`prunePlens`/`mergePlen` mirror the shape set.
 
 ### The effect stack (layers)

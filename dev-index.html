@@ -12657,6 +12657,19 @@
     { key: "ease",    name: "Ease",    fn: p => p * p * (3 - 2 * p) },                         // smooth S-curve fall
     { key: "bounce",  name: "Bounce",  fn: p => Math.abs(Math.cos((1 - p) * Math.PI * 2.5)) * p },  // decaying bounces
     { key: "steps",   name: "Steps",   fn: p => Math.ceil(p * 5) / 5 },                        // retro quantized decay
+    // ---- THE SWELLS: the only shapes that do NOT start at the high thumb -----------------
+    // Every shape above satisfies f(1) = 1, so the slider is at `hi` the instant the beat
+    // lands and everything after it is a release. These two give up that convention: they
+    // are 0 at the beat, rise to the high thumb partway through, and fall back. That is the
+    // "swell another" half of what the per-slider Duration was added for.
+    //
+    // f(0) = 0 STILL HOLDS, and it is the half that is load-bearing: the pulse sits at 0
+    // once it has run out, so a shape that is non-zero there would pin the slider at `hi`
+    // for good. That is why the naive inversion (1 - p) is not what a swell is.
+    { key: "swell",   name: "Swell",   fn: p => Math.sin((1 - p) * Math.PI) },                 // symmetric rise and fall, peaks halfway
+    // Peaks LATE (three quarters through): u^3(1-u) maxes at u = 3/4 and the 256/27 puts
+    // that peak exactly on 1, so the high thumb still means the high thumb.
+    { key: "bloom",   name: "Late swell", fn: p => { const u = 1 - p; return u * u * u * (1 - u) * 256 / 27; } },
   ];
   const PULSE_FN = {}; PULSE_SHAPES.forEach(s => PULSE_FN[s.key] = s.fn);
   const PULSE_DEFAULT = "snap";
