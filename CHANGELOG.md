@@ -14,6 +14,39 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.49.0] — 2026-08-24
+
+### Added
+Three new effects, the first that are not built from sines or from an exact formula — they
+share a new noise engine underneath:
+
+- **Voronoi cells** — space divided between wandering seed points. **Edge** is the character
+  knob: at 0 you get soft blobs, at 1 the *crack between* cells, which is the shattered-glass
+  look. Wander is how far each seed drifts from home.
+- **Flow noise** — fractal noise whose input is displaced by more noise, twice over: the
+  marbled, slowly-flowing field most modern shader work is built on. **Warp** is what makes it
+  — at 0 it is plain cloud noise, and as it rises the field folds into itself and grows
+  filaments and eddies.
+- **Truchet tiles** — every tile holds one of two quarter-arc pairs picked by a coin flip, and
+  because the arcs always meet at the tile edges an endless woven maze falls out of it.
+  **Weave** turns tiles over one at a time rather than re-rolling the whole grid — drift it,
+  or arm it to a beat, and the maze re-knits itself continuously.
+
+### Removed
+- **Polygon** has been retired. **Scenes that used it are not broken** — that layer now loads
+  as **Concentric rings**, its nearest relative (a single N-gon outline is the one-ring case of
+  nested N-gon contours). If you have a saved scene or a share link with a Polygon layer, it
+  will still open and still run; that one layer will simply draw rings instead.
+
+### Internal
+- The shader file gained its first hash / value-noise / fbm block. Every pattern effect before
+  this was built from sines or from an exact map, which cannot produce soft irregular fields —
+  the three effects above are the first users, and the volumetric work to come needs the same
+  block.
+- New `tools/retireprobe.js` pins the retirement contract: a retired effect id must resolve to
+  a live effect and never to −1 (which every caller treats as "drop this layer"), the legacy
+  positional id table must stay frozen, and a genuinely unknown id must still be rejected.
+
 ## [1.48.0] — 2026-08-24
 
 ### Added
