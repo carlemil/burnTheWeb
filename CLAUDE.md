@@ -1850,6 +1850,40 @@ boot) went red the moment the gate was removed. **Assert from the boot state, an
 the negative control.** `tools/foldcycle-check.js` is that check (a browser one — deliberately
 NOT named `*probe.js`, since `/deploy` runs `node tools/*probe.js` over the whole directory).
 
+**THE FRAME IS NOT CPU-BOUND, AND THE PER-FRAME "OPTIMISATIONS" ARE ALL WORTHLESS — MEASURED.**
+Real-time headless run on the dev 4090 (no `--virtual-time-budget`; it fast-forwards the clock
+and makes every timing meaningless), CPU via `performance.now()` around the real functions and
+GPU via `EXT_disjoint_timer_query_webgl2`, which is the only instrument that sees past the
+~175 fps headless cap:
+
+| scene | canvas | GPU ms | CPU ms | idle ms |
+|---|---|---|---|---|
+| 4-layer default | 1576×908 | 2.23 | 1.77 | 3.95 |
+| 4-layer default | 3816×2068 | 2.43 | 1.60 | 4.14 |
+| Mandelbulb | 1576×908 | 1.37 | 0.80 | 4.92 |
+| Mandelbulb | 3816×2068 | 3.46 | 0.78 | 4.94 |
+
+CPU split on the 4-layer scene: `renderStackColor` 0.98, `updateAnims` 0.58,
+`installStackItem` 0.23, the per-layer LUT bake **0.007** and its four uploads **0.026**.
+So, against the candidates that look obvious in the source:
+- **Caching the per-layer LUT bake + `texSubImage2D` buys 0.033 ms/frame** — 0.6% of the
+  frame. The suspicion that four uploads into just-sampled textures stall the driver is
+  simply false here. Not worth the invalidation bugs.
+- **Gating the global palette compose/upload on `onePal` buys nothing**: `composePalette`
+  already runs 0 times/frame on the stacked path and `uploadPalette` costs 0.001 ms, because
+  `paletteDirty` gates it already.
+- **`updateAnims` + `installStackItem` (~0.8 ms) is the biggest JS item and still buys
+  nothing.** Stubbing BOTH to no-ops moved the frame rate from 175.1 to 175.0.
+- **The transition double-render costs no frame rate either** — measured with `TRANS_DUR`
+  patched to 600 s so a blend could be held in steady state. `updateAnims` does rise 0.58 →
+  0.86 ms during one, exactly as the "runs twice, live + prevStack" comment says.
+
+**The headroom is ~4×**: the worst case measured is ~4.2 ms of a 16.7 ms 60 fps budget at 4K.
+Hardware four times slower than this still holds 60 fps. Below that the bound is the SHADERS,
+not the JS — so if performance ever does matter, the work is in `FS_*` (the ocean march
+computing wave derivatives it discards, the doubled `pow` in `FS_OCEAN`/`FS_BULB`/`FS_BHOLE`,
+the missing bounding spheres on `glassDE`/`solidsDE`), never in the per-frame JS above.
+
 **A green logic probe is necessary, not sufficient**, for anything writing retained heat — drive a
 few hundred real frames and look at the screenshot.
 
