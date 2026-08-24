@@ -14,6 +14,38 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.46.0] — 2026-08-24
+
+### Added
+- **Every layer has its own colour.** It marks the layer's row, its settings box and any
+  slider you pop out of it, so with several boxes open at once it is obvious at a glance
+  which one belongs to which effect. A colour is assigned automatically when a layer is
+  created; click the round swatch on the layer row to change it, and it will skip past
+  whatever the other layers are already using. It travels with the scene.
+
+### Changed
+- **"Palettes in use" now opens in the middle of the screen**, floating above everything
+  else, instead of tucking in beside the menu. Choosing which palettes a scene may draw
+  from is a decision about the picture, so it now sits over the picture.
+
+### Fixed
+- **Selecting a layer no longer changes the picture.** Clicking a layer row could retune the
+  whole scene's Bloom, Barrel, Scanlines, Vignette, Film grain and Burn rate — an editing
+  action was quietly restyling the render.
+- **A layer's Bloom works even when the layer below it has none.** Adding Bloom to one layer
+  while the bottom layer had none did nothing at all: the glow was being silenced by a filter
+  chain belonging to a different layer. If you have a scene where a Bloom appeared to do
+  nothing, it will now glow.
+- **The scene-wide filter amounts survive a reload.** Setting the glow or the vignette with
+  any layer but the bottom one selected was silently discarded the next time the scene loaded.
+
+### Internal
+- CLAUDE.md gains four rules, each one a bug that had already shipped: the four-site contract
+  behind the shared filter keys, the third buffer the world crossfade needs, why the layer
+  tint is stored as an index rather than a colour, and the measurement that closes the
+  "make the raymarchers compile lazily" question (boot is 4s; the change is worth at most
+  ~1s against ±1s of noise, and would remove the only check that catches a broken shader).
+
 ## [1.45.0] — 2026-08-24
 
 ### Changed
