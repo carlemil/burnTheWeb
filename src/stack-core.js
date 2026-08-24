@@ -72,6 +72,25 @@
     return t == null ? ((slot | 0) % LYR_TINT.length) : t;
   }
   const layerTint = (L, slot) => LYR_TINT[layerTintIdx(L, slot)];
+  // The same colour as a bare "r, g, b" triple, so CSS can build translucent shades of it
+  // with plain rgba(). `color-mix` would do this in the stylesheet alone, but this costs one
+  // extra property and works everywhere, which for a purely cosmetic cue is the better trade.
+  const TINT_RGB = {};
+  function tintRGB(hex) {
+    let v = TINT_RGB[hex];
+    if (!v) {
+      const n = parseInt(hex.slice(1), 16);
+      v = TINT_RGB[hex] = ((n >> 16) & 255) + ", " + ((n >> 8) & 255) + ", " + (n & 255);
+    }
+    return v;
+  }
+  // The ONE place a tint reaches the DOM: both custom properties, always together, so a rule
+  // can never find one without the other.
+  function setTintVars(node, hex) {
+    if (!node) return;
+    node.style.setProperty("--lyr", hex);
+    node.style.setProperty("--lyr-rgb", tintRGB(hex));
+  }
   // The four accessors that make the "DOM is the selected item's store" rule work.
   // With a one-item stack they all short-circuit to today's singletons on every call,
   // which is what makes the stack refactor inert rather than merely tested.

@@ -588,14 +588,13 @@
       // walks slot x key re-stamping owner text after a reorder and would otherwise be the
       // one place the colour rotted.
       const tintCol = layerTint(L, slot);
-      r.row.style.setProperty("--lyr", tintCol);
+      setTintVars(r.row, tintCol);
       if (r.tint) {
-        r.tint.style.setProperty("--lyr", tintCol);
+        setTintVars(r.tint, tintCol);
         r.tint.title = "This layer's colour — click to change it";
         r.tint.setAttribute("aria-label", r.tint.title);
       }
-      const lbx = lyrBoxes[slot];
-      if (lbx) lbx.style.setProperty("--lyr", tintCol);
+      setTintVars(lyrBoxes[slot], tintCol);
       r.mute.innerHTML = L.mute ? EYE_SHUT : EYE_OPEN;
       r.mute.title = L.mute ? "Muted — click to show" : "Showing — click to mute";
       r.mute.setAttribute("aria-pressed", L.mute ? "true" : "false");

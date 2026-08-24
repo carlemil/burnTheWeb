@@ -886,7 +886,7 @@
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px;
     align-items: center;
     padding: 6px 7px; border: 1px solid rgba(255, 140, 40, 0.22); border-radius: 7px;
-    background: rgba(255, 140, 40, 0.05); cursor: pointer;
+    cursor: pointer;   /* background comes from the per-layer tint rule below */
   }
   /* The rows are a fixed pool of STACK_MAX, built once; the spares are hidden rather than
      removed, so nothing is ever destroyed under a pointer. `display: grid` above outranks
@@ -924,7 +924,16 @@
 
   /* The selected layer is the one the Effect chooser and every slider below edit, so it
      has to be unmistakable — everything else in the box refers to it. */
-  #panel .lyr.sel { border-color: #ff8c28; background: rgba(255, 140, 40, 0.16); }
+  /* THE ROW CARRIES ITS LAYER'S COLOUR TOO, so the list and the boxes read as one thing.
+     Unselected rows get a dim wash of it and the selected one a brighter fill plus a full
+     -strength border — the same contrast step the amber version had, just per layer.
+     `--lyr-rgb` (a bare "r, g, b" triple, set beside --lyr) is what lets these be plain
+     rgba(); the fallbacks keep the rule honest on a row that never got the property. */
+  #panel .lyr { background: rgba(var(--lyr-rgb, 255, 140, 40), 0.05); }
+  #panel .lyr.sel {
+    border-color: var(--lyr, #ff8c28);
+    background: rgba(var(--lyr-rgb, 255, 140, 40), 0.18);
+  }
   #panel .lyr.muted .lyr-name { opacity: .4; text-decoration: line-through; }
   /* The name IS the effect chooser now — a full-width <select>, not static text — so it
      needs the whole row and a size that still reads as the row's headline. Written as
@@ -1039,7 +1048,14 @@
      slider box -- a whole layer's controls want the room -- and scrollable past the viewport
      height, which a slider box never needs. The inner block keeps the control-appearance
      rules that were scoped to `#panel .lyr > .lyrblock`, re-homed here. */
-  #breakout .ctl.lyr-box { width: 300px; max-height: calc(100vh - 72px); overflow-y: auto; overscroll-behavior: contain; }
+  /* HALF THE COLUMN, NOT ALL OF IT. Layer boxes take a corner each (L1 top-left … L4
+     bottom-right), so two of them have to stack in one column with a gap: the ceiling is
+     (viewport − the 58px top line − the 14px bottom edge − the 10px gap) / 2, i.e. 50vh−41px,
+     rounded down to 44 for slack. At the old 100vh−72px a single box was tall enough to reach
+     the bottom corner on its own, so layers 3 and 4 could not have their corners and fell
+     back to the middle of the screen. It already scrolls internally, so the cost is scrolling
+     a long effect's controls rather than losing the layout. */
+  #breakout .ctl.lyr-box { width: 300px; max-height: calc(50vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
   #breakout .ctl.lyr-box > .lyrblock { cursor: default; }
   #breakout .ctl.lyr-box > .lyrblock > label:first-child,
   #breakout .ctl.lyr-box > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
