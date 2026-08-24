@@ -2077,7 +2077,7 @@
   </label>
   <div data-k="palctl"><!-- Palette cycle, generated from the CONTROLS schema --></div>
   <!-- Banding is a filter over the palette, so it lives on the Palette tab. -->
-  <div data-k="bandctl"><!-- banding controls (AnimeJulia / Plasma) generated from the CONTROLS schema --></div>
+  <div data-k="bandctl"><!-- banding controls (Julia / Plasma) generated from the CONTROLS schema --></div>
   </div>
   </div></template>
   </details>
@@ -2617,12 +2617,12 @@
   const cfg = { ...CONFIG.fire };   // live, mutable copy of the shipped fire defaults (scale = default resolution)
 
   // Active effect: 0 = Sirpinfyer (2D Sierpiński triangle fire), 1 = Tetrafyer
-  // (3D Sierpiński tetrahedron fire), 2 = AnimeJulia (animated Julia set). All
+  // (3D Sierpiński tetrahedron fire), 2 = Julia (animated Julia set). All
   // write heat into the shared `fire` buffer, so palettes, auto-morph and the
   // render/glow pipeline are identical for every mode.
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
-  let randSeed = true;       // AnimeJulia: re-roll the orbit start on reload / effect entry (toggle)
+  let randSeed = true;       // Julia: re-roll the orbit start on reload / effect entry (toggle)
   let cycleOn = CONFIG.scene.autoCycle;   // auto-cycle saved presets on the TTL timer (toggle); default from config
   // Named full-scene snapshots. INVARIANT once startup has finished: presets.length >= 1 and
   // 0 <= curPreset < presets.length — something is ALWAYS selected, so every edit has a scene
@@ -4193,18 +4193,56 @@
     }`;
     // Bouncing shapes: a few shapes whose centres (uPos, computed on the CPU) drift and
     // bounce off the edges. Tick on a Fade / Fire feedback filter for glow trails.
+    // SEVEN SHAPE KINDS, not one. It used to draw the same superellipse for every object, so
+    // Squareness was the only variety there was and a screen of eight read as one shape
+    // repeated. Shape mix follows Bouncing solids' sdmix exactly: it is how many KINDS are in
+    // play, each object picking one by hash, so 1 is the old behaviour and 7 is all of them.
+    //
+    // Kind 0 is the original circle<->square blend, deliberately first: at Shape mix 1 every
+    // object is kind 0 and the effect renders exactly as it always did.
     const FS_BOUNCE = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform vec2 uPos[8]; uniform float uCount; uniform float uRad; uniform float uSquare; uniform float uZoom;
+    uniform vec2 uSize; uniform vec2 uPos[8]; uniform float uCount; uniform float uRad;
+    uniform float uSquare; uniform float uZoom; uniform float uMix; uniform float uTime; uniform float uSpin;
     out vec4 o;
+    float bnHash(float i){ return fract(sin(i * 78.233 + 1.7) * 43758.5453123); }
+    // A regular n-gon, by folding the angle into one wedge -- the same construction the old
+    // Polygon effect used before it was retired.
+    float bnNgon(vec2 d, float n){
+      float seg = 6.28318 / n;
+      float a = atan(d.y, d.x) + 1.5708;                 // +90deg so a triangle points UP
+      return length(d) * cos(mod(a, seg) - seg * 0.5) / cos(seg * 0.5);
+    }
+    // Every kind returns a distance-like value that is < r inside the shape, so one threshold
+    // and one antialias band serve all seven.
+    float bnShape(int k, vec2 d, float r, float sq){
+      if (k == 1) return bnNgon(d, 3.0);
+      if (k == 2) return bnNgon(d, 5.0);
+      if (k == 3) return bnNgon(d, 6.0);
+      if (k == 4) {                                       // five-pointed star
+        float a = atan(d.y, d.x);
+        return length(d) / (0.62 + 0.38 * cos(5.0 * a + 1.5708));
+      }
+      if (k == 5) return abs(length(d) - r * 0.68) * 2.6; // ring
+      if (k == 6) return min(max(abs(d.x), abs(d.y) * 2.8),
+                             max(abs(d.x) * 2.8, abs(d.y)));   // cross
+      return mix(length(d), max(abs(d.x), abs(d.y)), sq);  // 0: the original blend
+    }
     void main(){
       vec2 uv = (gl_FragCoord.xy/uSize - 0.5)/uZoom + 0.5;
       float asp = uSize.x/uSize.y, aa = 2.0/uSize.y, heat = 0.0; int n = int(uCount);
+      float kinds = clamp(uMix, 1.0, 7.0);
       for (int i=0;i<8;i++){
         if (i>=n) break;
         vec2 d = uv - uPos[i]; d.x *= asp;
-        float dist = mix(length(d), max(abs(d.x), abs(d.y)), uSquare);
-        heat = max(heat, 1.0 - smoothstep(uRad-aa, uRad+aa, dist));   // ascend + invert
+        float h = bnHash(float(i));
+        int k = int(floor(h * kinds));
+        // Spin, per object, in its own direction and at its own rate -- a static triangle
+        // reads as a texture, a turning one reads as an object.
+        float ang = uTime * uSpin * (0.6 + h) * (h > 0.5 ? 1.0 : -1.0);
+        float c = cos(ang), s = sin(ang);
+        d = vec2(d.x * c - d.y * s, d.x * s + d.y * c);
+        heat = max(heat, 1.0 - smoothstep(uRad-aa, uRad+aa, bnShape(k, d, uRad, uSquare)));
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
@@ -4551,7 +4589,7 @@
     // that slice is cut along the fourth axis, and sliding it morphs the solid continuously
     // through shapes no 3D fractal can hold still.
     //
-    // c comes from THE SAME cardioid orbit AnimeJulia rides (juliaSeed, in the descriptor),
+    // c comes from THE SAME cardioid orbit Julia rides (juliaSeed, in the descriptor),
     // so the Orbit editor drives this effect for free and everything already known about
     // where to sit relative to the Mandelbrot set still applies.
     //
@@ -6563,7 +6601,7 @@
     glProg.truchet = camProg(VS_QUAD, FS_TRUCHET, ["uSize", "uTime", "uCells", "uWidth", "uFlip", "uZoom"]);
     glProg.shapegrid = camProg(VS_QUAD, FS_SHAPEGRID, ["uSize", "uTime", "uCells", "uDot", "uSquare", "uPulse", "uZoom"]);
     glProg.concentric = camProg(VS_QUAD, FS_CONCENTRIC, ["uSize", "uTime", "uSides", "uCount", "uThick", "uSpin", "uZoom"]);
-    glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom"]);
+    glProg.bounce = camProg(VS_QUAD, FS_BOUNCE, ["uSize", "uPos", "uCount", "uRad", "uSquare", "uZoom", "uMix", "uTime", "uSpin"]);
     glProg.solids = camProg(VS_QUAD, FS_SOLIDS, ["uSize", "uZoom", "uCount", "uRim", "uPos", "uQuat", "uShape"]);
     glProg.sun = camProg(VS_QUAD, FS_SUN, ["uSize", "uTime", "uDensity", "uLane", "uGlow", "uSpot", "uZoom"]);
     glProg.kefrens = camProg(VS_QUAD, FS_KEFRENS, ["uSize", "uTime", "uBars", "uSway", "uWidth", "uZoom"]);
@@ -7512,7 +7550,7 @@
     if (qj) {
       installStackItem(qj); installPhase(qj);
       // BOTH seeds, and juliaSeed exactly once: the cardioid orbit that supplies c is the
-      // same one AnimeJulia rides, and this is the layer's one advance for the frame now
+      // same one Julia rides, and this is the layer's one advance for the frame now
       // that its own draw hook never runs.
       const seed = juliaSeed(dt), s = qjuliaSeed(dt);
       gl.uniform4f(P.u.uQjC, seed.cx, seed.cy, 0, 0);
@@ -8271,7 +8309,7 @@
     // item separately so each can carry its own blend and gain.
   }
 
-  // ---- AnimeJulia: animated Julia set ----
+  // ---- Julia: animated Julia set ----
   // z_{n+1} = z^2 + c with z0 = pixel; the seed c is a point in the Mandelbrot
   // plane that we orbit. c is the sum of two loops:
   //  · a large slow loop tracing just outside the inner bound of the Mandelbrot
@@ -8315,7 +8353,7 @@
   // sweep, so the Cardioid RPM slider still means revolutions per minute.
   const JULIA_EASE_A = CONFIG.tuning.juliaEaseA;
   const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);   // derived from JULIA_EASE_A (see CLAUDE.md)
-  // Which exponent's locus the seed orbits. 2 for AnimeJulia and Burning Ship;
+  // Which exponent's locus the seed orbits. 2 for Julia and Burning Ship;
   // Multibrot's draw sets it from the live Power slider every frame, and setEffect
   // puts it back to 2 on the way out. Declared HERE, above juliaEase, because that
   // arrow reads it — leaving it below worked only as long as nothing called the ease
@@ -8387,7 +8425,7 @@
   //
   // At d=2 this reduces to |z| = 2⁻¹ = 0.5 and c = z − z² = 0.5e^{iθ} − 0.25e^{2iθ},
   // i.e. **bit-identical** to the old expression (every power here is exact in binary
-  // floating point), so AnimeJulia and Burning Ship are untouched.
+  // floating point), so Julia and Burning Ship are untouched.
   function cardioidAt(th, d) {
     const R = Math.pow(d, -1 / (d - 1)), rd = Math.pow(R, d), a = th * d;
     return [R * Math.cos(th) - rd * Math.cos(a), R * Math.sin(th) - rd * Math.sin(a)];
@@ -10135,7 +10173,7 @@
   // Bouncing shapes: centres are a pure triangle-wave function of ONE clock (bnTime), so
   // the motion reflects off the walls yet stays phase-trackable (no mutable velocity state).
   const BN_MAX = 8;
-  let bnCount = 4, bnRad = 0.09, bnSquare = 0.6, bnSpeed = 1, bnTime = 0;
+  let bnMix = 7, bnSpin = 0.8, bnCount = 4, bnRad = 0.09, bnSquare = 0.6, bnSpeed = 1, bnTime = 0;
   const bnFreqX = [0.31, 0.44, 0.27, 0.52, 0.37, 0.48, 0.29, 0.41];
   const bnFreqY = [0.42, 0.29, 0.51, 0.34, 0.47, 0.26, 0.45, 0.33];
   const bnPhX = [0.0, 0.37, 0.72, 0.15, 0.58, 0.91, 0.24, 0.66];
@@ -10149,18 +10187,46 @@
       bnPos[i * 2] = bnRad + span * shTri(bnTime * bnFreqX[i] + bnPhX[i] * 2);
       bnPos[i * 2 + 1] = bnRad + span * shTri(bnTime * bnFreqY[i] + bnPhY[i] * 2);
     }
-    return { pos: bnPos, count: Math.round(bnCount), rad: bnRad, square: bnSquare, zoom };
+    return { pos: bnPos, count: Math.round(bnCount), rad: bnRad, square: bnSquare, zoom, mix: bnMix, t: bnTime, spin: bnSpin };
+  }
+  // The same seven kinds as FS_BOUNCE, and they have to STAY the same seven: the mirror is
+  // what the Canvas2D fallback draws, and a kind that exists on one path and not the other
+  // would make the fallback a different effect rather than a coarser one.
+  function bnHashJS(i) { const v = Math.sin(i * 78.233 + 1.7) * 43758.5453123; return v - Math.floor(v); }
+  function bnNgonJS(dx, dy, n) {
+    const seg = 6.28318 / n, a = Math.atan2(dy, dx) + 1.5708;
+    return Math.hypot(dx, dy) * Math.cos(shMod(a, seg) - seg * 0.5) / Math.cos(seg * 0.5);
+  }
+  function bnShapeJS(k, dx, dy, r, sq) {
+    if (k === 1) return bnNgonJS(dx, dy, 3);
+    if (k === 2) return bnNgonJS(dx, dy, 5);
+    if (k === 3) return bnNgonJS(dx, dy, 6);
+    if (k === 4) return Math.hypot(dx, dy) / (0.62 + 0.38 * Math.cos(5 * Math.atan2(dy, dx) + 1.5708));
+    if (k === 5) return Math.abs(Math.hypot(dx, dy) - r * 0.68) * 2.6;
+    if (k === 6) return Math.min(Math.max(Math.abs(dx), Math.abs(dy) * 2.8),
+                                 Math.max(Math.abs(dx) * 2.8, Math.abs(dy)));
+    return (1 - sq) * Math.hypot(dx, dy) + sq * Math.max(Math.abs(dx), Math.abs(dy));
   }
   function bounce(s) {
     const asp = fw / fh, aa = 2 / fh, n = s.count;
+    const kinds = Math.max(1, Math.min(7, s.mix));
+    // per-object kind and rotation, hoisted out of the pixel loop
+    const kd = [], ca = [], sa = [];
+    for (let i = 0; i < n; i++) {
+      const h = bnHashJS(i);
+      kd[i] = Math.floor(h * kinds);
+      const ang = s.t * s.spin * (0.6 + h) * (h > 0.5 ? 1 : -1);
+      ca[i] = Math.cos(ang); sa[i] = Math.sin(ang);
+    }
     let idx = 0;
     for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
       camPix(x, y);
       const ux = (camPX / fw - 0.5) / s.zoom + 0.5, uy = (camPY / fh - 0.5) / s.zoom + 0.5;
       let heat = 0;
       for (let i = 0; i < n; i++) {
-        const dx = (ux - s.pos[i * 2]) * asp, dy = uy - s.pos[i * 2 + 1];
-        const dist = (1 - s.square) * Math.hypot(dx, dy) + s.square * Math.max(Math.abs(dx), Math.abs(dy));
+        const rx = (ux - s.pos[i * 2]) * asp, ry = uy - s.pos[i * 2 + 1];
+        const dx = rx * ca[i] - ry * sa[i], dy = rx * sa[i] + ry * ca[i];
+        const dist = bnShapeJS(kd[i], dx, dy, s.rad, s.square);
         const h = shStep(s.rad + aa, s.rad - aa, dist);
         if (h > heat) heat = h;
       }
@@ -10795,7 +10861,7 @@
     }
     offCtx.putImageData(img, 0, 0);
 
-    // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes
+    // Julia & Plasma zoom inside their own shaders, so only the fire modes
     // scale the rendered image here. Scale about the canvas centre; clear first
     // when zoomed out so no smeared border remains.
     // CPU mirror of the transition pass — same modes, canvas ops instead of a shader.
@@ -11095,7 +11161,7 @@
     // Multibrot layer's power in this global — but the Orbit editor / cardLocus track the
     // SELECTED layer. Re-derive it for that layer, same reason the two installs above run
     // (installStackItem has just set mbPower to the selected layer's animated Power); gated
-    // on the editor being open so it never perturbs the render path otherwise. AnimeJulia /
+    // on the editor being open so it never perturbs the render path otherwise. Julia /
     // Burning Ship are d=2.
     if (card && card.on) juliaPower = EFFECTS[stack[stackSel].fx].id === "multibrot" ? mbPower : 2;
     creditDraw();                      // above the finished image — effects and filters both
@@ -11738,6 +11804,8 @@
     { key: "bncount", host: "fx", group: "bounce", type: "dual", single: true, label: "Count", valId: "vBnCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => bnCount = Math.round(v), durScale: 10 },
     { key: "bnrad", host: "fx", group: "bounce", type: "dual", label: "Size", valId: "vBnRad", min: 0.02, max: 0.25, step: 0.005, lo: 0.09, hi: 0.09, fmt: v => sig3(v), apply: v => bnRad = v, durScale: 10 },
     { key: "bnsquare", host: "fx", group: "bounce", type: "dual", label: "Squareness", valId: "vBnSquare", min: 0, max: 1, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => bnSquare = v, durScale: 10 },
+    { key: "bnmix", host: "fx", group: "bounce", type: "dual", single: true, label: "Shape mix", valId: "vBnMix", min: 1, max: 7, step: 1, lo: 7, hi: 7, fmt: v => sig3(v), apply: v => bnMix = Math.round(v), durScale: 10 },
+    { key: "bnspin", host: "fx", group: "bounce", type: "dual", label: "Spin", valId: "vBnSpin", min: 0, max: 3, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v) + "×", apply: v => bnSpin = v, durScale: 10 },
     { key: "bnspeed", host: "fx", group: "bounce", type: "dual", label: "Speed", valId: "vBnSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bnSpeed = v, durScale: 10 },
     // Bouncing solids (3D). Count/Size feed the physics as well as the shader — Size IS the
     // bounding radius every wall test uses, so widening it makes them bounce sooner too.
@@ -12509,7 +12577,7 @@
   // groups. CSS `:first-child` cannot express this: every group exists in the DOM (they are
   // all built once, from CONTROLS) and only some are shown, so the first *child* is whichever
   // group comes first in the schema — "Shape & motion" — while the first *visible* one depends
-  // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
+  // on the effect ("Cardioid seed" on Julia, "Plasma" on Plasma, …). Hence a class,
   // re-marked on every visibility pass.
   function markFirstGroup(slot) {
     const host = ctlIn(slot, "fxctl");
@@ -14380,7 +14448,7 @@
       params: ["showbox", "boxsize", "points", "layers", "speed", "size", "rot", "nod", "nodspd", "sway", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"], helpTags: ["all", "fire", "tetra"], bakesOwnZoom: true,
       defaults: { palcycle: [0, 0], palhold: [0, 0], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [23, 23], rise: [105, 105], zoom: [1, 1], size: [1.75, 1.75], rot: [0, 0], nod: [17.2, 17.2], nodspd: [1, 1], sway: [0.5, 0.5], boxsize: [4, 4], layers: 3, rpm: [0.03, 0.03], ratio: [21.5, 21.5], inrad: [0.03, 0.03], outrad: [1.05, 1.05], phase: [0, 0], points: [1500, 1500] },
       beat: {}, extras: { palette: "1", morph: false, showBox: false, randSeed: true } },
-    { id: "animejulia", name: "AnimeJulia", subtitle: "Julia set · animated seed",
+    { id: "animejulia", name: "Julia", subtitle: "Julia set · animated seed",
       help: "A live Julia set. The seed point c orbits the rim of the Mandelbrot cardioid; each pixel's escape time is coloured through the palette.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(), draw: dt => { const s = juliaSeed(dt); if (useGL) glJulia(s); else julia(s); },
@@ -14405,7 +14473,7 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], mbcount: [5, 5], mbradius: [0.16, 0.16], mbspeed: [0.6, 0.6], mbgain: [0.8, 0.8], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "burningship", name: "Burning Ship", subtitle: "Burning Ship · fractal",
-      help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like AnimeJulia, so it shares those controls.",
+      help: "The Burning Ship fractal — like the Julia set but each step folds the value to |Re·Im|, giving jagged, architectural, flame-like structures. The seed orbits the Mandelbrot cardioid exactly like Julia, so it shares those controls.",
       params: ["rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band"],
       // `locus: "ship"` — the Orbit editor's backdrop. This effect folds Re·Im to its absolute
       // value, so the set of seeds that give a connected fractal is the Burning Ship set, not
@@ -14447,7 +14515,7 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], nwspin: [0.05, 0.05], nwrelax: [0.9, 0.9], zoom: [0.8, 0.8], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "5", morph: false, showBox: true, randSeed: true } },
     { id: "multibrot", name: "Multibrot", subtitle: "Multibrot · power sweep",
-      help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like AnimeJulia (so it shares those controls). Power now sweeps CONTINUOUSLY — whole numbers give the classic sets (each adds a bulb of symmetry), and the fractions in between morph one into the next, with a characteristic straight seam ray where the fractional exponent's branch cut lies. The seed rides a blend of the two neighbouring whole-power cardioids, sprinting through the cusps and easing off between them.",
+      help: "The Multibrot family: z^power + c, with the seed orbiting the cardioid like Julia (so it shares those controls). Power now sweeps CONTINUOUSLY — whole numbers give the classic sets (each adds a bulb of symmetry), and the fractions in between morph one into the next, with a characteristic straight seam ray where the fractional exponent's branch cut lies. The seed rides a blend of the two neighbouring whole-power cardioids, sprinting through the cusps and easing off between them.",
       params: ["mbexp", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"], helpTags: ["all", "julia", "band", "multibrot"],
       bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // juliaPower BEFORE juliaSeed: the orbit must ride this frame's power, not the last one's.
@@ -14498,10 +14566,10 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], cosides: [6, 6], cocount: [6, 6], cothick: [0.4, 0.4], cospeed: [0.6, 0.6], cospin: [0.1, 0.1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, randSeed: true } },
     { id: "bounce", name: "Bouncing shapes", subtitle: "Bouncing shapes · DVD-logo drift",
-      help: "A handful of shapes drifting and bouncing off the edges, DVD-logo style. Count sets how many, Size how big, Squareness morphs circle → square, and Speed how fast they travel. Tick a Fade pixel or Fire feedback filter to give them glowing trails.",
-      params: ["bncount", "bnrad", "bnsquare", "bnspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
-      draw: dt => { const s = bounceSeed(dt); if (useGL) glShaderDraw("bounce", u => { gl.uniform2fv(u.uPos, s.pos); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uZoom, s.zoom); }); else bounce(s); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], bncount: [4, 4], bnrad: [0.09, 0.09], bnsquare: [0.6, 0.6], bnspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
+      help: "A handful of shapes drifting and bouncing off the edges, DVD-logo style. **Shape mix** is how many different KINDS are in play — 1 is all the same (circle↔square, as it always was), and up to 7 brings in triangles, pentagons, hexagons, stars, rings and crosses, each object picking one and keeping it. Count sets how many objects, Size how big, Squareness morphs circle → square (kind 1 only), Spin how fast they turn — a still triangle reads as a texture, a turning one reads as an object — and Speed how fast they travel. Tick a Fade pixel or Fire feedback filter to give them glowing trails.",
+      params: ["bncount", "bnrad", "bnsquare", "bnmix", "bnspin", "bnspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "shape"], bakesOwnZoom: true,
+      draw: dt => { const s = bounceSeed(dt); if (useGL) glShaderDraw("bounce", u => { gl.uniform2fv(u.uPos, s.pos); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad); gl.uniform1f(u.uSquare, s.square); gl.uniform1f(u.uZoom, s.zoom); gl.uniform1f(u.uMix, s.mix); gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSpin, s.spin); }); else bounce(s); },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], bncount: [4, 4], bnrad: [0.09, 0.09], bnsquare: [0.6, 0.6], bnmix: [7, 7], bnspin: [0.8, 0.8], bnspeed: [1, 1], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "solids", name: "Bouncing solids", subtitle: "Solids · raymarched 3D",
       help: "Real 3D: a handful of solid primitives — sphere, box, doughnut, capsule, octahedron, cylinder — tumbling and ricocheting off the walls of an invisible room, raymarched as signed-distance fields and shaded into the palette by surface angle and depth. Count sets how many bodies, Size how big (which is also the radius they bounce on, so bigger ones turn sooner), Shape mix how many different primitives are in play (1 = all spheres, 6 = all six), Speed how fast they travel and Tumble how hard they spin — a wall hit converts slide into roll, so they kick into a tumble on an angled clip. Edge glow lights the silhouettes. Tick Fire or Fade pixel for trails.",
@@ -14703,7 +14771,7 @@
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "0", morph: false, showBox: true, randSeed: true } },
     { id: "qjulia", name: "Quaternion Julia", subtitle: "Quaternion Julia · raymarched 4D fractal",
-      help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as AnimeJulia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
+      help: "The Julia set done in four dimensions: z → z² + c iterated in the quaternions and raymarched as a solid. What you see can only ever be a 3D SLICE of a 4D object, and the two slice controls are where the shapes come from — Slice is where the cut falls, Cut angle rotates the cutting plane itself, and between them they walk the solid through cross-sections nothing in three dimensions can show. Leave both at 0 and you get the plain Julia set spun about its axis. The seed c rides the SAME cardioid orbit as Julia, so the Orbit editor drives this too and the same rule applies: just outside the set gives intricate filigree, well inside gives a blob. Heavy: it wants a real GPU.",
       params: ["qjslice", "qjcut", "qjdetail", "qjspin", "qjpitch", "qjyaw", "qjroll", "qjtumx", "qjtumy", "qjtumz", "qjglow", "rpm", "ratio", "inrad", "outrad", "phase", "cardx", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim", "randseed"],
       helpTags: ["all", "julia", "qjulia", "band"], bakesOwnZoom: true, cardioid: true, onEnter: () => reseedJulia(),
       // ONE juliaSeed() per frame, like the other three — the mirror takes the seed rather
@@ -17488,7 +17556,7 @@
   resize();          // re-apply the restored render resolution (cfg.scale)
 
   // `enter` = this is a *fresh* entry into the effect (first load, an effect switch, a preset
-  // apply) — run its onEnter (AnimeJulia re-rolls its random seed start) and drop banked sim
+  // apply) — run its onEnter (Julia re-rolls its random seed start) and drop banked sim
   // time. Merely RE-SELECTING an existing stack layer to edit it passes enter=false: the
   // layer keeps running exactly as it was, so selecting a layer never changes the render.
   function setEffect(i, save = true, enter = true) {
@@ -17524,7 +17592,7 @@
     // MAP_DEFS family, in table order (states first: loadState's synthetic inputs run
     // before the rest read the DOM).
     loadLiveMaps(i);
-    if (enter && fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry — but NOT on a layer re-select
+    if (enter && fx.onEnter) fx.onEnter();      // e.g. Julia re-rolls its start on entry — but NOT on a layer re-select
     if (enter) acc = 0;               // don't carry banked sim time across a switch (kept on a re-select)
     // The heat buffer is deliberately NOT cleared here. Leaving the outgoing effect's
     // heat in place lets it decay under the incoming scene instead of the screen
@@ -21492,7 +21560,7 @@
   if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
   cloudInit();
   // ---- Orbit editor ----------------------------------------------------------
-  // AnimeJulia, Burning Ship and Multibrot all take their seed c from a point tracing
+  // Julia, Burning Ship and Multibrot all take their seed c from a point tracing
   // a base curve over the Mandelbrot set (see juliaSeedAt), with a riding circle on top.
   // This popup both *shows* that orbit over the c-plane locus — the base curve, the path
   // the seed really traces (base + riding circle at the current ratio), the riding circle
@@ -21669,10 +21737,10 @@
     // affordable and the locus edge is actually sharp — which is the whole point of drawing it.
     // Every other power goes through pow/atan2/cos/sin per iteration, ~10x dearer, AND the
     // Power slider re-renders on each CARD_POW_Q (0.05) step as it drifts, so a 2→8 sweep is
-    // ~120 repaints: that path stays halved. AnimeJulia and Burning Ship are both d=2.
+    // ~120 repaints: that path stays halved. Julia and Burning Ship are both d=2.
     const ss = pq === 2 ? 1 : 2;
     // `bgShip` is part of the key, not an afterthought: two layers can be open on the same
-    // power (AnimeJulia and Burning Ship are both d=2), so without it selecting one would
+    // power (Julia and Burning Ship are both d=2), so without it selecting one would
     // keep showing the other's set.
     if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect || card.bgShip !== ship) {
       card.bg = cardLocus(Math.ceil(w / ss), Math.ceil(h / ss), pq, win, ship);
@@ -22151,7 +22219,7 @@
       { n: "Cardioid debug", w: "julia", t: "Opens the fractal set this effect's seed is riding — the Mandelbrot set, or the matching Multibrot set once Multibrot's Power is above 2 — with the orbit drawn on top: the full seed cardioid, the path the seed actually traces at the current ratio and radii, the small riding circle and the live seed point. Use it to see where the Cardioid RPM / ratio / radius / start settings put the seed: right at the frontier gives intricate fractals, too far inside gives solid blobs. It floats rather than blocking the menu, so you can drag the sliders and watch the orbit redraw." },
       { n: "Cardioid X offset", w: "julia", t: "Slides the whole seed orbit left or right along the real axis (0 = the Mandelbrot cardioid's own position). Negative walks it toward the bulbs and the spike; positive pushes it out past the cusp. Use Cardioid debug to see where it lands." },
       { n: "Cardioid start", w: "julia", t: "A fixed offset added to the seed's position around the cardioid, in laps (0 and 1 are the same point, 0.5 is halfway round)." },
-      { n: "Random seed each reload", w: "julia", t: "When on, the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to this effect. Turn off for a fixed, reproducible starting frame. Applies to all three cardioid-seeded effects (AnimeJulia, Burning Ship, Multibrot)." },
+      { n: "Random seed each reload", w: "julia", t: "When on, the fractal opens from a fresh random spot on the cardioid every page load and each time you switch to this effect. Turn off for a fixed, reproducible starting frame. Applies to all three cardioid-seeded effects (Julia, Burning Ship, Multibrot)." },
       { n: "Speed", w: "plasma", t: "How fast the plasma's waves animate. 0 freezes the field." },
       { n: "Scale", w: "plasma", t: "Spatial frequency of the waves — how fine or coarse the interference pattern is." },
       { n: "Warp", w: "plasma", t: "Domain warp: bends the waves into swirls. 0 = clean straight interference; higher = turbulent." },

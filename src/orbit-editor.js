@@ -1,5 +1,5 @@
   // ---- Orbit editor ----------------------------------------------------------
-  // AnimeJulia, Burning Ship and Multibrot all take their seed c from a point tracing
+  // Julia, Burning Ship and Multibrot all take their seed c from a point tracing
   // a base curve over the Mandelbrot set (see juliaSeedAt), with a riding circle on top.
   // This popup both *shows* that orbit over the c-plane locus — the base curve, the path
   // the seed really traces (base + riding circle at the current ratio), the riding circle
@@ -176,10 +176,10 @@
     // affordable and the locus edge is actually sharp — which is the whole point of drawing it.
     // Every other power goes through pow/atan2/cos/sin per iteration, ~10x dearer, AND the
     // Power slider re-renders on each CARD_POW_Q (0.05) step as it drifts, so a 2→8 sweep is
-    // ~120 repaints: that path stays halved. AnimeJulia and Burning Ship are both d=2.
+    // ~120 repaints: that path stays halved. Julia and Burning Ship are both d=2.
     const ss = pq === 2 ? 1 : 2;
     // `bgShip` is part of the key, not an afterthought: two layers can be open on the same
-    // power (AnimeJulia and Burning Ship are both d=2), so without it selecting one would
+    // power (Julia and Burning Ship are both d=2), so without it selecting one would
     // keep showing the other's set.
     if (!card.bg || card.bgPow !== pq || card.bgAspect !== aspect || card.bgShip !== ship) {
       card.bg = cardLocus(Math.ceil(w / ss), Math.ceil(h / ss), pq, win, ship);

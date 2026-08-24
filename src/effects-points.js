@@ -103,7 +103,7 @@
   // Bouncing shapes: centres are a pure triangle-wave function of ONE clock (bnTime), so
   // the motion reflects off the walls yet stays phase-trackable (no mutable velocity state).
   const BN_MAX = 8;
-  let bnCount = 4, bnRad = 0.09, bnSquare = 0.6, bnSpeed = 1, bnTime = 0;
+  let bnMix = 7, bnSpin = 0.8, bnCount = 4, bnRad = 0.09, bnSquare = 0.6, bnSpeed = 1, bnTime = 0;
   const bnFreqX = [0.31, 0.44, 0.27, 0.52, 0.37, 0.48, 0.29, 0.41];
   const bnFreqY = [0.42, 0.29, 0.51, 0.34, 0.47, 0.26, 0.45, 0.33];
   const bnPhX = [0.0, 0.37, 0.72, 0.15, 0.58, 0.91, 0.24, 0.66];
@@ -117,18 +117,46 @@
       bnPos[i * 2] = bnRad + span * shTri(bnTime * bnFreqX[i] + bnPhX[i] * 2);
       bnPos[i * 2 + 1] = bnRad + span * shTri(bnTime * bnFreqY[i] + bnPhY[i] * 2);
     }
-    return { pos: bnPos, count: Math.round(bnCount), rad: bnRad, square: bnSquare, zoom };
+    return { pos: bnPos, count: Math.round(bnCount), rad: bnRad, square: bnSquare, zoom, mix: bnMix, t: bnTime, spin: bnSpin };
+  }
+  // The same seven kinds as FS_BOUNCE, and they have to STAY the same seven: the mirror is
+  // what the Canvas2D fallback draws, and a kind that exists on one path and not the other
+  // would make the fallback a different effect rather than a coarser one.
+  function bnHashJS(i) { const v = Math.sin(i * 78.233 + 1.7) * 43758.5453123; return v - Math.floor(v); }
+  function bnNgonJS(dx, dy, n) {
+    const seg = 6.28318 / n, a = Math.atan2(dy, dx) + 1.5708;
+    return Math.hypot(dx, dy) * Math.cos(shMod(a, seg) - seg * 0.5) / Math.cos(seg * 0.5);
+  }
+  function bnShapeJS(k, dx, dy, r, sq) {
+    if (k === 1) return bnNgonJS(dx, dy, 3);
+    if (k === 2) return bnNgonJS(dx, dy, 5);
+    if (k === 3) return bnNgonJS(dx, dy, 6);
+    if (k === 4) return Math.hypot(dx, dy) / (0.62 + 0.38 * Math.cos(5 * Math.atan2(dy, dx) + 1.5708));
+    if (k === 5) return Math.abs(Math.hypot(dx, dy) - r * 0.68) * 2.6;
+    if (k === 6) return Math.min(Math.max(Math.abs(dx), Math.abs(dy) * 2.8),
+                                 Math.max(Math.abs(dx) * 2.8, Math.abs(dy)));
+    return (1 - sq) * Math.hypot(dx, dy) + sq * Math.max(Math.abs(dx), Math.abs(dy));
   }
   function bounce(s) {
     const asp = fw / fh, aa = 2 / fh, n = s.count;
+    const kinds = Math.max(1, Math.min(7, s.mix));
+    // per-object kind and rotation, hoisted out of the pixel loop
+    const kd = [], ca = [], sa = [];
+    for (let i = 0; i < n; i++) {
+      const h = bnHashJS(i);
+      kd[i] = Math.floor(h * kinds);
+      const ang = s.t * s.spin * (0.6 + h) * (h > 0.5 ? 1 : -1);
+      ca[i] = Math.cos(ang); sa[i] = Math.sin(ang);
+    }
     let idx = 0;
     for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
       camPix(x, y);
       const ux = (camPX / fw - 0.5) / s.zoom + 0.5, uy = (camPY / fh - 0.5) / s.zoom + 0.5;
       let heat = 0;
       for (let i = 0; i < n; i++) {
-        const dx = (ux - s.pos[i * 2]) * asp, dy = uy - s.pos[i * 2 + 1];
-        const dist = (1 - s.square) * Math.hypot(dx, dy) + s.square * Math.max(Math.abs(dx), Math.abs(dy));
+        const rx = (ux - s.pos[i * 2]) * asp, ry = uy - s.pos[i * 2 + 1];
+        const dx = rx * ca[i] - ry * sa[i], dy = rx * sa[i] + ry * ca[i];
+        const dist = bnShapeJS(kd[i], dx, dy, s.rad, s.square);
         const h = shStep(s.rad + aa, s.rad - aa, dist);
         if (h > heat) heat = h;
       }

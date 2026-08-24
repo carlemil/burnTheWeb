@@ -1,4 +1,4 @@
-  // ---- AnimeJulia: animated Julia set ----
+  // ---- Julia: animated Julia set ----
   // z_{n+1} = z^2 + c with z0 = pixel; the seed c is a point in the Mandelbrot
   // plane that we orbit. c is the sum of two loops:
   //  · a large slow loop tracing just outside the inner bound of the Mandelbrot
@@ -42,7 +42,7 @@
   // sweep, so the Cardioid RPM slider still means revolutions per minute.
   const JULIA_EASE_A = CONFIG.tuning.juliaEaseA;
   const EASE_K = 1 / Math.sqrt(1 - JULIA_EASE_A * JULIA_EASE_A);   // derived from JULIA_EASE_A (see CLAUDE.md)
-  // Which exponent's locus the seed orbits. 2 for AnimeJulia and Burning Ship;
+  // Which exponent's locus the seed orbits. 2 for Julia and Burning Ship;
   // Multibrot's draw sets it from the live Power slider every frame, and setEffect
   // puts it back to 2 on the way out. Declared HERE, above juliaEase, because that
   // arrow reads it — leaving it below worked only as long as nothing called the ease

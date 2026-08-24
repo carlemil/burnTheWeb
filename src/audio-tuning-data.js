@@ -413,7 +413,7 @@
   resize();          // re-apply the restored render resolution (cfg.scale)
 
   // `enter` = this is a *fresh* entry into the effect (first load, an effect switch, a preset
-  // apply) — run its onEnter (AnimeJulia re-rolls its random seed start) and drop banked sim
+  // apply) — run its onEnter (Julia re-rolls its random seed start) and drop banked sim
   // time. Merely RE-SELECTING an existing stack layer to edit it passes enter=false: the
   // layer keeps running exactly as it was, so selecting a layer never changes the render.
   function setEffect(i, save = true, enter = true) {
@@ -449,7 +449,7 @@
     // MAP_DEFS family, in table order (states first: loadState's synthetic inputs run
     // before the rest read the DOM).
     loadLiveMaps(i);
-    if (enter && fx.onEnter) fx.onEnter();      // e.g. AnimeJulia re-rolls its start on entry — but NOT on a layer re-select
+    if (enter && fx.onEnter) fx.onEnter();      // e.g. Julia re-rolls its start on entry — but NOT on a layer re-select
     if (enter) acc = 0;               // don't carry banked sim time across a switch (kept on a re-select)
     // The heat buffer is deliberately NOT cleared here. Leaving the outgoing effect's
     // heat in place lets it decay under the incoming scene instead of the screen

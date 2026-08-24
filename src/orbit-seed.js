@@ -64,7 +64,7 @@
   //
   // At d=2 this reduces to |z| = 2⁻¹ = 0.5 and c = z − z² = 0.5e^{iθ} − 0.25e^{2iθ},
   // i.e. **bit-identical** to the old expression (every power here is exact in binary
-  // floating point), so AnimeJulia and Burning Ship are untouched.
+  // floating point), so Julia and Burning Ship are untouched.
   function cardioidAt(th, d) {
     const R = Math.pow(d, -1 / (d - 1)), rd = Math.pow(R, d), a = th * d;
     return [R * Math.cos(th) - rd * Math.cos(a), R * Math.sin(th) - rd * Math.sin(a)];

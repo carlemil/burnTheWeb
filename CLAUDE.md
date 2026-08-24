@@ -12,7 +12,7 @@ Effects share one palette + glow + banding + beat-reactive pipeline, in four fam
 
 - **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrafyer, Attractor (de Jong), Fractal
   flames (`flames`, the one **additive** stamper — `stampAdd`), Boids.
-- **Shader fractals** — AnimeJulia, Burning Ship, Multibrot, Newton.
+- **Shader fractals** — Julia, Burning Ship, Multibrot, Newton.
 - **Shader pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching
   Squares, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm,
   Starfield, Aurora, Reaction-diffusion.
@@ -69,7 +69,7 @@ package manager, test framework or runtime dependency. Keep `README.md` in sync.
 - **Glow**: `glRender()`/`render()` map heat through the palette, then composite an additive
   blurred copy.
 
-### Cardioid seed orbit (AnimeJulia / Burning Ship / Multibrot)
+### Cardioid seed orbit (Julia / Burning Ship / Multibrot)
 - All three call `juliaSeed(dt)` **once** in `draw`; `julia`/`burningShip`/`multibrot` must
   **never** call it themselves.
 - `juliaSeed` = rim point on the scaled main cardioid + a riding circle of radius `juliaInnerR`
@@ -761,17 +761,17 @@ bottom-right, `z-index: 5` — **never add a backdrop or click-outside-closes**.
   **`locusEsc` is the single escape test** shared by the render and the framing scan; two copies
   is how the window ends up framing a different set from the one it draws. The family comes from
   the selected layer's descriptor (`locus: "ship"`) via `locusShip()`, and **`card.bgShip` is part
-  of the backdrop cache key** — AnimeJulia and Burning Ship are both `d=2`, so without it
+  of the backdrop cache key** — Julia and Burning Ship are both `d=2`, so without it
   selecting one keeps showing the other's set.
 - **The view centres on the locus in BOTH axes** (`cardWin.yc`). It tracked x only, on the
   grounds that the locus is symmetric about the real axis — true of every Multibrot, false of
   Burning Ship (y ∈ [−1.53, +0.45]). `yc` **snaps to 0 below 1e-9** and the half-height is
   measured about `yc`, so the Multibrot framing is bit-identical to before (verified: the
-  AnimeJulia backdrop hashes the same either side of the change). **`cardY0`/`cardSpanY` are the
+  Julia backdrop hashes the same either side of the change). **`cardY0`/`cardSpanY` are the
   only place the y mapping is written** — `cardLocus`, the overlay's `Y()` and `cardEventToC`
   each used to spell out `-spanY / 2` and would silently re-assume a y-centred view.
   Quantised to `CARD_POW_Q`. **Resolution is set by what a pixel COSTS**: full res on the integer-2 fast path
-  (`sq`, three multiplies — AnimeJulia and Burning Ship both live here), **half res everywhere
+  (`sq`, three multiplies — Julia and Burning Ship both live here), **half res everywhere
   else**, where each iteration is a `pow`/`atan2`/`cos`/`sin` *and* the Power slider re-renders the
   cache every `CARD_POW_Q` (0.05) step as it drifts — a 2→8 sweep is ~120 repaints.
 - **The canvas is 819×644** and its size IS the freehand drawing precision (strokes are thinned by
@@ -1321,7 +1321,7 @@ field is one `snapshotScene` captures *and* one the import mapping carries.
 
 **First-visit library** built once when `presets.length === 0`: `defaultPresets()`, applied at index
 0, then `persist()` once. It is **`DEFAULT_LIBRARY` — THREE scenes** — `Fetingen` (Sierpiński, single
-layer), `Round and round` (Moiré, two layers), `Julia shapes` (AnimeJulia + Bouncing shapes, two
+layer), `Round and round` (Moiré, two layers), `Julia shapes` (Julia + Bouncing shapes, two
 layers, `xor` blend) — **plus `blankPreset()` APPENDED**: `Blank canvas`, one neutral Plasma layer,
 no filters, built live from the shipped defaults via **`neutralPreset(e, name)`** (never a
 hand-frozen blob) and carrying **`rotate: false`** so the deliberately-still scene stays out of the
@@ -1706,7 +1706,7 @@ from the live speed, never the wall clock. Clicking the canvas toggles `paused`.
 Chaos game uses a **mulberry32 PRNG re-seeded to `SEED` every frame** — the point *sequence* is
 identical each frame; only moving geometry reshapes the fractal. Auto-morph uses `Math.random()`,
 kept separate.
-- **AnimeJulia**: `juliaOuter/juliaInner` default 0, set by `reseedJulia()` — a random lap when the
+- **Julia**: `juliaOuter/juliaInner` default 0, set by `reseedJulia()` — a random lap when the
   per-effect **Random seed** toggle (`randSeed`, an `extras` field, default on) is on, else 0.
   `setEffect` calls it on every entry.
 - **Attractor jitter**: the de Jong map is exact; `atjit` scatters each point by ±jit heat pixels

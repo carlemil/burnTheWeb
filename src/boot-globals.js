@@ -89,12 +89,12 @@
   const cfg = { ...CONFIG.fire };   // live, mutable copy of the shipped fire defaults (scale = default resolution)
 
   // Active effect: 0 = Sirpinfyer (2D Sierpiński triangle fire), 1 = Tetrafyer
-  // (3D Sierpiński tetrahedron fire), 2 = AnimeJulia (animated Julia set). All
+  // (3D Sierpiński tetrahedron fire), 2 = Julia (animated Julia set). All
   // write heat into the shared `fire` buffer, so palettes, auto-morph and the
   // render/glow pipeline are identical for every mode.
   let effect = 0;
   let showBox = true;        // Tetrafyer: draw the box wireframe (toggle)
-  let randSeed = true;       // AnimeJulia: re-roll the orbit start on reload / effect entry (toggle)
+  let randSeed = true;       // Julia: re-roll the orbit start on reload / effect entry (toggle)
   let cycleOn = CONFIG.scene.autoCycle;   // auto-cycle saved presets on the TTL timer (toggle); default from config
   // Named full-scene snapshots. INVARIANT once startup has finished: presets.length >= 1 and
   // 0 <= curPreset < presets.length — something is ALWAYS selected, so every edit has a scene

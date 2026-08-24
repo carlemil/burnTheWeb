@@ -719,18 +719,56 @@
     }`;
     // Bouncing shapes: a few shapes whose centres (uPos, computed on the CPU) drift and
     // bounce off the edges. Tick on a Fade / Fire feedback filter for glow trails.
+    // SEVEN SHAPE KINDS, not one. It used to draw the same superellipse for every object, so
+    // Squareness was the only variety there was and a screen of eight read as one shape
+    // repeated. Shape mix follows Bouncing solids' sdmix exactly: it is how many KINDS are in
+    // play, each object picking one by hash, so 1 is the old behaviour and 7 is all of them.
+    //
+    // Kind 0 is the original circle<->square blend, deliberately first: at Shape mix 1 every
+    // object is kind 0 and the effect renders exactly as it always did.
     const FS_BOUNCE = `#version 300 es
     precision highp float;
-    uniform vec2 uSize; uniform vec2 uPos[8]; uniform float uCount; uniform float uRad; uniform float uSquare; uniform float uZoom;
+    uniform vec2 uSize; uniform vec2 uPos[8]; uniform float uCount; uniform float uRad;
+    uniform float uSquare; uniform float uZoom; uniform float uMix; uniform float uTime; uniform float uSpin;
     out vec4 o;
+    float bnHash(float i){ return fract(sin(i * 78.233 + 1.7) * 43758.5453123); }
+    // A regular n-gon, by folding the angle into one wedge -- the same construction the old
+    // Polygon effect used before it was retired.
+    float bnNgon(vec2 d, float n){
+      float seg = 6.28318 / n;
+      float a = atan(d.y, d.x) + 1.5708;                 // +90deg so a triangle points UP
+      return length(d) * cos(mod(a, seg) - seg * 0.5) / cos(seg * 0.5);
+    }
+    // Every kind returns a distance-like value that is < r inside the shape, so one threshold
+    // and one antialias band serve all seven.
+    float bnShape(int k, vec2 d, float r, float sq){
+      if (k == 1) return bnNgon(d, 3.0);
+      if (k == 2) return bnNgon(d, 5.0);
+      if (k == 3) return bnNgon(d, 6.0);
+      if (k == 4) {                                       // five-pointed star
+        float a = atan(d.y, d.x);
+        return length(d) / (0.62 + 0.38 * cos(5.0 * a + 1.5708));
+      }
+      if (k == 5) return abs(length(d) - r * 0.68) * 2.6; // ring
+      if (k == 6) return min(max(abs(d.x), abs(d.y) * 2.8),
+                             max(abs(d.x) * 2.8, abs(d.y)));   // cross
+      return mix(length(d), max(abs(d.x), abs(d.y)), sq);  // 0: the original blend
+    }
     void main(){
       vec2 uv = (gl_FragCoord.xy/uSize - 0.5)/uZoom + 0.5;
       float asp = uSize.x/uSize.y, aa = 2.0/uSize.y, heat = 0.0; int n = int(uCount);
+      float kinds = clamp(uMix, 1.0, 7.0);
       for (int i=0;i<8;i++){
         if (i>=n) break;
         vec2 d = uv - uPos[i]; d.x *= asp;
-        float dist = mix(length(d), max(abs(d.x), abs(d.y)), uSquare);
-        heat = max(heat, 1.0 - smoothstep(uRad-aa, uRad+aa, dist));   // ascend + invert
+        float h = bnHash(float(i));
+        int k = int(floor(h * kinds));
+        // Spin, per object, in its own direction and at its own rate -- a static triangle
+        // reads as a texture, a turning one reads as an object.
+        float ang = uTime * uSpin * (0.6 + h) * (h > 0.5 ? 1.0 : -1.0);
+        float c = cos(ang), s = sin(ang);
+        d = vec2(d.x * c - d.y * s, d.x * s + d.y * c);
+        heat = max(heat, 1.0 - smoothstep(uRad-aa, uRad+aa, bnShape(k, d, uRad, uSquare)));
       }
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);
     }`;
@@ -1077,7 +1115,7 @@
     // that slice is cut along the fourth axis, and sliding it morphs the solid continuously
     // through shapes no 3D fractal can hold still.
     //
-    // c comes from THE SAME cardioid orbit AnimeJulia rides (juliaSeed, in the descriptor),
+    // c comes from THE SAME cardioid orbit Julia rides (juliaSeed, in the descriptor),
     // so the Orbit editor drives this effect for free and everything already known about
     // where to sit relative to the Mandelbrot set still applies.
     //

@@ -102,6 +102,8 @@
     { key: "bncount", host: "fx", group: "bounce", type: "dual", single: true, label: "Count", valId: "vBnCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => bnCount = Math.round(v), durScale: 10 },
     { key: "bnrad", host: "fx", group: "bounce", type: "dual", label: "Size", valId: "vBnRad", min: 0.02, max: 0.25, step: 0.005, lo: 0.09, hi: 0.09, fmt: v => sig3(v), apply: v => bnRad = v, durScale: 10 },
     { key: "bnsquare", host: "fx", group: "bounce", type: "dual", label: "Squareness", valId: "vBnSquare", min: 0, max: 1, step: 0.02, lo: 0.6, hi: 0.6, fmt: v => sig3(v), apply: v => bnSquare = v, durScale: 10 },
+    { key: "bnmix", host: "fx", group: "bounce", type: "dual", single: true, label: "Shape mix", valId: "vBnMix", min: 1, max: 7, step: 1, lo: 7, hi: 7, fmt: v => sig3(v), apply: v => bnMix = Math.round(v), durScale: 10 },
+    { key: "bnspin", host: "fx", group: "bounce", type: "dual", label: "Spin", valId: "vBnSpin", min: 0, max: 3, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v) + "×", apply: v => bnSpin = v, durScale: 10 },
     { key: "bnspeed", host: "fx", group: "bounce", type: "dual", label: "Speed", valId: "vBnSpeed", min: 0, max: 4, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => bnSpeed = v, durScale: 10 },
     // Bouncing solids (3D). Count/Size feed the physics as well as the shader — Size IS the
     // bounding radius every wall test uses, so widening it makes them bounce sooner too.
@@ -873,7 +875,7 @@
   // groups. CSS `:first-child` cannot express this: every group exists in the DOM (they are
   // all built once, from CONTROLS) and only some are shown, so the first *child* is whichever
   // group comes first in the schema — "Shape & motion" — while the first *visible* one depends
-  // on the effect ("Cardioid seed" on AnimeJulia, "Plasma" on Plasma, …). Hence a class,
+  // on the effect ("Cardioid seed" on Julia, "Plasma" on Plasma, …). Hence a class,
   // re-marked on every visibility pass.
   function markFirstGroup(slot) {
     const host = ctlIn(slot, "fxctl");

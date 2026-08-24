@@ -8,7 +8,7 @@
     }
     offCtx.putImageData(img, 0, 0);
 
-    // AnimeJulia & Plasma zoom inside their own shaders, so only the fire modes
+    // Julia & Plasma zoom inside their own shaders, so only the fire modes
     // scale the rendered image here. Scale about the canvas centre; clear first
     // when zoomed out so no smeared border remains.
     // CPU mirror of the transition pass — same modes, canvas ops instead of a shader.
@@ -308,7 +308,7 @@
     // Multibrot layer's power in this global — but the Orbit editor / cardLocus track the
     // SELECTED layer. Re-derive it for that layer, same reason the two installs above run
     // (installStackItem has just set mbPower to the selected layer's animated Power); gated
-    // on the editor being open so it never perturbs the render path otherwise. AnimeJulia /
+    // on the editor being open so it never perturbs the render path otherwise. Julia /
     // Burning Ship are d=2.
     if (card && card.on) juliaPower = EFFECTS[stack[stackSel].fx].id === "multibrot" ? mbPower : 2;
     creditDraw();                      // above the finished image — effects and filters both
