@@ -798,12 +798,6 @@
     margin: 7px 0 1px; color: #ffb15a; opacity: .5;
     font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
   }
-  /* "global" — this row is still following Global beat tuning. Hidden the moment the row
-     carries this slider's own value, so the tag's presence IS the override state. */
-  #breakout .trig-ref-tag {
-    flex: none; opacity: .38; font-size: 8.5px; letter-spacing: .05em;
-    text-transform: uppercase; min-width: 34px;
-  }
   /* The ↺ sits on the Tuning heading, which is a plain block — float it right rather than
      turning the heading into a flex row, so the uppercase tracking is untouched. */
   #breakout .trig-t .trig-rst { float: right; margin: -2px 0 0; }
@@ -921,6 +915,23 @@
      it either unreadable or louder than the picture. A fallback keeps every rule valid on a
      node that never got the property. */
   #panel .lyr { border-left: 3px solid var(--lyr, rgba(255, 140, 40, 0.22)); }
+  /* A TUNING ROW FOLLOWING THE GLOBAL DEFAULT IS DIMMED -- it replaced the word "global"
+     printed in every untouched row. About 20% down, enough to read as secondary at a glance
+     and not so much that it looks switched off; it is NOT switched off, and must never be
+     styled through .off/[disabled], which mean something else here (see setOff). Both hosts
+     are named because these rows live in break-out boxes as well as the panel. */
+  #panel .trig-ref.is-default, #breakout .trig-ref.is-default { opacity: .8; }
+  #panel .trig-ref.is-default input[type=range],
+  #breakout .trig-ref.is-default input[type=range] { filter: brightness(.8); }
+  /* Touching it is what claims it, so the dimming lifts on hover and focus too -- otherwise
+     a row you are actively dragging still reads as untouched until you let go. */
+  #panel .trig-ref.is-default:hover, #breakout .trig-ref.is-default:hover,
+  #panel .trig-ref.is-default:focus-within, #breakout .trig-ref.is-default:focus-within { opacity: 1; }
+  #panel .trig-ref.is-default:hover input[type=range],
+  #breakout .trig-ref.is-default:hover input[type=range],
+  #panel .trig-ref.is-default:focus-within input[type=range],
+  #breakout .trig-ref.is-default:focus-within input[type=range] { filter: none; }
+
   #breakout .ctl.poppable { border-left: 3px solid var(--lyr, rgba(255, 140, 40, 0.35)); }
   #breakout .ctl-owner { color: var(--lyr, #ffb15a); }
   /* A scene control's box belongs to no layer, so it keeps the house amber -- that IS the
@@ -1073,7 +1084,10 @@
      the bottom corner on its own, so layers 3 and 4 could not have their corners and fell
      back to the middle of the screen. It already scrolls internally, so the cost is scrolling
      a long effect's controls rather than losing the layout. */
-  #breakout .ctl.lyr-box { width: 300px; max-height: calc(50vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
+  /* NO width here: every box in the grid is BRK_W wide, layer boxes included, so the
+     columns line up and brkW is the same number for all of them. It was 300px against the
+     slider boxes' 244 and nothing shared a column edge. */
+  #breakout .ctl.lyr-box { max-height: calc(50vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
   #breakout .ctl.lyr-box > .lyrblock { cursor: default; }
   #breakout .ctl.lyr-box > .lyrblock > label:first-child,
   #breakout .ctl.lyr-box > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
@@ -1873,6 +1887,10 @@
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
       <label class="check" title="List your profile in the public gallery so anyone can load your scenes. Your name and scene count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
+      <!-- ON by default. An automatic upload is still an upload, so it gets a control you can
+           see and switch off rather than happening silently. data-nopersist: this is a device
+           preference with its own localStorage key, not scene data. -->
+      <label class="check" title="Save your library to your profile automatically: two hours after your last change, and at most once a day."><input type="checkbox" id="cloud-auto" data-nopersist checked> Save automatically</label>
       <!-- Links minted by "Share this scene" while signed in. /scenes is deliberately
            unlistable (a link meant for one person must not be enumerable), so the local
            note taken at mint time is the ONLY record — which is what makes the ✕ here the
@@ -2381,7 +2399,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.52.0",
+    version: "1.53.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2613,6 +2631,28 @@
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
+  // ---- automatic cloud save: its schedule ------------------------------------------
+  // ITS OWN localStorage KEY, like the credits/tutorial/share-link preferences, and
+  // deliberately NOT part of fullSnapshot(): everything in there rides a share link and a
+  // backup, and when this browser last saved is nobody else's business.
+  //
+  // Declared HERE rather than beside the cloud code because persist() -- the change signal
+  // -- lives five slices earlier, and a const in the cloud slice would be in the TDZ for
+  // any persist() that fires before that slice is evaluated.
+  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";
+  const AUTOSAVE_DELAY_MS = 2 * 60 * 60 * 1000;    // quiet time after the LAST change
+  const AUTOSAVE_GAP_MS = 24 * 60 * 60 * 1000;     // at most one automatic save a day
+  // A failed attempt is not a save, so it must not burn the daily slot -- but it must not
+  // retry every tick either, or a permanently stale document would hammer the network.
+  const AUTOSAVE_RETRY_MS = 60 * 60 * 1000;
+  const AUTOSAVE_TICK_MS = 60 * 1000;
+  // Flying ribbons draws real GEOMETRY -- a triangle list with a depth buffer, so the bands
+  // occlude one another instead of one painting over the other. It is the only thing in the
+  // app that rasterises anything but a full-screen quad and a point, hence its own VAO and
+  // the only depth renderbuffer. Four floats a vertex: x, y in fire-pixel space, depth 0..1,
+  // heat 0..255.
+  let ribVao = null, ribVbo = null, ribVboCap = 0, ribDepthRb = null, ribDepthW = 0, ribDepthH = 0;
+  let glRib = new Float32Array(4 * 6 * 2048), glRibCount = 0;
 
   const cfg = { ...CONFIG.fire };   // live, mutable copy of the shipped fire defaults (scale = default resolution)
 
@@ -3651,6 +3691,24 @@
     uniform float uGain;
     in float vVal; out vec4 o;
     void main(){ o = vec4(vVal * uGain, 0.0, 0.0, 1.0); }`;
+    // Flying ribbons: real triangles, not points. Same idea as VS_PTS -- fire-pixel space in,
+    // clip space out -- but it carries a DEPTH so the rasteriser can sort the bands against
+    // each other, which is the whole difference between a surface and a cloud. The heat is
+    // computed per VERTEX on the CPU (facing, depth) and interpolated across the triangle,
+    // so the shading is smooth without the shader knowing anything about the geometry.
+    const VS_RIB = `#version 300 es
+    layout(location=0) in vec4 aV;   // xy fire-pixel space, z depth 0..1, w heat 0..255
+    uniform vec2 uSize;
+    out float vVal;
+    void main(){
+      vVal = aV.w / 255.0;
+      vec2 c = (aV.xy + 0.5) / uSize * 2.0 - 1.0;
+      gl_Position = vec4(c, aV.z * 2.0 - 1.0, 1.0);
+    }`;
+    const FS_RIB = `#version 300 es
+    precision highp float;
+    in float vVal; out vec4 o;
+    void main(){ o = vec4(vVal, 0.0, 0.0, 1.0); }`;
     // Composite one stack item's heat into the shared buffer. The gain HAS to be a
     // multiply in here rather than a blend factor: blendEquation(MAX) ignores blendFunc
     // entirely, so a gain applied through blend state would work for Add and be
@@ -6863,6 +6921,7 @@
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
+    glProg.rib = makeProg(VS_RIB, FS_RIB, ["uSize"]);
     glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
     glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend"]);
     glProg.julia = camProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
@@ -7072,6 +7131,17 @@
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
 
+    // Flying ribbons' triangle buffer. vec4 a vertex, not vec3 -- see VS_RIB.
+    ribVao = gl.createVertexArray();
+    ribVbo = gl.createBuffer();
+    gl.bindVertexArray(ribVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, ribVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, glRib.byteLength, gl.DYNAMIC_DRAW);
+    ribVboCap = glRib.byteLength;
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
@@ -7241,6 +7311,50 @@
       gl.blendEquation(gl.FUNC_ADD);
       gl.blendFunc(gl.ONE, gl.ZERO);
     }
+  }
+  // FLYING RIBBONS: THE ONE EFFECT THAT DRAWS GEOMETRY. Everything else in the app is a
+  // full-screen fragment pass or a cloud of 1px points, and neither can make a surface that
+  // hides what is behind it. A ribbon has to: two bands crossing in space must occlude, and
+  // MAX-blending brightness is not occlusion -- a dark near band would show the bright far
+  // one straight through itself.
+  //
+  // So this is the only depth buffer in the app. It is attached for THIS DRAW ONLY and
+  // detached after: every other pass runs with DEPTH_TEST off, and quietly changing the
+  // completeness rules of a framebuffer a dozen other passes share is not worth the one
+  // attach call this saves. Created on first use and resized with the grid.
+  //
+  // Contract otherwise identical to glShaderDraw: bind the layer scratch, blending off,
+  // overwrite. Retention and compositing stay the frame's job.
+  function glRibbonDraw() {
+    if (!glRibCount) return;
+    bindFbo(glFbo.layer, fw, fh);
+    if (!ribDepthRb) ribDepthRb = gl.createRenderbuffer();
+    if (ribDepthW !== fw || ribDepthH !== fh) {
+      gl.bindRenderbuffer(gl.RENDERBUFFER, ribDepthRb);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, fw, fh);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+      ribDepthW = fw; ribDepthH = fh;
+    }
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, ribDepthRb);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    const P = glProg.rib;
+    gl.useProgram(P.p);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    gl.bindVertexArray(ribVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, ribVbo);
+    const need = glRibCount * 4 * 4;
+    if (need > ribVboCap) { gl.bufferData(gl.ARRAY_BUFFER, glRib.byteLength, gl.DYNAMIC_DRAW); ribVboCap = glRib.byteLength; }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, glRib, 0, glRibCount * 4);
+    gl.drawArrays(gl.TRIANGLES, 0, glRibCount);
+    gl.disable(gl.DEPTH_TEST);
+    gl.bindVertexArray(null);
+    // Put the framebuffer back the way every other pass expects to find it.
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
   }
   function glDrawPoints() {
     // The single-layer tick path: honour a stampAdd effect (Fractal flames) here too, or
@@ -8197,6 +8311,29 @@
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
   // (It briefly took a `raw` flag to let the credits skip the camera; they render on
   // their own layer now, so every caller wants the camera and the flag is gone.)
+  // THE SCREEN MAPPING A STAMPED POINT GETS, factored out of plot() because Flying
+  // ribbons needs exactly the same one for its geometry vertices. Zoom about the grid
+  // centre, then the camera's 2x2, then the INVERSE lens on the screen offset -- the order
+  // is load-bearing and the long comment inside plot() explains why. Returns false when the
+  // point has no screen position at all (a long lens folds the far field away); writes
+  // camMX/camMY rather than allocating, since this runs per vertex and per stamped point.
+  let camMX = 0, camMY = 0;
+  function camMapXY(x, y) {
+    const z = zoom;
+    if (z === 1 && !camOn()) { camMX = x; camMY = y; return true; }
+    let dx = (x - fw * 0.5) * z, dy = (y - fh * 0.5) * z;
+    if (camOn()) {
+      const rx = camM[0] * dx + camM[1] * dy;
+      dy = camM[2] * dx + camM[3] * dy;
+      dx = rx;
+    }
+    if (camFov !== 0) {
+      if (!camUnlens(dx, dy)) return false;
+      dx = camUX; dy = camUY;
+    }
+    camMX = dx + fw * 0.5; camMY = dy + fh * 0.5;
+    return true;
+  }
   function plot(x, y, v, add) {
     // Zoom is applied HERE, to the point, not to the finished picture. FS_ZOOM magnifies
     // an fw×fh raster, so detail falls off as 1/zoom and the point effects went visibly
@@ -8206,27 +8343,12 @@
     // is rasterised ONCE, at full grid resolution, whatever the zoom. Points pushed off
     // the grid are dropped by the bounds test below, which is the crop a zoom should do.
     // Uniform scale commutes with the camera's 2×2, so the two compose in either order.
-    const z = zoom;                     // this LAYER's zoom (installStackItem installed it)
-    if (z !== 1 || camOn()) {
-      let dx = (x - fw * 0.5) * z, dy = (y - fh * 0.5) * z;
-      if (camOn()) {                    // camera: rotate the stamped point about the grid centre
-        const rx = camM[0] * dx + camM[1] * dy;
-        dy = camM[2] * dx + camM[3] * dy;
-        dx = rx;
-      }
-      // FIELD OF VIEW, last, on the SCREEN offset. camFrag4 applies the lens FIRST to the
-      // screen offset on its way IN to the effect, so its inverse belongs at the far end of
-      // the same chain on the way OUT — which is what makes a stamped layer and a shader
-      // layer bow the same way at the same slider value. A point with no screen position
-      // (a long lens folds the far field away) is dropped, like any out-of-grid point.
-      if (camFov !== 0) {
-        if (!camUnlens(dx, dy)) return;
-        dx = camUX; dy = camUY;
-      }
-      x = dx + fw * 0.5;
-      y = dy + fh * 0.5;
-    }
-    const xi = x | 0, yi = y | 0;
+    // The zoom/camera/lens chain lives in camMapXY now — Flying ribbons needs the identical
+    // mapping for its geometry, and two copies is how a stamped layer and a drawn one start
+    // bowing differently at the same slider value. A point with no screen position (a long
+    // lens folds the far field away) is dropped, like any out-of-grid point.
+    if (!camMapXY(x, y)) return;
+    const xi = camMX | 0, yi = camMY | 0;
     if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
     // `add` is the density mode Fractal flames stamps in: heat ACCUMULATES per hit
     // instead of taking the max, so where the orbit lands often burns brighter — the
@@ -10396,7 +10518,10 @@
   // readback every frame on the GL path, and the trail needs its own decay and blur anyway --
   // the heat buffer is shared with every other layer and is cleared by the feedback rules.
   const PHY_MAX = 6000, PHY_W = 420, PHY_H = 236;
-  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phAgents = null;
+  // The disturbance field: its resolution, and how hard it bites into the trail's decay at
+  // Scatter 1. See the note where it is built.
+  const SCAT_CW = 13, SCAT_CH = 8, SCAT_BITE = 0.85;
+  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phAgents = null;
   function ensurePhy(P, n, salt) {
     if (!P.a || P.a.length !== n * 3) {
       P.a = new Float32Array(n * 3);
@@ -10424,6 +10549,40 @@
     ensurePhy(P, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), 1);
     const A = P.a, tr = P.tr, W = P.tw, H = P.th, N = A.length / 3;
     const sense = Math.max(1, phSense), turn = phTurn, step = 0.6 + phSpeed * 1.4;
+    // SCATTER. Without it the culture SOLVES its dish and then stops: the veins reinforce
+    // themselves, every agent follows the strongest trail it can see, and within a few
+    // seconds the picture is a static diagram that never changes again. The four rules that
+    // make the network emerge are also what make it a fixed point.
+    //
+    // A little heading noise per step is the standard cure and the honest one -- a real
+    // slime mould is noisy, and the network it builds is a moving equilibrium rather than a
+    // final answer. Agents wander off a vein, find nothing, come back or start a new branch,
+    // and the whole thing keeps reorganising.
+    //
+    // The noise has to vary with TIME, not just with the agent: a per-agent constant is a
+    // fixed bias each one steers with, and the culture settles into a skewed network just as
+    // completely as it settled into a straight one. Hence the tick counter -- which lives on
+    // the layer beside the agents, so two slime layers scatter independently. Still no
+    // Math.random anywhere: this is a hash, so a run is reproducible.
+    const scat = Math.max(0, phScatter);
+    P.t = (P.t || 0) + 1;
+    const tk = P.t;
+    // A COARSE, SLOWLY DRIFTING FIELD, rebuilt each step. Where it is high the trail decays
+    // faster, so the veins there starve and the agents abandon them; as the field drifts,
+    // that dead ground reopens and the network grows back into it somewhere else. The result
+    // is weather moving over the culture -- large-scale structure that never stops
+    // rearranging, which is the thing that was missing.
+    //
+    // Coarse and bilinear-free on purpose: 26x15 is 390 noise evaluations a step against
+    // 99k if it were per cell, and the 3-tap blur in the decay pass smooths the cell edges
+    // out anyway. The picture is a slow modulation, not a texture.
+    if (scat > 0) {
+      if (!P.fld || P.fld.length !== SCAT_CW * SCAT_CH) P.fld = new Float32Array(SCAT_CW * SCAT_CH);
+      const ft = tk * 0.004;
+      for (let j = 0; j < SCAT_CH; j++)
+        for (let i2 = 0; i2 < SCAT_CW; i2++)
+          P.fld[j * SCAT_CW + i2] = shVNoise(i2 * 0.42 + ft, j * 0.42 - ft * 0.71);
+    }
     const at = (x, y) => tr[((y % H) + H) % H * W + (((x % W) + W) % W)];
     for (let i = 0; i < N; i++) {
       const x = A[i * 3] * W, y = A[i * 3 + 1] * H, a = A[i * 3 + 2];
@@ -10446,12 +10605,17 @@
     // decay + a cheap 3-tap blur along x, which is what turns dots into veins
     const keep = Math.max(0.5, Math.min(0.995, phDecay));
     const sx = (xR - xL) / W, sy = (yB - yT) / H;
+    const fldRow = scat > 0 ? SCAT_CH / H : 0, fldCol = scat > 0 ? SCAT_CW / W : 0;
     for (let y2 = 0; y2 < H; y2++) {
       const row = y2 * W;
+      // Hoisted: the field row is constant across the scanline, and this loop is the
+      // hottest in the effect.
+      const fRow = scat > 0 ? ((y2 * fldRow) | 0) * SCAT_CW : 0;
       let prev = tr[row + W - 1];
       for (let x2 = 0; x2 < W; x2++) {
         const cur = tr[row + x2], nxt = tr[row + (x2 + 1) % W];
-        const v = (prev * 0.25 + cur * 0.5 + nxt * 0.25) * keep;
+        const k2 = scat > 0 ? keep * (1 - scat * SCAT_BITE * P.fld[fRow + ((x2 * fldCol) | 0)]) : keep;
+        const v = (prev * 0.25 + cur * 0.5 + nxt * 0.25) * k2;
         prev = cur; tr[row + x2] = v;
         // Only the LIT cells are stamped. The threshold is what keeps this inside the point
         // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
@@ -11258,57 +11422,45 @@
   }
 
   // ---- Flying ribbons ----------------------------------------------------------------
-  // Long bands writhing through space. The thing that makes a ribbon read as a ribbon
-  // rather than as a fat line is that it has an ORIENTATION: seen flat it is a wide sheet,
-  // seen edge-on it collapses to a bright hairline, and the flip between the two as it
-  // twists is the whole effect. So this does not stamp a stroke of constant width. It
-  // builds the band's two EDGES in 3D, projects both, and fills the segment between them —
-  // foreshortening, the twist and the edge-on collapse all fall out of that one decision
-  // instead of needing three separate fudges.
+  // Long bands writhing through space, drawn as ACTUAL SURFACES: a triangle strip per band,
+  // rasterised with a depth buffer so one band hides another it passes behind.
   //
-  // A point effect, not a shader: the geometry is a few thousand samples of a parametric
-  // curve, which is a JS loop's work, and going through plot() means the fire sim, the
-  // trail filters and the camera all apply for free. Deterministic like every other point
-  // effect -- per-ribbon variation comes from rbHash, never from Math.random.
-  let rbCount = 4, rbLen = 1, rbWidth = 0.3, rbTwist = 3, rbSpeed = 1, rbWave = 1, rbTime = 0;
-  // Projected edges are cached between the measuring pass and the stamping pass: one pass
-  // has to know the TOTAL area before the other can pick a density, and evaluating the
-  // curve twice to learn the same numbers would be the only expensive part done twice.
-  // Grown on demand and reused, so a steady state allocates nothing.
-  let rbBuf = null;
-  // How far a band runs, set by ribbonStamp and read by rbPath -- the path is evaluated
-  // hundreds of times per tick, so it takes what it can from the closure rather than an
-  // extra argument threaded through both passes.
+  // It began as a point-accumulation effect, stamping samples of the band through plot(),
+  // and that was the wrong shape for it. A filled surface costs one stamp per COVERED PIXEL
+  // -- measured at 279k for the shipped settings against a 95k budget, so it was a third
+  // covered and read as a stipple -- and no budget makes a point cloud occlude anything.
+  // Rasterising is both the right answer and the cheaper one: the GPU interpolates between
+  // samples, so a couple of hundred cross-sections per band describe the curve completely
+  // and the fill is free. The whole effect is now ~1500 triangles a frame.
+  //
+  // Deterministic, like the point effects it sits beside: variation is rbHash, never
+  // Math.random.
+  let rbCount = 4, rbLen = 1.6, rbWidth = 0.38, rbTwist = 2.5, rbSpeed = 1, rbWave = 0.55, rbTime = 0;
+  // How far a band runs, set by the builder and read by rbPath -- the path is evaluated a few
+  // hundred times a frame, so it takes what it can from the closure.
   let rbSpan = 1.5;
   function rbHash(i) {                     // deterministic per-ribbon variation, [-1, 1]
     let h = Math.imul(i ^ 0x27d4eb2f, 0x165667b1);
     h ^= h >>> 15; h = Math.imul(h, 0x9e3779b1); h ^= h >>> 13;
     return (h >>> 0) / 2147483648 - 1;
   }
-  // Samples along a ribbon are chosen from its MEASURED projected length, not fixed. A fixed
-  // count combs: the cross-sections end up further apart than they are wide, so the band
-  // renders as a row of separate ribs rather than a surface. Length and Waviness each change
-  // how far the curve actually travels on screen by several times over, so no constant can
-  // be right for both ends of either slider. A coarse pass measures it, the real pass then
-  // steps about 1.4px whatever the sliders say.
-  const RB_COARSE = 56;
-  const RB_STEP = 1.4;
-  const RB_SMAX = 3000;                    // ceiling, so a wild Length cannot run away
+  // Cross-sections per band. A rasterised surface needs only enough to follow the CURVE and
+  // the twist -- the triangle between two of them is filled exactly, however far apart they
+  // are. This is where the point version needed one sample per 1.4 pixels and still combed.
+  const RB_SEGS = 220;
   const RB_ZC = 3.1;                       // the loop's centre depth, in front of the eye
-  // The curve, and the ONE place it is written. Both passes evaluate it, and a second copy
-  // for the measuring pass is how the two silently start describing different ribbons.
+  const RB_NEAR = 0.25, RB_FAR = 7.5;      // the depth range mapped onto the depth buffer
+  // The curve, and the ONE place it is written.
   //
   // Each band SWEEPS ACROSS the frame on its own heading rather than looping around the
-  // origin. The first version used closed Lissajous knots, which is a fine curve and the
-  // wrong picture: every ribbon enclosed the centre, so they piled into one tangle in the
-  // middle of the screen with dead space all round it, and nothing read as flying. Running
-  // each band past the frame edge on a heading of its own gives them somewhere to come from
-  // and somewhere to go, and hides the two raw ends off-screen for free.
+  // origin. Closed Lissajous knots were the first version: every ribbon enclosed the centre,
+  // so they piled into one tangle in the middle of the screen with dead space around it and
+  // nothing read as flying. Running each band past the frame edge gives them somewhere to
+  // come from and somewhere to go, and hides the two raw ends off-screen for free.
   //
-  // The motion is a wave TRAVELLING down the band (the `- tt` term), not the band itself
-  // moving. A ribbon that translates has to be recycled when it leaves; a ribbon that
-  // undulates never leaves, and a travelling ripple reads as flight far more strongly than
-  // a rigid shape sliding across ever does.
+  // The motion is a wave TRAVELLING down the band (the '- tt' term), not the band itself
+  // moving. A ribbon that translates has to be recycled when it leaves; one that undulates
+  // never leaves, and a travelling ripple reads as flight far more strongly anyway.
   function rbPath(k, s, tt, wave, out) {
     const u = s * 2 - 1;                          // -1 .. 1 along the band
     // Headings spread by the golden angle, so no two bands run parallel and the set never
@@ -11322,113 +11474,143 @@
     const lat = amp * Math.sin(u * Math.PI * f1 - tt * 2 + p1);   // sideways swing
     out[0] = ox + u * rbSpan * ca - lat * sa;
     out[1] = oy + u * rbSpan * sa + lat * ca;
-    // Depth swings hard on purpose: a band that stays at one depth is a flat squiggle, and
-    // it is parts of it rushing near while others hang back that makes the frame feel deep.
+    // Depth swings hard on purpose: a band that stays at one depth is a flat squiggle, and it
+    // is parts of it rushing near while others hang back that makes the frame feel deep.
     out[2] = RB_ZC + amp * 1.5 * Math.sin(u * Math.PI * f2 + tt * 1.6 + p2);
   }
   const rbP = [0, 0, 0];
-  function ribbonStamp(xL, xR, yT, yB, n) {
-    rbTime += rbSpeed * 0.6 / cfg.burn;    // per TICK, like trPhase and flPhase
-    const w = xR - xL, h = yB - yT;
-    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+  // One cross-section's two corners, staged before they become triangles: screen x/y, depth
+  // and heat for each edge, plus whether the pair has a screen position at all.
+  const rbEdge = new Float64Array(8);
+  let rbOK = false;
+  // Build cross-section i of ribbon k into rbEdge.
+  function rbSection(k, si, tt, wave, half, twist, cx, cy, scale) {
+    const a = si;
+    rbPath(k, a, tt, wave, rbP);
+    const px = rbP[0], py = rbP[1], pz = rbP[2];
+    // Tangent from a neighbour a hair along the curve. Cheaper and steadier than
+    // differentiating by hand, and the curve gains a term whenever Waviness is turned up
+    // which a hand derivative would have to gain too.
+    const h2 = 1 / (RB_SEGS * 4);
+    rbPath(k, a + (a > 0.5 ? -h2 : h2), tt, wave, rbP);
+    let tx = rbP[0] - px, ty = rbP[1] - py, tz = rbP[2] - pz;
+    if (a > 0.5) { tx = -tx; ty = -ty; tz = -tz; }
+    const tl = Math.hypot(tx, ty, tz) || 1;
+    tx /= tl; ty /= tl; tz /= tl;
+    // A frame around the tangent. The reference axis is swapped when the tangent nears it,
+    // because the cross product degenerates there and the band would flip its face over in
+    // one section -- which reads as a tear, not as a twist.
+    let ux = 0, uy = 1, uz = 0;
+    if (Math.abs(ty) > 0.9) { ux = 0; uy = 0; uz = 1; }
+    let ax = ty * uz - tz * uy, ay = tz * ux - tx * uz, az = tx * uy - ty * ux;
+    const al = Math.hypot(ax, ay, az) || 1;
+    ax /= al; ay /= al; az /= al;
+    const bx = ty * az - tz * ay, by = tz * ax - tx * az, bz = tx * ay - ty * ax;
+    const th = twist * a * Math.PI * 2 + tt * 0.5;
+    const cth = Math.cos(th), sth = Math.sin(th);
+    // The width direction: the band lies in the plane of the tangent and this.
+    const nx = ax * cth + bx * sth, ny = ay * cth + by * sth, nz = az * cth + bz * sth;
+    // THE SURFACE NORMAL, and it is what makes this look like a surface rather than a
+    // coloured shape. It is perpendicular to both the tangent and the width direction, so a
+    // band turned face-on to the eye is bright and one turned edge-on goes dark -- and since
+    // the twist rolls the band continuously, that becomes bands of light sweeping along its
+    // length. The point version had to fake this from how wide the projection came out.
+    const sx2 = ty * nz - tz * ny, sy2 = tz * nx - tx * nz, sz2 = tx * ny - ty * nx;
+    const sl = Math.hypot(sx2, sy2, sz2) || 1;
+    // View direction: the eye is at the origin looking down +z, so it is just the point.
+    const vl = Math.hypot(px, py, pz) || 1;
+    const face = Math.abs((sx2 * px + sy2 * py + sz2 * pz) / (sl * vl));
+    // Two edges, projected INDEPENDENTLY, so the perspective foreshortening across the band
+    // is real rather than a width scaled by depth.
+    const e1z = Math.max(RB_NEAR, pz + nz * half), e2z = Math.max(RB_NEAR, pz - nz * half);
+    const dep = Math.min(1, Math.max(0.3, RB_ZC / Math.max(RB_NEAR, pz)));
+    const heat = POINT_HEAT * Math.min(1, (0.20 + 0.80 * face) * dep);
+    rbOK = camMapXY(cx + ((px + nx * half) / e1z) * scale, cy + ((py + ny * half) / e1z) * scale);
+    if (!rbOK) return;
+    rbEdge[0] = camMX; rbEdge[1] = camMY;
+    rbEdge[2] = Math.min(1, Math.max(0, (e1z - RB_NEAR) / (RB_FAR - RB_NEAR))); rbEdge[3] = heat;
+    rbOK = camMapXY(cx + ((px - nx * half) / e2z) * scale, cy + ((py - ny * half) / e2z) * scale);
+    if (!rbOK) return;
+    rbEdge[4] = camMX; rbEdge[5] = camMY;
+    rbEdge[6] = Math.min(1, Math.max(0, (e2z - RB_NEAR) / (RB_FAR - RB_NEAR))); rbEdge[7] = heat;
+  }
+  function rbVert(x, y, z, h) {
+    const i = glRibCount * 4;
+    if (i + 4 > glRib.length) { const n2 = new Float32Array(glRib.length * 2); n2.set(glRib); glRib = n2; }
+    glRib[i] = x; glRib[i + 1] = y; glRib[i + 2] = z; glRib[i + 3] = h; glRibCount++;
+  }
+  // Advance the clock and fill glRib with the whole scene's triangles.
+  function ribbonBuild(dt) {
+    // Per second, matching what the per-tick version accumulated at any burn rate.
+    rbTime += rbSpeed * 0.6 * dt;
+    glRibCount = 0;
+    const cx = fw * 0.5, cy = fh * 0.5;
     // Focal length folded into one number. The curve reaches about 1.2 units off axis at a
     // depth of 3.1, so projecting against a bare half-extent puts the whole thing in the
     // middle ninth of the frame -- which is exactly what the first version drew.
-    const scale = Math.min(w, h) * 1.05;
+    const scale = Math.min(fw, fh) * 1.05;
     const count = Math.max(1, Math.min(8, Math.round(rbCount)));
     const half = Math.max(0, rbWidth) * 0.5;
     const twist = rbTwist, wave = rbWave, tt = rbTime;
-    // How far the band runs, in world units. Over ~2 it leaves the frame at both ends,
-    // which is the point: the ends are never seen.
     rbSpan = 1.5 * Math.max(0.25, rbLen);
-
-    // ---- pass 0: how long is each ribbon on screen? ----------------------------------
-    const segs = new Array(count), bases = new Array(count);
-    let need = 0;
+    // Previous cross-section, kept so each pair becomes a quad.
+    let ax0 = 0, ay0 = 0, az0 = 0, ah0 = 0, bx0 = 0, by0 = 0, bz0 = 0, bh0 = 0, have = false;
     for (let k = 0; k < count; k++) {
-      let len = 0, lx = 0, ly = 0;
-      for (let i = 0; i <= RB_COARSE; i++) {
-        rbPath(k, i / RB_COARSE, tt, wave, rbP);
-        const z = Math.max(0.35, rbP[2]);
-        const sx = cx + (rbP[0] / z) * scale, sy = cy + (rbP[1] / z) * scale;
-        if (i) len += Math.hypot(sx - lx, sy - ly);
-        lx = sx; ly = sy;
-      }
-      segs[k] = Math.max(48, Math.min(RB_SMAX, Math.round(len / RB_STEP)));
-      need += (segs[k] + 1) * 4;
-    }
-    if (!rbBuf || rbBuf.length < need) rbBuf = new Float64Array(need);
-
-    // ---- pass 1: build the band and measure its area ---------------------------------
-    // Positions come first because the tangent is taken from the PREVIOUS sample, which is
-    // both cheaper and steadier than differentiating the curve by hand -- and the curve
-    // gains a term whenever Waviness is turned up, which a hand derivative would too.
-    let total = 0, base = 0;
-    for (let k = 0; k < count; k++) {
-      const samples = segs[k];
-      bases[k] = base;
-      let px0 = 0, py0 = 0, pz0 = 0;
-      for (let i = 0; i <= samples; i++) {
-        const a = i / samples;
-        rbPath(k, a, tt, wave, rbP);
-        const px = rbP[0], py = rbP[1], pz = rbP[2];
-        let tx = px - px0, ty = py - py0, tz = pz - pz0;
-        if (i === 0) { tx = 1e-6; ty = 0; tz = 0; }
-        const tl = Math.hypot(tx, ty, tz) || 1;
-        tx /= tl; ty /= tl; tz /= tl;
-        px0 = px; py0 = py; pz0 = pz;
-        // A frame around the tangent. The reference axis is swapped when the tangent nears
-        // it, because the cross product degenerates there and the band would flip its face
-        // over in one sample -- which reads as a tear, not as a twist.
-        let ux = 0, uy = 1, uz = 0;
-        if (Math.abs(ty) > 0.9) { ux = 0; uy = 0; uz = 1; }
-        let ax = ty * uz - tz * uy, ay = tz * ux - tx * uz, az = tx * uy - ty * ux;
-        const al = Math.hypot(ax, ay, az) || 1;
-        ax /= al; ay /= al; az /= al;
-        const bx = ty * az - tz * ay, by = tz * ax - tx * az, bz = tx * ay - ty * ax;
-        const th = twist * a * Math.PI * 2 + tt * 0.5;
-        const cth = Math.cos(th), sth = Math.sin(th);
-        const nx = ax * cth + bx * sth, ny = ay * cth + by * sth, nz = az * cth + bz * sth;
-        // The two edges, projected INDEPENDENTLY. When the band turns edge-on the two
-        // projections converge on their own -- that convergence IS the collapse to a
-        // hairline, and it is why Width is not simply a stroke thickness.
-        const e1z = Math.max(0.35, pz + nz * half), e2z = Math.max(0.35, pz - nz * half);
-        const x1 = cx + ((px + nx * half) / e1z) * scale, y1 = cy + ((py + ny * half) / e1z) * scale;
-        const x2 = cx + ((px - nx * half) / e2z) * scale, y2 = cy + ((py - ny * half) / e2z) * scale;
-        const o = base + i * 4;
-        rbBuf[o] = x1; rbBuf[o + 1] = y1; rbBuf[o + 2] = x2; rbBuf[o + 3] = y2;
-        total += Math.hypot(x2 - x1, y2 - y1) + 1;   // +1: an edge-on span is still a pixel
-      }
-      base += (samples + 1) * 4;
-    }
-    // ---- pass 2: spend the point budget over that area -------------------------------
-    // A band wide enough to see is a large AREA, and the budget rarely covers it at one
-    // point per pixel. Spacing the points evenly from the same edge every time lines the
-    // gaps up across neighbouring cross-sections and the surface moires into a comb --
-    // which is what the first version drew. Offsetting each cross-section by its own hashed
-    // fraction of a step scatters the gaps instead, and the band reads as a solid sheet well
-    // below full coverage. Deterministic, like everything else in a point effect.
-    const density = total > 0 ? n / total : 0;
-    for (let k = 0; k < count; k++) {
-      const samples = segs[k], b = bases[k];
-      for (let i = 0; i <= samples; i++) {
-        const o = b + i * 4;
-        const x1 = rbBuf[o], y1 = rbBuf[o + 1], x2 = rbBuf[o + 2], y2 = rbBuf[o + 3];
-        const span = Math.hypot(x2 - x1, y2 - y1);
-        // Depth shading from the sample's own projected width: a near part of the band is
-        // both bigger and brighter, which is most of the sense of flying among them.
-        const dep = Math.min(1, span / (Math.max(1e-6, rbWidth) * scale / RB_ZC));
-        const heat = POINT_HEAT * (0.52 + 0.48 * dep);
-        const m = Math.max(1, Math.round((span + 1) * density));
-        if (m === 1) { plot((x1 + x2) * 0.5, (y1 + y2) * 0.5, heat); continue; }
-        const jit = (rbHash(k * 7919 + i) * 0.5 + 0.5) / m;    // [0, 1/m)
-        const dx = x2 - x1, dy = y2 - y1;
-        for (let j = 0; j < m; j++) {
-          const f = j / m + jit;
-          plot(x1 + dx * f, y1 + dy * f, heat);
+      have = false;
+      for (let i = 0; i <= RB_SEGS; i++) {
+        rbSection(k, i / RB_SEGS, tt, wave, half, twist, cx, cy, scale);
+        if (!rbOK) { have = false; continue; }   // no screen position: break the strip here
+        const x1 = rbEdge[0], y1 = rbEdge[1], z1 = rbEdge[2], h1 = rbEdge[3];
+        const x2 = rbEdge[4], y2 = rbEdge[5], z2 = rbEdge[6], h2v = rbEdge[7];
+        if (have) {
+          rbVert(ax0, ay0, az0, ah0); rbVert(bx0, by0, bz0, bh0); rbVert(x1, y1, z1, h1);
+          rbVert(bx0, by0, bz0, bh0); rbVert(x2, y2, z2, h2v);    rbVert(x1, y1, z1, h1);
         }
+        ax0 = x1; ay0 = y1; az0 = z1; ah0 = h1;
+        bx0 = x2; by0 = y2; bz0 = z2; bh0 = h2v;
+        have = true;
       }
     }
+  }
+  // CPU MIRROR, and it is DELIBERATELY DEGRADED, like Ocean's flat plane. It fills the same
+  // triangles into the heat grid with a scanline, but MAX-blends them instead of depth
+  // testing: a per-pixel z buffer in JS is a shader's job, and the fallback renders one
+  // layer on a machine with no WebGL2 at all. Near parts of a band are brighter, so MAX
+  // resolves most crossings the same way a depth test would -- most, not all.
+  function rbTri(x1, y1, h1, x2, y2, h2, x3, y3, h3) {
+    const yTop = Math.max(0, Math.floor(Math.min(y1, y2, y3)));
+    const yBot = Math.min(fh - 1, Math.ceil(Math.max(y1, y2, y3)));
+    if (yBot < yTop) return;
+    const d = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+    if (Math.abs(d) < 1e-9) return;
+    const xMin = Math.max(0, Math.floor(Math.min(x1, x2, x3)));
+    const xMax = Math.min(fw - 1, Math.ceil(Math.max(x1, x2, x3)));
+    if (xMax < xMin) return;
+    for (let y = yTop; y <= yBot; y++) {
+      const row = y * fw;
+      for (let x = xMin; x <= xMax; x++) {
+        // Barycentric, so the heat interpolates across the face exactly as the GPU does.
+        const l1 = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) / d;
+        const l2 = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) / d;
+        const l3 = 1 - l1 - l2;
+        if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+        const v = l1 * h1 + l2 * h2 + l3 * h3;
+        if (v > fire[row + x]) fire[row + x] = v;
+      }
+    }
+  }
+  function ribbonCPU(dt) {
+    ribbonBuild(dt);
+    for (let i = 0; i + 3 <= glRibCount; i += 3) {
+      const a = i * 4, b = (i + 1) * 4, c = (i + 2) * 4;
+      rbTri(glRib[a], glRib[a + 1], glRib[a + 3],
+            glRib[b], glRib[b + 1], glRib[b + 3],
+            glRib[c], glRib[c + 1], glRib[c + 3]);
+    }
+  }
+  function ribbonDraw(dt) {
+    if (useGL) { ribbonBuild(dt); glRibbonDraw(); }
+    else ribbonCPU(dt);
   }
   // ---- Bouncing solids: rigid bodies raymarched as SDFs ---------------------
   // The 3D member of the shape family (Polygon / Shape grid / Concentric / Bouncing
@@ -12583,6 +12765,7 @@
     // (g = p*uCells, cell = floor(g)), so a fractional value renders correctly and drifting
     // between two thumbs slides the grid smoothly instead of popping at each integer.
     { key: "phcount", host: "fx", group: "physarum", type: "dual", label: "Agents", valId: "vPhCount", min: 200, max: 6000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(Math.round(v)), apply: v => phCount = Math.round(v), durScale: 10 },
+    { key: "phscatter", host: "fx", group: "physarum", type: "dual", label: "Scatter", valId: "vPhScatter", min: 0, max: 1, step: 0.01, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => phScatter = v, durScale: 10 },
     { key: "phsense", host: "fx", group: "physarum", type: "dual", label: "Sense", valId: "vPhSense", min: 1, max: 30, step: 1, lo: 9, hi: 9, fmt: v => sig3(Math.round(v)) + "px", apply: v => phSense = Math.round(v), durScale: 10 },
     { key: "phturn", host: "fx", group: "physarum", type: "dual", label: "Turn", valId: "vPhTurn", min: 0.05, max: 1.6, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => phTurn = v, durScale: 10 },
     { key: "phdecay", host: "fx", group: "physarum", type: "dual", label: "Trail life", valId: "vPhDecay", min: 0.5, max: 0.995, step: 0.005, lo: 0.88, hi: 0.88, fmt: v => sig3(v), apply: v => phDecay = v, durScale: 10 },
@@ -14168,7 +14351,7 @@
     // Rows exist for all three bands but show only while their chip is armed (syncTrigTune);
     // the whole block hides with nothing armed. Built here, APPENDED at the foot of the trigger
     // section (below Duration) — see the append after the max row.
-    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {}, tags: {}, floor: null };
+    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {}, tips: {}, floor: null };
     const refWrap = document.createElement("div");
     refWrap.className = "trig-refs";
     refWrap.style.display = "none";
@@ -14206,9 +14389,12 @@
       f.type = "range"; f.min = String(lo); f.max = String(hi); f.step = String(st);
       const val = document.createElement("span");
       val.className = "trig-ref-val";
-      const tag = document.createElement("span");
-      tag.className = "trig-ref-tag"; tag.textContent = "global";
-      tag.title = "Following Global beat tuning — move this to give the slider its own";
+      // NO "global" TAG ANY MORE. Every untouched row carried the word, so the ordinary
+      // state was the loud one and an override -- the thing worth noticing -- was silent.
+      // A row following the default is dimmed instead (see .trig-ref.is-default), which
+      // says the same thing without spending a line of prose on it. The title still
+      // explains it, because dimming alone is not self-describing the first time.
+      const DEFAULT_TIP = "Following Global beat tuning — move this to give the slider its own";
       f.addEventListener("input", () => {
         if (refEls[id] !== refs) return;         // not the live block
         onSet(+f.value);
@@ -14216,8 +14402,8 @@
         paintTuneRows(id);
         tuneEdited();
       });
-      r.append(lb, f, val, tag);
-      return { row: r, field: f, val, tag, fmt };
+      r.append(lb, f, val);
+      return { row: r, field: f, val, tip: DEFAULT_TIP, fmt };
     };
     const own = () => beatTune[id] || (beatTune[id] = {});
     // Sensitivity — how far above the running median the flux has to jump. Per band.
@@ -14233,7 +14419,7 @@
       R.fmt = v => v.toFixed(1) + "×";
       R.field.title = k + " band sensitivity"; R.field.setAttribute("aria-label", k + " band sensitivity");
       refs.fields["sen-" + k] = R.field; refs.rows["sen-" + k] = R.row;
-      refs.vals["sen-" + k] = R.val; refs.tags["sen-" + k] = R.tag;
+      refs.vals["sen-" + k] = R.val; refs.tips["sen-" + k] = R.tip;
       refWrap.appendChild(R.row);
     }
     // Floor — one value, not per band: it gates against the band's own recent peak.
@@ -14247,7 +14433,7 @@
       R.field.title = "beat floor"; R.field.setAttribute("aria-label", "beat floor");
       refs.floor = R;
       refs.fields.floor = R.field; refs.rows.floor = R.row;
-      refs.vals.floor = R.val; refs.tags.floor = R.tag;
+      refs.vals.floor = R.val; refs.tips.floor = R.tip;
       refWrap.appendChild(R.row);
     }
     // Refractory — the one that started this: minimum gap between this slider's own beats.
@@ -14263,7 +14449,7 @@
       R.fmt = v => v + "ms";
       R.field.title = k + " band refractory (ms)"; R.field.setAttribute("aria-label", k + " band refractory");
       refs.fields[k] = R.field; refs.rows[k] = R.row;
-      refs.vals[k] = R.val; refs.tags[k] = R.tag;
+      refs.vals[k] = R.val; refs.tips[k] = R.tip;
       refWrap.appendChild(R.row);
     }
     refs.wrap = refWrap;
@@ -15472,12 +15658,12 @@
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
     { id: "physarum", name: "Slime mould", subtitle: "Physarum · agents that build networks",
-      help: "Thousands of agents, each doing one stupid thing: look ahead-left, ahead and ahead-right at the trail everyone has left behind, turn toward whichever smells strongest, step forward and deposit a little more. Nothing instructs them to build anything — the veins, the loops, the junctions and the pruning are all EMERGENT, which is why it looks alive in a way a particle system never does. **Sense** is how far ahead they look (the single biggest change in character: short gives fine felted mats, long gives bold highways), Turn how sharply they can steer, Trail life how long a deposit survives — low starves the network back to wandering, high lets it set into a permanent map. Agents is the population. Try a Fade or Fire filter over it.",
-      params: ["phcount", "phsense", "phturn", "phdecay", "phspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      help: "Thousands of agents, each doing one stupid thing: look ahead-left, ahead and ahead-right at the trail everyone has left behind, turn toward whichever smells strongest, step forward and deposit a little more. Nothing instructs them to build anything — the veins, the loops, the junctions and the pruning are all EMERGENT, which is why it looks alive in a way a particle system never does. **Sense** is how far ahead they look (the single biggest change in character: short gives fine felted mats, long gives bold highways), Turn how sharply they can steer, Trail life how long a deposit survives — low starves the network back to wandering, high lets it set into a permanent map. Agents is the population. Try a Fade or Fire filter over it. **Scatter** is what keeps it alive. With it at 0 the culture solves its dish and stops \u2014 the veins reinforce themselves, every agent follows the strongest trail it can find, and after a few seconds you are looking at a static diagram. Scatter adds a little noise to each agent\u2019s heading every step, so they wander off the veins, start branches that sometimes take and usually do not, and the network keeps reorganising instead of settling. Low values give a network that breathes and drifts; high ones tear it apart faster than it can form, which is its own look.",
+      params: ["phcount", "phsense", "phturn", "phdecay", "phscatter", "phspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
       helpTags: ["all"], bakesOwnZoom: true, physarum: true,
       stamp: (xL, xR, yT, yB, n) => physarumStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1, points: [2000, 2000],
-        phcount: [2500, 2500], phsense: [9, 9], phturn: [0.5, 0.5], phdecay: [0.88, 0.88], phspeed: [1, 1] },
+        phcount: [2500, 2500], phsense: [9, 9], phturn: [0.5, 0.5], phdecay: [0.88, 0.88], phscatter: [0.3, 0.3], phspeed: [1, 1] },
       beat: {}, extras: { palette: "11", morph: false } },
     { id: "curl", name: "Curl flow", subtitle: "Curl noise · divergence-free particles",
       help: "Particles carried by the CURL of a noise field. That matters: a curl field is divergence-free, so the flow can swirl and braid but can never pile particles up or drain a region empty — which is exactly what happens if you drag points along a plain noise gradient instead, and why this reads as smoke or water rather than as dots sliding downhill. **Field scale** sets how big the eddies are, Flow how fast, Lifetime how long a particle lives before it is respawned somewhere new (short keeps the whole field being explored, long lets long filaments draw themselves). Pairs naturally with a Fade pixel filter for streaks.",
@@ -15727,17 +15913,14 @@
         points: [30000, 30000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
     { id: "ribbons", name: "Flying ribbons", subtitle: "Flying ribbons · twisting bands through space",
-      help: "Long bands writhing through space on closed loops, so they never end and never repeat. What makes a ribbon read as a ribbon rather than as a fat line is that it has a FACE: seen flat it is a wide sheet, seen edge-on it collapses to a bright hairline, and the flip between the two as it turns is the whole effect. Both of the band's edges are placed in 3D and projected separately, so the foreshortening, the twist and the edge-on collapse are all the same piece of geometry rather than three separate tricks. **Twist** is how many times the band rolls over along its length — at 0 it is a flat streamer that only turns as the path turns, wound up it flashes light and dark as each face comes round. **Width** is how broad the band is, **Length** how far the loop runs before it closes (under 1 it is a short arc, above it folds back through itself), and **Waviness** kinks the path so it crumples like foil instead of sweeping in clean curves. **Ribbons** is how many fly at once, each on its own hashed path. Speed runs the whole thing and negative reverses it. It stamps into the fire buffer like the other point effects, so a Fade or an Echo filter leaves the bands trailing through space behind them.",
-      params: ["rbcount", "rbwidth", "rblen", "rbtwist", "rbwave", "rbspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
-      helpTags: ["all", "ribbons"], bakesOwnZoom: true,
-      stamp: (xL, xR, yT, yB, n) => ribbonStamp(xL, xR, yT, yB, n),
-      // RIBBONS OWN THEIR POINTS RANGE, for the same reason Trees does: this fills an AREA
-      // (length x width), not a cloud, so the budget buys far less picture per point. Four
-      // default bands are roughly 40k pixels of surface, and the shared 2500 default drew a
-      // sparse glitter that read as noise rather than as a solid band.
-      ranges: { points: { min: 6000, max: 140000 } },
+      help: "Long bands writhing through space on closed loops, so they never end and never repeat. What makes a ribbon read as a ribbon rather than as a fat line is that it has a FACE: seen flat it is a wide sheet, seen edge-on it collapses to a bright hairline, and the flip between the two as it turns is the whole effect. Both of the band's edges are placed in 3D and projected separately, so the foreshortening, the twist and the edge-on collapse are all the same piece of geometry rather than three separate tricks. **Twist** is how many times the band rolls over along its length — at 0 it is a flat streamer that only turns as the path turns, wound up it flashes light and dark as each face comes round. **Width** is how broad the band is, **Length** how far the loop runs before it closes (under 1 it is a short arc, above it folds back through itself), and **Waviness** kinks the path so it crumples like foil instead of sweeping in clean curves. **Ribbons** is how many fly at once, each on its own hashed path. Speed runs the whole thing and negative reverses it. The bands are drawn as real surfaces with a depth buffer, so one passing behind another is genuinely hidden by it, and the shading comes from the surface normal — a face turned toward you is bright, one turned edge-on goes dark, and the twist rolls that into bands of light travelling along each ribbon.",
+      params: ["rbcount", "rbwidth", "rblen", "rbtwist", "rbwave", "rbspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      helpTags: ["all", "ribbons", "band"], bakesOwnZoom: true,
+      // NOT a `stamp`: this one rasterises triangles. There is no Points slider because
+      // coverage is not stochastic here -- a surface is filled exactly, once.
+      draw: dt => ribbonDraw(dt),
       defaults: { palcycle: [0, 0], palhold: [0, 0], rbcount: [4, 4], rbwidth: [0.38, 0.38], rblen: [1.6, 1.6], rbtwist: [2.5, 2.5], rbwave: [0.55, 0.55], rbspeed: [1, 1],
-        points: [95000, 95000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+        zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",
       help: "The inside of a doughnut, flown along the tube. The camera rides the pipe's centre line, so the wall wraps the whole frame and the curve of the ring keeps bringing new surface into view — you are always about to round a bend you can never quite see past. Flutes cuts lengthwise grooves into the pipe and Twist winds them into a spiral (both whole numbers, so the pattern closes on itself with no seam; set Flutes to 0 for a smooth pipe). Ring radius is how big the doughnut is — small values bend the tunnel hard and shorten the view, large ones straighten it out. Tube radius is how tight it is around you. Speed runs the flight, and negative reverses it.",
@@ -17754,7 +17937,14 @@
       const f = r.fields[rowKey];
       if (document.activeElement !== f) f.value = String(v);
       if (r.vals[rowKey]) r.vals[rowKey].textContent = fmt(v);
-      if (r.tags[rowKey]) r.tags[rowKey].style.display = isOwn ? "none" : "";
+      // FOLLOWING THE DEFAULT = DIMMED, overridden = full brightness. A class on the ROW,
+      // not the disabled/.off path: this control is entirely live and keyboard-reachable,
+      // and setOff() exists to switch a control OFF. Conflating "dimmed" with "disabled"
+      // has cost this codebase real bugs (see the note on setOff), so they stay apart.
+      row.classList.toggle("is-default", !isOwn);
+      // The tooltip still says it in words the first time -- dimming is a reminder, not an
+      // explanation.
+      if (r.tips[rowKey]) f.title = isOwn ? "" : r.tips[rowKey];
     };
     for (const k in B) {
       const on = !!armed[k]; if (on) any = true;
@@ -18291,6 +18481,10 @@
   let persistWarned = false;
   function persist() {
     if (!persistReady || suppressPersist) return;
+    // The one edit choke point, so it is where automatic cloud save learns that something
+    // changed. Deliberately AFTER the guard above: a scene being loaded at startup is not
+    // an edit, and persistReady is exactly the flag that already says so.
+    autoSaveNoteChange();
     try { localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(fullSnapshot()))); }
     catch (e) {
       const quota = e && (e.name === "QuotaExceededError" || e.name === "SecurityError");
@@ -19645,11 +19839,16 @@
   // The quarter-cell index that puts an edge at a given pixel, in the anchor frame brkPlace
   // reads: for a right/bottom anchor the stored coordinate IS the far edge.
   function brkAnchor(x, y, w, h, g) {
+    // EDGE AFFINITY: hold the near edge and grow inward. Right for a DROP -- you put the box
+    // where it is -- but a slider box has to INHERIT its layer box's anchor instead, so the
+    // choosing half is split out.
+    return brkAnchorAs(x, y, w, h, g,
+      x + w / 2 > window.innerWidth / 2, y + h / 2 > window.innerHeight / 2);
+  }
+  function brkAnchorAs(x, y, w, h, g, right, bottom) {
     const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
-    const right = x + w / 2 > window.innerWidth / 2;
-    const bottom = y + h / 2 > window.innerHeight / 2;
     return {
-      right: right, bottom: bottom,
+      right: !!right, bottom: !!bottom,
       gx: Math.round(((right ? x + w : x) - g.x0) / qx),
       gy: Math.round(((bottom ? y + h : y) - g.y0) / qy),
     };
@@ -19672,18 +19871,68 @@
     }
     return best;
   }
+  // WHICH WAY A LAYER'S SLIDER BOXES GROW. Toward the middle of the screen horizontally --
+  // a layer box in the left half puts its sliders to its RIGHT, one in the right half puts
+  // them to its LEFT -- and in the layer box's own vertical direction, so a top-anchored
+  // layer's sliders hang down from its top edge and a bottom-anchored layer's stack up from
+  // its bottom. The layer box's stored anchor is authoritative when it has one; a layer box
+  // that has never been dragged is read from where it actually sits.
+  function layerGrow(slot, r) {
+    const p = brkPos.get(popKey(slot, "layer"));
+    return {
+      right: r.left + r.width / 2 > window.innerWidth / 2,     // which half it is in
+      bottom: p ? !!p.bottom : r.top + r.height / 2 > window.innerHeight / 2,
+    };
+  }
+  // The candidate positions for one layer's slider boxes, in the order they should be filled:
+  // down (or up) the first column, then the next column further toward the middle. A column
+  // ENDS when the next box would start past the vertical centre -- that is the user's rule --
+  // or when it would leave the screen, whichever comes first.
+  //
+  // Note the two limits are both needed and neither implies the other: on a short viewport a
+  // 500px box already reaches the centre from the top edge, so the centre rule alone would
+  // put every box in a column of its own; on a tall one a column would happily run off the
+  // bottom of the screen before it ever reached the middle.
+  function columnSpot(slot, r, w, h, g, taken) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const midY = vh / 2;
+    const dir = layerGrow(slot, r);
+    const stepX = w + BRK_GAP, stepY = h + BRK_GAP;
+    // Column 0 sits against the layer box's centre-facing edge.
+    const x0 = dir.right ? r.left - BRK_GAP - w : r.right + BRK_GAP;
+    for (let col = 0; col < 12; col++) {
+      const x = dir.right ? x0 - col * stepX : x0 + col * stepX;
+      if (x < g.x0 || x + w > vw - BRK_EDGE) break;      // out of room sideways
+      // Start of the column: level with the layer box's own anchored edge.
+      let y = dir.bottom ? r.bottom - h : r.top;
+      for (let i = 0; i < 24; i++) {
+        if (y < g.y0 || y + h > vh - BRK_EDGE) break;    // off the screen: next column
+        if (dir.bottom ? y + h < midY : y > midY) break; // crossed the middle: next column
+        if (rectClear(x, y, w, h, taken)) return { x: x, y: y, right: dir.right, bottom: dir.bottom };
+        y += dir.bottom ? -stepY : stepY;
+      }
+    }
+    return null;
+  }
   function placeBeside(slot, key, box) {
     if (!brkFree()) return;
     const lb = breakout.querySelector('.lyr-box[data-slot="' + slot + '"]');
     const g = brkGrid();
     const w = brkW(box, g), h = brkH(box, g);
-    // Cluster around the layer's own box when it is open; with it closed there is nothing to
-    // cluster around, so fall back to that layer's CORNER — its sliders still gather where
-    // that layer lives rather than piling up at the top of the column.
+    const taken = brkRects(box);
+    // With the layer's own box open, build its column beside it. With it closed there is
+    // nothing to build against, so fall back to the nearest free spot to that layer's CORNER
+    // -- its sliders still gather where that layer lives rather than piling up in one column.
     const r = (lb && lb.style.display !== "none") ? lb.getBoundingClientRect() : null;
+    if (r) {
+      const spot = columnSpot(slot, r, w, h, g, taken);
+      // The anchor is the LAYER BOX'S, not this box's own position: that is what keeps a
+      // bottom-anchored layer's sliders growing upward as their content changes height.
+      if (spot) { brkPos.set(key, brkAnchorAs(spot.x, spot.y, w, h, g, spot.right, spot.bottom)); return; }
+    }
     const c = r ? { cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2 } : cornerCentre(slot, w, h, g);
-    const spot = nearestFree(c.cx, c.cy, w, h, g, brkRects(box));
-    if (spot) brkPos.set(key, brkAnchor(spot.x, spot.y, w, h, g));
+    const spot2 = nearestFree(c.cx, c.cy, w, h, g, taken);
+    if (spot2) brkPos.set(key, brkAnchor(spot2.x, spot2.y, w, h, g));
   }
   // The centre of the corner this slot owns, for a box of this size. LAYER_CORNERS is read
   // left-to-right, top-to-bottom, so the slot order IS the reading order: 1 2 / 3 4.
@@ -21912,6 +22161,67 @@
       return !!(j && j.error && j.error.status === "FAILED_PRECONDITION");
     } catch (e) { return false; }
   }
+  // ---- AUTOMATIC CLOUD SAVE ----------------------------------------------------------
+  // Three rules, and they are the user's: save only when something actually changed, wait
+  // two hours after the LAST change (each new change restarts that), and at most once a day.
+  //
+  // The whole schedule is three timestamps in localStorage and a one-minute tick that
+  // recomputes from them. NOT a setTimeout armed on each edit: a reload would lose it, and
+  // "two hours after the last change" has to survive the tab being closed and reopened, so
+  // the decision has to be derivable from stored state alone.
+  //
+  // `saved` is written by EVERY successful save, manual ones included -- which is the
+  // behaviour you want: if you pressed Save an hour ago, the daily automatic one has nothing
+  // left to do.
+  function autoSaveRead() {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch (e) {}
+    if (!s || typeof s !== "object") s = {};
+    return { changed: +s.changed || 0, saved: +s.saved || 0, tried: +s.tried || 0,
+             on: s.on !== false };
+  }
+  function autoSaveWrite(s) {
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(s)); } catch (e) {}
+  }
+  // Called from persist(), which is the app's single edit choke point and already
+  // early-returns until persistReady -- so loading a scene at startup is not a "change",
+  // and there is no second notion of dirty anywhere.
+  function autoSaveNoteChange() {
+    const s = autoSaveRead();
+    s.changed = Date.now();
+    autoSaveWrite(s);
+  }
+  // Called from cloudSave's success branch, for manual and automatic saves alike.
+  function autoSaveNoteSaved() {
+    const s = autoSaveRead();
+    s.saved = Date.now();
+    autoSaveWrite(s);
+  }
+  function autoSaveEnabled() { return autoSaveRead().on; }
+  function autoSaveSetEnabled(on) {
+    const s = autoSaveRead();
+    s.on = !!on;
+    autoSaveWrite(s);
+  }
+  // Pure, so the probe can ask it about any clock without running a timer.
+  function autoSaveDue(s, now, signedIn) {
+    if (!s.on || !signedIn) return false;
+    if (!s.changed) return false;                        // nothing has ever changed
+    if (s.saved >= s.changed) return false;              // already saved since the last change
+    if (now - s.changed < AUTOSAVE_DELAY_MS) return false;   // still inside the quiet time
+    if (s.saved && now - s.saved < AUTOSAVE_GAP_MS) return false;   // one a day
+    if (s.tried && now - s.tried < AUTOSAVE_RETRY_MS) return false; // do not hammer a failure
+    return true;
+  }
+  function autoSaveTick() {
+    const s = autoSaveRead();
+    if (!autoSaveDue(s, Date.now(), !!cloudSess)) return;
+    s.tried = Date.now();          // stamped BEFORE the attempt: a save that throws, hangs or
+    autoSaveWrite(s);              // is refused must not come straight back a minute later
+    cloudSave();
+  }
+  setInterval(autoSaveTick, AUTOSAVE_TICK_MS);
+
   const CLOUD_STALE_MSG = "your cloud copy changed since this browser last saw it "
     + "(another device or tab saved). Load to keep that version, or Save again to overwrite it.";
   function cloudSave() {
@@ -21969,6 +22279,9 @@
       });
       return r.json().then(doc => {
         cloudNoteDocTime(doc.updateTime || null);
+        // Manual saves count too: having just saved by hand, the daily automatic one has
+        // nothing left to do.
+        autoSaveNoteSaved();
         // Name both halves of what was stored — "Saved 9 scenes" reads as data loss to someone
         // who is looking at 19 in the panel, so say where the other ten live.
         cloudMsg(n
@@ -22661,6 +22974,12 @@
   if (el("cloud-delete")) el("cloud-delete").addEventListener("click", cloudDelete);
   if (el("cloud-signout")) el("cloud-signout").addEventListener("click", cloudSignOut);
   if (el("cloud-pub")) el("cloud-pub").addEventListener("change", e => cloudPublish(e.target.checked));
+  // Automatic save: paint the stored preference, and write it back on every change. Its own
+  // key (see AUTOSAVE_KEY), so it never rides a scene, a share link or a backup.
+  if (el("cloud-auto")) {
+    el("cloud-auto").checked = autoSaveEnabled();
+    el("cloud-auto").addEventListener("change", e => autoSaveSetEnabled(e.target.checked));
+  }
   if (el("cloud-nameview")) {
     el("cloud-nameview").addEventListener("click", cloudNameEdit);
     // Keyboard parity: the label is focusable, so Enter/Space must open it too.

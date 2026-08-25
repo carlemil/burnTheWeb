@@ -14,6 +14,53 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.53.0] — 2026-08-25
+
+### Added
+- **Automatic cloud save.** Your library now saves itself to your profile: two hours after your
+  last change, and at most once a day. Nothing is uploaded unless something actually changed,
+  and saving by hand counts — if you pressed Save an hour ago the automatic one has nothing
+  left to do. There is a **Save automatically** tick in the cloud box to switch it off.
+- **Scatter**, a new slider on **Slime mould**. Without it the culture solves its dish and
+  stops being interesting: the veins reinforce themselves until the whole picture is an evenly
+  spaced mesh at the same density everywhere, and nothing large-scale ever changes again.
+  Scatter starves some regions and lets others thrive, and drifts that pattern across the dish,
+  so the network keeps rearranging. At 0 it behaves exactly as it did before.
+
+### Changed
+- **Flying ribbons are real 3D surfaces now**, not a cloud of points. They are drawn as solid
+  geometry with depth, so a band passing behind another is properly hidden by it, and the
+  shading comes from the surface itself — a face turned toward you is bright, one turned
+  edge-on goes dark, and the twist rolls that into bands of light running along each ribbon.
+  As a point effect it could never be solid: filling a surface costs one dot per pixel and it
+  was only ever a third covered, which is why it looked speckled. The Points slider is gone
+  from this effect, because a surface is filled exactly once rather than sprinkled.
+- **Every box in the grid is the same width now**, layer boxes included, so the columns line up.
+  Heights still differ freely.
+- **A slider box lands beside its layer box, on the side facing the middle of the screen**, and
+  keeps that layer's anchor — a layer parked at the bottom grows its sliders upward. They
+  stack into a column until one would reach past the middle of the screen, then start a fresh
+  column alongside.
+- **A tuning row that is following the global beat tuning is now shown dimmed** instead of
+  carrying the word "global". Almost every row was untouched, so the label was on all of them
+  nearly all the time and the one thing worth spotting — a value you had overridden — was the
+  one with nothing on it. Overriding a row brings it up to full brightness.
+
+### Note on saved scenes
+- A **Slime mould** scene saved before this opens with Scatter at its new default, so it will
+  keep moving rather than settling; set Scatter to 0 for the old behaviour. A **Flying ribbons**
+  scene saved yesterday renders as solid ribbons rather than speckled ones — that is the fix,
+  not a side effect. Everything else loads exactly as it did.
+
+### Internal
+- Three new checks, each verified to fail against the code it covers: `autosaveprobe.js` (the
+  three scheduling rules, the restart, the retry backoff, a corrupt stored state, and that the
+  schedule never enters `fullSnapshot()`), `brkcolumn-check.js` (all four layout rules in both
+  mirrors — six failures against the previous code) and `tunedim-check.js` (the dimming is real,
+  lifts on override, and is emphatically not the disabled path).
+- `slimeprobe.js` measures drift of a coarse block-density map rather than per-cell churn: the
+  first version measured churn and cheerfully reported a fully normalised culture as busy.
+
 ## [1.52.0] — 2026-08-25
 
 ### Added
