@@ -14,6 +14,26 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.55.4] — 2026-08-25
+
+### Fixed
+- **The ghost Glass ball is gone.** Since v1.54.0 some machines showed a second copy of the
+  balls — the same animation but far behind — with the real one vanishing whenever the ghost
+  appeared, so the two alternated. It showed up on reload and when rearranging layers, and
+  came and went. It was never in the picture the app drew: it was the graphics driver
+  re-showing a stale frame in place of the live one, which is why a screen recording could not
+  capture it and why it vanished under software rendering. The screen is now explicitly
+  cleared before every frame is shown, which a stale frame cannot survive. Costs nothing you
+  will notice.
+- **Two Glass ball layers get their own balls again.** v1.55.3 switched that off to test
+  whether it was the cause of the ghost. It was not, so it is back.
+
+### Internal
+- The one-day hunt is recorded in `CLAUDE.md` under Testing, because the lesson is about what
+  a probe cannot see: every measurement of the frame said "correct" and was right. What pinned
+  it was switching Chrome's ANGLE backend to D3D11 WARP — ask for the discriminating test
+  early. `preserveDrawingBuffer: true` is explicitly the wrong fix.
+
 ## [1.55.3] — 2026-08-25
 
 ### Changed

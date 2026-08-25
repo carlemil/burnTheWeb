@@ -2419,7 +2419,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.55.3",
+    version: "1.55.4",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -8386,6 +8386,34 @@
     // bound but multiplied by 0, which is why the two blur passes can be skipped outright
     // instead of being run to fill a buffer nothing reads.
     bindDefault(canvas.width, canvas.height);
+    // CLEAR THE BACK BUFFER BEFORE THE PRESENT, EVERY FRAME. This is the fix for a ghost
+    // that took a day to pin down and could not be reproduced on any headless run: a
+    // second copy of the Glass ball, the same animation but far behind, with the ORIGINAL
+    // vanishing whenever the ghost showed -- so the two alternated. It appeared on reload
+    // and on reordering layers, and cleared for a while and came back.
+    //
+    // It was never in the frame the app produced. Every uniform, the clock and the salt
+    // were logged frame by frame in real Chrome on the reporter's 4090 and are
+    // single-valued; a screen recording did not capture it; and the decisive test was
+    // switching Chrome's ANGLE backend to D3D11 WARP (software rendering, identical WebGL
+    // code): the ghost was GONE. So it is the NVIDIA D3D11 driver's presentation path, on a
+    // G-Sync panel at 175Hz, re-presenting a STALE swapchain buffer in place of the live
+    // one -- an old frame of the same animation, shown instead of the new one.
+    //
+    // preserveDrawingBuffer:false tells the browser the buffer's contents are undefined
+    // after a present, which is what permits that reuse to show anything at all. This
+    // pass draws a full-screen quad, so in principle it overwrites every pixel -- but the
+    // driver does not know that, and a stale buffer handed back at the wrong moment can be
+    // presented before the overwrite lands. An explicit clear pins the buffer to a known
+    // state at the top of every present, which is the one thing a stale re-present cannot
+    // survive. It costs one fill of the default framebuffer per frame: measured against the
+    // ~4 ms of idle this frame has, it is nothing.
+    //
+    // Do NOT "fix" this by setting preserveDrawingBuffer:true instead: that forces the
+    // browser to copy the buffer every frame on every machine to keep it readable, which is
+    // a permanent tax paid to solve a problem one driver has.
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
@@ -10480,24 +10508,16 @@
   // (ballAt in FS_GLASS), so nothing has to be carried between frames and nothing can drift
   // apart between the shader and its mirror.
   let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0, gbSalt = 0;
-  // ---- THE PER-LAYER SALT IS SWITCHED OFF, DELIBERATELY AND TEMPORARILY ----------------
-  // A ghost has been reported since the salt landed: a second copy of the balls, the same
-  // animation but far behind, appearing on reload or when layers are rearranged and fading
-  // after a few seconds. It could not be reproduced here -- the ball geometry was logged
-  // frame by frame and is single-valued, the salt was instrumented and never flips, and the
-  // reporter's own scene was fetched from its share link and measured for 148 frames after a
-  // settle (frames two apart differ 1.59x more than adjacent ones, which is ordinary motion;
-  // a flip between two pictures reads below 1). So the only reproducer is the reporter's
-  // machine, and this exists to let THEM answer the question a repro would have answered:
+  // ---- THE PER-LAYER SALT, and the switch that once turned it off ------------------------
+  // A ghost was reported the day the salt landed: a second copy of the balls, the same
+  // animation but far behind, the original vanishing whenever the ghost showed. This switch
+  // was shipped OFF in v1.55.3 so the reporter could answer on the only machine that showed
+  // it -- and the ghost survived the switch, so the salt is CLEARED. It is back on.
   //
-  //   ghost gone with this off  -> the salt is the cause, and where to look is known
-  //   ghost still there         -> today's glass work is cleared, and the search moves on
-  //
-  // The cost of having it off is nil for a scene with ONE glass layer, which is the reported
-  // setup: the salt exists only to keep TWO glass layers from drawing the same balls in the
-  // same places. Setting this back to true restores that, and gbBallAt is untouched, so the
-  // maths and its probe stay exactly as they were.
-  const GB_SALT_ON = false;
+  // Kept as a switch rather than deleted, because it was cheap and the question may come
+  // back: with it off, two glass layers draw the same balls in the same places, and
+  // glassprobe reports the state either way so it cannot be left off by accident.
+  const GB_SALT_ON = true;
   // Matches the GLSL hash in ballAt exactly -- both paths must place the balls identically.
   function gbHashJS(x) { const s = Math.sin(x * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
   // WHERE ONE BALL IS, and the JS twin of ballAt() in FS_GLASS and FS_WORLD. Named rather

@@ -1925,6 +1925,25 @@ shader effects are bit-reproducible; **point effects are not** — gate those on
 before the app**, into `<head>`. **Do not clear the rAF queue** — `frame()` re-arms itself. Stub
 `Math.random`; read pixels with `readPixels` in the **same task** as the last frame.
 
+**A DRIVER PRESENTATION BUG IS INVISIBLE TO EVERY CHECK THAT READS THE FRAME.** v1.55.x
+chased a "ghost" Glass ball for a day: a second copy of the balls, the same animation but far
+behind, the ORIGINAL vanishing whenever the ghost showed. Four fixes shipped for it, all aimed
+at real bugs that were not this one (the per-layer salt, per-slot heat moving with a reorder,
+Zoom feedback, a refracted rim mistaken for the ghost in a still). Every instrument said the
+frame was correct — every uniform, the clock and the salt logged single-valued in real Chrome
+on the reporter's own 4090; a period-2 detector on the composite read ordinary motion; a screen
+recording did not capture it. All of that was TRUE, because the app's frames were correct. What
+pinned it was switching Chrome's ANGLE backend to **D3D11 WARP** (software rendering, identical
+WebGL code): the ghost was gone. It is the NVIDIA D3D11 driver, on a G-Sync panel at 175Hz,
+re-presenting a STALE swapchain buffer in place of the live one. The fix is an explicit
+`gl.clear` on the default framebuffer before the final `FS_COMP` present — one fill per frame,
+pinned to a known state, which a stale re-present cannot survive. **Do not "fix" it with
+`preserveDrawingBuffer: true`**: that taxes every machine with a per-frame copy to solve one
+driver's problem. Two lessons: when every measurement of the frame says "correct" and the
+user still sees it, stop measuring the frame and vary the thing BETWEEN the frame and the eye;
+and the reporter's "ghost gone under WARP" was worth more than a day of instrumentation —
+ask for the discriminating test early.
+
 **A SYNCHRONOUS STALL IS INVISIBLE TO EVERY HEADLESS CHECK EXCEPT THE WALL CLOCK.** v1.37.0
 linked a shader at boot that the driver took 64 seconds to optimise. No error, DOM fine, every
 probe green — and the browser checks passed too, reading "17 frames, 45 fps", because

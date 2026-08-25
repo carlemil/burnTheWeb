@@ -2122,6 +2122,34 @@
     // bound but multiplied by 0, which is why the two blur passes can be skipped outright
     // instead of being run to fill a buffer nothing reads.
     bindDefault(canvas.width, canvas.height);
+    // CLEAR THE BACK BUFFER BEFORE THE PRESENT, EVERY FRAME. This is the fix for a ghost
+    // that took a day to pin down and could not be reproduced on any headless run: a
+    // second copy of the Glass ball, the same animation but far behind, with the ORIGINAL
+    // vanishing whenever the ghost showed -- so the two alternated. It appeared on reload
+    // and on reordering layers, and cleared for a while and came back.
+    //
+    // It was never in the frame the app produced. Every uniform, the clock and the salt
+    // were logged frame by frame in real Chrome on the reporter's 4090 and are
+    // single-valued; a screen recording did not capture it; and the decisive test was
+    // switching Chrome's ANGLE backend to D3D11 WARP (software rendering, identical WebGL
+    // code): the ghost was GONE. So it is the NVIDIA D3D11 driver's presentation path, on a
+    // G-Sync panel at 175Hz, re-presenting a STALE swapchain buffer in place of the live
+    // one -- an old frame of the same animation, shown instead of the new one.
+    //
+    // preserveDrawingBuffer:false tells the browser the buffer's contents are undefined
+    // after a present, which is what permits that reuse to show anything at all. This
+    // pass draws a full-screen quad, so in principle it overwrites every pixel -- but the
+    // driver does not know that, and a stale buffer handed back at the wrong moment can be
+    // presented before the overwrite lands. An explicit clear pins the buffer to a known
+    // state at the top of every present, which is the one thing a stale re-present cannot
+    // survive. It costs one fill of the default framebuffer per frame: measured against the
+    // ~4 ms of idle this frame has, it is nothing.
+    //
+    // Do NOT "fix" this by setting preserveDrawingBuffer:true instead: that forces the
+    // browser to copy the buffer every frame on every machine to keep it readable, which is
+    // a permanent tax paid to solve a problem one driver has.
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(glProg.comp.p);
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
