@@ -1925,6 +1925,24 @@ shader effects are bit-reproducible; **point effects are not** — gate those on
 before the app**, into `<head>`. **Do not clear the rAF queue** — `frame()` re-arms itself. Stub
 `Math.random`; read pixels with `readPixels` in the **same task** as the last frame.
 
+**`fract(sin(x)*43758.5)` IS NOT A HASH, IT IS A DRIVER-BUILD DETECTOR.** The v1.55.x
+"ghost" Glass ball — a second copy of the balls, the same animation far behind, the ORIGINAL
+vanishing whenever it showed, appearing the moment shaders finished compiling — was this
+formula seeding the ball positions inside the shader. It amplifies the low bits of whichever
+`sin()` the driver's *current build* uses into a wholly different value; NVIDIA's D3D11 backend
+recompiles programs in the background, so two builds gave two trajectories, drawn on alternate
+frames as the driver swapped. WARP (one deterministic compiler) never showed it. **Six fixes
+shipped before this one and every one was wrong**: the per-layer salt, per-slot heat on
+reorder, Zoom feedback, a refracted rim in a still, a back-buffer clear (v1.55.4) and a
+`gl.finish()` fence (v1.55.5) — the last two aimed at *presentation*, and the fence surviving is
+what proved presentation was innocent: if the GPU provably finished the frame and it was STILL
+wrong, the frame itself differed between builds. Fix: hash on the CPU (`gbHashJS`, exact) and
+pass finished values as uniforms; `glassprobe` asserts no `sin`-hash in either glass shader,
+comments stripped. **The general rule: any per-frame value that must be IDENTICAL across
+frames may not come from a GPU hash.** Rule for next time: when the fence is free and the
+ghost survives it, the two pictures are two *computations*, not two presentations — go look
+for what the driver is allowed to compute differently.
+
 **A DRIVER PRESENTATION BUG IS INVISIBLE TO EVERY CHECK THAT READS THE FRAME.** v1.55.x
 chased a "ghost" Glass ball for a day: a second copy of the balls, the same animation but far
 behind, the ORIGINAL vanishing whenever the ghost showed. Four fixes shipped for it, all aimed

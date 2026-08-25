@@ -1663,7 +1663,7 @@
   // throws `1:1 syntax error` on every frame. Exactly the trap bindFbo's curFbo documents.
   // initGL is the one place these are set.
   // Scratch for the glass groups' uniform arrays -- allocated once, refilled per frame.
-  const gbScr = { salts: new Float32Array(4), ids: new Float32Array(4), times: new Float32Array(4), counts: new Float32Array(4),
+  const gbScr = { salts: new Float32Array(8), ids: new Float32Array(4), times: new Float32Array(4), counts: new Float32Array(4),
                   rads: new Float32Array(4), mats: new Float32Array(4), iors: new Float32Array(4),
                   glows: new Float32Array(4), places: new Float32Array(16) };
   var worldProgs;                       // "gb|sd" -> { p, pending } | { p, prog }
@@ -1762,14 +1762,14 @@
         installStackItem(gb); installPhase(gb);
         const s = glassSeed(dt);        // this layer's one clock advance for the frame
         ids[g] = plan.ids.get(gb); times[g] = s.t; counts[g] = s.count; rads[g] = s.rad;
-        salts[g] = s.salt;          // keeps two joined glass layers from sharing an orbit
+        salts[g * 2] = s.h1; salts[g * 2 + 1] = s.h2;   // finished hash values, see FS_GLASS
         mats[g] = s.mat; iors[g] = s.ior; glows[g] = s.glow;
         places[g * 4] = wldX; places[g * 4 + 1] = wldY; places[g * 4 + 2] = wldZ;
         places[g * 4 + 3] = Math.max(0.05, wldScale);
         capturePhase(gb);
       });
       gl.uniform1fv(P.u.uGbId, ids); gl.uniform1fv(P.u.uGbTime, times);
-      gl.uniform1fv(P.u.uGbSalt, salts);
+      gl.uniform2fv(P.u.uGbSalt, salts);
       gl.uniform1fv(P.u.uGbCount, counts); gl.uniform1fv(P.u.uGbRad, rads);
       gl.uniform1fv(P.u.uGbMat, mats); gl.uniform1fv(P.u.uGbIor, iors);
       gl.uniform1fv(P.u.uGbGlow, glows); gl.uniform4fv(P.u.uGbPlace, places);

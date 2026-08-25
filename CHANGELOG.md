@@ -14,6 +14,26 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.55.6] — 2026-08-25
+
+### Fixed
+- **The ghost Glass ball — the real cause this time.** The ball positions were seeded by a hash
+  computed inside the shader, of the form `fract(sin(x)*43758.5)`. That formula is not portable:
+  it amplifies the tiniest difference in how a graphics driver evaluates `sin()` into a wholly
+  different number. NVIDIA's driver re-optimises shaders in the background, and two builds of
+  the same shader evaluated it differently — so the balls had two starting positions and two
+  speeds, drawn on alternate frames as the driver swapped builds. That was the ghost: the same
+  animation far behind, the original vanishing whenever it showed, appearing the moment shaders
+  finished compiling. It never happened under software rendering, which has one deterministic
+  compiler. The hash is now computed on the CPU, where it is exact, and handed to the shader
+  as a finished number.
+
+### Internal
+- Two earlier attempts (v1.55.4's clear, v1.55.5's fence) targeted frame presentation and were
+  wrong; the fence is kept since it measured free, the clear likewise. `glassprobe.js` now
+  asserts no `sin`-based hash exists in either glass shader, with comments stripped first — the
+  first draft caught its own explanatory comment.
+
 ## [1.55.5] — 2026-08-25
 
 ### Fixed

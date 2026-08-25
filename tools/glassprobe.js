@@ -110,7 +110,21 @@ const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
 {
   const ballAtDefs = src.split("vec3 ballAt(int i, float t").length - 1;
   ok("both shaders define ballAt", ballAtDefs === 2, ballAtDefs + " definitions");
-  ok("...and BOTH take the salt", src.split("vec3 ballAt(int i, float t, float salt)").length - 1 === 2);
+  ok("...and BOTH take the two FINISHED hash values", src.split("vec3 ballAt(int i, float t, vec2 salt)").length - 1 === 2);
+  // THE PORTABILITY INVARIANT, and the real bug behind the ghost ball. fract(sin(x)*43758.5)
+  // amplifies the low bits of whichever sin() the driver's current build uses into a wholly
+  // different value; NVIDIA's D3D11 backend recompiles in the background, and two builds gave
+  // two trajectories drawn on alternate frames. The hash lives on the CPU now, where Math.sin
+  // is deterministic. If a sin-hash ever reappears in a glass shader, this goes red.
+  const glassSrc = src.slice(src.indexOf("const FS_GLASS ="), src.indexOf("const FS_GLASS =") + 6000);
+  const worldGlass = src.slice(src.indexOf("vec3 ballAt(int i, float t, vec2 salt)"), src.indexOf("vec3 ballAt(int i, float t, vec2 salt)") + 1200);
+  // Comments stripped first: the shader carries a note QUOTING the old formula, and the first
+  // version of this assertion caught its own explanation.
+  const code = t => t.replace(/\/\/[^\n]*/g, "");
+  ok("NO sin()-based hash in either glass shader (it is NOT portable across driver builds)",
+     !/fract\s*\(\s*sin\s*\(/.test(code(glassSrc)) && !/fract\s*\(\s*sin\s*\(/.test(code(worldGlass)));
+  ok("...the hash is computed on the CPU and handed in", /h1: gbHashJS\(/.test(src) && /h2: gbHashJS\(/.test(src)
+     && /uniform2f\(u\.uSalt, s\.h1, s\.h2\)/.test(src) && /uniform2fv\(P\.u\.uGbSalt, salts\)/.test(src));
   ok("no call site was left without one", !/ballAt\([^)]*\)\s*(?![^;]*salt)/.test("") &&
      src.indexOf("ballAt(i, uTime)") < 0 && src.indexOf("ballAt(i, uGbTime[g])") < 0 &&
      src.indexOf("ballAt(i, uGbTime[gg])") < 0);

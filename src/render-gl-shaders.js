@@ -1496,7 +1496,7 @@
     uniform float uChop; uniform float uFoam; uniform float uWind; uniform float uHeight;
     uniform float uReflect;
     uniform float uGbOn;
-    uniform float uGbId[4]; uniform float uGbTime[4]; uniform float uGbCount[4]; uniform float uGbSalt[4];
+    uniform float uGbId[4]; uniform float uGbTime[4]; uniform float uGbCount[4]; uniform vec2 uGbSalt[4];
     uniform float uGbRad[4]; uniform float uGbMat[4]; uniform float uGbIor[4]; uniform float uGbGlow[4];
     uniform vec4 uGbPlace[4];
     uniform float uSdOn; uniform float uSdId; uniform float uSdCount; uniform float uSdRim;
@@ -1532,16 +1532,26 @@
       h /= max(norm, 1e-4);
     }
     float waveAmp(){ return min(uHeight, CAM_H*0.55); }
-    float gbHash(float x){ return fract(sin(x*127.1 + 311.7)*43758.5453); }
+    // NO HASH IN THE SHADER. The one that used to be here, fract(sin(x*127.1+311.7)*43758.5),
+    // is the classic non-portable hash: sin() of a large argument, scaled by 43758, then the
+    // fractional part -- which AMPLIFIES the low bits of whatever sin() implementation the
+    // driver chose into an entirely different value. NVIDIA's D3D11 backend recompiles and
+    // re-optimises programs in the background, and two builds of this shader evaluated the
+    // hash differently. It fed both the ball's start angle AND its rate, so two builds meant
+    // two trajectories -- drawn on alternate frames as the driver swapped between them.
+    // That was the "ghost ball": the same animation far behind, the original vanishing
+    // whenever it showed. It never appeared under WARP, whose one deterministic compiler
+    // produces one build. The two values are now computed ONCE on the CPU (gbHashJS, where
+    // Math.sin is deterministic) and handed in as uniforms.
     // THE SALT IS WHAT KEEPS TWO GLASS LAYERS APART. Ball position was a pure function of the
     // clock and the ball index, and installStack seeds every layer's clock from the same
     // place -- so two glass layers drew ball 1 in exactly the same spot and KEPT it there.
     // h1 shifts where a layer's balls start; h2 detunes the rate, which is the half that
     // matters, because two orbits at the same speed with different offsets stay a fixed
     // distance apart forever and can still line up.
-    vec3 ballAt(int i, float t, float salt){
+    vec3 ballAt(int i, float t, vec2 salt){
       float f = float(i);
-      float h1 = gbHash(salt + 1.7), h2 = gbHash(salt + 9.3);
+      float h1 = salt.x, h2 = salt.y;
       float a = t*(0.60 + 0.13*f + 0.09*h2) + f*2.39996 + h1*6.2831853;
       float b = t*(0.41 + 0.09*f + 0.07*h1) + f*1.11700 + h2*6.2831853;
       return vec3(1.25*sin(a) + 0.35*sin(b*1.7),
@@ -1958,10 +1968,20 @@
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uCount; uniform float uRad;
     uniform float uMat; uniform float uIor; uniform float uGlow; uniform float uZoom;
-    uniform float uSalt;
+    uniform vec2 uSalt;
     uniform sampler2D uBelow; uniform float uHasBelow;
     out vec4 o;
-    float gbHash(float x){ return fract(sin(x*127.1 + 311.7)*43758.5453); }
+    // NO HASH IN THE SHADER. The one that used to be here, fract(sin(x*127.1+311.7)*43758.5),
+    // is the classic non-portable hash: sin() of a large argument, scaled by 43758, then the
+    // fractional part -- which AMPLIFIES the low bits of whatever sin() implementation the
+    // driver chose into an entirely different value. NVIDIA's D3D11 backend recompiles and
+    // re-optimises programs in the background, and two builds of this shader evaluated the
+    // hash differently. It fed both the ball's start angle AND its rate, so two builds meant
+    // two trajectories -- drawn on alternate frames as the driver swapped between them.
+    // That was the "ghost ball": the same animation far behind, the original vanishing
+    // whenever it showed. It never appeared under WARP, whose one deterministic compiler
+    // produces one build. The two values are now computed ONCE on the CPU (gbHashJS, where
+    // Math.sin is deterministic) and handed in as uniforms.
     // THE SALT IS WHAT KEEPS TWO GLASS LAYERS APART. Ball position was a pure function of the
     // clock and the ball index, and installStack seeds every layer's clock from the same
     // place -- so two glass layers drew ball 1 in exactly the same spot and KEPT it there.
@@ -1970,9 +1990,9 @@
     // distance apart forever and can still line up.
     // Two incommensurate rates per ball, offset by the golden angle, so they drift through
     // each other instead of orbiting in formation.
-    vec3 ballAt(int i, float t, float salt){
+    vec3 ballAt(int i, float t, vec2 salt){
       float f = float(i);
-      float h1 = gbHash(salt + 1.7), h2 = gbHash(salt + 9.3);
+      float h1 = salt.x, h2 = salt.y;
       float a = t*(0.60 + 0.13*f + 0.09*h2) + f*2.39996 + h1*6.2831853;
       float b = t*(0.41 + 0.09*f + 0.07*h1) + f*1.11700 + h2*6.2831853;
       return vec3(1.25*sin(a) + 0.35*sin(b*1.7),

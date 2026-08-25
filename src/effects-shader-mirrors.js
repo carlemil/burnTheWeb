@@ -1399,7 +1399,11 @@
     return { t: gbPhase, count: Math.round(gbCount), rad: gbRad, mat: Math.round(gbMat),
              ior: gbIor, glow: gbGlow, zoom,
              // ONE place, so the standalone draw and the shared world are switched together.
-             salt: GB_SALT_ON ? gbSalt : 0 };
+             salt: GB_SALT_ON ? gbSalt : 0,
+             // The two hash values the shader used to compute itself, computed HERE instead.
+             // Math.sin is deterministic; the GPU's was not -- see the note in FS_GLASS.
+             h1: gbHashJS((GB_SALT_ON ? gbSalt : 0) + 1.7),
+             h2: gbHashJS((GB_SALT_ON ? gbSalt : 0) + 9.3) };
   }
   // CPU fallback. Spheres and a headlamp -- no reflection, no refraction, and no layer
   // underneath to sample: the fallback path renders ONE item, so "the layers beneath" does
