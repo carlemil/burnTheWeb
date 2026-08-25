@@ -780,12 +780,6 @@
     margin: 7px 0 1px; color: #ffb15a; opacity: .5;
     font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
   }
-  /* "global" — this row is still following Global beat tuning. Hidden the moment the row
-     carries this slider's own value, so the tag's presence IS the override state. */
-  #breakout .trig-ref-tag {
-    flex: none; opacity: .38; font-size: 8.5px; letter-spacing: .05em;
-    text-transform: uppercase; min-width: 34px;
-  }
   /* The ↺ sits on the Tuning heading, which is a plain block — float it right rather than
      turning the heading into a flex row, so the uppercase tracking is untouched. */
   #breakout .trig-t .trig-rst { float: right; margin: -2px 0 0; }
@@ -903,6 +897,23 @@
      it either unreadable or louder than the picture. A fallback keeps every rule valid on a
      node that never got the property. */
   #panel .lyr { border-left: 3px solid var(--lyr, rgba(255, 140, 40, 0.22)); }
+  /* A TUNING ROW FOLLOWING THE GLOBAL DEFAULT IS DIMMED -- it replaced the word "global"
+     printed in every untouched row. About 20% down, enough to read as secondary at a glance
+     and not so much that it looks switched off; it is NOT switched off, and must never be
+     styled through .off/[disabled], which mean something else here (see setOff). Both hosts
+     are named because these rows live in break-out boxes as well as the panel. */
+  #panel .trig-ref.is-default, #breakout .trig-ref.is-default { opacity: .8; }
+  #panel .trig-ref.is-default input[type=range],
+  #breakout .trig-ref.is-default input[type=range] { filter: brightness(.8); }
+  /* Touching it is what claims it, so the dimming lifts on hover and focus too -- otherwise
+     a row you are actively dragging still reads as untouched until you let go. */
+  #panel .trig-ref.is-default:hover, #breakout .trig-ref.is-default:hover,
+  #panel .trig-ref.is-default:focus-within, #breakout .trig-ref.is-default:focus-within { opacity: 1; }
+  #panel .trig-ref.is-default:hover input[type=range],
+  #breakout .trig-ref.is-default:hover input[type=range],
+  #panel .trig-ref.is-default:focus-within input[type=range],
+  #breakout .trig-ref.is-default:focus-within input[type=range] { filter: none; }
+
   #breakout .ctl.poppable { border-left: 3px solid var(--lyr, rgba(255, 140, 40, 0.35)); }
   #breakout .ctl-owner { color: var(--lyr, #ffb15a); }
   /* A scene control's box belongs to no layer, so it keeps the house amber -- that IS the

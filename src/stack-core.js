@@ -361,7 +361,7 @@
     // Rows exist for all three bands but show only while their chip is armed (syncTrigTune);
     // the whole block hides with nothing armed. Built here, APPENDED at the foot of the trigger
     // section (below Duration) — see the append after the max row.
-    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {}, tags: {}, floor: null };
+    const refs = w.refs = { wrap: null, fields: {}, rows: {}, vals: {}, tips: {}, floor: null };
     const refWrap = document.createElement("div");
     refWrap.className = "trig-refs";
     refWrap.style.display = "none";
@@ -399,9 +399,12 @@
       f.type = "range"; f.min = String(lo); f.max = String(hi); f.step = String(st);
       const val = document.createElement("span");
       val.className = "trig-ref-val";
-      const tag = document.createElement("span");
-      tag.className = "trig-ref-tag"; tag.textContent = "global";
-      tag.title = "Following Global beat tuning — move this to give the slider its own";
+      // NO "global" TAG ANY MORE. Every untouched row carried the word, so the ordinary
+      // state was the loud one and an override -- the thing worth noticing -- was silent.
+      // A row following the default is dimmed instead (see .trig-ref.is-default), which
+      // says the same thing without spending a line of prose on it. The title still
+      // explains it, because dimming alone is not self-describing the first time.
+      const DEFAULT_TIP = "Following Global beat tuning — move this to give the slider its own";
       f.addEventListener("input", () => {
         if (refEls[id] !== refs) return;         // not the live block
         onSet(+f.value);
@@ -409,8 +412,8 @@
         paintTuneRows(id);
         tuneEdited();
       });
-      r.append(lb, f, val, tag);
-      return { row: r, field: f, val, tag, fmt };
+      r.append(lb, f, val);
+      return { row: r, field: f, val, tip: DEFAULT_TIP, fmt };
     };
     const own = () => beatTune[id] || (beatTune[id] = {});
     // Sensitivity — how far above the running median the flux has to jump. Per band.
@@ -426,7 +429,7 @@
       R.fmt = v => v.toFixed(1) + "×";
       R.field.title = k + " band sensitivity"; R.field.setAttribute("aria-label", k + " band sensitivity");
       refs.fields["sen-" + k] = R.field; refs.rows["sen-" + k] = R.row;
-      refs.vals["sen-" + k] = R.val; refs.tags["sen-" + k] = R.tag;
+      refs.vals["sen-" + k] = R.val; refs.tips["sen-" + k] = R.tip;
       refWrap.appendChild(R.row);
     }
     // Floor — one value, not per band: it gates against the band's own recent peak.
@@ -440,7 +443,7 @@
       R.field.title = "beat floor"; R.field.setAttribute("aria-label", "beat floor");
       refs.floor = R;
       refs.fields.floor = R.field; refs.rows.floor = R.row;
-      refs.vals.floor = R.val; refs.tags.floor = R.tag;
+      refs.vals.floor = R.val; refs.tips.floor = R.tip;
       refWrap.appendChild(R.row);
     }
     // Refractory — the one that started this: minimum gap between this slider's own beats.
@@ -456,7 +459,7 @@
       R.fmt = v => v + "ms";
       R.field.title = k + " band refractory (ms)"; R.field.setAttribute("aria-label", k + " band refractory");
       refs.fields[k] = R.field; refs.rows[k] = R.row;
-      refs.vals[k] = R.val; refs.tags[k] = R.tag;
+      refs.vals[k] = R.val; refs.tips[k] = R.tip;
       refWrap.appendChild(R.row);
     }
     refs.wrap = refWrap;

@@ -670,7 +670,14 @@
       const f = r.fields[rowKey];
       if (document.activeElement !== f) f.value = String(v);
       if (r.vals[rowKey]) r.vals[rowKey].textContent = fmt(v);
-      if (r.tags[rowKey]) r.tags[rowKey].style.display = isOwn ? "none" : "";
+      // FOLLOWING THE DEFAULT = DIMMED, overridden = full brightness. A class on the ROW,
+      // not the disabled/.off path: this control is entirely live and keyboard-reachable,
+      // and setOff() exists to switch a control OFF. Conflating "dimmed" with "disabled"
+      // has cost this codebase real bugs (see the note on setOff), so they stay apart.
+      row.classList.toggle("is-default", !isOwn);
+      // The tooltip still says it in words the first time -- dimming is a reminder, not an
+      // explanation.
+      if (r.tips[rowKey]) f.title = isOwn ? "" : r.tips[rowKey];
     };
     for (const k in B) {
       const on = !!armed[k]; if (on) any = true;
