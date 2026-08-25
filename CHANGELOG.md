@@ -14,6 +14,20 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.55.5] — 2026-08-25
+
+### Fixed
+- **A second attempt at the ghost Glass ball.** v1.55.4 cleared the screen before each frame
+  was shown; the ghost survived it. This release goes further and makes the app wait for the
+  graphics card to finish drawing every frame before it is handed over for display, so what
+  reaches the screen is provably the frame just drawn and never an older one. Measured cost:
+  none — 148.6 fps against 149.0 without it, the card finishes well inside the frame anyway.
+
+### Internal
+- `gl.finish()` before the final present, kept alongside the clear. If it turns out not to be
+  needed the clear stays and the fence goes; the heavier hammer was reached for only after the
+  lighter one failed on the one machine that shows the fault.
+
 ## [1.55.4] — 2026-08-25
 
 ### Fixed

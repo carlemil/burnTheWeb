@@ -2155,6 +2155,19 @@
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
     gl.uniform1f(glProg.comp.u.uBloom, 0);
     drawQuad();
+    // A FENCE BEFORE THE PRESENT. The clear above was not enough on its own: the ghost
+    // survived v1.55.4 on the reporter's machine. A stale re-present is an ORDERING failure
+    // -- the compositor takes the buffer before the GPU has finished writing this frame
+    // into it, and shows whatever it held last. gl.finish() blocks until every queued
+    // command has completed, so by the time this function returns and the browser presents,
+    // the buffer provably holds THIS frame and nothing older.
+    //
+    // It is a real cost: the CPU stalls for the GPU's remaining work each frame, which
+    // forfeits the pipelining that lets the two overlap. Measured on the dev 4090 the whole
+    // frame is ~4 ms of a 16.7 ms budget, so there is room, but this is the heavier hammer
+    // and it was reached for only after the lighter one failed on the one machine that shows
+    // the fault. If it turns out not to be needed, the clear stays and this goes.
+    gl.finish();
   }
   // The screen stage is EMPTY (Barrel, Scanlines, Vignette, Film grain and Bloom are all
   // per-layer `post` passes now), so its helper `screenPass` and its two display-resolution
