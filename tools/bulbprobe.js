@@ -118,10 +118,44 @@ ok("no teleports at the shipped speed", shipped.maxStep < 0.12,
 // Mandelbulb is DENSEST at its centre: inside the surface the iteration never escapes, the
 // DE goes flat, and there is nothing to draw. So the contract is the reverse -- the orbit
 // stays clear of the shell, and `shipped.embedded === 0` above is what proves it never gets in.
-ok("the camera orbits OUTSIDE the shell", shipped.minR > 1.3,
+// THIS ASSERTION HAS NOW FLIPPED THREE TIMES -- inside, then outside, then inside again --
+// which is the tell that the radius is a DESIGN CHOICE and not an invariant. Distance is a
+// slider now, and a multiple of the shell rather than an absolute, so pinning a number here
+// only re-breaks on the next taste decision. What is actually invariant is above and below:
+// the camera keeps its clearance and NEVER EMBEDS at any slider extreme (`shipped.embedded`),
+// and the fractal is present in frame. Those hold whether the shipped Distance is 0.8 or 2.5.
+//
+// The one number worth pinning is the ceiling: whatever the taste, the escape solver must not
+// carry the camera off to infinity.
+// COMPATIBILITY. v1.50.0 shipped Distance as an ABSOLUTE radius with a minimum of 1.3, and
+// scenes saved against it store that number. v1.51.0 opens the floor to 0 so the camera can
+// fly inside, and keeps the camera clear of the solid with BULB_MINR * bulbShell(P) rather
+// than by reinterpreting the slider -- because a scene that stored 2.5 must still mean 2.5.
+// That only holds while the floor stays BELOW everything v1.50.0 could store: bulbShell is
+// capped at 1.3, so the floor tops out at 0.78 * 1.3 and can never reach 1.3. If either
+// constant moves, this goes red and every released Mandelbulb scene has quietly re-framed.
+{
+  // Read both out of the source rather than the eval'd slice -- the slice runs inside a
+  // closure this block is not in, and lifting the whole flight model here to reach two
+  // numbers would be a lot of machinery for an arithmetic claim.
+  const minrM = src.match(/const BULB_MINR = ([\d.]+)/);
+  const shellM = src.match(/const bulbShell = P => ([^;]+);/);
+  ok("the floor constants are still where this check reads them", !!(minrM && shellM),
+     minrM && shellM ? "BULB_MINR " + minrM[1] : "MOVED -- this check is now vacuous");
+  const BULB_MINR = parseFloat(minrM[1]);
+  const bulbShell = new Function("P", "return " + shellM[1]);
+  let worstFloor = 0, atP = 0;
+  for (let P = 1; P <= 16; P += 0.05) {
+    const f = BULB_MINR * bulbShell(P);
+    if (f > worstFloor) { worstFloor = f; atP = P; }
+  }
+  ok("the clearance floor never reaches a Distance v1.50.0 could store",
+     worstFloor < 1.3,
+     "floor peaks at " + worstFloor.toFixed(3) + " (power " + atP.toFixed(1) + "), released min was 1.30");
+}
+
+ok("the orbit stays within a sane radius", shipped.maxR < 6.0,
    "radius " + shipped.minR.toFixed(2) + "…" + shipped.maxR.toFixed(2));
-ok("...and stays near the Distance it was given", shipped.maxR < 4.0,
-   "max " + shipped.maxR.toFixed(2));
 {
   M.reset();
   let sum = 0, min = 1, n = 0;

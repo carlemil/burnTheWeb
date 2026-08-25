@@ -14,6 +14,33 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.51.0] — 2026-08-25
+
+### Changed
+- **The Mandelbulb camera now flies inside the fractal.** Distance ships at 1 instead of 2.5, which
+  puts the camera down among the outer lobes looking out along a canyon rather than orbiting the
+  shell from outside. The slider reaches down to 0 now (it stopped at 1.3), so you can fly as deep
+  as there is anything to see from; wind it back up to 2.5 for the old framed-from-outside shot.
+  Scenes saved before this keep the Distance they stored and are framed exactly as they were.
+
+### Fixed
+- **The Mandelbulb no longer has a hard black band around its edges.** The fog and the ray's far
+  limit were both fixed distances tuned for a close-in camera, so with the camera further out every
+  ray arrived already fogged toward black — worst at the silhouette, which is why it read as the
+  last palette colour being skipped. Both now scale with where the camera actually is, and the
+  solid is evenly lit from any Distance.
+- The camera can no longer end up buried inside the solid at low Power settings, which rendered as
+  a black frame. The bulb is fatter at low Power, so the camera's minimum distance now tracks that
+  instead of being a fixed number.
+
+### Internal
+- `bulbprobe` pins the compatibility guarantee directly: the new clearance floor is proven to stay
+  below every Distance a v1.50.0 scene could have stored, so the reframing can't happen silently.
+  Its "the camera orbits outside the shell" assertion is gone — it had flipped three times, which
+  is the tell that it was pinning a taste decision rather than an invariant. What it pins now is
+  that the camera keeps its clearance and never embeds at any slider extreme, which holds whichever
+  Distance ships.
+
 ## [1.50.0] — 2026-08-24
 
 ### Added

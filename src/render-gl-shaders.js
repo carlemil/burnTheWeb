@@ -1367,17 +1367,26 @@
                              + h.yxy*bulbDE(p + h.yxy*e, P, it) + h.xxx*bulbDE(p + h.xxx*e, P, it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.6, 0.7, -0.5))));
           float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
-          // Interior depth cues. The fog range is metres of BULB, not of the old 4.5-unit
-          // exterior shot; the step count stands in for ambient occlusion (a ray that
-          // needed many tiny steps was crawling down a crevice), which is what stops the
-          // canyons reading as one flat wall.
-          float fog = exp(-t*0.85);
+          // Depth cues, measured FROM THE BULB rather than from the camera. The fog used to be
+          // exp(-t*0.85) -- metres of bulb, tuned when the camera flew inside the canyons at
+          // t well under 1. With Distance moved out to 2.5 every ray arrives at t ~ 1.4-3 and
+          // that curve crushed the whole solid toward black, hardest at the silhouette: the
+          // "sharp black region outside the fractal" was the fog, not the geometry.
+          //
+          // length(ro) - 1.25 is roughly where the surface begins (the bulb's radius is ~1.2),
+          // so this fogs DEPTH INTO the object and behaves the same at any Distance.
+          float near = max(0.0, length(ro) - 1.25);
+          float fog = exp(-max(0.0, t - near)*0.85);
           float ao = 1.0 - steps/80.0;
           heat = (0.16 + 0.72*dif + uGlow*0.5*rim)*(0.30 + 0.70*fog)*(0.45 + 0.55*ao);
           break;
         }
         t += d;
-        if (t > 3.2) break;
+        // The far bound has to clear the CAMERA's distance, not a fixed 3.2 that was set when
+        // the camera lived inside the shell. From Distance 2.5 a ray needs ~4 units to cross
+        // the whole solid, so rays toward the rim were hitting the bound and returning a miss
+        // -- a hard-edged black region with no geometry behind it.
+        if (t > length(ro) + 2.6) break;
       }
       if (heat == 0.0) heat = uGlow*0.35*exp(-halo*55.0);   // proximity halo on a miss
       o = vec4(clamp(heat, 0.0, 1.0), 0.0, 0.0, 1.0);

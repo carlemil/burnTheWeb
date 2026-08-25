@@ -1197,8 +1197,11 @@
   // with the surface it is flying past ends up embedded in it).
   let bpPower = 8, bpDetail = 7, bpSpin = 0.35, bpGlow = 0.5, bpPhase = 0;
   let bpOffX = 0, bpOffY = 0, bpOffZ = 0;     // the escape offset — PHASE_VARS, per layer
-  let bpDist = 2.5, bpLift = 0.8;             // orbit radius and height (see bulbBase)
+  let bpDist = 1, bpLift = 0;             // orbit radius and height (see bulbBase)
   const BULB_CLEAR = 0.12;                    // free space the camera keeps around itself
+  // How close to the centre Distance is allowed to park, as a fraction of the shell. The
+  // bulb's size tracks Power, so this has to be relative -- see the note in bulbBase.
+  const BULB_MINR = 0.78;
   const BULB_RELAX = 0.5;                     // 1/s the offset decays back toward the helix
   const BULB_OFFMAX = 0.9;                    // how far the escape may ever carry it off
   const bpBase = [0, 0, 0], bpNext = [0, 0, 0];
@@ -1218,7 +1221,20 @@
     // has no hollow middle, it is densest at the centre.
     //
     // NOTE the up axis here is Z (see FS_BULB's basis), so out[2] is the height.
-    const rad = Math.max(0.9, bpDist);
+    // Distance is ABSOLUTE and its scale is the one v1.50.0 shipped -- a saved scene stores
+    // this number, so reinterpreting it as a multiple of the shell would silently re-frame
+    // every Mandelbulb scene already out there. The power-dependence goes in the FLOOR
+    // instead, where it costs nobody anything: the bulb is fatter at low Power, so a radius
+    // that sits in open space at power 8 is buried in the solid at power 4 (the probe caught
+    // exactly that -- 2.56% of frames embedded). BULB_MINR keeps the camera clear at every
+    // power, and every value v1.50.0 could store is far above it, so old scenes are untouched.
+    //
+    // The floor is also why the slider can reach 0 without rendering black. There is no
+    // hollow middle to fly into: the centre of a Mandelbulb is the DENSEST part of the set,
+    // the iteration never escapes and the distance estimate goes flat, so a camera actually
+    // at the origin sees nothing at all. Winding Distance to 0 parks you as deep as there is
+    // anything to see from, which is the useful reading of "all the way in".
+    const rad = Math.max(bpDist, BULB_MINR * bulbShell(P));
     out[0] = rad * Math.cos(ph);
     out[1] = rad * Math.sin(ph);
     out[2] = bpLift + 0.10 * rad * Math.sin(ph * 0.23);
