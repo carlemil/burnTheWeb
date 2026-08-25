@@ -964,6 +964,25 @@ No `#lyrctl`, no `parkLayerCtl`.
 - **A slider popped from an OPEN layer box lands beside it** (`placeBeside`: first clear
   quarter-cell to the right, wrapping down), not at the foot of the default column.
 
+**A LAYER'S TINT IS RESOLVED ONCE AND STORED CONCRETE** — `null` means "not chosen" and
+`layerTintIdx` resolves it from the SLOT, so an unresolved layer's colour follows its
+POSITION: reordering recoloured every layer a row moved past, and deleting one recoloured
+everything below it. A cue that says "this box belongs to that layer" is worse than useless
+when dragging a different row changes it. **`resolveTints(items)` in `installStack`** and a
+`freeTintIdx` assignment in **`addStackItem`** make it concrete at the two points a layer
+joins the stack — the same "resolve the fallback once at install" pattern the palette family
+already uses, and for the same reason. Everything downstream reads `L.tint` first, so reorder
+and delete need no code at all; they stop mattering. A null resolves to its own slot's colour
+when that is free, which is exactly what it rendered as before, so a scene saved without tints
+opens unchanged and is merely stable from then on. `freeTintIdx` asks the CURRENT stack what
+is taken, so a colour freed by a deleted layer is available again rather than burned.
+`tools/tintprobe.js` pins reorder, delete and reuse.
+- **The DOM half of this was VACUOUS on the first try, and passed against the broken build.**
+  A browser check that adds four layers with `+` and then deletes one exercises
+  `addStackItem` — which the fix also patches — so `resolveTints` never ran and the check was
+  green either way. A negative control has to neuter **every** path that could supply the
+  behaviour, not the one the fix happened to be written for first.
+
 **Each layer carries a TINT COLOUR** (`L.tint`) marking its row, its settings box and every
 slider box popped out of it — with several boxes spread over the grid, the 9px `L2 · PLASMA`
 label was the only thing tying one to its layer. It is an **INDEX into `CONFIG.layerTint`,
@@ -1992,6 +2011,16 @@ All slice real source out of the built file by **markers — keep them**.
   across a whole arm spacing, so a sweep degenerates into noise and any fold-and-compare
   aliases past half an arm. Two earlier versions of the check passed the very bug they were
   written for. Markers: `function galaxyStamp(` … `// ---- Harmonograph`.
+- **`tintprobe.js`** — the per-layer TINT is a property of the LAYER, not the slot: an
+  untinted scene keeps exactly the colours it already rendered and becomes concrete; a stored
+  tint is never overwritten and a null never collides with one; **every pairwise reorder** and
+  **every single delete** leave all survivors' colours unchanged (one permutation passes by
+  luck — a slot-derived colour survives swapping two layers whose slots share a colour); a new
+  layer reuses a colour a deleted layer gave up, and churning layers never exhausts the
+  palette. `tintOk` still rejects everything that is not an in-range index. Slices by
+  `const LYR_TINT = CONFIG.layerTint;` … `const TINT_RGB`. **It hands the slice back out of a
+  `new Function` rather than `eval`-ing it** — the file is strict, and a strict `eval` keeps
+  its declarations to itself, so the names silently would not exist.
 - **`palprobe.js`** — palette DELETION and the palette ID CODEC: the frozen `PAL_IDS` table
   (hard-coded, so a reorder/rename-as-id goes red); the full serialize/deserialize round trip
   over extras/layers/presets/`palUse`/`palGone`; legacy numeric passthrough; custom id minting,

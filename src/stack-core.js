@@ -71,6 +71,40 @@
     const t = L ? tintOk(L.tint) : null;
     return t == null ? ((slot | 0) % LYR_TINT.length) : t;
   }
+  // THE COLOUR BELONGS TO THE LAYER, NOT TO THE SLOT. A null tint resolves from the slot
+  // above, which means an unresolved layer's colour follows its POSITION -- so reordering
+  // recoloured every layer it moved past, and deleting one recoloured everything below it.
+  // The cue exists to say "this box belongs to that layer", and a cue that changes when you
+  // drag a different row is worse than none.
+  //
+  // The fix is the one installStack already uses for palettes: resolve the fallback ONCE,
+  // when the layer joins the stack, and store the concrete index from then on. Everything
+  // downstream already reads L.tint first, so reorder and delete need no code at all --
+  // they stop mattering.
+  //
+  // `taken` is the set of indices in use, so a new layer takes a free colour and a colour
+  // freed by a deleted layer is available again rather than being burned for the session.
+  // Falling back to slot-modulo when every colour is in use keeps this total: LYR_TINT has
+  // exactly STACK_MAX entries today, so that only fires if the palette is ever shortened.
+  function freeTintIdx(taken, slot) {
+    for (let i = 0; i < LYR_TINT.length; i++) if (!taken.has(i)) return i;
+    return (slot | 0) % LYR_TINT.length;
+  }
+  // Every layer in `items` ends up with a concrete tint. Layers that already stored one keep
+  // it untouched -- including a duplicate, which is a choice a user can make by hand and not
+  // this function's business. A null takes its SLOT's colour when that colour is still free,
+  // which is precisely what it rendered as before, so a scene saved without tints opens
+  // looking exactly as it always did and is merely stable from then on.
+  function resolveTints(items) {
+    const taken = new Set();
+    for (const L of items) { const t = tintOk(L.tint); if (t != null) taken.add(t); }
+    items.forEach((L, i) => {
+      if (tintOk(L.tint) != null) return;
+      const own = (i | 0) % LYR_TINT.length;
+      const t = taken.has(own) ? freeTintIdx(taken, i) : own;
+      L.tint = t; taken.add(t);
+    });
+  }
   const layerTint = (L, slot) => LYR_TINT[layerTintIdx(L, slot)];
   // The same colour as a bare "r, g, b" triple, so CSS can build translucent shades of it
   // with plain rgba(). `color-mix` would do this in the stylesheet alone, but this costs one

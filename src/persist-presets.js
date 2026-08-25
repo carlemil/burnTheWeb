@@ -643,6 +643,9 @@
       if (L.paletteRev == null) L.paletteRev = !!fx.paletteRev;
       if (L.paletteBg == null) L.paletteBg = bgOk(fx.paletteBg);
     }
+    // ...and every layer's TINT becomes concrete here too, for the same reason and with the
+    // same "a saved scene still looks the way it did" guarantee. See resolveTints.
+    resolveTints(items);
     stack = items;
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed

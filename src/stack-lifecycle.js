@@ -119,6 +119,10 @@
     freezeItem(stack[stackSel]);
     const L = newStackItem(fx === undefined ? effect : fx);
     applyEffectBlend(L);              // the effect's shipped blend (Glass ball: over)
+    // A concrete tint from birth, so it survives every later reorder and delete. It takes a
+    // colour no live layer is using -- including one freed by a layer that has been removed,
+    // which is why this asks the CURRENT stack rather than counting layers ever created.
+    L.tint = freeTintIdx(new Set(stack.map((o, i) => layerTintIdx(o, i))), stack.length);
     // Concrete palette from birth, for the same reason installStack resolves it: a null here
     // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
     { const px = extras[L.fx] || presetExtra(L.fx);
