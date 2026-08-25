@@ -73,8 +73,31 @@
   // one: the input is a palette index that has already been validated, so nothing a share link
   // carries reaches CSS as a colour, which is the property tintOk exists to protect.
   const PAL_TINT = {};
-  const hex2 = v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, "0");
+  const hex2 = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
   const rgbHex = c => "#" + hex2(c[0]) + hex2(c[1]) + hex2(c[2]);
+  // THE TINT IS TEXT, NOT JUST A STRIPE. A layer box's title is rendered IN this colour on a
+  // near-black panel, so a dark one is unreadable -- #650000 against this background is about
+  // 1.6:1, which is not text, it is a smudge.
+  //
+  // Judged on real RELATIVE LUMINANCE, with the sRGB curve decoded. The cheap (max+min)/2
+  // "lightness" used elsewhere in this file is fine for ranking candidates and useless here:
+  // it calls pure blue and pure yellow equally bright, when one is 0.07 and the other 0.93.
+  const srgbLin = u => { u /= 255; return u <= 0.04045 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4); };
+  const relLum = c => 0.2126 * srgbLin(c[0]) + 0.7152 * srgbLin(c[1]) + 0.0722 * srgbLin(c[2]);
+  // 0.16 puts it around 4:1 against the panel, which is legible at the 9px this text is set
+  // at without washing every colour out to pastel.
+  const TINT_MIN_LUM = 0.16;
+  // Bring a colour up to that floor while keeping its hue: first take it to full brightness
+  // for that hue (a scale, so saturation is untouched), and only then wash toward white if it
+  // is STILL too dark -- which happens for blues and deep violets, whose pure form carries
+  // barely a fifteenth of the luminance a yellow does.
+  function tintReadable(c) {
+    const mx = Math.max(c[0], c[1], c[2]);
+    let out = mx > 0 ? [c[0] * 255 / mx, c[1] * 255 / mx, c[2] * 255 / mx] : [255, 255, 255];
+    for (let i = 0; i < 32 && relLum(out) < TINT_MIN_LUM; i++)
+      out = [out[0] + (255 - out[0]) * 0.1, out[1] + (255 - out[1]) * 0.1, out[2] + (255 - out[2]) * 0.1];
+    return out;
+  }
   // SEVERAL strong colours from one palette, best first and each visibly different from the
   // ones before it. A list rather than a single colour because two layers can share a palette
   // -- and if they did, one colour would mark them both and the cue would say nothing about
@@ -101,7 +124,9 @@
         // through to the fixed set instead, which is the honest answer for it.
         if (lum < 0.12 || lum > 0.9) continue;
         // Mid-bright wins. The saturation term dominates so a vivid mid tone beats a wash.
-        cand.push({ c: [r, g, b], s: sat * (1 - Math.abs(lum - 0.55) * 1.3) });
+        // Scored on the SAMPLE, stored BRIGHTENED. Scoring the brightened version would rank
+        // every candidate as fully saturated and lose the ordering entirely.
+        cand.push({ c: tintReadable([r, g, b]), s: sat * (1 - Math.abs(lum - 0.55) * 1.3) });
       }
     }
     cand.sort((a, b) => b.s - a.s);
@@ -117,13 +142,15 @@
     // A palette with no colour in it at all (a pure greyscale ramp) has nothing to offer, so
     // fall back to the fixed set rather than marking the layer in grey.
     if (!out.length) return (PAL_TINT[key] = LYR_TINT.slice());
-    // A single-hue ramp yields one entry; wash the base toward WHITE for the rest, so a second
-    // layer on the same palette is still told apart. Toward white rather than toward black:
-    // darkening a saturated colour lands it back in the too-dim band this function just spent
-    // its time rejecting, and a near-black marker reads as no marker at all.
+    // A single-hue ramp yields one entry -- and brightening collapses two shades of one hue
+    // onto the same colour, which is most palettes -- so wash the base toward WHITE for the
+    // rest. Toward white and never toward black: darkening is what the readability floor above
+    // exists to undo, and a variant nobody can read is not a second colour, it is a smudge.
     const hexes = out.map(rgbHex);
     for (let i = 1; hexes.length < LYR_TINT.length; i++) {
-      const base = out[(i - 1) % out.length], m = 0.38 * (1 + ((i - 1) / out.length | 0));
+      // Capped short of white: at a full wash the marker is the same colour as ordinary text
+      // and stops being a marker at all. The last step is a pale tint of the hue, not white.
+      const base = out[(i - 1) % out.length], m = Math.min(0.72, 0.3 * Math.ceil(i / out.length) + 0.28 * ((i - 1) % out.length));
       hexes.push(rgbHex([base[0] + (255 - base[0]) * m,
                          base[1] + (255 - base[1]) * m,
                          base[2] + (255 - base[2]) * m]));

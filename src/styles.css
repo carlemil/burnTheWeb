@@ -624,11 +624,18 @@
   /* Which effect / filter the box belongs to. Controls are singletons reused across
      effects, so "Speed" or "Size" alone doesn't say which one you popped — and with
      several boxes stacked, two identically-named sliders are indistinguishable. */
+  /* The title is TEXT IN THE TINT, and .62 opacity was undoing the readability floor the
+     colour is chosen against: a colour lifted to roughly 4:1 arrives on screen at 2.5:1 with
+     that multiplier on top of it. Kept slightly recessive, not dimmed to the point where the
+     thing that says which layer you are editing is the hardest thing in the box to read. */
   #breakout .ctl-owner {
     display: flex; align-items: center; gap: 6px;
-    margin: 0 0 4px; color: #ffb15a; opacity: .62;
+    margin: 0 0 4px; color: #ffb15a; opacity: .88;
     font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
   }
+  /* A LAYER box's title is the one that names the layer, so it carries the most weight of any
+     line in the grid -- it is what you scan for when several boxes are open at once. */
+  #breakout .lyr-box .ctl-owner { font-weight: 700; opacity: 1; }
   /* The owner line is also the DRAG HANDLE — the one strip of a box that is a title and not
      a control. `touch-action: none` is required, or a touch drag scrolls the page instead. */
   #breakout .ctl-owner .own-txt {

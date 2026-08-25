@@ -50,8 +50,8 @@ const PALETTES = [
 const body = slice("const LYR_TINT = CONFIG.layerTint;", "const TINT_RGB");
 const api2 = new Function("CONFIG", "PALETTES", "layerPalIndex", "stack",
   body + "\nreturn { tintOk, layerTintIdx, layerTint, palTintColor, palTintFlush," +
-  "  freeTintIdx, resolveTints, palTintList };")(CONFIG, PALETTES, L => (L && L.pal) | 0, []);
-const { tintOk, layerTintIdx, layerTint, palTintColor, palTintList, freeTintIdx, resolveTints } = api2;
+  "  freeTintIdx, resolveTints, palTintList, relLum, TINT_MIN_LUM };")(CONFIG, PALETTES, L => (L && L.pal) | 0, []);
+const { tintOk, layerTintIdx, layerTint, palTintColor, palTintList, freeTintIdx, resolveTints, relLum, TINT_MIN_LUM } = api2;
 
 console.log("--- per-layer tint (" + file + "), " + tintList.length + " colours\n");
 
@@ -235,6 +235,34 @@ function sat(h) {
      new Set([layerTint(a, 0), wasB, wasC]).size === 3, [layerTint(a, 0), wasB, wasC].join(" "));
   ok("...and deleting the first does not recolour the others",
      layerTint(b, 0) === wasB && layerTint(c, 1) === wasC, wasB + " / " + wasC);
+}
+
+{
+  // THE TINT IS TEXT. A layer box's title is rendered IN this colour on a near-black panel, so
+  // every colour the picker can hand out has to be readable at 9px -- a dark one is not a
+  // marker, it is a smudge. Judged on real relative luminance with the sRGB curve decoded: the
+  // cheap (max+min)/2 lightness used to RANK candidates calls pure blue and pure yellow
+  // equally bright, when one is 0.07 and the other 0.93.
+  const dark = [];
+  for (let i = 0; i < PALETTES.length; i++)
+    for (const h of palTintList(i)) {
+      const c = hexRGB(h);
+      if (relLum(c) < TINT_MIN_LUM - 1e-9) dark.push(i + ":" + h + " lum " + relLum(c).toFixed(3));
+    }
+  ok("EVERY COLOUR THE PICKER CAN HAND OUT IS READABLE", dark.length === 0,
+     dark.join(" | ") || "floor " + TINT_MIN_LUM + ", all clear");
+  // Pure blue is the case the cheap metric gets wrong: fully saturated and almost invisible.
+  const blue = new Function("return { fn: v => [0, 0, v] };")();
+  PALETTES.push(blue);
+  const bl = palTintList(PALETTES.length - 1);
+  ok("...including a pure blue ramp, which is the hard one",
+     bl.every(h => relLum(hexRGB(h)) >= TINT_MIN_LUM - 1e-9),
+     bl.join(" "));
+  ok("...and it is still recognisably BLUE after being lifted",
+     hexRGB(bl[0])[2] > hexRGB(bl[0])[0] + 40, bl[0]);
+  PALETTES.pop();
+  ok("no variant washes all the way to white",
+     palTintList(0).every(h => h.toLowerCase() !== "#ffffff"), palTintList(0).join(" "));
 }
 
 console.log("\n" + passes + " passed, " + fails + " failed");
