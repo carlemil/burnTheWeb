@@ -10521,7 +10521,7 @@
   // The disturbance field: its resolution, and how hard it bites into the trail's decay at
   // Scatter 1. See the note where it is built.
   const SCAT_CW = 13, SCAT_CH = 8, SCAT_BITE = 0.85;
-  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phAgents = null;
+  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phSize = 1, phAgents = null;
   function ensurePhy(P, n, salt) {
     if (!P.a || P.a.length !== n * 3) {
       P.a = new Float32Array(n * 3);
@@ -10605,6 +10605,19 @@
     // decay + a cheap 3-tap blur along x, which is what turns dots into veins
     const keep = Math.max(0.5, Math.min(0.995, phDecay));
     const sx = (xR - xL) / W, sy = (yB - yT) / H;
+    // AGENT SIZE, measured in TRAIL CELLS rather than in screen pixels, which is the whole
+    // reason it is worth having. The trail map is a fixed 420x236 while the heat grid follows
+    // the window, so one cell is about 2.3px across at a typical size -- and stamping a single
+    // point per cell left a 1.3px hole beside every one of them. That gap is why the network
+    // has always drawn as a dot grid rather than as veins, and it got wider on a bigger
+    // screen. At size 1 the marks are one cell across and just touch, at any resolution.
+    //
+    // Kept as an ellipse in pixel space, because sx and sy are only equal when the window
+    // happens to match the trail map's aspect.
+    const radX = Math.max(0, phSize) * 0.5 * sx, radY = Math.max(0, phSize) * 0.5 * sy;
+    const spanX = Math.round(radX), spanY = Math.round(radY);
+    const rr = spanY * spanY;                       // the ellipse test, in y units
+    const ryx = spanX > 0 ? (spanY * spanY) / (spanX * spanX) : 0;
     const fldRow = scat > 0 ? SCAT_CH / H : 0, fldCol = scat > 0 ? SCAT_CW / W : 0;
     for (let y2 = 0; y2 < H; y2++) {
       const row = y2 * W;
@@ -10619,7 +10632,18 @@
         prev = cur; tr[row + x2] = v;
         // Only the LIT cells are stamped. The threshold is what keeps this inside the point
         // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
-        if (v > 0.06) plot(xL + x2 * sx, yT + y2 * sy, Math.min(255, v * 420));
+        if (v > 0.06) {
+          const px = xL + x2 * sx, py = yT + y2 * sy, hv = Math.min(255, v * 420);
+          if (!spanX && !spanY) plot(px, py, hv);
+          else for (let dy = -spanY; dy <= spanY; dy++)
+            for (let dx = -spanX; dx <= spanX; dx++) {
+              // Round, not square: a square mark turns every vein into a chain of boxes and
+              // the diagonals read as staircases. The corners are the 21% of the footprint
+              // that costs most and helps least.
+              if (rr > 0 && (dx * dx) * ryx + dy * dy > rr) continue;
+              plot(px + dx, py + dy, hv);
+            }
+        }
       }
     }
   }
@@ -12766,6 +12790,7 @@
     // between two thumbs slides the grid smoothly instead of popping at each integer.
     { key: "phcount", host: "fx", group: "physarum", type: "dual", label: "Agents", valId: "vPhCount", min: 200, max: 6000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(Math.round(v)), apply: v => phCount = Math.round(v), durScale: 10 },
     { key: "phscatter", host: "fx", group: "physarum", type: "dual", label: "Scatter", valId: "vPhScatter", min: 0, max: 1, step: 0.01, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => phScatter = v, durScale: 10 },
+    { key: "phsize", host: "fx", group: "physarum", type: "dual", label: "Agent size", valId: "vPhSize", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => phSize = v, durScale: 10 },
     { key: "phsense", host: "fx", group: "physarum", type: "dual", label: "Sense", valId: "vPhSense", min: 1, max: 30, step: 1, lo: 9, hi: 9, fmt: v => sig3(Math.round(v)) + "px", apply: v => phSense = Math.round(v), durScale: 10 },
     { key: "phturn", host: "fx", group: "physarum", type: "dual", label: "Turn", valId: "vPhTurn", min: 0.05, max: 1.6, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => phTurn = v, durScale: 10 },
     { key: "phdecay", host: "fx", group: "physarum", type: "dual", label: "Trail life", valId: "vPhDecay", min: 0.5, max: 0.995, step: 0.005, lo: 0.88, hi: 0.88, fmt: v => sig3(v), apply: v => phDecay = v, durScale: 10 },
@@ -15658,12 +15683,12 @@
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
     { id: "physarum", name: "Slime mould", subtitle: "Physarum · agents that build networks",
-      help: "Thousands of agents, each doing one stupid thing: look ahead-left, ahead and ahead-right at the trail everyone has left behind, turn toward whichever smells strongest, step forward and deposit a little more. Nothing instructs them to build anything — the veins, the loops, the junctions and the pruning are all EMERGENT, which is why it looks alive in a way a particle system never does. **Sense** is how far ahead they look (the single biggest change in character: short gives fine felted mats, long gives bold highways), Turn how sharply they can steer, Trail life how long a deposit survives — low starves the network back to wandering, high lets it set into a permanent map. Agents is the population. Try a Fade or Fire filter over it. **Scatter** is what keeps it alive. With it at 0 the culture solves its dish and stops \u2014 the veins reinforce themselves, every agent follows the strongest trail it can find, and after a few seconds you are looking at a static diagram. Scatter adds a little noise to each agent\u2019s heading every step, so they wander off the veins, start branches that sometimes take and usually do not, and the network keeps reorganising instead of settling. Low values give a network that breathes and drifts; high ones tear it apart faster than it can form, which is its own look.",
-      params: ["phcount", "phsense", "phturn", "phdecay", "phscatter", "phspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      help: "Thousands of agents, each doing one stupid thing: look ahead-left, ahead and ahead-right at the trail everyone has left behind, turn toward whichever smells strongest, step forward and deposit a little more. Nothing instructs them to build anything — the veins, the loops, the junctions and the pruning are all EMERGENT, which is why it looks alive in a way a particle system never does. **Sense** is how far ahead they look (the single biggest change in character: short gives fine felted mats, long gives bold highways), Turn how sharply they can steer, Trail life how long a deposit survives — low starves the network back to wandering, high lets it set into a permanent map. Agents is the population. Try a Fade or Fire filter over it. **Scatter** is what keeps it alive. With it at 0 the culture solves its dish and stops \u2014 the veins reinforce themselves, every agent follows the strongest trail it can find, and after a few seconds you are looking at a static diagram. Scatter adds a little noise to each agent\u2019s heading every step, so they wander off the veins, start branches that sometimes take and usually do not, and the network keeps reorganising instead of settling. Low values give a network that breathes and drifts; high ones tear it apart faster than it can form, which is its own look. **Agent size** is how big a mark each agent leaves, measured in trail cells rather than in pixels — the trail is a fixed grid while the picture follows your window, so at 1 the marks are one cell across and just touch each other whatever the screen size. Below 1 the network breaks up into the dot grid it used to draw; above 1 the veins thicken and run together.",
+      params: ["phcount", "phsense", "phturn", "phdecay", "phscatter", "phsize", "phspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
       helpTags: ["all"], bakesOwnZoom: true, physarum: true,
       stamp: (xL, xR, yT, yB, n) => physarumStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1, points: [2000, 2000],
-        phcount: [2500, 2500], phsense: [9, 9], phturn: [0.5, 0.5], phdecay: [0.88, 0.88], phscatter: [0.3, 0.3], phspeed: [1, 1] },
+        phcount: [2500, 2500], phsense: [9, 9], phturn: [0.5, 0.5], phdecay: [0.88, 0.88], phscatter: [0.3, 0.3], phsize: [1, 1], phspeed: [1, 1] },
       beat: {}, extras: { palette: "11", morph: false } },
     { id: "curl", name: "Curl flow", subtitle: "Curl noise · divergence-free particles",
       help: "Particles carried by the CURL of a noise field. That matters: a curl field is divergence-free, so the flow can swirl and braid but can never pile particles up or drain a region empty — which is exactly what happens if you drag points along a plain noise gradient instead, and why this reads as smoke or water rather than as dots sliding downhill. **Field scale** sets how big the eddies are, Flow how fast, Lifetime how long a particle lives before it is respawned somewhere new (short keeps the whole field being explored, long lets long filaments draw themselves). Pairs naturally with a Fade pixel filter for streaks.",

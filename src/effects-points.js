@@ -19,7 +19,7 @@
   // The disturbance field: its resolution, and how hard it bites into the trail's decay at
   // Scatter 1. See the note where it is built.
   const SCAT_CW = 13, SCAT_CH = 8, SCAT_BITE = 0.85;
-  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phAgents = null;
+  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phSize = 1, phAgents = null;
   function ensurePhy(P, n, salt) {
     if (!P.a || P.a.length !== n * 3) {
       P.a = new Float32Array(n * 3);
@@ -103,6 +103,19 @@
     // decay + a cheap 3-tap blur along x, which is what turns dots into veins
     const keep = Math.max(0.5, Math.min(0.995, phDecay));
     const sx = (xR - xL) / W, sy = (yB - yT) / H;
+    // AGENT SIZE, measured in TRAIL CELLS rather than in screen pixels, which is the whole
+    // reason it is worth having. The trail map is a fixed 420x236 while the heat grid follows
+    // the window, so one cell is about 2.3px across at a typical size -- and stamping a single
+    // point per cell left a 1.3px hole beside every one of them. That gap is why the network
+    // has always drawn as a dot grid rather than as veins, and it got wider on a bigger
+    // screen. At size 1 the marks are one cell across and just touch, at any resolution.
+    //
+    // Kept as an ellipse in pixel space, because sx and sy are only equal when the window
+    // happens to match the trail map's aspect.
+    const radX = Math.max(0, phSize) * 0.5 * sx, radY = Math.max(0, phSize) * 0.5 * sy;
+    const spanX = Math.round(radX), spanY = Math.round(radY);
+    const rr = spanY * spanY;                       // the ellipse test, in y units
+    const ryx = spanX > 0 ? (spanY * spanY) / (spanX * spanX) : 0;
     const fldRow = scat > 0 ? SCAT_CH / H : 0, fldCol = scat > 0 ? SCAT_CW / W : 0;
     for (let y2 = 0; y2 < H; y2++) {
       const row = y2 * W;
@@ -117,7 +130,18 @@
         prev = cur; tr[row + x2] = v;
         // Only the LIT cells are stamped. The threshold is what keeps this inside the point
         // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
-        if (v > 0.06) plot(xL + x2 * sx, yT + y2 * sy, Math.min(255, v * 420));
+        if (v > 0.06) {
+          const px = xL + x2 * sx, py = yT + y2 * sy, hv = Math.min(255, v * 420);
+          if (!spanX && !spanY) plot(px, py, hv);
+          else for (let dy = -spanY; dy <= spanY; dy++)
+            for (let dx = -spanX; dx <= spanX; dx++) {
+              // Round, not square: a square mark turns every vein into a chain of boxes and
+              // the diagonals read as staircases. The corners are the 21% of the footprint
+              // that costs most and helps least.
+              if (rr > 0 && (dx * dx) * ryx + dy * dy > rr) continue;
+              plot(px + dx, py + dy, hv);
+            }
+        }
       }
     }
   }

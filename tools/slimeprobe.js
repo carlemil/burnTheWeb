@@ -38,15 +38,17 @@ function slice(from, to) {
 
 const noise = slice("function shHash21(", "let voCells");
 const body = slice("const PHY_MAX = 6000", "// CURL-NOISE FLOW");
+let plots = 0;
 const api = new Function(
   "cfg, fw, fh, POINT_HEAT, plot, stack, zoom",
   noise + "\n" + body +
   "\nreturn { ensurePhy, physarumStamp, W: PHY_W, H: PHY_H," +
   "  set: o => { if (o.count !== undefined) phCount = o.count;" +
   "              if (o.scatter !== undefined) phScatter = o.scatter;" +
+  "              if (o.size !== undefined) phSize = o.size;" +
   "              if (o.agents !== undefined) phAgents = o.agents; }," +
   "  scatterDefault: phScatter };"
-)({ burn: 60 }, 640, 360, 209, function () {}, [], 1);
+)({ burn: 60 }, 640, 360, 209, function () { plots++; }, [], 1);
 
 console.log("--- slime mould: does the culture stay varied? (" + file + ")\n");
 ok("Scatter ships non-zero", api.scatterDefault > 0, "default " + api.scatterDefault);
@@ -139,6 +141,40 @@ ok("...without dissolving the network",
   api.set({ agents: P });
   api.physarumStamp(0, 640, 0, 360, 0);
   ok("Scatter 0 builds no field at all", !P.fld, P.fld ? "built anyway" : "none");
+}
+
+// ---- AGENT SIZE is a DRAWING control, and must not touch the simulation -----------------
+// The trail map is a fixed 420x236 while the heat grid follows the window, so one trail cell
+// is a couple of pixels across -- and stamping a single point per cell left a hole beside
+// every one of them, which is why this network has always drawn as a dot grid rather than as
+// veins. Size is therefore measured in CELLS, not pixels: at 1 the marks are one cell across
+// and just touch, at any window size.
+{
+  function drawRun(size, steps) {
+    const P = {};
+    api.set({ count: 2500, scatter: 0.3, size: size, agents: P });
+    api.ensurePhy(P, 2500, 1);
+    api.set({ agents: P });
+    for (let i = 0; i < steps; i++) api.physarumStamp(0, 640, 0, 360, 0);
+    plots = 0;
+    api.physarumStamp(0, 640, 0, 360, 0);          // one more step, counting what it draws
+    return { plots: plots, trail: Float32Array.from(P.tr) };
+  }
+  const a = drawRun(0, 400), b = drawRun(1, 400), c = drawRun(2.5, 400);
+  ok("Agent size 0 draws one point per lit cell", a.plots > 0, a.plots + " points");
+  ok("AGENT SIZE MAKES THE MARK BIGGER", b.plots > a.plots * 2,
+     a.plots + " -> " + b.plots + " points at size 1");
+  ok("...and keeps growing across the slider", c.plots > b.plots,
+     b.plots + " -> " + c.plots + " points at size 2.5");
+  // The whole point of it being a DRAWING control. Three runs from the same seed must have
+  // produced the same network; if the size fed back into the simulation, a saved scene would
+  // reorganise itself every time this slider moved.
+  let same = a.trail.length === b.trail.length && a.trail.length === c.trail.length;
+  if (same) for (let i = 0; i < a.trail.length; i++) {
+    if (a.trail[i] !== b.trail[i] || a.trail[i] !== c.trail[i]) { same = false; break; }
+  }
+  ok("...while the network itself is untouched by it", same,
+     same ? "identical trail maps at 0 / 1 / 2.5" : "the simulation changed with the draw size");
 }
 
 console.log("\n" + passes + " passed, " + fails + " failed");
