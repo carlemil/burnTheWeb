@@ -85,6 +85,21 @@
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
+  // ---- automatic cloud save: its schedule ------------------------------------------
+  // ITS OWN localStorage KEY, like the credits/tutorial/share-link preferences, and
+  // deliberately NOT part of fullSnapshot(): everything in there rides a share link and a
+  // backup, and when this browser last saved is nobody else's business.
+  //
+  // Declared HERE rather than beside the cloud code because persist() -- the change signal
+  // -- lives five slices earlier, and a const in the cloud slice would be in the TDZ for
+  // any persist() that fires before that slice is evaluated.
+  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";
+  const AUTOSAVE_DELAY_MS = 2 * 60 * 60 * 1000;    // quiet time after the LAST change
+  const AUTOSAVE_GAP_MS = 24 * 60 * 60 * 1000;     // at most one automatic save a day
+  // A failed attempt is not a save, so it must not burn the daily slot -- but it must not
+  // retry every tick either, or a permanently stale document would hammer the network.
+  const AUTOSAVE_RETRY_MS = 60 * 60 * 1000;
+  const AUTOSAVE_TICK_MS = 60 * 1000;
   // Flying ribbons draws real GEOMETRY -- a triangle list with a depth buffer, so the bands
   // occlude one another instead of one painting over the other. It is the only thing in the
   // app that rasterises anything but a full-screen quad and a point, hence its own VAO and

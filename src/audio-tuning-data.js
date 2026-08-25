@@ -90,6 +90,10 @@
   let persistWarned = false;
   function persist() {
     if (!persistReady || suppressPersist) return;
+    // The one edit choke point, so it is where automatic cloud save learns that something
+    // changed. Deliberately AFTER the guard above: a scene being loaded at startup is not
+    // an edit, and persistReady is exactly the flag that already says so.
+    autoSaveNoteChange();
     try { localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(fullSnapshot()))); }
     catch (e) {
       const quota = e && (e.name === "QuotaExceededError" || e.name === "SecurityError");

@@ -1873,6 +1873,10 @@
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
       <label class="check" title="List your profile in the public gallery so anyone can load your scenes. Your name and scene count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
+      <!-- ON by default. An automatic upload is still an upload, so it gets a control you can
+           see and switch off rather than happening silently. data-nopersist: this is a device
+           preference with its own localStorage key, not scene data. -->
+      <label class="check" title="Save your library to your profile automatically: two hours after your last change, and at most once a day."><input type="checkbox" id="cloud-auto" data-nopersist checked> Save automatically</label>
       <!-- Links minted by "Share this scene" while signed in. /scenes is deliberately
            unlistable (a link meant for one person must not be enumerable), so the local
            note taken at mint time is the ONLY record — which is what makes the ✕ here the
@@ -2613,6 +2617,21 @@
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
+  // ---- automatic cloud save: its schedule ------------------------------------------
+  // ITS OWN localStorage KEY, like the credits/tutorial/share-link preferences, and
+  // deliberately NOT part of fullSnapshot(): everything in there rides a share link and a
+  // backup, and when this browser last saved is nobody else's business.
+  //
+  // Declared HERE rather than beside the cloud code because persist() -- the change signal
+  // -- lives five slices earlier, and a const in the cloud slice would be in the TDZ for
+  // any persist() that fires before that slice is evaluated.
+  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";
+  const AUTOSAVE_DELAY_MS = 2 * 60 * 60 * 1000;    // quiet time after the LAST change
+  const AUTOSAVE_GAP_MS = 24 * 60 * 60 * 1000;     // at most one automatic save a day
+  // A failed attempt is not a save, so it must not burn the daily slot -- but it must not
+  // retry every tick either, or a permanently stale document would hammer the network.
+  const AUTOSAVE_RETRY_MS = 60 * 60 * 1000;
+  const AUTOSAVE_TICK_MS = 60 * 1000;
   // Flying ribbons draws real GEOMETRY -- a triangle list with a depth buffer, so the bands
   // occlude one another instead of one painting over the other. It is the only thing in the
   // app that rasterises anything but a full-screen quad and a point, hence its own VAO and
@@ -18438,6 +18457,10 @@
   let persistWarned = false;
   function persist() {
     if (!persistReady || suppressPersist) return;
+    // The one edit choke point, so it is where automatic cloud save learns that something
+    // changed. Deliberately AFTER the guard above: a scene being loaded at startup is not
+    // an edit, and persistReady is exactly the flag that already says so.
+    autoSaveNoteChange();
     try { localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(fullSnapshot()))); }
     catch (e) {
       const quota = e && (e.name === "QuotaExceededError" || e.name === "SecurityError");
@@ -22059,6 +22082,67 @@
       return !!(j && j.error && j.error.status === "FAILED_PRECONDITION");
     } catch (e) { return false; }
   }
+  // ---- AUTOMATIC CLOUD SAVE ----------------------------------------------------------
+  // Three rules, and they are the user's: save only when something actually changed, wait
+  // two hours after the LAST change (each new change restarts that), and at most once a day.
+  //
+  // The whole schedule is three timestamps in localStorage and a one-minute tick that
+  // recomputes from them. NOT a setTimeout armed on each edit: a reload would lose it, and
+  // "two hours after the last change" has to survive the tab being closed and reopened, so
+  // the decision has to be derivable from stored state alone.
+  //
+  // `saved` is written by EVERY successful save, manual ones included -- which is the
+  // behaviour you want: if you pressed Save an hour ago, the daily automatic one has nothing
+  // left to do.
+  function autoSaveRead() {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch (e) {}
+    if (!s || typeof s !== "object") s = {};
+    return { changed: +s.changed || 0, saved: +s.saved || 0, tried: +s.tried || 0,
+             on: s.on !== false };
+  }
+  function autoSaveWrite(s) {
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(s)); } catch (e) {}
+  }
+  // Called from persist(), which is the app's single edit choke point and already
+  // early-returns until persistReady -- so loading a scene at startup is not a "change",
+  // and there is no second notion of dirty anywhere.
+  function autoSaveNoteChange() {
+    const s = autoSaveRead();
+    s.changed = Date.now();
+    autoSaveWrite(s);
+  }
+  // Called from cloudSave's success branch, for manual and automatic saves alike.
+  function autoSaveNoteSaved() {
+    const s = autoSaveRead();
+    s.saved = Date.now();
+    autoSaveWrite(s);
+  }
+  function autoSaveEnabled() { return autoSaveRead().on; }
+  function autoSaveSetEnabled(on) {
+    const s = autoSaveRead();
+    s.on = !!on;
+    autoSaveWrite(s);
+  }
+  // Pure, so the probe can ask it about any clock without running a timer.
+  function autoSaveDue(s, now, signedIn) {
+    if (!s.on || !signedIn) return false;
+    if (!s.changed) return false;                        // nothing has ever changed
+    if (s.saved >= s.changed) return false;              // already saved since the last change
+    if (now - s.changed < AUTOSAVE_DELAY_MS) return false;   // still inside the quiet time
+    if (s.saved && now - s.saved < AUTOSAVE_GAP_MS) return false;   // one a day
+    if (s.tried && now - s.tried < AUTOSAVE_RETRY_MS) return false; // do not hammer a failure
+    return true;
+  }
+  function autoSaveTick() {
+    const s = autoSaveRead();
+    if (!autoSaveDue(s, Date.now(), !!cloudSess)) return;
+    s.tried = Date.now();          // stamped BEFORE the attempt: a save that throws, hangs or
+    autoSaveWrite(s);              // is refused must not come straight back a minute later
+    cloudSave();
+  }
+  setInterval(autoSaveTick, AUTOSAVE_TICK_MS);
+
   const CLOUD_STALE_MSG = "your cloud copy changed since this browser last saw it "
     + "(another device or tab saved). Load to keep that version, or Save again to overwrite it.";
   function cloudSave() {
@@ -22116,6 +22200,9 @@
       });
       return r.json().then(doc => {
         cloudNoteDocTime(doc.updateTime || null);
+        // Manual saves count too: having just saved by hand, the daily automatic one has
+        // nothing left to do.
+        autoSaveNoteSaved();
         // Name both halves of what was stored — "Saved 9 scenes" reads as data loss to someone
         // who is looking at 19 in the panel, so say where the other ten live.
         cloudMsg(n
@@ -22808,6 +22895,12 @@
   if (el("cloud-delete")) el("cloud-delete").addEventListener("click", cloudDelete);
   if (el("cloud-signout")) el("cloud-signout").addEventListener("click", cloudSignOut);
   if (el("cloud-pub")) el("cloud-pub").addEventListener("change", e => cloudPublish(e.target.checked));
+  // Automatic save: paint the stored preference, and write it back on every change. Its own
+  // key (see AUTOSAVE_KEY), so it never rides a scene, a share link or a backup.
+  if (el("cloud-auto")) {
+    el("cloud-auto").checked = autoSaveEnabled();
+    el("cloud-auto").addEventListener("change", e => autoSaveSetEnabled(e.target.checked));
+  }
   if (el("cloud-nameview")) {
     el("cloud-nameview").addEventListener("click", cloudNameEdit);
     // Keyboard parity: the label is focusable, so Enter/Space must open it too.

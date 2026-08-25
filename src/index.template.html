@@ -106,6 +106,10 @@
            saving. Ticking it re-saves the whole profile (see cloudPublish for why a
            pub-only write cannot satisfy the rules). -->
       <label class="check" title="List your profile in the public gallery so anyone can load your scenes. Your name and scene count become visible."><input type="checkbox" id="cloud-pub"> Publish to gallery</label>
+      <!-- ON by default. An automatic upload is still an upload, so it gets a control you can
+           see and switch off rather than happening silently. data-nopersist: this is a device
+           preference with its own localStorage key, not scene data. -->
+      <label class="check" title="Save your library to your profile automatically: two hours after your last change, and at most once a day."><input type="checkbox" id="cloud-auto" data-nopersist checked> Save automatically</label>
       <!-- Links minted by "Share this scene" while signed in. /scenes is deliberately
            unlistable (a link meant for one person must not be enumerable), so the local
            note taken at mint time is the ONLY record — which is what makes the ✕ here the
