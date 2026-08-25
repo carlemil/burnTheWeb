@@ -177,6 +177,24 @@
     uniform float uGain;
     in float vVal; out vec4 o;
     void main(){ o = vec4(vVal * uGain, 0.0, 0.0, 1.0); }`;
+    // Flying ribbons: real triangles, not points. Same idea as VS_PTS -- fire-pixel space in,
+    // clip space out -- but it carries a DEPTH so the rasteriser can sort the bands against
+    // each other, which is the whole difference between a surface and a cloud. The heat is
+    // computed per VERTEX on the CPU (facing, depth) and interpolated across the triangle,
+    // so the shading is smooth without the shader knowing anything about the geometry.
+    const VS_RIB = `#version 300 es
+    layout(location=0) in vec4 aV;   // xy fire-pixel space, z depth 0..1, w heat 0..255
+    uniform vec2 uSize;
+    out float vVal;
+    void main(){
+      vVal = aV.w / 255.0;
+      vec2 c = (aV.xy + 0.5) / uSize * 2.0 - 1.0;
+      gl_Position = vec4(c, aV.z * 2.0 - 1.0, 1.0);
+    }`;
+    const FS_RIB = `#version 300 es
+    precision highp float;
+    in float vVal; out vec4 o;
+    void main(){ o = vec4(vVal, 0.0, 0.0, 1.0); }`;
     // Composite one stack item's heat into the shared buffer. The gain HAS to be a
     // multiply in here rather than a blend factor: blendEquation(MAX) ignores blendFunc
     // entirely, so a gain applied through blend state would work for Add and be

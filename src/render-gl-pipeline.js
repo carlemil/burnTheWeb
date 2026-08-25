@@ -723,6 +723,7 @@
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
+    glProg.rib = makeProg(VS_RIB, FS_RIB, ["uSize"]);
     glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
     glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend"]);
     glProg.julia = camProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
@@ -932,6 +933,17 @@
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
 
+    // Flying ribbons' triangle buffer. vec4 a vertex, not vec3 -- see VS_RIB.
+    ribVao = gl.createVertexArray();
+    ribVbo = gl.createBuffer();
+    gl.bindVertexArray(ribVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, ribVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, glRib.byteLength, gl.DYNAMIC_DRAW);
+    ribVboCap = glRib.byteLength;
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
@@ -1101,6 +1113,50 @@
       gl.blendEquation(gl.FUNC_ADD);
       gl.blendFunc(gl.ONE, gl.ZERO);
     }
+  }
+  // FLYING RIBBONS: THE ONE EFFECT THAT DRAWS GEOMETRY. Everything else in the app is a
+  // full-screen fragment pass or a cloud of 1px points, and neither can make a surface that
+  // hides what is behind it. A ribbon has to: two bands crossing in space must occlude, and
+  // MAX-blending brightness is not occlusion -- a dark near band would show the bright far
+  // one straight through itself.
+  //
+  // So this is the only depth buffer in the app. It is attached for THIS DRAW ONLY and
+  // detached after: every other pass runs with DEPTH_TEST off, and quietly changing the
+  // completeness rules of a framebuffer a dozen other passes share is not worth the one
+  // attach call this saves. Created on first use and resized with the grid.
+  //
+  // Contract otherwise identical to glShaderDraw: bind the layer scratch, blending off,
+  // overwrite. Retention and compositing stay the frame's job.
+  function glRibbonDraw() {
+    if (!glRibCount) return;
+    bindFbo(glFbo.layer, fw, fh);
+    if (!ribDepthRb) ribDepthRb = gl.createRenderbuffer();
+    if (ribDepthW !== fw || ribDepthH !== fh) {
+      gl.bindRenderbuffer(gl.RENDERBUFFER, ribDepthRb);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, fw, fh);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+      ribDepthW = fw; ribDepthH = fh;
+    }
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, ribDepthRb);
+    gl.disable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    const P = glProg.rib;
+    gl.useProgram(P.p);
+    gl.uniform2f(P.u.uSize, fw, fh);
+    gl.bindVertexArray(ribVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, ribVbo);
+    const need = glRibCount * 4 * 4;
+    if (need > ribVboCap) { gl.bufferData(gl.ARRAY_BUFFER, glRib.byteLength, gl.DYNAMIC_DRAW); ribVboCap = glRib.byteLength; }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, glRib, 0, glRibCount * 4);
+    gl.drawArrays(gl.TRIANGLES, 0, glRibCount);
+    gl.disable(gl.DEPTH_TEST);
+    gl.bindVertexArray(null);
+    // Put the framebuffer back the way every other pass expects to find it.
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
   }
   function glDrawPoints() {
     // The single-layer tick path: honour a stampAdd effect (Fractal flames) here too, or
@@ -2057,6 +2113,29 @@
   // Plot a heat stamp: CPU writes the fire buffer (max), GPU collects a point.
   // (It briefly took a `raw` flag to let the credits skip the camera; they render on
   // their own layer now, so every caller wants the camera and the flag is gone.)
+  // THE SCREEN MAPPING A STAMPED POINT GETS, factored out of plot() because Flying
+  // ribbons needs exactly the same one for its geometry vertices. Zoom about the grid
+  // centre, then the camera's 2x2, then the INVERSE lens on the screen offset -- the order
+  // is load-bearing and the long comment inside plot() explains why. Returns false when the
+  // point has no screen position at all (a long lens folds the far field away); writes
+  // camMX/camMY rather than allocating, since this runs per vertex and per stamped point.
+  let camMX = 0, camMY = 0;
+  function camMapXY(x, y) {
+    const z = zoom;
+    if (z === 1 && !camOn()) { camMX = x; camMY = y; return true; }
+    let dx = (x - fw * 0.5) * z, dy = (y - fh * 0.5) * z;
+    if (camOn()) {
+      const rx = camM[0] * dx + camM[1] * dy;
+      dy = camM[2] * dx + camM[3] * dy;
+      dx = rx;
+    }
+    if (camFov !== 0) {
+      if (!camUnlens(dx, dy)) return false;
+      dx = camUX; dy = camUY;
+    }
+    camMX = dx + fw * 0.5; camMY = dy + fh * 0.5;
+    return true;
+  }
   function plot(x, y, v, add) {
     // Zoom is applied HERE, to the point, not to the finished picture. FS_ZOOM magnifies
     // an fw×fh raster, so detail falls off as 1/zoom and the point effects went visibly
@@ -2066,27 +2145,12 @@
     // is rasterised ONCE, at full grid resolution, whatever the zoom. Points pushed off
     // the grid are dropped by the bounds test below, which is the crop a zoom should do.
     // Uniform scale commutes with the camera's 2×2, so the two compose in either order.
-    const z = zoom;                     // this LAYER's zoom (installStackItem installed it)
-    if (z !== 1 || camOn()) {
-      let dx = (x - fw * 0.5) * z, dy = (y - fh * 0.5) * z;
-      if (camOn()) {                    // camera: rotate the stamped point about the grid centre
-        const rx = camM[0] * dx + camM[1] * dy;
-        dy = camM[2] * dx + camM[3] * dy;
-        dx = rx;
-      }
-      // FIELD OF VIEW, last, on the SCREEN offset. camFrag4 applies the lens FIRST to the
-      // screen offset on its way IN to the effect, so its inverse belongs at the far end of
-      // the same chain on the way OUT — which is what makes a stamped layer and a shader
-      // layer bow the same way at the same slider value. A point with no screen position
-      // (a long lens folds the far field away) is dropped, like any out-of-grid point.
-      if (camFov !== 0) {
-        if (!camUnlens(dx, dy)) return;
-        dx = camUX; dy = camUY;
-      }
-      x = dx + fw * 0.5;
-      y = dy + fh * 0.5;
-    }
-    const xi = x | 0, yi = y | 0;
+    // The zoom/camera/lens chain lives in camMapXY now — Flying ribbons needs the identical
+    // mapping for its geometry, and two copies is how a stamped layer and a drawn one start
+    // bowing differently at the same slider value. A point with no screen position (a long
+    // lens folds the far field away) is dropped, like any out-of-grid point.
+    if (!camMapXY(x, y)) return;
+    const xi = camMX | 0, yi = camMY | 0;
     if (xi < 0 || xi >= fw || yi < 0 || yi >= fh) return;
     // `add` is the density mode Fractal flames stamps in: heat ACCUMULATES per hit
     // instead of taking the max, so where the orbit lands often burns brighter — the

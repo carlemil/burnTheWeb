@@ -259,8 +259,29 @@ it renders unchanged.
   a still frame cannot show and `tools/treeprobe.js` measures it as tip-travel vs root-travel.
   **Beat reactivity needed no code** — arming Sway's chips is the gust.
 
-### Flying ribbons (the one point effect that draws a SURFACE)
-Bands sweeping across the frame, built from a parametric path and stamped through `plot()`.
+### Flying ribbons (the ONLY effect that rasterises geometry)
+Bands sweeping across the frame, drawn as **real surfaces**: a triangle list per band, with the
+app's **only depth buffer**, so one band passing behind another is genuinely hidden by it.
+- **It was a point effect first, and that was the wrong shape for it.** A filled surface costs
+  one stamp per COVERED PIXEL - measured at **279k against a 95k budget**, so it was a third
+  covered and read as a stipple - and no budget makes a point cloud OCCLUDE anything.
+  Rasterising is both the right answer and the cheaper one: the GPU interpolates between
+  cross-sections, so ~220 per band describe the curve completely and the fill is free. The
+  whole effect is ~1500 triangles a frame, against ~100k `plot()` calls.
+- **`glRibbonDraw` attaches the depth renderbuffer for that draw ONLY.** Every other pass runs
+  with `DEPTH_TEST` off, and quietly changing the completeness rules of a framebuffer a dozen
+  passes share is not worth the one attach call it saves. Contract otherwise identical to
+  `glShaderDraw`: bind the layer scratch, blending off, overwrite.
+- **`camMapXY` is the shared screen mapping**, factored out of `plot()`: zoom about the grid
+  centre, the camera's 2x2, then the inverse lens. The ribbon vertices take the SAME one, or a
+  stamped layer and a drawn one bow differently at the same slider value.
+- **Shading is the surface NORMAL** (perpendicular to the tangent and the width direction), so
+  a face turned toward the eye is bright and one edge-on goes dark - and the twist rolls that
+  into bands of light travelling along each ribbon. The point version had to infer it from how
+  wide the projection came out.
+- Its buffers live in **`boot-globals.js`** beside the point ones, for the same reason: `initGL`
+  is called from `palette.js`, an earlier slice than `render-gl-pipeline.js`.
+- **No Points slider**: coverage is not stochastic when the surface is filled exactly, once.
 - **The two EDGES are placed in 3D and projected separately**, and the whole effect rests on
   that: seen flat the band is a wide sheet, seen edge-on the two projections converge on their
   own and it collapses to a bright hairline. Foreshortening, the twist and the collapse are
@@ -344,6 +365,17 @@ the steps.
 - **Headless virtual-time runs render FEW real frames with large clamped `dt`** — a
   per-frame-stepped sim looks frozen while dt-driven animation sails on. Before diagnosing a
   freeze, patch the pass in a PROBE COPY (hard zero / pure decay / accumulator writes).
+**Slime mould NORMALISES, it does not freeze - and the difference is the whole fix.** Reported
+as "static after a few seconds"; measured per cell, the trail map changes as fast at minute one
+as at second one. What it reaches is a HOMOGENEOUS equilibrium: an evenly spaced mesh at the
+same density everywhere, forever. **`phScatter` is a coarse, slowly drifting noise field that
+scales the trail's DECAY per cell**, so veins starve in some regions and thrive in others and
+that pattern migrates. Two things were tried first and MEASURED WORSE: heading noise per agent
+(at a quarter strength indistinguishable from off; turned up it floods - lit cells 7.8k to 38k,
+an even mush), and relocating a fraction of the agents (dilutes rather than disrupts). The field
+is **13x8 coarse** (about 100 noise evaluations a step against 99k per-cell) and the 3-tap blur
+softens the cell edges. It and its clock live on the LAYER beside the agents.
+
 - **Boids follows the solids arrangement exactly**: flock on `L.boids`, `installStackItem` calls
   `installBoids(L)` for `boids: true`, hash-seeded start, deterministic flight. Only `bdPrev`
   rides `PHASE_VARS`.
@@ -2067,6 +2099,14 @@ All slice real source out of the built file by **markers — keep them**.
   `const LYR_TINT = CONFIG.layerTint;` … `const TINT_RGB`. **It hands the slice back out of a
   `new Function` rather than `eval`-ing it** — the file is strict, and a strict `eval` keeps
   its declarations to itself, so the names silently would not exist.
+- **`slimeprobe.js`** - the slime mould must not NORMALISE: with Scatter 0 the coarse
+  block-density map stops moving, Scatter makes it rearrange (>3x), more of it upsets more, and
+  none of that is achieved by dissolving the network. Plus determinism, the field living on the
+  layer, and Scatter 0 building no field at all. **The metric is DRIFT of a 3x2 block map** -
+  deliberately not per-cell churn, which reported a normalised culture as busy, and deliberately
+  not a fine grid, which measures where individual veins ran and scores 1.18 on a fully
+  normalised dish. Markers: `function shHash21(` ... `let voCells`; `const PHY_MAX = 6000` ...
+  `// CURL-NOISE FLOW`.
 - **`palprobe.js`** — palette DELETION and the palette ID CODEC: the frozen `PAL_IDS` table
   (hard-coded, so a reorder/rename-as-id goes red); the full serialize/deserialize round trip
   over extras/layers/presets/`palUse`/`palGone`; legacy numeric passthrough; custom id minting,

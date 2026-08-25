@@ -76,6 +76,7 @@
     // (g = p*uCells, cell = floor(g)), so a fractional value renders correctly and drifting
     // between two thumbs slides the grid smoothly instead of popping at each integer.
     { key: "phcount", host: "fx", group: "physarum", type: "dual", label: "Agents", valId: "vPhCount", min: 200, max: 6000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(Math.round(v)), apply: v => phCount = Math.round(v), durScale: 10 },
+    { key: "phscatter", host: "fx", group: "physarum", type: "dual", label: "Scatter", valId: "vPhScatter", min: 0, max: 1, step: 0.01, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => phScatter = v, durScale: 10 },
     { key: "phsense", host: "fx", group: "physarum", type: "dual", label: "Sense", valId: "vPhSense", min: 1, max: 30, step: 1, lo: 9, hi: 9, fmt: v => sig3(Math.round(v)) + "px", apply: v => phSense = Math.round(v), durScale: 10 },
     { key: "phturn", host: "fx", group: "physarum", type: "dual", label: "Turn", valId: "vPhTurn", min: 0.05, max: 1.6, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => phTurn = v, durScale: 10 },
     { key: "phdecay", host: "fx", group: "physarum", type: "dual", label: "Trail life", valId: "vPhDecay", min: 0.5, max: 0.995, step: 0.005, lo: 0.88, hi: 0.88, fmt: v => sig3(v), apply: v => phDecay = v, durScale: 10 },

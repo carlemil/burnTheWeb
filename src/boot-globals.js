@@ -85,6 +85,13 @@
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
+  // Flying ribbons draws real GEOMETRY -- a triangle list with a depth buffer, so the bands
+  // occlude one another instead of one painting over the other. It is the only thing in the
+  // app that rasterises anything but a full-screen quad and a point, hence its own VAO and
+  // the only depth renderbuffer. Four floats a vertex: x, y in fire-pixel space, depth 0..1,
+  // heat 0..255.
+  let ribVao = null, ribVbo = null, ribVboCap = 0, ribDepthRb = null, ribDepthW = 0, ribDepthH = 0;
+  let glRib = new Float32Array(4 * 6 * 2048), glRibCount = 0;
 
   const cfg = { ...CONFIG.fire };   // live, mutable copy of the shipped fire defaults (scale = default resolution)
 

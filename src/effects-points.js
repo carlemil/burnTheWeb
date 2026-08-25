@@ -16,7 +16,10 @@
   // readback every frame on the GL path, and the trail needs its own decay and blur anyway --
   // the heat buffer is shared with every other layer and is cleared by the feedback rules.
   const PHY_MAX = 6000, PHY_W = 420, PHY_H = 236;
-  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phAgents = null;
+  // The disturbance field: its resolution, and how hard it bites into the trail's decay at
+  // Scatter 1. See the note where it is built.
+  const SCAT_CW = 13, SCAT_CH = 8, SCAT_BITE = 0.85;
+  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phAgents = null;
   function ensurePhy(P, n, salt) {
     if (!P.a || P.a.length !== n * 3) {
       P.a = new Float32Array(n * 3);
@@ -44,6 +47,40 @@
     ensurePhy(P, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), 1);
     const A = P.a, tr = P.tr, W = P.tw, H = P.th, N = A.length / 3;
     const sense = Math.max(1, phSense), turn = phTurn, step = 0.6 + phSpeed * 1.4;
+    // SCATTER. Without it the culture SOLVES its dish and then stops: the veins reinforce
+    // themselves, every agent follows the strongest trail it can see, and within a few
+    // seconds the picture is a static diagram that never changes again. The four rules that
+    // make the network emerge are also what make it a fixed point.
+    //
+    // A little heading noise per step is the standard cure and the honest one -- a real
+    // slime mould is noisy, and the network it builds is a moving equilibrium rather than a
+    // final answer. Agents wander off a vein, find nothing, come back or start a new branch,
+    // and the whole thing keeps reorganising.
+    //
+    // The noise has to vary with TIME, not just with the agent: a per-agent constant is a
+    // fixed bias each one steers with, and the culture settles into a skewed network just as
+    // completely as it settled into a straight one. Hence the tick counter -- which lives on
+    // the layer beside the agents, so two slime layers scatter independently. Still no
+    // Math.random anywhere: this is a hash, so a run is reproducible.
+    const scat = Math.max(0, phScatter);
+    P.t = (P.t || 0) + 1;
+    const tk = P.t;
+    // A COARSE, SLOWLY DRIFTING FIELD, rebuilt each step. Where it is high the trail decays
+    // faster, so the veins there starve and the agents abandon them; as the field drifts,
+    // that dead ground reopens and the network grows back into it somewhere else. The result
+    // is weather moving over the culture -- large-scale structure that never stops
+    // rearranging, which is the thing that was missing.
+    //
+    // Coarse and bilinear-free on purpose: 26x15 is 390 noise evaluations a step against
+    // 99k if it were per cell, and the 3-tap blur in the decay pass smooths the cell edges
+    // out anyway. The picture is a slow modulation, not a texture.
+    if (scat > 0) {
+      if (!P.fld || P.fld.length !== SCAT_CW * SCAT_CH) P.fld = new Float32Array(SCAT_CW * SCAT_CH);
+      const ft = tk * 0.004;
+      for (let j = 0; j < SCAT_CH; j++)
+        for (let i2 = 0; i2 < SCAT_CW; i2++)
+          P.fld[j * SCAT_CW + i2] = shVNoise(i2 * 0.42 + ft, j * 0.42 - ft * 0.71);
+    }
     const at = (x, y) => tr[((y % H) + H) % H * W + (((x % W) + W) % W)];
     for (let i = 0; i < N; i++) {
       const x = A[i * 3] * W, y = A[i * 3 + 1] * H, a = A[i * 3 + 2];
@@ -66,12 +103,17 @@
     // decay + a cheap 3-tap blur along x, which is what turns dots into veins
     const keep = Math.max(0.5, Math.min(0.995, phDecay));
     const sx = (xR - xL) / W, sy = (yB - yT) / H;
+    const fldRow = scat > 0 ? SCAT_CH / H : 0, fldCol = scat > 0 ? SCAT_CW / W : 0;
     for (let y2 = 0; y2 < H; y2++) {
       const row = y2 * W;
+      // Hoisted: the field row is constant across the scanline, and this loop is the
+      // hottest in the effect.
+      const fRow = scat > 0 ? ((y2 * fldRow) | 0) * SCAT_CW : 0;
       let prev = tr[row + W - 1];
       for (let x2 = 0; x2 < W; x2++) {
         const cur = tr[row + x2], nxt = tr[row + (x2 + 1) % W];
-        const v = (prev * 0.25 + cur * 0.5 + nxt * 0.25) * keep;
+        const k2 = scat > 0 ? keep * (1 - scat * SCAT_BITE * P.fld[fRow + ((x2 * fldCol) | 0)]) : keep;
+        const v = (prev * 0.25 + cur * 0.5 + nxt * 0.25) * k2;
         prev = cur; tr[row + x2] = v;
         // Only the LIT cells are stamped. The threshold is what keeps this inside the point
         // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
@@ -878,57 +920,45 @@
   }
 
   // ---- Flying ribbons ----------------------------------------------------------------
-  // Long bands writhing through space. The thing that makes a ribbon read as a ribbon
-  // rather than as a fat line is that it has an ORIENTATION: seen flat it is a wide sheet,
-  // seen edge-on it collapses to a bright hairline, and the flip between the two as it
-  // twists is the whole effect. So this does not stamp a stroke of constant width. It
-  // builds the band's two EDGES in 3D, projects both, and fills the segment between them —
-  // foreshortening, the twist and the edge-on collapse all fall out of that one decision
-  // instead of needing three separate fudges.
+  // Long bands writhing through space, drawn as ACTUAL SURFACES: a triangle strip per band,
+  // rasterised with a depth buffer so one band hides another it passes behind.
   //
-  // A point effect, not a shader: the geometry is a few thousand samples of a parametric
-  // curve, which is a JS loop's work, and going through plot() means the fire sim, the
-  // trail filters and the camera all apply for free. Deterministic like every other point
-  // effect -- per-ribbon variation comes from rbHash, never from Math.random.
-  let rbCount = 4, rbLen = 1, rbWidth = 0.3, rbTwist = 3, rbSpeed = 1, rbWave = 1, rbTime = 0;
-  // Projected edges are cached between the measuring pass and the stamping pass: one pass
-  // has to know the TOTAL area before the other can pick a density, and evaluating the
-  // curve twice to learn the same numbers would be the only expensive part done twice.
-  // Grown on demand and reused, so a steady state allocates nothing.
-  let rbBuf = null;
-  // How far a band runs, set by ribbonStamp and read by rbPath -- the path is evaluated
-  // hundreds of times per tick, so it takes what it can from the closure rather than an
-  // extra argument threaded through both passes.
+  // It began as a point-accumulation effect, stamping samples of the band through plot(),
+  // and that was the wrong shape for it. A filled surface costs one stamp per COVERED PIXEL
+  // -- measured at 279k for the shipped settings against a 95k budget, so it was a third
+  // covered and read as a stipple -- and no budget makes a point cloud occlude anything.
+  // Rasterising is both the right answer and the cheaper one: the GPU interpolates between
+  // samples, so a couple of hundred cross-sections per band describe the curve completely
+  // and the fill is free. The whole effect is now ~1500 triangles a frame.
+  //
+  // Deterministic, like the point effects it sits beside: variation is rbHash, never
+  // Math.random.
+  let rbCount = 4, rbLen = 1.6, rbWidth = 0.38, rbTwist = 2.5, rbSpeed = 1, rbWave = 0.55, rbTime = 0;
+  // How far a band runs, set by the builder and read by rbPath -- the path is evaluated a few
+  // hundred times a frame, so it takes what it can from the closure.
   let rbSpan = 1.5;
   function rbHash(i) {                     // deterministic per-ribbon variation, [-1, 1]
     let h = Math.imul(i ^ 0x27d4eb2f, 0x165667b1);
     h ^= h >>> 15; h = Math.imul(h, 0x9e3779b1); h ^= h >>> 13;
     return (h >>> 0) / 2147483648 - 1;
   }
-  // Samples along a ribbon are chosen from its MEASURED projected length, not fixed. A fixed
-  // count combs: the cross-sections end up further apart than they are wide, so the band
-  // renders as a row of separate ribs rather than a surface. Length and Waviness each change
-  // how far the curve actually travels on screen by several times over, so no constant can
-  // be right for both ends of either slider. A coarse pass measures it, the real pass then
-  // steps about 1.4px whatever the sliders say.
-  const RB_COARSE = 56;
-  const RB_STEP = 1.4;
-  const RB_SMAX = 3000;                    // ceiling, so a wild Length cannot run away
+  // Cross-sections per band. A rasterised surface needs only enough to follow the CURVE and
+  // the twist -- the triangle between two of them is filled exactly, however far apart they
+  // are. This is where the point version needed one sample per 1.4 pixels and still combed.
+  const RB_SEGS = 220;
   const RB_ZC = 3.1;                       // the loop's centre depth, in front of the eye
-  // The curve, and the ONE place it is written. Both passes evaluate it, and a second copy
-  // for the measuring pass is how the two silently start describing different ribbons.
+  const RB_NEAR = 0.25, RB_FAR = 7.5;      // the depth range mapped onto the depth buffer
+  // The curve, and the ONE place it is written.
   //
   // Each band SWEEPS ACROSS the frame on its own heading rather than looping around the
-  // origin. The first version used closed Lissajous knots, which is a fine curve and the
-  // wrong picture: every ribbon enclosed the centre, so they piled into one tangle in the
-  // middle of the screen with dead space all round it, and nothing read as flying. Running
-  // each band past the frame edge on a heading of its own gives them somewhere to come from
-  // and somewhere to go, and hides the two raw ends off-screen for free.
+  // origin. Closed Lissajous knots were the first version: every ribbon enclosed the centre,
+  // so they piled into one tangle in the middle of the screen with dead space around it and
+  // nothing read as flying. Running each band past the frame edge gives them somewhere to
+  // come from and somewhere to go, and hides the two raw ends off-screen for free.
   //
-  // The motion is a wave TRAVELLING down the band (the `- tt` term), not the band itself
-  // moving. A ribbon that translates has to be recycled when it leaves; a ribbon that
-  // undulates never leaves, and a travelling ripple reads as flight far more strongly than
-  // a rigid shape sliding across ever does.
+  // The motion is a wave TRAVELLING down the band (the '- tt' term), not the band itself
+  // moving. A ribbon that translates has to be recycled when it leaves; one that undulates
+  // never leaves, and a travelling ripple reads as flight far more strongly anyway.
   function rbPath(k, s, tt, wave, out) {
     const u = s * 2 - 1;                          // -1 .. 1 along the band
     // Headings spread by the golden angle, so no two bands run parallel and the set never
@@ -942,111 +972,141 @@
     const lat = amp * Math.sin(u * Math.PI * f1 - tt * 2 + p1);   // sideways swing
     out[0] = ox + u * rbSpan * ca - lat * sa;
     out[1] = oy + u * rbSpan * sa + lat * ca;
-    // Depth swings hard on purpose: a band that stays at one depth is a flat squiggle, and
-    // it is parts of it rushing near while others hang back that makes the frame feel deep.
+    // Depth swings hard on purpose: a band that stays at one depth is a flat squiggle, and it
+    // is parts of it rushing near while others hang back that makes the frame feel deep.
     out[2] = RB_ZC + amp * 1.5 * Math.sin(u * Math.PI * f2 + tt * 1.6 + p2);
   }
   const rbP = [0, 0, 0];
-  function ribbonStamp(xL, xR, yT, yB, n) {
-    rbTime += rbSpeed * 0.6 / cfg.burn;    // per TICK, like trPhase and flPhase
-    const w = xR - xL, h = yB - yT;
-    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+  // One cross-section's two corners, staged before they become triangles: screen x/y, depth
+  // and heat for each edge, plus whether the pair has a screen position at all.
+  const rbEdge = new Float64Array(8);
+  let rbOK = false;
+  // Build cross-section i of ribbon k into rbEdge.
+  function rbSection(k, si, tt, wave, half, twist, cx, cy, scale) {
+    const a = si;
+    rbPath(k, a, tt, wave, rbP);
+    const px = rbP[0], py = rbP[1], pz = rbP[2];
+    // Tangent from a neighbour a hair along the curve. Cheaper and steadier than
+    // differentiating by hand, and the curve gains a term whenever Waviness is turned up
+    // which a hand derivative would have to gain too.
+    const h2 = 1 / (RB_SEGS * 4);
+    rbPath(k, a + (a > 0.5 ? -h2 : h2), tt, wave, rbP);
+    let tx = rbP[0] - px, ty = rbP[1] - py, tz = rbP[2] - pz;
+    if (a > 0.5) { tx = -tx; ty = -ty; tz = -tz; }
+    const tl = Math.hypot(tx, ty, tz) || 1;
+    tx /= tl; ty /= tl; tz /= tl;
+    // A frame around the tangent. The reference axis is swapped when the tangent nears it,
+    // because the cross product degenerates there and the band would flip its face over in
+    // one section -- which reads as a tear, not as a twist.
+    let ux = 0, uy = 1, uz = 0;
+    if (Math.abs(ty) > 0.9) { ux = 0; uy = 0; uz = 1; }
+    let ax = ty * uz - tz * uy, ay = tz * ux - tx * uz, az = tx * uy - ty * ux;
+    const al = Math.hypot(ax, ay, az) || 1;
+    ax /= al; ay /= al; az /= al;
+    const bx = ty * az - tz * ay, by = tz * ax - tx * az, bz = tx * ay - ty * ax;
+    const th = twist * a * Math.PI * 2 + tt * 0.5;
+    const cth = Math.cos(th), sth = Math.sin(th);
+    // The width direction: the band lies in the plane of the tangent and this.
+    const nx = ax * cth + bx * sth, ny = ay * cth + by * sth, nz = az * cth + bz * sth;
+    // THE SURFACE NORMAL, and it is what makes this look like a surface rather than a
+    // coloured shape. It is perpendicular to both the tangent and the width direction, so a
+    // band turned face-on to the eye is bright and one turned edge-on goes dark -- and since
+    // the twist rolls the band continuously, that becomes bands of light sweeping along its
+    // length. The point version had to fake this from how wide the projection came out.
+    const sx2 = ty * nz - tz * ny, sy2 = tz * nx - tx * nz, sz2 = tx * ny - ty * nx;
+    const sl = Math.hypot(sx2, sy2, sz2) || 1;
+    // View direction: the eye is at the origin looking down +z, so it is just the point.
+    const vl = Math.hypot(px, py, pz) || 1;
+    const face = Math.abs((sx2 * px + sy2 * py + sz2 * pz) / (sl * vl));
+    // Two edges, projected INDEPENDENTLY, so the perspective foreshortening across the band
+    // is real rather than a width scaled by depth.
+    const e1z = Math.max(RB_NEAR, pz + nz * half), e2z = Math.max(RB_NEAR, pz - nz * half);
+    const dep = Math.min(1, Math.max(0.3, RB_ZC / Math.max(RB_NEAR, pz)));
+    const heat = POINT_HEAT * Math.min(1, (0.20 + 0.80 * face) * dep);
+    rbOK = camMapXY(cx + ((px + nx * half) / e1z) * scale, cy + ((py + ny * half) / e1z) * scale);
+    if (!rbOK) return;
+    rbEdge[0] = camMX; rbEdge[1] = camMY;
+    rbEdge[2] = Math.min(1, Math.max(0, (e1z - RB_NEAR) / (RB_FAR - RB_NEAR))); rbEdge[3] = heat;
+    rbOK = camMapXY(cx + ((px - nx * half) / e2z) * scale, cy + ((py - ny * half) / e2z) * scale);
+    if (!rbOK) return;
+    rbEdge[4] = camMX; rbEdge[5] = camMY;
+    rbEdge[6] = Math.min(1, Math.max(0, (e2z - RB_NEAR) / (RB_FAR - RB_NEAR))); rbEdge[7] = heat;
+  }
+  function rbVert(x, y, z, h) {
+    const i = glRibCount * 4;
+    if (i + 4 > glRib.length) { const n2 = new Float32Array(glRib.length * 2); n2.set(glRib); glRib = n2; }
+    glRib[i] = x; glRib[i + 1] = y; glRib[i + 2] = z; glRib[i + 3] = h; glRibCount++;
+  }
+  // Advance the clock and fill glRib with the whole scene's triangles.
+  function ribbonBuild(dt) {
+    // Per second, matching what the per-tick version accumulated at any burn rate.
+    rbTime += rbSpeed * 0.6 * dt;
+    glRibCount = 0;
+    const cx = fw * 0.5, cy = fh * 0.5;
     // Focal length folded into one number. The curve reaches about 1.2 units off axis at a
     // depth of 3.1, so projecting against a bare half-extent puts the whole thing in the
     // middle ninth of the frame -- which is exactly what the first version drew.
-    const scale = Math.min(w, h) * 1.05;
+    const scale = Math.min(fw, fh) * 1.05;
     const count = Math.max(1, Math.min(8, Math.round(rbCount)));
     const half = Math.max(0, rbWidth) * 0.5;
     const twist = rbTwist, wave = rbWave, tt = rbTime;
-    // How far the band runs, in world units. Over ~2 it leaves the frame at both ends,
-    // which is the point: the ends are never seen.
     rbSpan = 1.5 * Math.max(0.25, rbLen);
-
-    // ---- pass 0: how long is each ribbon on screen? ----------------------------------
-    const segs = new Array(count), bases = new Array(count);
-    let need = 0;
+    // Previous cross-section, kept so each pair becomes a quad.
+    let ax0 = 0, ay0 = 0, az0 = 0, ah0 = 0, bx0 = 0, by0 = 0, bz0 = 0, bh0 = 0, have = false;
     for (let k = 0; k < count; k++) {
-      let len = 0, lx = 0, ly = 0;
-      for (let i = 0; i <= RB_COARSE; i++) {
-        rbPath(k, i / RB_COARSE, tt, wave, rbP);
-        const z = Math.max(0.35, rbP[2]);
-        const sx = cx + (rbP[0] / z) * scale, sy = cy + (rbP[1] / z) * scale;
-        if (i) len += Math.hypot(sx - lx, sy - ly);
-        lx = sx; ly = sy;
-      }
-      segs[k] = Math.max(48, Math.min(RB_SMAX, Math.round(len / RB_STEP)));
-      need += (segs[k] + 1) * 4;
-    }
-    if (!rbBuf || rbBuf.length < need) rbBuf = new Float64Array(need);
-
-    // ---- pass 1: build the band and measure its area ---------------------------------
-    // Positions come first because the tangent is taken from the PREVIOUS sample, which is
-    // both cheaper and steadier than differentiating the curve by hand -- and the curve
-    // gains a term whenever Waviness is turned up, which a hand derivative would too.
-    let total = 0, base = 0;
-    for (let k = 0; k < count; k++) {
-      const samples = segs[k];
-      bases[k] = base;
-      let px0 = 0, py0 = 0, pz0 = 0;
-      for (let i = 0; i <= samples; i++) {
-        const a = i / samples;
-        rbPath(k, a, tt, wave, rbP);
-        const px = rbP[0], py = rbP[1], pz = rbP[2];
-        let tx = px - px0, ty = py - py0, tz = pz - pz0;
-        if (i === 0) { tx = 1e-6; ty = 0; tz = 0; }
-        const tl = Math.hypot(tx, ty, tz) || 1;
-        tx /= tl; ty /= tl; tz /= tl;
-        px0 = px; py0 = py; pz0 = pz;
-        // A frame around the tangent. The reference axis is swapped when the tangent nears
-        // it, because the cross product degenerates there and the band would flip its face
-        // over in one sample -- which reads as a tear, not as a twist.
-        let ux = 0, uy = 1, uz = 0;
-        if (Math.abs(ty) > 0.9) { ux = 0; uy = 0; uz = 1; }
-        let ax = ty * uz - tz * uy, ay = tz * ux - tx * uz, az = tx * uy - ty * ux;
-        const al = Math.hypot(ax, ay, az) || 1;
-        ax /= al; ay /= al; az /= al;
-        const bx = ty * az - tz * ay, by = tz * ax - tx * az, bz = tx * ay - ty * ax;
-        const th = twist * a * Math.PI * 2 + tt * 0.5;
-        const cth = Math.cos(th), sth = Math.sin(th);
-        const nx = ax * cth + bx * sth, ny = ay * cth + by * sth, nz = az * cth + bz * sth;
-        // The two edges, projected INDEPENDENTLY. When the band turns edge-on the two
-        // projections converge on their own -- that convergence IS the collapse to a
-        // hairline, and it is why Width is not simply a stroke thickness.
-        const e1z = Math.max(0.35, pz + nz * half), e2z = Math.max(0.35, pz - nz * half);
-        const x1 = cx + ((px + nx * half) / e1z) * scale, y1 = cy + ((py + ny * half) / e1z) * scale;
-        const x2 = cx + ((px - nx * half) / e2z) * scale, y2 = cy + ((py - ny * half) / e2z) * scale;
-        const o = base + i * 4;
-        rbBuf[o] = x1; rbBuf[o + 1] = y1; rbBuf[o + 2] = x2; rbBuf[o + 3] = y2;
-        total += Math.hypot(x2 - x1, y2 - y1) + 1;   // +1: an edge-on span is still a pixel
-      }
-      base += (samples + 1) * 4;
-    }
-    // ---- pass 2: spend the point budget over that area -------------------------------
-    // A band wide enough to see is a large AREA, and the budget rarely covers it at one
-    // point per pixel. Spacing the points evenly from the same edge every time lines the
-    // gaps up across neighbouring cross-sections and the surface moires into a comb --
-    // which is what the first version drew. Offsetting each cross-section by its own hashed
-    // fraction of a step scatters the gaps instead, and the band reads as a solid sheet well
-    // below full coverage. Deterministic, like everything else in a point effect.
-    const density = total > 0 ? n / total : 0;
-    for (let k = 0; k < count; k++) {
-      const samples = segs[k], b = bases[k];
-      for (let i = 0; i <= samples; i++) {
-        const o = b + i * 4;
-        const x1 = rbBuf[o], y1 = rbBuf[o + 1], x2 = rbBuf[o + 2], y2 = rbBuf[o + 3];
-        const span = Math.hypot(x2 - x1, y2 - y1);
-        // Depth shading from the sample's own projected width: a near part of the band is
-        // both bigger and brighter, which is most of the sense of flying among them.
-        const dep = Math.min(1, span / (Math.max(1e-6, rbWidth) * scale / RB_ZC));
-        const heat = POINT_HEAT * (0.52 + 0.48 * dep);
-        const m = Math.max(1, Math.round((span + 1) * density));
-        if (m === 1) { plot((x1 + x2) * 0.5, (y1 + y2) * 0.5, heat); continue; }
-        const jit = (rbHash(k * 7919 + i) * 0.5 + 0.5) / m;    // [0, 1/m)
-        const dx = x2 - x1, dy = y2 - y1;
-        for (let j = 0; j < m; j++) {
-          const f = j / m + jit;
-          plot(x1 + dx * f, y1 + dy * f, heat);
+      have = false;
+      for (let i = 0; i <= RB_SEGS; i++) {
+        rbSection(k, i / RB_SEGS, tt, wave, half, twist, cx, cy, scale);
+        if (!rbOK) { have = false; continue; }   // no screen position: break the strip here
+        const x1 = rbEdge[0], y1 = rbEdge[1], z1 = rbEdge[2], h1 = rbEdge[3];
+        const x2 = rbEdge[4], y2 = rbEdge[5], z2 = rbEdge[6], h2v = rbEdge[7];
+        if (have) {
+          rbVert(ax0, ay0, az0, ah0); rbVert(bx0, by0, bz0, bh0); rbVert(x1, y1, z1, h1);
+          rbVert(bx0, by0, bz0, bh0); rbVert(x2, y2, z2, h2v);    rbVert(x1, y1, z1, h1);
         }
+        ax0 = x1; ay0 = y1; az0 = z1; ah0 = h1;
+        bx0 = x2; by0 = y2; bz0 = z2; bh0 = h2v;
+        have = true;
       }
     }
+  }
+  // CPU MIRROR, and it is DELIBERATELY DEGRADED, like Ocean's flat plane. It fills the same
+  // triangles into the heat grid with a scanline, but MAX-blends them instead of depth
+  // testing: a per-pixel z buffer in JS is a shader's job, and the fallback renders one
+  // layer on a machine with no WebGL2 at all. Near parts of a band are brighter, so MAX
+  // resolves most crossings the same way a depth test would -- most, not all.
+  function rbTri(x1, y1, h1, x2, y2, h2, x3, y3, h3) {
+    const yTop = Math.max(0, Math.floor(Math.min(y1, y2, y3)));
+    const yBot = Math.min(fh - 1, Math.ceil(Math.max(y1, y2, y3)));
+    if (yBot < yTop) return;
+    const d = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+    if (Math.abs(d) < 1e-9) return;
+    const xMin = Math.max(0, Math.floor(Math.min(x1, x2, x3)));
+    const xMax = Math.min(fw - 1, Math.ceil(Math.max(x1, x2, x3)));
+    if (xMax < xMin) return;
+    for (let y = yTop; y <= yBot; y++) {
+      const row = y * fw;
+      for (let x = xMin; x <= xMax; x++) {
+        // Barycentric, so the heat interpolates across the face exactly as the GPU does.
+        const l1 = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) / d;
+        const l2 = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) / d;
+        const l3 = 1 - l1 - l2;
+        if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+        const v = l1 * h1 + l2 * h2 + l3 * h3;
+        if (v > fire[row + x]) fire[row + x] = v;
+      }
+    }
+  }
+  function ribbonCPU(dt) {
+    ribbonBuild(dt);
+    for (let i = 0; i + 3 <= glRibCount; i += 3) {
+      const a = i * 4, b = (i + 1) * 4, c = (i + 2) * 4;
+      rbTri(glRib[a], glRib[a + 1], glRib[a + 3],
+            glRib[b], glRib[b + 1], glRib[b + 3],
+            glRib[c], glRib[c + 1], glRib[c + 3]);
+    }
+  }
+  function ribbonDraw(dt) {
+    if (useGL) { ribbonBuild(dt); glRibbonDraw(); }
+    else ribbonCPU(dt);
   }
