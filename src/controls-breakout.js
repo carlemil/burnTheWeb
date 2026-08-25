@@ -1091,7 +1091,9 @@
   }
   // The centre of the corner this slot owns, for a box of this size. LAYER_CORNERS is read
   // left-to-right, top-to-bottom, so the slot order IS the reading order: 1 2 / 3 4.
-  const LAYER_CORNERS = [[0, 0], [1, 0], [0, 1], [1, 1]];   // [rightHalf, bottomHalf] per slot
+  // Read left-to-right, top-to-bottom, so the order IS the reading order: 1 2 / 3 4. It is
+  // the order corners are HANDED OUT in, not a mapping from slot to corner -- see freeCorner.
+  const LAYER_CORNERS = [[0, 0], [1, 0], [0, 1], [1, 1]];   // [rightHalf, bottomHalf]
   function cornerRect(slot, w, h, g) {
     const c = LAYER_CORNERS[slot % LAYER_CORNERS.length];
     const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
@@ -1109,13 +1111,33 @@
   // A LAYER box opening for the FIRST time takes its slot's corner. Reopening keeps wherever
   // you last put it: the anchor survives in brkPos, and remapPopped carries "<slot>/layer"
   // through a reorder, so the box follows its LAYER rather than the position.
+  // The rects of every OTHER layer box currently on the grid. Layer boxes only: a slider box
+  // sitting near a corner does not mean that corner belongs to a layer, and letting one block
+  // a corner would push the next layer box somewhere arbitrary.
+  function otherLayerRects(box) {
+    return [...breakout.querySelectorAll(":scope > .ctl.lyr-box")]
+      .filter(n => n !== box && n.style.display !== "none")
+      .map(n => n.getBoundingClientRect());
+  }
+  // The first corner in LAYER_CORNERS order that no other open layer box is sitting in. That
+  // is what makes the corners go in OPENING order: the first box to open finds corner 1 free
+  // and takes it, whichever layer it belongs to, and a corner freed by closing a box is
+  // available to the next one opened.
+  function freeCorner(slot, w, h, g, box) {
+    const others = otherLayerRects(box);
+    for (let i = 0; i < LAYER_CORNERS.length; i++) {
+      const r = cornerRect(i, w, h, g);
+      if (rectClear(r.x, r.y, w, h, others)) return r;
+    }
+    return cornerRect(slot, w, h, g);      // every corner busy: fall back to this slot's own
+  }
   function placeLayerBox(slot, box) {
     const key = slot + "/layer";
     if (!brkFree() || brkPos.has(key)) return;
     const g = brkGrid();
     const w = brkW(box, g), h = brkH(box, g);
     const taken = brkRects(box);
-    const r = cornerRect(slot, w, h, g);
+    const r = freeCorner(slot, w, h, g, box);
     // The corner is the ASK, so it wins even against an overlap the user can move; but if
     // something is genuinely there (a tall box in the corner above, on a short window) fall
     // back to the nearest clear spot to it rather than stacking two boxes on one another.

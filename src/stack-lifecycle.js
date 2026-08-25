@@ -195,15 +195,17 @@
     for (const s of o) { if (s !== j) openSlots.add(s > j ? s - 1 : s); }
   }
   function moveOpen(from, to) {                // ...mirroring splice(to, 0, splice(from, 1)[0])
-    const o = [...openSlots], was = openSlots.has(from);
+    const o = [...openSlots];
     openSlots.clear();
     for (const s of o) {
-      if (s === from) continue;
+      // IN PLACE, not appended at the end. The set's ORDER is the order boxes were opened,
+      // and dragging a row in the layer list is not opening anything -- appending the moved
+      // one would tell everything downstream it was the most recently opened box.
+      if (s === from) { openSlots.add(to); continue; }
       let n = s > from ? s - 1 : s;
       if (n >= to) n++;
       openSlots.add(n);
     }
-    if (was) openSlots.add(to);
   }
   // There is no parkLayerCtl any more, and its absence is the point. syncStackUI used to
   // wipe #stacklist on every call, so the one control block had to be rescued to #fxbox first

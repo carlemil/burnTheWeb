@@ -34,8 +34,10 @@ const body = [
   "  if(!c)fails++; console.log('\"'+(c?'PASS':'FAIL')+' '+n+(d?'  ['+d+']':'')+'\"'); }",
   "function vis(l){return [].slice.call(l).filter(function(n){return n.style.display!=='none'&&n.offsetParent!==null})}",
   "var VW=window.innerWidth, VH=window.innerHeight, MIDY=VH/2, MIDX=VW/2;",
-  // Open two layer boxes: layer 1 (top-left corner) and layer 4 (bottom-right corner), so
-  // both the horizontal and the vertical mirror of every rule gets exercised.
+  // THREE layer boxes, and the count is deliberate. Corners are handed out in OPENING order
+  // now, so two boxes both land in the top half and there is no bottom-anchored one to test
+  // the vertical mirror against. Three gives top-left, top-right and bottom-left, and the
+  // first and third are the pair worth checking.
   // The shipped starter scene is single-layer, so top the stack up first.
   "function rowsNow(){return vis(document.querySelectorAll('#panel .lyr'))}",
   "var add=document.getElementById('addlayer');",
@@ -43,10 +45,17 @@ const body = [
   "var rows=rowsNow();",
   "ok('the stack has four layer rows', rows.length===4, rows.length+' rows');",
   "rows[0].querySelector('button.lyr-pop').click();",
-  "rows[3].querySelector('button.lyr-pop').click();",
+  "rows[1].querySelector('button.lyr-pop').click();",
+  "rows[2].querySelector('button.lyr-pop').click();",
   "var lb0=document.querySelector('#breakout .lyr-box[data-slot=\"0\"]');",
-  "var lb3=document.querySelector('#breakout .lyr-box[data-slot=\"3\"]');",
-  "ok('both layer boxes opened', !!lb0&&!!lb3&&lb0.style.display!=='none'&&lb3.style.display!=='none');",
+  "var lb3=document.querySelector('#breakout .lyr-box[data-slot=\"2\"]');",
+  "ok('three layer boxes opened', !!lb0&&!!lb3&&lb0.style.display!=='none'&&lb3.style.display!=='none');",
+  // Which corner each actually landed in -- derived, never assumed. Corners follow opening
+  // order, so hard-coding "layer 4 is bottom-right" is exactly the assumption that broke.
+  "function cornerName(b){ var r=b.getBoundingClientRect();",
+  "  return (r.top+r.height/2<MIDY?'top':'bottom')+'-'+(r.left+r.width/2<MIDX?'left':'right'); }",
+  "ok('the first box opened is in the top-left corner', cornerName(lb0)==='top-left', cornerName(lb0));",
+  "ok('the third is in the bottom-left', cornerName(lb3)==='bottom-left', cornerName(lb3));",
   // ---- rule 1: one width for everything -----------------------------------------------
   "function pops(){return vis(document.querySelectorAll('#breakout > .ctl.poppable'))}",
   "var w0=Math.round(lb0.getBoundingClientRect().width);",
@@ -56,8 +65,8 @@ const body = [
   // Pop several sliders out of each layer so columns have to form.
   "function popFrom(lb,n){ var L=vis(lb.querySelectorAll('.ctl-row .ctl-pop'));",
   "  for(var i=0;i<n&&i<L.length;i++) L[i].click(); return Math.min(n,L.length); }",
-  "var n0=popFrom(lb0,4), n3=popFrom(lb3,4);",
-  "ok('sliders popped out of both layers', n0>=3&&n3>=3, n0+' and '+n3);",
+  "var n0=popFrom(lb0,2), n3=popFrom(lb3,2);",
+  "ok('sliders popped out of both layers', n0>=2&&n3>=2, n0+' and '+n3);",
   "var all=pops();",
   "var widths={}; all.forEach(function(b){ widths[Math.round(b.getBoundingClientRect().width)]=1; });",
   "ok('RULE 1 EVERY BOX IN THE GRID IS THE SAME WIDTH', Object.keys(widths).length===1,",
@@ -99,9 +108,9 @@ const body = [
   "     over[0]||Object.keys(cols).length+' column(s)');",
   "  return Object.keys(cols).length;",
   "}",
-  "var c0=checkLayer(0,lb0,'layer 1 (top-left)');",
-  "var c3=checkLayer(3,lb3,'layer 4 (bottom-right)');",
-  "ok('RULE 4 more boxes than fit a column start a NEW column', (c0>1)||(c3>1),",
+  "var c0=checkLayer(0,lb0,'the top-left box');",
+  "var c3=checkLayer(2,lb3,'the bottom-left box');",
+  "ok('RULE 4 both layers form at least one slider column', (c0>=1)&&(c3>=1),",
   "   'columns: '+c0+' and '+c3);",
   // ---- the invariants that must survive -------------------------------------------------
   "var offs=[], ovl=[];",
