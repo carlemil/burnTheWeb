@@ -10480,24 +10480,16 @@
   // (ballAt in FS_GLASS), so nothing has to be carried between frames and nothing can drift
   // apart between the shader and its mirror.
   let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0, gbSalt = 0;
-  // ---- THE PER-LAYER SALT IS SWITCHED OFF, DELIBERATELY AND TEMPORARILY ----------------
-  // A ghost has been reported since the salt landed: a second copy of the balls, the same
-  // animation but far behind, appearing on reload or when layers are rearranged and fading
-  // after a few seconds. It could not be reproduced here -- the ball geometry was logged
-  // frame by frame and is single-valued, the salt was instrumented and never flips, and the
-  // reporter's own scene was fetched from its share link and measured for 148 frames after a
-  // settle (frames two apart differ 1.59x more than adjacent ones, which is ordinary motion;
-  // a flip between two pictures reads below 1). So the only reproducer is the reporter's
-  // machine, and this exists to let THEM answer the question a repro would have answered:
+  // ---- THE PER-LAYER SALT, and the switch that once turned it off ------------------------
+  // A ghost was reported the day the salt landed: a second copy of the balls, the same
+  // animation but far behind, the original vanishing whenever the ghost showed. This switch
+  // was shipped OFF in v1.55.3 so the reporter could answer on the only machine that showed
+  // it -- and the ghost survived the switch, so the salt is CLEARED. It is back on.
   //
-  //   ghost gone with this off  -> the salt is the cause, and where to look is known
-  //   ghost still there         -> today's glass work is cleared, and the search moves on
-  //
-  // The cost of having it off is nil for a scene with ONE glass layer, which is the reported
-  // setup: the salt exists only to keep TWO glass layers from drawing the same balls in the
-  // same places. Setting this back to true restores that, and gbBallAt is untouched, so the
-  // maths and its probe stay exactly as they were.
-  const GB_SALT_ON = false;
+  // Kept as a switch rather than deleted, because it was cheap and the question may come
+  // back: with it off, two glass layers draw the same balls in the same places, and
+  // glassprobe reports the state either way so it cannot be left off by accident.
+  const GB_SALT_ON = true;
   // Matches the GLSL hash in ballAt exactly -- both paths must place the balls identically.
   function gbHashJS(x) { const s = Math.sin(x * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
   // WHERE ONE BALL IS, and the JS twin of ballAt() in FS_GLASS and FS_WORLD. Named rather
