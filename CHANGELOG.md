@@ -14,6 +14,53 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.54.0] — 2026-08-25
+
+### Added
+- **Agent size**, a new slider on **Slime mould**. It sets how big a mark each agent leaves, and
+  it fixes something that has been wrong since the effect shipped: the trail is a fixed grid
+  while the picture follows your window, so a single dot per cell left a gap beside every one of
+  them and the network drew as a dot grid rather than as veins — worse the bigger your screen.
+  Size is measured in trail cells, so at 1 the marks just touch whatever the window size. It
+  costs nothing to turn up: the same number of marks are drawn, only bigger.
+
+### Changed
+- **Glass and Bubble are see-through now; Metal stays solid.** All three materials used to hide
+  the layer beneath them equally completely, which is right for a metal ball and wrong for the
+  other two — a glass ball and a soap bubble are things you look through. With nothing beneath
+  them they stay opaque, since transparency needs something to be transparent to.
+- **Two Glass ball layers no longer draw the same balls in the same places.** Ball positions
+  depended only on the clock, so two glass layers put every ball of one perfectly centred on a
+  ball of the other and kept it there. Each layer now has its own starting positions and its own
+  slightly different speeds, so they drift through each other instead of pacing each other.
+- **A layer's colour is taken from its own palette** instead of a fixed set of four, so the
+  marker on a layer's row and boxes is the colour that layer actually is. Two layers sharing a
+  palette still get different marks. Clicking the swatch cycles through the fixed colours and
+  then back to automatic.
+- **Layer boxes take the corners in the order you open them**, rather than each layer owning one
+  corner. Open layer 3 on its own and its box goes to the first corner, because nothing else is
+  using it.
+- **Random on the Effect tab leaves the camera and the shared 3D world alone.** Rolling those
+  does not vary the effect, it throws away a placement you chose by hand — and it will not arm a
+  beat trigger on them either.
+
+### Note on saved scenes
+- A **Slime mould** scene opens with Agent size at its new default, so its veins are solid rather
+  than dotted; set it below 1 for the old look. A scene with **two Glass ball layers** now shows
+  two separate sets of balls, and one with a **Glass or Bubble layer over another layer** lets
+  that layer show through — both are the fixes above, not side effects. Layer colours change
+  where a layer's palette says so. Everything else loads exactly as it did.
+
+### Internal
+- Four new checks, each verified to fail against the code it covers: `glassprobe.js` (which
+  carries its own negative control — two layers given the same salt must come out exactly
+  coincident, the reported bug reproduced), `corner-check.js` (which opens layers out of index
+  order, since a slot-indexed placement passes any test that opens them in order),
+  `rndkeep-check.js` (which also asserts the effect's own sliders DID move, or "nothing changed"
+  would pass against a Random button that does nothing), and the extended `tintprobe.js`.
+- `brkcolumn-check.js` was updated rather than fixed: it assumed layer 4 sat bottom-right, which
+  open-order corners made stale. It derives each corner now instead of assuming one.
+
 ## [1.53.0] — 2026-08-25
 
 ### Added

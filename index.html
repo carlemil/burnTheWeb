@@ -2399,7 +2399,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.53.0",
+    version: "1.54.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2631,6 +2631,10 @@
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
+  // How wide, in heat pixels, each stamped point is DRAWN. Per stamping item, reset to 1
+  // before every one of them (see stampTick) so a fat-point effect cannot leak into the
+  // next item's blit. Only Slime mould asks for anything but 1.
+  let glPtSize = 1;
   // ---- automatic cloud save: its schedule ------------------------------------------
   // ITS OWN localStorage KEY, like the credits/tutorial/share-link preferences, and
   // deliberately NOT part of fullSnapshot(): everything in there rides a share link and a
@@ -3678,19 +3682,29 @@
     // chaos-game point stamps (MAX-blended into the heat texture)
     const VS_PTS = `#version 300 es
     layout(location=0) in vec3 aPt;   // x, y, value(0..255) in fire-pixel space
-    uniform vec2 uSize;
+    uniform vec2 uSize; uniform float uPtSize;
     out float vVal;
     void main(){
       vVal = aPt.z / 255.0;
       vec2 c = (aPt.xy + 0.5) / uSize * 2.0 - 1.0;
       gl_Position = vec4(c, 0.0, 1.0);
-      gl_PointSize = 1.0;
+      // HOW BIG EACH STAMP IS DRAWN. It was pinned at 1, so an effect that wanted a fatter
+      // mark had to stamp a block of points -- paying per pixel for what the rasteriser
+      // does per point. One point at size 5 costs a point; 25 points cost 25 points.
+      gl_PointSize = uPtSize;
     }`;
     const FS_PTS = `#version 300 es
     precision highp float;
-    uniform float uGain;
+    uniform float uGain; uniform float uPtSize;
     in float vVal; out vec4 o;
-    void main(){ o = vec4(vVal * uGain, 0.0, 0.0, 1.0); }`;
+    void main(){
+      // A point sprite is a SQUARE. At size 1 that is a pixel and nobody can tell, but a fat
+      // square mark turns every vein into a chain of boxes with staircased diagonals, so
+      // anything bigger gets rounded off. The discard costs nothing at size 1 -- the branch
+      // is not even taken.
+      if (uPtSize > 1.5 && length(gl_PointCoord - 0.5) > 0.5) discard;
+      o = vec4(vVal * uGain, 0.0, 0.0, 1.0);
+    }`;
     // Flying ribbons: real triangles, not points. Same idea as VS_PTS -- fire-pixel space in,
     // clip space out -- but it carries a DEPTH so the rasteriser can sort the bands against
     // each other, which is the whole difference between a surface and a cloud. The heat is
@@ -3754,20 +3768,32 @@
     const FS_OKMERGE = `#version 300 es
     precision highp float;
     uniform sampler2D uLayer; uniform sampler2D uAcc;
-    uniform float uGain; uniform int uBlend;
+    uniform float uGain; uniform int uBlend; uniform float uCover;
     in vec2 vUv; out vec4 o;` + OKLAB_GLSL + `
     void main(){
       vec4 lay = texture(uLayer, vUv);
       vec3 col = lay.rgb;                                // this layer's finished colour
       vec4 acc = texture(uAcc, vUv);
       float accW = acc.a * WMAX;
-      // OVER (20): coverage, not brightness, decides. lay.a is 1 where the effect drew a
-      // surface and 0 where it drew nothing (FS_PAL writes it), so a dark ball still covers
-      // a bright layer beneath it, and the empty space around it still shows that layer.
-      // It is the one mode that ignores the gain weighting: an object is either there or not.
+      // OVER (20): COVERAGE, not brightness, decides -- and then how opaque that coverage
+      // is. lay.a is 1 where the effect drew a surface and 0 where it drew nothing (FS_PAL
+      // writes it), so a dark ball still covers a bright layer beneath it and the empty space
+      // around it still shows that layer. It is the one mode that ignores the gain weighting:
+      // an object is either there or not.
+      //
+      // uCover is HOW SOLID the thing covering is, and it exists because one effect ships
+      // three materials with different answers. A metal ball is opaque; a glass ball and a
+      // soap bubble are things you look THROUGH, and a flat coverage test hid the layer
+      // beneath them exactly as completely as it hid it behind the metal one.
+      //
+      // WITH NOTHING BENEATH, EVERYTHING IS OPAQUE. Transparency needs something to be
+      // transparent TO, and mixing toward an empty accumulator is mixing toward black -- so a
+      // lone glass layer would simply render at half brightness. That guard is also what
+      // keeps the single-layer path pixel-identical to before.
       if (uBlend == 20) {
         vec3 c = clamp(col * uGain, 0.0, 1.0);
-        o = lay.a > 0.5 ? vec4(c, 1.0) : acc;
+        float a = lay.a > 0.5 ? (accW < 1.0e-4 ? 1.0 : uCover) : 0.0;
+        o = mix(acc, vec4(c, 1.0), a);
         return;
       }
       vec3 labC = srgb2oklab(col);
@@ -4988,7 +5014,7 @@
     uniform float uChop; uniform float uFoam; uniform float uWind; uniform float uHeight;
     uniform float uReflect;
     uniform float uGbOn;
-    uniform float uGbId[4]; uniform float uGbTime[4]; uniform float uGbCount[4];
+    uniform float uGbId[4]; uniform float uGbTime[4]; uniform float uGbCount[4]; uniform float uGbSalt[4];
     uniform float uGbRad[4]; uniform float uGbMat[4]; uniform float uGbIor[4]; uniform float uGbGlow[4];
     uniform vec4 uGbPlace[4];
     uniform float uSdOn; uniform float uSdId; uniform float uSdCount; uniform float uSdRim;
@@ -5024,10 +5050,18 @@
       h /= max(norm, 1e-4);
     }
     float waveAmp(){ return min(uHeight, CAM_H*0.55); }
-    vec3 ballAt(int i, float t){
+    float gbHash(float x){ return fract(sin(x*127.1 + 311.7)*43758.5453); }
+    // THE SALT IS WHAT KEEPS TWO GLASS LAYERS APART. Ball position was a pure function of the
+    // clock and the ball index, and installStack seeds every layer's clock from the same
+    // place -- so two glass layers drew ball 1 in exactly the same spot and KEPT it there.
+    // h1 shifts where a layer's balls start; h2 detunes the rate, which is the half that
+    // matters, because two orbits at the same speed with different offsets stay a fixed
+    // distance apart forever and can still line up.
+    vec3 ballAt(int i, float t, float salt){
       float f = float(i);
-      float a = t*(0.60 + 0.13*f) + f*2.39996;
-      float b = t*(0.41 + 0.09*f) + f*1.11700;
+      float h1 = gbHash(salt + 1.7), h2 = gbHash(salt + 9.3);
+      float a = t*(0.60 + 0.13*f + 0.09*h2) + f*2.39996 + h1*6.2831853;
+      float b = t*(0.41 + 0.09*f + 0.07*h1) + f*1.11700 + h2*6.2831853;
       return vec3(1.25*sin(a) + 0.35*sin(b*1.7),
                   0.85*sin(b) + 0.25*cos(a*1.3),
                   0.60*cos(a*0.8 + f));
@@ -5051,7 +5085,7 @@
         float dg = 1e9;
         for (int i = 0; i < 5; i++){
           if (float(i) >= uGbCount[g]) break;
-          dg = min(dg, length(pl - ballAt(i, uGbTime[g])) - uGbRad[g]);
+          dg = min(dg, length(pl - ballAt(i, uGbTime[g], uGbSalt[g])) - uGbRad[g]);
         }
         dg = dg*uGbPlace[g].w;
         if (dg < d){ d = dg; gid = float(g); }
@@ -5367,7 +5401,7 @@
           float bd = 1e9;
           for (int i = 0; i < 5; i++){
             if (float(i) >= uGbCount[gg]) break;
-            vec3 ci = ballAt(i, uGbTime[gg]);
+            vec3 ci = ballAt(i, uGbTime[gg], uGbSalt[gg]);
             float di = abs(length(pl - ci) - uGbRad[gg]);
             if (di < bd){ bd = di; cl = ci; }
           }
@@ -5442,14 +5476,23 @@
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uCount; uniform float uRad;
     uniform float uMat; uniform float uIor; uniform float uGlow; uniform float uZoom;
+    uniform float uSalt;
     uniform sampler2D uBelow; uniform float uHasBelow;
     out vec4 o;
-    vec3 ballAt(int i, float t){
+    float gbHash(float x){ return fract(sin(x*127.1 + 311.7)*43758.5453); }
+    // THE SALT IS WHAT KEEPS TWO GLASS LAYERS APART. Ball position was a pure function of the
+    // clock and the ball index, and installStack seeds every layer's clock from the same
+    // place -- so two glass layers drew ball 1 in exactly the same spot and KEPT it there.
+    // h1 shifts where a layer's balls start; h2 detunes the rate, which is the half that
+    // matters, because two orbits at the same speed with different offsets stay a fixed
+    // distance apart forever and can still line up.
+    // Two incommensurate rates per ball, offset by the golden angle, so they drift through
+    // each other instead of orbiting in formation.
+    vec3 ballAt(int i, float t, float salt){
       float f = float(i);
-      // Two incommensurate rates per ball, offset by the golden angle, so they drift through
-      // each other instead of orbiting in formation.
-      float a = t*(0.60 + 0.13*f) + f*2.39996;
-      float b = t*(0.41 + 0.09*f) + f*1.11700;
+      float h1 = gbHash(salt + 1.7), h2 = gbHash(salt + 9.3);
+      float a = t*(0.60 + 0.13*f + 0.09*h2) + f*2.39996 + h1*6.2831853;
+      float b = t*(0.41 + 0.09*f + 0.07*h1) + f*1.11700 + h2*6.2831853;
       return vec3(1.25*sin(a) + 0.35*sin(b*1.7),
                   0.85*sin(b) + 0.25*cos(a*1.3),
                   0.60*cos(a*0.8 + f));
@@ -5487,7 +5530,7 @@
       bool hit = false;
       for (int i = 0; i < 5; i++){
         if (i >= n) break;
-        vec3 c = ballAt(i, uTime);
+        vec3 c = ballAt(i, uTime, uSalt);
         vec3 oc = ro - c;
         float b = dot(oc, rd), q = dot(oc, oc) - uRad*uRad;
         float h = b*b - q;
@@ -6920,10 +6963,10 @@
     }`;
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
-    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
+    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain", "uPtSize"]);
     glProg.rib = makeProg(VS_RIB, FS_RIB, ["uSize"]);
     glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
-    glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend"]);
+    glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend", "uCover"]);
     glProg.julia = camProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
     glProg.plasma = camProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
     glProg.tunnel = camProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
@@ -6967,7 +7010,7 @@
     worldProgs = {}; worldPar = null;
     glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.worldmix = makeProg(VS_QUAD, FS_WORLDMIX, ["uA", "uB", "uT"]);
-    glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
+    glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uSalt", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom", "uRot"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"]);
@@ -7298,6 +7341,9 @@
       gl.useProgram(glProg.pts.p);
       gl.uniform2f(glProg.pts.u.uSize, fw, fh);
       gl.uniform1f(glProg.pts.u.uGain, gain === undefined ? 1 : gain);
+      // Set by whichever effect is stamping (see glPtSize); reset to 1 for every item, so one
+      // effect asking for fat points cannot leak into the next one's blit.
+      gl.uniform1f(glProg.pts.u.uPtSize, Math.max(1, glPtSize));
       gl.bindVertexArray(ptVao);
       gl.bindBuffer(gl.ARRAY_BUFFER, ptVbo);
       const need = glPtCount * 3 * 4;
@@ -7737,7 +7783,7 @@
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
   // Blend one layer's finished RGB colour into the accumulator, in OKLab.
-  function glOkMerge(layerTex, blend, gain, accSrc, dstFbo) {
+  function glOkMerge(layerTex, blend, gain, accSrc, dstFbo, cover) {
     bindFbo(dstFbo, fw, fh);
     gl.disable(gl.BLEND);
     const P = glProg.okmerge;
@@ -7746,6 +7792,9 @@
     bindTexUnit(1, accSrc);   gl.uniform1i(P.u.uAcc, 1);
     gl.uniform1f(P.u.uGain, gain === undefined ? 1 : gain);
     gl.uniform1i(P.u.uBlend, (BLEND_BY_ID[blend] || BLEND_MODES[0]).u);
+    // How solid this layer is where it covers. Only the OVER branch reads it; 1 is the
+    // old behaviour and what every effect but Glass ball asks for.
+    gl.uniform1f(P.u.uCover, cover === undefined ? 1 : cover);
     drawQuad();
   }
   // The whole multi-layer colour path: render each live layer's heat, colour it with its
@@ -7824,7 +7873,7 @@
   // throws `1:1 syntax error` on every frame. Exactly the trap bindFbo's curFbo documents.
   // initGL is the one place these are set.
   // Scratch for the glass groups' uniform arrays -- allocated once, refilled per frame.
-  const gbScr = { ids: new Float32Array(4), times: new Float32Array(4), counts: new Float32Array(4),
+  const gbScr = { salts: new Float32Array(4), ids: new Float32Array(4), times: new Float32Array(4), counts: new Float32Array(4),
                   rads: new Float32Array(4), mats: new Float32Array(4), iors: new Float32Array(4),
                   glows: new Float32Array(4), places: new Float32Array(16) };
   var worldProgs;                       // "gb|sd" -> { p, pending } | { p, prog }
@@ -7832,7 +7881,7 @@
   var worldVs, worldFsBase;             // shader sources -- they are local to initGL
   const WORLD_UNIFORMS = ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
     "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
-    "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace",
+    "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace", "uGbSalt",
     "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
     "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace", "uQjRot",
     "uVbOn", "uVbId", "uVbPhase", "uVbCount", "uVbShape", "uVbRad", "uVbGlow", "uVbPlace"];
@@ -7917,18 +7966,20 @@
     if (gbs.length) {
       // One array entry per joined glass layer. installStackItem puts THAT layer's placement
       // sliders and clock into the globals before each read, so every group carries its own.
-      const ids = gbScr.ids, times = gbScr.times, counts = gbScr.counts, rads = gbScr.rads;
+      const ids = gbScr.ids, times = gbScr.times, counts = gbScr.counts, rads = gbScr.rads, salts = gbScr.salts;
       const mats = gbScr.mats, iors = gbScr.iors, glows = gbScr.glows, places = gbScr.places;
       gbs.forEach((gb, g) => {
         installStackItem(gb); installPhase(gb);
         const s = glassSeed(dt);        // this layer's one clock advance for the frame
         ids[g] = plan.ids.get(gb); times[g] = s.t; counts[g] = s.count; rads[g] = s.rad;
+        salts[g] = s.salt;          // keeps two joined glass layers from sharing an orbit
         mats[g] = s.mat; iors[g] = s.ior; glows[g] = s.glow;
         places[g * 4] = wldX; places[g * 4 + 1] = wldY; places[g * 4 + 2] = wldZ;
         places[g * 4 + 3] = Math.max(0.05, wldScale);
         capturePhase(gb);
       });
       gl.uniform1fv(P.u.uGbId, ids); gl.uniform1fv(P.u.uGbTime, times);
+      gl.uniform1fv(P.u.uGbSalt, salts);
       gl.uniform1fv(P.u.uGbCount, counts); gl.uniform1fv(P.u.uGbRad, rads);
       gl.uniform1fv(P.u.uGbMat, mats); gl.uniform1fv(P.u.uGbIor, iors);
       gl.uniform1fv(P.u.uGbGlow, glows); gl.uniform4fv(P.u.uGbPlace, places);
@@ -8075,7 +8126,12 @@
       gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
       const colTex = glLayerPostChain(L, glColorizeLayer(heatTex, glTex.palL[slot]));
-      glOkMerge(colTex, L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc]);
+      // An effect that ships an OVER blend may also say how solid it is RIGHT NOW -- Glass
+      // ball's answer depends on its Material slider. installStackItem(L) has already put
+      // this layer's globals live, so the descriptor is asked about the layer being drawn.
+      const fxc = EFFECTS[L.fx].cover;
+      glOkMerge(colTex, L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc],
+                fxc ? fxc() : 1);
       acc = 1 - acc;
     }
     glBelowTex = null;                 // only ever live inside the loop above
@@ -8561,6 +8617,9 @@
   // let every point item in the stack stamp into it — propagation is a property of the
   // shared heat buffer, stamping is per item.
   function stampTick(L, now) {
+    // Every item starts with 1px stamps; an effect that wants fatter marks sets this while
+    // it stamps, and the blit that follows reads it.
+    glPtSize = 1;
     simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
     const t = simT;
     spinAngle += rotSpeed / cfg.burn;  // rotation phase — 1/burn s per tick, so rad/s
@@ -10366,11 +10425,29 @@
   // No per-frame state but the clock: the balls' positions are a closed-form function of it
   // (ballAt in FS_GLASS), so nothing has to be carried between frames and nothing can drift
   // apart between the shader and its mirror.
-  let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0;
+  let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0, gbSalt = 0;
+  // Matches the GLSL hash in ballAt exactly -- both paths must place the balls identically.
+  function gbHashJS(x) { const s = Math.sin(x * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+  // WHERE ONE BALL IS, and the JS twin of ballAt() in FS_GLASS and FS_WORLD. Named rather
+  // than inlined so the two salt terms have one place to be read and checked: h1 shifts where
+  // a layer's balls START, and h2 detunes their RATE -- which is the half that matters,
+  // because two orbits at the same speed with different offsets stay a fixed distance apart
+  // forever and can still line up. Writes gbBall rather than allocating; this runs per ball
+  // per frame.
+  const gbBall = [0, 0, 0];
+  function gbBallAt(i, t, salt) {
+    const h1 = gbHashJS(salt + 1.7), h2 = gbHashJS(salt + 9.3);
+    const a = t * (0.60 + 0.13 * i + 0.09 * h2) + i * 2.39996 + h1 * 6.2831853;
+    const b = t * (0.41 + 0.09 * i + 0.07 * h1) + i * 1.11700 + h2 * 6.2831853;
+    gbBall[0] = 1.25 * Math.sin(a) + 0.35 * Math.sin(b * 1.7);
+    gbBall[1] = 0.85 * Math.sin(b) + 0.25 * Math.cos(a * 1.3);
+    gbBall[2] = 0.60 * Math.cos(a * 0.8 + i);
+    return gbBall;
+  }
   function glassSeed(dt) {
     gbPhase += dt * 0.5;
     return { t: gbPhase, count: Math.round(gbCount), rad: gbRad, mat: Math.round(gbMat),
-             ior: gbIor, glow: gbGlow, zoom };
+             ior: gbIor, glow: gbGlow, zoom, salt: gbSalt };
   }
   // CPU fallback. Spheres and a headlamp -- no reflection, no refraction, and no layer
   // underneath to sample: the fallback path renders ONE item, so "the layers beneath" does
@@ -10380,11 +10457,8 @@
     const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(5, s.count));
     const cx = [], cy = [], cz = [];
     for (let i = 0; i < n; i++) {
-      const a = s.t * (0.60 + 0.13 * i) + i * 2.39996;
-      const b = s.t * (0.41 + 0.09 * i) + i * 1.11700;
-      cx.push(1.25 * Math.sin(a) + 0.35 * Math.sin(b * 1.7));
-      cy.push(0.85 * Math.sin(b) + 0.25 * Math.cos(a * 1.3));
-      cz.push(0.60 * Math.cos(a * 0.8 + i));
+      gbBallAt(i, s.t, s.salt);
+      cx.push(gbBall[0]); cy.push(gbBall[1]); cz.push(gbBall[2]);
     }
     for (let y = 0; y < fh; y += 2) {
       for (let x = 0; x < fw; x += 2) {
@@ -10521,7 +10595,7 @@
   // The disturbance field: its resolution, and how hard it bites into the trail's decay at
   // Scatter 1. See the note where it is built.
   const SCAT_CW = 13, SCAT_CH = 8, SCAT_BITE = 0.85;
-  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phAgents = null;
+  let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phSize = 1, phAgents = null;
   function ensurePhy(P, n, salt) {
     if (!P.a || P.a.length !== n * 3) {
       P.a = new Float32Array(n * 3);
@@ -10605,6 +10679,23 @@
     // decay + a cheap 3-tap blur along x, which is what turns dots into veins
     const keep = Math.max(0.5, Math.min(0.995, phDecay));
     const sx = (xR - xL) / W, sy = (yB - yT) / H;
+    // AGENT SIZE, measured in TRAIL CELLS rather than in screen pixels, which is the whole
+    // reason it is worth having. The trail map is a fixed 420x236 while the heat grid follows
+    // the window, so one cell is about 2.3px across at a typical size -- and stamping a single
+    // point per cell left a 1.3px hole beside every one of them. That gap is why the network
+    // has always drawn as a dot grid rather than as veins, and it got wider on a bigger
+    // screen. At size 1 the marks are one cell across and just touch, at any resolution.
+    //
+    // IT COSTS NOTHING, AND THE FIRST VERSION COST A LOT. That one stamped a block of points
+    // per lit cell -- 7.4k points a tick became 96k at the top of the slider, and the effect
+    // visibly slowed down. It is the rasteriser's job to fill a mark, not the CPU's: the
+    // count of points is unchanged now, and only gl_PointSize moves. One point at size 5
+    // costs a point.
+    //
+    // A point sprite is square, so this is one number rather than the ellipse the block
+    // version could express; sx and sy differ only by the window's aspect against the trail
+    // map's, which is a few percent, and FS_PTS rounds the sprite off anyway.
+    glPtSize = Math.max(1, Math.max(0, phSize) * (sx + sy) * 0.5);
     const fldRow = scat > 0 ? SCAT_CH / H : 0, fldCol = scat > 0 ? SCAT_CW / W : 0;
     for (let y2 = 0; y2 < H; y2++) {
       const row = y2 * W;
@@ -10619,6 +10710,7 @@
         prev = cur; tr[row + x2] = v;
         // Only the LIT cells are stamped. The threshold is what keeps this inside the point
         // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
+        // ONE point per lit cell, whatever the size -- glPtSize above does the widening.
         if (v > 0.06) plot(xL + x2 * sx, yT + y2 * sy, Math.min(255, v * 420));
       }
     }
@@ -12766,6 +12858,7 @@
     // between two thumbs slides the grid smoothly instead of popping at each integer.
     { key: "phcount", host: "fx", group: "physarum", type: "dual", label: "Agents", valId: "vPhCount", min: 200, max: 6000, step: 50, lo: 2500, hi: 2500, fmt: v => sig3(Math.round(v)), apply: v => phCount = Math.round(v), durScale: 10 },
     { key: "phscatter", host: "fx", group: "physarum", type: "dual", label: "Scatter", valId: "vPhScatter", min: 0, max: 1, step: 0.01, lo: 0.3, hi: 0.3, fmt: v => sig3(v), apply: v => phScatter = v, durScale: 10 },
+    { key: "phsize", host: "fx", group: "physarum", type: "dual", label: "Agent size", valId: "vPhSize", min: 0, max: 3, step: 0.05, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => phSize = v, durScale: 10 },
     { key: "phsense", host: "fx", group: "physarum", type: "dual", label: "Sense", valId: "vPhSense", min: 1, max: 30, step: 1, lo: 9, hi: 9, fmt: v => sig3(Math.round(v)) + "px", apply: v => phSense = Math.round(v), durScale: 10 },
     { key: "phturn", host: "fx", group: "physarum", type: "dual", label: "Turn", valId: "vPhTurn", min: 0.05, max: 1.6, step: 0.01, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => phTurn = v, durScale: 10 },
     { key: "phdecay", host: "fx", group: "physarum", type: "dual", label: "Trail life", valId: "vPhDecay", min: 0.5, max: 0.995, step: 0.005, lo: 0.88, hi: 0.88, fmt: v => sig3(v), apply: v => phDecay = v, durScale: 10 },
@@ -14057,6 +14150,87 @@
   function tintOk(v) {
     return (typeof v === "number" && v === Math.round(v) && v >= 0 && v < LYR_TINT.length) ? v : null;
   }
+  // THE STRONGEST COLOUR IN A PALETTE. Sampled across the whole ramp and scored on saturation
+  // first, then on being neither nearly black nor nearly white -- the ends of most ramps are
+  // exactly those, and they are useless as a marker. It is a DERIVED colour, never a stored
+  // one: the input is a palette index that has already been validated, so nothing a share link
+  // carries reaches CSS as a colour, which is the property tintOk exists to protect.
+  const PAL_TINT = {};
+  const hex2 = v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, "0");
+  const rgbHex = c => "#" + hex2(c[0]) + hex2(c[1]) + hex2(c[2]);
+  // SEVERAL strong colours from one palette, best first and each visibly different from the
+  // ones before it. A list rather than a single colour because two layers can share a palette
+  // -- and if they did, one colour would mark them both and the cue would say nothing about
+  // which is which, which is the entire point of it.
+  function palTintList(pi) {
+    const key = pi | 0;
+    if (PAL_TINT[key]) return PAL_TINT[key];
+    const P = PALETTES[key], cand = [];
+    if (P && P.fn) {
+      for (let s = 8; s <= 255; s += 3) {
+        const c = P.fn(s);
+        const r = Math.max(0, Math.min(255, c[0] | 0));
+        const g = Math.max(0, Math.min(255, c[1] | 0));
+        const b = Math.max(0, Math.min(255, c[2] | 0));
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        if (!mx) continue;
+        const sat = (mx - mn) / mx;                 // 0 grey, 1 pure hue
+        const lum = (mx + mn) / 510;                // 0 black, 1 white
+        // THE ENDS OF THE RAMP ARE OUT, whatever hue they carry. Most palettes run from near
+        // black to near white, and both ends are useless as a marker -- one disappears against
+        // the panel and the other against the text. Scoring them down was not enough: a ramp
+        // ending in #fff0eb has just enough of a tint to beat a ramp with no colour at all,
+        // and it was picked. Rejecting the band outright is what makes such a palette fall
+        // through to the fixed set instead, which is the honest answer for it.
+        if (lum < 0.12 || lum > 0.9) continue;
+        // Mid-bright wins. The saturation term dominates so a vivid mid tone beats a wash.
+        cand.push({ c: [r, g, b], s: sat * (1 - Math.abs(lum - 0.55) * 1.3) });
+      }
+    }
+    cand.sort((a, b) => b.s - a.s);
+    const out = [];
+    // Greedy, best first, keeping only what is far enough from everything already taken --
+    // otherwise a smooth ramp hands out four samples of the same orange.
+    for (const k of cand) {
+      if (k.s <= 0.06) break;                       // nothing colourful enough left
+      if (out.every(o => Math.abs(o[0] - k.c[0]) + Math.abs(o[1] - k.c[1]) + Math.abs(o[2] - k.c[2]) > 150))
+        out.push(k.c);
+      if (out.length >= LYR_TINT.length) break;
+    }
+    // A palette with no colour in it at all (a pure greyscale ramp) has nothing to offer, so
+    // fall back to the fixed set rather than marking the layer in grey.
+    if (!out.length) return (PAL_TINT[key] = LYR_TINT.slice());
+    // A single-hue ramp yields one entry; wash the base toward WHITE for the rest, so a second
+    // layer on the same palette is still told apart. Toward white rather than toward black:
+    // darkening a saturated colour lands it back in the too-dim band this function just spent
+    // its time rejecting, and a near-black marker reads as no marker at all.
+    const hexes = out.map(rgbHex);
+    for (let i = 1; hexes.length < LYR_TINT.length; i++) {
+      const base = out[(i - 1) % out.length], m = 0.38 * (1 + ((i - 1) / out.length | 0));
+      hexes.push(rgbHex([base[0] + (255 - base[0]) * m,
+                         base[1] + (255 - base[1]) * m,
+                         base[2] + (255 - base[2]) * m]));
+    }
+    return (PAL_TINT[key] = hexes);
+  }
+  // Which of them this layer gets: its position among the layers sharing that palette, so the
+  // first takes the strongest and a second on the same palette takes the next one along.
+  function palTintColor(pi, rank) {
+    const list = palTintList(pi);
+    return list[((rank | 0) % list.length + list.length) % list.length];
+  }
+  // WHICH of them this layer gets: its SALT, not its position. Position was the first
+  // version and it re-broke the rule the tint already had to obey -- deleting a layer shifts
+  // every later layer's position, so the survivors were all recoloured, which is exactly the
+  // bug the tint was pinned down to avoid in the first place.
+  //
+  // The salt is already the right shape: a first-free integer, unique among live layers, kept
+  // by a layer through a reorder or a deletion, and released for reuse when one goes. It was
+  // added so two Glass ball layers would not draw the same balls; separating two layers that
+  // share a palette is the same question with a different subject.
+  function palTintRank(L) { return typeof L.salt === "number" ? L.salt : 0; }
+  // Editing a custom palette changes what its strong colour is, so the cache has to go.
+  function palTintFlush() { for (const k in PAL_TINT) delete PAL_TINT[k]; }
   function layerTintIdx(L, slot) {
     const t = L ? tintOk(L.tint) : null;
     return t == null ? ((slot | 0) % LYR_TINT.length) : t;
@@ -14085,6 +14259,15 @@
   // this function's business. A null takes its SLOT's colour when that colour is still free,
   // which is precisely what it rendered as before, so a scene saved without tints opens
   // looking exactly as it always did and is merely stable from then on.
+  // The smallest salt no live layer is using. See the note on installStackItem.
+  function freeSalt(items, except) {
+    const taken = new Set();
+    for (const L of items) if (L !== except && typeof L.salt === "number") taken.add(L.salt);
+    for (let i = 0; ; i++) if (!taken.has(i)) return i;
+  }
+  function resolveSalts(items) {
+    for (const L of items) if (typeof L.salt !== "number") L.salt = freeSalt(items, L);
+  }
   function resolveTints(items) {
     const taken = new Set();
     for (const L of items) { const t = tintOk(L.tint); if (t != null) taken.add(t); }
@@ -14095,7 +14278,14 @@
       L.tint = t; taken.add(t);
     });
   }
-  const layerTint = (L, slot) => LYR_TINT[layerTintIdx(L, slot)];
+  // An explicit pick wins; otherwise the layer's palette decides. `null` is the normal state
+  // -- nothing auto-assigns an index any more, because the palette already gives every layer
+  // a colour of its own that travels with it.
+  function layerTint(L, slot) {
+    const t = L ? tintOk(L.tint) : null;
+    if (t != null) return LYR_TINT[t];
+    return L ? palTintColor(layerPalIndex(L), palTintRank(L)) : LYR_TINT[(slot | 0) % LYR_TINT.length];
+  }
   // The same colour as a bare "r, g, b" triple, so CSS can build translucent shades of it
   // with plain rgba(). `color-mix` would do this in the stylesheet alone, but this costs one
   // extra property and works everywhere, which for a purely cosmetic cue is the better trade.
@@ -14818,6 +15008,16 @@
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
     showBox = layerShowBox(L);   // ...and the box belongs to the LAYER, not to whatever is selected
+    // THE PER-LAYER SALT, and Glass ball is what needs it. Its ball positions come from the
+    // clock and the ball index alone, so two glass layers put ball 1 in exactly the same
+    // place as each other and kept it there -- reported as three balls perfectly centred on
+    // three others. A per-layer number in the orbit decorrelates them, in both the starting
+    // angle and the rate, so they never re-synchronise either.
+    //
+    // Not derived from stack.indexOf(L): that returns -1 for a DETACHED item, which is
+    // exactly what the outgoing scene's layers are during a transition (the trap
+    // renderStackColor's `base` parameter exists for). The number lives on the layer.
+    gbSalt = typeof L.salt === "number" ? L.salt : 0;
     if (EFFECTS[L.fx].cardioid) installSeedPath(L);
     // Bouncing solids carries a list of rigid bodies, not a scalar clock, so it can't ride
     // PHASE_VARS — it follows the tetrahedron's L.tetras arrangement instead: the bodies
@@ -15225,6 +15425,9 @@
   function paleApply(full, dragLive) {
     const st = paleStops();
     PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
+    // A layer's tint is the strongest colour in its palette, cached per index -- so editing
+    // this ramp has to drop that cache or every layer using it keeps the old marker.
+    palTintFlush();
     if (full) buildPalSwatches();
     else {
       const sw = ctl("palswatches") && ctl("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');
@@ -15658,12 +15861,12 @@
       beat: {}, extras: { palette: "7", morph: false, showBox: true, randSeed: true } },
     // ---- Geometric shapes (SDF shader effects; append-only for id stability) ----
     { id: "physarum", name: "Slime mould", subtitle: "Physarum · agents that build networks",
-      help: "Thousands of agents, each doing one stupid thing: look ahead-left, ahead and ahead-right at the trail everyone has left behind, turn toward whichever smells strongest, step forward and deposit a little more. Nothing instructs them to build anything — the veins, the loops, the junctions and the pruning are all EMERGENT, which is why it looks alive in a way a particle system never does. **Sense** is how far ahead they look (the single biggest change in character: short gives fine felted mats, long gives bold highways), Turn how sharply they can steer, Trail life how long a deposit survives — low starves the network back to wandering, high lets it set into a permanent map. Agents is the population. Try a Fade or Fire filter over it. **Scatter** is what keeps it alive. With it at 0 the culture solves its dish and stops \u2014 the veins reinforce themselves, every agent follows the strongest trail it can find, and after a few seconds you are looking at a static diagram. Scatter adds a little noise to each agent\u2019s heading every step, so they wander off the veins, start branches that sometimes take and usually do not, and the network keeps reorganising instead of settling. Low values give a network that breathes and drifts; high ones tear it apart faster than it can form, which is its own look.",
-      params: ["phcount", "phsense", "phturn", "phdecay", "phscatter", "phspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      help: "Thousands of agents, each doing one stupid thing: look ahead-left, ahead and ahead-right at the trail everyone has left behind, turn toward whichever smells strongest, step forward and deposit a little more. Nothing instructs them to build anything — the veins, the loops, the junctions and the pruning are all EMERGENT, which is why it looks alive in a way a particle system never does. **Sense** is how far ahead they look (the single biggest change in character: short gives fine felted mats, long gives bold highways), Turn how sharply they can steer, Trail life how long a deposit survives — low starves the network back to wandering, high lets it set into a permanent map. Agents is the population. Try a Fade or Fire filter over it. **Scatter** is what keeps it alive. With it at 0 the culture solves its dish and stops \u2014 the veins reinforce themselves, every agent follows the strongest trail it can find, and after a few seconds you are looking at a static diagram. Scatter adds a little noise to each agent\u2019s heading every step, so they wander off the veins, start branches that sometimes take and usually do not, and the network keeps reorganising instead of settling. Low values give a network that breathes and drifts; high ones tear it apart faster than it can form, which is its own look. **Agent size** is how big a mark each agent leaves, measured in trail cells rather than in pixels — the trail is a fixed grid while the picture follows your window, so at 1 the marks are one cell across and just touch each other whatever the screen size. Below 1 the network breaks up into the dot grid it used to draw; above 1 the veins thicken and run together.",
+      params: ["phcount", "phsense", "phturn", "phdecay", "phscatter", "phsize", "phspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
       helpTags: ["all"], bakesOwnZoom: true, physarum: true,
       stamp: (xL, xR, yT, yB, n) => physarumStamp(xL, xR, yT, yB, n),
       defaults: { palcycle: [0, 0], palhold: [0, 0], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1, points: [2000, 2000],
-        phcount: [2500, 2500], phsense: [9, 9], phturn: [0.5, 0.5], phdecay: [0.88, 0.88], phscatter: [0.3, 0.3], phspeed: [1, 1] },
+        phcount: [2500, 2500], phsense: [9, 9], phturn: [0.5, 0.5], phdecay: [0.88, 0.88], phscatter: [0.3, 0.3], phsize: [1, 1], phspeed: [1, 1] },
       beat: {}, extras: { palette: "11", morph: false } },
     { id: "curl", name: "Curl flow", subtitle: "Curl noise · divergence-free particles",
       help: "Particles carried by the CURL of a noise field. That matters: a curl field is divergence-free, so the flow can swirl and braid but can never pile particles up or drain a region empty — which is exactly what happens if you drag points along a plain noise gradient instead, and why this reads as smoke or water rather than as dots sliding downhill. **Field scale** sets how big the eddies are, Flow how fast, Lifetime how long a particle lives before it is respawned somewhere new (short keeps the whole field being explored, long lets long filaments draw themselves). Pairs naturally with a Fade pixel filter for streaks.",
@@ -15885,7 +16088,7 @@
         if (useGL) glShaderDraw("glass", u => {
           gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad);
           gl.uniform1f(u.uMat, s.mat); gl.uniform1f(u.uIor, s.ior); gl.uniform1f(u.uGlow, s.glow);
-          gl.uniform1f(u.uZoom, s.zoom);
+          gl.uniform1f(u.uZoom, s.zoom); gl.uniform1f(u.uSalt, s.salt);
           // The layers beneath, as this ball's environment. A sampler must be bound to a
           // COMPLETE texture even when the shader never reads it, so with nothing underneath
           // bind any real texture and let uHasBelow switch the branch.
@@ -15898,6 +16101,17 @@
       // OVER by default: a ball is an object that hides what is behind it. With MAX a bright
       // layer beneath showed straight through a metal ball, which read as "transparent".
       blend: "over",
+      // HOW SOLID THE BALL IS, by material, and it is the whole answer to "I expect to see
+      // through glass and bubble". The effect ships an OVER blend because a metal ball is an
+      // object that hides what is behind it -- but the same effect also makes a glass ball
+      // and a soap bubble, and those are things you look THROUGH. One flat coverage test
+      // cannot be right for all three.
+      //
+      // Metal stays fully opaque, which is what OVER was added for. Glass passes about half
+      // the layer beneath -- it already refracts that layer's brightness INSIDE the ball, so
+      // this is the rest of the picture arriving around and through it. A bubble is a thin
+      // shell that barely bends anything, so it passes most of it and reads as a rim.
+      cover: () => [1, 0.3, 0.15][Math.round(gbMat)] || 1,
       beat: {}, extras: { palette: "2", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
       help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. **Branch width** makes them solid rather than a wireframe, and **Width taper** shrinks it generation by generation so the trunk is thick and the twigs stay fine — a constant width looks like pipe cleaners and is most of why an untapered tree never reads as one. **Bend** bows each bough along its own length instead of leaving all the flex in the joints, which is what a real branch does and what stops low Depth settings looking polygonal; at 0 the branches are straight sticks, as they were. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
@@ -17389,7 +17603,9 @@
     // A concrete tint from birth, so it survives every later reorder and delete. It takes a
     // colour no live layer is using -- including one freed by a layer that has been removed,
     // which is why this asks the CURRENT stack rather than counting layers ever created.
-    L.tint = freeTintIdx(new Set(stack.map((o, i) => layerTintIdx(o, i))), stack.length);
+    // Same first-free rule for the salt: unique among the LIVE layers, so a salt released by
+    // a deleted layer comes back into circulation rather than being burned for the session.
+    L.salt = freeSalt(stack, L);
     // Concrete palette from birth, for the same reason installStack resolves it: a null here
     // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
     { const px = extras[L.fx] || presetExtra(L.fx);
@@ -17462,15 +17678,17 @@
     for (const s of o) { if (s !== j) openSlots.add(s > j ? s - 1 : s); }
   }
   function moveOpen(from, to) {                // ...mirroring splice(to, 0, splice(from, 1)[0])
-    const o = [...openSlots], was = openSlots.has(from);
+    const o = [...openSlots];
     openSlots.clear();
     for (const s of o) {
-      if (s === from) continue;
+      // IN PLACE, not appended at the end. The set's ORDER is the order boxes were opened,
+      // and dragging a row in the layer list is not opening anything -- appending the moved
+      // one would tell everything downstream it was the most recently opened box.
+      if (s === from) { openSlots.add(to); continue; }
       let n = s > from ? s - 1 : s;
       if (n >= to) n++;
       openSlots.add(n);
     }
-    if (was) openSlots.add(to);
   }
   // There is no parkLayerCtl any more, and its absence is the point. syncStackUI used to
   // wipe #stacklist on every call, so the one control block had to be rescued to #fxbox first
@@ -17703,8 +17921,13 @@
         // its neighbour's colour defeats the feature. Starts from what is showing, so the
         // first click on an auto-coloured layer moves it off its slot colour, not onto it.
         // Falls back to the plain next colour when every one is taken (4 tints, 4 slots).
+        // The cycle runs through the fixed colours and then back to AUTO -- null, meaning
+        // "whatever this layer's palette says". Without that last step a layer given an
+        // explicit colour once could never be handed back to its palette again.
         const taken = new Set(stack.map((o, i) => i === j ? -1 : layerTintIdx(o, i)));
-        const from = layerTintIdx(L, j);
+        const cur = tintOk(L.tint);
+        if (cur === LYR_TINT.length - 1) { L.tint = null; syncStackUI(); persist(); autosavePreset(); return; }
+        const from = cur == null ? -1 : cur;
         let next = (from + 1) % LYR_TINT.length;
         for (let n = 0; n < LYR_TINT.length && taken.has(next); n++) next = (next + 1) % LYR_TINT.length;
         L.tint = next;
@@ -19708,6 +19931,17 @@
     }
     const armable = [];
     for (const key of tabKeys(pane)) {
+      // RANDOM LEAVES THE CAMERA AND THE SHARED WORLD ALONE. Both are on the Effect tab, and
+      // both are the wrong kind of thing for this button: the camera is where you have put
+      // yourself in the scene and the world group is where this layer sits in a shared one,
+      // so rolling them does not vary the effect, it throws away a placement you chose by
+      // hand. CAM_KEYS is the app's own answer to "what is the camera" (zoom included), so
+      // this reads it rather than keeping a second list that could drift from it.
+      //
+      // The `continue` is before the armable push as well, so Random cannot arm a beat
+      // trigger on them either -- a camera that lurches on every kick is the same problem
+      // arriving by a different route.
+      if (RND_KEEP.has(key)) continue;
       const els = ctlRangeInputsIn(slot, key);
       // A single control keeps lo === hi through the mirror on the FIRST thumb's input —
       // nudging both with different deltas would fight it.
@@ -19748,6 +19982,10 @@
       if (off.length) chips[off[(Math.random() * off.length) | 0]].click();
     }
   }
+  // What Random must not touch: the camera (CAM_KEYS, which includes zoom) and the shared
+  // 3D world placement. Built from CAM_KEYS rather than spelled out again, so adding a
+  // camera control cannot quietly become a thing Random rolls.
+  const RND_KEEP = new Set(CAM_KEYS.concat(["world", "wldx", "wldy", "wldz", "wldscale"]));
   function resetTab(pane, t) {
     // The Filters tab's chain first: back to this effect's default list (usually empty),
     // so Reset undoes what Random added as well as what it retuned. Removing a filter
@@ -19936,7 +20174,9 @@
   }
   // The centre of the corner this slot owns, for a box of this size. LAYER_CORNERS is read
   // left-to-right, top-to-bottom, so the slot order IS the reading order: 1 2 / 3 4.
-  const LAYER_CORNERS = [[0, 0], [1, 0], [0, 1], [1, 1]];   // [rightHalf, bottomHalf] per slot
+  // Read left-to-right, top-to-bottom, so the order IS the reading order: 1 2 / 3 4. It is
+  // the order corners are HANDED OUT in, not a mapping from slot to corner -- see freeCorner.
+  const LAYER_CORNERS = [[0, 0], [1, 0], [0, 1], [1, 1]];   // [rightHalf, bottomHalf]
   function cornerRect(slot, w, h, g) {
     const c = LAYER_CORNERS[slot % LAYER_CORNERS.length];
     const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
@@ -19954,13 +20194,33 @@
   // A LAYER box opening for the FIRST time takes its slot's corner. Reopening keeps wherever
   // you last put it: the anchor survives in brkPos, and remapPopped carries "<slot>/layer"
   // through a reorder, so the box follows its LAYER rather than the position.
+  // The rects of every OTHER layer box currently on the grid. Layer boxes only: a slider box
+  // sitting near a corner does not mean that corner belongs to a layer, and letting one block
+  // a corner would push the next layer box somewhere arbitrary.
+  function otherLayerRects(box) {
+    return [...breakout.querySelectorAll(":scope > .ctl.lyr-box")]
+      .filter(n => n !== box && n.style.display !== "none")
+      .map(n => n.getBoundingClientRect());
+  }
+  // The first corner in LAYER_CORNERS order that no other open layer box is sitting in. That
+  // is what makes the corners go in OPENING order: the first box to open finds corner 1 free
+  // and takes it, whichever layer it belongs to, and a corner freed by closing a box is
+  // available to the next one opened.
+  function freeCorner(slot, w, h, g, box) {
+    const others = otherLayerRects(box);
+    for (let i = 0; i < LAYER_CORNERS.length; i++) {
+      const r = cornerRect(i, w, h, g);
+      if (rectClear(r.x, r.y, w, h, others)) return r;
+    }
+    return cornerRect(slot, w, h, g);      // every corner busy: fall back to this slot's own
+  }
   function placeLayerBox(slot, box) {
     const key = slot + "/layer";
     if (!brkFree() || brkPos.has(key)) return;
     const g = brkGrid();
     const w = brkW(box, g), h = brkH(box, g);
     const taken = brkRects(box);
-    const r = cornerRect(slot, w, h, g);
+    const r = freeCorner(slot, w, h, g, box);
     // The corner is the ASK, so it wins even against an overlap the user can move; but if
     // something is genuinely there (a tall box in the corner above, on a short window) fall
     // back to the nearest clear spot to it rather than stacking two boxes on one another.
@@ -21209,6 +21469,13 @@
     // ...and every layer's TINT becomes concrete here too, for the same reason and with the
     // same "a saved scene still looks the way it did" guarantee. See resolveTints.
     resolveTints(items);
+    // ...and the per-layer salt that keeps two Glass ball layers from drawing the same balls
+    // in the same places. Assigned down the stack, so a reloaded scene gets the same set.
+    resolveSalts(items);
+    // NOTE: tints are NOT resolved here any more. A layer's colour now comes from its own
+    // palette, which already belongs to it and already follows it through a reorder or a
+    // delete -- so the resolve-once machinery that was needed to pin an index down has
+    // nothing left to do. resolveTints stays for the scenes that stored an explicit pick.
     stack = items;
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed
