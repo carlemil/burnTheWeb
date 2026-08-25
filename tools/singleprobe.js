@@ -69,6 +69,8 @@ const EXPECT = [
   "dnflute", "dntwist",
   // Trees: all three COUNT something, and a fractional branch count is not a shape.
   "trcount", "trdepth", "trsplit",
+  // ASCII mosaic: the Script picker is an enum -- eight named character sets.
+  "ascset",
   // Flying ribbons: the band COUNT only. Twist is deliberately NOT here -- a fractional
   // twist is a real part-turn along the length, and a spread between the thumbs winds and
   // unwinds the band, which is the best reason the effect has to drift a slider at all.

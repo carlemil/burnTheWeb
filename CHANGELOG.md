@@ -14,6 +14,21 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.56.0] — 2026-08-25
+
+### Added
+- **ASCII mosaic: a Script picker.** The filter now offers eight character sets instead of the
+  one hard-wired ramp — **Latin, Arabic, Georgian, Japanese, Cyrillic, Greek, Blocks** (shaded
+  squares) and **Braille** (dot patterns). Whichever you choose, the glyphs are sorted by how
+  much ink they actually carry in your machine's font, so the darkest cells get the emptiest
+  character and the brightest the fullest: the picture still reads through density, it just
+  reads in a different alphabet. A script your machine has no font for falls back to Latin
+  rather than tiling empty boxes across the frame.
+
+### Changed
+- The mosaic's glyphs are now drawn from a real font rather than seven hand-coded 3×5 bitmaps,
+  so they are sharper and the ramp has far more steps.
+
 ## [1.55.6] — 2026-08-25
 
 ### Fixed

@@ -2419,7 +2419,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.55.6",
+    version: "1.56.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2736,7 +2736,7 @@
     edgeAmt = 0.7, posterLevels = 5, mirrorMode = 1, hexSize = 10,
     embAmt = 1.6, embAng = 135, embMix = 0.4,
     dithLvl = 4, dithAmt = 1, rblAmt = 1, rblMix = 0.7, polAmt = 1, polRep = 1,
-    ascCell = 8, ascMix = 1, invAmt = 1, dblAmt = 24, dblAng = 0, anaAmt = 1, anaLen = 90;
+    ascCell = 8, ascMix = 1, ascSet = 0, invAmt = 1, dblAmt = 24, dblAng = 0, anaAmt = 1, anaLen = 90;
   // Feedback warps (Echo / Zoom feedback / Swirl / Diffuse). Each carries its own
   // Keep, so it decays standalone instead of saturating to white when it is the only
   // feedback filter ticked — Fade is a separate filter you may or may not stack.
@@ -6475,29 +6475,30 @@
     // ASCII MOSAIC: quantise each cell's brightness to one of seven glyphs. Halftone is the
     // DOT version of this idea; a character grid reads completely differently. The glyphs are
     // 3x5 bit masks held as ints -- no atlas texture to allocate, upload or resize.
+    // ASCII MOSAIC, from a GLYPH ATLAS rather than seven baked bitmasks. The atlas is a
+    // horizontal strip of glyphs rendered by Canvas2D with the system font (see buildAsciiAtlas)
+    // and SORTED BY MEASURED INK COVERAGE, so the cell's brightness indexes straight into a
+    // ramp from the emptiest glyph to the fullest. That ordering is what makes it a dither
+    // rather than a font: the picture reads through the density, whatever the script.
+    // uGlyphs is how many are in the strip; the atlas is uniform-width cells, so glyph k
+    // occupies u in [k/n, (k+1)/n].
     const FS_ASCII = `#version 300 es
     precision highp float;
-    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uCell; uniform float uMix;
+    uniform sampler2D uSrc; uniform sampler2D uAtlas;
+    uniform vec2 uSize; uniform float uCell; uniform float uMix; uniform float uGlyphs;
     in vec2 vUv; out vec4 o;
-    int glyphAt(int lvl){
-      if (lvl <= 0) return 0;
-      if (lvl == 1) return 8192;
-      if (lvl == 2) return 1040;
-      if (lvl == 3) return 1488;
-      if (lvl == 4) return 3960;
-      if (lvl == 5) return 12282;
-      return 32767;
-    }
     void main(){
       float cs = max(3.0, uCell);
       vec2 cell = floor(gl_FragCoord.xy / cs);
       vec2 inCell = fract(gl_FragCoord.xy / cs);
       vec3 c = texture(uSrc, (cell + 0.5) * cs / uSize).rgb;
       float l = dot(c, vec3(0.299, 0.587, 0.114));
-      int mask = glyphAt(int(clamp(l * 7.0, 0.0, 6.0)));
-      ivec2 g = ivec2(floor(inCell * vec2(3.0, 5.0)));
-      int bit = (4 - g.y) * 3 + g.x;
-      float on = ((mask >> bit) & 1) == 1 ? 1.0 : 0.0;
+      float n = max(1.0, uGlyphs);
+      float k = floor(clamp(l, 0.0, 0.9999) * n);
+      // The atlas is drawn top-down; the framebuffer is Y-flipped against it, so flip the
+      // in-cell y or every glyph renders upside down.
+      vec2 auv = vec2((k + inCell.x) / n, 1.0 - inCell.y);
+      float on = texture(uAtlas, auv).r;
       o = vec4(mix(texture(uSrc, vUv).rgb, c * on, clamp(uMix, 0.0, 1.0)), 1.0);
     }`;
     // INVERT. Solarize only folds the top of the ramp back down; this is the plain negative,
@@ -7075,7 +7076,7 @@
     glProg.dither = makeProg(VS_QUAD, FS_DITHER, ["uSrc", "uLevels", "uAmount"]);
     glProg.rblur = makeProg(VS_QUAD, FS_RBLUR, ["uSrc", "uAmount", "uMix"]);
     glProg.polar = makeProg(VS_QUAD, FS_POLAR, ["uSrc", "uSize", "uAmount", "uRepeat"]);
-    glProg.ascii = makeProg(VS_QUAD, FS_ASCII, ["uSrc", "uSize", "uCell", "uMix"]);
+    glProg.ascii = makeProg(VS_QUAD, FS_ASCII, ["uSrc", "uAtlas", "uSize", "uCell", "uMix", "uGlyphs"]);
     glProg.invert = makeProg(VS_QUAD, FS_INVERT, ["uSrc", "uAmount"]);
     glProg.dblur = makeProg(VS_QUAD, FS_DBLUR, ["uSrc", "uSize", "uAmount", "uAngle"]);
     glProg.anamorph = makeProg(VS_QUAD, FS_ANAMORPH, ["uSrc", "uSize", "uAmount", "uLen"]);
@@ -7203,6 +7204,10 @@
     glFbo.blur2 = createFbo(glTex.blur2);
 
     glTex.pal = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE);
+    // The ASCII mosaic's glyph strip. LINEAR, unlike the palette: a glyph sampled at a cell
+    // size that does not match the atlas resolution should blur between texels rather than
+    // alias into a broken outline. Filled lazily by ensureAsciiAtlas, per script.
+    glTex.ascii = createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, glTex.pal);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
@@ -8343,6 +8348,77 @@
       }
       if (dead) rdNeedSeed = true;
     }
+  }
+  // ---- THE ASCII MOSAIC'S GLYPH SETS ---------------------------------------------------
+  // Each set is a string of candidate characters. They are NOT used in this order: the atlas
+  // builder measures each glyph's ink coverage and sorts them, so what the shader sees is a
+  // ramp from emptiest to fullest. That means a set only has to be a good SPREAD of densities
+  // -- a script's light strokes and its heavy ones -- and the measurement does the rest.
+  //
+  // Every set starts with a space, which is the guaranteed-empty glyph the darkest cells map
+  // to. Without it the darkest cell still shows the lightest character, and shadows fill up.
+  // The system font renders these; a script the machine has no font for comes out as tofu
+  // boxes, and buildAsciiAtlas detects that (every glyph the same coverage) and falls back to
+  // Latin rather than tiling boxes across the picture.
+  const ASCII_SETS = [
+    { name: "Latin",    chars: " .'`^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$" },
+    { name: "Arabic",   chars: " \u0660\u060c.\u0640\u066b\u0621\u0627\u0625\u0623\u0622\u0644\u062f\u0630\u0631\u0632\u0648\u0649\u0628\u062a\u062b\u0646\u064a\u0633\u0634\u0635\u0636\u0637\u0638\u0639\u063a\u0641\u0642\u0643\u0645\u0647\u062c\u062d\u062e" },
+    { name: "Georgian", chars: " \u10a7\u10a1.\u10f2\u10d0\u10d8\u10dd\u10e3\u10d4\u10d5\u10d7\u10dc\u10da\u10e0\u10e1\u10e8\u10ee\u10ea\u10e9\u10eb\u10ec\u10ed\u10ef\u10f0\u10d2\u10d3\u10d9\u10de\u10e2\u10e4\u10e5\u10e6\u10e7" },
+    { name: "Japanese", chars: " \u3001\u3002\u30fc\u4e00\u4e8c\u4eba\u516b\u5341\u5165\u4e01\u4e09\u4e03\u4e0a\u4e0b\u5c0f\u53e3\u5c71\u5ddd\u5343\u5927\u5929\u65e5\u76ee\u7530\u672c\u7533\u7531\u96fb\u96e8\u98a8\u96ea\u9f8d" },
+    { name: "Cyrillic", chars: " .,-:;\u0442\u0433\u043d\u043f\u0438\u043a\u043b\u0441\u0431\u0432\u044c\u044a\u044b\u0434\u0430\u0436\u0437\u0449\u0444\u0448\u044e\u043c\u044d\u0451@\u0416\u0429\u0424\u0428" },
+    { name: "Greek",    chars: " .,\u0384\u00b7\u03b9\u03c4\u03b3\u03bd\u03c5\u03c0\u03bb\u03ba\u03c3\u03bf\u03b5\u03b1\u03c1\u03b4\u03b6\u03be\u03bc\u03b8\u03b2\u03c6\u03c8\u03c9\u039e\u03a8\u0398\u03a9\u03a6" },
+    { name: "Blocks",   chars: " \u2591\u2592\u2593\u2588" },
+    { name: "Braille",  chars: " \u2801\u2803\u2807\u280f\u281f\u283f\u287f\u28ff" },
+  ];
+  // Which script is loaded into glTex.ascii right now, so a frame with the same script pays
+  // nothing. -1 forces a rebuild (startup, and a font that may have arrived late).
+  let asciiAtlasSet = -1, asciiAtlasN = 1;
+  const ASCII_GLYPH_PX = 32;                  // atlas cell size; sampled LINEAR so any Cell fits
+  function buildAsciiAtlas(setIdx) {
+    const set = ASCII_SETS[setIdx] || ASCII_SETS[0];
+    const chars = [...set.chars];             // spread, not split: some of these are surrogate pairs
+    const G = ASCII_GLYPH_PX, cv = document.createElement("canvas");
+    cv.width = G * chars.length; cv.height = G;
+    const c = cv.getContext("2d", { willReadFrequently: true });
+    c.fillStyle = "#000"; c.fillRect(0, 0, cv.width, G);
+    c.fillStyle = "#fff"; c.textAlign = "center"; c.textBaseline = "middle";
+    // A generic family list so each script falls to a font that actually has it. The size is
+    // most of the cell: the glyph should FILL it, since coverage is the whole point.
+    c.font = Math.round(G * 0.82) + "px 'Segoe UI', 'Noto Sans', 'Noto Sans Arabic', 'Noto Sans Georgian', 'Yu Gothic', 'Meiryo', sans-serif";
+    chars.forEach((ch, i) => c.fillText(ch, i * G + G / 2, G / 2 + G * 0.04));
+    // MEASURE, THEN SORT. Ink coverage per glyph, from the pixels actually rendered -- so the
+    // ramp is right for whatever font this machine used, not for the one the set was typed
+    // against. This is the step that turns a character set into a dither.
+    const img = c.getImageData(0, 0, cv.width, G).data;
+    const cov = chars.map((_, i) => {
+      let s = 0;
+      for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) s += img[((y * cv.width) + i * G + x) * 4];
+      return s / (G * G * 255);
+    });
+    // Tofu detection: a script the machine cannot render draws the same box for every glyph,
+    // so the coverages collapse onto one value. Fall back to Latin rather than tile boxes.
+    const nonSpace = cov.filter((_, i) => i > 0);
+    const spread = Math.max(...nonSpace) - Math.min(...nonSpace);
+    if (setIdx > 0 && spread < 0.05) return buildAsciiAtlas(0);
+    const order = chars.map((_, i) => i).sort((a, b) => cov[a] - cov[b]);
+    // Re-render in sorted order into the strip the shader indexes.
+    const out = document.createElement("canvas");
+    out.width = G * chars.length; out.height = G;
+    const oc = out.getContext("2d", { willReadFrequently: true });
+    oc.fillStyle = "#000"; oc.fillRect(0, 0, out.width, G);
+    oc.fillStyle = "#fff"; oc.textAlign = "center"; oc.textBaseline = "middle"; oc.font = c.font;
+    order.forEach((src, i) => oc.fillText(chars[src], i * G + G / 2, G / 2 + G * 0.04));
+    const px = oc.getImageData(0, 0, out.width, G).data;
+    const red = new Uint8Array(out.width * G);
+    for (let i = 0; i < red.length; i++) red[i] = px[i * 4];
+    gl.bindTexture(gl.TEXTURE_2D, glTex.ascii);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, out.width, G, 0, gl.RED, gl.UNSIGNED_BYTE, red);
+    asciiAtlasSet = setIdx; asciiAtlasN = chars.length;
+  }
+  function ensureAsciiAtlas() {
+    const want = Math.max(0, Math.min(ASCII_SETS.length - 1, Math.round(ascSet)));
+    if (asciiAtlasSet !== want) buildAsciiAtlas(want);
   }
   function postPass(name, src, setU) {
     const P = glProg[name];
@@ -13264,6 +13340,7 @@
     { key: "rblmix", host: "filter", group: "f_rblur", type: "dual", label: "Mix", valId: "vRblMix", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => rblMix = v, durScale: 10 },
     { key: "polamt", host: "filter", group: "f_polar", type: "dual", label: "Amount", valId: "vPolAmt", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => polAmt = v, durScale: 10 },
     { key: "polrep", host: "filter", group: "f_polar", type: "dual", label: "Repeat", valId: "vPolRep", min: 1, max: 12, step: 1, lo: 1, hi: 1, fmt: v => sig3(Math.round(v)) + "\u00d7", apply: v => polRep = Math.round(v), durScale: 10 },
+    { key: "ascset", host: "filter", group: "f_ascii", type: "dual", single: true, label: "Script", valId: "vAscSet", min: 0, max: 7, step: 1, lo: 0, hi: 0, fmt: v => ["Latin", "Arabic", "Georgian", "Japanese", "Cyrillic", "Greek", "Blocks", "Braille"][Math.round(v)] || "Latin", apply: v => ascSet = Math.round(v), durScale: 10 },
     { key: "ascell", host: "filter", group: "f_ascii", type: "dual", label: "Cell", valId: "vAscCell", min: 3, max: 24, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "px", apply: v => ascCell = Math.round(v), durScale: 10 },
     { key: "ascmix", host: "filter", group: "f_ascii", type: "dual", label: "Mix", valId: "vAscMix", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => ascMix = v, durScale: 10 },
     { key: "invamt", host: "filter", group: "f_invert", type: "dual", label: "Amount", valId: "vInvAmt", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => invAmt = v, durScale: 10 },
@@ -16987,10 +17064,14 @@
       help: "Reads the frame in polar coordinates: horizontal bands become rings and vertical structure becomes spokes. Repeat folds the angle, which turns almost anything into a rosette.",
       defaults: { polamt: [1, 1], polrep: [1, 1] },
       gl: src => postPass("polar", src, u => { gl.uniform1f(u.uAmount, polAmt); gl.uniform1f(u.uRepeat, polRep); }) },
-    { id: "ascii", cpuOk: false, name: "ASCII mosaic", stage: "post", params: ["ascell", "ascmix"],
-      help: "Replaces each cell with one of seven glyphs picked by its brightness, keeping the cell's colour. Halftone is the dot version of the same idea; a character grid reads quite differently.",
-      defaults: { ascell: [8, 8], ascmix: [1, 1] },
-      gl: src => postPass("ascii", src, u => { gl.uniform1f(u.uCell, ascCell); gl.uniform1f(u.uMix, ascMix); }) },
+    { id: "ascii", cpuOk: false, name: "ASCII mosaic", stage: "post", params: ["ascset", "ascell", "ascmix"],
+      help: "Replaces each cell with a character picked by its brightness, keeping the cell's colour \u2014 the darker the cell, the emptier the glyph. **Script** chooses the character set: Latin, Arabic, Georgian, Japanese, Cyrillic, Greek, block shades or Braille. Whichever you pick, the glyphs are sorted by how much ink they actually carry in your machine's font, so the picture reads through the density rather than the letters. Halftone is the dot version of the same idea; a character grid reads quite differently.",
+      defaults: { ascset: [0, 0], ascell: [8, 8], ascmix: [1, 1] },
+      gl: src => { ensureAsciiAtlas();
+        postPass("ascii", src, u => {
+          bindTexUnit(1, glTex.ascii); gl.uniform1i(u.uAtlas, 1);
+          gl.uniform1f(u.uCell, ascCell); gl.uniform1f(u.uMix, ascMix); gl.uniform1f(u.uGlyphs, asciiAtlasN);
+        }); } },
     { id: "invert", cpuOk: false, name: "Invert", stage: "post", params: ["invamt"],
       help: "The plain negative, on a slider - so it can be crossfaded, drifted, or flicked by a beat. Solarize only folds the top of the ramp back down; this turns the whole thing over.",
       defaults: { invamt: [1, 1] },
