@@ -85,6 +85,10 @@
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
+  // How wide, in heat pixels, each stamped point is DRAWN. Per stamping item, reset to 1
+  // before every one of them (see stampTick) so a fat-point effect cannot leak into the
+  // next item's blit. Only Slime mould asks for anything but 1.
+  let glPtSize = 1;
   // ---- automatic cloud save: its schedule ------------------------------------------
   // ITS OWN localStorage KEY, like the credits/tutorial/share-link preferences, and
   // deliberately NOT part of fullSnapshot(): everything in there rides a share link and a

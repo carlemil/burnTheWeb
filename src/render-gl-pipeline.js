@@ -722,7 +722,7 @@
     }`;
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
-    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
+    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain", "uPtSize"]);
     glProg.rib = makeProg(VS_RIB, FS_RIB, ["uSize"]);
     glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
     glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend", "uCover"]);
@@ -1100,6 +1100,9 @@
       gl.useProgram(glProg.pts.p);
       gl.uniform2f(glProg.pts.u.uSize, fw, fh);
       gl.uniform1f(glProg.pts.u.uGain, gain === undefined ? 1 : gain);
+      // Set by whichever effect is stamping (see glPtSize); reset to 1 for every item, so one
+      // effect asking for fat points cannot leak into the next one's blit.
+      gl.uniform1f(glProg.pts.u.uPtSize, Math.max(1, glPtSize));
       gl.bindVertexArray(ptVao);
       gl.bindBuffer(gl.ARRAY_BUFFER, ptVbo);
       const need = glPtCount * 3 * 4;

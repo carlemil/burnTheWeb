@@ -56,6 +56,9 @@
   // let every point item in the stack stamp into it — propagation is a property of the
   // shared heat buffer, stamping is per item.
   function stampTick(L, now) {
+    // Every item starts with 1px stamps; an effect that wants fatter marks sets this while
+    // it stamps, and the blit that follows reads it.
+    glPtSize = 1;
     simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
     const t = simT;
     spinAngle += rotSpeed / cfg.burn;  // rotation phase — 1/burn s per tick, so rad/s

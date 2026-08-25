@@ -2631,6 +2631,10 @@
   let curHeat = 0, pendingDst = 0;         // ping-pong index + propagation target
   const palBytes = new Uint8Array(256 * 4);// palette texture upload scratch
   let glPts = new Float32Array(3 * 8192), glPtCount = 0;   // CPU chaos-game stamps
+  // How wide, in heat pixels, each stamped point is DRAWN. Per stamping item, reset to 1
+  // before every one of them (see stampTick) so a fat-point effect cannot leak into the
+  // next item's blit. Only Slime mould asks for anything but 1.
+  let glPtSize = 1;
   // ---- automatic cloud save: its schedule ------------------------------------------
   // ITS OWN localStorage KEY, like the credits/tutorial/share-link preferences, and
   // deliberately NOT part of fullSnapshot(): everything in there rides a share link and a
@@ -3678,19 +3682,29 @@
     // chaos-game point stamps (MAX-blended into the heat texture)
     const VS_PTS = `#version 300 es
     layout(location=0) in vec3 aPt;   // x, y, value(0..255) in fire-pixel space
-    uniform vec2 uSize;
+    uniform vec2 uSize; uniform float uPtSize;
     out float vVal;
     void main(){
       vVal = aPt.z / 255.0;
       vec2 c = (aPt.xy + 0.5) / uSize * 2.0 - 1.0;
       gl_Position = vec4(c, 0.0, 1.0);
-      gl_PointSize = 1.0;
+      // HOW BIG EACH STAMP IS DRAWN. It was pinned at 1, so an effect that wanted a fatter
+      // mark had to stamp a block of points -- paying per pixel for what the rasteriser
+      // does per point. One point at size 5 costs a point; 25 points cost 25 points.
+      gl_PointSize = uPtSize;
     }`;
     const FS_PTS = `#version 300 es
     precision highp float;
-    uniform float uGain;
+    uniform float uGain; uniform float uPtSize;
     in float vVal; out vec4 o;
-    void main(){ o = vec4(vVal * uGain, 0.0, 0.0, 1.0); }`;
+    void main(){
+      // A point sprite is a SQUARE. At size 1 that is a pixel and nobody can tell, but a fat
+      // square mark turns every vein into a chain of boxes with staircased diagonals, so
+      // anything bigger gets rounded off. The discard costs nothing at size 1 -- the branch
+      // is not even taken.
+      if (uPtSize > 1.5 && length(gl_PointCoord - 0.5) > 0.5) discard;
+      o = vec4(vVal * uGain, 0.0, 0.0, 1.0);
+    }`;
     // Flying ribbons: real triangles, not points. Same idea as VS_PTS -- fire-pixel space in,
     // clip space out -- but it carries a DEPTH so the rasteriser can sort the bands against
     // each other, which is the whole difference between a surface and a cloud. The heat is
@@ -6932,7 +6946,7 @@
     }`;
 
     glProg.prop = makeProg(VS_QUAD, FS_PROP, ["uHeat", "uSize", "uDecay"]);
-    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
+    glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain", "uPtSize"]);
     glProg.rib = makeProg(VS_RIB, FS_RIB, ["uSize"]);
     glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
     glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend", "uCover"]);
@@ -7310,6 +7324,9 @@
       gl.useProgram(glProg.pts.p);
       gl.uniform2f(glProg.pts.u.uSize, fw, fh);
       gl.uniform1f(glProg.pts.u.uGain, gain === undefined ? 1 : gain);
+      // Set by whichever effect is stamping (see glPtSize); reset to 1 for every item, so one
+      // effect asking for fat points cannot leak into the next one's blit.
+      gl.uniform1f(glProg.pts.u.uPtSize, Math.max(1, glPtSize));
       gl.bindVertexArray(ptVao);
       gl.bindBuffer(gl.ARRAY_BUFFER, ptVbo);
       const need = glPtCount * 3 * 4;
@@ -8581,6 +8598,9 @@
   // let every point item in the stack stamp into it — propagation is a property of the
   // shared heat buffer, stamping is per item.
   function stampTick(L, now) {
+    // Every item starts with 1px stamps; an effect that wants fatter marks sets this while
+    // it stamps, and the blit that follows reads it.
+    glPtSize = 1;
     simT += cfg.speed / cfg.burn;      // one fixed tick of drift phase
     const t = simT;
     spinAngle += rotSpeed / cfg.burn;  // rotation phase — 1/burn s per tick, so rad/s
@@ -10632,12 +10652,16 @@
     // has always drawn as a dot grid rather than as veins, and it got wider on a bigger
     // screen. At size 1 the marks are one cell across and just touch, at any resolution.
     //
-    // Kept as an ellipse in pixel space, because sx and sy are only equal when the window
-    // happens to match the trail map's aspect.
-    const radX = Math.max(0, phSize) * 0.5 * sx, radY = Math.max(0, phSize) * 0.5 * sy;
-    const spanX = Math.round(radX), spanY = Math.round(radY);
-    const rr = spanY * spanY;                       // the ellipse test, in y units
-    const ryx = spanX > 0 ? (spanY * spanY) / (spanX * spanX) : 0;
+    // IT COSTS NOTHING, AND THE FIRST VERSION COST A LOT. That one stamped a block of points
+    // per lit cell -- 7.4k points a tick became 96k at the top of the slider, and the effect
+    // visibly slowed down. It is the rasteriser's job to fill a mark, not the CPU's: the
+    // count of points is unchanged now, and only gl_PointSize moves. One point at size 5
+    // costs a point.
+    //
+    // A point sprite is square, so this is one number rather than the ellipse the block
+    // version could express; sx and sy differ only by the window's aspect against the trail
+    // map's, which is a few percent, and FS_PTS rounds the sprite off anyway.
+    glPtSize = Math.max(1, Math.max(0, phSize) * (sx + sy) * 0.5);
     const fldRow = scat > 0 ? SCAT_CH / H : 0, fldCol = scat > 0 ? SCAT_CW / W : 0;
     for (let y2 = 0; y2 < H; y2++) {
       const row = y2 * W;
@@ -10652,18 +10676,8 @@
         prev = cur; tr[row + x2] = v;
         // Only the LIT cells are stamped. The threshold is what keeps this inside the point
         // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
-        if (v > 0.06) {
-          const px = xL + x2 * sx, py = yT + y2 * sy, hv = Math.min(255, v * 420);
-          if (!spanX && !spanY) plot(px, py, hv);
-          else for (let dy = -spanY; dy <= spanY; dy++)
-            for (let dx = -spanX; dx <= spanX; dx++) {
-              // Round, not square: a square mark turns every vein into a chain of boxes and
-              // the diagonals read as staircases. The corners are the 21% of the footprint
-              // that costs most and helps least.
-              if (rr > 0 && (dx * dx) * ryx + dy * dy > rr) continue;
-              plot(px + dx, py + dy, hv);
-            }
-        }
+        // ONE point per lit cell, whatever the size -- glPtSize above does the widening.
+        if (v > 0.06) plot(xL + x2 * sx, yT + y2 * sy, Math.min(255, v * 420));
       }
     }
   }
@@ -19764,6 +19778,17 @@
     }
     const armable = [];
     for (const key of tabKeys(pane)) {
+      // RANDOM LEAVES THE CAMERA AND THE SHARED WORLD ALONE. Both are on the Effect tab, and
+      // both are the wrong kind of thing for this button: the camera is where you have put
+      // yourself in the scene and the world group is where this layer sits in a shared one,
+      // so rolling them does not vary the effect, it throws away a placement you chose by
+      // hand. CAM_KEYS is the app's own answer to "what is the camera" (zoom included), so
+      // this reads it rather than keeping a second list that could drift from it.
+      //
+      // The `continue` is before the armable push as well, so Random cannot arm a beat
+      // trigger on them either -- a camera that lurches on every kick is the same problem
+      // arriving by a different route.
+      if (RND_KEEP.has(key)) continue;
       const els = ctlRangeInputsIn(slot, key);
       // A single control keeps lo === hi through the mirror on the FIRST thumb's input —
       // nudging both with different deltas would fight it.
@@ -19804,6 +19829,10 @@
       if (off.length) chips[off[(Math.random() * off.length) | 0]].click();
     }
   }
+  // What Random must not touch: the camera (CAM_KEYS, which includes zoom) and the shared
+  // 3D world placement. Built from CAM_KEYS rather than spelled out again, so adding a
+  // camera control cannot quietly become a thing Random rolls.
+  const RND_KEEP = new Set(CAM_KEYS.concat(["world", "wldx", "wldy", "wldz", "wldscale"]));
   function resetTab(pane, t) {
     // The Filters tab's chain first: back to this effect's default list (usually empty),
     // so Reset undoes what Random added as well as what it retuned. Removing a filter

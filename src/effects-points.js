@@ -110,12 +110,16 @@
     // has always drawn as a dot grid rather than as veins, and it got wider on a bigger
     // screen. At size 1 the marks are one cell across and just touch, at any resolution.
     //
-    // Kept as an ellipse in pixel space, because sx and sy are only equal when the window
-    // happens to match the trail map's aspect.
-    const radX = Math.max(0, phSize) * 0.5 * sx, radY = Math.max(0, phSize) * 0.5 * sy;
-    const spanX = Math.round(radX), spanY = Math.round(radY);
-    const rr = spanY * spanY;                       // the ellipse test, in y units
-    const ryx = spanX > 0 ? (spanY * spanY) / (spanX * spanX) : 0;
+    // IT COSTS NOTHING, AND THE FIRST VERSION COST A LOT. That one stamped a block of points
+    // per lit cell -- 7.4k points a tick became 96k at the top of the slider, and the effect
+    // visibly slowed down. It is the rasteriser's job to fill a mark, not the CPU's: the
+    // count of points is unchanged now, and only gl_PointSize moves. One point at size 5
+    // costs a point.
+    //
+    // A point sprite is square, so this is one number rather than the ellipse the block
+    // version could express; sx and sy differ only by the window's aspect against the trail
+    // map's, which is a few percent, and FS_PTS rounds the sprite off anyway.
+    glPtSize = Math.max(1, Math.max(0, phSize) * (sx + sy) * 0.5);
     const fldRow = scat > 0 ? SCAT_CH / H : 0, fldCol = scat > 0 ? SCAT_CW / W : 0;
     for (let y2 = 0; y2 < H; y2++) {
       const row = y2 * W;
@@ -130,18 +134,8 @@
         prev = cur; tr[row + x2] = v;
         // Only the LIT cells are stamped. The threshold is what keeps this inside the point
         // budget: the network is a thin set, and the dark 95% of the dish costs nothing.
-        if (v > 0.06) {
-          const px = xL + x2 * sx, py = yT + y2 * sy, hv = Math.min(255, v * 420);
-          if (!spanX && !spanY) plot(px, py, hv);
-          else for (let dy = -spanY; dy <= spanY; dy++)
-            for (let dx = -spanX; dx <= spanX; dx++) {
-              // Round, not square: a square mark turns every vein into a chain of boxes and
-              // the diagonals read as staircases. The corners are the 21% of the footprint
-              // that costs most and helps least.
-              if (rr > 0 && (dx * dx) * ryx + dy * dy > rr) continue;
-              plot(px + dx, py + dy, hv);
-            }
-        }
+        // ONE point per lit cell, whatever the size -- glPtSize above does the widening.
+        if (v > 0.06) plot(xL + x2 * sx, yT + y2 * sy, Math.min(255, v * 420));
       }
     }
   }

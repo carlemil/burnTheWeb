@@ -164,19 +164,29 @@
     // chaos-game point stamps (MAX-blended into the heat texture)
     const VS_PTS = `#version 300 es
     layout(location=0) in vec3 aPt;   // x, y, value(0..255) in fire-pixel space
-    uniform vec2 uSize;
+    uniform vec2 uSize; uniform float uPtSize;
     out float vVal;
     void main(){
       vVal = aPt.z / 255.0;
       vec2 c = (aPt.xy + 0.5) / uSize * 2.0 - 1.0;
       gl_Position = vec4(c, 0.0, 1.0);
-      gl_PointSize = 1.0;
+      // HOW BIG EACH STAMP IS DRAWN. It was pinned at 1, so an effect that wanted a fatter
+      // mark had to stamp a block of points -- paying per pixel for what the rasteriser
+      // does per point. One point at size 5 costs a point; 25 points cost 25 points.
+      gl_PointSize = uPtSize;
     }`;
     const FS_PTS = `#version 300 es
     precision highp float;
-    uniform float uGain;
+    uniform float uGain; uniform float uPtSize;
     in float vVal; out vec4 o;
-    void main(){ o = vec4(vVal * uGain, 0.0, 0.0, 1.0); }`;
+    void main(){
+      // A point sprite is a SQUARE. At size 1 that is a pixel and nobody can tell, but a fat
+      // square mark turns every vein into a chain of boxes with staircased diagonals, so
+      // anything bigger gets rounded off. The discard costs nothing at size 1 -- the branch
+      // is not even taken.
+      if (uPtSize > 1.5 && length(gl_PointCoord - 0.5) > 0.5) discard;
+      o = vec4(vVal * uGain, 0.0, 0.0, 1.0);
+    }`;
     // Flying ribbons: real triangles, not points. Same idea as VS_PTS -- fire-pixel space in,
     // clip space out -- but it carries a DEPTH so the rasteriser can sort the bands against
     // each other, which is the whole difference between a surface and a cloud. The heat is

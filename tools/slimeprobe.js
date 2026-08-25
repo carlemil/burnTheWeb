@@ -41,8 +41,8 @@ const body = slice("const PHY_MAX = 6000", "// CURL-NOISE FLOW");
 let plots = 0;
 const api = new Function(
   "cfg, fw, fh, POINT_HEAT, plot, stack, zoom",
-  noise + "\n" + body +
-  "\nreturn { ensurePhy, physarumStamp, W: PHY_W, H: PHY_H," +
+  "let glPtSize = 1;\n" + noise + "\n" + body +
+  "\nreturn { ensurePhy, physarumStamp, W: PHY_W, H: PHY_H, ptSize: () => glPtSize," +
   "  set: o => { if (o.count !== undefined) phCount = o.count;" +
   "              if (o.scatter !== undefined) phScatter = o.scatter;" +
   "              if (o.size !== undefined) phSize = o.size;" +
@@ -158,14 +158,20 @@ ok("...without dissolving the network",
     for (let i = 0; i < steps; i++) api.physarumStamp(0, 640, 0, 360, 0);
     plots = 0;
     api.physarumStamp(0, 640, 0, 360, 0);          // one more step, counting what it draws
-    return { plots: plots, trail: Float32Array.from(P.tr) };
+    return { plots: plots, ptSize: api.ptSize(), trail: Float32Array.from(P.tr) };
   }
   const a = drawRun(0, 400), b = drawRun(1, 400), c = drawRun(2.5, 400);
-  ok("Agent size 0 draws one point per lit cell", a.plots > 0, a.plots + " points");
-  ok("AGENT SIZE MAKES THE MARK BIGGER", b.plots > a.plots * 2,
-     a.plots + " -> " + b.plots + " points at size 1");
-  ok("...and keeps growing across the slider", c.plots > b.plots,
-     b.plots + " -> " + c.plots + " points at size 2.5");
+  ok("it draws one point per lit cell", a.plots > 0, a.plots + " points");
+  // THE PERFORMANCE PROPERTY, and it is the point of the whole implementation. The first
+  // version stamped a BLOCK of points per lit cell -- 7.4k a tick became 96k at the top of
+  // the slider and the effect visibly slowed down. Filling a mark is the rasteriser's job:
+  // the point count must not move at all, only gl_PointSize.
+  ok("AGENT SIZE COSTS NOTHING: the point count does not move",
+     a.plots === b.plots && b.plots === c.plots,
+     a.plots + " / " + b.plots + " / " + c.plots + " points at size 0 / 1 / 2.5");
+  ok("...and the drawn size is what grows instead", b.ptSize > a.ptSize && c.ptSize > b.ptSize,
+     a.ptSize.toFixed(2) + " -> " + b.ptSize.toFixed(2) + " -> " + c.ptSize.toFixed(2) + "px");
+  ok("...never below one pixel", a.ptSize >= 1, a.ptSize + "px at size 0");
   // The whole point of it being a DRAWING control. Three runs from the same seed must have
   // produced the same network; if the size fed back into the simulation, a saved scene would
   // reorganise itself every time this slider moved.
