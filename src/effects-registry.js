@@ -336,7 +336,7 @@
         if (useGL) glShaderDraw("glass", u => {
           gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCount, s.count); gl.uniform1f(u.uRad, s.rad);
           gl.uniform1f(u.uMat, s.mat); gl.uniform1f(u.uIor, s.ior); gl.uniform1f(u.uGlow, s.glow);
-          gl.uniform1f(u.uZoom, s.zoom);
+          gl.uniform1f(u.uZoom, s.zoom); gl.uniform1f(u.uSalt, s.salt);
           // The layers beneath, as this ball's environment. A sampler must be bound to a
           // COMPLETE texture even when the shader never reads it, so with nothing underneath
           // bind any real texture and let uHasBelow switch the branch.

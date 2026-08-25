@@ -123,6 +123,9 @@
     // colour no live layer is using -- including one freed by a layer that has been removed,
     // which is why this asks the CURRENT stack rather than counting layers ever created.
     L.tint = freeTintIdx(new Set(stack.map((o, i) => layerTintIdx(o, i))), stack.length);
+    // Same first-free rule for the salt: unique among the LIVE layers, so a salt released by
+    // a deleted layer comes back into circulation rather than being burned for the session.
+    L.salt = freeSalt(stack, L);
     // Concrete palette from birth, for the same reason installStack resolves it: a null here
     // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
     { const px = extras[L.fx] || presetExtra(L.fx);

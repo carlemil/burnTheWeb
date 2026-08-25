@@ -95,6 +95,15 @@
   // this function's business. A null takes its SLOT's colour when that colour is still free,
   // which is precisely what it rendered as before, so a scene saved without tints opens
   // looking exactly as it always did and is merely stable from then on.
+  // The smallest salt no live layer is using. See the note on installStackItem.
+  function freeSalt(items, except) {
+    const taken = new Set();
+    for (const L of items) if (L !== except && typeof L.salt === "number") taken.add(L.salt);
+    for (let i = 0; ; i++) if (!taken.has(i)) return i;
+  }
+  function resolveSalts(items) {
+    for (const L of items) if (typeof L.salt !== "number") L.salt = freeSalt(items, L);
+  }
   function resolveTints(items) {
     const taken = new Set();
     for (const L of items) { const t = tintOk(L.tint); if (t != null) taken.add(t); }
@@ -828,6 +837,16 @@
                     // plot()'s point stamping and the CPU mirrors rotate about this layer's camera
                     // (the GL shaders read camRX/RY/RZ live for uCam, so they need nothing here)
     showBox = layerShowBox(L);   // ...and the box belongs to the LAYER, not to whatever is selected
+    // THE PER-LAYER SALT, and Glass ball is what needs it. Its ball positions come from the
+    // clock and the ball index alone, so two glass layers put ball 1 in exactly the same
+    // place as each other and kept it there -- reported as three balls perfectly centred on
+    // three others. A per-layer number in the orbit decorrelates them, in both the starting
+    // angle and the rate, so they never re-synchronise either.
+    //
+    // Not derived from stack.indexOf(L): that returns -1 for a DETACHED item, which is
+    // exactly what the outgoing scene's layers are during a transition (the trap
+    // renderStackColor's `base` parameter exists for). The number lives on the layer.
+    gbSalt = typeof L.salt === "number" ? L.salt : 0;
     if (EFFECTS[L.fx].cardioid) installSeedPath(L);
     // Bouncing solids carries a list of rigid bodies, not a scalar clock, so it can't ride
     // PHASE_VARS — it follows the tetrahedron's L.tetras arrangement instead: the bodies

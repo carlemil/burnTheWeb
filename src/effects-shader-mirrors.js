@@ -1365,11 +1365,29 @@
   // No per-frame state but the clock: the balls' positions are a closed-form function of it
   // (ballAt in FS_GLASS), so nothing has to be carried between frames and nothing can drift
   // apart between the shader and its mirror.
-  let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0;
+  let gbCount = 3, gbRad = 0.62, gbMat = 1, gbIor = 1.45, gbGlow = 0.5, gbPhase = 0, gbSalt = 0;
+  // Matches the GLSL hash in ballAt exactly -- both paths must place the balls identically.
+  function gbHashJS(x) { const s = Math.sin(x * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+  // WHERE ONE BALL IS, and the JS twin of ballAt() in FS_GLASS and FS_WORLD. Named rather
+  // than inlined so the two salt terms have one place to be read and checked: h1 shifts where
+  // a layer's balls START, and h2 detunes their RATE -- which is the half that matters,
+  // because two orbits at the same speed with different offsets stay a fixed distance apart
+  // forever and can still line up. Writes gbBall rather than allocating; this runs per ball
+  // per frame.
+  const gbBall = [0, 0, 0];
+  function gbBallAt(i, t, salt) {
+    const h1 = gbHashJS(salt + 1.7), h2 = gbHashJS(salt + 9.3);
+    const a = t * (0.60 + 0.13 * i + 0.09 * h2) + i * 2.39996 + h1 * 6.2831853;
+    const b = t * (0.41 + 0.09 * i + 0.07 * h1) + i * 1.11700 + h2 * 6.2831853;
+    gbBall[0] = 1.25 * Math.sin(a) + 0.35 * Math.sin(b * 1.7);
+    gbBall[1] = 0.85 * Math.sin(b) + 0.25 * Math.cos(a * 1.3);
+    gbBall[2] = 0.60 * Math.cos(a * 0.8 + i);
+    return gbBall;
+  }
   function glassSeed(dt) {
     gbPhase += dt * 0.5;
     return { t: gbPhase, count: Math.round(gbCount), rad: gbRad, mat: Math.round(gbMat),
-             ior: gbIor, glow: gbGlow, zoom };
+             ior: gbIor, glow: gbGlow, zoom, salt: gbSalt };
   }
   // CPU fallback. Spheres and a headlamp -- no reflection, no refraction, and no layer
   // underneath to sample: the fallback path renders ONE item, so "the layers beneath" does
@@ -1379,11 +1397,8 @@
     const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(5, s.count));
     const cx = [], cy = [], cz = [];
     for (let i = 0; i < n; i++) {
-      const a = s.t * (0.60 + 0.13 * i) + i * 2.39996;
-      const b = s.t * (0.41 + 0.09 * i) + i * 1.11700;
-      cx.push(1.25 * Math.sin(a) + 0.35 * Math.sin(b * 1.7));
-      cy.push(0.85 * Math.sin(b) + 0.25 * Math.cos(a * 1.3));
-      cz.push(0.60 * Math.cos(a * 0.8 + i));
+      gbBallAt(i, s.t, s.salt);
+      cx.push(gbBall[0]); cy.push(gbBall[1]); cz.push(gbBall[2]);
     }
     for (let y = 0; y < fh; y += 2) {
       for (let x = 0; x < fw; x += 2) {

@@ -646,6 +646,9 @@
     // ...and every layer's TINT becomes concrete here too, for the same reason and with the
     // same "a saved scene still looks the way it did" guarantee. See resolveTints.
     resolveTints(items);
+    // ...and the per-layer salt that keeps two Glass ball layers from drawing the same balls
+    // in the same places. Assigned down the stack, so a reloaded scene gets the same set.
+    resolveSalts(items);
     stack = items;
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed

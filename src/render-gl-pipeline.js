@@ -769,7 +769,7 @@
     worldProgs = {}; worldPar = null;
     glProg.worldpick = makeProg(VS_QUAD, FS_WORLDPICK, ["uSrc", "uSize", "uId"]);
     glProg.worldmix = makeProg(VS_QUAD, FS_WORLDMIX, ["uA", "uB", "uT"]);
-    glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uBelow", "uHasBelow"]);
+    glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uSalt", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom", "uRot"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
     glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"]);
@@ -1632,7 +1632,7 @@
   // throws `1:1 syntax error` on every frame. Exactly the trap bindFbo's curFbo documents.
   // initGL is the one place these are set.
   // Scratch for the glass groups' uniform arrays -- allocated once, refilled per frame.
-  const gbScr = { ids: new Float32Array(4), times: new Float32Array(4), counts: new Float32Array(4),
+  const gbScr = { salts: new Float32Array(4), ids: new Float32Array(4), times: new Float32Array(4), counts: new Float32Array(4),
                   rads: new Float32Array(4), mats: new Float32Array(4), iors: new Float32Array(4),
                   glows: new Float32Array(4), places: new Float32Array(16) };
   var worldProgs;                       // "gb|sd" -> { p, pending } | { p, prog }
@@ -1640,7 +1640,7 @@
   var worldVs, worldFsBase;             // shader sources -- they are local to initGL
   const WORLD_UNIFORMS = ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
     "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
-    "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace",
+    "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace", "uGbSalt",
     "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
     "uQjOn", "uQjId", "uQjPhase", "uQjSlice", "uQjCut", "uQjIter", "uQjGlow", "uQjC", "uQjPlace", "uQjRot",
     "uVbOn", "uVbId", "uVbPhase", "uVbCount", "uVbShape", "uVbRad", "uVbGlow", "uVbPlace"];
@@ -1725,18 +1725,20 @@
     if (gbs.length) {
       // One array entry per joined glass layer. installStackItem puts THAT layer's placement
       // sliders and clock into the globals before each read, so every group carries its own.
-      const ids = gbScr.ids, times = gbScr.times, counts = gbScr.counts, rads = gbScr.rads;
+      const ids = gbScr.ids, times = gbScr.times, counts = gbScr.counts, rads = gbScr.rads, salts = gbScr.salts;
       const mats = gbScr.mats, iors = gbScr.iors, glows = gbScr.glows, places = gbScr.places;
       gbs.forEach((gb, g) => {
         installStackItem(gb); installPhase(gb);
         const s = glassSeed(dt);        // this layer's one clock advance for the frame
         ids[g] = plan.ids.get(gb); times[g] = s.t; counts[g] = s.count; rads[g] = s.rad;
+        salts[g] = s.salt;          // keeps two joined glass layers from sharing an orbit
         mats[g] = s.mat; iors[g] = s.ior; glows[g] = s.glow;
         places[g * 4] = wldX; places[g * 4 + 1] = wldY; places[g * 4 + 2] = wldZ;
         places[g * 4 + 3] = Math.max(0.05, wldScale);
         capturePhase(gb);
       });
       gl.uniform1fv(P.u.uGbId, ids); gl.uniform1fv(P.u.uGbTime, times);
+      gl.uniform1fv(P.u.uGbSalt, salts);
       gl.uniform1fv(P.u.uGbCount, counts); gl.uniform1fv(P.u.uGbRad, rads);
       gl.uniform1fv(P.u.uGbMat, mats); gl.uniform1fv(P.u.uGbIor, iors);
       gl.uniform1fv(P.u.uGbGlow, glows); gl.uniform4fv(P.u.uGbPlace, places);
