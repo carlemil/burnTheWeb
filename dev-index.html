@@ -1968,7 +1968,11 @@
   <!-- data-nopersist: a per-browser preference sitting inside #panel, so without it the
        delegated onEdit would autosave the live scene into the selected preset every time you
        ticked it — writing scene data on a non-scene toggle. Same marker the beat-trace uses. -->
-  <label class="check" data-nopersist title="Name each scene on screen as you switch to it — the scene name and who made it"><input type="checkbox" id="sceneTitleOn" checked> Show author</label>
+  <!-- The banner names the scene whichever way this is set; the tick decides whether who made
+       it follows the name. The hint below says when there is nobody to credit yet, which is
+       the state in which this control has nothing it can visibly do. -->
+  <label class="check" data-nopersist title="Credit the scene to its author on screen as you switch to it — the name shows either way"><input type="checkbox" id="sceneTitleOn" checked> Show author</label>
+  <p class="hint" id="sceneAuthorHint"></p>
   <div id="grp-ttl">
     <label>Scene TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>
@@ -16668,9 +16672,13 @@
   // the countdown instead, which is what makes "after the credits" free.
   function showSceneTitle(name, author) {
     name = (name || "").trim();
-    if (!sceneTitleEnabled() || !name) { titleLeft = 0; sceneBannerTick(); return; }
+    if (!name) { titleLeft = 0; sceneBannerTick(); return; }
     titleName = name;
-    titleAuthor = (author || "").trim();
+    // THE TICK IS ABOUT THE AUTHOR, which is what it has always said. It used to gate the
+    // whole banner, so with no profile name and no collection -- the common case -- there was
+    // no author to append, the scene name went with it, and the control read as doing nothing
+    // whichever way you set it. The banner is the scene name; this decides what follows it.
+    titleAuthor = sceneTitleEnabled() ? (author || "").trim() : "";
     titleLeft = TITLE_HOLD + TITLE_FADE;
     const b = el("scenebanner");
     if (b) {
@@ -23710,12 +23718,32 @@
   // Scene title ("Show author") — same deal, its own key (see sceneTitleEnabled). The
   // checkbox lives in the Scene box rather than beside this one; el() is location-independent,
   // so wiring it from here needs no change.
+  // The author comes from the scene's collection, or failing that your profile name. With
+  // neither there is nothing to append and the tick genuinely cannot show anything -- so say
+  // that, rather than leaving it looking broken.
+  function syncAuthorHint() {
+    const h = el("sceneAuthorHint");
+    if (!h) return;
+    const p = presets[curPreset];
+    const who = (p && collectionOf(p)) || myProfileName();
+    const on = !!el("sceneTitleOn") && el("sceneTitleOn").checked;
+    h.textContent = who
+      ? (on ? "Credited to " + who + "." : "")
+      : "No author to show yet \u2014 name your cloud profile, or load someone's collection.";
+    h.style.display = h.textContent ? "" : "none";
+  }
   const titleChk = el("sceneTitleOn");
   if (titleChk) {
     titleChk.checked = sceneTitleEnabled();
     titleChk.addEventListener("change", () => {
       try { localStorage.setItem(TITLE_KEY, titleChk.checked ? "on" : "off"); } catch (e) {}
+      // Show the banner again right now, so the tick demonstrates itself. It is otherwise
+      // armed only when a scene is SELECTED, so this used to change nothing you could see
+      // until the next time you picked one -- which is most of why it read as doing nothing.
+      sceneTitleFor(curPreset);
+      syncAuthorHint();
     });
+    syncAuthorHint();
   }
 
   for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "cardbtn").addEventListener("click", () => {

@@ -182,9 +182,13 @@
   // the countdown instead, which is what makes "after the credits" free.
   function showSceneTitle(name, author) {
     name = (name || "").trim();
-    if (!sceneTitleEnabled() || !name) { titleLeft = 0; sceneBannerTick(); return; }
+    if (!name) { titleLeft = 0; sceneBannerTick(); return; }
     titleName = name;
-    titleAuthor = (author || "").trim();
+    // THE TICK IS ABOUT THE AUTHOR, which is what it has always said. It used to gate the
+    // whole banner, so with no profile name and no collection -- the common case -- there was
+    // no author to append, the scene name went with it, and the control read as doing nothing
+    // whichever way you set it. The banner is the scene name; this decides what follows it.
+    titleAuthor = sceneTitleEnabled() ? (author || "").trim() : "";
     titleLeft = TITLE_HOLD + TITLE_FADE;
     const b = el("scenebanner");
     if (b) {

@@ -175,7 +175,11 @@
   <!-- data-nopersist: a per-browser preference sitting inside #panel, so without it the
        delegated onEdit would autosave the live scene into the selected preset every time you
        ticked it — writing scene data on a non-scene toggle. Same marker the beat-trace uses. -->
-  <label class="check" data-nopersist title="Name each scene on screen as you switch to it — the scene name and who made it"><input type="checkbox" id="sceneTitleOn" checked> Show author</label>
+  <!-- The banner names the scene whichever way this is set; the tick decides whether who made
+       it follows the name. The hint below says when there is nobody to credit yet, which is
+       the state in which this control has nothing it can visibly do. -->
+  <label class="check" data-nopersist title="Credit the scene to its author on screen as you switch to it — the name shows either way"><input type="checkbox" id="sceneTitleOn" checked> Show author</label>
+  <p class="hint" id="sceneAuthorHint"></p>
   <div id="grp-ttl">
     <label>Scene TTL <span class="val" id="vTtl"></span></label>
     <div class="dual"><div class="track"></div><div class="fill"></div>

@@ -306,12 +306,32 @@
   // Scene title ("Show author") — same deal, its own key (see sceneTitleEnabled). The
   // checkbox lives in the Scene box rather than beside this one; el() is location-independent,
   // so wiring it from here needs no change.
+  // The author comes from the scene's collection, or failing that your profile name. With
+  // neither there is nothing to append and the tick genuinely cannot show anything -- so say
+  // that, rather than leaving it looking broken.
+  function syncAuthorHint() {
+    const h = el("sceneAuthorHint");
+    if (!h) return;
+    const p = presets[curPreset];
+    const who = (p && collectionOf(p)) || myProfileName();
+    const on = !!el("sceneTitleOn") && el("sceneTitleOn").checked;
+    h.textContent = who
+      ? (on ? "Credited to " + who + "." : "")
+      : "No author to show yet \u2014 name your cloud profile, or load someone's collection.";
+    h.style.display = h.textContent ? "" : "none";
+  }
   const titleChk = el("sceneTitleOn");
   if (titleChk) {
     titleChk.checked = sceneTitleEnabled();
     titleChk.addEventListener("change", () => {
       try { localStorage.setItem(TITLE_KEY, titleChk.checked ? "on" : "off"); } catch (e) {}
+      // Show the banner again right now, so the tick demonstrates itself. It is otherwise
+      // armed only when a scene is SELECTED, so this used to change nothing you could see
+      // until the next time you picked one -- which is most of why it read as doing nothing.
+      sceneTitleFor(curPreset);
+      syncAuthorHint();
     });
+    syncAuthorHint();
   }
 
   for (let slot = 0; slot < STACK_MAX; slot++) ctlIn(slot, "cardbtn").addEventListener("click", () => {
