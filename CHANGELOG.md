@@ -14,6 +14,32 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.55.0] — 2026-08-25
+
+### Added
+- **The cloud profile box now tells you where automatic saving stands** — how long ago your
+  library was last saved, and when the earliest next save can happen. The schedule is measured
+  in hours, so before this the only way to find out whether anything had been saved was to press
+  Save and watch. It says what is actually true at the time: that nothing has changed since the
+  last save, that automatic saving is switched off, or that you are signed out.
+
+### Changed
+- **Public scenes reloads at most once an hour.** Refresh used to fetch the list again every
+  time it was pressed. Within the hour it now shows the list it already has and tells you when a
+  real reload becomes possible, and the button dims until then — a directory of published
+  profiles does not change minute to minute, and every fetch costs quota.
+- **A scene-wide filter's pop-out box is now marked as one.** Bloom, Burn, Barrel, Scanlines,
+  Vignette and Film grain are a single value for the whole picture rather than per layer, so
+  their boxes cannot carry a layer's colour — change Bloom from layer 1's box and layer 4
+  changes with it. They used to be almost colourless, which looked like a box that had failed to
+  pick up its layer's tint; they now have a colour of their own and their title says "Scene".
+
+### Internal
+- `autosaveprobe.js` pins the property that ties the new readout to the scheduler: the moment
+  the box reports is the moment the save actually becomes due — not due a second before, due a
+  second after. A readout that promised a save the scheduler then refused would be worse than
+  none.
+
 ## [1.54.0] — 2026-08-25
 
 ### Added
