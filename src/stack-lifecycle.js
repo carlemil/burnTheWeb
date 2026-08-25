@@ -157,6 +157,7 @@
     if (stack.length <= 1 || !stack[j]) return;
     stack.splice(j, 1);
     dropOpen(j);                     // the fold state follows the surviving layers, not the slots
+    dropSlotState(j);                // ...and so do the survivors' retained heat and palette clocks
     dropPopped(j);                   // ...and so do the open pop-out boxes
     if (stackSel >= stack.length) stackSel = stack.length - 1;
     else if (j < stackSel) stackSel--;
@@ -377,6 +378,7 @@
             // then splice-in at `to` directly (no gap adjustment needed).
             stack.splice(to, 0, stack.splice(from, 1)[0]);
             moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
+            moveSlotState(from, to);  // ...and so do its retained heat and palette clock
             movePopped(from, to);    // ...and so do its open pop-out boxes
             stackSel = stack.indexOf(sel);
             pointMaps(stackSel);     // the wiring follows it to its new block

@@ -1298,6 +1298,37 @@
   // legacy layer whose palette is still null re-tints if you edit a same-effect layer's
   // palette, for at most as long as it stays never-selected — applyLayerExtras captures
   // concrete values on first selection, which ends the sharing.
+  // ---- per-slot render state has to MOVE WITH THE LAYER ------------------------------
+  // Retained heat (glTex.heatL / glFbo.heatL / layerCur) and the palette-morph clock
+  // (layerPal) are indexed by SLOT, but a layer's position is not fixed: dragging a row
+  // reorders `stack`, and deleting one shifts everything below it up. Nothing moved this
+  // state to match, so after a reorder a layer inherited the PREVIOUS OCCUPANT'S trails.
+  //
+  // With a short-lived filter that is a blink. With Zoom feedback -- whose whole job is to
+  // hold an image, and whose Lifetime runs to 0.995 -- the inherited picture is hundreds of
+  // frames old and takes seconds to decay, which is exactly how it was reported: a second
+  // copy of the same animation, far behind, appearing the moment layers were rearranged and
+  // fading out again a few seconds later.
+  //
+  // Moving the state rather than clearing it is what keeps a layer's trails ITS OWN across a
+  // drag; clearing would swap one wrong picture for a blank one.
+  const SLOT_ARRAYS = () => [glTex.heatL, glFbo.heatL, glTex.palL, layerCur, layerPal];
+  function moveSlotState(from, to) {
+    // Only the LIVE half (0..STACK_MAX-1). The outgoing half is a detached snapshot of a
+    // scene that is not being edited, and its slots are not what just moved.
+    for (const a of SLOT_ARRAYS()) {
+      if (!a || from >= a.length) continue;
+      a.splice(to, 0, a.splice(from, 1)[0]);
+    }
+  }
+  function dropSlotState(j) {
+    // The removed layer's buffers go to the BACK rather than being thrown away: they are GL
+    // objects the pool still owns, and every survivor keeps the one it was using.
+    for (const a of SLOT_ARRAYS()) {
+      if (!a || j >= a.length) continue;
+      a.push(a.splice(j, 1)[0]);
+    }
+  }
   function layerPalIndex(L) {
     let raw;
     if (L === stack[stackSel]) raw = +paletteSel.value;
