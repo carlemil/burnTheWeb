@@ -39,6 +39,9 @@
   function paleApply(full, dragLive) {
     const st = paleStops();
     PALETTES[paleIdx] = customPalEntry({ name: PALETTES[paleIdx].name, stops: st });
+    // A layer's tint is the strongest colour in its palette, cached per index -- so editing
+    // this ramp has to drop that cache or every layer using it keeps the old marker.
+    palTintFlush();
     if (full) buildPalSwatches();
     else {
       const sw = ctl("palswatches") && ctl("palswatches").querySelector('.palsw[data-pal="' + paleIdx + '"]');

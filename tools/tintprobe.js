@@ -38,9 +38,20 @@ const tintList = JSON.parse(src.match(/layerTint:\s*(\[[^\]]*\])/)[1].replace(/'
 const CONFIG = { layerTint: tintList };
 // Handed back out of a Function rather than eval'd into scope: this file is strict, and a
 // strict eval keeps its declarations to itself, so the names would silently not exist.
+// Synthetic palettes, so the SCORING is what gets tested rather than whichever ramp the app
+// happens to ship. Each fn takes 0..255 and returns [r,g,b], like the real ones.
+const PALETTES = [
+  { fn: v => [v, 0, 0] },                                   // 0: pure red ramp
+  { fn: v => [0, v, 0] },                                   // 1: pure green ramp
+  { fn: v => [v, v, v] },                                   // 2: greyscale -- no colour at all
+  { fn: v => [255, 255, 255] },                             // 3: pure white -- nothing to take
+  { fn: v => (v < 128 ? [0, 0, 0] : [255, 240, 235]) },     // 4: near-black to near-white
+];
 const body = slice("const LYR_TINT = CONFIG.layerTint;", "const TINT_RGB");
-const { tintOk, layerTintIdx, freeTintIdx, resolveTints } = new Function("CONFIG",
-  body + "\nreturn { tintOk, layerTintIdx, freeTintIdx, resolveTints };")(CONFIG);
+const api2 = new Function("CONFIG", "PALETTES", "layerPalIndex", "stack",
+  body + "\nreturn { tintOk, layerTintIdx, layerTint, palTintColor, palTintFlush," +
+  "  freeTintIdx, resolveTints, palTintList };")(CONFIG, PALETTES, L => (L && L.pal) | 0, []);
+const { tintOk, layerTintIdx, layerTint, palTintColor, palTintList, freeTintIdx, resolveTints } = api2;
 
 console.log("--- per-layer tint (" + file + "), " + tintList.length + " colours\n");
 
@@ -142,6 +153,88 @@ const colours = items => items.map((L, i) => layerTintIdx(L, i));
      bad.length + " hostile values rejected");
   ok("...and accepts every real one",
      tintList.every((_, i) => tintOk(i) === i));
+}
+
+// ---- THE TINT COMES FROM THE LAYER'S OWN PALETTE ----------------------------------------
+// A fixed set of four colours told you which boxes belonged together but nothing about which
+// LAYER -- the blue box could be the ocean or the plasma and you still had to read the label.
+// Taking the strongest colour out of the layer's palette makes the cue self-describing.
+function hexRGB(h) {
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+function sat(h) {
+  const c = hexRGB(h), mx = Math.max.apply(null, c), mn = Math.min.apply(null, c);
+  return mx ? (mx - mn) / mx : 0;
+}
+{
+  const red = palTintColor(0), green = palTintColor(1);
+  ok("a red palette gives a red tint", hexRGB(red)[0] > 120 && hexRGB(red)[1] < 60, red);
+  ok("a green palette gives a green tint", hexRGB(green)[1] > 120 && hexRGB(green)[0] < 60, green);
+  ok("...so two layers on different palettes are marked differently", red !== green, red + " vs " + green);
+  ok("the colour it picks is STRONG", sat(red) > 0.8 && sat(green) > 0.8,
+     "saturation " + sat(red).toFixed(2) + " / " + sat(green).toFixed(2));
+  // The ends of most ramps are near-black and near-white, and both are useless as a marker.
+  const ends = palTintColor(4), c = hexRGB(ends);
+  const lum = (Math.max.apply(null, c) + Math.min.apply(null, c)) / 510;
+  ok("...and not the near-black or near-white end of a ramp", lum > 0.2 && lum < 0.95,
+     ends + " lum " + lum.toFixed(2));
+}
+{
+  // A ramp with no colour in it has nothing to offer, so it must fall back rather than
+  // marking the layer in grey -- which would read as "no layer".
+  const grey = palTintColor(2), white = palTintColor(3);
+  ok("a colourless palette falls back to the fixed set rather than a grey marker",
+     tintList.indexOf(grey) >= 0 && tintList.indexOf(white) >= 0, grey + " / " + white);
+}
+{
+  // The reorder/delete guarantee, now held by the palette rather than by a resolved index.
+  const items = [{ pal: 0 }, { pal: 1 }, { pal: 4 }];
+  const before = items.map((L, i) => layerTint(L, i));
+  ok("every layer is marked in its own palette's colour", new Set(before).size === 3, before.join(" "));
+  const moved = [items[2], items[0], items[1]];
+  ok("REORDERING CHANGES NOBODY'S COLOUR",
+     moved.every((L, i) => layerTint(L, i) === before[items.indexOf(L)]),
+     moved.map((L, i) => layerTint(L, i)).join(" "));
+  const rest = [items[0], items[2]];
+  ok("...and neither does deleting one",
+     rest.every((L, i) => layerTint(L, i) === before[items.indexOf(L)]));
+  // An explicit pick still wins -- that is what the swatch sets.
+  const picked = { pal: 0, tint: 2 };
+  ok("an explicit pick still overrides the palette", layerTint(picked, 0) === tintList[2],
+     layerTint(picked, 0));
+  picked.tint = null;
+  ok("...and clearing it hands the layer back to its palette",
+     layerTint(picked, 0) === palTintColor(0), layerTint(picked, 0));
+}
+{
+  // The security property tintOk exists for: a colour must never come OUT of a scene, only
+  // out of a palette index that has already been validated.
+  ok("a hostile stored tint is still refused", tintOk("#ff0000") === null && tintOk("red") === null);
+  const hostile = { pal: 0, tint: "#ff0000" };
+  ok("...and such a layer falls through to its palette rather than using it",
+     layerTint(hostile, 0) === palTintColor(0), layerTint(hostile, 0));
+}
+
+{
+  // TWO LAYERS ON THE SAME PALETTE still have to be told apart -- one colour marking both
+  // says nothing about which is which, which is the whole point of the cue.
+  const list = palTintList(0);
+  ok("a palette offers several distinct strong colours", list.length >= 2, list.join(" "));
+  const uniq = new Set(list);
+  ok("...and they really are distinct", uniq.size === list.length, list.length + " colours");
+  ok("...so layers sharing a palette get different marks",
+     palTintColor(0, 0) !== palTintColor(0, 1), palTintColor(0, 0) + " vs " + palTintColor(0, 1));
+  ok("...and it wraps rather than running off the end",
+     !!palTintColor(0, 99), palTintColor(0, 99));
+  // WHICH of them a layer gets is its SALT, not its position -- position shifts when an
+  // earlier layer is deleted, which recolours every survivor and is the exact bug the tint
+  // was pinned down to avoid. The salt is kept through a reorder and a delete.
+  const a = { pal: 0, salt: 0 }, b = { pal: 0, salt: 1 }, c = { pal: 0, salt: 2 };
+  const wasB = layerTint(b, 1), wasC = layerTint(c, 2);
+  ok("three layers on ONE palette are still told apart",
+     new Set([layerTint(a, 0), wasB, wasC]).size === 3, [layerTint(a, 0), wasB, wasC].join(" "));
+  ok("...and deleting the first does not recolour the others",
+     layerTint(b, 0) === wasB && layerTint(c, 1) === wasC, wasB + " / " + wasC);
 }
 
 console.log("\n" + passes + " passed, " + fails + " failed");

@@ -122,7 +122,6 @@
     // A concrete tint from birth, so it survives every later reorder and delete. It takes a
     // colour no live layer is using -- including one freed by a layer that has been removed,
     // which is why this asks the CURRENT stack rather than counting layers ever created.
-    L.tint = freeTintIdx(new Set(stack.map((o, i) => layerTintIdx(o, i))), stack.length);
     // Same first-free rule for the salt: unique among the LIVE layers, so a salt released by
     // a deleted layer comes back into circulation rather than being burned for the session.
     L.salt = freeSalt(stack, L);
@@ -441,8 +440,13 @@
         // its neighbour's colour defeats the feature. Starts from what is showing, so the
         // first click on an auto-coloured layer moves it off its slot colour, not onto it.
         // Falls back to the plain next colour when every one is taken (4 tints, 4 slots).
+        // The cycle runs through the fixed colours and then back to AUTO -- null, meaning
+        // "whatever this layer's palette says". Without that last step a layer given an
+        // explicit colour once could never be handed back to its palette again.
         const taken = new Set(stack.map((o, i) => i === j ? -1 : layerTintIdx(o, i)));
-        const from = layerTintIdx(L, j);
+        const cur = tintOk(L.tint);
+        if (cur === LYR_TINT.length - 1) { L.tint = null; syncStackUI(); persist(); autosavePreset(); return; }
+        const from = cur == null ? -1 : cur;
         let next = (from + 1) % LYR_TINT.length;
         for (let n = 0; n < LYR_TINT.length && taken.has(next); n++) next = (next + 1) % LYR_TINT.length;
         L.tint = next;

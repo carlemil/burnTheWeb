@@ -67,6 +67,87 @@
   function tintOk(v) {
     return (typeof v === "number" && v === Math.round(v) && v >= 0 && v < LYR_TINT.length) ? v : null;
   }
+  // THE STRONGEST COLOUR IN A PALETTE. Sampled across the whole ramp and scored on saturation
+  // first, then on being neither nearly black nor nearly white -- the ends of most ramps are
+  // exactly those, and they are useless as a marker. It is a DERIVED colour, never a stored
+  // one: the input is a palette index that has already been validated, so nothing a share link
+  // carries reaches CSS as a colour, which is the property tintOk exists to protect.
+  const PAL_TINT = {};
+  const hex2 = v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, "0");
+  const rgbHex = c => "#" + hex2(c[0]) + hex2(c[1]) + hex2(c[2]);
+  // SEVERAL strong colours from one palette, best first and each visibly different from the
+  // ones before it. A list rather than a single colour because two layers can share a palette
+  // -- and if they did, one colour would mark them both and the cue would say nothing about
+  // which is which, which is the entire point of it.
+  function palTintList(pi) {
+    const key = pi | 0;
+    if (PAL_TINT[key]) return PAL_TINT[key];
+    const P = PALETTES[key], cand = [];
+    if (P && P.fn) {
+      for (let s = 8; s <= 255; s += 3) {
+        const c = P.fn(s);
+        const r = Math.max(0, Math.min(255, c[0] | 0));
+        const g = Math.max(0, Math.min(255, c[1] | 0));
+        const b = Math.max(0, Math.min(255, c[2] | 0));
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        if (!mx) continue;
+        const sat = (mx - mn) / mx;                 // 0 grey, 1 pure hue
+        const lum = (mx + mn) / 510;                // 0 black, 1 white
+        // THE ENDS OF THE RAMP ARE OUT, whatever hue they carry. Most palettes run from near
+        // black to near white, and both ends are useless as a marker -- one disappears against
+        // the panel and the other against the text. Scoring them down was not enough: a ramp
+        // ending in #fff0eb has just enough of a tint to beat a ramp with no colour at all,
+        // and it was picked. Rejecting the band outright is what makes such a palette fall
+        // through to the fixed set instead, which is the honest answer for it.
+        if (lum < 0.12 || lum > 0.9) continue;
+        // Mid-bright wins. The saturation term dominates so a vivid mid tone beats a wash.
+        cand.push({ c: [r, g, b], s: sat * (1 - Math.abs(lum - 0.55) * 1.3) });
+      }
+    }
+    cand.sort((a, b) => b.s - a.s);
+    const out = [];
+    // Greedy, best first, keeping only what is far enough from everything already taken --
+    // otherwise a smooth ramp hands out four samples of the same orange.
+    for (const k of cand) {
+      if (k.s <= 0.06) break;                       // nothing colourful enough left
+      if (out.every(o => Math.abs(o[0] - k.c[0]) + Math.abs(o[1] - k.c[1]) + Math.abs(o[2] - k.c[2]) > 150))
+        out.push(k.c);
+      if (out.length >= LYR_TINT.length) break;
+    }
+    // A palette with no colour in it at all (a pure greyscale ramp) has nothing to offer, so
+    // fall back to the fixed set rather than marking the layer in grey.
+    if (!out.length) return (PAL_TINT[key] = LYR_TINT.slice());
+    // A single-hue ramp yields one entry; wash the base toward WHITE for the rest, so a second
+    // layer on the same palette is still told apart. Toward white rather than toward black:
+    // darkening a saturated colour lands it back in the too-dim band this function just spent
+    // its time rejecting, and a near-black marker reads as no marker at all.
+    const hexes = out.map(rgbHex);
+    for (let i = 1; hexes.length < LYR_TINT.length; i++) {
+      const base = out[(i - 1) % out.length], m = 0.38 * (1 + ((i - 1) / out.length | 0));
+      hexes.push(rgbHex([base[0] + (255 - base[0]) * m,
+                         base[1] + (255 - base[1]) * m,
+                         base[2] + (255 - base[2]) * m]));
+    }
+    return (PAL_TINT[key] = hexes);
+  }
+  // Which of them this layer gets: its position among the layers sharing that palette, so the
+  // first takes the strongest and a second on the same palette takes the next one along.
+  function palTintColor(pi, rank) {
+    const list = palTintList(pi);
+    return list[((rank | 0) % list.length + list.length) % list.length];
+  }
+  // WHICH of them this layer gets: its SALT, not its position. Position was the first
+  // version and it re-broke the rule the tint already had to obey -- deleting a layer shifts
+  // every later layer's position, so the survivors were all recoloured, which is exactly the
+  // bug the tint was pinned down to avoid in the first place.
+  //
+  // The salt is already the right shape: a first-free integer, unique among live layers, kept
+  // by a layer through a reorder or a deletion, and released for reuse when one goes. It was
+  // added so two Glass ball layers would not draw the same balls; separating two layers that
+  // share a palette is the same question with a different subject.
+  function palTintRank(L) { return typeof L.salt === "number" ? L.salt : 0; }
+  // Editing a custom palette changes what its strong colour is, so the cache has to go.
+  function palTintFlush() { for (const k in PAL_TINT) delete PAL_TINT[k]; }
   function layerTintIdx(L, slot) {
     const t = L ? tintOk(L.tint) : null;
     return t == null ? ((slot | 0) % LYR_TINT.length) : t;
@@ -114,7 +195,14 @@
       L.tint = t; taken.add(t);
     });
   }
-  const layerTint = (L, slot) => LYR_TINT[layerTintIdx(L, slot)];
+  // An explicit pick wins; otherwise the layer's palette decides. `null` is the normal state
+  // -- nothing auto-assigns an index any more, because the palette already gives every layer
+  // a colour of its own that travels with it.
+  function layerTint(L, slot) {
+    const t = L ? tintOk(L.tint) : null;
+    if (t != null) return LYR_TINT[t];
+    return L ? palTintColor(layerPalIndex(L), palTintRank(L)) : LYR_TINT[(slot | 0) % LYR_TINT.length];
+  }
   // The same colour as a bare "r, g, b" triple, so CSS can build translucent shades of it
   // with plain rgba(). `color-mix` would do this in the stylesheet alone, but this costs one
   // extra property and works everywhere, which for a purely cosmetic cue is the better trade.

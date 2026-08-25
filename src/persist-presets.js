@@ -649,6 +649,10 @@
     // ...and the per-layer salt that keeps two Glass ball layers from drawing the same balls
     // in the same places. Assigned down the stack, so a reloaded scene gets the same set.
     resolveSalts(items);
+    // NOTE: tints are NOT resolved here any more. A layer's colour now comes from its own
+    // palette, which already belongs to it and already follows it through a reorder or a
+    // delete -- so the resolve-once machinery that was needed to pin an index down has
+    // nothing left to do. resolveTints stays for the scenes that stored an explicit pick.
     stack = items;
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed
