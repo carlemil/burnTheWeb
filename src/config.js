@@ -109,7 +109,10 @@
       apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // public identifier, see above ⇒ "" = feature off
       projectId: "burntheweb-3cd05",              // Firebase project id
       clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
-      galleryTtlMs: 300000,                       // cache the gallery listing 5 min (reads are quota)
+      // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
+      // Two separate intervals would let the Refresh button undercut the cache and make
+      // "reloads once an hour" quietly untrue.
+      galleryTtlMs: 3600000,                      // cache the gallery listing, and reload at most, 1h
       galleryLimit: 20,                           // profiles per gallery page
       maxPayload: 300000,                         // must match the cap in firestore.rules
     },

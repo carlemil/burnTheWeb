@@ -190,7 +190,11 @@
     const c = CONTROLS.find(x => x.key === key);
     const g = c && c.group;
     const own = (!g || !CTL_GROUPS[g]) ? "" : (g.startsWith("f_") ? "Filter · " : "") + CTL_GROUPS[g];
-    return slot < 0 ? own : "L" + (slot + 1) + (own ? " · " + own : "");
+    // SCENE, spelled out. These controls are one value for the WHOLE picture -- change Bloom
+    // from layer 1's box and layer 4 changes with it -- so they have no owning layer to name
+    // or to take a colour from. Saying "Scene" is the honest version of the blank that used
+    // to be there, which read as a box that had simply failed to pick up its layer's tint.
+    return slot < 0 ? "Scene" + (own ? " · " + own : "") : "L" + (slot + 1) + (own ? " · " + own : "");
   }
   // The layer number is the one part of a box title that changes while the box is open — a
   // reorder moves the layer it belongs to — so it is re-stamped rather than baked in.

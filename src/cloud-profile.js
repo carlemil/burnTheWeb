@@ -272,7 +272,45 @@
     if (s.tried && now - s.tried < AUTOSAVE_RETRY_MS) return false; // do not hammer a failure
     return true;
   }
+  // WHEN THE NEXT AUTOMATIC SAVE CAN HAPPEN, as a timestamp. Pure, like autoSaveDue, and it
+  // is the same three limits read the other way round: the quiet time after the last change,
+  // the once-a-day gap, and the back-off after a failed attempt. The LATEST of the three wins,
+  // because all three have to be satisfied at once.
+  function autoSaveNextAt(s) {
+    if (!s.changed || s.saved >= s.changed) return 0;      // nothing to save
+    let at = s.changed + AUTOSAVE_DELAY_MS;
+    if (s.saved) at = Math.max(at, s.saved + AUTOSAVE_GAP_MS);
+    if (s.tried) at = Math.max(at, s.tried + AUTOSAVE_RETRY_MS);
+    return at;
+  }
+  // "2 hours", "35 minutes", "just now" -- whole units only. A schedule measured in hours does
+  // not need seconds, and a ticking readout invites watching it.
+  function autoSaveSpan(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 1) return "less than a minute";
+    if (m < 60) return m + " minute" + (m === 1 ? "" : "s");
+    const h = Math.floor(m / 60), r = m % 60;
+    return h + " hour" + (h === 1 ? "" : "s") + (r ? " " + r + " min" : "");
+  }
+  // The two sentences the cloud box shows. Split from the DOM write so the probe can read the
+  // wording for any clock without a browser.
+  function autoSaveText(s, now, signedIn) {
+    const last = s.saved
+      ? "Last saved to cloud " + autoSaveSpan(now - s.saved) + " ago."
+      : "Not saved to your profile yet.";
+    if (!s.on) return last + " Automatic saving is off.";
+    if (!signedIn) return last + " Sign in to save automatically.";
+    const at = autoSaveNextAt(s);
+    if (!at) return last + " Nothing has changed since then.";
+    if (at <= now) return last + " Next save is due now.";
+    return last + " Earliest next save in " + autoSaveSpan(at - now) + ".";
+  }
+  function autoSaveSyncInfo() {
+    const n = el("cloud-autoinfo");
+    if (n) n.textContent = autoSaveText(autoSaveRead(), Date.now(), !!cloudSess);
+  }
   function autoSaveTick() {
+    autoSaveSyncInfo();                    // once a minute is plenty for an hours-long schedule
     const s = autoSaveRead();
     if (!autoSaveDue(s, Date.now(), !!cloudSess)) return;
     s.tried = Date.now();          // stamped BEFORE the attempt: a save that throws, hangs or
@@ -341,6 +379,7 @@
         // Manual saves count too: having just saved by hand, the daily automatic one has
         // nothing left to do.
         autoSaveNoteSaved();
+        autoSaveSyncInfo();               // a manual save resets the clock this line reports
         // Name both halves of what was stored — "Saved 9 scenes" reads as data loss to someone
         // who is looking at 19 in the panel, so say where the other ten live.
         cloudMsg(n
@@ -655,6 +694,38 @@
     try { localStorage.setItem(GAL_KEY, JSON.stringify({ t: Date.now(), items })); } catch (e) {}
   }
   function galBust() { try { localStorage.removeItem(GAL_KEY); } catch (e) {} }
+  // WHEN THE LISTING MAY BE FETCHED AGAIN. The cached entry carries the time it was fetched,
+  // so this needs no second timestamp -- and using the same number for both means the Refresh
+  // button cannot undercut the cache, which is what would make "at most once an hour" untrue
+  // while still reading as true.
+  function galNextReloadAt() {
+    try {
+      const c = JSON.parse(localStorage.getItem(GAL_KEY) || "null");
+      if (c && c.t) return c.t + (CLOUD.galleryTtlMs || 3600000);
+    } catch (e) { /* no cache, no limit */ }
+    return 0;
+  }
+  // Whole units, like the cloud box's automatic-save line.
+  function galSpan(ms) {
+    const m = Math.ceil(ms / 60000);
+    if (m < 1) return "less than a minute";
+    if (m < 60) return m + " minute" + (m === 1 ? "" : "s");
+    const h = Math.floor(m / 60), r = m % 60;
+    return h + " hour" + (h === 1 ? "" : "s") + (r ? " " + r + " min" : "");
+  }
+  // Dim Refresh and say when it comes back. setOff, not a bare class: a dimmed button that
+  // still answers Enter is a bug this codebase has already had once.
+  function galSyncRefresh() {
+    const b = el("gal-refresh");
+    if (!b) return;
+    const now = Date.now(), next = galNextReloadAt();
+    const waiting = next > now;
+    setOff(b, waiting);
+    b.title = waiting
+      ? "The list reloads at most once an hour \u2014 next reload possible in " + galSpan(next - now)
+      : "Fetch the list again";
+    return waiting ? next : 0;
+  }
 
   function galRender(items) {
     const host = el("gal-list");
@@ -727,11 +798,24 @@
     const box = dlg.querySelector(".gal-box");
     if (!show) { dlgRelease(box); return; }
     dlgModal(box);
-    const cached = force ? null : galCached();
-    if (cached) { galRender(cached); return; }
+    // AT MOST ONE LIVE FETCH AN HOUR, Refresh included. Reads are quota, and a listing of
+    // published profiles does not change minute to minute -- but the button existed to bypass
+    // the cache entirely, so it could be held down. Inside the hour it re-renders what is
+    // already cached and says when a real reload becomes possible, rather than pretending.
+    const now = Date.now(), next = galNextReloadAt();
+    const fresh = galCached();
+    if (fresh && (!force || next > now)) {
+      galRender(fresh);
+      if (force && next > now) {
+        el("gal-hint").textContent =
+          "This list reloads at most once an hour. Next reload possible in " + galSpan(next - now) + ".";
+      }
+      galSyncRefresh();
+      return;
+    }
     el("gal-list").textContent = "";
     el("gal-hint").textContent = "Loading…";
-    galList().then(items => { galStore(items); galRender(items); })
+    galList().then(items => { galStore(items); galRender(items); galSyncRefresh(); })
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
@@ -1037,7 +1121,8 @@
   // key (see AUTOSAVE_KEY), so it never rides a scene, a share link or a backup.
   if (el("cloud-auto")) {
     el("cloud-auto").checked = autoSaveEnabled();
-    el("cloud-auto").addEventListener("change", e => autoSaveSetEnabled(e.target.checked));
+    el("cloud-auto").addEventListener("change", e => { autoSaveSetEnabled(e.target.checked); autoSaveSyncInfo(); });
+    autoSaveSyncInfo();
   }
   if (el("cloud-nameview")) {
     el("cloud-nameview").addEventListener("click", cloudNameEdit);

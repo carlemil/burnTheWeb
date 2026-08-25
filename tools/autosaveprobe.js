@@ -39,6 +39,7 @@ const store = {};
 const api = new Function("localStorage",
   consts + "\n" + sched +
   "\nreturn { read: autoSaveRead, write: autoSaveWrite, due: autoSaveDue," +
+  "  nextAt: autoSaveNextAt, span: autoSaveSpan, text: autoSaveText," +
   "  noteChange: autoSaveNoteChange, noteSaved: autoSaveNoteSaved," +
   "  enabled: autoSaveEnabled, setEnabled: autoSaveSetEnabled," +
   "  KEY: AUTOSAVE_KEY, DELAY: AUTOSAVE_DELAY_MS, GAP: AUTOSAVE_GAP_MS, RETRY: AUTOSAVE_RETRY_MS };"
@@ -146,6 +147,62 @@ ok("...and does retry after the backoff",
   ok("the schedule is NOT in fullSnapshot()",
      !src.slice(src.indexOf("function fullSnapshot()"), src.indexOf("function fullSnapshot()") + 1200)
         .includes("autoSave"));
+}
+
+// ---- what the cloud box SAYS -------------------------------------------------------------
+// The schedule is measured in hours, so it is invisible without being told: before this line
+// the only way to find out whether anything had been saved was to press Save and watch. The
+// wording is a pure function of the stored state and the clock, so it can be read back for
+// any moment rather than waited for.
+{
+  ok("a span reads in whole units", api.span(90 * 60 * 1000) === "1 hour 30 min", api.span(90 * 60 * 1000));
+  ok("...and singular where it should be", api.span(60 * 60 * 1000) === "1 hour", api.span(60 * 60 * 1000));
+  ok("...and minutes below the hour", api.span(35 * 60 * 1000) === "35 minutes", api.span(35 * 60 * 1000));
+  ok("...and never a bare zero", api.span(400) === "less than a minute", api.span(400));
+}
+{
+  // NEXT-SAVE TIME is the same three limits read the other way round, and the LATEST wins --
+  // all three have to be satisfied at once. Getting max/min the wrong way round here would
+  // promise a save that autoSaveDue then refuses, which is worse than saying nothing.
+  const quiet = st({ changed: T - 1 * H });
+  ok("with only the quiet time pending, that is when it lands",
+     api.nextAt(quiet) === quiet.changed + api.DELAY);
+  const daily = st({ changed: T - 3 * H, saved: T - 5 * H });
+  ok("with a save five hours ago, the DAILY gap is what binds",
+     api.nextAt(daily) === daily.saved + api.GAP,
+     "quiet would allow " + new Date(daily.changed + api.DELAY).toISOString().slice(11, 16));
+  const failed = st({ changed: T - 3 * H, tried: T - 10 * 60 * 1000 });
+  ok("after a failed attempt, the back-off is what binds",
+     api.nextAt(failed) === failed.tried + api.RETRY);
+  ok("nothing to save -> no next time at all", api.nextAt(st({})) === 0);
+  ok("...nor when the last save is newer than the last change",
+     api.nextAt(st({ changed: T - 5 * H, saved: T - 1 * H })) === 0);
+  // The claim that ties the two together: the moment it says is the moment due() agrees.
+  const s2 = st({ changed: T - 3 * H, saved: T - 20 * H });
+  const at = api.nextAt(s2);
+  ok("THE TIME IT REPORTS IS THE TIME IT ACTUALLY SAVES",
+     !api.due(s2, at - 1000, true) && api.due(s2, at + 1000, true),
+     "not due a second before, due a second after");
+}
+{
+  const now = T;
+  ok("with nothing saved yet it says so",
+     /Not saved to your profile yet/.test(api.text(st({}), now, true)));
+  ok("...and reports how long ago the last save was",
+     /Last saved to cloud 3 hours ago/.test(api.text(st({ saved: now - 3 * H }), now, true)),
+     api.text(st({ saved: now - 3 * H }), now, true));
+  ok("...and how long until the next one",
+     /Earliest next save in 1 hour/.test(api.text(st({ changed: now - 1 * H }), now, true)),
+     api.text(st({ changed: now - 1 * H }), now, true));
+  ok("...and says nothing is pending when nothing changed",
+     /Nothing has changed since then/.test(api.text(st({ saved: now - 2 * H, changed: now - 3 * H }), now, true)));
+  ok("...and that it is due when it is due",
+     /due now/.test(api.text(st({ changed: now - 5 * H }), now, true)),
+     api.text(st({ changed: now - 5 * H }), now, true));
+  ok("switched off, it says that instead of a time",
+     /Automatic saving is off/.test(api.text(st({ changed: now - 5 * H, on: false }), now, true)));
+  ok("signed out, it says that instead of a time",
+     /Sign in to save automatically/.test(api.text(st({ changed: now - 5 * H }), now, false)));
 }
 
 console.log("\n" + passes + " passed, " + fails + " failed");

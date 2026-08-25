@@ -107,6 +107,10 @@
       box.dataset.adopt = it.adopt;          // returnAdopted needs to know where home is
       const src = el(it.adopt);
       if (src) { src.hidden = false; while (src.firstChild) box.appendChild(src.firstChild); }
+      // Building this panel IS the moment it is opened, so it is where anything time-dependent
+      // inside it gets refreshed -- the cloud box reports how long ago the last save was, and
+      // a minute-old number is exactly what you would be reading.
+      if (it.adopt === "cloudbox" && typeof autoSaveSyncInfo === "function") autoSaveSyncInfo();
       box.addEventListener("click", e => e.stopPropagation());
       return box;
     }

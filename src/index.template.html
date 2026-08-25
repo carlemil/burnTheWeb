@@ -110,6 +110,10 @@
            see and switch off rather than happening silently. data-nopersist: this is a device
            preference with its own localStorage key, not scene data. -->
       <label class="check" title="Save your library to your profile automatically: two hours after your last change, and at most once a day."><input type="checkbox" id="cloud-auto" data-nopersist checked> Save automatically</label>
+      <!-- When it last happened and when it can next happen. The schedule is measured in hours,
+           so it is invisible without being told: without this line the only way to know whether
+           anything had been saved was to press Save and watch. -->
+      <p class="hint" id="cloud-autoinfo"></p>
       <!-- Links minted by "Share this scene" while signed in. /scenes is deliberately
            unlistable (a link meant for one person must not be enumerable), so the local
            note taken at mint time is the ONLY record — which is what makes the ✕ here the

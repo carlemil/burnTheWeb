@@ -918,10 +918,15 @@
   #breakout .ctl-owner { color: var(--lyr, #ffb15a); }
   /* A scene control's box belongs to no layer, so it keeps the house amber -- that IS the
      signal that it is scene-wide rather than one layer's. It carries no data-slot. */
+  /* A SCENE control's box -- one value for the whole picture, so it has no layer and takes no
+     layer colour. It used to be a 35%-alpha orange, which is indistinguishable from a box that
+     failed to pick up a tint at all, and was reported as exactly that. Full strength and a
+     distinctly different hue from any layer colour, so it reads as deliberate. */
   #breakout .ctl.poppable:not([data-slot]) {
-    border-left-color: rgba(255, 140, 40, 0.35);
+    border-left-color: #d8d2c4;
+    --lyr-rgb: 216, 210, 196;
   }
-  #breakout .ctl.poppable:not([data-slot]) .ctl-owner { color: #ffb15a; }
+  #breakout .ctl.poppable:not([data-slot]) .ctl-owner { color: #d8d2c4; }
   /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the
      other <b> row controls beside it (they are not buttons, so they need the explicit
      cursor and the disabled-state handling `.lyr b.off` gives them). */
