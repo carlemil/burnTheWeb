@@ -2381,7 +2381,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.51.0",
+    version: "1.52.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -11256,6 +11256,180 @@
       const swap = cur; cur = nxt; nxt = swap;
     }
   }
+
+  // ---- Flying ribbons ----------------------------------------------------------------
+  // Long bands writhing through space. The thing that makes a ribbon read as a ribbon
+  // rather than as a fat line is that it has an ORIENTATION: seen flat it is a wide sheet,
+  // seen edge-on it collapses to a bright hairline, and the flip between the two as it
+  // twists is the whole effect. So this does not stamp a stroke of constant width. It
+  // builds the band's two EDGES in 3D, projects both, and fills the segment between them —
+  // foreshortening, the twist and the edge-on collapse all fall out of that one decision
+  // instead of needing three separate fudges.
+  //
+  // A point effect, not a shader: the geometry is a few thousand samples of a parametric
+  // curve, which is a JS loop's work, and going through plot() means the fire sim, the
+  // trail filters and the camera all apply for free. Deterministic like every other point
+  // effect -- per-ribbon variation comes from rbHash, never from Math.random.
+  let rbCount = 4, rbLen = 1, rbWidth = 0.3, rbTwist = 3, rbSpeed = 1, rbWave = 1, rbTime = 0;
+  // Projected edges are cached between the measuring pass and the stamping pass: one pass
+  // has to know the TOTAL area before the other can pick a density, and evaluating the
+  // curve twice to learn the same numbers would be the only expensive part done twice.
+  // Grown on demand and reused, so a steady state allocates nothing.
+  let rbBuf = null;
+  // How far a band runs, set by ribbonStamp and read by rbPath -- the path is evaluated
+  // hundreds of times per tick, so it takes what it can from the closure rather than an
+  // extra argument threaded through both passes.
+  let rbSpan = 1.5;
+  function rbHash(i) {                     // deterministic per-ribbon variation, [-1, 1]
+    let h = Math.imul(i ^ 0x27d4eb2f, 0x165667b1);
+    h ^= h >>> 15; h = Math.imul(h, 0x9e3779b1); h ^= h >>> 13;
+    return (h >>> 0) / 2147483648 - 1;
+  }
+  // Samples along a ribbon are chosen from its MEASURED projected length, not fixed. A fixed
+  // count combs: the cross-sections end up further apart than they are wide, so the band
+  // renders as a row of separate ribs rather than a surface. Length and Waviness each change
+  // how far the curve actually travels on screen by several times over, so no constant can
+  // be right for both ends of either slider. A coarse pass measures it, the real pass then
+  // steps about 1.4px whatever the sliders say.
+  const RB_COARSE = 56;
+  const RB_STEP = 1.4;
+  const RB_SMAX = 3000;                    // ceiling, so a wild Length cannot run away
+  const RB_ZC = 3.1;                       // the loop's centre depth, in front of the eye
+  // The curve, and the ONE place it is written. Both passes evaluate it, and a second copy
+  // for the measuring pass is how the two silently start describing different ribbons.
+  //
+  // Each band SWEEPS ACROSS the frame on its own heading rather than looping around the
+  // origin. The first version used closed Lissajous knots, which is a fine curve and the
+  // wrong picture: every ribbon enclosed the centre, so they piled into one tangle in the
+  // middle of the screen with dead space all round it, and nothing read as flying. Running
+  // each band past the frame edge on a heading of its own gives them somewhere to come from
+  // and somewhere to go, and hides the two raw ends off-screen for free.
+  //
+  // The motion is a wave TRAVELLING down the band (the `- tt` term), not the band itself
+  // moving. A ribbon that translates has to be recycled when it leaves; a ribbon that
+  // undulates never leaves, and a travelling ripple reads as flight far more strongly than
+  // a rigid shape sliding across ever does.
+  function rbPath(k, s, tt, wave, out) {
+    const u = s * 2 - 1;                          // -1 .. 1 along the band
+    // Headings spread by the golden angle, so no two bands run parallel and the set never
+    // settles into a pattern however many are on screen.
+    const dirA = k * 2.39996 + rbHash(k * 5 + 1) * 0.9;
+    const ca = Math.cos(dirA), sa = Math.sin(dirA);
+    const p1 = rbHash(k * 5 + 2) * Math.PI * 2, p2 = rbHash(k * 5 + 3) * Math.PI * 2;
+    const ox = rbHash(k * 5 + 4) * 0.5, oy = rbHash(k * 5 + 5) * 0.5;
+    const amp = 0.30 + 0.55 * wave;
+    const f1 = 2.4 + 0.7 * rbHash(k * 5 + 6), f2 = 1.6 + 0.5 * rbHash(k * 5 + 7);
+    const lat = amp * Math.sin(u * Math.PI * f1 - tt * 2 + p1);   // sideways swing
+    out[0] = ox + u * rbSpan * ca - lat * sa;
+    out[1] = oy + u * rbSpan * sa + lat * ca;
+    // Depth swings hard on purpose: a band that stays at one depth is a flat squiggle, and
+    // it is parts of it rushing near while others hang back that makes the frame feel deep.
+    out[2] = RB_ZC + amp * 1.5 * Math.sin(u * Math.PI * f2 + tt * 1.6 + p2);
+  }
+  const rbP = [0, 0, 0];
+  function ribbonStamp(xL, xR, yT, yB, n) {
+    rbTime += rbSpeed * 0.6 / cfg.burn;    // per TICK, like trPhase and flPhase
+    const w = xR - xL, h = yB - yT;
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    // Focal length folded into one number. The curve reaches about 1.2 units off axis at a
+    // depth of 3.1, so projecting against a bare half-extent puts the whole thing in the
+    // middle ninth of the frame -- which is exactly what the first version drew.
+    const scale = Math.min(w, h) * 1.05;
+    const count = Math.max(1, Math.min(8, Math.round(rbCount)));
+    const half = Math.max(0, rbWidth) * 0.5;
+    const twist = rbTwist, wave = rbWave, tt = rbTime;
+    // How far the band runs, in world units. Over ~2 it leaves the frame at both ends,
+    // which is the point: the ends are never seen.
+    rbSpan = 1.5 * Math.max(0.25, rbLen);
+
+    // ---- pass 0: how long is each ribbon on screen? ----------------------------------
+    const segs = new Array(count), bases = new Array(count);
+    let need = 0;
+    for (let k = 0; k < count; k++) {
+      let len = 0, lx = 0, ly = 0;
+      for (let i = 0; i <= RB_COARSE; i++) {
+        rbPath(k, i / RB_COARSE, tt, wave, rbP);
+        const z = Math.max(0.35, rbP[2]);
+        const sx = cx + (rbP[0] / z) * scale, sy = cy + (rbP[1] / z) * scale;
+        if (i) len += Math.hypot(sx - lx, sy - ly);
+        lx = sx; ly = sy;
+      }
+      segs[k] = Math.max(48, Math.min(RB_SMAX, Math.round(len / RB_STEP)));
+      need += (segs[k] + 1) * 4;
+    }
+    if (!rbBuf || rbBuf.length < need) rbBuf = new Float64Array(need);
+
+    // ---- pass 1: build the band and measure its area ---------------------------------
+    // Positions come first because the tangent is taken from the PREVIOUS sample, which is
+    // both cheaper and steadier than differentiating the curve by hand -- and the curve
+    // gains a term whenever Waviness is turned up, which a hand derivative would too.
+    let total = 0, base = 0;
+    for (let k = 0; k < count; k++) {
+      const samples = segs[k];
+      bases[k] = base;
+      let px0 = 0, py0 = 0, pz0 = 0;
+      for (let i = 0; i <= samples; i++) {
+        const a = i / samples;
+        rbPath(k, a, tt, wave, rbP);
+        const px = rbP[0], py = rbP[1], pz = rbP[2];
+        let tx = px - px0, ty = py - py0, tz = pz - pz0;
+        if (i === 0) { tx = 1e-6; ty = 0; tz = 0; }
+        const tl = Math.hypot(tx, ty, tz) || 1;
+        tx /= tl; ty /= tl; tz /= tl;
+        px0 = px; py0 = py; pz0 = pz;
+        // A frame around the tangent. The reference axis is swapped when the tangent nears
+        // it, because the cross product degenerates there and the band would flip its face
+        // over in one sample -- which reads as a tear, not as a twist.
+        let ux = 0, uy = 1, uz = 0;
+        if (Math.abs(ty) > 0.9) { ux = 0; uy = 0; uz = 1; }
+        let ax = ty * uz - tz * uy, ay = tz * ux - tx * uz, az = tx * uy - ty * ux;
+        const al = Math.hypot(ax, ay, az) || 1;
+        ax /= al; ay /= al; az /= al;
+        const bx = ty * az - tz * ay, by = tz * ax - tx * az, bz = tx * ay - ty * ax;
+        const th = twist * a * Math.PI * 2 + tt * 0.5;
+        const cth = Math.cos(th), sth = Math.sin(th);
+        const nx = ax * cth + bx * sth, ny = ay * cth + by * sth, nz = az * cth + bz * sth;
+        // The two edges, projected INDEPENDENTLY. When the band turns edge-on the two
+        // projections converge on their own -- that convergence IS the collapse to a
+        // hairline, and it is why Width is not simply a stroke thickness.
+        const e1z = Math.max(0.35, pz + nz * half), e2z = Math.max(0.35, pz - nz * half);
+        const x1 = cx + ((px + nx * half) / e1z) * scale, y1 = cy + ((py + ny * half) / e1z) * scale;
+        const x2 = cx + ((px - nx * half) / e2z) * scale, y2 = cy + ((py - ny * half) / e2z) * scale;
+        const o = base + i * 4;
+        rbBuf[o] = x1; rbBuf[o + 1] = y1; rbBuf[o + 2] = x2; rbBuf[o + 3] = y2;
+        total += Math.hypot(x2 - x1, y2 - y1) + 1;   // +1: an edge-on span is still a pixel
+      }
+      base += (samples + 1) * 4;
+    }
+    // ---- pass 2: spend the point budget over that area -------------------------------
+    // A band wide enough to see is a large AREA, and the budget rarely covers it at one
+    // point per pixel. Spacing the points evenly from the same edge every time lines the
+    // gaps up across neighbouring cross-sections and the surface moires into a comb --
+    // which is what the first version drew. Offsetting each cross-section by its own hashed
+    // fraction of a step scatters the gaps instead, and the band reads as a solid sheet well
+    // below full coverage. Deterministic, like everything else in a point effect.
+    const density = total > 0 ? n / total : 0;
+    for (let k = 0; k < count; k++) {
+      const samples = segs[k], b = bases[k];
+      for (let i = 0; i <= samples; i++) {
+        const o = b + i * 4;
+        const x1 = rbBuf[o], y1 = rbBuf[o + 1], x2 = rbBuf[o + 2], y2 = rbBuf[o + 3];
+        const span = Math.hypot(x2 - x1, y2 - y1);
+        // Depth shading from the sample's own projected width: a near part of the band is
+        // both bigger and brighter, which is most of the sense of flying among them.
+        const dep = Math.min(1, span / (Math.max(1e-6, rbWidth) * scale / RB_ZC));
+        const heat = POINT_HEAT * (0.52 + 0.48 * dep);
+        const m = Math.max(1, Math.round((span + 1) * density));
+        if (m === 1) { plot((x1 + x2) * 0.5, (y1 + y2) * 0.5, heat); continue; }
+        const jit = (rbHash(k * 7919 + i) * 0.5 + 0.5) / m;    // [0, 1/m)
+        const dx = x2 - x1, dy = y2 - y1;
+        for (let j = 0; j < m; j++) {
+          const f = j / m + jit;
+          plot(x1 + dx * f, y1 + dy * f, heat);
+        }
+      }
+    }
+  }
   // ---- Bouncing solids: rigid bodies raymarched as SDFs ---------------------
   // The 3D member of the shape family (Polygon / Shape grid / Concentric / Bouncing
   // shapes are its 2D siblings). A handful of primitives — sphere, box, doughnut,
@@ -12568,6 +12742,15 @@
     { key: "trshrink", host: "fx", group: "trees", type: "dual", label: "Taper", valId: "vTrShrink", min: 0.45, max: 0.85, step: 0.005, lo: 0.72, hi: 0.72, fmt: v => sig3(v) + "×", apply: v => trShrink = v, durScale: 10 },
     { key: "trsway", host: "fx", group: "trees", type: "dual", label: "Sway", valId: "vTrSway", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => trSway = v, durScale: 10 },
     { key: "trspeed", host: "fx", group: "trees", type: "dual", label: "Wind speed", valId: "vTrSpeed", min: 0, max: 4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => trSpeed = v, durScale: 10 },
+    // Flying ribbons. Count is single -- it counts bands. Twist is NOT: a fractional twist
+    // is a perfectly good part-turn along the length, and a spread between the thumbs makes
+    // the band wind and unwind, which is the whole reason to drift it.
+    { key: "rbcount", host: "fx", group: "ribbons", type: "dual", single: true, label: "Ribbons", valId: "vRbCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => rbCount = Math.round(v), durScale: 10 },
+    { key: "rbwidth", host: "fx", group: "ribbons", type: "dual", label: "Width", valId: "vRbWidth", min: 0.02, max: 1.2, step: 0.01, lo: 0.38, hi: 0.38, fmt: v => sig3(v), apply: v => rbWidth = v, durScale: 10 },
+    { key: "rblen", host: "fx", group: "ribbons", type: "dual", label: "Length", valId: "vRbLen", min: 0.3, max: 3, step: 0.05, lo: 1.6, hi: 1.6, fmt: v => sig3(v) + "×", apply: v => rbLen = v, durScale: 10 },
+    { key: "rbtwist", host: "fx", group: "ribbons", type: "dual", label: "Twist", valId: "vRbTwist", min: 0, max: 12, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => rbTwist = v, durScale: 10 },
+    { key: "rbwave", host: "fx", group: "ribbons", type: "dual", label: "Waviness", valId: "vRbWave", min: 0, max: 3, step: 0.02, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => rbWave = v, durScale: 10 },
+    { key: "rbspeed", host: "fx", group: "ribbons", type: "dual", label: "Speed", valId: "vRbSpeed", min: -3, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rbSpeed = v, durScale: 10 },
     { key: "dnring", host: "fx", group: "torus", type: "dual", label: "Ring radius", valId: "vDnRing", min: 1.5, max: 6, step: 0.05, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => dnRing = v, durScale: 10 },
     { key: "dntube", host: "fx", group: "torus", type: "dual", label: "Tube radius", valId: "vDnTube", min: 0.25, max: 1.6, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => dnTube = v, durScale: 10 },
     { key: "dnspeed", host: "fx", group: "torus", type: "dual", label: "Speed", valId: "vDnSpeed", min: -3, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => dnSpeed = v, durScale: 10 },
@@ -13415,7 +13598,7 @@
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
     boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
-    torus: "Doughnut", trees: "Trees", glass: "Glass ball", world: "Shared 3D world",
+    torus: "Doughnut", trees: "Trees", ribbons: "Flying ribbons", glass: "Glass ball", world: "Shared 3D world",
     bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
@@ -13555,6 +13738,7 @@
     ["clTime", () => clTime, v => clTime = v],
     ["grTime", () => grTime, v => grTime = v],
     ["teTime", () => teTime, v => teTime = v],
+    ["rbTime", () => rbTime, v => rbTime = v],
     ["apTime", () => apTime, v => apTime = v],
     ["mbTime", () => mbTime, v => mbTime = v],
     ["gyTime", () => gyTime, v => gyTime = v],
@@ -13693,6 +13877,40 @@
   function layerTintIdx(L, slot) {
     const t = L ? tintOk(L.tint) : null;
     return t == null ? ((slot | 0) % LYR_TINT.length) : t;
+  }
+  // THE COLOUR BELONGS TO THE LAYER, NOT TO THE SLOT. A null tint resolves from the slot
+  // above, which means an unresolved layer's colour follows its POSITION -- so reordering
+  // recoloured every layer it moved past, and deleting one recoloured everything below it.
+  // The cue exists to say "this box belongs to that layer", and a cue that changes when you
+  // drag a different row is worse than none.
+  //
+  // The fix is the one installStack already uses for palettes: resolve the fallback ONCE,
+  // when the layer joins the stack, and store the concrete index from then on. Everything
+  // downstream already reads L.tint first, so reorder and delete need no code at all --
+  // they stop mattering.
+  //
+  // `taken` is the set of indices in use, so a new layer takes a free colour and a colour
+  // freed by a deleted layer is available again rather than being burned for the session.
+  // Falling back to slot-modulo when every colour is in use keeps this total: LYR_TINT has
+  // exactly STACK_MAX entries today, so that only fires if the palette is ever shortened.
+  function freeTintIdx(taken, slot) {
+    for (let i = 0; i < LYR_TINT.length; i++) if (!taken.has(i)) return i;
+    return (slot | 0) % LYR_TINT.length;
+  }
+  // Every layer in `items` ends up with a concrete tint. Layers that already stored one keep
+  // it untouched -- including a duplicate, which is a choice a user can make by hand and not
+  // this function's business. A null takes its SLOT's colour when that colour is still free,
+  // which is precisely what it rendered as before, so a scene saved without tints opens
+  // looking exactly as it always did and is merely stable from then on.
+  function resolveTints(items) {
+    const taken = new Set();
+    for (const L of items) { const t = tintOk(L.tint); if (t != null) taken.add(t); }
+    items.forEach((L, i) => {
+      if (tintOk(L.tint) != null) return;
+      const own = (i | 0) % LYR_TINT.length;
+      const t = taken.has(own) ? freeTintIdx(taken, i) : own;
+      L.tint = t; taken.add(t);
+    });
   }
   const layerTint = (L, slot) => LYR_TINT[layerTintIdx(L, slot)];
   // The same colour as a bare "r, g, b" triple, so CSS can build translucent shades of it
@@ -15508,6 +15726,19 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], trwidth: [3, 3], trtaper: [0.62, 0.62], trcurve: [0.45, 0.45], trcount: [3, 3], trdepth: [8, 8], trsplit: [2, 2], trangle: [28, 28], trshrink: [0.72, 0.72], trsway: [0.35, 0.35], trspeed: [1, 1],
         points: [30000, 30000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "ribbons", name: "Flying ribbons", subtitle: "Flying ribbons · twisting bands through space",
+      help: "Long bands writhing through space on closed loops, so they never end and never repeat. What makes a ribbon read as a ribbon rather than as a fat line is that it has a FACE: seen flat it is a wide sheet, seen edge-on it collapses to a bright hairline, and the flip between the two as it turns is the whole effect. Both of the band's edges are placed in 3D and projected separately, so the foreshortening, the twist and the edge-on collapse are all the same piece of geometry rather than three separate tricks. **Twist** is how many times the band rolls over along its length — at 0 it is a flat streamer that only turns as the path turns, wound up it flashes light and dark as each face comes round. **Width** is how broad the band is, **Length** how far the loop runs before it closes (under 1 it is a short arc, above it folds back through itself), and **Waviness** kinks the path so it crumples like foil instead of sweeping in clean curves. **Ribbons** is how many fly at once, each on its own hashed path. Speed runs the whole thing and negative reverses it. It stamps into the fire buffer like the other point effects, so a Fade or an Echo filter leaves the bands trailing through space behind them.",
+      params: ["rbcount", "rbwidth", "rblen", "rbtwist", "rbwave", "rbspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      helpTags: ["all", "ribbons"], bakesOwnZoom: true,
+      stamp: (xL, xR, yT, yB, n) => ribbonStamp(xL, xR, yT, yB, n),
+      // RIBBONS OWN THEIR POINTS RANGE, for the same reason Trees does: this fills an AREA
+      // (length x width), not a cloud, so the budget buys far less picture per point. Four
+      // default bands are roughly 40k pixels of surface, and the shared 2500 default drew a
+      // sparse glitter that read as noise rather than as a solid band.
+      ranges: { points: { min: 6000, max: 140000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], rbcount: [4, 4], rbwidth: [0.38, 0.38], rblen: [1.6, 1.6], rbtwist: [2.5, 2.5], rbwave: [0.55, 0.55], rbspeed: [1, 1],
+        points: [95000, 95000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",
       help: "The inside of a doughnut, flown along the tube. The camera rides the pipe's centre line, so the wall wraps the whole frame and the curve of the ring keeps bringing new surface into view — you are always about to round a bend you can never quite see past. Flutes cuts lengthwise grooves into the pipe and Twist winds them into a spiral (both whole numbers, so the pattern closes on itself with no seam; set Flutes to 0 for a smooth pipe). Ring radius is how big the doughnut is — small values bend the tunnel hard and shorten the view, large ones straighten it out. Tube radius is how tight it is around you. Speed runs the flight, and negative reverses it.",
       params: ["dnring", "dntube", "dnspeed", "dntwist", "dnflute", "dnglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -15577,7 +15808,7 @@
     { name: "Demoscene classics", desc: "the effects the scene has been writing since the 90s",
       ids: ["plasma", "tunnel", "copperbars", "kefrens", "twister", "rotozoom", "munch", "moire", "metaballs", "starfield", "kaleidoscope"] },
     { name: "Patterns & noise", desc: "fields, tilings and shapes built from a formula",
-      ids: ["voronoi", "warpnoise", "truchet", "shapegrid", "concentric", "bounce", "cymatics", "reactdiff", "harmonograph"] },
+      ids: ["voronoi", "warpnoise", "truchet", "shapegrid", "concentric", "bounce", "cymatics", "reactdiff", "harmonograph", "ribbons"] },
     { name: "Nature & simulation", desc: "things that grow, flock, flow or weather",
       ids: ["boids", "physarum", "curl", "trees", "galaxy", "aurora", "lightning", "sunsurface", "attractor", "godray"] },
   ];
@@ -16972,6 +17203,10 @@
     freezeItem(stack[stackSel]);
     const L = newStackItem(fx === undefined ? effect : fx);
     applyEffectBlend(L);              // the effect's shipped blend (Glass ball: over)
+    // A concrete tint from birth, so it survives every later reorder and delete. It takes a
+    // colour no live layer is using -- including one freed by a layer that has been removed,
+    // which is why this asks the CURRENT stack rather than counting layers ever created.
+    L.tint = freeTintIdx(new Set(stack.map((o, i) => layerTintIdx(o, i))), stack.length);
     // Concrete palette from birth, for the same reason installStack resolves it: a null here
     // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
     { const px = extras[L.fx] || presetExtra(L.fx);
@@ -18714,12 +18949,40 @@
     const q = g.cw / BRK_SUB, w = box ? (box.offsetWidth || BRK_W) : BRK_W;
     return Math.ceil((w + BRK_GAP) / q) * q - BRK_GAP;
   }
+  // A BOX MUST NEVER BE PLACED PARTLY OFF SCREEN, and this is the one place to enforce it:
+  // every path that positions a box -- a drop, the default column, a window resize, a
+  // reorder -- ends up here, so a guard here covers all of them and a guard in any one
+  // caller covers only that one.
+  //
+  // The old `Math.max(0, ...)` pair was NOT that guard, and the difference is the whole bug.
+  // Those clamp the OFFSET, which stops a box escaping past the edge it is anchored to --
+  // the bottom for a bottom anchor, the right for a right anchor. They say nothing about
+  // the box's other edge, so a bottom-anchored box tall enough to reach past the top of the
+  // viewport was placed exactly there and most of it was simply gone. (Reported after a
+  // drop onto the lower edge of layer 1's box; see the note in dragEnd for how it got the
+  // bottom anchor in the first place.)
+  //
+  // So clamp the RECT, both edges, in whichever frame the anchor is expressed. `x`/`y` are
+  // the box's left/top for a near anchor and its right/bottom for a far one.
   function brkPlace(node, p) {
     const g = brkGrid();
-    const x = g.x0 + p.gx * g.cw / BRK_SUB, y = g.y0 + p.gy * g.ch / BRK_SUB;
-    if (p.right) { node.style.right = Math.max(0, window.innerWidth - x) + "px"; node.style.left = "auto"; }
+    let x = g.x0 + p.gx * g.cw / BRK_SUB, y = g.y0 + p.gy * g.ch / BRK_SUB;
+    const r = node.getBoundingClientRect();
+    const w = r.width, h = r.height;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // The grid starts at the panel's right edge, so a box is never placed under the menu.
+    // When a box is bigger than the room available the clamp would invert; pin it to the
+    // near edge instead, which keeps its title and controls reachable. brkOffscreen already
+    // refuses to OPEN a box that cannot fit, so this is the resize case.
+    if (w > 0 && g.x0 + w <= vw) x = p.right ? Math.min(vw, Math.max(g.x0 + w, x))
+                                             : Math.max(g.x0, Math.min(vw - w, x));
+    else x = p.right ? g.x0 + w : g.x0;
+    if (h > 0 && g.y0 + h <= vh) y = p.bottom ? Math.min(vh, Math.max(g.y0 + h, y))
+                                              : Math.max(g.y0, Math.min(vh - h, y));
+    else y = p.bottom ? g.y0 + h : g.y0;
+    if (p.right) { node.style.right = Math.max(0, vw - x) + "px"; node.style.left = "auto"; }
     else { node.style.left = Math.max(0, x) + "px"; node.style.right = "auto"; }
-    if (p.bottom) { node.style.bottom = Math.max(0, window.innerHeight - y) + "px"; node.style.top = "auto"; }
+    if (p.bottom) { node.style.bottom = Math.max(0, vh - y) + "px"; node.style.top = "auto"; }
     else { node.style.top = Math.max(0, y) + "px"; node.style.bottom = "auto"; }
   }
   // THE SNAP IS FOUR TIMES FINER THAN THE GRID YOU SEE MOST. gx/gy are in quarter-cells:
@@ -18842,20 +19105,31 @@
     node.classList.remove("dragging");
     document.body.classList.remove("brk-gridding");
     try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
-    const p = brkSnap(node);
-    // A drop may not bury another box: nudge a quarter-cell at a time toward the middle
-    // until the spot is clear. Boxes only — the floating dialogs are large and deliberately
-    // layer over things.
-    // ponytail: pushes one direction only; a wall of boxes can pin it at the screen edge
-    // still overlapping — acceptable, the user is one drag away from fixing it.
+    let p = brkSnap(node);
+    // A DROP MAY NOT BURY ANOTHER BOX, AND MAY NOT LEAVE THE SCREEN. This used to nudge a
+    // quarter-cell at a time in ONE direction -- up for a bottom-anchored box, down
+    // otherwise -- which is where the reported bug came from. Dropping a slider box onto the
+    // lower edge of layer 1's box put the box's centre just past the vertical middle, so it
+    // took a BOTTOM anchor, so the nudge walked its bottom edge UPWARD looking for clear
+    // space. Layer 1's box lives at the top of the screen, so the first clear spot was the
+    // one with the slider box's bottom against the layer box's top -- and the rest of it
+    // above the viewport. It searched exactly one of the four directions it needed.
+    //
+    // nearestFree already does the whole job and is what the automatic placement uses: it
+    // enumerates only positions that fit ON SCREEN, skips anything that would overlap a
+    // visible box, and returns the one closest to a point. Handing it the point the box was
+    // actually dropped at gives "as close as possible to where you let go, fully on screen,
+    // touching nothing" -- in every direction, not just the one.
+    //
+    // A drop into space that is already free returns that same quarter-cell, so an ordinary
+    // drop still lands exactly where the grid says and nothing moves.
     if (node.classList.contains("poppable")) {
-      const taken = brkRects(node);
-      for (let i = 0; i < BRK_ROWS * BRK_SUB * 2; i++) {
-        brkPlace(node, p);
-        const r = node.getBoundingClientRect();
-        if (rectClear(r.left, r.top, r.width, r.height, taken)) break;
-        p.gy += p.bottom ? -1 : 1;
-      }
+      const g = brkGrid(), r0 = node.getBoundingClientRect();
+      const spot = nearestFree(r0.left + r0.width / 2, r0.top + r0.height / 2,
+                               brkW(node, g), brkH(node, g), g, brkRects(node));
+      // No free spot anywhere: keep the drop and let brkPlace clamp it on screen. Overlapping
+      // is recoverable with one more drag; disappearing is not.
+      if (spot) p = brkAnchor(spot.x, spot.y, r0.width, r0.height, g);
     }
     brkPos.set(key, p);
     brkPlace(node, p);
@@ -20683,6 +20957,9 @@
       if (L.paletteRev == null) L.paletteRev = !!fx.paletteRev;
       if (L.paletteBg == null) L.paletteBg = bgOk(fx.paletteBg);
     }
+    // ...and every layer's TINT becomes concrete here too, for the same reason and with the
+    // same "a saved scene still looks the way it did" guarantee. See resolveTints.
+    resolveTints(items);
     stack = items;
     stackSel = 0;
     trigDirty = true;      // a whole new stack: every trigger's layer, arming and tuning changed

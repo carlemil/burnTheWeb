@@ -14,6 +14,40 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.52.0] — 2026-08-25
+
+### Added
+- **Flying ribbons**, a new effect — long bands sweeping across the frame and off its edges,
+  twisting as they go. Both edges of each band are placed in 3D and projected separately, so a
+  ribbon turned flat is a wide sheet and one turned edge-on collapses to a bright hairline, and
+  the flip between the two as it rolls is the whole effect. **Twist** is how many times the band
+  rolls over along its length, **Width** how broad it is, **Length** how far it runs before it
+  leaves the frame, and **Waviness** kinks the path so it crumples like foil instead of sweeping
+  in clean curves. **Ribbons** sets how many fly at once, each on its own heading. It stamps into
+  the fire buffer like the other point effects, so a Fade or an Echo filter leaves them trailing
+  through space behind them.
+
+### Fixed
+- **A layer keeps its colour when other layers are reordered or deleted.** The tint was derived
+  from a layer's POSITION when it had not been set explicitly, so dragging a row recoloured every
+  layer it moved past and deleting one recoloured everything below it — exactly backwards for a
+  cue whose job is to tell you which boxes belong to which layer. Each layer now takes a concrete
+  colour when it is created and keeps it for good. A colour freed by a deleted layer becomes
+  available to the next new one. Scenes saved before this open with the colours they already had.
+- **A slider box dropped onto another box can no longer land off screen.** Dropping one on the
+  lower edge of layer 1's box sent it almost entirely above the top of the window, its bottom
+  aligned to the layer box's top. A dropped box now always lands fully on screen, as near as it
+  can get to where you let go without covering anything.
+
+### Internal
+- `tools/tintprobe.js` pins the tint rules — every pairwise reorder, every single delete, and the
+  reuse of a freed colour — and `tools/brkdrop-check.js` drives the real drag handlers at four
+  heights down a layer box. Both were verified to go red against the code they fix; the drop
+  check reproduces the reported landing exactly (box top 155px above a 908px viewport).
+- The off-screen guard went into `brkPlace`, the single point every path that positions a box
+  passes through, rather than into the drop handler alone — so a window resize is covered by the
+  same fix.
+
 ## [1.51.0] — 2026-08-25
 
 ### Changed
