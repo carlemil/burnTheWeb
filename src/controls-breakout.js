@@ -848,6 +848,17 @@
     }
     const armable = [];
     for (const key of tabKeys(pane)) {
+      // RANDOM LEAVES THE CAMERA AND THE SHARED WORLD ALONE. Both are on the Effect tab, and
+      // both are the wrong kind of thing for this button: the camera is where you have put
+      // yourself in the scene and the world group is where this layer sits in a shared one,
+      // so rolling them does not vary the effect, it throws away a placement you chose by
+      // hand. CAM_KEYS is the app's own answer to "what is the camera" (zoom included), so
+      // this reads it rather than keeping a second list that could drift from it.
+      //
+      // The `continue` is before the armable push as well, so Random cannot arm a beat
+      // trigger on them either -- a camera that lurches on every kick is the same problem
+      // arriving by a different route.
+      if (RND_KEEP.has(key)) continue;
       const els = ctlRangeInputsIn(slot, key);
       // A single control keeps lo === hi through the mirror on the FIRST thumb's input —
       // nudging both with different deltas would fight it.
@@ -888,6 +899,10 @@
       if (off.length) chips[off[(Math.random() * off.length) | 0]].click();
     }
   }
+  // What Random must not touch: the camera (CAM_KEYS, which includes zoom) and the shared
+  // 3D world placement. Built from CAM_KEYS rather than spelled out again, so adding a
+  // camera control cannot quietly become a thing Random rolls.
+  const RND_KEEP = new Set(CAM_KEYS.concat(["world", "wldx", "wldy", "wldz", "wldscale"]));
   function resetTab(pane, t) {
     // The Filters tab's chain first: back to this effect's default list (usually empty),
     // so Reset undoes what Random added as well as what it retuned. Removing a filter
