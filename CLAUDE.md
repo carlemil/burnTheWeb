@@ -11,7 +11,7 @@ Self-contained demoscene visual on GitHub Pages (https://carlemil.github.io/burn
 Effects share one palette + glow + banding + beat-reactive pipeline, in four families:
 
 - **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrafyer, Attractor (de Jong), Fractal
-  flames (`flames`, the one **additive** stamper — `stampAdd`), Boids.
+  flames (`flames`, the one **additive** stamper — `stampAdd`), Boids, Flying ribbons.
 - **Shader fractals** — Julia, Burning Ship, Multibrot, Newton.
 - **Shader pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching
   Squares, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm,
@@ -258,6 +258,30 @@ it renders unchanged.
   Sway is added **at every joint**, so the bend accumulates trunk→tip; that is the property
   a still frame cannot show and `tools/treeprobe.js` measures it as tip-travel vs root-travel.
   **Beat reactivity needed no code** — arming Sway's chips is the gust.
+
+### Flying ribbons (the one point effect that draws a SURFACE)
+Bands sweeping across the frame, built from a parametric path and stamped through `plot()`.
+- **The two EDGES are placed in 3D and projected separately**, and the whole effect rests on
+  that: seen flat the band is a wide sheet, seen edge-on the two projections converge on their
+  own and it collapses to a bright hairline. Foreshortening, the twist and the collapse are
+  then one piece of geometry rather than three fudges, and Width is not a stroke thickness.
+- **Each band sweeps PAST the frame edge on its own heading** (golden-angle spread), and the
+  motion is a wave travelling down its length, not the band moving. Closed Lissajous knots
+  centred on the origin were the first version: every ribbon enclosed the centre, so they
+  piled into one tangle in the middle of the screen with dead space around it and nothing read
+  as flying. Sweeping past the edge also hides the two raw ends off-screen for free, and an
+  undulating band never has to be recycled the way a translating one would.
+- **Sample count comes from the MEASURED projected length** (`RB_COARSE` pass, then ~1.4px
+  steps). A fixed count combs — the cross-sections end up further apart than they are wide and
+  the band renders as a row of separate ribs. Length and Waviness each change how far the curve
+  travels on screen several times over, so no constant is right for both ends of either slider.
+- **The cross-section's points are offset by a hashed fraction of a step.** A band wide enough
+  to see is a big AREA and the budget rarely covers it at one point per pixel; spacing them
+  evenly from the same edge every time lines the gaps up across neighbouring cross-sections and
+  the surface moirés into a comb. Scattering the gaps reads as a solid sheet well below full
+  coverage. Deterministic, like every point effect — variation is `rbHash`, never `Math.random`.
+- Owns its Points range (`min 6000, max 140000`, default 95000) for the reason Trees does: it
+  fills an area, so the budget buys far less picture per point than a cloud does.
 
 ### Bouncing solids (the one 3D shader effect)
 `src/solids-3d.js`: CPU rigid-body physics, ≤8 bodies, hands the shader only `uPos`
@@ -716,6 +740,28 @@ than the CSS is what stops that becoming a fourth.
   quarter mesh on top, the strong 2px whole-cell lines behind — those are the "best"
   alignments, flush with the panel or exactly one box apart. All four sizes come from the same
   `brkGrid()` the snap uses, so the drawing and the maths cannot disagree.
+- **A BOX IS NEVER PLACED PARTLY OFF SCREEN, AND `brkPlace` IS WHERE THAT IS ENFORCED.**
+  Every path that positions a box — a drop, the default column, a resize, a reorder — ends
+  there, so the guard belongs there and nowhere else. The original `Math.max(0, …)` pair was
+  **not** that guard: it clamps the anchored edge's OFFSET, which stops a box escaping past
+  the edge it is anchored TO and says nothing about its far edge, so a bottom-anchored box
+  tall enough to reach past the top of the viewport was placed exactly there. `brkPlace`
+  clamps the whole RECT in whichever frame the anchor is expressed (`x`/`y` are left/top for
+  a near anchor, right/bottom for a far one), pinning to the near edge when the box is larger
+  than the room available.
+- **A DROP RESOLVES WITH `nearestFree`, NOT A NUDGE.** `dragEnd` used to step a quarter-cell
+  at a time in ONE direction — up for a bottom-anchored box, down otherwise — until the spot
+  was clear. Dropping a slider box on the LOWER EDGE of layer 1's box put its centre just past
+  the vertical middle, so it took a bottom anchor, so the nudge walked its bottom edge UPWARD;
+  layer 1's corner is the top of the screen, so the first clear spot put the slider box's
+  bottom against the layer box's top with the rest of it above the viewport. It searched one
+  of the four directions it needed. `nearestFree` already enumerates only positions that fit
+  on screen, skips overlaps and returns the closest to a point — handing it the point the box
+  was dropped at is exactly "as close as possible to where you let go, fully on screen,
+  touching nothing". A drop into free space returns that same quarter-cell, so an ordinary
+  drop still lands where the grid says. **`tools/brkdrop-check.js`** drives the real drag
+  handlers at four heights down a layer box and is verified to reproduce the bug without the
+  fix (`t=-155` against a 908px viewport).
 - A box near the far edge is **clamped to the viewport** (`right: 0`), and the viewport edge
   is not on the grid — `breakout-check` asserts the snap only when the clamp did not engage
   (at whole-cell resolution that assertion passed by luck).

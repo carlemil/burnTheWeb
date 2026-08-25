@@ -235,6 +235,15 @@
     { key: "trshrink", host: "fx", group: "trees", type: "dual", label: "Taper", valId: "vTrShrink", min: 0.45, max: 0.85, step: 0.005, lo: 0.72, hi: 0.72, fmt: v => sig3(v) + "×", apply: v => trShrink = v, durScale: 10 },
     { key: "trsway", host: "fx", group: "trees", type: "dual", label: "Sway", valId: "vTrSway", min: 0, max: 1.5, step: 0.01, lo: 0.35, hi: 0.35, fmt: v => sig3(v), apply: v => trSway = v, durScale: 10 },
     { key: "trspeed", host: "fx", group: "trees", type: "dual", label: "Wind speed", valId: "vTrSpeed", min: 0, max: 4, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => trSpeed = v, durScale: 10 },
+    // Flying ribbons. Count is single -- it counts bands. Twist is NOT: a fractional twist
+    // is a perfectly good part-turn along the length, and a spread between the thumbs makes
+    // the band wind and unwind, which is the whole reason to drift it.
+    { key: "rbcount", host: "fx", group: "ribbons", type: "dual", single: true, label: "Ribbons", valId: "vRbCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => rbCount = Math.round(v), durScale: 10 },
+    { key: "rbwidth", host: "fx", group: "ribbons", type: "dual", label: "Width", valId: "vRbWidth", min: 0.02, max: 1.2, step: 0.01, lo: 0.38, hi: 0.38, fmt: v => sig3(v), apply: v => rbWidth = v, durScale: 10 },
+    { key: "rblen", host: "fx", group: "ribbons", type: "dual", label: "Length", valId: "vRbLen", min: 0.3, max: 3, step: 0.05, lo: 1.6, hi: 1.6, fmt: v => sig3(v) + "×", apply: v => rbLen = v, durScale: 10 },
+    { key: "rbtwist", host: "fx", group: "ribbons", type: "dual", label: "Twist", valId: "vRbTwist", min: 0, max: 12, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => rbTwist = v, durScale: 10 },
+    { key: "rbwave", host: "fx", group: "ribbons", type: "dual", label: "Waviness", valId: "vRbWave", min: 0, max: 3, step: 0.02, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => rbWave = v, durScale: 10 },
+    { key: "rbspeed", host: "fx", group: "ribbons", type: "dual", label: "Speed", valId: "vRbSpeed", min: -3, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rbSpeed = v, durScale: 10 },
     { key: "dnring", host: "fx", group: "torus", type: "dual", label: "Ring radius", valId: "vDnRing", min: 1.5, max: 6, step: 0.05, lo: 3, hi: 3, fmt: v => sig3(v), apply: v => dnRing = v, durScale: 10 },
     { key: "dntube", host: "fx", group: "torus", type: "dual", label: "Tube radius", valId: "vDnTube", min: 0.25, max: 1.6, step: 0.01, lo: 0.8, hi: 0.8, fmt: v => sig3(v), apply: v => dnTube = v, durScale: 10 },
     { key: "dnspeed", host: "fx", group: "torus", type: "dual", label: "Speed", valId: "vDnSpeed", min: -3, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => dnSpeed = v, durScale: 10 },
@@ -1082,7 +1091,7 @@
     chladni: "Cymatics", storm: "Lightning storm", bulb: "Mandelbulb", flames: "Fractal flames",
     stars: "Starfield", aurora: "Aurora", rd: "Reaction-diffusion", menger: "Menger sponge",
     boids: "Boids", galaxy: "Galaxy", harmo: "Harmonograph", vballs: "Vector balls", ocean: "Ocean",
-    torus: "Doughnut", trees: "Trees", glass: "Glass ball", world: "Shared 3D world",
+    torus: "Doughnut", trees: "Trees", ribbons: "Flying ribbons", glass: "Glass ball", world: "Shared 3D world",
     bhole: "Black hole", qjulia: "Quaternion Julia",
     camera: "Camera", other: "Other",
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
@@ -1222,6 +1231,7 @@
     ["clTime", () => clTime, v => clTime = v],
     ["grTime", () => grTime, v => grTime = v],
     ["teTime", () => teTime, v => teTime = v],
+    ["rbTime", () => rbTime, v => rbTime = v],
     ["apTime", () => apTime, v => apTime = v],
     ["mbTime", () => mbTime, v => mbTime = v],
     ["gyTime", () => gyTime, v => gyTime = v],

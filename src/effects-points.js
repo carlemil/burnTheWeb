@@ -876,3 +876,177 @@
       const swap = cur; cur = nxt; nxt = swap;
     }
   }
+
+  // ---- Flying ribbons ----------------------------------------------------------------
+  // Long bands writhing through space. The thing that makes a ribbon read as a ribbon
+  // rather than as a fat line is that it has an ORIENTATION: seen flat it is a wide sheet,
+  // seen edge-on it collapses to a bright hairline, and the flip between the two as it
+  // twists is the whole effect. So this does not stamp a stroke of constant width. It
+  // builds the band's two EDGES in 3D, projects both, and fills the segment between them —
+  // foreshortening, the twist and the edge-on collapse all fall out of that one decision
+  // instead of needing three separate fudges.
+  //
+  // A point effect, not a shader: the geometry is a few thousand samples of a parametric
+  // curve, which is a JS loop's work, and going through plot() means the fire sim, the
+  // trail filters and the camera all apply for free. Deterministic like every other point
+  // effect -- per-ribbon variation comes from rbHash, never from Math.random.
+  let rbCount = 4, rbLen = 1, rbWidth = 0.3, rbTwist = 3, rbSpeed = 1, rbWave = 1, rbTime = 0;
+  // Projected edges are cached between the measuring pass and the stamping pass: one pass
+  // has to know the TOTAL area before the other can pick a density, and evaluating the
+  // curve twice to learn the same numbers would be the only expensive part done twice.
+  // Grown on demand and reused, so a steady state allocates nothing.
+  let rbBuf = null;
+  // How far a band runs, set by ribbonStamp and read by rbPath -- the path is evaluated
+  // hundreds of times per tick, so it takes what it can from the closure rather than an
+  // extra argument threaded through both passes.
+  let rbSpan = 1.5;
+  function rbHash(i) {                     // deterministic per-ribbon variation, [-1, 1]
+    let h = Math.imul(i ^ 0x27d4eb2f, 0x165667b1);
+    h ^= h >>> 15; h = Math.imul(h, 0x9e3779b1); h ^= h >>> 13;
+    return (h >>> 0) / 2147483648 - 1;
+  }
+  // Samples along a ribbon are chosen from its MEASURED projected length, not fixed. A fixed
+  // count combs: the cross-sections end up further apart than they are wide, so the band
+  // renders as a row of separate ribs rather than a surface. Length and Waviness each change
+  // how far the curve actually travels on screen by several times over, so no constant can
+  // be right for both ends of either slider. A coarse pass measures it, the real pass then
+  // steps about 1.4px whatever the sliders say.
+  const RB_COARSE = 56;
+  const RB_STEP = 1.4;
+  const RB_SMAX = 3000;                    // ceiling, so a wild Length cannot run away
+  const RB_ZC = 3.1;                       // the loop's centre depth, in front of the eye
+  // The curve, and the ONE place it is written. Both passes evaluate it, and a second copy
+  // for the measuring pass is how the two silently start describing different ribbons.
+  //
+  // Each band SWEEPS ACROSS the frame on its own heading rather than looping around the
+  // origin. The first version used closed Lissajous knots, which is a fine curve and the
+  // wrong picture: every ribbon enclosed the centre, so they piled into one tangle in the
+  // middle of the screen with dead space all round it, and nothing read as flying. Running
+  // each band past the frame edge on a heading of its own gives them somewhere to come from
+  // and somewhere to go, and hides the two raw ends off-screen for free.
+  //
+  // The motion is a wave TRAVELLING down the band (the `- tt` term), not the band itself
+  // moving. A ribbon that translates has to be recycled when it leaves; a ribbon that
+  // undulates never leaves, and a travelling ripple reads as flight far more strongly than
+  // a rigid shape sliding across ever does.
+  function rbPath(k, s, tt, wave, out) {
+    const u = s * 2 - 1;                          // -1 .. 1 along the band
+    // Headings spread by the golden angle, so no two bands run parallel and the set never
+    // settles into a pattern however many are on screen.
+    const dirA = k * 2.39996 + rbHash(k * 5 + 1) * 0.9;
+    const ca = Math.cos(dirA), sa = Math.sin(dirA);
+    const p1 = rbHash(k * 5 + 2) * Math.PI * 2, p2 = rbHash(k * 5 + 3) * Math.PI * 2;
+    const ox = rbHash(k * 5 + 4) * 0.5, oy = rbHash(k * 5 + 5) * 0.5;
+    const amp = 0.30 + 0.55 * wave;
+    const f1 = 2.4 + 0.7 * rbHash(k * 5 + 6), f2 = 1.6 + 0.5 * rbHash(k * 5 + 7);
+    const lat = amp * Math.sin(u * Math.PI * f1 - tt * 2 + p1);   // sideways swing
+    out[0] = ox + u * rbSpan * ca - lat * sa;
+    out[1] = oy + u * rbSpan * sa + lat * ca;
+    // Depth swings hard on purpose: a band that stays at one depth is a flat squiggle, and
+    // it is parts of it rushing near while others hang back that makes the frame feel deep.
+    out[2] = RB_ZC + amp * 1.5 * Math.sin(u * Math.PI * f2 + tt * 1.6 + p2);
+  }
+  const rbP = [0, 0, 0];
+  function ribbonStamp(xL, xR, yT, yB, n) {
+    rbTime += rbSpeed * 0.6 / cfg.burn;    // per TICK, like trPhase and flPhase
+    const w = xR - xL, h = yB - yT;
+    const cx = (xL + xR) * 0.5, cy = (yT + yB) * 0.5;
+    // Focal length folded into one number. The curve reaches about 1.2 units off axis at a
+    // depth of 3.1, so projecting against a bare half-extent puts the whole thing in the
+    // middle ninth of the frame -- which is exactly what the first version drew.
+    const scale = Math.min(w, h) * 1.05;
+    const count = Math.max(1, Math.min(8, Math.round(rbCount)));
+    const half = Math.max(0, rbWidth) * 0.5;
+    const twist = rbTwist, wave = rbWave, tt = rbTime;
+    // How far the band runs, in world units. Over ~2 it leaves the frame at both ends,
+    // which is the point: the ends are never seen.
+    rbSpan = 1.5 * Math.max(0.25, rbLen);
+
+    // ---- pass 0: how long is each ribbon on screen? ----------------------------------
+    const segs = new Array(count), bases = new Array(count);
+    let need = 0;
+    for (let k = 0; k < count; k++) {
+      let len = 0, lx = 0, ly = 0;
+      for (let i = 0; i <= RB_COARSE; i++) {
+        rbPath(k, i / RB_COARSE, tt, wave, rbP);
+        const z = Math.max(0.35, rbP[2]);
+        const sx = cx + (rbP[0] / z) * scale, sy = cy + (rbP[1] / z) * scale;
+        if (i) len += Math.hypot(sx - lx, sy - ly);
+        lx = sx; ly = sy;
+      }
+      segs[k] = Math.max(48, Math.min(RB_SMAX, Math.round(len / RB_STEP)));
+      need += (segs[k] + 1) * 4;
+    }
+    if (!rbBuf || rbBuf.length < need) rbBuf = new Float64Array(need);
+
+    // ---- pass 1: build the band and measure its area ---------------------------------
+    // Positions come first because the tangent is taken from the PREVIOUS sample, which is
+    // both cheaper and steadier than differentiating the curve by hand -- and the curve
+    // gains a term whenever Waviness is turned up, which a hand derivative would too.
+    let total = 0, base = 0;
+    for (let k = 0; k < count; k++) {
+      const samples = segs[k];
+      bases[k] = base;
+      let px0 = 0, py0 = 0, pz0 = 0;
+      for (let i = 0; i <= samples; i++) {
+        const a = i / samples;
+        rbPath(k, a, tt, wave, rbP);
+        const px = rbP[0], py = rbP[1], pz = rbP[2];
+        let tx = px - px0, ty = py - py0, tz = pz - pz0;
+        if (i === 0) { tx = 1e-6; ty = 0; tz = 0; }
+        const tl = Math.hypot(tx, ty, tz) || 1;
+        tx /= tl; ty /= tl; tz /= tl;
+        px0 = px; py0 = py; pz0 = pz;
+        // A frame around the tangent. The reference axis is swapped when the tangent nears
+        // it, because the cross product degenerates there and the band would flip its face
+        // over in one sample -- which reads as a tear, not as a twist.
+        let ux = 0, uy = 1, uz = 0;
+        if (Math.abs(ty) > 0.9) { ux = 0; uy = 0; uz = 1; }
+        let ax = ty * uz - tz * uy, ay = tz * ux - tx * uz, az = tx * uy - ty * ux;
+        const al = Math.hypot(ax, ay, az) || 1;
+        ax /= al; ay /= al; az /= al;
+        const bx = ty * az - tz * ay, by = tz * ax - tx * az, bz = tx * ay - ty * ax;
+        const th = twist * a * Math.PI * 2 + tt * 0.5;
+        const cth = Math.cos(th), sth = Math.sin(th);
+        const nx = ax * cth + bx * sth, ny = ay * cth + by * sth, nz = az * cth + bz * sth;
+        // The two edges, projected INDEPENDENTLY. When the band turns edge-on the two
+        // projections converge on their own -- that convergence IS the collapse to a
+        // hairline, and it is why Width is not simply a stroke thickness.
+        const e1z = Math.max(0.35, pz + nz * half), e2z = Math.max(0.35, pz - nz * half);
+        const x1 = cx + ((px + nx * half) / e1z) * scale, y1 = cy + ((py + ny * half) / e1z) * scale;
+        const x2 = cx + ((px - nx * half) / e2z) * scale, y2 = cy + ((py - ny * half) / e2z) * scale;
+        const o = base + i * 4;
+        rbBuf[o] = x1; rbBuf[o + 1] = y1; rbBuf[o + 2] = x2; rbBuf[o + 3] = y2;
+        total += Math.hypot(x2 - x1, y2 - y1) + 1;   // +1: an edge-on span is still a pixel
+      }
+      base += (samples + 1) * 4;
+    }
+    // ---- pass 2: spend the point budget over that area -------------------------------
+    // A band wide enough to see is a large AREA, and the budget rarely covers it at one
+    // point per pixel. Spacing the points evenly from the same edge every time lines the
+    // gaps up across neighbouring cross-sections and the surface moires into a comb --
+    // which is what the first version drew. Offsetting each cross-section by its own hashed
+    // fraction of a step scatters the gaps instead, and the band reads as a solid sheet well
+    // below full coverage. Deterministic, like everything else in a point effect.
+    const density = total > 0 ? n / total : 0;
+    for (let k = 0; k < count; k++) {
+      const samples = segs[k], b = bases[k];
+      for (let i = 0; i <= samples; i++) {
+        const o = b + i * 4;
+        const x1 = rbBuf[o], y1 = rbBuf[o + 1], x2 = rbBuf[o + 2], y2 = rbBuf[o + 3];
+        const span = Math.hypot(x2 - x1, y2 - y1);
+        // Depth shading from the sample's own projected width: a near part of the band is
+        // both bigger and brighter, which is most of the sense of flying among them.
+        const dep = Math.min(1, span / (Math.max(1e-6, rbWidth) * scale / RB_ZC));
+        const heat = POINT_HEAT * (0.52 + 0.48 * dep);
+        const m = Math.max(1, Math.round((span + 1) * density));
+        if (m === 1) { plot((x1 + x2) * 0.5, (y1 + y2) * 0.5, heat); continue; }
+        const jit = (rbHash(k * 7919 + i) * 0.5 + 0.5) / m;    // [0, 1/m)
+        const dx = x2 - x1, dy = y2 - y1;
+        for (let j = 0; j < m; j++) {
+          const f = j / m + jit;
+          plot(x1 + dx * f, y1 + dy * f, heat);
+        }
+      }
+    }
+  }

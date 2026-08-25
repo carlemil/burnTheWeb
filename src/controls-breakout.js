@@ -283,12 +283,40 @@
     const q = g.cw / BRK_SUB, w = box ? (box.offsetWidth || BRK_W) : BRK_W;
     return Math.ceil((w + BRK_GAP) / q) * q - BRK_GAP;
   }
+  // A BOX MUST NEVER BE PLACED PARTLY OFF SCREEN, and this is the one place to enforce it:
+  // every path that positions a box -- a drop, the default column, a window resize, a
+  // reorder -- ends up here, so a guard here covers all of them and a guard in any one
+  // caller covers only that one.
+  //
+  // The old `Math.max(0, ...)` pair was NOT that guard, and the difference is the whole bug.
+  // Those clamp the OFFSET, which stops a box escaping past the edge it is anchored to --
+  // the bottom for a bottom anchor, the right for a right anchor. They say nothing about
+  // the box's other edge, so a bottom-anchored box tall enough to reach past the top of the
+  // viewport was placed exactly there and most of it was simply gone. (Reported after a
+  // drop onto the lower edge of layer 1's box; see the note in dragEnd for how it got the
+  // bottom anchor in the first place.)
+  //
+  // So clamp the RECT, both edges, in whichever frame the anchor is expressed. `x`/`y` are
+  // the box's left/top for a near anchor and its right/bottom for a far one.
   function brkPlace(node, p) {
     const g = brkGrid();
-    const x = g.x0 + p.gx * g.cw / BRK_SUB, y = g.y0 + p.gy * g.ch / BRK_SUB;
-    if (p.right) { node.style.right = Math.max(0, window.innerWidth - x) + "px"; node.style.left = "auto"; }
+    let x = g.x0 + p.gx * g.cw / BRK_SUB, y = g.y0 + p.gy * g.ch / BRK_SUB;
+    const r = node.getBoundingClientRect();
+    const w = r.width, h = r.height;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // The grid starts at the panel's right edge, so a box is never placed under the menu.
+    // When a box is bigger than the room available the clamp would invert; pin it to the
+    // near edge instead, which keeps its title and controls reachable. brkOffscreen already
+    // refuses to OPEN a box that cannot fit, so this is the resize case.
+    if (w > 0 && g.x0 + w <= vw) x = p.right ? Math.min(vw, Math.max(g.x0 + w, x))
+                                             : Math.max(g.x0, Math.min(vw - w, x));
+    else x = p.right ? g.x0 + w : g.x0;
+    if (h > 0 && g.y0 + h <= vh) y = p.bottom ? Math.min(vh, Math.max(g.y0 + h, y))
+                                              : Math.max(g.y0, Math.min(vh - h, y));
+    else y = p.bottom ? g.y0 + h : g.y0;
+    if (p.right) { node.style.right = Math.max(0, vw - x) + "px"; node.style.left = "auto"; }
     else { node.style.left = Math.max(0, x) + "px"; node.style.right = "auto"; }
-    if (p.bottom) { node.style.bottom = Math.max(0, window.innerHeight - y) + "px"; node.style.top = "auto"; }
+    if (p.bottom) { node.style.bottom = Math.max(0, vh - y) + "px"; node.style.top = "auto"; }
     else { node.style.top = Math.max(0, y) + "px"; node.style.bottom = "auto"; }
   }
   // THE SNAP IS FOUR TIMES FINER THAN THE GRID YOU SEE MOST. gx/gy are in quarter-cells:
@@ -411,20 +439,31 @@
     node.classList.remove("dragging");
     document.body.classList.remove("brk-gridding");
     try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
-    const p = brkSnap(node);
-    // A drop may not bury another box: nudge a quarter-cell at a time toward the middle
-    // until the spot is clear. Boxes only — the floating dialogs are large and deliberately
-    // layer over things.
-    // ponytail: pushes one direction only; a wall of boxes can pin it at the screen edge
-    // still overlapping — acceptable, the user is one drag away from fixing it.
+    let p = brkSnap(node);
+    // A DROP MAY NOT BURY ANOTHER BOX, AND MAY NOT LEAVE THE SCREEN. This used to nudge a
+    // quarter-cell at a time in ONE direction -- up for a bottom-anchored box, down
+    // otherwise -- which is where the reported bug came from. Dropping a slider box onto the
+    // lower edge of layer 1's box put the box's centre just past the vertical middle, so it
+    // took a BOTTOM anchor, so the nudge walked its bottom edge UPWARD looking for clear
+    // space. Layer 1's box lives at the top of the screen, so the first clear spot was the
+    // one with the slider box's bottom against the layer box's top -- and the rest of it
+    // above the viewport. It searched exactly one of the four directions it needed.
+    //
+    // nearestFree already does the whole job and is what the automatic placement uses: it
+    // enumerates only positions that fit ON SCREEN, skips anything that would overlap a
+    // visible box, and returns the one closest to a point. Handing it the point the box was
+    // actually dropped at gives "as close as possible to where you let go, fully on screen,
+    // touching nothing" -- in every direction, not just the one.
+    //
+    // A drop into space that is already free returns that same quarter-cell, so an ordinary
+    // drop still lands exactly where the grid says and nothing moves.
     if (node.classList.contains("poppable")) {
-      const taken = brkRects(node);
-      for (let i = 0; i < BRK_ROWS * BRK_SUB * 2; i++) {
-        brkPlace(node, p);
-        const r = node.getBoundingClientRect();
-        if (rectClear(r.left, r.top, r.width, r.height, taken)) break;
-        p.gy += p.bottom ? -1 : 1;
-      }
+      const g = brkGrid(), r0 = node.getBoundingClientRect();
+      const spot = nearestFree(r0.left + r0.width / 2, r0.top + r0.height / 2,
+                               brkW(node, g), brkH(node, g), g, brkRects(node));
+      // No free spot anywhere: keep the drop and let brkPlace clamp it on screen. Overlapping
+      // is recoverable with one more drag; disappearing is not.
+      if (spot) p = brkAnchor(spot.x, spot.y, r0.width, r0.height, g);
     }
     brkPos.set(key, p);
     brkPlace(node, p);

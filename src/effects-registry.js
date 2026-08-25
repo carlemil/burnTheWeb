@@ -363,6 +363,19 @@
       defaults: { palcycle: [0, 0], palhold: [0, 0], trwidth: [3, 3], trtaper: [0.62, 0.62], trcurve: [0.45, 0.45], trcount: [3, 3], trdepth: [8, 8], trsplit: [2, 2], trangle: [28, 28], trshrink: [0.72, 0.72], trsway: [0.35, 0.35], trspeed: [1, 1],
         points: [30000, 30000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
       beat: {}, extras: { palette: "6", morph: false, showBox: true, randSeed: true } },
+    { id: "ribbons", name: "Flying ribbons", subtitle: "Flying ribbons · twisting bands through space",
+      help: "Long bands writhing through space on closed loops, so they never end and never repeat. What makes a ribbon read as a ribbon rather than as a fat line is that it has a FACE: seen flat it is a wide sheet, seen edge-on it collapses to a bright hairline, and the flip between the two as it turns is the whole effect. Both of the band's edges are placed in 3D and projected separately, so the foreshortening, the twist and the edge-on collapse are all the same piece of geometry rather than three separate tricks. **Twist** is how many times the band rolls over along its length — at 0 it is a flat streamer that only turns as the path turns, wound up it flashes light and dark as each face comes round. **Width** is how broad the band is, **Length** how far the loop runs before it closes (under 1 it is a short arc, above it folds back through itself), and **Waviness** kinks the path so it crumples like foil instead of sweeping in clean curves. **Ribbons** is how many fly at once, each on its own hashed path. Speed runs the whole thing and negative reverses it. It stamps into the fire buffer like the other point effects, so a Fade or an Echo filter leaves the bands trailing through space behind them.",
+      params: ["rbcount", "rbwidth", "rblen", "rbtwist", "rbwave", "rbspeed", "points", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold"],
+      helpTags: ["all", "ribbons"], bakesOwnZoom: true,
+      stamp: (xL, xR, yT, yB, n) => ribbonStamp(xL, xR, yT, yB, n),
+      // RIBBONS OWN THEIR POINTS RANGE, for the same reason Trees does: this fills an AREA
+      // (length x width), not a cloud, so the budget buys far less picture per point. Four
+      // default bands are roughly 40k pixels of surface, and the shared 2500 default drew a
+      // sparse glitter that read as noise rather than as a solid band.
+      ranges: { points: { min: 6000, max: 140000 } },
+      defaults: { palcycle: [0, 0], palhold: [0, 0], rbcount: [4, 4], rbwidth: [0.38, 0.38], rblen: [1.6, 1.6], rbtwist: [2.5, 2.5], rbwave: [0.55, 0.55], rbspeed: [1, 1],
+        points: [95000, 95000], rise: [130, 130], zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0], speed: [10, 10], size: [1, 1], rot: [0, 0], layers: 1 },
+      beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",
       help: "The inside of a doughnut, flown along the tube. The camera rides the pipe's centre line, so the wall wraps the whole frame and the curve of the ring keeps bringing new surface into view — you are always about to round a bend you can never quite see past. Flutes cuts lengthwise grooves into the pipe and Twist winds them into a spiral (both whole numbers, so the pattern closes on itself with no seam; set Flutes to 0 for a smooth pipe). Ring radius is how big the doughnut is — small values bend the tunnel hard and shorten the view, large ones straighten it out. Tube radius is how tight it is around you. Speed runs the flight, and negative reverses it.",
       params: ["dnring", "dntube", "dnspeed", "dntwist", "dnflute", "dnglow", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
@@ -432,7 +445,7 @@
     { name: "Demoscene classics", desc: "the effects the scene has been writing since the 90s",
       ids: ["plasma", "tunnel", "copperbars", "kefrens", "twister", "rotozoom", "munch", "moire", "metaballs", "starfield", "kaleidoscope"] },
     { name: "Patterns & noise", desc: "fields, tilings and shapes built from a formula",
-      ids: ["voronoi", "warpnoise", "truchet", "shapegrid", "concentric", "bounce", "cymatics", "reactdiff", "harmonograph"] },
+      ids: ["voronoi", "warpnoise", "truchet", "shapegrid", "concentric", "bounce", "cymatics", "reactdiff", "harmonograph", "ribbons"] },
     { name: "Nature & simulation", desc: "things that grow, flock, flow or weather",
       ids: ["boids", "physarum", "curl", "trees", "galaxy", "aurora", "lightning", "sunsurface", "attractor", "godray"] },
   ];

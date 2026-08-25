@@ -69,6 +69,10 @@ const EXPECT = [
   "dnflute", "dntwist",
   // Trees: all three COUNT something, and a fractional branch count is not a shape.
   "trcount", "trdepth", "trsplit",
+  // Flying ribbons: the band COUNT only. Twist is deliberately NOT here -- a fractional
+  // twist is a real part-turn along the length, and a spread between the thumbs winds and
+  // unwinds the band, which is the best reason the effect has to drift a slider at all.
+  "rbcount",
   // Glass ball: a count and an enum.
   "gbcount", "gbmat",
 ].sort();
