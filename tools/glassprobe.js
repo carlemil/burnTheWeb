@@ -137,5 +137,20 @@ const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
      "max separation " + worst + " -- this is the bug, reproduced");
 }
 
+// ---- IS THE SALT ACTUALLY APPLIED? -------------------------------------------------------
+// Everything above tests gbBallAt, the maths. That keeps passing whether or not the app
+// FEEDS it a real salt -- so without this the probe would report a healthy feature while the
+// app had it switched off, which is exactly the kind of green that hides a regression.
+{
+  const m = src.match(/const GB_SALT_ON = (true|false)/);
+  ok("the salt switch is where this probe expects it", !!m, m ? m[1] : "not found");
+  const on = !!m && m[1] === "true";
+  const seed = src.slice(src.indexOf("function glassSeed("), src.indexOf("function glassSeed(") + 400);
+  ok("...and glassSeed gates the salt through it", /GB_SALT_ON \? gbSalt : 0/.test(seed));
+  if (on) ok("the per-layer salt IS live: two glass layers get different balls", true, "GB_SALT_ON = true");
+  else ok("the per-layer salt is SWITCHED OFF -- two glass layers draw the same balls", true,
+          "GB_SALT_ON = false, deliberate: see the note in effects-shader-mirrors.js");
+}
+
 console.log("\n" + passes + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

@@ -14,6 +14,23 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.55.3] — 2026-08-25
+
+### Changed
+- **Two Glass ball layers draw the same balls again, for now.** v1.54.0 gave each glass layer
+  its own starting positions so two of them would not overlap. Since then a ghost has been
+  reported — a second copy of the balls, the same animation but far behind, showing up on
+  reload or when layers are rearranged and fading after a few seconds. It could not be
+  reproduced here even against the reporter's own scene, so this switches that change off so
+  the question can be answered on the machine where it happens: if the ghost goes with it off,
+  the cause is known; if it stays, this area is cleared and the search moves elsewhere. With a
+  single Glass ball layer — the reported setup — turning it off costs nothing at all.
+
+### Internal
+- `glassprobe.js` now reports whether the app actually feeds the salt through. Its other
+  assertions test the ball maths, which keeps passing whether or not the app uses it — exactly
+  the kind of green that would hide the feature being switched off.
+
 ## [1.55.2] — 2026-08-25
 
 ### Fixed
