@@ -725,7 +725,7 @@
     glProg.pts = makeProg(VS_PTS, FS_PTS, ["uSize", "uGain"]);
     glProg.rib = makeProg(VS_RIB, FS_RIB, ["uSize"]);
     glProg.merge = makeProg(VS_QUAD, FS_MERGE, ["uSrc", "uGain"]);
-    glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend"]);
+    glProg.okmerge = makeProg(VS_QUAD, FS_OKMERGE, ["uLayer", "uAcc", "uGain", "uBlend", "uCover"]);
     glProg.julia = camProg(VS_QUAD, FS_JULIA, ["uSize", "uC", "uSpan"]);
     glProg.plasma = camProg(VS_QUAD, FS_PLASMA, ["uSize", "uTime", "uScale", "uWarp", "uZoom"]);
     glProg.tunnel = camProg(VS_QUAD, FS_TUNNEL, ["uSize", "uTime", "uTwist", "uRings", "uZoom"]);
@@ -1539,7 +1539,7 @@
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
   // Blend one layer's finished RGB colour into the accumulator, in OKLab.
-  function glOkMerge(layerTex, blend, gain, accSrc, dstFbo) {
+  function glOkMerge(layerTex, blend, gain, accSrc, dstFbo, cover) {
     bindFbo(dstFbo, fw, fh);
     gl.disable(gl.BLEND);
     const P = glProg.okmerge;
@@ -1548,6 +1548,9 @@
     bindTexUnit(1, accSrc);   gl.uniform1i(P.u.uAcc, 1);
     gl.uniform1f(P.u.uGain, gain === undefined ? 1 : gain);
     gl.uniform1i(P.u.uBlend, (BLEND_BY_ID[blend] || BLEND_MODES[0]).u);
+    // How solid this layer is where it covers. Only the OVER branch reads it; 1 is the
+    // old behaviour and what every effect but Glass ball asks for.
+    gl.uniform1f(P.u.uCover, cover === undefined ? 1 : cover);
     drawQuad();
   }
   // The whole multi-layer colour path: render each live layer's heat, colour it with its
@@ -1877,7 +1880,12 @@
       gl.bindTexture(gl.TEXTURE_2D, glTex.palL[slot]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, palScratch);
       const colTex = glLayerPostChain(L, glColorizeLayer(heatTex, glTex.palL[slot]));
-      glOkMerge(colTex, L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc]);
+      // An effect that ships an OVER blend may also say how solid it is RIGHT NOW -- Glass
+      // ball's answer depends on its Material slider. installStackItem(L) has already put
+      // this layer's globals live, so the descriptor is asked about the layer being drawn.
+      const fxc = EFFECTS[L.fx].cover;
+      glOkMerge(colTex, L.blend, L.gain, glTex.color[acc], glFbo.color[1 - acc],
+                fxc ? fxc() : 1);
       acc = 1 - acc;
     }
     glBelowTex = null;                 // only ever live inside the loop above

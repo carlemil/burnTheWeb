@@ -240,20 +240,32 @@
     const FS_OKMERGE = `#version 300 es
     precision highp float;
     uniform sampler2D uLayer; uniform sampler2D uAcc;
-    uniform float uGain; uniform int uBlend;
+    uniform float uGain; uniform int uBlend; uniform float uCover;
     in vec2 vUv; out vec4 o;` + OKLAB_GLSL + `
     void main(){
       vec4 lay = texture(uLayer, vUv);
       vec3 col = lay.rgb;                                // this layer's finished colour
       vec4 acc = texture(uAcc, vUv);
       float accW = acc.a * WMAX;
-      // OVER (20): coverage, not brightness, decides. lay.a is 1 where the effect drew a
-      // surface and 0 where it drew nothing (FS_PAL writes it), so a dark ball still covers
-      // a bright layer beneath it, and the empty space around it still shows that layer.
-      // It is the one mode that ignores the gain weighting: an object is either there or not.
+      // OVER (20): COVERAGE, not brightness, decides -- and then how opaque that coverage
+      // is. lay.a is 1 where the effect drew a surface and 0 where it drew nothing (FS_PAL
+      // writes it), so a dark ball still covers a bright layer beneath it and the empty space
+      // around it still shows that layer. It is the one mode that ignores the gain weighting:
+      // an object is either there or not.
+      //
+      // uCover is HOW SOLID the thing covering is, and it exists because one effect ships
+      // three materials with different answers. A metal ball is opaque; a glass ball and a
+      // soap bubble are things you look THROUGH, and a flat coverage test hid the layer
+      // beneath them exactly as completely as it hid it behind the metal one.
+      //
+      // WITH NOTHING BENEATH, EVERYTHING IS OPAQUE. Transparency needs something to be
+      // transparent TO, and mixing toward an empty accumulator is mixing toward black -- so a
+      // lone glass layer would simply render at half brightness. That guard is also what
+      // keeps the single-layer path pixel-identical to before.
       if (uBlend == 20) {
         vec3 c = clamp(col * uGain, 0.0, 1.0);
-        o = lay.a > 0.5 ? vec4(c, 1.0) : acc;
+        float a = lay.a > 0.5 ? (accW < 1.0e-4 ? 1.0 : uCover) : 0.0;
+        o = mix(acc, vec4(c, 1.0), a);
         return;
       }
       vec3 labC = srgb2oklab(col);

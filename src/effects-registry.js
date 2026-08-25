@@ -349,6 +349,17 @@
       // OVER by default: a ball is an object that hides what is behind it. With MAX a bright
       // layer beneath showed straight through a metal ball, which read as "transparent".
       blend: "over",
+      // HOW SOLID THE BALL IS, by material, and it is the whole answer to "I expect to see
+      // through glass and bubble". The effect ships an OVER blend because a metal ball is an
+      // object that hides what is behind it -- but the same effect also makes a glass ball
+      // and a soap bubble, and those are things you look THROUGH. One flat coverage test
+      // cannot be right for all three.
+      //
+      // Metal stays fully opaque, which is what OVER was added for. Glass passes about half
+      // the layer beneath -- it already refracts that layer's brightness INSIDE the ball, so
+      // this is the rest of the picture arriving around and through it. A bubble is a thin
+      // shell that barely bends anything, so it passes most of it and reads as a rim.
+      cover: () => [1, 0.3, 0.15][Math.round(gbMat)] || 1,
       beat: {}, extras: { palette: "2", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "trees", name: "Trees", subtitle: "Trees · recursive canopy in the wind",
       help: "A row of fractal trees bending in a wind. Each trunk splits, each branch splits again, and the sway is added at every joint rather than to the tree as a whole — so it accumulates from trunk to tip and the twigs whip while the trunk barely moves, which is what a real tree does. Depth is how many times it splits (the picture gets its filigree from here), Splits how many branches come off each joint, Branch angle how wide the fork opens and Taper how much shorter each generation is — low taper gives a stubby shrub, high a tall wispy one. **Branch width** makes them solid rather than a wireframe, and **Width taper** shrinks it generation by generation so the trunk is thick and the twigs stay fine — a constant width looks like pipe cleaners and is most of why an untapered tree never reads as one. **Bend** bows each bough along its own length instead of leaving all the flex in the joints, which is what a real branch does and what stops low Depth settings looking polygonal; at 0 the branches are straight sticks, as they were. Sway is the wind strength and Wind speed its rate. **Arm Sway's L/M/H chips and the trees gust on the beat.** It stamps into the fire buffer like the other point effects, so a Fade or Fire filter turns the moving tips into trails.",
