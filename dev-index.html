@@ -1073,7 +1073,10 @@
      the bottom corner on its own, so layers 3 and 4 could not have their corners and fell
      back to the middle of the screen. It already scrolls internally, so the cost is scrolling
      a long effect's controls rather than losing the layout. */
-  #breakout .ctl.lyr-box { width: 300px; max-height: calc(50vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
+  /* NO width here: every box in the grid is BRK_W wide, layer boxes included, so the
+     columns line up and brkW is the same number for all of them. It was 300px against the
+     slider boxes' 244 and nothing shared a column edge. */
+  #breakout .ctl.lyr-box { max-height: calc(50vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
   #breakout .ctl.lyr-box > .lyrblock { cursor: default; }
   #breakout .ctl.lyr-box > .lyrblock > label:first-child,
   #breakout .ctl.lyr-box > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
@@ -19815,11 +19818,16 @@
   // The quarter-cell index that puts an edge at a given pixel, in the anchor frame brkPlace
   // reads: for a right/bottom anchor the stored coordinate IS the far edge.
   function brkAnchor(x, y, w, h, g) {
+    // EDGE AFFINITY: hold the near edge and grow inward. Right for a DROP -- you put the box
+    // where it is -- but a slider box has to INHERIT its layer box's anchor instead, so the
+    // choosing half is split out.
+    return brkAnchorAs(x, y, w, h, g,
+      x + w / 2 > window.innerWidth / 2, y + h / 2 > window.innerHeight / 2);
+  }
+  function brkAnchorAs(x, y, w, h, g, right, bottom) {
     const qx = g.cw / BRK_SUB, qy = g.ch / BRK_SUB;
-    const right = x + w / 2 > window.innerWidth / 2;
-    const bottom = y + h / 2 > window.innerHeight / 2;
     return {
-      right: right, bottom: bottom,
+      right: !!right, bottom: !!bottom,
       gx: Math.round(((right ? x + w : x) - g.x0) / qx),
       gy: Math.round(((bottom ? y + h : y) - g.y0) / qy),
     };
@@ -19842,18 +19850,68 @@
     }
     return best;
   }
+  // WHICH WAY A LAYER'S SLIDER BOXES GROW. Toward the middle of the screen horizontally --
+  // a layer box in the left half puts its sliders to its RIGHT, one in the right half puts
+  // them to its LEFT -- and in the layer box's own vertical direction, so a top-anchored
+  // layer's sliders hang down from its top edge and a bottom-anchored layer's stack up from
+  // its bottom. The layer box's stored anchor is authoritative when it has one; a layer box
+  // that has never been dragged is read from where it actually sits.
+  function layerGrow(slot, r) {
+    const p = brkPos.get(popKey(slot, "layer"));
+    return {
+      right: r.left + r.width / 2 > window.innerWidth / 2,     // which half it is in
+      bottom: p ? !!p.bottom : r.top + r.height / 2 > window.innerHeight / 2,
+    };
+  }
+  // The candidate positions for one layer's slider boxes, in the order they should be filled:
+  // down (or up) the first column, then the next column further toward the middle. A column
+  // ENDS when the next box would start past the vertical centre -- that is the user's rule --
+  // or when it would leave the screen, whichever comes first.
+  //
+  // Note the two limits are both needed and neither implies the other: on a short viewport a
+  // 500px box already reaches the centre from the top edge, so the centre rule alone would
+  // put every box in a column of its own; on a tall one a column would happily run off the
+  // bottom of the screen before it ever reached the middle.
+  function columnSpot(slot, r, w, h, g, taken) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const midY = vh / 2;
+    const dir = layerGrow(slot, r);
+    const stepX = w + BRK_GAP, stepY = h + BRK_GAP;
+    // Column 0 sits against the layer box's centre-facing edge.
+    const x0 = dir.right ? r.left - BRK_GAP - w : r.right + BRK_GAP;
+    for (let col = 0; col < 12; col++) {
+      const x = dir.right ? x0 - col * stepX : x0 + col * stepX;
+      if (x < g.x0 || x + w > vw - BRK_EDGE) break;      // out of room sideways
+      // Start of the column: level with the layer box's own anchored edge.
+      let y = dir.bottom ? r.bottom - h : r.top;
+      for (let i = 0; i < 24; i++) {
+        if (y < g.y0 || y + h > vh - BRK_EDGE) break;    // off the screen: next column
+        if (dir.bottom ? y + h < midY : y > midY) break; // crossed the middle: next column
+        if (rectClear(x, y, w, h, taken)) return { x: x, y: y, right: dir.right, bottom: dir.bottom };
+        y += dir.bottom ? -stepY : stepY;
+      }
+    }
+    return null;
+  }
   function placeBeside(slot, key, box) {
     if (!brkFree()) return;
     const lb = breakout.querySelector('.lyr-box[data-slot="' + slot + '"]');
     const g = brkGrid();
     const w = brkW(box, g), h = brkH(box, g);
-    // Cluster around the layer's own box when it is open; with it closed there is nothing to
-    // cluster around, so fall back to that layer's CORNER — its sliders still gather where
-    // that layer lives rather than piling up at the top of the column.
+    const taken = brkRects(box);
+    // With the layer's own box open, build its column beside it. With it closed there is
+    // nothing to build against, so fall back to the nearest free spot to that layer's CORNER
+    // -- its sliders still gather where that layer lives rather than piling up in one column.
     const r = (lb && lb.style.display !== "none") ? lb.getBoundingClientRect() : null;
+    if (r) {
+      const spot = columnSpot(slot, r, w, h, g, taken);
+      // The anchor is the LAYER BOX'S, not this box's own position: that is what keeps a
+      // bottom-anchored layer's sliders growing upward as their content changes height.
+      if (spot) { brkPos.set(key, brkAnchorAs(spot.x, spot.y, w, h, g, spot.right, spot.bottom)); return; }
+    }
     const c = r ? { cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2 } : cornerCentre(slot, w, h, g);
-    const spot = nearestFree(c.cx, c.cy, w, h, g, brkRects(box));
-    if (spot) brkPos.set(key, brkAnchor(spot.x, spot.y, w, h, g));
+    const spot2 = nearestFree(c.cx, c.cy, w, h, g, taken);
+    if (spot2) brkPos.set(key, brkAnchor(spot2.x, spot2.y, w, h, g));
   }
   // The centre of the corner this slot owns, for a box of this size. LAYER_CORNERS is read
   // left-to-right, top-to-bottom, so the slot order IS the reading order: 1 2 / 3 4.

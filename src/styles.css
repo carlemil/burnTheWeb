@@ -1055,7 +1055,10 @@
      the bottom corner on its own, so layers 3 and 4 could not have their corners and fell
      back to the middle of the screen. It already scrolls internally, so the cost is scrolling
      a long effect's controls rather than losing the layout. */
-  #breakout .ctl.lyr-box { width: 300px; max-height: calc(50vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
+  /* NO width here: every box in the grid is BRK_W wide, layer boxes included, so the
+     columns line up and brkW is the same number for all of them. It was 300px against the
+     slider boxes' 244 and nothing shared a column edge. */
+  #breakout .ctl.lyr-box { max-height: calc(50vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
   #breakout .ctl.lyr-box > .lyrblock { cursor: default; }
   #breakout .ctl.lyr-box > .lyrblock > label:first-child,
   #breakout .ctl.lyr-box > .lyrblock > .ctl-grp:first-child { margin-top: 0; }
