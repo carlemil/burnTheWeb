@@ -14,6 +14,25 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.55.2] — 2026-08-25
+
+### Fixed
+- **Rearranging layers no longer leaves a ghost of another layer's picture behind.** A layer's
+  trails — the heat a Fire, Fade, Echo, Swirl or Zoom feedback filter holds on to — were stored
+  against a layer's POSITION in the stack rather than against the layer itself. Dragging a row,
+  or deleting a layer above it, therefore handed a layer whatever the previous occupant had
+  left there. With a short-lived filter that is a blink; with **Zoom feedback**, whose Lifetime
+  runs to 0.995 and whose whole purpose is to hold an image, the inherited picture was hundreds
+  of frames old and took several seconds to fade — so a second copy of the scene appeared the
+  moment layers were rearranged. Trails now move with their layer, so a drag keeps each layer's
+  own, and deleting one leaves every survivor untouched.
+
+### Internal
+- `tools/slotprobe.js` checks the permutation by buffer identity rather than by index, so a
+  buffer cannot be silently lost or duplicated on a reorder or a delete, and asserts that the
+  outgoing half of those arrays is left alone — it belongs to a scene mid-blend, not to the one
+  being edited. Verified to go red against the previous behaviour.
+
 ## [1.55.1] — 2026-08-25
 
 ### Fixed
