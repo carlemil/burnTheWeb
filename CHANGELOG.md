@@ -14,6 +14,34 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.55.1] — 2026-08-25
+
+### Fixed
+- **"Show author" now does what it says, and shows it straight away.** It used to switch the
+  whole scene banner on and off rather than the author — so with no cloud profile name and no
+  collection there was nobody to credit, the scene name disappeared along with the author, and
+  the tick appeared to do nothing whichever way you set it. The banner names the scene either
+  way now; the tick decides whether who made it follows. It also used to take effect only the
+  next time you picked a scene, which is most of why it read as dead — it updates the banner
+  the moment you click it. When there is nobody to credit yet, a line under it says so.
+- **A layer's colour is always bright enough to read.** The colour taken from a layer's palette
+  is also the colour its box title is printed in, and a dark one made the title unreadable
+  against the panel. Every colour is now lifted until it has real contrast, keeping its hue — a
+  deep blue comes back as a lighter blue rather than being left as a smudge. The title was also
+  being dimmed on top of that, which is no longer the case.
+
+### Changed
+- **A layer box's title is bold**, so it stands out from the slider boxes around it when several
+  are open at once.
+
+### Internal
+- `tools/author-check.js` drives the real tick and reads the banner: ticking credits the scene
+  at once, unticking removes the author but keeps the name. Verified against the previous code,
+  where unticking left the author sitting on the banner untouched.
+- `tintprobe.js` asserts that every colour the picker can hand out clears the contrast floor,
+  across every palette — including a pure blue ramp, which is the case a naive brightness test
+  gets wrong (pure blue carries a fifteenth of the luminance of pure yellow).
+
 ## [1.55.0] — 2026-08-25
 
 ### Added
