@@ -160,12 +160,13 @@
       defaults: { polamt: [1, 1], polrep: [1, 1] },
       gl: src => postPass("polar", src, u => { gl.uniform1f(u.uAmount, polAmt); gl.uniform1f(u.uRepeat, polRep); }) },
     { id: "ascii", cpuOk: false, name: "ASCII mosaic", stage: "post", params: ["ascset", "ascell", "ascmix"],
-      help: "Replaces each cell with a character picked by its brightness, keeping the cell's colour \u2014 the darker the cell, the emptier the glyph. **Script** chooses the character set: Latin, Arabic, Georgian, Japanese, Cyrillic, Greek, block shades or Braille. Whichever you pick, the glyphs are sorted by how much ink they actually carry in your machine's font, so the picture reads through the density rather than the letters. Halftone is the dot version of the same idea; a character grid reads quite differently.",
+      help: "Replaces each cell with a character picked by its brightness, keeping the cell's colour \u2014 the darker the cell, the emptier the glyph. **Script** chooses the character set: Latin, Arabic, Georgian, Japanese, Cyrillic, Greek, block shades, Braille, or **Mixed** \u2014 every script at once. Each set is a whole alphabet \u2014 up to 255 characters \u2014 sorted by how much ink they actually carry in your machine's font, and grouped into levels by weight \u2014 every character of the same weight is interchangeable, and each cell picks one of them at random, so a flat area is drawn with a whole spread of characters instead of one repeated tile. Halftone is the dot version of the same idea; a character grid reads quite differently.",
       defaults: { ascset: [0, 0], ascell: [8, 8], ascmix: [1, 1] },
       gl: src => { ensureAsciiAtlas();
         postPass("ascii", src, u => {
           bindTexUnit(1, glTex.ascii); gl.uniform1i(u.uAtlas, 1);
           gl.uniform1f(u.uCell, ascCell); gl.uniform1f(u.uMix, ascMix); gl.uniform1f(u.uGlyphs, asciiAtlasN);
+          gl.uniform2fv(u.uBucket, asciiBuckets);
         }); } },
     { id: "invert", cpuOk: false, name: "Invert", stage: "post", params: ["invamt"],
       help: "The plain negative, on a slider - so it can be crossfaded, drifted, or flicked by a beat. Solarize only folds the top of the ramp back down; this turns the whole thing over.",

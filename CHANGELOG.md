@@ -14,6 +14,31 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.57.0] — 2026-08-26
+
+### Added
+- **ASCII mosaic: whole alphabets, and a Mixed script.** Each set is now a full script rather
+  than a hand-picked handful — up to 255 characters. Latin adds the accented letters, Arabic
+  adds every isolated, initial, medial and final letter form, Georgian carries all four of its
+  cases, Japanese has the complete hiragana and katakana plus kanji by stroke count, and
+  Braille is all 256 dot patterns. A ninth choice, **Mixed**, draws on every script at once.
+- **Several characters per brightness, picked at random.** Characters of the same weight are
+  now interchangeable: each cell picks one of them, so a flat area is drawn with a whole
+  spread of characters instead of one repeated tile. The picture stays exactly as bright as
+  it should be — only which character carries that brightness varies.
+
+### Fixed
+- A script your machine only partly has a font for no longer seats a run of identical empty
+  boxes in the middle of the ramp; missing characters are now detected and dropped one by one,
+  and the rest of the script still works.
+
+### Internal
+- New `tools/asciiprobe.js` pins the ramp: set sizes, even sampling when a script overflows the
+  cap, and that no brightness level can end up with zero glyphs (which would punch black holes
+  through the midtones). Verified against three deliberately broken builds. The glyph pick uses
+  an integer hash rather than `fract(sin(...))`, per the v1.55.6 rule — a driver recompile must
+  not be able to reshuffle the text.
+
 ## [1.56.0] — 2026-08-25
 
 ### Added

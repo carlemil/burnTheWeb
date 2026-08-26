@@ -202,18 +202,37 @@
     precision highp float;
     uniform sampler2D uSrc; uniform sampler2D uAtlas;
     uniform vec2 uSize; uniform float uCell; uniform float uMix; uniform float uGlyphs;
+    #define ASC_LEVELS 64
+    uniform vec2 uBucket[ASC_LEVELS];
     in vec2 vUv; out vec4 o;
+    // INTEGER hash, deliberately -- NOT fract(sin(x)*43758.5). This picks which character a
+    // cell shows, and it must give the same answer forever: the ghost Glass ball of v1.55.x
+    // was a sin-hash whose value changed when the driver re-optimised the shader in the
+    // background. Pure integer arithmetic is exact on every compiler, so a recompile cannot
+    // reshuffle the text on screen.
+    uint ascHash(uvec2 p){
+      uint h = p.x*374761393u + p.y*668265263u;
+      h = (h ^ (h >> 13)) * 1274126177u;
+      return h ^ (h >> 16);
+    }
     void main(){
       float cs = max(3.0, uCell);
       vec2 cell = floor(gl_FragCoord.xy / cs);
       vec2 inCell = fract(gl_FragCoord.xy / cs);
       vec3 c = texture(uSrc, (cell + 0.5) * cs / uSize).rgb;
       float l = dot(c, vec3(0.299, 0.587, 0.114));
-      float n = max(1.0, uGlyphs);
-      float k = floor(clamp(l, 0.0, 0.9999) * n);
+      // Brightness chooses a LEVEL, not a glyph. Each level holds every character that carries
+      // about the same amount of ink, and the cell picks one of them by hash -- so a flat
+      // region is drawn with a whole spread of characters instead of one repeated tile, while
+      // still being exactly as bright as it should be. uBucket[lv] is (first glyph, how many),
+      // packed on the CPU where the coverages were measured.
+      int lv = int(clamp(l, 0.0, 0.9999) * float(ASC_LEVELS));
+      vec2 bk = uBucket[lv];
+      float r = float(ascHash(uvec2(cell)) & 0xffffu) / 65536.0;
+      float k = bk.x + floor(r * bk.y);
       // The atlas is drawn top-down; the framebuffer is Y-flipped against it, so flip the
       // in-cell y or every glyph renders upside down.
-      vec2 auv = vec2((k + inCell.x) / n, 1.0 - inCell.y);
+      vec2 auv = vec2((k + inCell.x) / max(1.0, uGlyphs), 1.0 - inCell.y);
       float on = texture(uAtlas, auv).r;
       o = vec4(mix(texture(uSrc, vUv).rgb, c * on, clamp(uMix, 0.0, 1.0)), 1.0);
     }`;
@@ -792,7 +811,7 @@
     glProg.dither = makeProg(VS_QUAD, FS_DITHER, ["uSrc", "uLevels", "uAmount"]);
     glProg.rblur = makeProg(VS_QUAD, FS_RBLUR, ["uSrc", "uAmount", "uMix"]);
     glProg.polar = makeProg(VS_QUAD, FS_POLAR, ["uSrc", "uSize", "uAmount", "uRepeat"]);
-    glProg.ascii = makeProg(VS_QUAD, FS_ASCII, ["uSrc", "uAtlas", "uSize", "uCell", "uMix", "uGlyphs"]);
+    glProg.ascii = makeProg(VS_QUAD, FS_ASCII, ["uSrc", "uAtlas", "uSize", "uCell", "uMix", "uGlyphs", "uBucket"]);
     glProg.invert = makeProg(VS_QUAD, FS_INVERT, ["uSrc", "uAmount"]);
     glProg.dblur = makeProg(VS_QUAD, FS_DBLUR, ["uSrc", "uSize", "uAmount", "uAngle"]);
     glProg.anamorph = makeProg(VS_QUAD, FS_ANAMORPH, ["uSrc", "uSize", "uAmount", "uLen"]);
@@ -2066,71 +2085,136 @@
     }
   }
   // ---- THE ASCII MOSAIC'S GLYPH SETS ---------------------------------------------------
-  // Each set is a string of candidate characters. They are NOT used in this order: the atlas
-  // builder measures each glyph's ink coverage and sorts them, so what the shader sees is a
-  // ramp from emptiest to fullest. That means a set only has to be a good SPREAD of densities
-  // -- a script's light strokes and its heavy ones -- and the measurement does the rest.
+  // Each set names UNICODE RANGES rather than a hand-picked ramp. The ramp is not authored at
+  // all: the atlas builder renders every candidate, MEASURES its ink coverage and sorts them,
+  // so a set only has to be a big spread of shapes from one script and the measurement turns
+  // it into a dither. That is why these are whole alphabets -- the more glyphs, the finer the
+  // brightness steps, and 255 of them gives roughly one glyph per level of an 8-bit ramp
+  // against the seven the filter shipped with.
   //
-  // Every set starts with a space, which is the guaranteed-empty glyph the darkest cells map
-  // to. Without it the darkest cell still shows the lightest character, and shadows fill up.
-  // The system font renders these; a script the machine has no font for comes out as tofu
-  // boxes, and buildAsciiAtlas detects that (every glyph the same coverage) and falls back to
-  // Latin rather than tiling boxes across the picture.
+  // Ranges are deliberately WIDER than the cap. Overflow is sampled evenly across the set
+  // (see pickChars), never truncated, so a set keeps its full range of shapes -- truncating
+  // Braille at 255 would drop only one pattern, but truncating Blocks would drop every
+  // box-drawing character and leave just the shade squares.
+  function chRange(a, b) { let s = ""; for (let c = a; c <= b; c++) s += String.fromCodePoint(c); return s; }
   const ASCII_SETS = [
-    { name: "Latin",    chars: " .'`^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$" },
-    { name: "Arabic",   chars: " \u0660\u060c.\u0640\u066b\u0621\u0627\u0625\u0623\u0622\u0644\u062f\u0630\u0631\u0632\u0648\u0649\u0628\u062a\u062b\u0646\u064a\u0633\u0634\u0635\u0636\u0637\u0638\u0639\u063a\u0641\u0642\u0643\u0645\u0647\u062c\u062d\u062e" },
-    { name: "Georgian", chars: " \u10a7\u10a1.\u10f2\u10d0\u10d8\u10dd\u10e3\u10d4\u10d5\u10d7\u10dc\u10da\u10e0\u10e1\u10e8\u10ee\u10ea\u10e9\u10eb\u10ec\u10ed\u10ef\u10f0\u10d2\u10d3\u10d9\u10de\u10e2\u10e4\u10e5\u10e6\u10e7" },
-    { name: "Japanese", chars: " \u3001\u3002\u30fc\u4e00\u4e8c\u4eba\u516b\u5341\u5165\u4e01\u4e09\u4e03\u4e0a\u4e0b\u5c0f\u53e3\u5c71\u5ddd\u5343\u5927\u5929\u65e5\u76ee\u7530\u672c\u7533\u7531\u96fb\u96e8\u98a8\u96ea\u9f8d" },
-    { name: "Cyrillic", chars: " .,-:;\u0442\u0433\u043d\u043f\u0438\u043a\u043b\u0441\u0431\u0432\u044c\u044a\u044b\u0434\u0430\u0436\u0437\u0449\u0444\u0448\u044e\u043c\u044d\u0451@\u0416\u0429\u0424\u0428" },
-    { name: "Greek",    chars: " .,\u0384\u00b7\u03b9\u03c4\u03b3\u03bd\u03c5\u03c0\u03bb\u03ba\u03c3\u03bf\u03b5\u03b1\u03c1\u03b4\u03b6\u03be\u03bc\u03b8\u03b2\u03c6\u03c8\u03c9\u039e\u03a8\u0398\u03a9\u03a6" },
-    { name: "Blocks",   chars: " \u2591\u2592\u2593\u2588" },
-    { name: "Braille",  chars: " \u2801\u2803\u2807\u280f\u281f\u283f\u287f\u28ff" },
+    // Printable ASCII, then the Latin-1 accented letters: the accents add ink to letters whose
+    // base forms are already in the ramp, which is exactly the fine gradation the wide sets buy.
+    { name: "Latin", chars: () => chRange(0x20, 0x7e) + chRange(0xc0, 0xff) },
+    // Arabic-Indic digits, the base letters, then Presentation Forms-B -- the isolated, initial,
+    // medial and final shapes of each letter. Those forms are the reason Arabic can fill a ramp:
+    // one letter contributes four different densities. Combining diacritics are NOT included;
+    // they render on a dotted circle or not at all, which is noise rather than a density step.
+    { name: "Arabic", chars: () => chRange(0x660, 0x669) + chRange(0x621, 0x63a) + chRange(0x641, 0x64a) + chRange(0xfe80, 0xfefc) },
+    // All four Georgian cases: Asomtavruli, Mkhedruli, Nuskhuri and Mtavruli. They are the same
+    // alphabet drawn four ways, so the coverage spread is wide and the shapes stay coherent.
+    { name: "Georgian", chars: () => chRange(0x10a0, 0x10c5) + chRange(0x10d0, 0x10fa) + chRange(0x2d00, 0x2d25) + chRange(0x1c90, 0x1cba) },
+    // Hiragana and katakana in full, then kanji ordered roughly by stroke count -- one stroke to
+    // twenty-odd, which is a density ramp in its own right before anything is measured.
+    { name: "Japanese", chars: () => chRange(0x3041, 0x3096) + chRange(0x30a1, 0x30fa)
+        + "\u3001\u3002\u30fc\u4e00\u4e8c\u4e09\u5341\u4eba\u516b\u5165\u4e01\u4e03\u4e5d\u5c0f\u53e3\u5c71\u5ddd\u5343\u5927\u5929\u65e5\u6708\u76ee\u7530\u672c\u7533\u7531\u77f3\u82b1\u9752\u661f\u6625\u98a8\u6d77\u96ea\u9ce5\u9b5a\u9ed2\u7dd1\u8449\u96fb\u96e8\u9f8d\u68ee\u85ac\u9451\u9e97" },
+    { name: "Cyrillic", chars: () => chRange(0x400, 0x45f) + chRange(0x460, 0x481) },
+    { name: "Greek", chars: () => chRange(0x386, 0x3ce) + chRange(0x1f00, 0x1f15) + chRange(0x1f60, 0x1f7d) },
+    // Shade squares, geometric shapes and the whole box-drawing set. The box characters are
+    // directional rather than uniform, which reads as structure inside the shading.
+    { name: "Blocks", chars: () => chRange(0x2580, 0x259f) + chRange(0x25a0, 0x25ff) + chRange(0x2500, 0x257f) },
+    // All 256 Braille patterns. The best-behaved set in the list by construction: dot counts
+    // from 0 to 8 in every arrangement, so the measured ramp comes out almost perfectly even.
+    { name: "Braille", chars: () => chRange(0x2800, 0x28ff) },
+    // Every script at once. It reads the entries above rather than repeating their ranges, so
+    // a script added to this list joins the mix for nothing. The even sampling in pickChars
+    // then takes a proportional slice of each -- concatenating gives thousands of candidates
+    // and the cap keeps 255 of them, spread across all eight rather than the first two.
+    { name: "Mixed", chars: () => ASCII_SETS.slice(0, 8).map(s => s.chars()).join("") },
   ];
   // Which script is loaded into glTex.ascii right now, so a frame with the same script pays
   // nothing. -1 forces a rebuild (startup, and a font that may have arrived late).
   let asciiAtlasSet = -1, asciiAtlasN = 1;
+  // (first glyph, how many) per brightness level, packed for uBucket. Must match ASC_LEVELS.
+  const ASCII_LEVELS = 64;
+  const asciiBuckets = new Float32Array(ASCII_LEVELS * 2);
   const ASCII_GLYPH_PX = 32;                  // atlas cell size; sampled LINEAR so any Cell fits
+  const ASCII_MAX_GLYPHS = 255;               // one glyph per level of an 8-bit brightness ramp
+  // A codepoint no font has, rendered alongside the real ones so its coverage can be compared
+  // against. Unassigned in plane 2, so a font claiming it would be the bug.
+  const ASCII_TOFU = String.fromCodePoint(0x2ffff);
+  // Dedupe, then fit to the cap by sampling EVENLY across the set rather than cutting its tail.
+  function pickChars(str, cap) {
+    const all = [...new Set([...str])].filter(c => c !== " ");
+    if (all.length <= cap) return all;
+    const out = [];
+    for (let i = 0; i < cap; i++) out.push(all[Math.floor(i * all.length / cap)]);
+    return out;
+  }
   function buildAsciiAtlas(setIdx) {
     const set = ASCII_SETS[setIdx] || ASCII_SETS[0];
-    const chars = [...set.chars];             // spread, not split: some of these are surrogate pairs
-    const G = ASCII_GLYPH_PX, cv = document.createElement("canvas");
-    cv.width = G * chars.length; cv.height = G;
+    const G = ASCII_GLYPH_PX;
+    // The strip is one texture row of cells, so its WIDTH is what the GPU has to accept.
+    // A machine at the WebGL2 minimum of 2048 gets 64 glyphs rather than a failed upload --
+    // still an order of magnitude more than the seven this filter shipped with.
+    const cap = Math.max(8, Math.min(ASCII_MAX_GLYPHS, Math.floor(gl.getParameter(gl.MAX_TEXTURE_SIZE) / G)));
+    const chars = pickChars(set.chars(), cap);
+    const font = Math.round(G * 0.82) + "px 'Segoe UI', 'Noto Sans', 'Noto Sans Arabic', 'Noto Sans Georgian', 'Noto Sans Symbols2', 'Yu Gothic', 'Meiryo', sans-serif";
+    // Pass 1: draw every candidate plus the tofu reference, and measure ink coverage.
+    const cv = document.createElement("canvas");
+    cv.width = G * (chars.length + 1); cv.height = G;
     const c = cv.getContext("2d", { willReadFrequently: true });
     c.fillStyle = "#000"; c.fillRect(0, 0, cv.width, G);
-    c.fillStyle = "#fff"; c.textAlign = "center"; c.textBaseline = "middle";
-    // A generic family list so each script falls to a font that actually has it. The size is
-    // most of the cell: the glyph should FILL it, since coverage is the whole point.
-    c.font = Math.round(G * 0.82) + "px 'Segoe UI', 'Noto Sans', 'Noto Sans Arabic', 'Noto Sans Georgian', 'Yu Gothic', 'Meiryo', sans-serif";
+    c.fillStyle = "#fff"; c.textAlign = "center"; c.textBaseline = "middle"; c.font = font;
     chars.forEach((ch, i) => c.fillText(ch, i * G + G / 2, G / 2 + G * 0.04));
-    // MEASURE, THEN SORT. Ink coverage per glyph, from the pixels actually rendered -- so the
-    // ramp is right for whatever font this machine used, not for the one the set was typed
-    // against. This is the step that turns a character set into a dither.
+    c.fillText(ASCII_TOFU, chars.length * G + G / 2, G / 2 + G * 0.04);
     const img = c.getImageData(0, 0, cv.width, G).data;
-    const cov = chars.map((_, i) => {
+    const covOf = i => {
       let s = 0;
       for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) s += img[((y * cv.width) + i * G + x) * 4];
       return s / (G * G * 255);
-    });
-    // Tofu detection: a script the machine cannot render draws the same box for every glyph,
-    // so the coverages collapse onto one value. Fall back to Latin rather than tile boxes.
-    const nonSpace = cov.filter((_, i) => i > 0);
-    const spread = Math.max(...nonSpace) - Math.min(...nonSpace);
-    if (setIdx > 0 && spread < 0.05) return buildAsciiAtlas(0);
-    const order = chars.map((_, i) => i).sort((a, b) => cov[a] - cov[b]);
-    // Re-render in sorted order into the strip the shader indexes.
+    };
+    const cov = chars.map((_, i) => covOf(i)), tofuCov = covOf(chars.length);
+    // PER-GLYPH tofu rejection, not a whole-set check. A font covering only part of a script
+    // renders the rest as one identical box, and those boxes would sit in the ramp as a run of
+    // the same heavy blob -- worse than the missing glyphs, because they all measure the same.
+    // A glyph whose coverage is EXACTLY the missing-character box's is that box.
+    const keep = chars.map((_, i) => i).filter(i => cov[i] > 1e-6 && Math.abs(cov[i] - tofuCov) > 1e-9);
+    if (keep.length < 8) return setIdx === 0 ? buildAsciiAtlas0(chars, cov, chars.map((_, i) => i), font, G, cv)
+                                             : buildAsciiAtlas(0);
+    keep.sort((a, b) => cov[a] - cov[b]);
+    return buildAsciiAtlas0(chars, cov, keep, font, G, cv, setIdx);
+  }
+  // Pass 2: the sorted strip. Cells are COPIED from the measurement canvas rather than
+  // re-rendered, so the pixels the ramp was measured from are exactly the pixels uploaded.
+  // Cell 0 is left blank: the darkest cells need a guaranteed-empty glyph or shadows fill in.
+  function buildAsciiAtlas0(chars, cov, keep, font, G, srcCv, setIdx) {
+    const n = keep.length + 1;
     const out = document.createElement("canvas");
-    out.width = G * chars.length; out.height = G;
+    out.width = G * n; out.height = G;
     const oc = out.getContext("2d", { willReadFrequently: true });
     oc.fillStyle = "#000"; oc.fillRect(0, 0, out.width, G);
-    oc.fillStyle = "#fff"; oc.textAlign = "center"; oc.textBaseline = "middle"; oc.font = c.font;
-    order.forEach((src, i) => oc.fillText(chars[src], i * G + G / 2, G / 2 + G * 0.04));
+    keep.forEach((src, i) => oc.drawImage(srcCv, src * G, 0, G, G, (i + 1) * G, 0, G, G));
+    // GROUP THE RAMP INTO LEVELS. keep is sorted by coverage, so every character of a given
+    // weight is a contiguous run -- one scan gives each level its (start, count). Cell 0 is
+    // the blank and carries coverage 0, so it is the whole of the darkest level.
+    // A level no character happens to land in inherits the nearest one below it (or the first
+    // non-empty above, for a run of empties at the dark end); a zero count would render
+    // glyph 0 everywhere and punch black holes through the midtones.
+    const hi = keep.length ? cov[keep[keep.length - 1]] : 1;
+    const lvlOf = v => Math.max(0, Math.min(ASCII_LEVELS - 1, Math.floor((hi > 1e-6 ? v / hi : 0) * ASCII_LEVELS)));
+    asciiBuckets.fill(0);
+    asciiBuckets[0] = 0; asciiBuckets[1] = 1;            // darkest level: the blank cell
+    keep.forEach((src, i) => {
+      const b = lvlOf(cov[src]) * 2;
+      if (asciiBuckets[b + 1] === 0) asciiBuckets[b] = i + 1;
+      asciiBuckets[b + 1]++;
+    });
+    for (let b = 1; b < ASCII_LEVELS; b++) {
+      if (asciiBuckets[b * 2 + 1] === 0) { asciiBuckets[b * 2] = asciiBuckets[(b - 1) * 2]; asciiBuckets[b * 2 + 1] = asciiBuckets[(b - 1) * 2 + 1]; }
+    }
     const px = oc.getImageData(0, 0, out.width, G).data;
     const red = new Uint8Array(out.width * G);
     for (let i = 0; i < red.length; i++) red[i] = px[i * 4];
     gl.bindTexture(gl.TEXTURE_2D, glTex.ascii);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, out.width, G, 0, gl.RED, gl.UNSIGNED_BYTE, red);
-    asciiAtlasSet = setIdx; asciiAtlasN = chars.length;
+    asciiAtlasSet = setIdx === undefined ? 0 : setIdx; asciiAtlasN = n;
   }
   function ensureAsciiAtlas() {
     const want = Math.max(0, Math.min(ASCII_SETS.length - 1, Math.round(ascSet)));
