@@ -2092,36 +2092,57 @@
   // brightness steps, and 255 of them gives roughly one glyph per level of an 8-bit ramp
   // against the seven the filter shipped with.
   //
+  // They are alphabets and not CHARACTER SETS: what goes in is what a person writes words
+  // with, so no symbol blocks, no maths signs, no archaic or liturgical scripts, no diacritic
+  // marks on their own. Two reasons, and the second is the load-bearing one. The look is meant
+  // to be writing. And symbols are systematically HEAVIER than letters, so after the coverage
+  // sort they take the whole bright end of the ramp -- the brightest, most-looked-at part of
+  // the picture ends up being the part that is not writing at all.
+  //
   // Ranges are deliberately WIDER than the cap. Overflow is sampled evenly across the set
   // (see pickChars), never truncated, so a set keeps its full range of shapes -- truncating
   // Braille at 255 would drop only one pattern, but truncating Blocks would drop every
   // box-drawing character and leave just the shade squares.
   function chRange(a, b) { let s = ""; for (let c = a; c <= b; c++) s += String.fromCodePoint(c); return s; }
   const ASCII_SETS = [
-    // Printable ASCII, then the Latin-1 accented letters: the accents add ink to letters whose
-    // base forms are already in the ramp, which is exactly the fine gradation the wide sets buy.
-    { name: "Latin", chars: () => chRange(0x20, 0x7e) + chRange(0xc0, 0xff) },
-    // Arabic-Indic digits, the base letters, then Presentation Forms-B -- the isolated, initial,
-    // medial and final shapes of each letter. Those forms are the reason Arabic can fill a ramp:
-    // one letter contributes four different densities. Combining diacritics are NOT included;
-    // they render on a dotted circle or not at all, which is noise rather than a density step.
+    // Letters, digits and the punctuation that appears inside running text. Deliberately NOT
+    // all of printable ASCII: @ # $ % & * < > { } | \ and friends are the heaviest glyphs in
+    // the range, so they used to occupy the whole bright end of the ramp and the picture read
+    // as symbols rather than as writing. The accented letters are the rest of Latin-1 minus
+    // its two maths signs -- they are letters people write words with, and their extra ink is
+    // useful gradation between the plain forms.
+    { name: "Latin", chars: () => chRange(0x41, 0x5a) + chRange(0x61, 0x7a) + chRange(0x30, 0x39)
+        + ".,;:!?()-" + "\u0027\u0022" + chRange(0xc0, 0xd6) + chRange(0xd8, 0xf6) + chRange(0xf8, 0xff) },
+    // Arabic-Indic digits, the letters, and Presentation Forms-B: the initial, medial, final
+    // and isolated shapes each letter takes inside a word, which is what Arabic writing
+    // actually looks like on the page. The FE70..FE7F block above them is NOT included -- those
+    // are the vowel marks, which are diacritics rather than letters and are usually left out of
+    // ordinary text anyway.
     { name: "Arabic", chars: () => chRange(0x660, 0x669) + chRange(0x621, 0x63a) + chRange(0x641, 0x64a) + chRange(0xfe80, 0xfefc) },
-    // All four Georgian cases: Asomtavruli, Mkhedruli, Nuskhuri and Mtavruli. They are the same
-    // alphabet drawn four ways, so the coverage spread is wide and the shapes stay coherent.
-    { name: "Georgian", chars: () => chRange(0x10a0, 0x10c5) + chRange(0x10d0, 0x10fa) + chRange(0x2d00, 0x2d25) + chRange(0x1c90, 0x1cba) },
-    // Hiragana and katakana in full, then kanji ordered roughly by stroke count -- one stroke to
-    // twenty-odd, which is a density ramp in its own right before anything is measured.
+    // Mkhedruli, the everyday Georgian script, and Mtavruli, its capitals. The Asomtavruli and
+    // Nuskhuri cases were dropped: they are liturgical scripts, read in old manuscripts rather
+    // than written in texts.
+    { name: "Georgian", chars: () => chRange(0x10d0, 0x10fa) + chRange(0x1c90, 0x1cba) },
+    // Both kana in full plus everyday kanji, ordered roughly by stroke count -- which is a
+    // density ramp in its own right before anything is measured.
     { name: "Japanese", chars: () => chRange(0x3041, 0x3096) + chRange(0x30a1, 0x30fa)
-        + "\u3001\u3002\u30fc\u4e00\u4e8c\u4e09\u5341\u4eba\u516b\u5165\u4e01\u4e03\u4e5d\u5c0f\u53e3\u5c71\u5ddd\u5343\u5927\u5929\u65e5\u6708\u76ee\u7530\u672c\u7533\u7531\u77f3\u82b1\u9752\u661f\u6625\u98a8\u6d77\u96ea\u9ce5\u9b5a\u9ed2\u7dd1\u8449\u96fb\u96e8\u9f8d\u68ee\u85ac\u9451\u9e97" },
-    { name: "Cyrillic", chars: () => chRange(0x400, 0x45f) + chRange(0x460, 0x481) },
-    { name: "Greek", chars: () => chRange(0x386, 0x3ce) + chRange(0x1f00, 0x1f15) + chRange(0x1f60, 0x1f7d) },
-    // All 256 Braille patterns. The best-behaved set in the list by construction: dot counts
-    // from 0 to 8 in every arrangement, so the measured ramp comes out almost perfectly even.
-    { name: "Braille", chars: () => chRange(0x2800, 0x28ff) },
+        + "\u3042\u3044\u3046\u4e00\u4e8c\u4e09\u5341\u4eba\u516b\u5165\u4e01\u4e03\u4e5d\u5c0f\u53e3\u5c71\u5ddd\u5343\u5927\u5929\u65e5\u6708\u76ee\u7530\u672c\u7533\u7531\u77f3\u82b1\u9752\u661f\u6625\u98a8\u6d77\u96ea\u9ce5\u9b5a\u9ed2\u7dd1\u8449\u96fb\u96e8\u9f8d\u68ee\u85ac\u9451\u9e97" },
+    // The living Cyrillic alphabets -- Russian, plus the letters Ukrainian, Serbian and
+    // Macedonian add. The 0460..0481 block that used to follow is Old Church Slavonic: real
+    // letters, but nobody writes them now.
+    { name: "Cyrillic", chars: () => chRange(0x400, 0x45f) },
+    // Modern Greek, accented vowels included. The polytonic blocks were dropped for the same
+    // reason as the Georgian ones -- they are how ancient Greek is printed, not how Greek is
+    // written today.
+    { name: "Greek", chars: () => chRange(0x386, 0x3ce) },
+    // The 64 six-dot cells, which is the whole of written Braille: every letter, digit and
+    // punctuation mark is one of these. The 8-dot patterns above them exist for representing
+    // computer characters, not for writing words.
+    { name: "Braille", chars: () => chRange(0x2800, 0x283f) },
     // Every script at once. It reads the entries above rather than repeating their ranges, so
     // a script added to this list joins the mix for nothing. The even sampling in pickChars
     // then takes a proportional slice of each -- concatenating gives thousands of candidates
-    // and the cap keeps 255 of them, spread across all eight rather than the first two.
+    // and the cap keeps 255 of them, spread across all seven rather than the first two.
     { name: "Mixed", chars: () => ASCII_SETS.slice(0, 7).map(s => s.chars()).join("") },
   ];
   // Which script is loaded into glTex.ascii right now, so a frame with the same script pays

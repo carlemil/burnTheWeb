@@ -14,6 +14,24 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.59.0] — 2026-08-26
+
+### Changed
+- **ASCII mosaic: every script is now just the characters you write words with.** The sets
+  were whole Unicode blocks, which swept in a lot that nobody writes: Latin carried
+  `@ # $ % & * < > { } | \` and the maths signs, Cyrillic carried Old Church Slavonic, Greek
+  carried the ancient polytonic accents, Georgian carried two liturgical scripts, and Braille
+  carried the 8-dot computer patterns. What is left is letters, digits and the punctuation
+  that appears inside a sentence.
+- The practical difference is at the **bright end**. Symbols carry much more ink than letters,
+  so once the ramp was sorted by weight they took the whole top of it — and the brightest,
+  most-looked-at part of the picture was the part that was not writing. Highlights are now
+  drawn with the densest *letters* instead.
+- Arabic keeps its initial, medial, final and isolated letter shapes: those are what Arabic
+  looks like on the page. Its vowel marks are still left out, as they are in ordinary text.
+- Your saved scenes keep the script they were set to — the choices and their order have not
+  moved.
+
 ## [1.58.0] — 2026-08-26
 
 ### Changed
