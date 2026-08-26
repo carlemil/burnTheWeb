@@ -150,9 +150,9 @@ ok(P.palRemapOne("5", gone, backLive) === "4", "string flavour in, string flavou
   // every stored blob.
   const WANT = ["fire", "ice", "toxic", "copper", "purple", "rainbow", "grayscale",
     "electric", "amber", "matrix", "sunset", "c64", "cga", "blood", "chrome",
-    "tricolor", "ember", "verdant", "sunburst"];
+    "tricolor", "ember", "verdant", "sunburst", "greenhaze"];
   ok(JSON.stringify(C.PAL_IDS) === JSON.stringify(WANT),
-     "PAL_IDS is exactly the shipped 19, in catalog order", C.PAL_IDS.join(","));
+     "PAL_IDS is exactly the shipped 20, in catalog order", C.PAL_IDS.join(","));
 
   // Round trip, built-in refs everywhere a palette can ride.
   const blob = {

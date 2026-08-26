@@ -97,6 +97,10 @@
     { name: "Ember", fn: grad([[0, [0, 0, 0]], [0.12, [70, 0, 0]], [0.5, [200, 15, 15]], [0.78, [235, 45, 25]], [0.86, [255, 130, 30]], [0.93, [255, 215, 60]], [1, [255, 250, 235]]]) },
     { name: "Verdant", fn: grad([[0, [0, 0, 0]], [0.12, [0, 60, 15]], [0.5, [15, 180, 30]], [0.78, [50, 220, 35]], [0.86, [170, 225, 40]], [0.93, [255, 225, 60]], [1, [245, 255, 235]]]) },
     { name: "Sunburst", fn: grad([[0, [0, 0, 0]], [0.1, [130, 10, 5]], [0.22, [225, 35, 15]], [0.34, [255, 150, 25]], [0.5, [255, 205, 40]], [0.72, [255, 230, 70]], [0.9, [255, 248, 170]], [1, [255, 255, 240]]]) },
+    // Authored in the palette editor (Erbsman) and promoted to a shipped ramp so the Big Drop
+    // scene in DEFAULT_LIBRARY can reference it: defaultPresets() deserializes with no custom
+    // palette list, so a content-hash id there decodes to -1 and the scene loses its colours.
+    { name: "Green haze", fn: grad([[0, [0, 46, 11]], [0.42105263157894735, [0, 255, 0]], [1, [209, 255, 82]]]) },
   ];
 
   // ---- custom palettes (the palette editor) ---------------------------------
@@ -128,7 +132,7 @@
   // to, in step with the literal — an id, once shipped, is forever.
   const PAL_IDS = ["fire", "ice", "toxic", "copper", "purple", "rainbow", "grayscale",
     "electric", "amber", "matrix", "sunset", "c64", "cga", "blood", "chrome",
-    "tricolor", "ember", "verdant", "sunburst"];
+    "tricolor", "ember", "verdant", "sunburst", "greenhaze"];
   if (PAL_IDS.length !== PAL_BUILTIN) console.error("PAL_IDS out of step with PALETTES");
   PALETTES.forEach((p, i) => { p.id = PAL_IDS[i]; });
   // A custom's id is CONTENT-DERIVED (hash of name + stops), not random: the same ramp gets

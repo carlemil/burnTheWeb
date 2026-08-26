@@ -14,6 +14,20 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.61.0] — 2026-08-26
+
+### Added
+- **Four more scenes ship with the app**: **Balls of Steel**, **Big Drop**, **Reflecting the
+  sea** and **Matrix** (by Erbsman). A first visit now opens with seven scenes plus Blank
+  canvas instead of three, and the auto-cycle has more to work with.
+- **A new palette, Green haze** — a deep green rising to a pale yellow-green. Big Drop is built
+  on it, so it becomes a shipped ramp available to any scene.
+
+### Notes
+- The shipped scenes are only used for a **brand-new library**. Your own scenes are never
+  overwritten by an update, so an existing browser keeps exactly what it has — to see the new
+  ones you would need a fresh profile (a new incognito session, or clearing site data).
+
 ## [1.60.1] — 2026-08-26
 
 ### Changed
