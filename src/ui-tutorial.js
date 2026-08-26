@@ -98,10 +98,12 @@
   // sticky header never reflows), `body` is HTML.
   const TUT_STEPS = [
     { head: "A visual that runs in your browser", art: TUT_ART.canvas,
-      body: "burnTheWeb is a demoscene visual — forty-odd effects (fractals, plasmas, tunnels, "
-        + "raymarched solids, flocking birds) all sharing one palette, glow and beat-reactive "
-        + "pipeline. Nothing is installed and nothing is uploaded; the whole thing is this one page. "
-        + "<b>Click the picture to pause it</b>, and click again to carry on." },
+      // The count is real and worth keeping real — it is the one number here that dates the
+      // tour. `node -e` over the EFFECTS literal in the built file gives it.
+      body: "burnTheWeb is a demoscene visual — fifty-odd effects (fractals, plasmas, tunnels, "
+        + "raymarched solids, flocking birds, slime moulds) all sharing one palette, glow and "
+        + "beat-reactive pipeline. Nothing is installed and nothing is uploaded; the whole thing is "
+        + "this one page. <b>Click the picture to pause it</b>, and click again to carry on." },
     // SECOND, not last. This is the headline feature and the one people never find on their
     // own, so it comes before the furniture — the tour is not a manual read in order, it is
     // a chance to say the important thing while anyone is still reading. It forward-refers to
@@ -114,7 +116,9 @@
         + "tab (Spotify, YouTube), or use the <b>microphone</b> — and it is split into low, mid and high "
         + "beats. Any slider can then be armed with its <b>L / M / H</b> chips (a couple of steps from "
         + "now): it stops drifting, rests at its low end and snaps to its high end on every beat in that "
-        + "band. The audio is analysed in your browser only; nothing is recorded or sent anywhere."
+        + "band. It also <b>follows the tempo</b>, so a slider can be set to rise <i>into</i> the next "
+        + "beat and peak on it rather than only react once it has passed. The audio is analysed in "
+        + "your browser only; nothing is recorded or sent anywhere."
         // The mic is armed by default (see restore()), so the click that closes this tour is
         // the one the browser prompts on. Saying so here is the difference between "of course"
         // and an unexplained permission box a second after a tutorial ended.
@@ -132,22 +136,30 @@
       body: "A <b>scene</b> is a complete snapshot — the effects, the colours, the filters, every slider. "
         + "Pick one from the list and it loads; from then on <b>every change you make is saved straight "
         + "back into it</b>, with no Save button. Press <b>New</b> first if you would rather work on a "
-        + "copy. <b>Auto-cycle</b> drifts through the scenes you have ticked, so you can leave it running." },
+        + "copy. <b>Auto-cycle</b> drifts through the scenes you have ticked, so you can leave it "
+        + "running — one scene <b>blends into the next</b> rather than cutting, and the "
+        + "<b>Transition</b> slider sets how long that takes (pinch it to zero for a hard cut)." },
     { head: "Layers", art: TUT_ART.layers,
       body: "A scene can stack up to <b>four effects</b> into one picture. Each layer keeps its own "
         + "effect, palette, camera and filters, and they are blended together in perceptual colour "
         + "space — so a plasma can wash under a fractal and the two really do mix. The <b>+</b> on a "
-        + "layer's row opens its controls as a box beside the panel, split into three tabs — "
-        + "<b>Effect</b>, <b>Filters</b> and <b>Palette</b> — the eye mutes it, and the handle drags it "
-        + "up or down the stack." },
+        + "layer's row opens its controls as a box you can <b>drag anywhere</b> — it snaps to a grid, "
+        + "and its colour matches the layer it belongs to — split into three tabs: <b>Effect</b>, "
+        + "<b>Filters</b> and <b>Palette</b>. The eye mutes a layer, and the handle drags it up or down "
+        + "the stack.<br><br>Some of the 3D effects can also <b>share one world</b>: tick "
+        + "<b>Share one 3D world</b> on each and they are traced together, so a glass ball genuinely "
+        + "reflects the ocean it is floating over, and hides what is behind it." },
     { head: "Sliders drift", art: TUT_ART.slider,
       body: "Most sliders have <b>two thumbs</b>: they are a low and a high bound, and the live value "
         + "wanders erratically between them. That drift is where a lot of the movement comes from — "
         + "<b>pinch the thumbs together</b> to hold a constant instead. The <b>+</b> beside a slider's "
-        + "name breaks it out into its own box on the right, where its value range and its beat "
-        + "triggers live." },
+        + "name breaks it out into its own box, which lands next to the layer it came from. That box "
+        + "is where the rest of a slider lives: the <b>range</b> its thumbs may cover, the "
+        + "<b>L / M / H</b> chips that arm it to the beat, the <b>shape</b> of the pulse each beat "
+        + "makes — plotted, so you can see what it will do — how <b>long</b> that pulse lasts, and its "
+        + "own detector <b>tuning</b>, so one slider can be twitchier than the next." },
     { head: "Filters", art: TUT_ART.filters,
-      body: "Each layer carries a chain of <b>filters</b>, listed in the order they run — drag to "
+      body: "Each layer carries a chain of <b>filters</b> — nearly forty of them — listed in the order they run; drag to "
         + "reorder. Where one sits matters: above the line it shapes the heat <i>before</i> the effect "
         + "draws (Fire, trails, feedback warps build up over frames), below it repaints the finished "
         + "picture (pixelate, mirror, bloom). <b>+ Add filter</b> opens the full catalogue." },

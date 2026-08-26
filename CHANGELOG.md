@@ -14,6 +14,22 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.60.1] — 2026-08-26
+
+### Changed
+- **The tutorial now describes the app as it currently is.** It had drifted: it still said
+  "forty-odd effects" (there are fifty-odd), and said nothing about several things that have
+  landed since it was written.
+  - **Music** — mentions that beats are now predicted as well as detected, so a slider can rise
+    *into* the next beat instead of only reacting once it has passed.
+  - **Scenes** — one scene blends into the next rather than cutting, and the **Transition** slider
+    sets how long that takes.
+  - **Layers** — layer boxes are dragged anywhere onto a snapping grid and carry their layer's
+    colour; and 3D effects can **share one world**, so a glass ball really reflects the ocean it
+    floats over.
+  - **Sliders** — the break-out box lands beside its layer, and holds the pulse shape (plotted),
+    its duration and that slider's own detector tuning — not just the range and the chips.
+
 ## [1.60.0] — 2026-08-26
 
 ### Added
