@@ -14,6 +14,14 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.64.0] — 2026-08-26
+
+### Added
+- **GoatCounter analytics**, alongside the existing one rather than instead of it. It is
+  cookieless, counts the page view by itself, and skips localhost so it stays quiet during
+  development. It has its own off switch: blanking the endpoint in the config loads no script
+  and sends nothing at all.
+
 ## [1.63.0] — 2026-08-26
 
 ### Added

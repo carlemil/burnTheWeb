@@ -1845,8 +1845,14 @@ in the Beat tuning box. The frame/FPS counter has no toggle — `H` drives it vi
 `localStorage["burnTheWeb.sync.v1"]`, satisfied for good once any source goes live.
 **`showSyncPopup()` returns whether it opened and the caller only spends a showing when it did** —
 a refusal that still incremented `shows` would burn one of the three on a popup nobody saw.
-`track(name, params)` is provider-agnostic; the GA4 gtag scaffold is **live**
-(`GA_MEASUREMENT_ID` is a real `G-…` id) — clearing it to `""` makes it inert.
+`track(name, params)` is provider-agnostic and now fans out to TWO providers, each wrapped
+separately so one being absent or ad-blocked cannot take the other down — it is called from
+click handlers, where a throw breaks the handler rather than just losing a count. **GA4**
+(`CONFIG.analyticsId`, a real `G-…` id) and **GoatCounter** (`CONFIG.goatcounter`, the
+`/count` endpoint). Each has its own kill switch: `""` loads no script and sends nothing.
+GoatCounter counts the page view itself and has no custom dimensions, so `params` is
+deliberately DROPPED there rather than flattened into the path — a path per parameter
+combination would shred the report into hundreds of one-hit rows. GA4 still gets the detail.
 
 ### First-run tutorial
 `#tutdlg` (`src/ui-tutorial.js`, manifest slice **before `ui-menubar.js`** so the menubar stays
