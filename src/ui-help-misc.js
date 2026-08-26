@@ -330,21 +330,8 @@
   // events. Clearing it back to "" makes this completely inert again — no script is
   // loaded and track() becomes a no-op, so nothing is sent.
   const GA_MEASUREMENT_ID = CONFIG.analyticsId;
-  const GC_ENDPOINT = CONFIG.goatcounter;
-  // ONE call site, any number of providers. Each is wrapped separately so a provider that is
-  // absent, blocked by an ad blocker or mid-load cannot take the others down with it -- and
-  // track() is called from click handlers all over the app, where a throw would break the
-  // handler rather than just lose a count.
   function track(name, params) {
     try { if (window.gtag) window.gtag("event", name, params || {}); } catch (e) {}
-    try {
-      // GoatCounter has no custom dimensions, so `params` is deliberately dropped rather than
-      // flattened into the path -- a path per parameter combination would shred the report
-      // into hundreds of one-hit rows. GA4 still gets the detail.
-      if (window.goatcounter && window.goatcounter.count) {
-        window.goatcounter.count({ path: name, title: name, event: true });
-      }
-    } catch (e) {}
   }
   (function initAnalytics() {
     if (!GA_MEASUREMENT_ID) return;
@@ -355,22 +342,6 @@
     const s = document.createElement("script");
     s.async = true;
     s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_MEASUREMENT_ID;
-    document.head.appendChild(s);
-  })();
-  // ---- analytics (GoatCounter) ----
-  // Cookieless and counts a page view on load by itself, so there is nothing to call for the
-  // visit itself -- only the custom events above. It skips localhost and file:// on its own,
-  // which is the same "inert while developing" behaviour gtag has here.
-  //
-  // Events fired before the script finishes loading are lost, and that is accepted rather than
-  // queued: every track() call in this app is behind a user action, which cannot happen before
-  // the page is up.
-  (function initGoatCounter() {
-    if (!GC_ENDPOINT) return;
-    const s = document.createElement("script");
-    s.async = true;
-    s.src = "https://gc.zgo.at/count.js";
-    s.setAttribute("data-goatcounter", GC_ENDPOINT);
     document.head.appendChild(s);
   })();
 

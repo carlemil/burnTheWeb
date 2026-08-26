@@ -17,7 +17,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.64.0",
+    version: "1.64.1",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -84,10 +84,6 @@
     // --- "Sync with your music" nudge + analytics ---
     sync: { delays: [30000, 300000, 3600000] },   // active-tab ms before each of the (max 3) nudges (SYNC_DELAYS)
     analyticsId: "G-7CMDJP72N7",                  // GA4 Measurement id; "" makes analytics completely inert
-    // GoatCounter, alongside GA4 rather than instead of it. Its own kill switch, exactly like
-    // the two above: "" loads no script and sends nothing. The value is the COUNT endpoint,
-    // which is the site URL with /count on the end.
-    goatcounter: "https://erbsman.goatcounter.com/count",
 
     // --- cloud profiles (Firebase Auth + Firestore, over REST; no SDK) ---
     // apiKey "" makes the WHOLE feature inert: no Google script is loaded, no request is
