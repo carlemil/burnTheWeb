@@ -523,6 +523,29 @@ Bloom) — read the palette-mapped image. `glPostChain()` ping-pongs `glTex.post
   scene needs a host + a `FILTER_LISTS` entry as well as an id — a filter routed to a missing host
   silently vanishes.
 
+**ASCII mosaic builds a GLYPH ATLAS at runtime, and the ramp is MEASURED, not authored.**
+`ASCII_SETS` names Unicode RANGES (nine sets, `Mixed` reading the other eight); Canvas2D renders
+each candidate with the system font, `buildAsciiAtlas` sums its ink and sorts by coverage, and
+`buildAsciiAtlas0` copies the cells into a strip with `drawImage` — the pixels uploaded are the
+pixels measured. So a set only has to be a wide SPREAD of shapes; the measurement makes it a
+dither, and it calibrates to the font the machine actually has.
+- **Brightness picks a LEVEL, not a glyph.** `ASCII_LEVELS` (64) must equal the shader's
+  `#define ASC_LEVELS`; `uBucket[lv]` is `(first glyph, how many)` and the cell hashes to one of
+  them, so a flat area uses many characters at one brightness. **An empty level must inherit the
+  nearest filled one** — count 0 makes `bk.x + floor(r*bk.y)` collapse to glyph 0, the blank, and
+  punches black holes through the midtones. Cell 0 IS that blank, and the darkest level is it:
+  without a guaranteed-empty glyph, shadows fill in.
+- **The glyph pick uses an INTEGER hash (`ascHash`), never `fract(sin(...))`** — same rule as the
+  glass ball. It decides which character a cell shows forever, so a driver recompile must not be
+  able to change it.
+- **Tofu rejection is PER GLYPH**, against a known-absent codepoint (`ASCII_TOFU`): a font with
+  partial coverage draws one identical box for everything missing, and those all measure the same
+  coverage, so they would sit in the ramp as a run of the same heavy blob. A whole-set spread
+  check misses exactly that case.
+- Overflow is **sampled evenly** (`pickChars`), never truncated — cutting Blocks at 255 would drop
+  all box-drawing and keep only shade squares. Count is also capped by `MAX_TEXTURE_SIZE / 32`,
+  since the strip is one texture row. `tools/asciiprobe.js`.
+
 **Slice glitch and Film grain read `postTime`**, accumulated from the frame loop's `dt` — not
 `performance.now()`, not `simT`.
 
