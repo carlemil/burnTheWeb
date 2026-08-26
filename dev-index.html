@@ -2419,7 +2419,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.57.0",
+    version: "1.58.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -8399,9 +8399,6 @@
         + "\u3001\u3002\u30fc\u4e00\u4e8c\u4e09\u5341\u4eba\u516b\u5165\u4e01\u4e03\u4e5d\u5c0f\u53e3\u5c71\u5ddd\u5343\u5927\u5929\u65e5\u6708\u76ee\u7530\u672c\u7533\u7531\u77f3\u82b1\u9752\u661f\u6625\u98a8\u6d77\u96ea\u9ce5\u9b5a\u9ed2\u7dd1\u8449\u96fb\u96e8\u9f8d\u68ee\u85ac\u9451\u9e97" },
     { name: "Cyrillic", chars: () => chRange(0x400, 0x45f) + chRange(0x460, 0x481) },
     { name: "Greek", chars: () => chRange(0x386, 0x3ce) + chRange(0x1f00, 0x1f15) + chRange(0x1f60, 0x1f7d) },
-    // Shade squares, geometric shapes and the whole box-drawing set. The box characters are
-    // directional rather than uniform, which reads as structure inside the shading.
-    { name: "Blocks", chars: () => chRange(0x2580, 0x259f) + chRange(0x25a0, 0x25ff) + chRange(0x2500, 0x257f) },
     // All 256 Braille patterns. The best-behaved set in the list by construction: dot counts
     // from 0 to 8 in every arrangement, so the measured ramp comes out almost perfectly even.
     { name: "Braille", chars: () => chRange(0x2800, 0x28ff) },
@@ -8409,7 +8406,7 @@
     // a script added to this list joins the mix for nothing. The even sampling in pickChars
     // then takes a proportional slice of each -- concatenating gives thousands of candidates
     // and the cap keeps 255 of them, spread across all eight rather than the first two.
-    { name: "Mixed", chars: () => ASCII_SETS.slice(0, 8).map(s => s.chars()).join("") },
+    { name: "Mixed", chars: () => ASCII_SETS.slice(0, 7).map(s => s.chars()).join("") },
   ];
   // Which script is loaded into glTex.ascii right now, so a frame with the same script pays
   // nothing. -1 forces a rebuild (startup, and a font that may have arrived late).
@@ -13424,7 +13421,7 @@
     { key: "rblmix", host: "filter", group: "f_rblur", type: "dual", label: "Mix", valId: "vRblMix", min: 0, max: 1, step: 0.01, lo: 0.7, hi: 0.7, fmt: v => sig3(v), apply: v => rblMix = v, durScale: 10 },
     { key: "polamt", host: "filter", group: "f_polar", type: "dual", label: "Amount", valId: "vPolAmt", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => polAmt = v, durScale: 10 },
     { key: "polrep", host: "filter", group: "f_polar", type: "dual", label: "Repeat", valId: "vPolRep", min: 1, max: 12, step: 1, lo: 1, hi: 1, fmt: v => sig3(Math.round(v)) + "\u00d7", apply: v => polRep = Math.round(v), durScale: 10 },
-    { key: "ascset", host: "filter", group: "f_ascii", type: "dual", single: true, label: "Script", valId: "vAscSet", min: 0, max: 8, step: 1, lo: 0, hi: 0, fmt: v => ["Latin", "Arabic", "Georgian", "Japanese", "Cyrillic", "Greek", "Blocks", "Braille", "Mixed"][Math.round(v)] || "Latin", apply: v => ascSet = Math.round(v), durScale: 10 },
+    { key: "ascset", host: "filter", group: "f_ascii", type: "dual", single: true, label: "Script", valId: "vAscSet", min: 0, max: 7, step: 1, lo: 0, hi: 0, fmt: v => ["Latin", "Arabic", "Georgian", "Japanese", "Cyrillic", "Greek", "Braille", "Mixed"][Math.round(v)] || "Latin", apply: v => ascSet = Math.round(v), durScale: 10 },
     { key: "ascell", host: "filter", group: "f_ascii", type: "dual", label: "Cell", valId: "vAscCell", min: 3, max: 24, step: 1, lo: 8, hi: 8, fmt: v => sig3(Math.round(v)) + "px", apply: v => ascCell = Math.round(v), durScale: 10 },
     { key: "ascmix", host: "filter", group: "f_ascii", type: "dual", label: "Mix", valId: "vAscMix", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => ascMix = v, durScale: 10 },
     { key: "invamt", host: "filter", group: "f_invert", type: "dual", label: "Amount", valId: "vInvAmt", min: 0, max: 1, step: 0.01, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => invAmt = v, durScale: 10 },
@@ -17149,7 +17146,7 @@
       defaults: { polamt: [1, 1], polrep: [1, 1] },
       gl: src => postPass("polar", src, u => { gl.uniform1f(u.uAmount, polAmt); gl.uniform1f(u.uRepeat, polRep); }) },
     { id: "ascii", cpuOk: false, name: "ASCII mosaic", stage: "post", params: ["ascset", "ascell", "ascmix"],
-      help: "Replaces each cell with a character picked by its brightness, keeping the cell's colour \u2014 the darker the cell, the emptier the glyph. **Script** chooses the character set: Latin, Arabic, Georgian, Japanese, Cyrillic, Greek, block shades, Braille, or **Mixed** \u2014 every script at once. Each set is a whole alphabet \u2014 up to 255 characters \u2014 sorted by how much ink they actually carry in your machine's font, and grouped into levels by weight \u2014 every character of the same weight is interchangeable, and each cell picks one of them at random, so a flat area is drawn with a whole spread of characters instead of one repeated tile. Halftone is the dot version of the same idea; a character grid reads quite differently.",
+      help: "Replaces each cell with a character picked by its brightness, keeping the cell's colour \u2014 the darker the cell, the emptier the glyph. **Script** chooses the character set: Latin, Arabic, Georgian, Japanese, Cyrillic, Greek, Braille, or **Mixed** \u2014 every script at once. Each set is a whole alphabet \u2014 up to 255 characters \u2014 sorted by how much ink they actually carry in your machine's font, and grouped into levels by weight \u2014 every character of the same weight is interchangeable, and each cell picks one of them at random, so a flat area is drawn with a whole spread of characters instead of one repeated tile. Halftone is the dot version of the same idea; a character grid reads quite differently.",
       defaults: { ascset: [0, 0], ascell: [8, 8], ascmix: [1, 1] },
       gl: src => { ensureAsciiAtlas();
         postPass("ascii", src, u => {

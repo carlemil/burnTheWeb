@@ -2115,9 +2115,6 @@
         + "\u3001\u3002\u30fc\u4e00\u4e8c\u4e09\u5341\u4eba\u516b\u5165\u4e01\u4e03\u4e5d\u5c0f\u53e3\u5c71\u5ddd\u5343\u5927\u5929\u65e5\u6708\u76ee\u7530\u672c\u7533\u7531\u77f3\u82b1\u9752\u661f\u6625\u98a8\u6d77\u96ea\u9ce5\u9b5a\u9ed2\u7dd1\u8449\u96fb\u96e8\u9f8d\u68ee\u85ac\u9451\u9e97" },
     { name: "Cyrillic", chars: () => chRange(0x400, 0x45f) + chRange(0x460, 0x481) },
     { name: "Greek", chars: () => chRange(0x386, 0x3ce) + chRange(0x1f00, 0x1f15) + chRange(0x1f60, 0x1f7d) },
-    // Shade squares, geometric shapes and the whole box-drawing set. The box characters are
-    // directional rather than uniform, which reads as structure inside the shading.
-    { name: "Blocks", chars: () => chRange(0x2580, 0x259f) + chRange(0x25a0, 0x25ff) + chRange(0x2500, 0x257f) },
     // All 256 Braille patterns. The best-behaved set in the list by construction: dot counts
     // from 0 to 8 in every arrangement, so the measured ramp comes out almost perfectly even.
     { name: "Braille", chars: () => chRange(0x2800, 0x28ff) },
@@ -2125,7 +2122,7 @@
     // a script added to this list joins the mix for nothing. The even sampling in pickChars
     // then takes a proportional slice of each -- concatenating gives thousands of candidates
     // and the cap keeps 255 of them, spread across all eight rather than the first two.
-    { name: "Mixed", chars: () => ASCII_SETS.slice(0, 8).map(s => s.chars()).join("") },
+    { name: "Mixed", chars: () => ASCII_SETS.slice(0, 7).map(s => s.chars()).join("") },
   ];
   // Which script is loaded into glTex.ascii right now, so a frame with the same script pays
   // nothing. -1 forces a rebuild (startup, and a font that may have arrived late).

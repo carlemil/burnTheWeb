@@ -14,6 +14,19 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.58.0] — 2026-08-26
+
+### Changed
+- **ASCII mosaic: the Blocks script is gone.** Its shade squares, geometric shapes and
+  box-drawing characters were much heavier than any letter, so they dominated the bright end of
+  **Mixed** and pushed the actual writing out of it. The remaining eight choices are Latin,
+  Arabic, Georgian, Japanese, Cyrillic, Greek, Braille and Mixed, and Mixed now reads as text
+  throughout.
+- Because the choices are stored by position, a scene saved during v1.57.0 with **Braille**
+  selected now opens on **Mixed**, and one saved with **Blocks** opens on **Braille**. Only
+  v1.57.0 could store those two values, and it was live for a matter of minutes; pick the
+  script again if you have such a scene.
+
 ## [1.57.0] — 2026-08-26
 
 ### Added

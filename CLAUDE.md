@@ -524,7 +524,7 @@ Bloom) — read the palette-mapped image. `glPostChain()` ping-pongs `glTex.post
   silently vanishes.
 
 **ASCII mosaic builds a GLYPH ATLAS at runtime, and the ramp is MEASURED, not authored.**
-`ASCII_SETS` names Unicode RANGES (nine sets, `Mixed` reading the other eight); Canvas2D renders
+`ASCII_SETS` names Unicode RANGES (eight sets, `Mixed` reading the other seven); Canvas2D renders
 each candidate with the system font, `buildAsciiAtlas` sums its ink and sorts by coverage, and
 `buildAsciiAtlas0` copies the cells into a strip with `drawImage` — the pixels uploaded are the
 pixels measured. So a set only has to be a wide SPREAD of shapes; the measurement makes it a
@@ -542,8 +542,8 @@ dither, and it calibrates to the font the machine actually has.
   partial coverage draws one identical box for everything missing, and those all measure the same
   coverage, so they would sit in the ramp as a run of the same heavy blob. A whole-set spread
   check misses exactly that case.
-- Overflow is **sampled evenly** (`pickChars`), never truncated — cutting Blocks at 255 would drop
-  all box-drawing and keep only shade squares. Count is also capped by `MAX_TEXTURE_SIZE / 32`,
+- Overflow is **sampled evenly** (`pickChars`), never truncated — a script whose
+  ranges exceed the cap keeps its full spread of shapes rather than only its first block. Count is also capped by `MAX_TEXTURE_SIZE / 32`,
   since the strip is one texture row. `tools/asciiprobe.js`.
 
 **Slice glitch and Film grain read `postTime`**, accumulated from the frame loop's `dt` — not

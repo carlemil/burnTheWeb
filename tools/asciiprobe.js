@@ -31,11 +31,11 @@ const setsSrc = slice("function chRange(", "function buildAsciiAtlas(");
 // slice back out of a Function instead.
 const SETS = new Function(setsSrc + "; return { chRange, ASCII_SETS, pickChars };")();
 
-ok("nine scripts, Mixed last", SETS.ASCII_SETS.length === 9 && SETS.ASCII_SETS[8].name === "Mixed");
+ok("eight scripts, Mixed last", SETS.ASCII_SETS.length === 8 && SETS.ASCII_SETS[7].name === "Mixed");
 
 const names = SETS.ASCII_SETS.map(s => s.name);
 ok("the control's enum names every set it can hold",
-   names.every(n => src.includes('"' + n + '"')) && /max: 8,[^}]*ascset|ascset[^}]*max: 8/.test(src.replace(/\n/g, " ")));
+   names.every(n => src.includes('"' + n + '"')) && /max: 7,[^}]*ascset|ascset[^}]*max: 7/.test(src.replace(/\n/g, " ")));
 
 // EVERY SET MUST BE BIG. The whole point of the rewrite: seven glyphs cannot carry a gradient.
 SETS.ASCII_SETS.forEach(s => {
@@ -44,9 +44,9 @@ SETS.ASCII_SETS.forEach(s => {
 });
 
 // Mixed must actually be a mixture, not a re-run of one script.
-const mixed = SETS.ASCII_SETS[8].chars();
+const mixed = SETS.ASCII_SETS[7].chars();
 ok("Mixed draws from every other set",
-   SETS.ASCII_SETS.slice(0, 8).every(s => [...s.chars()].some(c => mixed.includes(c))));
+   SETS.ASCII_SETS.slice(0, 7).every(s => [...s.chars()].some(c => mixed.includes(c))));
 
 // pickChars: dedupe, drop spaces (cell 0 is the blank), respect the cap, and SPREAD rather
 // than truncate -- truncating Blocks would keep the shade squares and lose all box-drawing.
