@@ -2511,7 +2511,16 @@
     //   3. The key is restricted in Google Cloud Console (Credentials → this key) by HTTP
     //      referrer to the site's own origins, and to only the APIs used: Identity Toolkit,
     //      Token Service, Cloud Firestore. That is what limits quota abuse from elsewhere.
-    // GitHub secret-scanning alert #1 is resolved as intentional on exactly this basis.
+    // Dispositioned as intentional on exactly this basis by BOTH scanners watching this repo:
+    // GitHub secret-scanning alert #1, and a GitGuardian incident on 2026-08-26.
+    //
+    // EXPECT IT TO KEEP COMING BACK, and do not read a repeat as a new exposure. Every release
+    // rewrites dev-index.html and index.html, the key is in both, and a scanner re-reports the
+    // string it finds — the 2026-08-26 incident was five releases in one day, not a new leak.
+    // Before dismissing the next one, re-check the two things above that live in a console and
+    // can therefore drift silently: that ONLY Google sign-in is enabled (2), and that the key's
+    // referrer and API restrictions are still in place (3). Those are the claims worth
+    // re-verifying; the key being public is not.
     // └────────────────────────────────────────────────────────────────────────────────┘
     cloud: {
       apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // public identifier, see above ⇒ "" = feature off
