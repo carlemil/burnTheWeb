@@ -133,6 +133,7 @@
     // audioTick refills nothing, so refreshing them every frame would only redraw the same
     // empty bars — and there is no latch left to clear.
     if (audioLive()) { updateMeter(); flashChips(); }
+    beatBpmTick();
     updateAnims(now, dt);             // drive the ranged sliders' erratic values
     // ...and the OUTGOING scene, if one is still blending out. After the live pass: each
     // fresh drift segment draws twice from Math.random, so this order leaves the live

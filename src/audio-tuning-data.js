@@ -12,7 +12,8 @@
   // from the descriptor's defaults for the same reason.
   function mergeBeatTune(saved) {
     const base = { fluxK: BEAT_DEFAULTS.fluxK.slice(), floor: BEAT_DEFAULTS.floor,
-                   refract: BEAT_DEFAULTS.refract.slice(), bands: BEAT_DEFAULTS.bands.map(b => b.slice()) };
+                   refract: BEAT_DEFAULTS.refract.slice(), bands: BEAT_DEFAULTS.bands.map(b => b.slice()),
+                   lead: BEAT_DEFAULTS.lead, lock: BEAT_DEFAULTS.lock };
     if (!saved || typeof saved !== "object") return base;
     const nyq = 24000;   // half of a typical 48k rate; band edges must stay below it
     if (Array.isArray(saved.fluxK)) for (let b = 0; b < 3; b++)
@@ -26,6 +27,10 @@
       const lo = +e[0], hi = +e[1];
       if (isFinite(lo) && isFinite(hi) && lo >= 1 && hi > lo && hi <= nyq) base.bands[b] = [lo, hi];
     }
+    // The tempo pair. Absent in every scene written before tempo tracking existed, which is
+    // exactly why the base above is the neutral default rather than something inferred.
+    if (isFinite(+saved.lead) && +saved.lead >= 0 && +saved.lead <= 400) base.lead = +saved.lead;
+    if (typeof saved.lock === "boolean") base.lock = saved.lock;
     return base;
   }
   // Write a validated tuning into the live detector. beatCfg's FIELDS are replaced but
@@ -34,6 +39,7 @@
   function installBeatTune(t) {
     beatCfg.fluxK = t.fluxK.slice(); beatCfg.floor = t.floor;
     beatCfg.refract = t.refract.slice(); beatCfg.bands = t.bands.map(b => b.slice());
+    beatCfg.lead = t.lead; beatCfg.lock = t.lock;
     if (beatUi && beatUi.wired) beatBuild();   // the sliders never refresh themselves
     if (audio.on) computeBins();               // computeBins throws before audio starts
   }

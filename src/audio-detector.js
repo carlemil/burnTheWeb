@@ -34,12 +34,27 @@
   const WARMUP = 30;          // ticks before the first beat (let the flux history fill)
   const AVG_ALPHA = 0.2;      // EMA speed of the displayed band level (meter only)
   const PULSE_TAU = 0.12;     // s; beat-pulse decay (drives the level meter + chip glow)
+  // ---- TEMPO TRACKER constants (see CONFIG.tuning) ---------------------------------------
+  const TEMPO_HZ = CONFIG.tuning.tempoHz, TEMPO_WIN = CONFIG.tuning.tempoWin;
+  const TEMPO_EVERY = CONFIG.tuning.tempoEvery;
+  const TEMPO_MIN_BPM = CONFIG.tuning.tempoMinBpm, TEMPO_MAX_BPM = CONFIG.tuning.tempoMaxBpm;
+  const TEMPO_PREF_BPM = CONFIG.tuning.tempoPrefBpm, TEMPO_PREF_W = CONFIG.tuning.tempoPrefW;
+  const PLL_A = CONFIG.tuning.tempoPllA, PLL_B = CONFIG.tuning.tempoPllB;
+  const CONF_MIN = CONFIG.tuning.tempoConfMin, LOCK_TOL = CONFIG.tuning.tempoLockTol;
+  const TEMPO_SMOOTH = CONFIG.tuning.tempoSmooth;
+  const OCT_SUB = CONFIG.tuning.tempoOctSub;                       // sub-multiple must score this fraction to win
+  const CONF_R0 = CONFIG.tuning.tempoConfR0, CONF_R1 = CONFIG.tuning.tempoConfR1;   // r -> confidence ramp
+  // Lag bounds in DECIMATED samples. Longest lag = slowest tempo, so MIN_BPM gives LAG_MAX.
+  const LAG_MIN = Math.floor(60 * TEMPO_HZ / TEMPO_MAX_BPM);
+  const LAG_MAX = Math.ceil(60 * TEMPO_HZ / TEMPO_MIN_BPM);
+  const TEMPO_DECIM = Math.max(1, Math.round(1000 / (CONFIG.tuning.hopMs * TEMPO_HZ)));
   // Live-tunable detector thresholds (the "b" dev overlay edits these; audioTick +
   // computeBins read them). Defaults equal the old FLUX_K / FLUX_FLOOR / BEAT_REFRACT
   // consts and band edges, so out-of-the-box detection is unchanged. Persisted to
   // localStorage + Backup (never Share/scenes) — see collectBeatTune/applyBeatTune.
   const BEAT_DEFAULTS = CONFIG.beatDefaults;   // shipped detector tuning (fluxK/floor/refract/bands) — see config.js
-  const beatCfg = { fluxK: BEAT_DEFAULTS.fluxK.slice(), floor: BEAT_DEFAULTS.floor,
+  const beatCfg = { lead: BEAT_DEFAULTS.lead, lock: BEAT_DEFAULTS.lock,
+    fluxK: BEAT_DEFAULTS.fluxK.slice(), floor: BEAT_DEFAULTS.floor,
     refract: BEAT_DEFAULTS.refract.slice(), bands: BEAT_DEFAULTS.bands.map(b => b.slice()) };
   const audio = {
     ctx: null, analyser: null, db: null, mag: null, prev: null, stream: null,
@@ -67,6 +82,17 @@
     // tuning (warm, local max, not silent); `med` is the adaptive median. Everything above
     // stays exactly as it was and still drives the meter, the trace and the chip glow.
     cand: [false, false, false], med: [0, 0, 0], candFlux: [0, 0, 0],
+    // ---- TEMPO: where the NEXT beat is, as opposed to where the last one was ------------
+    // The detector above is reactive by construction -- it peak-picks the previous hop, so a
+    // beat is known 10ms after it happened. Nothing built on it can rise INTO a beat. This is
+    // the separate, continuously-maintained grid that can: `period` ms between beats, `anchor`
+    // the ms timestamp of the most recent grid beat, `conf` how much to believe it.
+    //
+    // TRANSIENT, like `muted` -- never in fullSnapshot. A tempo is a property of whatever is
+    // playing right now, not of the scene.
+    tempo: { period: 0, bpm: 0, anchor: 0, conf: 0 },
+    env: null, envI: 0, envN: 0, envAcc: 0, envAccN: 0, envTick: 0,
+    envSm: null, envSmI: 0, envSmSum: 0,      // moving-average window on the way in
   };
   // ---- per-trigger beats -------------------------------------------------------------
   // A TRIGGER is one (layer slot, control key) pair — not just a key, because beatOf() is
@@ -158,6 +184,10 @@
       // nothing refills these; flashChips() once on the way down clears the inline lit
       // styles back to the CSS default, exactly as stopAudio does.
       for (let b = 0; b < 3; b++) { audio.pulse[b] = 0; audio.energy[b] = 0; audio.beatNow[b] = false; }
+      // Same reason as stopAudio: audioTick early-returns while muted, so the envelope stops
+      // being fed and the grid goes stale. Unmuting onto a stale grid would fire every
+      // tempo-locked trigger at once.
+      tempoReset();
       clearTrigState();
       updateMeter(); flashChips();
     }
@@ -192,6 +222,7 @@
       audio.flux[b] = audio.thr[b] = audio.peak[b] = audio.f1[b] = audio.f2[b] = audio.bpm[b] = 0;
       audio.cand[b] = false; audio.med[b] = audio.candFlux[b] = 0;
     }
+    tempoReset();          // a stale grid surviving a Stop would fire the instant audio returns
     clearTrigState();
     updateMeter(); flashChips(); setAudioUI(); persist();
   }
@@ -230,6 +261,7 @@
         audio.lastBeat[b] = 0; audio.bpm[b] = 0;
       }
       audio.hi = 0; audio.warm = 0; audio.tPrev = 0;
+      tempoReset();
       computeBins();
       audio.on = true; audio.src = kind;
       if (audio.timer) clearInterval(audio.timer);
@@ -270,6 +302,10 @@
     }
 
     if (audio.warm < WARMUP) audio.warm++;               // don't fire until the history is real
+    // The tempo tracker is fed from this loop's flux and its onsets. `onsetTick` is set only
+    // where a beat FIRES this tick -- audio.beatNow is a latch that frame() drains, so it can
+    // still read true from an earlier tick and would nudge the PLL repeatedly for one beat.
+    let fluxSum = 0, onsetTick = false;
     for (let b = 0; b < 3; b++) {
       const i0 = audio.bins[b][0], i1 = audio.bins[b][1], n = i1 - i0 + 1;
       let sum = 0, lvl = 0, flux = 0;
@@ -306,12 +342,18 @@
           if (ibi < 2000) audio.bpm[b] += (60000 / ibi - audio.bpm[b]) * 0.2;
         }
         audio.beatNow[b] = true; audio.pulse[b] = 1; audio.lastBeat[b] = now;
+        onsetTick = true;
       }
       audio.f2[b] = f1; audio.f1[b] = flux;
       audio.flux[b] = flux;
       audio.hist[b][audio.hi] = flux;
       audio.pulse[b] *= Math.exp(-dt / PULSE_TAU);
+      fluxSum += flux;
     }
+    // Tempo, from what the loop above already computed. Push first, then correct the phase:
+    // an estimate arriving this tick should have the onset applied to it, not to the old one.
+    tempoPush(fluxSum, now);
+    if (onsetTick) tempoOnset(now);
     // ---- the same test again, once per armed trigger, with ITS thresholds ----------
     // Has to run here and not at frame time: the candidate exists for exactly one 10ms tick,
     // so a 60Hz consumer would miss beats between frames. That is why beats are latched at
@@ -324,9 +366,34 @@
     if (trigDirty) rebuildTriggers();
     for (let i = 0; i < trigList.length; i++) {
       const T = trigList[i], st = T.st, tu = T.tune;
+      // PREDICTIVE FIRING is opt-in per trigger and OFF in the shipped defaults, which is what
+      // makes the whole tracker additive: with lead 0 and lock false this branch cannot be
+      // taken, so the onset test below is reached on every tick exactly as it always was and a
+      // scene saved before tempo tracking existed detects beats identically. tempoprobe
+      // asserts that tick for tick.
+      //
+      // When it IS on, the grid REPLACES the onset rather than adding to it -- 'fire early
+      // instead of on the onset' is the whole point, and running both would double every beat.
+      // Lead and lock are one mechanism: firing from the grid is fill, doing it early is lead.
+      const pre = (tu.lead > 0 || tu.lock) && tempoLocked();
       for (let b = 0; b < 3; b++) {
         if (!(b === 0 ? T.br.low : b === 1 ? T.br.mid : T.br.high)) continue;
-        if (audio.cand[b] && audio.candFlux[b] > audio.med[b] * tu.fluxK[b] &&
+        if (pre) {
+          // FIRE OFF THE COUNTDOWN, NOT OFF A GRID INDEX. The obvious implementation -- number
+          // the beats from `anchor` and fire when the number changes -- does not work, because
+          // the PLL moves `anchor` onto every onset it sees. Relative to a moving origin the
+          // index oscillates between two values across a single beat and fires on both
+          // transitions: measured at 79 fires where the scene had 48 beats, landing at two
+          // interleaved offsets that drifted apart. Time-to-next-beat carries no such state.
+          //
+          // The window is at least one hop wide so that lead 0 -- plain 'lock' -- fires ON the
+          // beat instead of never: the countdown is only ever sampled every HOP_MS and would
+          // otherwise step straight over zero.
+          const TP = audio.tempo, eta = beatEta(now);
+          if (eta >= 0 && eta <= Math.max(tu.lead, HOP_MS) && now - st.lastBeat[b] > TP.period * 0.5) {
+            st.now[b] = true; st.pulse[b] = 1; st.lastBeat[b] = now;
+          }
+        } else if (audio.cand[b] && audio.candFlux[b] > audio.med[b] * tu.fluxK[b] &&
             audio.candFlux[b] > audio.peak[b] * tu.floor &&
             now - st.lastBeat[b] > tu.refract[b]) {
           st.now[b] = true; st.pulse[b] = 1; st.lastBeat[b] = now;
@@ -356,6 +423,162 @@
       t.pulse[0] = t.pulse[1] = t.pulse[2] = 0;
       t.lastBeat[0] = t.lastBeat[1] = t.lastBeat[2] = 0;
     }
+  }
+  // ================= TEMPO TRACKING =========================================================
+  // Two halves, because they answer different questions at different rates.
+  //
+  // PERIOD comes from autocorrelating the onset envelope. That needs SECONDS of history and is
+  // far too expensive to run per tick, so it runs 4 times a second over a decimated buffer.
+  // PHASE comes from a PLL nudged by each confirmed onset -- cheap, per beat, and self-
+  // correcting, which is what keeps the grid glued to the music between estimates.
+  //
+  // Everything here reads the flux the detector already computed. It adds no analysis of its
+  // own to the hot path, and it is deliberately placed AFTER the per-band and per-trigger
+  // loops so that not one line above it changes behaviour.
+
+  // The envelope is the SUM of the three bands, not one of them. A tracker on the low band
+  // alone follows the kick and loses tempo the moment a bar has no kick in it; broadband
+  // onset strength is what tempo actually lives in.
+  function tempoPush(env, now) {
+    if (!audio.env) { audio.env = new Float32Array(TEMPO_WIN); audio.envN = 0; audio.envI = 0; }
+    // Decimate by averaging rather than sampling: dropping 1 tick in 5 would alias a sharp
+    // onset away entirely depending on where it fell.
+    audio.envAcc += env; audio.envAccN++;
+    if (audio.envAccN < TEMPO_DECIM) return;
+    // SMOOTH ON THE WAY IN. Correlating a train of one-sample spikes is fragile: a period of
+    // 45.5 samples aligns with nothing at lag 45 or 46 and perfectly at lag 91, so the tracker
+    // locks an octave down for any tempo that lands between samples -- measured at 907.8ms for
+    // a 455ms tempo. Spreading each onset over ~50ms costs nothing against periods of 300-1000ms
+    // and makes neighbouring lags correlate the way a real onset envelope already would.
+    if (!audio.envSm) { audio.envSm = new Float32Array(TEMPO_SMOOTH); audio.envSmI = 0; audio.envSmSum = 0; }
+    const raw = audio.envAcc / audio.envAccN;
+    audio.envSmSum += raw - audio.envSm[audio.envSmI];
+    audio.envSm[audio.envSmI] = raw;
+    audio.envSmI = (audio.envSmI + 1) % TEMPO_SMOOTH;
+    audio.env[audio.envI] = audio.envSmSum / TEMPO_SMOOTH;
+    audio.envAcc = 0; audio.envAccN = 0;
+    audio.envI = (audio.envI + 1) % TEMPO_WIN;
+    if (audio.envN < TEMPO_WIN) audio.envN++;
+    if (++audio.envTick >= TEMPO_EVERY) { audio.envTick = 0; tempoEstimate(now); }
+  }
+  // Autocorrelation over the tempo lag range, NORMALISED, with the octave guard.
+  function tempoEstimate(now) {
+    const N = audio.envN;
+    if (N < LAG_MAX * 2) return;                 // not enough history to see two periods
+    const e = audio.env, W = TEMPO_WIN, i0 = audio.envI;
+    const at = k => e[(i0 - 1 - k + W * 2) % W]; // k = 0 is the newest sample, walking back
+    let mean = 0;
+    for (let k = 0; k < N; k++) mean += at(k);
+    mean /= N;
+    // Variance, so the correlation can be normalised to r in [-1,1]. THAT normalisation is
+    // what makes confidence meaningful: a raw covariance says nothing on its own, because its
+    // size depends on how loud the music is. Compared against the average lag instead, noise
+    // scored 0.71 and free-tempo onsets 0.90 -- both read as a solid tempo.
+    let var0 = 0;
+    for (let k = 0; k < N; k++) { const d = at(k) - mean; var0 += d * d; }
+    var0 /= N;
+    if (var0 < 1e-14) { audio.tempo.conf *= 0.5; return; }
+    const r = new Float64Array(LAG_MAX + 1);
+    let best = -1, bestLag = 0;
+    for (let lag = LAG_MIN; lag <= LAG_MAX; lag++) {
+      let s = 0;
+      const n = N - lag;
+      for (let k = 0; k < n; k++) s += (at(k) - mean) * (at(k + lag) - mean);
+      r[lag] = s / (n * var0);                   // true normalised autocorrelation
+      // A mild preference for ordinary tempi, as a TIE-BREAKER only. It used to be strong
+      // enough (0.9 octaves) to drag a genuine 176 BPM down to 88 -- the bias has to lose to
+      // real evidence, so it is wide and the octave rule below does the actual work.
+      const bpm = 60 * TEMPO_HZ / lag;
+      const oct = Math.log2(bpm / TEMPO_PREF_BPM) / TEMPO_PREF_W;
+      const biased = r[lag] * Math.exp(-0.5 * oct * oct);
+      if (biased > best) { best = biased; bestLag = lag; }
+    }
+    if (!bestLag || r[bestLag] <= 0) { audio.tempo.conf *= 0.5; return; }
+    // THE OCTAVE RULE: prefer the SHORTEST lag that correlates comparably.
+    // A periodic signal correlates at its period AND at every multiple of it -- for a steady
+    // kick, r(2P) is nearly as high as r(P) -- so "highest peak" picks a multiple as often as
+    // the fundamental, and the visual pulses at half speed. The fundamental is the shortest
+    // lag that still scores, so walk down the sub-multiples and take the shortest comparable
+    // one. Cases where the half really is weaker (offbeat hats under a kick) fail the ratio
+    // test and stay put, which is exactly the discrimination wanted.
+    //
+    // COMPARE INTERPOLATED PEAKS, NOT RAW BINS, or this rule inverts precisely when it matters
+    // most. A period landing between two lags -- 455ms on a 10ms grid -- is split across both
+    // and each reads LOW, while its double lands on a whole lag and reads high. Compared bin to
+    // bin the double wins and the tracker locks an octave down: measured at 907.8ms for a
+    // 455ms tempo, with every other assertion still green.
+    let bestPeak = lagPeak(r, bestLag);
+    for (let div = 2; div <= 4; div++) {
+      const c = bestLag / div;
+      if (c < LAG_MIN) break;
+      const p = lagPeak(r, c);
+      if (p.val >= bestPeak.val * OCT_SUB) { bestPeak = p; break; }
+    }
+    const lagF = bestPeak.lag;
+    // Confidence from the UNBIASED correlation at the chosen lag. Noise and free tempo sit
+    // near 0 here however sharp their tallest accidental peak looked.
+    const conf = Math.max(0, Math.min(1, (bestPeak.val - CONF_R0) / (CONF_R1 - CONF_R0)));
+    const period = lagF * 1000 / TEMPO_HZ;
+    const T = audio.tempo;
+    // Re-lock hard on a genuinely different tempo, ease otherwise: a period that jumps every
+    // estimate is a grid nothing can anticipate against.
+    if (!T.period || Math.abs(period - T.period) > T.period * 0.2) { T.period = period; T.anchor = now; }
+    else T.period += (period - T.period) * 0.25;
+    T.bpm = T.period > 0 ? 60000 / T.period : 0;
+    T.conf += (conf - T.conf) * 0.35;
+  }
+  // The correlation peak NEAR a lag, refined to sub-lag precision. Returns both where the peak
+  // is and how tall it is, because the octave rule needs to compare heights of peaks that do
+  // not sit on whole lags. Parabolic interpolation through the three bins around the local
+  // maximum -- the standard refinement, and two lines.
+  function lagPeak(r, c) {
+    let bi = -1, bv = -Infinity;
+    const a = Math.max(LAG_MIN, Math.floor(c) - 1), z = Math.min(LAG_MAX, Math.ceil(c) + 1);
+    for (let L = a; L <= z; L++) if (r[L] > bv) { bv = r[L]; bi = L; }
+    if (bi <= LAG_MIN || bi >= LAG_MAX) return { lag: bi, val: bv };
+    const y0 = r[bi - 1], y1 = r[bi], y2 = r[bi + 1], den = y0 - 2 * y1 + y2;
+    if (Math.abs(den) < 1e-12) return { lag: bi, val: y1 };
+    const d = Math.max(-0.5, Math.min(0.5, (y0 - y2) / (2 * den)));
+    return { lag: bi + d, val: y1 - 0.25 * (y0 - y2) * d };
+  }
+  // The PLL. Called with the timestamp of a confirmed onset; pulls the grid onto it.
+  function tempoOnset(now) {
+    const T = audio.tempo;
+    if (!T.period) return;
+    let err = (now - T.anchor) % T.period;
+    if (err > T.period / 2) err -= T.period;      // wrap to the NEAREST grid line, +/- half a period
+    T.anchor = now - err + PLL_A * err;
+    T.period += PLL_B * err;
+    // A grid that is being corrected hard every beat is not tracking; let confidence say so.
+    const rel = Math.abs(err) / T.period;
+    T.conf += ((rel < 0.08 ? 1 : 0) - T.conf) * 0.05;
+  }
+  // ---- what everything downstream asks -----------------------------------------------------
+  // Both return -1 rather than a number when there is no usable grid, so a caller that forgets
+  // to check gets an obviously wrong value instead of a plausible invented beat.
+  function tempoLocked() { return audio.tempo.conf >= CONF_MIN && audio.tempo.period > 0; }
+  function beatEta(now) {
+    if (!tempoLocked()) return -1;
+    const T = audio.tempo, d = (now - T.anchor) % T.period;
+    return d <= 0 ? -d : T.period - d;
+  }
+  // 0 just after a beat, rising to 1 AT the next one. This is the argument an anticipatory
+  // pulse shape is a function of -- note it runs the OPPOSITE way to the decaying st.pulse
+  // every existing shape takes.
+  function beatPhaseAt(now) {
+    if (!tempoLocked()) return -1;
+    const T = audio.tempo;
+    let d = (now - T.anchor) % T.period;
+    if (d < 0) d += T.period;
+    return d / T.period;
+  }
+  function tempoReset() {
+    const T = audio.tempo;
+    T.period = T.bpm = T.anchor = T.conf = 0;
+    audio.envI = audio.envN = audio.envAcc = audio.envAccN = audio.envTick = 0;
+    audio.envSmI = 0; audio.envSmSum = 0;
+    if (audio.env) audio.env.fill(0);
+    if (audio.envSm) audio.envSm.fill(0);
   }
   function updateMeter() {
     for (let b = 0; b < 3; b++) {
@@ -475,7 +698,10 @@
       for (let x = 0; x < DBG_W; x++) { const v = Y(F[K(x)]); x ? g.lineTo(x, v) : g.moveTo(x, v); }
       g.stroke();
       g.fillStyle = BANDHEX[b];
-      g.fillText(bandName(b) + (audio.bpm[b] ? "  ~" + Math.round(audio.bpm[b]) + " bpm" : ""), 6, y0 + 10);
+      // The tracked tempo, not the old per-band EMA of the last gap: one number for the
+      // music, with a confidence, rather than three that disagree and drift.
+      const TT = audio.tempo, tag = TT.conf >= CONF_MIN ? "  " + Math.round(TT.bpm) + " bpm " + Math.round(TT.conf * 100) + "%" : "";
+      g.fillText(bandName(b) + (b === 0 ? tag : ""), 6, y0 + 10);
     }
   }
   if (/[?&]debug=1/.test(location.search)) { dbgToggle(true); const t = el("diagTrace"); if (t) t.checked = true; }

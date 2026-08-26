@@ -1763,6 +1763,49 @@ slider silently retuned every armed slider in the scene.
   chip colours and the trace, and per-slider ranges need their own FFT band pass.
 - **`flashChips` lights from the slider's own trigger pulse**, not the band's.
 
+### Tempo tracking (knowing a beat BEFORE it lands)
+`audioTick` is an ONSET detector and stays one: it peak-picks the previous hop, so a beat is
+known 10ms AFTER it happened, and every `PULSE_SHAPES` entry built on it is therefore a
+*release*. The tracker is a **separate, additive** layer that maintains a continuous grid —
+`audio.tempo = {period, bpm, anchor, conf}` — from which `beatEta(now)` and `beatPhaseAt(now)`
+fall out. It lives at the END of `audioTick`, after the per-band and per-trigger loops, and
+**nothing above it changed**. `tools/tempoprobe.js`.
+- **PERIOD from autocorrelation, PHASE from a PLL.** The correlation needs seconds of history
+  and runs 4×/s (`TEMPO_EVERY`), never per tick; the PLL nudges `anchor`/`period` on each
+  confirmed onset and is what keeps the grid glued between estimates.
+- **THE OCTAVE RULE IS THE HARD PART, AND IT HAS THREE PARTS.** A periodic signal correlates at
+  its period *and every multiple*, so "tallest peak" picks a multiple as often as the
+  fundamental. (1) A **log-Gaussian bias** toward ~120 BPM, deliberately WIDE (`tempoPrefW`
+  2.2) — at 0.9 it dragged a real 176 BPM down to 88, so it must lose to evidence. (2) Prefer
+  the **shortest sub-multiple that scores `OCT_SUB` of the peak**. (3) **Compare INTERPOLATED
+  peaks, not raw bins** (`lagPeak`) — a period between two lags reads low at both while its
+  double lands on a whole lag and reads high, so bin-to-bin comparison inverts the rule exactly
+  when it matters: measured 907.8ms for a 455ms tempo *with every other assertion green*.
+- **The envelope is SMOOTHED (`tempoSmooth`, ~50ms) before correlation.** A one-sample-wide
+  onset train correlates with nothing at its own period when that period lands between samples,
+  and perfectly at its double — a guaranteed octave error. Real onset envelopes are not that
+  sharp either.
+- **Confidence is the NORMALISED correlation** at the chosen lag, not a peak-to-average ratio.
+  The ratio version scored unstructured noise 0.71 and free-tempo onsets 0.90 — both read as a
+  solid tempo. Below `CONF_MIN` the tracker publishes nothing and `beatEta`/`beatPhaseAt`
+  return **−1**, deliberately an obviously wrong number rather than an invented beat.
+- **Predictive firing fires off the COUNTDOWN, never a grid index.** Numbering beats from
+  `anchor` fails because the PLL *moves* `anchor` onto every onset: relative to a moving origin
+  the index oscillates across a single beat and fires on both transitions (79 fires for 48
+  beats). Its window is `max(lead, HOP_MS)` so `lead` 0 — plain lock — fires ON the beat rather
+  than never, plus a half-period refractory.
+- **`lead` and `lock` are ONE mechanism and ship NEUTRAL** (0 / false in `BEAT_DEFAULTS`,
+  resolved by `tuneEff` like `fluxK`): firing from the grid is fill, doing it early is lead.
+  Off, the predictive branch is unreachable, so **a scene saved before this detects beats tick
+  for tick as it always did** — `tempoprobe` asserts exactly that, and it is the whole reason
+  this could ship as a minor.
+- **The anticipatory shapes' argument runs the OTHER WAY.** `PULSE_PRE` marks them; they take
+  `beatPhaseAt` (0 just after a beat → 1 AT the next) instead of the decaying `st.pulse`.
+  `f(0)=0` still holds; `f(1)=1` now means "peaks on the beat". With no lock they fall back to
+  reactive Snap. **`drawPulsePlot` must follow** — it puts the beat line near the right and
+  draws the rise into it, because the plot is drawn from the same formula the animation applies
+  and may never contradict it (`tools/tempoui-check.js` measures the tilt of both).
+
 **Global beat tuning** lives in `<details class="box" id="beatDetails">` (per-preset scene data,
 must autosave). CSS scoped to `#beatDetails`. The name carries weight now that a slider can
 override it — it is the defaults, not the only tuning there is.

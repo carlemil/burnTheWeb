@@ -697,6 +697,8 @@
       put(k, eff.refract[b], v => v + "ms", Array.isArray(own.refract), on);
     }
     put("floor", eff.floor, v => (+v).toFixed(2), typeof own.floor === "number", any);
+    // Lead is not per band -- there is one tempo grid, so one anticipation.
+    put("lead", eff.lead, v => (+v) ? (+v) + "ms" : "off", typeof own.lead === "number", any);
     // Something armed AND not folded away by hand. The fold is the second condition and
     // it wins: an armed slider you have finished tuning should still be able to give the
     // box back (see trigFolded).
@@ -766,7 +768,7 @@
   // tuning". That is what keeps every scene written before this feature rendering identically,
   // and it is why there is no descriptor default to seed from.
   const btuneStates = {};
-  const BTUNE_LIMITS = { fluxK: [0.5, 6], floor: [0, 1], refract: [20, 500] };
+  const BTUNE_LIMITS = { fluxK: [0.5, 6], floor: [0, 1], refract: [20, 500], lead: [0, 400] };
   const inRange = (v, r) => typeof v === "number" && isFinite(v) && v >= r[0] && v <= r[1];
   const triadOk = (v, r) => Array.isArray(v) && v.length === 3 && v.every(x => inRange(x, r));
   // Validate field by field and DROP anything unrecognised, so a hand-edited or malformed
@@ -778,6 +780,10 @@
     if (triadOk(t.fluxK, BTUNE_LIMITS.fluxK)) out.fluxK = t.fluxK.slice();
     if (inRange(t.floor, BTUNE_LIMITS.floor)) out.floor = t.floor;
     if (triadOk(t.refract, BTUNE_LIMITS.refract)) out.refract = t.refract.slice();
+    // The tempo pair. `lock` is stored only when TRUE: false is the shipped default, and an
+    // explicit false in every entry would bloat every scene to say nothing.
+    if (inRange(t.lead, BTUNE_LIMITS.lead)) out.lead = t.lead;
+    if (t.lock === true) out.lock = true;
     return Object.keys(out).length ? out : null;      // nothing valid ⇒ inherit
   }
   function presetBtune() { return {}; }               // shipped state is "everything inherits"

@@ -17,7 +17,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.59.1",
+    version: "1.60.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -64,8 +64,14 @@
     // (see the detector notes in CLAUDE.md), and the gap is the same idea taken one step.
     // Per-SCENE data, so this is the default a scene starts from: a preset that stored its
     // own `bands` keeps them, and only one saved without them picks this up.
+    // `lead` and `lock` are the TEMPO half, and both ship neutral on purpose. lead 0 / lock
+    // false makes the predictive firing path in audioTick unreachable, so every scene saved
+    // before tempo tracking existed detects beats exactly as it always did. Turning either on
+    // is a deliberate act. lead is ms EARLY, so the visual peaks on the beat rather than
+    // behind it; lock fills beats the onset detector missed and rejects ones off the grid.
     beatDefaults: { fluxK: [2.0, 2.0, 2.0], floor: 0.10,                  // flux threshold per band; global floor
-      refract: [110, 100, 70], bands: [[30, 150], [250, 2500], [2500, 12000]] },  // refractory ms / Hz edges per band
+      refract: [110, 100, 70], bands: [[30, 150], [250, 2500], [2500, 12000]],  // refractory ms / Hz edges per band
+      lead: 0, lock: false },                                             // predictive firing: ms early / snap to the grid
 
     // --- incoming payload codec safety ---
     // Budget for DECOMPRESSING any incoming deflated payload (?z= links, #zp= bundles,
@@ -120,6 +126,36 @@
     // --- effect / physics tuning (implementation constants; several are load-bearing) ---
     tuning: {
       hopMs: 10,          // beat-analysis tick, ms — 100Hz, framerate-independent   (HOP_MS)
+      // --- TEMPO TRACKER (see the detector notes in CLAUDE.md) ---
+      // The onset detector is reactive by construction: it confirms a beat one hop AFTER it
+      // happened. These drive the separate tracker that says when the NEXT one lands, which
+      // is what an anticipatory pulse shape needs.
+      // NOT decimated. At 50Hz the lag grid was 20ms apart, so a 140 BPM period (429ms)
+      // fell between two lags and correlated BETTER at its double, which happened to land
+      // near a whole lag -- the tracker locked to 861ms. The full rate costs ~39k
+      // multiply-adds 4 times a second, which is nothing; the coarse grid cost accuracy.
+      tempoHz: 100,       // envelope rate fed to the autocorrelation                 (TEMPO_HZ)
+      tempoWin: 600,      // envelope samples correlated = 6s at 100Hz                (TEMPO_WIN)
+      tempoEvery: 25,     // ticks between autocorrelations — 4/s, NOT per tick       (TEMPO_EVERY)
+      tempoMinBpm: 60,    // slowest tempo tracked (longest lag)                      (TEMPO_MIN_BPM)
+      tempoMaxBpm: 200,   // fastest tempo tracked (shortest lag)                     (TEMPO_MAX_BPM)
+      tempoPrefBpm: 120,  // octave-error bias centre: log-Gaussian preference        (TEMPO_PREF_BPM)
+      tempoPrefW: 2.2,    // width of that preference in octaves -- WIDE: a tie-breaker,
+                          // never an override. At 0.9 it dragged a real 176 BPM to 88.
+      tempoSmooth: 5,     // onset-envelope smoothing taps before correlation (50ms at 100Hz).
+                          // A real tempo does not land on the sample grid, and an onset only
+                          // one sample wide then correlates with NOTHING at its own period
+                          // while aligning perfectly at its double -- a guaranteed octave
+                          // error for any period ending in half a sample.        (TEMPO_SMOOTH)
+      tempoOctSub: 0.75,  // a sub-multiple lag wins if it scores this fraction of the peak;
+                          // finds the FUNDAMENTAL, since every multiple of a period also
+                          // correlates and 'tallest peak' picks one at random   (OCT_SUB)
+      tempoConfR0: 0.18,  // normalised autocorrelation that reads as no tempo    (CONF_R0)
+      tempoConfR1: 0.45,  // ...and as a certain one                              (CONF_R1)
+      tempoPllA: 0.20,    // PLL phase correction per onset                           (PLL_A)
+      tempoPllB: 0.02,    // PLL period correction per onset                          (PLL_B)
+      tempoConfMin: 0.35, // below this the tracker publishes nothing usable          (CONF_MIN)
+      tempoLockTol: 0.25, // 'lock' rejects an onset further than this × period off    (LOCK_TOL)
       nodRate: 0.12,      // Tetrafyer's slow idle nod rate                          (NOD_RATE)
       cardPowQ: 0.05,     // Multibrot locus quantisation = the Power slider's step  (CARD_POW_Q)
       juliaMargin: 0.06,  // push the seed's big loop this far outside the cardioid  (JULIA_MARGIN)

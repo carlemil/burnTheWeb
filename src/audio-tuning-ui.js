@@ -27,6 +27,14 @@
     row.append(nm, sl, out);
     return row;
   }
+  function beatChkRow(label, val, set) {                      // name + tick
+    const row = document.createElement("div"); row.className = "beat-row";
+    const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!val;
+    cb.addEventListener("change", () => { set(cb.checked); beatChanged(false); });
+    row.append(nm, cb);
+    return row;
+  }
   function beatBandRow(label, b) {                           // name + lo Hz + – + hi Hz
     const row = document.createElement("div"); row.className = "beat-row beat-band";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
@@ -57,6 +65,29 @@
       beatRow(BANDLABEL[b], beatCfg.refract[b], 20, 500, 5, v => v + "ms", v => beatCfg.refract[b] = v));
     sec("Bands — frequency range (Hz)");
     for (let b = 0; b < 3; b++) body.appendChild(beatBandRow(BANDLABEL[b], b));
+    // ---- TEMPO ---------------------------------------------------------------------------
+    // Everything above answers "was that a beat?" after the fact. This answers "when is the
+    // next one?", which is what an anticipatory pulse shape needs. Both ship neutral, so a
+    // scene that never touches them detects beats exactly as it always did.
+    sec("Tempo — predict the beat instead of reacting to it");
+    body.appendChild(beatRow("lead", beatCfg.lead, 0, 400, 5,
+      v => v ? v + "ms early" : "off", v => beatCfg.lead = v));
+    body.appendChild(beatChkRow("lock", beatCfg.lock, v => beatCfg.lock = v));
+    // The tracked tempo, so its behaviour is visible while tuning rather than something you
+    // infer from the visual. It replaced a per-band EMA of the last inter-beat gap, which had
+    // no phase and could not survive a missed onset.
+    const bpm = document.createElement("div");
+    bpm.className = "beat-sec beat-bpm"; bpm.id = "beatBpm"; bpm.textContent = "—";
+    body.appendChild(bpm);
+  }
+  // Driven from frame(), like the meter: this is live state, not a control.
+  function beatBpmTick() {
+    const n = el("beatBpm");
+    if (!n || !beatUi.on) return;                 // only while the box is open
+    const T = audio.tempo;
+    n.textContent = !audioLive() ? "—"
+      : T.conf >= CONF_MIN ? Math.round(T.bpm) + " BPM   ·   lock " + Math.round(T.conf * 100) + "%"
+      : "listening for a tempo…" + (T.bpm ? "   (" + Math.round(T.bpm) + " BPM, " + Math.round(T.conf * 100) + "%)" : "");
   }
   function beatReset() {
     installBeatTune(mergeBeatTune(null));   // mergeBeatTune(null) IS the shipped defaults

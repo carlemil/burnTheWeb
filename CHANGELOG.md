@@ -14,6 +14,36 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.60.0] — 2026-08-26
+
+### Added
+- **Beat prediction.** Until now the app could only react: a beat was recognised about a
+  hundredth of a second after it landed, so every beat-driven slider snapped to its high thumb
+  on the hit and fell away from it. It now tracks the tempo continuously and knows when the
+  NEXT beat is due, which makes the opposite shape possible.
+- **Three anticipatory pulse shapes** in every slider's Triggers box, marked with an arrow:
+  **Rise**, **Swoop** and **Breathe**. Instead of dropping away from the beat they climb into
+  it and peak exactly on it. If there is no steady tempo to lock onto they fall back to Snap,
+  so an armed slider still moves.
+- **Lead** — per slider and scene-wide: fire a slider up to 400ms EARLY, so the visual peaks
+  on the beat rather than just behind it.
+- **Lock to tempo** — keep a slider running on the tracked grid, which fills in beats the
+  detector cannot hear (a breakdown, a bar with no kick) and ignores ones that land off it.
+- **A live BPM readout** in the Beat tuning box, with how confident the tracker is. It replaces
+  a per-band estimate that had no sense of timing and could be thrown off by a single missed
+  beat.
+
+### Notes
+- **Nothing changes unless you turn it on.** Lead ships at 0 and Lock off, so every scene saved
+  before this detects beats exactly as it did — tick for tick.
+
+### Internal
+- New `tools/tempoprobe.js` (18 assertions) and `tools/tempoui-check.js` (11). Between them
+  they pin lock, phase accuracy, both directions of the octave trap, re-locking, the refusal to
+  invent a tempo from noise, grid drift through a six-second silence, the tick-for-tick
+  equivalence guarantee, and that the pulse plot tilts the opposite way for an anticipatory
+  shape. Every assertion was verified against a deliberately broken build.
+
 ## [1.59.1] — 2026-08-26
 
 ### Fixed

@@ -315,7 +315,25 @@
     // Peaks LATE (three quarters through): u^3(1-u) maxes at u = 3/4 and the 256/27 puts
     // that peak exactly on 1, so the high thumb still means the high thumb.
     { key: "bloom",   name: "Late swell", fn: p => { const u = 1 - p; return u * u * u * (1 - u) * 256 / 27; } },
+    // ---- THE ANTICIPATORY SHAPES: their argument runs the OTHER WAY ----------------------
+    // Every shape above is a RELEASE. Its argument is the decaying st.pulse -- 1 the instant
+    // the beat lands, falling to 0 -- so the slider is at the high thumb on the hit and
+    // everything after is a fall. That is all the onset detector can support, because it only
+    // knows a beat AFTER it happened.
+    //
+    // These are driven by the tempo tracker's phase instead: 0 just after a beat, rising to 1
+    // AT the next one. So they rise INTO the beat and peak exactly on it. `f(0) = 0` still
+    // holds and still means the same thing -- the slider sits at the low thumb right after a
+    // beat -- but `f(1) = 1` now means "peaks on the beat" rather than "starts there".
+    //
+    // They need a locked tempo. With none (free tempo, speech, silence) stepAnim falls back to
+    // reactive Snap, so an armed slider still moves rather than freezing at its low thumb.
+    { key: "rise",    name: "\u2197 Rise",    pre: true, fn: q => q },                                  // straight ramp up to the hit
+    { key: "swoop",   name: "\u2197 Swoop",   pre: true, fn: q => q * q * q },                          // hangs low, rushes up at the last moment
+    { key: "breathe", name: "\u2197 Breathe", pre: true, fn: q => (1 - Math.cos(Math.PI * q)) / 2 },    // smooth inhale, peaks on the beat
   ];
+  // Which keys are anticipatory. Read by stepAnim and by the plot, so the two cannot disagree.
+  const PULSE_PRE = {}; PULSE_SHAPES.forEach(s => { if (s.pre) PULSE_PRE[s.key] = true; });
   const PULSE_FN = {}; PULSE_SHAPES.forEach(s => PULSE_FN[s.key] = s.fn);
   const PULSE_DEFAULT = "snap";
   const pulseShape = {};       // id -> shape key : live per-effect selection (drives updateAnims)
@@ -344,11 +362,16 @@
   // and the ↺ all go through it, so they cannot disagree about what a slider is actually using.
   function tuneEff(t) {
     const fluxK = beatCfg.fluxK, refract = beatCfg.refract;
-    if (!t) return { fluxK, floor: beatCfg.floor, refract };
+    if (!t) return { fluxK, floor: beatCfg.floor, refract, lead: beatCfg.lead, lock: beatCfg.lock };
     return {
       fluxK: Array.isArray(t.fluxK) ? t.fluxK : fluxK,
       floor: typeof t.floor === "number" ? t.floor : beatCfg.floor,
       refract: Array.isArray(t.refract) ? t.refract : refract,
+      // The tempo pair inherits by the same rule. Both are neutral in BEAT_DEFAULTS, so an
+      // untouched slider resolves to lead 0 / lock false and the predictive path in audioTick
+      // is unreachable for it.
+      lead: typeof t.lead === "number" ? t.lead : beatCfg.lead,
+      lock: typeof t.lock === "boolean" ? t.lock : beatCfg.lock,
     };
   }
   // Three L/M/H toggle chips next to a slider's label, feeding beatReact[id].
@@ -586,6 +609,22 @@
       refs.vals[k] = R.val; refs.tips[k] = R.tip;
       refWrap.appendChild(R.row);
     }
+    // Lead — this slider's own anticipation. The rows above tune what COUNTS as a beat;
+    // this one moves when the slider reacts to it, which only the tempo tracker can offer.
+    // 0 is off and is the shipped default, so the predictive path in audioTick is unreachable
+    // for a slider nobody has touched.
+    const leadT = document.createElement("div");
+    leadT.className = "trig-sub"; leadT.textContent = "Lead (ms early)";
+    leadT.title = "Fire this slider BEFORE the beat, so the visual peaks on it rather than behind it. Needs a tempo it can lock onto.";
+    refWrap.appendChild(leadT);
+    {
+      const R = tuneRow("trig-lead", "all", 0, 400, 5, null, v => { own().lead = v; });
+      R.fmt = v => v ? v + "ms" : "off";
+      R.field.title = "lead (ms early)"; R.field.setAttribute("aria-label", "beat lead in milliseconds");
+      refs.fields.lead = R.field; refs.rows.lead = R.row;
+      refs.vals.lead = R.val; refs.tips.lead = R.tip;
+      refWrap.appendChild(R.row);
+    }
     refs.wrap = refWrap;
     // The fall-back CURVE, titled like everything else here rather than left as an
     // unlabelled dropdown floated to the right of the chips. The section titles under
@@ -671,7 +710,13 @@
     const c = cv.getContext("2d"), W2 = cv.width, H = cv.height;
     const fn = PULSE_FN[shapeKey] || PULSE_FN[PULSE_DEFAULT];
     const len = lenS > 0 ? lenS : PULSE_DROP;
-    const span = len * 1.35, hit = len * 0.12;                 // seconds across the plot; the beat lands at `hit`
+    // An ANTICIPATORY shape spends its whole cycle approaching the beat, so the beat line goes
+    // near the RIGHT of the plot and the curve rises across everything before it. Drawing one
+    // with the reactive layout would put the entire shape after the hit and show a fall where
+    // the slider actually rises -- and this plot exists precisely because it is drawn from the
+    // same formula the animation applies and therefore cannot disagree with it.
+    const pre = !!PULSE_PRE[shapeKey];
+    const span = len * 1.35, hit = pre ? len * 1.35 * 0.82 : len * 0.12;
     const lo = +w.lo.value, hi = +w.hi.value;
     const rng = Math.abs(hi - lo);
     const padL = 4, padR = 4, padT = 6, padB = 6;
@@ -693,7 +738,11 @@
     for (let i = 0; i <= W2; i++) {
       const t = (i / W2) * span;
       let f = 0;
-      if (t >= hit) { const pulse = Math.max(0, 1 - (t - hit) / len); f = rng > 1e-9 ? fn(pulse) : 0; }
+      if (pre) {
+        // Phase rising to 1 at each beat line, then wrapping straight back to 0 -- so the drop
+        // lands exactly ON the beat, which is what the slider does.
+        f = rng > 1e-9 ? fn((t % hit) / hit) : 0;
+      } else if (t >= hit) { const pulse = Math.max(0, 1 - (t - hit) / len); f = rng > 1e-9 ? fn(pulse) : 0; }
       i ? c.lineTo(X(t), Y(f)) : c.moveTo(X(t), Y(f));
     }
     c.stroke();
@@ -861,10 +910,17 @@
       const drop = plen > 0 ? plen : PULSE_DROP;
       if (beat) st.pulse = 1;                                    // immediate, significant
       else st.pulse = st.pulse - dt / drop > 0 ? st.pulse - dt / drop : 0;
-      const fn = PULSE_FN[shape] || PULSE_FN[PULSE_DEFAULT];
+      // An anticipatory shape is a function of the phase toward the NEXT beat, not of the
+      // decay since the last one -- which is the whole point of the tempo tracker. beatPhaseAt
+      // returns -1 when there is no usable grid, and that is deliberately an obviously wrong
+      // number rather than a plausible invented beat: it drops us onto reactive Snap below.
+      const pre = !!PULSE_PRE[shape];
+      const q = pre ? beatPhaseAt(now) : -1;
+      const fn = pre ? (q >= 0 ? PULSE_FN[shape] : PULSE_FN[PULSE_DEFAULT])
+                     : (PULSE_FN[shape] || PULSE_FN[PULSE_DEFAULT]);
       // Deliberately writes `out`, not `val`: the drift position must survive the
       // pulse untouched, so unarming resumes the wander where it left off.
-      st.out = snapStep(a, mn + fn(st.pulse) * (mx - mn), mn, mx);   // rest at mn, snap to mx, decay back along the chosen curve
+      st.out = snapStep(a, mn + fn(q >= 0 ? q : st.pulse) * (mx - mn), mn, mx);   // rest at mn, snap to mx, decay back along the chosen curve
       if (doApply) a.apply(st.out);
       return;
     }
