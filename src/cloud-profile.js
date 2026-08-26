@@ -133,7 +133,8 @@
         cloudSaveSess();
         track("cloud_sign_in", {});
         cloudSyncUI();
-        cloudFetchProfileMeta();          // pick up the profile name, if there is one already
+        // ...and, if this account has no profile yet, put this machine's library into it.
+        cloudFetchProfileMeta(true);      // pick up the profile name, if there is one already
       });
   }
   function cloudSignOut() {
@@ -574,13 +575,27 @@
 
   // Read just the metadata after signing in, so the name field shows what is already stored
   // rather than starting blank and overwriting it on the next save.
-  function cloudFetchProfileMeta() {
+  // `seedIfMissing` is passed ONLY by the sign-in path, and the distinction is the whole
+  // safety of the seeding below: this also runs at startup for an existing session, and an
+  // unconditional seed would silently re-upload the local library every time someone who had
+  // deliberately DELETED their cloud profile opened the page.
+  function cloudFetchProfileMeta(seedIfMissing) {
     if (!cloudSess) return;
     cloudFetch(docUrl(cloudSess.uid) + "?mask.fieldPaths=name&mask.fieldPaths=count&mask.fieldPaths=pub",
       { method: "GET" }).then(r => {
         // 404 = no profile yet, and that is worth REMEMBERING: the save precondition asserts
         // exists=false from it, so two fresh machines racing their first save still lose cleanly.
-        if (r.status === 404) { cloudNoteDocTime("none"); return null; }
+        if (r.status === 404) {
+          cloudNoteDocTime("none");
+          // A BRAND-NEW ACCOUNT STARTS WITH WHAT IS ALREADY ON THIS MACHINE. Signing in used
+          // to leave the profile empty until you found the Save button, so the scenes you had
+          // been working on -- or the shipped library you had just been shown -- existed only
+          // in this browser and the account looked broken. cloudSave's precondition asserts
+          // exists=false from the docTime just recorded, so this can only ever CREATE: it
+          // cannot overwrite a profile, and two fresh machines racing still lose cleanly.
+          if (seedIfMissing) { track("cloud_seed", {}); cloudSave(); }
+          return null;
+        }
         return r.ok ? r.json() : null;
       }).then(doc => {
         if (!doc) return;

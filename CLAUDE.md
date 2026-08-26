@@ -1610,6 +1610,18 @@ owner.
   retraction path. Links minted before the note existed can't be listed. `cloudDelete` sweeps
   the noted ones (`shareLinksDeleteAll`) beside the snapshots sweep. `cloudprobe` pins all of it.
 
+**A FIRST SIGN-IN SEEDS THE ACCOUNT FROM THIS MACHINE.** Signing in used to leave the profile
+empty until the user found Save, so the scenes they had been working on — or the shipped library
+they had just been shown — lived only in that browser and the account read as broken.
+`cloudFetchProfileMeta(seedIfMissing)`'s 404 branch calls `cloudSave()`.
+- **Only `cloudSave` may do the writing**, because its precondition asserts `exists=false` from
+  the `docTime` that branch has just recorded — so seeding can only ever CREATE. It cannot
+  overwrite a profile, and two fresh machines racing their first save still lose cleanly.
+- **`seedIfMissing` is passed by the SIGN-IN caller only.** The same function runs at startup for
+  an existing session, and an unconditional seed would silently re-upload the local library
+  every time someone who deliberately DELETED their cloud profile opened the page. `cloudprobe`
+  asserts the startup call passes nothing.
+
 **`cloudApplyPayload(payload)` is the ONE place a stored payload becomes a library** — unzip → parse
 → `openSharedLibrary`. `cloudLoad` is its only caller today; the seam is kept deliberately.
 `cloudprobe` pins it.

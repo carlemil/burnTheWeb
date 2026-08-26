@@ -14,6 +14,22 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.63.0] — 2026-08-26
+
+### Added
+- **Signing in for the first time now copies your scenes into the new account.** Until now a
+  fresh account started empty and stayed that way until you found the Save button — so the
+  scenes you had been working on, or the library you had just been shown, existed only in that
+  browser and the profile looked broken. Whatever is in this browser is uploaded as the
+  account's first save.
+
+### Notes
+- It only ever **creates**. The save asserts that no profile exists yet, so it can never
+  overwrite one — signing in on a second machine still loads your profile rather than
+  replacing it with that machine's scenes.
+- It happens on **sign-in only**, not on every visit. If you delete your cloud profile it stays
+  deleted; opening the page again will not quietly put it back.
+
 ## [1.62.0] — 2026-08-26
 
 ### Fixed

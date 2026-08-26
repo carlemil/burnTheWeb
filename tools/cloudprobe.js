@@ -111,9 +111,23 @@ console.log("--- Cloud profiles: Firestore codec (" + file + ")\n");
   const loadT = slice("function cloudLoad() {", "function cloudDelete()");
   ok("load records the version it fetched (the precondition compares against it)",
      /cloudNoteDocTime\(doc\.updateTime/.test(loadT));
-  const meta = slice("function cloudFetchProfileMeta() {", "function cloudErr(");
+  const meta = slice("function cloudFetchProfileMeta(seedIfMissing) {", "function cloudErr(");
   ok("the sign-in meta fetch records the version too, and 404 as known-absent",
      /cloudNoteDocTime\(doc\.updateTime/.test(meta) && /cloudNoteDocTime\("none"\)/.test(meta));
+  // SEEDING A BRAND-NEW ACCOUNT. On a first sign-in with no profile the local library is
+  // uploaded, so the account does not start empty. Two things make that safe, and both are
+  // easy to lose in a refactor.
+  ok("a first sign-in with no profile seeds the account from this machine",
+     /seedIfMissing/.test(meta) && /cloudSave\(\)/.test(meta));
+  // It can only CREATE: the save's precondition asserts exists=false from the docTime this
+  // branch just recorded, so seeding can never overwrite a real profile.
+  ok("...and the seed runs only AFTER 404 is recorded as known-absent",
+     meta.indexOf('cloudNoteDocTime("none")') < meta.indexOf("cloudSave()"));
+  // The startup call must NOT pass the flag, or anyone who deliberately deleted their cloud
+  // profile gets it silently re-uploaded on their next visit.
+  const startupCall = src.match(/if \(cloudSess\) cloudFetchProfileMeta\(([^)]*)\)/);
+  ok("...and the STARTUP meta fetch never seeds", !!startupCall && startupCall[1].trim() === "",
+     startupCall ? "cloudFetchProfileMeta(" + startupCall[1] + ")" : "startup call not found");
   // ONE decode path for every transport. It lives in a helper rather than inside cloudLoad,
   // which is a seam worth keeping even with a single caller: the moment anything else needs to
   // turn a stored payload into a library, it must come through here, or a cloud payload stops
