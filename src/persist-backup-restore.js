@@ -229,6 +229,24 @@
     const out = fullSnapshot();                // current everything is the base; override chosen parts
     if (el("rst-presets").checked) {
       const coll = p.collection || "";
+      // CUSTOM PALETTES FIRST, and before `lib` is built: the presets below are pushed by
+      // reference, so their palette indices have to be correct by the time they land.
+      // A payload predating this carries no list at all and skips the lot, which is why every
+      // older backup, bundle and profile restores exactly as it did.
+      const inPal = (p.parsed && !Array.isArray(p.parsed) && Array.isArray(p.parsed.palettes))
+        ? p.parsed.palettes : null;
+      if (inPal) {
+        if (!coll && el("rst-replace").checked) {
+          out.palettes = inPal;          // wholesale: their library, their ramps, positions intact
+        } else {
+          // Merge and collection installs both KEEP your library, so they keep your ramps too
+          // and append theirs -- then the incoming scenes are remapped onto the merged
+          // positions. Replacing here would delete every custom palette you have authored.
+          const m = palMergeCustoms(out.palettes, inPal);
+          out.palettes = m.list;
+          palRemapIncoming(p.valid, m.map);
+        }
+      }
       let lib;
       if (coll) {
         // COLLECTION install (a gallery load). Someone else's scenes are kept as their own

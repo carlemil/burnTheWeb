@@ -14,6 +14,27 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.62.0] — 2026-08-26
+
+### Fixed
+- **Shared scenes now bring their custom palettes with them.** A scene built on a palette you
+  made lost its colours the moment anyone else opened it — a published profile, a scene link
+  and a preset bundle all carried the palette's name but never the palette, so the recipient
+  quietly got a built-in ramp instead with nothing to say anything was missing. All three now
+  carry the ramps their scenes actually use.
+- Loading someone's library in **merge** mode keeps your own palettes and adds theirs — a ramp
+  you both have is recognised as the same one rather than duplicated, and their scenes are
+  re-pointed at the merged list so nobody's colours land on the wrong ramp.
+- **Lead now works with the anticipatory shapes** (Rise, Swoop, Breathe). It moved the eight
+  release shapes and did nothing at all to the three that rise into the beat — which is the
+  opposite of what it looks like it does. It now means the same thing everywhere: peak this
+  far *before* the beat.
+
+### Notes
+- Only what a scene references travels, so nothing you have not shared is published, and a
+  scene using only built-in palettes produces exactly the bytes it always did — every link
+  ever minted still opens identically.
+
 ## [1.61.0] — 2026-08-26
 
 ### Added

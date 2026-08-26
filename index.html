@@ -2419,7 +2419,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.61.0",
+    version: "1.62.0",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -3240,6 +3240,43 @@
   // The id rides in the blob's `palettes` entries so the refs written in the same save
   // always have their targets beside them (see palIdxIn).
   const customPalettes = () => PALETTES.slice(PAL_BUILTIN).map(p => ({ name: p.name, stops: p.stops, id: p.id }));
+  // Union two custom lists, keeping MINE where they are, and report where each incoming ramp
+  // ended up. That second half is the whole point: an incoming scene's palette references were
+  // already resolved against ITS list's positions (deserializeBlob does that early), and a
+  // merge moves those positions -- so without a remap a borrowed scene would silently point at
+  // whichever of YOUR customs happened to sit at that index. Wrong colours, no error.
+  //
+  // Same content id means the same ramp, so a palette you both have is reused rather than
+  // duplicated -- which is exactly what content-derived ids were introduced for.
+  function palMergeCustoms(mine, theirs) {
+    const list = (mine || []).slice(), map = [];
+    (theirs || []).forEach((d, i) => {
+      const at = list.findIndex(x => x && x.id === d.id);
+      if (at >= 0) { map[i] = PAL_BUILTIN + at; return; }
+      // The cap is a real ceiling, not a formality: past it the reference is dropped rather
+      // than pointed somewhere arbitrary, and the scene falls back to its effect's default.
+      if (list.length >= PAL_MAX_CUSTOM) { map[i] = -1; return; }
+      list.push(d);
+      map[i] = PAL_BUILTIN + list.length - 1;
+    });
+    return { list, map };
+  }
+  // Rewrite already-decoded presets onto the merged positions. Built-in indices are untouched;
+  // an incoming custom that did not survive the cap becomes null, which every reader already
+  // treats as "not chosen" and resolves from the effect's own default.
+  function palRemapIncoming(presets, map) {
+    const one = v => {
+      const n = +v;
+      if (v === null || v === undefined || !Number.isFinite(n) || n < PAL_BUILTIN) return v;
+      const to = map[n - PAL_BUILTIN];
+      return to === undefined || to < 0 ? null : to;
+    };
+    (presets || []).forEach(p => {
+      if (!p) return;
+      if (p.extra && typeof p.extra === "object") p.extra.palette = one(p.extra.palette);
+      if (Array.isArray(p.layers)) p.layers.forEach(L => { if (L) L.palette = one(L.palette); });
+    });
+  }
   // Validate a stop list from a blob: pairs of [pos 0..1, [r,g,b]], sorted, deduped, clamped,
   // capped. Returns null if it cannot be made into a usable ramp — a caller that gets null
   // drops that palette rather than installing something that would throw inside grad().
@@ -15590,7 +15627,14 @@
       // returns -1 when there is no usable grid, and that is deliberately an obviously wrong
       // number rather than a plausible invented beat: it drops us onto reactive Snap below.
       const pre = !!PULSE_PRE[shape];
-      const q = pre ? beatPhaseAt(now) : -1;
+      // LEAD APPLIES HERE TOO, and it has to. Lead works by firing the trigger early, which
+      // sets st.pulse -- and an anticipatory shape does not read st.pulse at all, it reads the
+      // tempo phase. So as first shipped, Lead moved all eight RELEASE shapes and did exactly
+      // nothing to the three that rise into the beat, which is the opposite of what the
+      // control looks like it does. Offsetting the phase instead gives it one meaning
+      // everywhere: peak this far BEFORE the beat.
+      const lead = pre ? (tuneEff(slot != null ? tuneOf(stack[slot], id) : null).lead || 0) : 0;
+      const q = pre ? beatPhaseAt(now + lead) : -1;
       const fn = pre ? (q >= 0 ? PULSE_FN[shape] : PULSE_FN[PULSE_DEFAULT])
                      : (PULSE_FN[shape] || PULSE_FN[PULSE_DEFAULT]);
       // Deliberately writes `out`, not `val`: the drift position must survive the
@@ -17038,6 +17082,38 @@
   const palListOut = a => (Array.isArray(a) ? a.map(palIdOut).filter(Boolean) : a);
   // Decode halves. `customs` is the blob's own (already-validated) `palettes` list, which is
   // where a custom id resolves — see palIdxIn.
+  // ---- CUSTOM PALETTES TRAVEL WITH THE SCENES THAT USE THEM ------------------------------
+  // The decode side has always been ready for this: deserializeBlob resolves palette ids
+  // against the blob's OWN `palettes` list, and applyBlob installs it before validating any
+  // palette value. Nothing ever put the list INTO a shared payload, so a published profile or
+  // a share link naming a custom ramp arrived with an id that resolved to nothing, and the
+  // scene silently fell back to a built-in -- the recipient saw the wrong colours with no
+  // hint that anything was missing.
+  //
+  // Takes a SERIALIZED blob, so every reference is already a string id and there is one form
+  // to scan rather than three. Returns null when the blob names no customs at all, which is
+  // the common case and keeps those payloads BYTE-IDENTICAL to what they have always been --
+  // no key appears, so every link minted before this still decodes to exactly the same bytes.
+  function palettesUsedBy(b) {
+    if (!b || typeof b !== "object") return null;
+    const want = new Set();
+    const note = v => { if (typeof v === "string" && PAL_IDS.indexOf(v) < 0) want.add(v); };
+    const ex = x => { if (x && typeof x === "object") note(x.palette); };
+    ex(b.extra);
+    if (b.extras && typeof b.extras === "object") for (const k in b.extras) ex(b.extras[k]);
+    if (Array.isArray(b.layers)) b.layers.forEach(L => { if (L) note(L.palette); });
+    if (Array.isArray(b.presets)) b.presets.forEach(p => {
+      if (!p || typeof p !== "object") return;
+      ex(p.extra);
+      if (Array.isArray(p.layers)) p.layers.forEach(L => { if (L) note(L.palette); });
+    });
+    if (!want.size) return null;
+    // Only the ramps actually referenced. Sending the whole custom tail would publish work
+    // that has nothing to do with the scenes being shared, and grow every payload against the
+    // rules' size cap for no reason.
+    const used = customPalettes().filter(d => want.has(d.id));
+    return used.length ? used : null;
+  }
   const palExIn = (ex, customs) => {
     if (!ex || typeof ex !== "object" || ex.palette == null) return ex;
     const i = palIdxIn(ex.palette, customs);
@@ -21433,7 +21509,11 @@
     // rather than failing — a graceful degrade, not an error.
     const st = stackOut();
     if (st) blob.layers = st;
-    return serializeBlob(blob);       // effect stored as a stable id
+    const out = serializeBlob(blob);  // effect stored as a stable id
+    // ...and any custom ramp this scene names, so the link carries its own colours.
+    const pal = palettesUsedBy(out);
+    if (pal) out.palettes = pal;
+    return out;
   }
   async function shareUrl() {
     const json = JSON.stringify(sceneBlob());
@@ -21464,7 +21544,10 @@
     const blob = { presets: chosen, cycle: cycleChk.checked };
     const selIdx = curPreset >= 0 ? chosen.indexOf(presets[curPreset]) : -1;
     if (selIdx >= 0) blob.curPreset = selIdx;
-    const json = JSON.stringify(serializeBlob(blob));
+    const wire = serializeBlob(blob);
+    const pal = palettesUsedBy(wire);
+    if (pal) wire.palettes = pal;     // the bundle's scenes carry their own custom ramps
+    const json = JSON.stringify(wire);
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);
     return z ? dir + "#zp=" + z
@@ -22642,6 +22725,24 @@
     const out = fullSnapshot();                // current everything is the base; override chosen parts
     if (el("rst-presets").checked) {
       const coll = p.collection || "";
+      // CUSTOM PALETTES FIRST, and before `lib` is built: the presets below are pushed by
+      // reference, so their palette indices have to be correct by the time they land.
+      // A payload predating this carries no list at all and skips the lot, which is why every
+      // older backup, bundle and profile restores exactly as it did.
+      const inPal = (p.parsed && !Array.isArray(p.parsed) && Array.isArray(p.parsed.palettes))
+        ? p.parsed.palettes : null;
+      if (inPal) {
+        if (!coll && el("rst-replace").checked) {
+          out.palettes = inPal;          // wholesale: their library, their ramps, positions intact
+        } else {
+          // Merge and collection installs both KEEP your library, so they keep your ramps too
+          // and append theirs -- then the incoming scenes are remapped onto the merged
+          // positions. Replacing here would delete every custom palette you have authored.
+          const m = palMergeCustoms(out.palettes, inPal);
+          out.palettes = m.list;
+          palRemapIncoming(p.valid, m.map);
+        }
+      }
       let lib;
       if (coll) {
         // COLLECTION install (a gallery load). Someone else's scenes are kept as their own
@@ -23100,7 +23201,13 @@
     const blob = { presets: mine, cycle: snap.cycle,
                    collections: collectionsHeld.map(c => ({ key: c.key, uid: c.uid })) };
     if (mine.length) blob.curPreset = cur >= 0 ? cur : 0;
-    return serializeBlob(blob);
+    const wire = serializeBlob(blob);
+    // The custom ramps these scenes name, so a profile someone else loads brings its own
+    // colours. Without it a published scene built on a custom palette arrived with an id that
+    // resolved to nothing and quietly fell back to a built-in.
+    const pal = palettesUsedBy(wire);
+    if (pal) wire.palettes = pal;
+    return wire;
   }
 
   // ---- save / load / delete ----

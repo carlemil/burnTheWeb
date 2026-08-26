@@ -611,6 +611,38 @@
   const palListOut = a => (Array.isArray(a) ? a.map(palIdOut).filter(Boolean) : a);
   // Decode halves. `customs` is the blob's own (already-validated) `palettes` list, which is
   // where a custom id resolves — see palIdxIn.
+  // ---- CUSTOM PALETTES TRAVEL WITH THE SCENES THAT USE THEM ------------------------------
+  // The decode side has always been ready for this: deserializeBlob resolves palette ids
+  // against the blob's OWN `palettes` list, and applyBlob installs it before validating any
+  // palette value. Nothing ever put the list INTO a shared payload, so a published profile or
+  // a share link naming a custom ramp arrived with an id that resolved to nothing, and the
+  // scene silently fell back to a built-in -- the recipient saw the wrong colours with no
+  // hint that anything was missing.
+  //
+  // Takes a SERIALIZED blob, so every reference is already a string id and there is one form
+  // to scan rather than three. Returns null when the blob names no customs at all, which is
+  // the common case and keeps those payloads BYTE-IDENTICAL to what they have always been --
+  // no key appears, so every link minted before this still decodes to exactly the same bytes.
+  function palettesUsedBy(b) {
+    if (!b || typeof b !== "object") return null;
+    const want = new Set();
+    const note = v => { if (typeof v === "string" && PAL_IDS.indexOf(v) < 0) want.add(v); };
+    const ex = x => { if (x && typeof x === "object") note(x.palette); };
+    ex(b.extra);
+    if (b.extras && typeof b.extras === "object") for (const k in b.extras) ex(b.extras[k]);
+    if (Array.isArray(b.layers)) b.layers.forEach(L => { if (L) note(L.palette); });
+    if (Array.isArray(b.presets)) b.presets.forEach(p => {
+      if (!p || typeof p !== "object") return;
+      ex(p.extra);
+      if (Array.isArray(p.layers)) p.layers.forEach(L => { if (L) note(L.palette); });
+    });
+    if (!want.size) return null;
+    // Only the ramps actually referenced. Sending the whole custom tail would publish work
+    // that has nothing to do with the scenes being shared, and grow every payload against the
+    // rules' size cap for no reason.
+    const used = customPalettes().filter(d => want.has(d.id));
+    return used.length ? used : null;
+  }
   const palExIn = (ex, customs) => {
     if (!ex || typeof ex !== "object" || ex.palette == null) return ex;
     const i = palIdxIn(ex.palette, customs);

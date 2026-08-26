@@ -130,7 +130,11 @@
     // rather than failing — a graceful degrade, not an error.
     const st = stackOut();
     if (st) blob.layers = st;
-    return serializeBlob(blob);       // effect stored as a stable id
+    const out = serializeBlob(blob);  // effect stored as a stable id
+    // ...and any custom ramp this scene names, so the link carries its own colours.
+    const pal = palettesUsedBy(out);
+    if (pal) out.palettes = pal;
+    return out;
   }
   async function shareUrl() {
     const json = JSON.stringify(sceneBlob());
@@ -161,7 +165,10 @@
     const blob = { presets: chosen, cycle: cycleChk.checked };
     const selIdx = curPreset >= 0 ? chosen.indexOf(presets[curPreset]) : -1;
     if (selIdx >= 0) blob.curPreset = selIdx;
-    const json = JSON.stringify(serializeBlob(blob));
+    const wire = serializeBlob(blob);
+    const pal = palettesUsedBy(wire);
+    if (pal) wire.palettes = pal;     // the bundle's scenes carry their own custom ramps
+    const json = JSON.stringify(wire);
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);
     return z ? dir + "#zp=" + z

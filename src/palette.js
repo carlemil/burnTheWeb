@@ -188,6 +188,43 @@
   // The id rides in the blob's `palettes` entries so the refs written in the same save
   // always have their targets beside them (see palIdxIn).
   const customPalettes = () => PALETTES.slice(PAL_BUILTIN).map(p => ({ name: p.name, stops: p.stops, id: p.id }));
+  // Union two custom lists, keeping MINE where they are, and report where each incoming ramp
+  // ended up. That second half is the whole point: an incoming scene's palette references were
+  // already resolved against ITS list's positions (deserializeBlob does that early), and a
+  // merge moves those positions -- so without a remap a borrowed scene would silently point at
+  // whichever of YOUR customs happened to sit at that index. Wrong colours, no error.
+  //
+  // Same content id means the same ramp, so a palette you both have is reused rather than
+  // duplicated -- which is exactly what content-derived ids were introduced for.
+  function palMergeCustoms(mine, theirs) {
+    const list = (mine || []).slice(), map = [];
+    (theirs || []).forEach((d, i) => {
+      const at = list.findIndex(x => x && x.id === d.id);
+      if (at >= 0) { map[i] = PAL_BUILTIN + at; return; }
+      // The cap is a real ceiling, not a formality: past it the reference is dropped rather
+      // than pointed somewhere arbitrary, and the scene falls back to its effect's default.
+      if (list.length >= PAL_MAX_CUSTOM) { map[i] = -1; return; }
+      list.push(d);
+      map[i] = PAL_BUILTIN + list.length - 1;
+    });
+    return { list, map };
+  }
+  // Rewrite already-decoded presets onto the merged positions. Built-in indices are untouched;
+  // an incoming custom that did not survive the cap becomes null, which every reader already
+  // treats as "not chosen" and resolves from the effect's own default.
+  function palRemapIncoming(presets, map) {
+    const one = v => {
+      const n = +v;
+      if (v === null || v === undefined || !Number.isFinite(n) || n < PAL_BUILTIN) return v;
+      const to = map[n - PAL_BUILTIN];
+      return to === undefined || to < 0 ? null : to;
+    };
+    (presets || []).forEach(p => {
+      if (!p) return;
+      if (p.extra && typeof p.extra === "object") p.extra.palette = one(p.extra.palette);
+      if (Array.isArray(p.layers)) p.layers.forEach(L => { if (L) L.palette = one(L.palette); });
+    });
+  }
   // Validate a stop list from a blob: pairs of [pos 0..1, [r,g,b]], sorted, deduped, clamped,
   // capped. Returns null if it cannot be made into a usable ramp — a caller that gets null
   // drops that palette rather than installing something that would throw inside grad().

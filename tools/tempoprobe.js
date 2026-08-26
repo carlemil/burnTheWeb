@@ -300,5 +300,29 @@ console.log("--- 6. THE ADDITIVE SAFETY PROPERTY ---");
      early.length > 5 && Math.abs(med - 120) <= 35, "median lead " + med + "ms");
 }
 
+console.log("--- 7. LEAD REACHES THE ANTICIPATORY SHAPES ---");
+{
+  // Lead works by firing the trigger early, which sets st.pulse -- and an anticipatory shape
+  // does not read st.pulse at all, it reads the tempo phase. So as first shipped Lead moved
+  // all eight RELEASE shapes and did NOTHING to the three that rise into the beat: a control
+  // that looks live and is inert for exactly the shapes it most obviously belongs to.
+  // stepAnim offsets the phase instead. Two halves, because either alone is weak -- the
+  // mechanism, and the wiring that uses it.
+  const P = 500;
+  run(kickScene(P), 24000);
+  const t = 20000, LEAD = 120;
+  const q0 = beatPhaseAt(t), q1 = beatPhaseAt(t + LEAD);
+  const want = (q0 + LEAD / audio.tempo.period) % 1;
+  ok("offsetting the phase by `lead` advances it by exactly lead/period",
+     Math.abs(q1 - want) < 1e-6, "q " + q0.toFixed(3) + " -> " + q1.toFixed(3) + ", expected " + want.toFixed(3));
+
+  const whole = require("fs").readFileSync(process.argv[2] || "dev-index.html", "utf8");
+  const at = whole.indexOf("function stepAnim(");
+  const step = whole.slice(at, at + 2500);
+  ok("...and stepAnim applies it to the PREDICTIVE branch",
+     /beatPhaseAt\(now \+ lead\)/.test(step) && /tuneEff\(/.test(step),
+     "predictive phase is lead-offset");
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

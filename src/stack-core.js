@@ -915,7 +915,14 @@
       // returns -1 when there is no usable grid, and that is deliberately an obviously wrong
       // number rather than a plausible invented beat: it drops us onto reactive Snap below.
       const pre = !!PULSE_PRE[shape];
-      const q = pre ? beatPhaseAt(now) : -1;
+      // LEAD APPLIES HERE TOO, and it has to. Lead works by firing the trigger early, which
+      // sets st.pulse -- and an anticipatory shape does not read st.pulse at all, it reads the
+      // tempo phase. So as first shipped, Lead moved all eight RELEASE shapes and did exactly
+      // nothing to the three that rise into the beat, which is the opposite of what the
+      // control looks like it does. Offsetting the phase instead gives it one meaning
+      // everywhere: peak this far BEFORE the beat.
+      const lead = pre ? (tuneEff(slot != null ? tuneOf(stack[slot], id) : null).lead || 0) : 0;
+      const q = pre ? beatPhaseAt(now + lead) : -1;
       const fn = pre ? (q >= 0 ? PULSE_FN[shape] : PULSE_FN[PULSE_DEFAULT])
                      : (PULSE_FN[shape] || PULSE_FN[PULSE_DEFAULT]);
       // Deliberately writes `out`, not `val`: the drift position must survive the

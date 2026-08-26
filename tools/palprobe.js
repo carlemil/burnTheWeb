@@ -134,16 +134,20 @@ ok(P.palRemapOne("5", gone, backLive) === "4", "string flavour in, string flavou
 {
   const stub = `
     const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
-    const PAL_BUILTIN = 19, PAL_MAX_CUSTOM = 24, PAL_MAX_STOPS = 16, PAL_MIN_STOPS = 2;
-    const PALETTES = Array.from({ length: 19 }, () => ({}));
+    const PAL_BUILTIN = 20, PAL_MAX_CUSTOM = 24, PAL_MAX_STOPS = 16, PAL_MIN_STOPS = 2;
+    const PALETTES = Array.from({ length: 20 }, () => ({}));
     const EFFECTS = [{ id: "sirpinfyer" }, { id: "tetrafyer" }, { id: "animejulia" }, { id: "plasma" }];
+    let probeTail = [];
+    const customPalettes = () => probeTail;
   `;
   const C = new Function(stub
     + cut("  // ---- stable palette ids", "  function customPalEntry(")
+    + cut("  function palMergeCustoms(", "  // Validate a stop list from a blob")
     + cut("  function palStopsOk(", "  // The stops to seed the editor")
     + cut("  const LEGACY_EFFECT_IDS", "  // Per-effect slider presets,")
     + "\nreturn { PAL_IDS, PALETTES, palHashId, palIdOut, palIdxIn, customPalettesOk,"
-    + "  serializeBlob, deserializeBlob };")();
+    + "  serializeBlob, deserializeBlob, palMergeCustoms, palRemapIncoming, palettesUsedBy,"
+    + "  setTail: t => { probeTail = t; } };")();
 
   // The frozen table — hard-coded here like singleprobe's SINGLE_KEYS, so an edit to the
   // shipped list (reorder, rename-as-id-change) goes red instead of quietly re-mapping
@@ -196,7 +200,7 @@ ok(P.palRemapOne("5", gone, backLive) === "4", "string flavour in, string flavou
     palettes: [{ name: "My", stops }],
     extras: { plasma: { palette: mint[0].id } },
   });
-  ok(cdec.extras[3].palette === "19", "a custom id resolves against the blob's own list",
+  ok(cdec.extras[3].palette === "20", "a custom id resolves against the blob's own list",
      cdec.extras[3].palette);
   const gone2 = C.deserializeBlob({ extras: { plasma: { palette: "unowhere", morph: true } } });
   ok(gone2.extras[3].palette === undefined && gone2.extras[3].morph === true,
@@ -204,8 +208,73 @@ ok(P.palRemapOne("5", gone, backLive) === "4", "string flavour in, string flavou
 
   // Encode side for a custom: the live entry's id is what travels.
   C.PALETTES.push({ custom: true, id: mint[0].id });
-  ok(C.palIdOut(19) === mint[0].id, "a custom index encodes to its entry's id");
+  ok(C.palIdOut(20) === mint[0].id, "a custom index encodes to its entry's id");
+
+  // ---- CUSTOM PALETTES TRAVEL WITH SHARED SCENES -----------------------------------------
+  // The decode side always resolved palette ids against a blob's own `palettes` list; nothing
+  // ever put that list INTO a shared payload, so a published profile or link naming a custom
+  // ramp arrived with an id that resolved to nothing and the scene silently wore a built-in.
+  C.setTail([{ name: "Green haze", stops: [[0, [0, 46, 11]], [1, [209, 255, 82]]], id: "uAAA" },
+             { name: "Ryuj", stops: [[0, [1, 2, 3]], [1, [4, 5, 6]]], id: "uBBB" }]);
+
+  // NOTHING is emitted when a payload names no customs, which keeps every link ever minted
+  // byte-identical and is why this needed no format bump.
+  ok(C.palettesUsedBy({ presets: [{ extra: { palette: "fire" }, layers: [{ palette: "matrix" }] }] }) === null,
+     "a built-in-only payload still carries no palette list");
+
+  // ONLY what is referenced: shipping the whole tail would publish unrelated work and grow
+  // every payload against the rules' size cap for nothing.
+  const used = C.palettesUsedBy({ presets: [{ extra: { palette: "uAAA" }, layers: [{ palette: "fire" }] }] });
+  ok(Array.isArray(used) && used.length === 1 && used[0].id === "uAAA",
+     "only the REFERENCED custom travels, not the whole tail", used ? used.map(d => d.id).join(",") : "null");
+
+  // Every place a reference can hide. A miss here is a scene that loads with wrong colours.
+  const all = C.palettesUsedBy({
+    extra: { palette: "uAAA" },
+    extras: { 3: { palette: "uBBB" } },
+    layers: [{ palette: "uAAA" }],
+    presets: [{ extra: { palette: "uBBB" }, layers: [{ palette: "uAAA" }] }],
+  });
+  ok(all && all.length === 2, "references are found in extra, extras, layers AND presets",
+     all ? all.map(d => d.id).join(",") : "null");
+
+  // THE MERGE. An incoming scene's refs were resolved against ITS list's positions, so a merge
+  // that moves those positions has to remap them -- otherwise a borrowed scene points at
+  // whichever of YOUR customs happens to sit at that index. Wrong colours, no error.
+  const mine = [{ name: "Mine", stops: [], id: "uM1" }];
+  const m = C.palMergeCustoms(mine, [{ name: "Green haze", stops: [], id: "uAAA" },
+                                     { name: "Mine", stops: [], id: "uM1" }]);
+  ok(m.list.length === 2 && m.list[0].id === "uM1" && m.list[1].id === "uAAA",
+     "merging keeps your ramps and appends only what is new", m.list.map(d => d.id).join(","));
+  ok(m.map[1] === 20, "...a ramp you both have is REUSED, not duplicated", "their #1 -> " + m.map[1]);
+  ok(m.map[0] === 21, "...and a new one maps to where it actually landed", "their #0 -> " + m.map[0]);
+
+  const inc = [{ extra: { palette: 20 }, layers: [{ palette: 21 }, { palette: 9 }] }];
+  C.palRemapIncoming(inc, m.map);
+  ok(inc[0].extra.palette === 21 && inc[0].layers[0].palette === 20,
+     "incoming refs are rewritten onto the merged positions");
+  ok(inc[0].layers[1].palette === 9, "...and a BUILT-IN index is left alone");
+
+  // Past the cap the reference is DROPPED rather than pointed somewhere arbitrary. null is
+  // "not chosen", which every reader already resolves from the effect's own default.
+  const full = Array.from({ length: 24 }, (_, i) => ({ name: "P" + i, stops: [], id: "uF" + i }));
+  const over = C.palMergeCustoms(full, [{ name: "Extra", stops: [], id: "uZZZ" }]);
+  ok(over.map[0] === -1, "a merge past PAL_MAX_CUSTOM drops the ref instead of misdirecting it");
+  const q = [{ extra: { palette: 20 } }];
+  C.palRemapIncoming(q, over.map);
+  ok(q[0].extra.palette === null, "...and that ref becomes null, which reads as 'use the default'");
+
+  // ALL THREE SHARING ENCODERS HAVE TO ATTACH IT. A list of sites is exactly what rots by
+  // omission -- the dialog lists in uiprobe are here for the same reason -- and a payload that
+  // quietly stops carrying its ramps looks perfectly fine until someone else opens it.
+  const encoders = ["sceneBlob", "libraryUrl", "cloudBlob"];
+  encoders.forEach(fn => {
+    const at = src.indexOf("function " + fn + "(");
+    const body = at < 0 ? "" : src.slice(at, at + 2600);
+    ok(/palettesUsedBy\(/.test(body), fn + "() attaches the custom ramps it references");
+  });
 }
+
 
 console.log("\n" + (fail ? fail + " FAILED, " + pass + " passed" : "all " + pass + " passed"));
 process.exit(fail ? 1 : 0);

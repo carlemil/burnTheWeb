@@ -186,7 +186,13 @@
     const blob = { presets: mine, cycle: snap.cycle,
                    collections: collectionsHeld.map(c => ({ key: c.key, uid: c.uid })) };
     if (mine.length) blob.curPreset = cur >= 0 ? cur : 0;
-    return serializeBlob(blob);
+    const wire = serializeBlob(blob);
+    // The custom ramps these scenes name, so a profile someone else loads brings its own
+    // colours. Without it a published scene built on a custom palette arrived with an id that
+    // resolved to nothing and quietly fell back to a built-in.
+    const pal = palettesUsedBy(wire);
+    if (pal) wire.palettes = pal;
+    return wire;
   }
 
   // ---- save / load / delete ----
