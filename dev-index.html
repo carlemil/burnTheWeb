@@ -2419,7 +2419,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.59.0",
+    version: "1.59.1",
     changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -6514,9 +6514,15 @@
       vec2 bk = uBucket[lv];
       float r = float(ascHash(uvec2(cell)) & 0xffffu) / 65536.0;
       float k = bk.x + floor(r * bk.y);
-      // The atlas is drawn top-down; the framebuffer is Y-flipped against it, so flip the
-      // in-cell y or every glyph renders upside down.
-      vec2 auv = vec2((k + inCell.x) / max(1.0, uGlyphs), 1.0 - inCell.y);
+      // NO Y FLIP, and the reason is the one recorded under 'Effect-shader gotchas': the heat
+      // buffer is ALREADY Y-flipped against the screen, so buffer row 0 is the screen TOP and
+      // a RISING gl_FragCoord.y walks DOWN the picture. The atlas is a Canvas2D image whose
+      // row 0 is the top of the glyph, uploaded without UNPACK_FLIP_Y, so v = 0 is that top
+      // too. Both already run the same way and inCell.y maps straight onto v. Flipping it
+      // here -- which shipped in 1.56.0 -- turned every glyph upside down, and the reason it
+      // survived four releases is that a dithered capital is a terrible witness: M and W swap,
+      // and A, N, U, O, X and H all still read as letters inverted.
+      vec2 auv = vec2((k + inCell.x) / max(1.0, uGlyphs), inCell.y);
       float on = texture(uAtlas, auv).r;
       o = vec4(mix(texture(uSrc, vUv).rgb, c * on, clamp(uMix, 0.0, 1.0)), 1.0);
     }`;

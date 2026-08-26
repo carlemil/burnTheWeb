@@ -535,6 +535,14 @@ dither, and it calibrates to the font the machine actually has.
   nearest filled one** — count 0 makes `bk.x + floor(r*bk.y)` collapse to glyph 0, the blank, and
   punches black holes through the midtones. Cell 0 IS that blank, and the darkest level is it:
   without a guaranteed-empty glyph, shadows fill in.
+- **The atlas is sampled with NO Y flip, and that is not an oversight.** The heat buffer is
+  ALREADY Y-flipped against the screen (see *Effect-shader gotchas*), so a rising
+  `gl_FragCoord.y` walks DOWN the picture — the same direction as the Canvas2D atlas's own
+  top-down rows, uploaded without `UNPACK_FLIP_Y`. `inCell.y` maps straight onto `v`. A second
+  flip shipped in 1.56.0 and drew **every glyph upside down for four releases**: the ramp was
+  still correct so the effect looked like it worked, and dithered capitals are terrible
+  witnesses — M and W swap, and A/N/U/O/X/H all still read as letters. It shows on a J, F, L,
+  G or P at a large Cell. `asciiprobe` asserts the flip's ABSENCE.
 - **The glyph pick uses an INTEGER hash (`ascHash`), never `fract(sin(...))`** — same rule as the
   glass ball. It decides which character a cell shows forever, so a driver recompile must not be
   able to change it.

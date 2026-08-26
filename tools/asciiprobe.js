@@ -125,7 +125,11 @@ ok("ASC_LEVELS matches the CPU's ASCII_LEVELS",
 // changed it, the text would silently reshuffle. Integer arithmetic is exact everywhere.
 ok("the glyph pick uses an INTEGER hash, never fract(sin(...))",
    /uint ascHash\(uvec2/.test(shader) && !/fract\s*\(\s*sin\s*\(/.test(shader.replace(/\/\/[^\n]*/g, "")));
-ok("the atlas is flipped for the Y-flipped heat buffer", /1\.0 - inCell\.y/.test(shader));
+// The heat buffer is already Y-flipped against the screen, so a rising gl_FragCoord.y walks
+// DOWN the picture and matches the atlas's own top-down rows. An extra flip here renders every
+// glyph upside down -- which shipped, because dithered capitals hide it (M and W swap, and
+// A/N/U/O/X/H all still read as letters). Assert the absence.
+ok("the atlas is sampled top-down, with NO second Y flip", /uGlyphs\), inCell\.y\)/.test(shader) && !/1\.0 - inCell\.y/.test(shader));
 
 // Per-glyph tofu rejection: a partial font must drop its missing characters, not seat a run of
 // identical boxes in the middle of the ramp.

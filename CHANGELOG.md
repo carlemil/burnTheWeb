@@ -14,6 +14,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.59.1] — 2026-08-26
+
+### Fixed
+- **ASCII mosaic drew every glyph upside down.** The picture's brightness was right, so it
+  read as a working effect — but the characters were inverted, which is why the alphabets
+  never quite looked like writing. Present since the glyph atlas arrived in v1.56.0.
+- It hid because dithered capitals are poor witnesses: upside down, M and W swap places, and
+  A, N, U, O, X and H all still read as letters. It only becomes obvious on a J, F, L, G or P,
+  and only at a large Cell.
+
 ## [1.59.0] — 2026-08-26
 
 ### Changed
