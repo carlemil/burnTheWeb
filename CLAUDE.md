@@ -10,14 +10,28 @@ Before overruling a rule here, read the old text first.
 Self-contained demoscene visual on GitHub Pages (https://carlemil.github.io/burnTheWeb/).
 Effects share one palette + glow + banding + beat-reactive pipeline, in four families:
 
-- **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrafyer, Attractor (de Jong), Fractal
-  flames (`flames`, the one **additive** stamper — `stampAdd`), Boids, Flying ribbons.
+**This list is COMPLETE and `tools/docsprobe.js` keeps it that way** — it had drifted twelve
+effects behind the registry, which made a taxonomy that reads as exhaustive into a map missing a
+fifth of the territory. The probe also holds README.md to the same rule, and to its own stated
+count. Add an effect ⇒ add it here and there, in the same commit.
+
+- **Point-accumulation** — Sierpiński (`sirpinfyer`), Tetrahedron (`tetrafyer`, called
+  "Tetrafyer" throughout the older notes below), Attractor (de Jong), Fractal flames
+  (`flames`, the one **additive** stamper — `stampAdd`), Boids, Slime mould (`physarum`),
+  Curl flow (`curl`), Harmonograph, Galaxy, Trees, Flying ribbons (the one that **rasterises
+  geometry** — see its own section).
 - **Shader fractals** — Julia, Burning Ship, Multibrot, Newton.
 - **Shader pattern** — Plasma, Tunnel, Metaballs, Kaleidoscope, Rotozoomer, Moiré, Munching
   Squares, Copper Bars, Sun surface, Kefrens bars, Twister, Cymatics, Lightning storm,
-  Starfield, Aurora, Reaction-diffusion.
+  Starfield, Aurora, Reaction-diffusion, Voronoi cells (`voronoi`), Flow noise (`warpnoise`,
+  domain-warped fbm), Truchet tiles (`truchet`), God rays (`godray`).
 - **Shader SDF** — Polygon, Shape grid, Concentric rings, Bouncing shapes, Bouncing solids,
-  Mandelbulb, Menger sponge (the last three 3D raymarched).
+  Mandelbulb, Menger sponge, Apollonian gasket (`apollo`, built by **inversion**, not by
+  iterating a power), Mandelbox (`mbox`, **box folds** — hard-edged where the bulb is organic),
+  Gyroid (`gyroid`, a triply-periodic minimal surface, NOT a fractal and the cheapest 3D effect
+  here), Terrain (`terrain`, a height field with Ocean's distance-scaled step law), Volumetric
+  clouds (`clouds`, the one that integrates **density** along the ray rather than looking for a
+  surface) — everything from Bouncing solids on is 3D raymarched.
 
 Each = one `EFFECTS` descriptor + a `draw(dt)` shader hook or a `stamp(box)` point hook. No
 package manager, test framework or runtime dependency. Keep `README.md` in sync.
@@ -57,10 +71,14 @@ package manager, test framework or runtime dependency. Keep `README.md` in sync.
 
 ### Render pipeline — WebGL2 primary, Canvas2D fallback
 `useGL` from `initGL()`; every draw path branches on it.
-- **Fire**: low-res heat grid. `glPropagate()` ping-pongs heat textures (cgtutor averaging
-  `v = sum_of_4_below * 32 / decay`; `>128` decays, `<128` amplifies). CPU fallback = the double
-  loop in `simulate()`.
-- **Chaos-game points stay on the CPU** (deterministic): `pushPt()`/`glDrawPoints()`, or `plot()`.
+- **Fire**: low-res heat grid. It is a **feedback FILTER** (`FILTERS` id `fire`), so its pass runs
+  from `glBeginHeat`/`glLayerBeginHeat` like every other one, ping-ponging the heat textures
+  (cgtutor averaging `v = sum_of_4_below * 32 / decay`; `>128` decays, `<128` amplifies). CPU
+  fallback = the double loop in `beginHeatTick()`.
+- **Chaos-game points stay on the CPU** (deterministic): `pushPt()`/`glBlitPoints()`, or `plot()`.
+  (`glDrawPoints`/`glEndHeat` were the single-layer close and are **gone** — `simulate()` is
+  reached only from the frame loop's `if (!useGL)` branch, so the GL half of them was dead. The
+  GL point path closes its own tick inline after every item has blitted.)
 - **Shader effects** write heat to the texture's `.r` (`o = vec4(heat,0,0,1)`), each with a CPU
   mirror. Each has an `FS_*` + `glProg.<id>` registered in `initGL`; `draw(dt)` calls
   `glShaderDraw(name, setU)` or the mirror. `*Seed(dt)` advances phase (identical GL/CPU).

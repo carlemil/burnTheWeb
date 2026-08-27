@@ -99,6 +99,17 @@ service cloud.firestore {
       allow create, update: if false;
     }
 
+    // THE ONE ABUSE CONTROL THAT CANNOT LIVE IN THIS FILE. /profiles is self-limiting: the
+    // document id IS the uid, so an account can hold exactly one. /scenes below uses auto-ids
+    // and has NO per-account cap — any signed-in Google account may create unlimited 200 KB
+    // documents, and rules cannot express a rate limit (there is no backend to hold a counter,
+    // and a rule cannot count documents). The client-side cap in cloud-profile.js is a local
+    // history list, and its own comment says it is "a cap, not a policy".
+    //
+    // So the ceiling is a BILLING one and it is set in the console, not here: Firebase budget
+    // alert + spending cap on the project. Noted in this file because this file is where the
+    // boundary is documented, and that is the one part of it living somewhere else.
+
     // A shared SCENE: one immutable snapshot per "Share this scene", holding just the scene
     // that was running. Separate from /profiles on purpose — pointing a share link at a
     // profile would only work while that profile is published, so sharing one scene would
