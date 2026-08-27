@@ -610,9 +610,46 @@
 <div id="brkgrid" aria-hidden="true"></div>
 <div id="breakout" class="empty"></div>
 
+<!-- THE BOOT SPLASH. initGL compiles ~72 shader programs SYNCHRONOUSLY -- measured at 114ms
+     to 2764ms on a 4090, longer on anything slower -- and during a synchronous block the browser
+     cannot paint. Measured: the first paint opportunity lands at 3650ms, AFTER the compile is
+     already finished, so an element sitting here would never have been seen. That is why the boot
+     below is deferred rather than the splash simply being added: the page has to be given a chance
+     to paint BEFORE the main thread is taken away.
+     Static markup, visible with no JS, so it is on screen from the very first paint. -->
+<div id="boot" role="status" aria-live="polite">
+  <div class="boot-in">
+    <div class="boot-t">Compiling shaders</div>
+    <div class="boot-s">First load takes a few seconds while your GPU builds the effects.</div>
+  </div>
+</div>
+
 <script>
 (() => {
-  "use strict";{{JS}}})();
+  "use strict";
+  // Everything is inside boot(), called only once a frame has actually been painted.
+  function boot() { {{JS}} }
+
+  // DOUBLE requestAnimationFrame: the first callback runs before the next paint, the second
+  // runs before the one after -- so by the time it fires, the splash above has been on screen
+  // once. A single rAF is not enough; it runs BEFORE that first paint, and we would block the
+  // thread again with nothing shown.
+  //
+  // The setTimeout is not belt-and-braces, it is the BACKGROUND TAB case: rAF does not fire in
+  // a hidden tab, so without it a page opened in a background tab would never start at all.
+  // Whichever gets there first wins; `started` makes sure that is exactly once.
+  let started = false;
+  const go = () => {
+    if (started) return;
+    started = true;
+    try { boot(); } finally {
+      const b = document.getElementById("boot");
+      if (b) b.remove();          // ...even if boot threw: the crash overlay must not be hidden behind this
+    }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(go));
+  setTimeout(go, 400);
+})();
 </script>
 </body>
 </html>

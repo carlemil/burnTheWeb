@@ -1759,6 +1759,17 @@
       // vsFor, not a fresh glCompile: VS_QUAD is one source shared by every program, and makeProg
       // was changed to compile it exactly once for that reason. This was the one site still
       // recompiling it per combination.
+      // SAY SO. This link is ASYNCHRONOUS and takes seconds the first time a combination is
+      // built -- the driver optimises everything worldMap can reach, which is exactly why it is
+      // not done at startup at all. Until it lands, worldProgFor returns null, planWorld's
+      // result is dropped, and the joined layers carry on drawing THEMSELVES: the scene looks
+      // wrong rather than busy, with nothing on screen to explain the pause.
+      //
+      // flashUiHint is the only reporter that works with no panel, menu or dialog open (fixed,
+      // aria-live, exempt from body.ui-hidden). It is a hoisted function declaration in a later
+      // slice, which is what lets this call it. Once per combination -- this branch is the
+      // cache MISS, so a world that is already built says nothing.
+      if (typeof flashUiHint === "function") flashUiHint("Building the shared 3D world \u2014 a few seconds the first time.");
       const vs = vsFor(worldVs);
       // Same rewrite camProg does, so the shared camera still applies.
       const fsSrc = worldSource(key).replace(/gl_FragCoord/g, "fragCam")

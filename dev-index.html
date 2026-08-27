@@ -33,6 +33,30 @@
     position: fixed; inset: 0; z-index: 4;
     pointer-events: none; display: none;
   }
+  /* Boot splash — see the comment on #boot in the markup for why the boot is deferred at all.
+     Above everything except the crash overlay (99999), and removed the moment boot() returns. No
+     transition or fade-in: a CSS animation would have to run on the compositor to advance at all
+     while the main thread is compiling, and if it did not, the splash would sit at opacity 0 for
+     the whole block and show nothing. A plain paint cannot fail that way. */
+  #boot {
+    position: fixed; inset: 0; z-index: 99998;
+    display: flex; align-items: center; justify-content: center;
+    background: #0a0604; color: #ffb15a;
+    font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    text-align: center; padding: 24px;
+  }
+  #boot .boot-in { max-width: 34em; }
+  #boot .boot-t { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; }
+  /* The dots are the only motion, and they are compositor-friendly opacity steps. If the driver
+     never gives us a frame they simply sit still, which is no worse than plain text. */
+  #boot .boot-t::after {
+    content: "..."; display: inline-block; width: 1.2em; text-align: left;
+    animation: bootdots 1.2s steps(4, end) infinite;
+  }
+  @keyframes bootdots { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+  #boot .boot-s { margin-top: 10px; opacity: .6; font-size: 12px; }
+  @media (prefers-reduced-motion: reduce) { #boot .boot-t::after { animation: none; } }
+
   #panel {
     position: fixed;
     /* EXPLICIT, because #creditcv above is z-index 4 and a positioned `z-index: auto` element
@@ -2461,9 +2485,25 @@
 <div id="brkgrid" aria-hidden="true"></div>
 <div id="breakout" class="empty"></div>
 
+<!-- THE BOOT SPLASH. initGL compiles ~72 shader programs SYNCHRONOUSLY -- measured at 114ms
+     to 2764ms on a 4090, longer on anything slower -- and during a synchronous block the browser
+     cannot paint. Measured: the first paint opportunity lands at 3650ms, AFTER the compile is
+     already finished, so an element sitting here would never have been seen. That is why the boot
+     below is deferred rather than the splash simply being added: the page has to be given a chance
+     to paint BEFORE the main thread is taken away.
+     Static markup, visible with no JS, so it is on screen from the very first paint. -->
+<div id="boot" role="status" aria-live="polite">
+  <div class="boot-in">
+    <div class="boot-t">Compiling shaders</div>
+    <div class="boot-s">First load takes a few seconds while your GPU builds the effects.</div>
+  </div>
+</div>
+
 <script>
 (() => {
-  "use strict";  // ---- LAST-RESORT ERROR REPORTING -------------------------------------------
+  "use strict";
+  // Everything is inside boot(), called only once a frame has actually been painted.
+  function boot() {   // ---- LAST-RESORT ERROR REPORTING -------------------------------------------
   // FIRST THING IN THE FIRST SLICE, deliberately: the app is one IIFE built from every file in
   // the manifest, so a TDZ violation or a throw ANYWHERE aborts the whole program, and everything
   // after that point simply never runs. That failure mode is all over CLAUDE.md -- "blank page",
@@ -2629,13 +2669,25 @@
       // feature 404s. Same for apiKey and clientId above/below — they name the Google project,
       // not the product.
       //
-      // MOVING DOMAIN NEEDS TWO ALLOWLISTS UPDATED, or sign-in fails on the new host with a
-      // opaque error and nothing here to explain it. cloudSignIn sends requestUri:
-      // location.origin, and Google Identity Services checks the page origin:
-      //   1. Firebase console -> Authentication -> Settings -> Authorized domains: add kicktro.com
-      //   2. Google Cloud console -> Credentials -> this OAuth client -> Authorized JavaScript
-      //      origins: add https://kicktro.com
-      // Leave carlemil.github.io in both while that host still serves the page.
+      // MOVING DOMAIN NEEDS THREE ALLOWLISTS UPDATED. Miss any one and the failure is an opaque
+      // console error with nothing on the page to explain it:
+      //
+      //   1. Firebase console -> Authentication -> Settings -> Authorized domains
+      //      add kicktro.com.  Gates sign-in; cloudSignIn sends requestUri: location.origin.
+      //   2. Google Cloud console -> APIs & Services -> Credentials -> the OAuth 2.0 client id
+      //      below -> Authorized JavaScript origins: add https://kicktro.com.  Google Identity
+      //      Services checks the PAGE ORIGIN before it will render the sign-in button at all.
+      //   3. Google Cloud console -> APIs & Services -> Credentials -> the API KEY above ->
+      //      Application restrictions -> HTTP referrers: add https://kicktro.com/*
+      //      THIS ONE IS THE EASY ONE TO MISS and it is the widest: the key is referrer-locked,
+      //      so from an un-listed host EVERY keyed call 403s with API_KEY_HTTP_REFERRER_BLOCKED
+      //      -- not just sign-in, but the gallery browse and every #c= share-link fetch too.
+      //
+      // Leave carlemil.github.io in all three while that host still serves the page.
+      //
+      // AND NOTE: all of this needs HTTPS anyway. Google Identity Services refuses to run in a
+      // non-secure context, the same rule that hides the audio buttons -- so none of it can be
+      // tested until the custom domain's certificate is issued.
       clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
       // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
       // Two separate intervals would let the Refresh button undercut the cache and make
@@ -8261,6 +8313,17 @@
       // vsFor, not a fresh glCompile: VS_QUAD is one source shared by every program, and makeProg
       // was changed to compile it exactly once for that reason. This was the one site still
       // recompiling it per combination.
+      // SAY SO. This link is ASYNCHRONOUS and takes seconds the first time a combination is
+      // built -- the driver optimises everything worldMap can reach, which is exactly why it is
+      // not done at startup at all. Until it lands, worldProgFor returns null, planWorld's
+      // result is dropped, and the joined layers carry on drawing THEMSELVES: the scene looks
+      // wrong rather than busy, with nothing on screen to explain the pause.
+      //
+      // flashUiHint is the only reporter that works with no panel, menu or dialog open (fixed,
+      // aria-live, exempt from body.ui-hidden). It is a hoisted function declaration in a later
+      // slice, which is what lets this call it. Once per combination -- this branch is the
+      // cache MISS, so a world that is already built says nothing.
+      if (typeof flashUiHint === "function") flashUiHint("Building the shared 3D world \u2014 a few seconds the first time.");
       const vs = vsFor(worldVs);
       // Same rewrite camProg does, so the shared camera still applies.
       const fsSrc = worldSource(key).replace(/gl_FragCoord/g, "fragCam")
@@ -26210,6 +26273,27 @@
   window.addEventListener("keydown", e => {
     if (e.key === "Escape" && menubarOpen()) menubarClose();
   });
+ }
+
+  // DOUBLE requestAnimationFrame: the first callback runs before the next paint, the second
+  // runs before the one after -- so by the time it fires, the splash above has been on screen
+  // once. A single rAF is not enough; it runs BEFORE that first paint, and we would block the
+  // thread again with nothing shown.
+  //
+  // The setTimeout is not belt-and-braces, it is the BACKGROUND TAB case: rAF does not fire in
+  // a hidden tab, so without it a page opened in a background tab would never start at all.
+  // Whichever gets there first wins; `started` makes sure that is exactly once.
+  let started = false;
+  const go = () => {
+    if (started) return;
+    started = true;
+    try { boot(); } finally {
+      const b = document.getElementById("boot");
+      if (b) b.remove();          // ...even if boot threw: the crash overlay must not be hidden behind this
+    }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(go));
+  setTimeout(go, 400);
 })();
 </script>
 </body>

@@ -15,6 +15,30 @@
     position: fixed; inset: 0; z-index: 4;
     pointer-events: none; display: none;
   }
+  /* Boot splash — see the comment on #boot in the markup for why the boot is deferred at all.
+     Above everything except the crash overlay (99999), and removed the moment boot() returns. No
+     transition or fade-in: a CSS animation would have to run on the compositor to advance at all
+     while the main thread is compiling, and if it did not, the splash would sit at opacity 0 for
+     the whole block and show nothing. A plain paint cannot fail that way. */
+  #boot {
+    position: fixed; inset: 0; z-index: 99998;
+    display: flex; align-items: center; justify-content: center;
+    background: #0a0604; color: #ffb15a;
+    font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    text-align: center; padding: 24px;
+  }
+  #boot .boot-in { max-width: 34em; }
+  #boot .boot-t { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; }
+  /* The dots are the only motion, and they are compositor-friendly opacity steps. If the driver
+     never gives us a frame they simply sit still, which is no worse than plain text. */
+  #boot .boot-t::after {
+    content: "..."; display: inline-block; width: 1.2em; text-align: left;
+    animation: bootdots 1.2s steps(4, end) infinite;
+  }
+  @keyframes bootdots { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+  #boot .boot-s { margin-top: 10px; opacity: .6; font-size: 12px; }
+  @media (prefers-reduced-motion: reduce) { #boot .boot-t::after { animation: none; } }
+
   #panel {
     position: fixed;
     /* EXPLICIT, because #creditcv above is z-index 4 and a positioned `z-index: auto` element

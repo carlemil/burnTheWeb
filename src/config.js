@@ -164,13 +164,25 @@
       // feature 404s. Same for apiKey and clientId above/below — they name the Google project,
       // not the product.
       //
-      // MOVING DOMAIN NEEDS TWO ALLOWLISTS UPDATED, or sign-in fails on the new host with a
-      // opaque error and nothing here to explain it. cloudSignIn sends requestUri:
-      // location.origin, and Google Identity Services checks the page origin:
-      //   1. Firebase console -> Authentication -> Settings -> Authorized domains: add kicktro.com
-      //   2. Google Cloud console -> Credentials -> this OAuth client -> Authorized JavaScript
-      //      origins: add https://kicktro.com
-      // Leave carlemil.github.io in both while that host still serves the page.
+      // MOVING DOMAIN NEEDS THREE ALLOWLISTS UPDATED. Miss any one and the failure is an opaque
+      // console error with nothing on the page to explain it:
+      //
+      //   1. Firebase console -> Authentication -> Settings -> Authorized domains
+      //      add kicktro.com.  Gates sign-in; cloudSignIn sends requestUri: location.origin.
+      //   2. Google Cloud console -> APIs & Services -> Credentials -> the OAuth 2.0 client id
+      //      below -> Authorized JavaScript origins: add https://kicktro.com.  Google Identity
+      //      Services checks the PAGE ORIGIN before it will render the sign-in button at all.
+      //   3. Google Cloud console -> APIs & Services -> Credentials -> the API KEY above ->
+      //      Application restrictions -> HTTP referrers: add https://kicktro.com/*
+      //      THIS ONE IS THE EASY ONE TO MISS and it is the widest: the key is referrer-locked,
+      //      so from an un-listed host EVERY keyed call 403s with API_KEY_HTTP_REFERRER_BLOCKED
+      //      -- not just sign-in, but the gallery browse and every #c= share-link fetch too.
+      //
+      // Leave carlemil.github.io in all three while that host still serves the page.
+      //
+      // AND NOTE: all of this needs HTTPS anyway. Google Identity Services refuses to run in a
+      // non-secure context, the same rule that hides the audio buttons -- so none of it can be
+      // tested until the custom domain's certificate is issued.
       clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
       // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
       // Two separate intervals would let the Refresh button undercut the cache and make
