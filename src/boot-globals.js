@@ -97,7 +97,7 @@
   // Declared HERE rather than beside the cloud code because persist() -- the change signal
   // -- lives five slices earlier, and a const in the cloud slice would be in the TDZ for
   // any persist() that fires before that slice is evaluated.
-  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";
+  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const AUTOSAVE_DELAY_MS = 2 * 60 * 60 * 1000;    // quiet time after the LAST change
   const AUTOSAVE_GAP_MS = 24 * 60 * 60 * 1000;     // at most one automatic save a day
   // A failed attempt is not a save, so it must not burn the daily slot -- but it must not

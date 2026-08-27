@@ -225,7 +225,7 @@
     const e = EFFECTS[effect];
     const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
     let html = HELP_HEAD;
-    html += '<h2 id="help-title">burnTheWeb — ' + e.name + "</h2><p>" + e.help + "</p>";
+    html += '<h2 id="help-title">Kicktro — ' + e.name + "</h2><p>" + e.help + "</p>";
     html += '<p class="help-intro">' + HELP.intro + '</p><dl class="help-cols">';
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
@@ -319,7 +319,7 @@
     if (vn) vn.textContent = "v" + CONFIG.version;
     if (vl) {
       vl.href = CONFIG.changelogUrl;
-      vl.title = "burnTheWeb v" + CONFIG.version + " — what changed in this and previous releases";
+      vl.title = "Kicktro v" + CONFIG.version + " — what changed in this and previous releases";
       vl.addEventListener("click", () => track("release_notes_open", { version: CONFIG.version }));
     }
   }
@@ -349,7 +349,7 @@
   // Shown only to users who haven't successfully started an audio source, at three
   // growing gaps of *active* (tab-visible) time — 30s, then 5min, then 1h — and
   // never more than three times, ever. State persists across reloads.
-  const SYNC_KEY = "burnTheWeb.sync.v1";
+  const SYNC_KEY = "burnTheWeb.sync.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const SYNC_DELAYS = CONFIG.sync.delays;
   let syncState = { shows: 0, sinceLast: 0, used: false };
   try {

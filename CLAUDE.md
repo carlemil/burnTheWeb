@@ -7,7 +7,7 @@ Before overruling a rule here, read the old text first.
 
 ## What this is
 
-Self-contained demoscene visual on GitHub Pages (https://carlemil.github.io/burnTheWeb/).
+Self-contained demoscene visual on GitHub Pages, served at https://kicktro.com/.
 Effects share one palette + glow + banding + beat-reactive pipeline, in four families:
 
 **This list is COMPLETE and `tools/docsprobe.js` keeps it that way** — it had drifted twelve
@@ -65,7 +65,7 @@ package manager, test framework or runtime dependency. Keep `README.md` in sync.
 - Commit trailers end with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
   + the `Claude-Session:` line.
 - Preview: open `dev-index.html`, or `python -m http.server`.
-- Don't re-run `gh api -X POST repos/carlemil/burnTheWeb/pages`.
+- Don't re-run `gh api -X POST repos/carlemil/kicktro/pages`.
 
 ## Architecture (one IIFE, authored across `src/*.js`)
 
@@ -1432,7 +1432,7 @@ empty. `dropCollection` re-finds the selection **by identity** after filtering.
 reads `#cloud-name` then falls back to **`PROFILE_NAME_KEY`** (`burnTheWeb.profile.v1`)
 *synchronously*. **`setProfileName(v)` is the one way the name is set** — writes field, cache, and
 calls `buildPresetList()`. Its own key, **not** part of `cloudSess`. `myCollectionLabel()` =
-`myProfileName() || DEFAULT_PROFILE_NAME` (`"burnTheWeb"`); `sceneTitleFor` uses `myProfileName()`
+`myProfileName() || DEFAULT_PROFILE_NAME` (`"Kicktro"`); `sceneTitleFor` uses `myProfileName()`
 **without** the default.
 
 **`p.rotate`** — per-scene auto-cycle checkbox. `inRotation(p)` is `!(p.rotate === false)` —
@@ -1569,7 +1569,7 @@ open, landing in the **Restore dialog**.
 - **Backup** = one file per preset + `_settings.json`. `backupFiles()` builds `[{name, text}]`; each
   preset file is `{app, kind: "preset", version, preset}` through `serializeBlob`. `curPreset` is
   **not** in `_settings.json`. Delivery splits on `showDirectoryPicker`: Chromium writes
-  `BurnTheWeb/<YYYY-MM-DD_HHMM>/`; everything else downloads **~150ms apart** and **flattens**.
+  `Kicktro/<YYYY-MM-DD_HHMM>/`; everything else downloads **~150ms apart** and **flattens**.
   - Folder handle lives in IndexedDB (`burnTheWeb.fs`); `backupRoot()` reuses it while permitted.
     **Shift-click Backup forces a re-pick.** A write failure calls `bkClear()`. **`bkStore` must
     always resolve** — a throw inside an IDB event handler hangs Backup forever.

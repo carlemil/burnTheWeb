@@ -21,7 +21,7 @@
       d.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;padding:10px 14px;" +
         "background:rgba(60,10,0,.94);color:#ffdcb0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;" +
         "border-bottom:1px solid rgba(255,140,40,.5)";
-      d.textContent = "burnTheWeb hit an error and may not be running. Reloading usually fixes it. ";
+      d.textContent = "Kicktro hit an error and may not be running. Reloading usually fixes it. ";
       const b = document.createElement("button");
       b.type = "button"; b.textContent = "Dismiss";
       b.style.cssText = "margin-left:8px;background:transparent;color:inherit;border:1px solid currentColor;" +
@@ -54,7 +54,7 @@
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
     version: "1.64.1",
-    changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
+    changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
     stackMax: 4,          // max effects composited into one scene        (STACK_MAX)
@@ -159,6 +159,18 @@
     cloud: {
       apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // public identifier, see above ⇒ "" = feature off
       projectId: "burntheweb-3cd05",              // Firebase project id
+      // NOT renamed with the app, and it never can be: this is the real Firebase project id.
+      // Changing the string points the app at a project that does not exist and every cloud
+      // feature 404s. Same for apiKey and clientId above/below — they name the Google project,
+      // not the product.
+      //
+      // MOVING DOMAIN NEEDS TWO ALLOWLISTS UPDATED, or sign-in fails on the new host with a
+      // opaque error and nothing here to explain it. cloudSignIn sends requestUri:
+      // location.origin, and Google Identity Services checks the page origin:
+      //   1. Firebase console -> Authentication -> Settings -> Authorized domains: add kicktro.com
+      //   2. Google Cloud console -> Credentials -> this OAuth client -> Authorized JavaScript
+      //      origins: add https://kicktro.com
+      // Leave carlemil.github.io in both while that host still serves the page.
       clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
       // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
       // Two separate intervals would let the Refresh button undercut the cache and make

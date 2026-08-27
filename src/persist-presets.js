@@ -234,7 +234,7 @@
   //
   // The key is deliberately its own, not part of cloudSess: this is what to call your local
   // library, so it outlives a sign-out. Same per-browser class as the credits preference.
-  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";
+  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // TWO different defaults, because the two places had two different jobs and sharing one
   // string served neither well.
   //
@@ -242,10 +242,10 @@
   // it has to read as somebody's name in the public gallery, so it stays the app's name.
   //
   // DEFAULT_LIBRARY_LABEL is only the heading over your own group in the scene list before you
-  // have a profile name. "burnTheWeb" there just named the app back at you; "Default scenes"
+  // have a profile name. "Kicktro" there just named the app back at you; "Default scenes"
   // says what the group actually holds on a fresh install. Setting a profile name replaces it
   // either way, so this is the pre-account label and nothing more.
-  const DEFAULT_PROFILE_NAME = "burnTheWeb";
+  const DEFAULT_PROFILE_NAME = "Kicktro";
   const DEFAULT_LIBRARY_LABEL = "Default scenes";
   function storedProfileName() {
     try { return (localStorage.getItem(PROFILE_NAME_KEY) || "").trim(); } catch (e) { return ""; }
@@ -287,7 +287,7 @@
   function sceneTitleFor(i) {
     const p = presets[i]; if (!p) return;
     // myProfileName(), NOT myCollectionLabel(): with no profile there is no account to name,
-    // and crediting a scene to "burnTheWeb" is noise. The dash goes with the empty author.
+    // and crediting a scene to "Kicktro" is noise. The dash goes with the empty author.
     showSceneTitle(p.name, collectionOf(p) || myProfileName());
   }
   // Groups in a stable order: yours always first (and always present, even while empty, so

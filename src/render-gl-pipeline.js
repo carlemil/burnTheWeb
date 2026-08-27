@@ -2428,7 +2428,7 @@
       asciiAtlasSet = -1;
       try { initGL(); glResize(); glClearHeat(); paletteDirty = true; }   // re-upload palette to the fresh texture
       // Swallowing this leaves the canvas dark forever with no way to find out why.
-      catch (err) { glReady = false; console.error("burnTheWeb: WebGL context restore failed", err); }
+      catch (err) { glReady = false; console.error("Kicktro: WebGL context restore failed", err); }
     }, false);
   }
 

@@ -45,7 +45,7 @@
   }
   function applyBeatTune(t) { if (t) installBeatTune(mergeBeatTune(t)); }
 
-  const STORE_KEY = "burnTheWeb.v1";
+  const STORE_KEY = "burnTheWeb.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data. See the note in config.js.
   // App version stamped into exported files (Backup) so you can tell which build wrote them.
   // Calendar-versioned (YYYY.MM.DD); bump it on a notable change or release. Distinct from the
   // per-file `version` field, which is the file-format schema version (still 1).
@@ -105,7 +105,7 @@
       const quota = e && (e.name === "QuotaExceededError" || e.name === "SecurityError");
       if (!quota && !persistWarned) {
         persistWarned = true;
-        console.error("burnTheWeb: persist() is failing — edits are NOT being saved", e);
+        console.error("Kicktro: persist() is failing — edits are NOT being saved", e);
       }
     }
   }

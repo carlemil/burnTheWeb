@@ -8,6 +8,7 @@
 # actions/configure-pages flips the site's build type to "workflow" on first run.
 #
 # The site is plain static files (there is a .nojekyll too) — upload everything as-is.
+# Served at https://kicktro.com (custom domain; see the CNAME file in the repo root).
 name: Deploy Pages
 on:
   push:
@@ -37,6 +38,10 @@ jobs:
         run: |
           mkdir _site
           cp index.html dev-index.html _site/
+          # CNAME must be IN THE ARTIFACT. With the Actions deploy the published site is only
+          # what is staged here, so without this the custom domain (kicktro.com) is dropped on
+          # the next deploy and Pages falls back to carlemil.github.io/kicktro.
+          cp CNAME _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

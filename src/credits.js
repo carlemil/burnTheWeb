@@ -45,13 +45,13 @@
   const CREDIT_HOLD = CONFIG.credits.hold;   // seconds at full brightness
   const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
-  const CREDIT_KEY = "burnTheWeb.credits.v1";
+  const CREDIT_KEY = "burnTheWeb.credits.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // The scene title shares this canvas, this countdown style and this drawing treatment —
   // it IS the credits' typography, saying the name of the scene you just switched to and
   // who made it. Its own hold/fade because it fires on every scene change (see CONFIG).
   const TITLE_HOLD = CONFIG.credits.titleHold;
   const TITLE_FADE = CONFIG.credits.titleFade;
-  const TITLE_KEY = "burnTheWeb.scenetitle.v1";
+  const TITLE_KEY = "burnTheWeb.scenetitle.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
   let titleLeft = 0, titleName = "", titleAuthor = "";
   // The credits render on their OWN canvas above the effect, not stamped into the heat

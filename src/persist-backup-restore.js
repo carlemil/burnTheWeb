@@ -44,7 +44,7 @@
       used.add(base.toLowerCase());
       const one = serializeBlob({ presets: [p] }).presets[0];   // effect → stable id
       files.push({ name: base + ".json",
-                   text: JSON.stringify({ app: "burnTheWeb", kind: "preset", version: 1, appVersion: APP_VERSION, preset: one }, null, 2) });
+                   text: JSON.stringify({ app: "kicktro", kind: "preset", version: 1, appVersion: APP_VERSION, preset: one }, null, 2) });
     }
     // Everything that is not a preset. curPreset is deliberately left out: it is an index
     // into a list that no longer travels as a list, so it could only ever point at the
@@ -52,7 +52,7 @@
     const settings = serializeBlob(snap);
     delete settings.presets; delete settings.curPreset;
     files.push({ name: "_settings.json",
-                 text: JSON.stringify({ app: "burnTheWeb", kind: "settings", version: 1, appVersion: APP_VERSION, settings }, null, 2) });
+                 text: JSON.stringify({ app: "kicktro", kind: "settings", version: 1, appVersion: APP_VERSION, settings }, null, 2) });
     return files;
   }
   // ---- remembering the backup folder ----------------------------------------
@@ -60,7 +60,7 @@
   // handle the user picked. But a handle is structured-cloneable, so it can be kept
   // in IndexedDB and reused — the picker then appears once, ever, instead of on every
   // backup. (localStorage is no good here: it only stores strings.)
-  const BK_DB = "burnTheWeb.fs", BK_STORE = "handles", BK_KEY = "backupRoot";
+  const BK_DB = "burnTheWeb.fs", BK_STORE = "handles", BK_KEY = "backupRoot";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   function bkStore(mode, fn) {
     return new Promise((res, rej) => {
       if (!window.indexedDB) return res(null);
@@ -118,11 +118,11 @@
       try { root = await backupRoot(forcePick); }
       catch (e) { btn.textContent = "Backup"; return; }        // user cancelled the picker
       try {
-        // BurnTheWeb / <date-time>. No per-scene folder in between: a backup is *every*
+        // Kicktro / <date-time>. No per-scene folder in between: a backup is *every*
         // preset, so naming it after whichever one happened to be selected described the
         // wrong thing and split one backup's history across as many folders as you had
         // presets. One dated folder per backup, all of them siblings.
-        let dir = await root.getDirectoryHandle("BurnTheWeb", { create: true });
+        let dir = await root.getDirectoryHandle("Kicktro", { create: true });
         dir = await dir.getDirectoryHandle(stamp, { create: true });
         for (const f of files) {
           const fh = await dir.getFileHandle(f.name, { create: true });

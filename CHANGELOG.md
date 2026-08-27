@@ -1,6 +1,7 @@
 # Changelog
 
-All notable changes to [burnTheWeb](https://carlemil.github.io/burnTheWeb/), newest first.
+All notable changes to [Kicktro](https://kicktro.com/), newest first.
+(Released as burnTheWeb up to v1.64.1 — entries below that point use the old name.)
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the version
 numbers follow [Semantic Versioning](https://semver.org/):

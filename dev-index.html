@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Title/description are the tab, the search result and the link preview — so they say what
-     it IS and what it does to you, not just its category. The app name stays burnTheWeb (it is
+     it IS and what it does to you, not just its category. The app name stays Kicktro (it is
      the h1, the og:site_name and the URL); it is the tagline that carries the personality. -->
-<title>burnTheWeb — a fractal bonfire that dances to your music</title>
+<title>Kicktro — a fractal bonfire that dances to your music</title>
 <meta name="description" content="Set your browser on fire. Twenty demoscene effects — rising fractal flame, tumbling 3D solids, animated Julia / Burning Ship / Multibrot / Newton fractals, plasma, tunnels, metaballs, kaleidoscopes and copper bars — stacked in layers and pulsing in time with whatever you are listening to. Tune every slider live, then share the exact scene as a link.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='92'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="burnTheWeb">
-<meta property="og:title" content="burnTheWeb — a fractal bonfire that dances to your music">
+<meta property="og:site_name" content="Kicktro">
+<meta property="og:title" content="Kicktro — a fractal bonfire that dances to your music">
 <meta property="og:description" content="Twenty demoscene effects — fractal flame, tumbling 3D solids, live Julia and Burning Ship fractals, plasma, tunnels and copper bars — stacked in layers and pulsing to whatever you are playing. Tune it live and share the exact scene as a link.">
-<meta property="og:url" content="https://carlemil.github.io/burnTheWeb/">
-<meta name="twitter:title" content="burnTheWeb — a fractal bonfire that dances to your music">
+<meta property="og:url" content="https://kicktro.com/">
+<meta name="twitter:title" content="Kicktro — a fractal bonfire that dances to your music">
 <meta name="twitter:description" content="Twenty demoscene effects — fractal flame, tumbling 3D solids, live fractals, plasma and tunnels — all pulsing in time with your music.">
 <style>
   :root { color-scheme: dark; }
@@ -1882,7 +1882,7 @@
        wired — `sub` is written by setEffect on every effect change, and #help-btn opens the
        help panel — and the same help is reachable from the ☰ menu ("What the controls do…").
        Deleting them would mean null-guarding both call sites for no gain. -->
-  <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
+  <h1>Kicktro <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
   <!-- System / Cloud profile / Credits are NOT boxes any more: their contents are ADOPTED
@@ -2415,7 +2415,7 @@
   <div class="sync-box" role="dialog" aria-modal="true" aria-labelledby="sync-title">
     <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
     <h2 id="sync-title">🔊 Sync with your music</h2>
-    <p>burnTheWeb can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
+    <p>Kicktro can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
     <dl>
       <dt>Capture</dt>
       <dd>Shares the sound of your screen or a browser tab — e.g. Spotify or YouTube. In the picker that opens, pick a screen/tab and tick “Share audio”.</dd>
@@ -2440,7 +2440,7 @@
 <div id="tutdlg" class="hidden">
   <div class="tut-box" role="dialog" aria-modal="true" aria-labelledby="tut-title">
     <button id="tut-close" class="pal-close" type="button" aria-label="Close">×</button>
-    <h2 id="tut-title">Welcome to burnTheWeb <span id="tut-count"></span></h2>
+    <h2 id="tut-title">Welcome to Kicktro <span id="tut-count"></span></h2>
     <div id="tut-art" aria-hidden="true"></div>
     <h3 id="tut-head"></h3>
     <div id="tut-body"></div>
@@ -2486,7 +2486,7 @@
       d.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;padding:10px 14px;" +
         "background:rgba(60,10,0,.94);color:#ffdcb0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;" +
         "border-bottom:1px solid rgba(255,140,40,.5)";
-      d.textContent = "burnTheWeb hit an error and may not be running. Reloading usually fixes it. ";
+      d.textContent = "Kicktro hit an error and may not be running. Reloading usually fixes it. ";
       const b = document.createElement("button");
       b.type = "button"; b.textContent = "Dismiss";
       b.style.cssText = "margin-left:8px;background:transparent;color:inherit;border:1px solid currentColor;" +
@@ -2519,7 +2519,7 @@
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
     version: "1.64.1",
-    changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
+    changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
     stackMax: 4,          // max effects composited into one scene        (STACK_MAX)
@@ -2624,6 +2624,18 @@
     cloud: {
       apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // public identifier, see above ⇒ "" = feature off
       projectId: "burntheweb-3cd05",              // Firebase project id
+      // NOT renamed with the app, and it never can be: this is the real Firebase project id.
+      // Changing the string points the app at a project that does not exist and every cloud
+      // feature 404s. Same for apiKey and clientId above/below — they name the Google project,
+      // not the product.
+      //
+      // MOVING DOMAIN NEEDS TWO ALLOWLISTS UPDATED, or sign-in fails on the new host with a
+      // opaque error and nothing here to explain it. cloudSignIn sends requestUri:
+      // location.origin, and Google Identity Services checks the page origin:
+      //   1. Firebase console -> Authentication -> Settings -> Authorized domains: add kicktro.com
+      //   2. Google Cloud console -> Credentials -> this OAuth client -> Authorized JavaScript
+      //      origins: add https://kicktro.com
+      // Leave carlemil.github.io in both while that host still serves the page.
       clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
       // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
       // Two separate intervals would let the Refresh button undercut the cache and make
@@ -2823,7 +2835,7 @@
   // Declared HERE rather than beside the cloud code because persist() -- the change signal
   // -- lives five slices earlier, and a const in the cloud slice would be in the TDZ for
   // any persist() that fires before that slice is evaluated.
-  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";
+  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const AUTOSAVE_DELAY_MS = 2 * 60 * 60 * 1000;    // quiet time after the LAST change
   const AUTOSAVE_GAP_MS = 24 * 60 * 60 * 1000;     // at most one automatic save a day
   // A failed attempt is not a save, so it must not burn the daily slot -- but it must not
@@ -8918,7 +8930,7 @@
       asciiAtlasSet = -1;
       try { initGL(); glResize(); glClearHeat(); paletteDirty = true; }   // re-upload palette to the fresh texture
       // Swallowing this leaves the canvas dark forever with no way to find out why.
-      catch (err) { glReady = false; console.error("burnTheWeb: WebGL context restore failed", err); }
+      catch (err) { glReady = false; console.error("Kicktro: WebGL context restore failed", err); }
     }, false);
   }
 
@@ -17514,13 +17526,13 @@
   const CREDIT_HOLD = CONFIG.credits.hold;   // seconds at full brightness
   const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
-  const CREDIT_KEY = "burnTheWeb.credits.v1";
+  const CREDIT_KEY = "burnTheWeb.credits.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // The scene title shares this canvas, this countdown style and this drawing treatment —
   // it IS the credits' typography, saying the name of the scene you just switched to and
   // who made it. Its own hold/fade because it fires on every scene change (see CONFIG).
   const TITLE_HOLD = CONFIG.credits.titleHold;
   const TITLE_FADE = CONFIG.credits.titleFade;
-  const TITLE_KEY = "burnTheWeb.scenetitle.v1";
+  const TITLE_KEY = "burnTheWeb.scenetitle.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
   let titleLeft = 0, titleName = "", titleAuthor = "";
   // The credits render on their OWN canvas above the effect, not stamped into the heat
@@ -19731,7 +19743,7 @@
   }
   function applyBeatTune(t) { if (t) installBeatTune(mergeBeatTune(t)); }
 
-  const STORE_KEY = "burnTheWeb.v1";
+  const STORE_KEY = "burnTheWeb.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data. See the note in config.js.
   // App version stamped into exported files (Backup) so you can tell which build wrote them.
   // Calendar-versioned (YYYY.MM.DD); bump it on a notable change or release. Distinct from the
   // per-file `version` field, which is the file-format schema version (still 1).
@@ -19791,7 +19803,7 @@
       const quota = e && (e.name === "QuotaExceededError" || e.name === "SecurityError");
       if (!quota && !persistWarned) {
         persistWarned = true;
-        console.error("burnTheWeb: persist() is failing — edits are NOT being saved", e);
+        console.error("Kicktro: persist() is failing — edits are NOT being saved", e);
       }
     }
   }
@@ -21831,7 +21843,7 @@
   }
   async function shareUrl() {
     const json = JSON.stringify(sceneBlob());
-    // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/ — the link goes
+    // dir = the app's folder, e.g. https://kicktro.com/ — the link goes
     // straight to it and the scene rides in the ?z= (or legacy ?s=) param.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);
@@ -22156,7 +22168,7 @@
   //
   // The key is deliberately its own, not part of cloudSess: this is what to call your local
   // library, so it outlives a sign-out. Same per-browser class as the credits preference.
-  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";
+  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // TWO different defaults, because the two places had two different jobs and sharing one
   // string served neither well.
   //
@@ -22164,10 +22176,10 @@
   // it has to read as somebody's name in the public gallery, so it stays the app's name.
   //
   // DEFAULT_LIBRARY_LABEL is only the heading over your own group in the scene list before you
-  // have a profile name. "burnTheWeb" there just named the app back at you; "Default scenes"
+  // have a profile name. "Kicktro" there just named the app back at you; "Default scenes"
   // says what the group actually holds on a fresh install. Setting a profile name replaces it
   // either way, so this is the pre-account label and nothing more.
-  const DEFAULT_PROFILE_NAME = "burnTheWeb";
+  const DEFAULT_PROFILE_NAME = "Kicktro";
   const DEFAULT_LIBRARY_LABEL = "Default scenes";
   function storedProfileName() {
     try { return (localStorage.getItem(PROFILE_NAME_KEY) || "").trim(); } catch (e) { return ""; }
@@ -22209,7 +22221,7 @@
   function sceneTitleFor(i) {
     const p = presets[i]; if (!p) return;
     // myProfileName(), NOT myCollectionLabel(): with no profile there is no account to name,
-    // and crediting a scene to "burnTheWeb" is noise. The dash goes with the empty author.
+    // and crediting a scene to "Kicktro" is noise. The dash goes with the empty author.
     showSceneTitle(p.name, collectionOf(p) || myProfileName());
   }
   // Groups in a stable order: yours always first (and always present, even while empty, so
@@ -22859,7 +22871,7 @@
       used.add(base.toLowerCase());
       const one = serializeBlob({ presets: [p] }).presets[0];   // effect → stable id
       files.push({ name: base + ".json",
-                   text: JSON.stringify({ app: "burnTheWeb", kind: "preset", version: 1, appVersion: APP_VERSION, preset: one }, null, 2) });
+                   text: JSON.stringify({ app: "kicktro", kind: "preset", version: 1, appVersion: APP_VERSION, preset: one }, null, 2) });
     }
     // Everything that is not a preset. curPreset is deliberately left out: it is an index
     // into a list that no longer travels as a list, so it could only ever point at the
@@ -22867,7 +22879,7 @@
     const settings = serializeBlob(snap);
     delete settings.presets; delete settings.curPreset;
     files.push({ name: "_settings.json",
-                 text: JSON.stringify({ app: "burnTheWeb", kind: "settings", version: 1, appVersion: APP_VERSION, settings }, null, 2) });
+                 text: JSON.stringify({ app: "kicktro", kind: "settings", version: 1, appVersion: APP_VERSION, settings }, null, 2) });
     return files;
   }
   // ---- remembering the backup folder ----------------------------------------
@@ -22875,7 +22887,7 @@
   // handle the user picked. But a handle is structured-cloneable, so it can be kept
   // in IndexedDB and reused — the picker then appears once, ever, instead of on every
   // backup. (localStorage is no good here: it only stores strings.)
-  const BK_DB = "burnTheWeb.fs", BK_STORE = "handles", BK_KEY = "backupRoot";
+  const BK_DB = "burnTheWeb.fs", BK_STORE = "handles", BK_KEY = "backupRoot";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   function bkStore(mode, fn) {
     return new Promise((res, rej) => {
       if (!window.indexedDB) return res(null);
@@ -22933,11 +22945,11 @@
       try { root = await backupRoot(forcePick); }
       catch (e) { btn.textContent = "Backup"; return; }        // user cancelled the picker
       try {
-        // BurnTheWeb / <date-time>. No per-scene folder in between: a backup is *every*
+        // Kicktro / <date-time>. No per-scene folder in between: a backup is *every*
         // preset, so naming it after whichever one happened to be selected described the
         // wrong thing and split one backup's history across as many folders as you had
         // presets. One dated folder per backup, all of them siblings.
-        let dir = await root.getDirectoryHandle("BurnTheWeb", { create: true });
+        let dir = await root.getDirectoryHandle("Kicktro", { create: true });
         dir = await dir.getDirectoryHandle(stamp, { create: true });
         for (const f of files) {
           const fh = await dir.getFileHandle(f.name, { create: true });
@@ -23365,6 +23377,7 @@
   const CLOUD = CONFIG.cloud;
   const cloudOn = () => !!(CLOUD && CLOUD.apiKey && CLOUD.projectId);
   const CLOUD_KEY = "burnTheWeb.cloud.v1";     // its own localStorage key, NOT part of the scene blob
+  // FROZEN PREFIX (the old app name) — renaming it signs every existing user out.
   const IDP_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp";
   const TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
   const GIS_SRC = "https://accounts.google.com/gsi/client";
@@ -23990,7 +24003,7 @@
   // ---- gallery ----
   // Public profiles, readable WITHOUT signing in: the rules allow a `pub == true` query from
   // an unauthenticated caller (and deny an unfiltered one), so any visitor can browse.
-  const GAL_KEY = "burnTheWeb.gallery.v1";
+  const GAL_KEY = "burnTheWeb.gallery.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const galUrl = "https://firestore.googleapis.com/v1/projects/" + (CLOUD.projectId || "")
     + "/databases/(default)/documents";
   // Plain fetch with the api key, NOT cloudFetch: these documents are public, and gallery
@@ -24029,7 +24042,7 @@
           if (!galIndexWarned) {
             galIndexWarned = true;
             const m = /https:\/\/console\.firebase\.google\.com\S*/.exec(t);
-            console.info("[burnTheWeb] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
+            console.info("[Kicktro] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
           }
           return galQuery(false).then(r2 => (r2.ok ? r2.json().then(j => ({ rows: j, ordered: false }))
             : r2.text().then(t2 => Promise.reject(new Error(cloudErr(t2, r2.status))))));
@@ -24245,7 +24258,7 @@
   // blob: which links you shared is device history, like the session, not scene data.
   // Links shared before this record existed cannot be listed — only retracted by hand from a
   // kept URL — and that is the accepted cost of keeping /scenes unlistable.
-  const SHARELINKS_KEY = "burnTheWeb.sharelinks.v1";
+  const SHARELINKS_KEY = "burnTheWeb.sharelinks.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   function shareLinksLoad() {
     try {
       const a = JSON.parse(localStorage.getItem(SHARELINKS_KEY) || "[]");
@@ -25432,7 +25445,7 @@
     const e = EFFECTS[effect];
     const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
     let html = HELP_HEAD;
-    html += '<h2 id="help-title">burnTheWeb — ' + e.name + "</h2><p>" + e.help + "</p>";
+    html += '<h2 id="help-title">Kicktro — ' + e.name + "</h2><p>" + e.help + "</p>";
     html += '<p class="help-intro">' + HELP.intro + '</p><dl class="help-cols">';
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
@@ -25526,7 +25539,7 @@
     if (vn) vn.textContent = "v" + CONFIG.version;
     if (vl) {
       vl.href = CONFIG.changelogUrl;
-      vl.title = "burnTheWeb v" + CONFIG.version + " — what changed in this and previous releases";
+      vl.title = "Kicktro v" + CONFIG.version + " — what changed in this and previous releases";
       vl.addEventListener("click", () => track("release_notes_open", { version: CONFIG.version }));
     }
   }
@@ -25556,7 +25569,7 @@
   // Shown only to users who haven't successfully started an audio source, at three
   // growing gaps of *active* (tab-visible) time — 30s, then 5min, then 1h — and
   // never more than three times, ever. State persists across reloads.
-  const SYNC_KEY = "burnTheWeb.sync.v1";
+  const SYNC_KEY = "burnTheWeb.sync.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const SYNC_DELAYS = CONFIG.sync.delays;
   let syncState = { shows: 0, sinceLast: 0, used: false };
   try {
@@ -25639,7 +25652,7 @@
   //   * Its "seen" flag is its OWN localStorage key, not scene data — the same treatment
   //     the credits and scene-banner preferences get. It is a property of this browser,
   //     not of a scene, and must not ride in a share link or a backup.
-  const TUT_KEY = "burnTheWeb.tutorial.v1";
+  const TUT_KEY = "burnTheWeb.tutorial.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // Wall-clock backstop for the credits gate, in seconds of VISIBLE time. `?credits=600`
   // parks the credits deliberately and a paused scene stops the rendered clock dead, so
   // without this the tutorial could simply never arrive.
@@ -25724,7 +25737,7 @@
     { head: "A visual that runs in your browser", art: TUT_ART.canvas,
       // The count is real and worth keeping real — it is the one number here that dates the
       // tour. `node -e` over the EFFECTS literal in the built file gives it.
-      body: "burnTheWeb is a demoscene visual — fifty-odd effects (fractals, plasmas, tunnels, "
+      body: "Kicktro is a demoscene visual — fifty-odd effects (fractals, plasmas, tunnels, "
         + "raymarched solids, flocking birds, slime moulds) all sharing one palette, glow and "
         + "beat-reactive pipeline. Nothing is installed and nothing is uploaded; the whole thing is "
         + "this one page. <b>Click the picture to pause it</b>, and click again to carry on." },
@@ -25735,7 +25748,7 @@
     // answer to a question already asked. The audio nudge follows ~30s later as the actual
     // call to action, so this step deliberately explains rather than asks.
     { head: "It reacts to your music", art: TUT_ART.music,
-      body: "The thing to know first: burnTheWeb <b>pulses in time with whatever you are listening "
+      body: "The thing to know first: Kicktro <b>pulses in time with whatever you are listening "
         + "to</b>. Turn on an audio source from <b>☰ → Audio</b> — <b>Capture</b> shares the sound of a "
         + "tab (Spotify, YouTube), or use the <b>microphone</b> — and it is split into low, mid and high "
         + "beats. Any slider can then be armed with its <b>L / M / H</b> chips (a couple of steps from "

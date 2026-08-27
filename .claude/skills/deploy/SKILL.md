@@ -1,12 +1,12 @@
 ---
 name: deploy
-description: Deploy burnTheWeb — bump the version, write the CHANGELOG.md release notes, build dev-index.html from src/, copy it to index.html (the live production page), commit, tag and push. Invoke as /deploy. Use whenever the user wants to publish/deploy the current build to the live site.
+description: Deploy Kicktro — bump the version, write the CHANGELOG.md release notes, build dev-index.html from src/, copy it to index.html (the live production page), commit, tag and push. Invoke as /deploy. Use whenever the user wants to publish/deploy the current build to the live site.
 ---
 
-# Deploy burnTheWeb
+# Deploy Kicktro
 
 Promote the current `src/` build to the live production page **as a numbered release**.
-`index.html` is the page GitHub Pages serves at `https://carlemil.github.io/burnTheWeb/`;
+`index.html` is the page GitHub Pages serves at `https://kicktro.com/`;
 `dev-index.html` is the build's output file (also served at `…/dev-index.html` as a
 preview). Deploying copies the fresh build over `index.html`. **There are no git hooks** —
 this skill is the only thing that publishes.
@@ -198,7 +198,7 @@ Release v1.2.0: promote dev-index.html → index.html
 Then tag and push both the branch and the tag:
 
 ```
-git tag -a v1.2.0 -m "burnTheWeb v1.2.0"
+git tag -a v1.2.0 -m "Kicktro v1.2.0"
 git push origin HEAD:main
 git push origin v1.2.0
 ```
@@ -208,7 +208,7 @@ it. (Rebase on `origin/main` first if the push is rejected as non-fast-forward.)
 
 ## 6. Verify
 
-Poll `https://carlemil.github.io/burnTheWeb/` until it returns HTTP 200 (~1 min for Pages to
+Poll `https://kicktro.com/` until it returns HTTP 200 (~1 min for Pages to
 redeploy; hard-refresh bypasses cache). Confirm the deployed page carries the new version —
 grep the response for `v<new version>` or for a string you just changed — then tell the user
 it is live, with the version number and a one-line summary of the notes.

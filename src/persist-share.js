@@ -138,7 +138,7 @@
   }
   async function shareUrl() {
     const json = JSON.stringify(sceneBlob());
-    // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/ — the link goes
+    // dir = the app's folder, e.g. https://kicktro.com/ — the link goes
     // straight to it and the scene rides in the ?z= (or legacy ?s=) param.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);

@@ -1,4 +1,4 @@
-# burnTheWeb
+# Kicktro
 
 A GPU demoscene visual: a collection of **thirty-eight effects** in four families,
 all sharing one palette + glow + banding pipeline —
@@ -31,7 +31,7 @@ put the camera in their own geometry.
 The whole thing burns, flickers, and morphs continuously — and every effect can
 **react to whatever music you're playing**.
 
-🔥 **Live demo:** https://carlemil.github.io/burnTheWeb/
+🔥 **Live demo:** https://kicktro.com/
 
 ## Effects
 

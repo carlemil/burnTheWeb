@@ -15,7 +15,7 @@
   //   * Its "seen" flag is its OWN localStorage key, not scene data — the same treatment
   //     the credits and scene-banner preferences get. It is a property of this browser,
   //     not of a scene, and must not ride in a share link or a backup.
-  const TUT_KEY = "burnTheWeb.tutorial.v1";
+  const TUT_KEY = "burnTheWeb.tutorial.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // Wall-clock backstop for the credits gate, in seconds of VISIBLE time. `?credits=600`
   // parks the credits deliberately and a paused scene stops the rendered clock dead, so
   // without this the tutorial could simply never arrive.
@@ -100,7 +100,7 @@
     { head: "A visual that runs in your browser", art: TUT_ART.canvas,
       // The count is real and worth keeping real — it is the one number here that dates the
       // tour. `node -e` over the EFFECTS literal in the built file gives it.
-      body: "burnTheWeb is a demoscene visual — fifty-odd effects (fractals, plasmas, tunnels, "
+      body: "Kicktro is a demoscene visual — fifty-odd effects (fractals, plasmas, tunnels, "
         + "raymarched solids, flocking birds, slime moulds) all sharing one palette, glow and "
         + "beat-reactive pipeline. Nothing is installed and nothing is uploaded; the whole thing is "
         + "this one page. <b>Click the picture to pause it</b>, and click again to carry on." },
@@ -111,7 +111,7 @@
     // answer to a question already asked. The audio nudge follows ~30s later as the actual
     // call to action, so this step deliberately explains rather than asks.
     { head: "It reacts to your music", art: TUT_ART.music,
-      body: "The thing to know first: burnTheWeb <b>pulses in time with whatever you are listening "
+      body: "The thing to know first: Kicktro <b>pulses in time with whatever you are listening "
         + "to</b>. Turn on an audio source from <b>☰ → Audio</b> — <b>Capture</b> shares the sound of a "
         + "tab (Spotify, YouTube), or use the <b>microphone</b> — and it is split into low, mid and high "
         + "beats. Any slider can then be armed with its <b>L / M / H</b> chips (a couple of steps from "

@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// burnTheWeb — cloud profiles.
+// Kicktro — cloud profiles.
 //
 // THIS FILE IS THE ENTIRE AUTHORIZATION BOUNDARY. The app is a static page on GitHub Pages
 // talking straight to Firestore over REST, with no backend of its own — so there is nowhere

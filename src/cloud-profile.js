@@ -16,6 +16,7 @@
   const CLOUD = CONFIG.cloud;
   const cloudOn = () => !!(CLOUD && CLOUD.apiKey && CLOUD.projectId);
   const CLOUD_KEY = "burnTheWeb.cloud.v1";     // its own localStorage key, NOT part of the scene blob
+  // FROZEN PREFIX (the old app name) — renaming it signs every existing user out.
   const IDP_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp";
   const TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
   const GIS_SRC = "https://accounts.google.com/gsi/client";
@@ -641,7 +642,7 @@
   // ---- gallery ----
   // Public profiles, readable WITHOUT signing in: the rules allow a `pub == true` query from
   // an unauthenticated caller (and deny an unfiltered one), so any visitor can browse.
-  const GAL_KEY = "burnTheWeb.gallery.v1";
+  const GAL_KEY = "burnTheWeb.gallery.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const galUrl = "https://firestore.googleapis.com/v1/projects/" + (CLOUD.projectId || "")
     + "/databases/(default)/documents";
   // Plain fetch with the api key, NOT cloudFetch: these documents are public, and gallery
@@ -680,7 +681,7 @@
           if (!galIndexWarned) {
             galIndexWarned = true;
             const m = /https:\/\/console\.firebase\.google\.com\S*/.exec(t);
-            console.info("[burnTheWeb] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
+            console.info("[Kicktro] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
           }
           return galQuery(false).then(r2 => (r2.ok ? r2.json().then(j => ({ rows: j, ordered: false }))
             : r2.text().then(t2 => Promise.reject(new Error(cloudErr(t2, r2.status))))));
@@ -896,7 +897,7 @@
   // blob: which links you shared is device history, like the session, not scene data.
   // Links shared before this record existed cannot be listed — only retracted by hand from a
   // kept URL — and that is the accepted cost of keeping /scenes unlistable.
-  const SHARELINKS_KEY = "burnTheWeb.sharelinks.v1";
+  const SHARELINKS_KEY = "burnTheWeb.sharelinks.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   function shareLinksLoad() {
     try {
       const a = JSON.parse(localStorage.getItem(SHARELINKS_KEY) || "[]");
