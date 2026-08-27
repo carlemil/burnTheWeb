@@ -627,6 +627,32 @@
 <script>
 (() => {
   "use strict";
+  // FORCE HTTPS. GitHub Pages' "Enforce HTTPS" does this properly, server-side, with a 301 —
+  // this is the backstop for the window before that is ticked or has propagated, and for any
+  // host that lacks it. Not cosmetic: on http:// the page is not a SECURE CONTEXT, so
+  //   * navigator.mediaDevices does not exist   -> both audio buttons hide and the panel says
+  //     "Tab/screen audio isn't available on this device" on a machine where it is;
+  //   * Google Identity Services refuses to run -> sign-in dies with Error 400 origin_mismatch,
+  //     which allow-listing CANNOT fix, because Google will not accept an http:// JavaScript
+  //     origin for anything but localhost.
+  // Both failures name the wrong cause, which is what made them expensive to diagnose.
+  //
+  // Here rather than in <head>: every probe takes the FIRST <script> in the document as the app
+  // (html.indexOf("<script>")), so a second tag above this one silently feeds twelve of them
+  // three lines of redirect instead of the program. This runs at end-of-body parse, before
+  // boot() is scheduled — early enough, since nothing of the app has run yet.
+  //
+  // THE EXCLUSIONS ARE LOAD-BEARING, not politeness:
+  //   localhost / 127.0.0.1 / [::1] are already secure contexts and are the documented dev flow
+  //     (python -m http.server); redirecting them points local work at a host serving nothing.
+  //   file:// is how every headless probe and browser check loads the built page. The protocol
+  //     test covers it (file: is not http:), which is why this must never be widened to
+  //     "anything that is not https".
+  // replace(), not assign(), or Back returns to http:// and bounces.
+  if (location.protocol === "http:" && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+    return;                       // do not boot a page we are already leaving
+  }
   // Everything is inside boot(), called only once a frame has actually been painted.
   function boot() { {{JS}} }
 
