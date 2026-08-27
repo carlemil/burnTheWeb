@@ -173,6 +173,14 @@
   // added so two Glass ball layers would not draw the same balls; separating two layers that
   // share a palette is the same question with a different subject.
   function palTintRank(L) { return typeof L.salt === "number" ? L.salt : 0; }
+  // THE PER-LAYER SALT every ensure*() decorrelating two layers of the same effect should use.
+  // It replaced `stack.indexOf(L)` at five sites, which was wrong twice over: indexOf returns -1
+  // for a DETACHED layer -- and the outgoing half of a preset crossfade is exactly that, since
+  // renderPrevScene renders prevStack after installStack has replaced `stack` -- and a slot index
+  // also changes under a reorder, so two layers could swap arrangements by being dragged. `salt`
+  // belongs to the layer, is unique among the live ones, and returns to the pool when one is
+  // deleted. installStackItem already reads it this way for gbSalt; this is the same rule, named.
+  function layerSalt(L) { return typeof L.salt === "number" ? L.salt : 0; }
   // Editing a custom palette changes what its strong colour is, so the cache has to go.
   function palTintFlush() { for (const k in PAL_TINT) delete PAL_TINT[k]; }
   function layerTintIdx(L, slot) {

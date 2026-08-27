@@ -278,7 +278,22 @@
   /* keyboard focus rings (a11y) */
   #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute, #uihint { transition: none !important; } }
+  /* REDUCED MOTION covers the CHROME, not the visual. The old rule named seven elements and so
+     reached only about half the UI's own movement — the two keyframe animations, the chevron
+     rotations and the swatch fades all carried on. This is the whole of it: every transition and
+     animation on the interface, off.
+     The VISUAL is deliberately untouched. It is the entire content of the page, and stopping it
+     would leave a black rectangle that reads as a broken app rather than a respected preference;
+     the canvas already has a pause (click it) and Hide all UI for anyone who wants stillness. */
+  @media (prefers-reduced-motion: reduce) {
+    #panel, #menubar, #breakout, #help, #syncpop, #toggle, #fs, #mute, #uihint, #tutdlg,
+    #restoredlg, #galdlg, #carddlg, #paledlg, #paldlg, #fltdlg, #palpickdlg, #transpickdlg,
+    #panel *, #menubar *, #breakout *, #help *, #syncpop *, #tutdlg *, #restoredlg *, #galdlg * {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
   #frames {
     position: fixed;
     top: 14px;
@@ -640,7 +655,11 @@
   #breakout .ctl.poppable {
     position: absolute; width: 244px; pointer-events: auto;
     margin: 0; padding: 12px 14px 12px 30px;
-    background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
+    /* 0.8, matching the other eleven translucent surfaces. This was the one left at 0.72
+       after they were raised "on all seven translucent surfaces at once so they stay a matched
+       set" -- and it is the surface carrying the smallest text in the app, over a canvas that
+       goes white-hot. */
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
   /* Which effect / filter the box belongs to. Controls are singletons reused across
@@ -806,7 +825,10 @@
      heading than .trig-t: those name a SECTION of the box, these name a group inside one. */
   #panel .trig-sub { display: none; }
   #breakout .trig-sub {
-    margin: 7px 0 1px; color: #ffb15a; opacity: .5;
+    /* .72, not .5: at 9px over this box these sub-headings measured about 3.4:1 against the
+       box alone -- already under WCAG AA for text this size -- and far worse wherever a bright
+       frame showed through. Still clearly secondary to the headings above them. */
+    margin: 7px 0 1px; color: #ffb15a; opacity: .72;
     font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
   }
   /* The ↺ sits on the Tuning heading, which is a plain block — float it right rather than
@@ -1741,6 +1763,8 @@
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #restoredlg.hidden { display: none; }
+  #restoredlg .rst-err { color: #ff9a6a; margin: 8px 0 0; }
+  #restoredlg .rst-err:empty { display: none; }
   #restoredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);

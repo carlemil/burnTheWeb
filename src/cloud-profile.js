@@ -854,9 +854,12 @@
   // same codec — so both transports describe a shared scene identically and the recipient
   // path is the one that already exists (installShared).
   function cloudShareScene() {
-    const json = JSON.stringify(sceneBlob());
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     if (!cloudOn() || !cloudSess) return shareUrl();          // signed out ⇒ the classic link
+    // BELOW the guard: sceneBlob() is not free -- it runs saveLiveMaps and stackOut, which does a
+    // full freeze/thaw round-trip on the selected layer -- and on the signed-out path the result
+    // was built and thrown away.
+    const json = JSON.stringify(sceneBlob());
     return zipToB64(json).then(payload => {
       if (payload == null || payload.length >= 200000) return shareUrl();
       const sceneName = (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]

@@ -47,7 +47,7 @@
   }
   function installPhysarum(L) {
     L.physarum = L.physarum || {};
-    ensurePhy(L.physarum, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), stack.indexOf(L) + 1);
+    ensurePhy(L.physarum, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), layerSalt(L) + 1);
     phAgents = L.physarum;
   }
   function physarumStamp(xL, xR, yT, yB, n) {
@@ -171,7 +171,7 @@
   }
   function installCurl(L) {
     L.curl = L.curl || {};
-    ensureCurl(L.curl, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), stack.indexOf(L) + 1);
+    ensureCurl(L.curl, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), layerSalt(L) + 1);
     cuField = L.curl;
   }
   function curlStamp(xL, xR, yT, yB, n) {
@@ -749,7 +749,7 @@
   }
   function installBoids(L) {
     L.boids = L.boids || [];
-    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), stack.indexOf(L) + 1);
+    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), layerSalt(L) + 1);
     bdFlock = L.boids;
   }
   function boidsStamp(xL, xR, yT, yB, n) {

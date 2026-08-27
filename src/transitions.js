@@ -233,10 +233,15 @@
     // too — delete this copy and the outgoing half still draws, which is what proves the
     // live path is doing the work rather than this.
     if (useGL && glReady) {                  // snapshot glTex.scene → glTex.prev
-      gl.bindFramebuffer(gl.FRAMEBUFFER, glFbo.scene);
+      // Through bindFbo/bindDefault, not raw gl.bindFramebuffer: those two are what track
+      // curFbo/curW/curH, and glBloomPass restores the caller's target FROM curFbo. Binding
+      // behind their backs leaves that tracking stale. It happened to be safe here (glRender
+      // always exits with curFbo null and this runs before the frame's first bind), but "happens
+      // to be safe" is the state this pair exists to eliminate.
+      bindFbo(glFbo.scene, fw, fh);
       gl.bindTexture(gl.TEXTURE_2D, glTex.prev);
       gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, fw, fh);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      bindDefault(canvas.width, canvas.height);
     } else if (off && off.width) {
       if (!transOff) transOff = document.createElement("canvas");
       if (transOff.width !== off.width || transOff.height !== off.height) {

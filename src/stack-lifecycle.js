@@ -125,10 +125,6 @@
     // Same first-free rule for the salt: unique among the LIVE layers, so a salt released by
     // a deleted layer comes back into circulation rather than being burned for the session.
     L.salt = freeSalt(stack, L);
-    // Concrete palette from birth, for the same reason installStack resolves it: a null here
-    // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
-    { const px = extras[L.fx] || presetExtra(L.fx);
-      L.palette = String(px.palette); L.paletteRev = !!px.paletteRev; L.paletteBg = bgOk(px.paletteBg); }
     // A fresh item is seeded from its effect's shipped defaults, not from the item that
     // happened to be selected — mergeState against its OWN effect, or every key that
     // effect declares would be dropped.
@@ -137,9 +133,16 @@
     L.pulse = mergePulse(L.fx, presetPulse(L.fx));
     L.plen = mergePlen(L.fx, presetPlen(L.fx));
     L.btune = {};                            // a fresh layer inherits every threshold
-    L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
-    L.paletteRev = presetExtra(L.fx).paletteRev;
-    L.paletteBg = presetExtra(L.fx).paletteBg;
+    // CONCRETE FROM BIRTH, for the same reason installStack resolves it: a null here would follow
+    // extras[L.fx] at render time and re-tint whenever another same-effect layer was edited.
+    // The DESCRIPTOR default, not the runtime extras -- a new layer opens on its effect's shipped
+    // look. (There used to be a second, earlier block resolving these from `extras[L.fx] ||
+    // presetExtra(L.fx)`, which these three lines then silently overwrote three statements later.
+    // Two answers to one question; this is the one that was actually winning.)
+    { const px = presetExtra(L.fx);
+      L.palette = px.palette == null ? null : String(px.palette);
+      L.paletteRev = !!px.paletteRev;
+      L.paletteBg = bgOk(px.paletteBg); }
     { const px = presetExtra(L.fx); L.seedPath = px.seedPath; L.seedRide = px.seedRide; L.seedPts = px.seedPts; }
     L.filters = presetFilters(L.fx);
     stack.push(L);

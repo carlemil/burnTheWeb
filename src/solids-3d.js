@@ -71,7 +71,7 @@
   // installStackItem for `solids` effects, the same hook installSeedPath uses.
   function installSolids(L) {
     L.solids = L.solids || [];
-    ensureSolids(L.solids, Math.max(1, Math.min(SD_MAX, Math.round(sdCount))), stack.indexOf(L));
+    ensureSolids(L.solids, Math.max(1, Math.min(SD_MAX, Math.round(sdCount))), layerSalt(L));
     sdBodies = L.solids;
   }
   // Keep them lively forever. The walls are near-elastic but not perfectly so, and the

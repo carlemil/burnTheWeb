@@ -296,7 +296,22 @@
   /* keyboard focus rings (a11y) */
   #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute, #uihint { transition: none !important; } }
+  /* REDUCED MOTION covers the CHROME, not the visual. The old rule named seven elements and so
+     reached only about half the UI's own movement — the two keyframe animations, the chevron
+     rotations and the swatch fades all carried on. This is the whole of it: every transition and
+     animation on the interface, off.
+     The VISUAL is deliberately untouched. It is the entire content of the page, and stopping it
+     would leave a black rectangle that reads as a broken app rather than a respected preference;
+     the canvas already has a pause (click it) and Hide all UI for anyone who wants stillness. */
+  @media (prefers-reduced-motion: reduce) {
+    #panel, #menubar, #breakout, #help, #syncpop, #toggle, #fs, #mute, #uihint, #tutdlg,
+    #restoredlg, #galdlg, #carddlg, #paledlg, #paldlg, #fltdlg, #palpickdlg, #transpickdlg,
+    #panel *, #menubar *, #breakout *, #help *, #syncpop *, #tutdlg *, #restoredlg *, #galdlg * {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
   #frames {
     position: fixed;
     top: 14px;
@@ -658,7 +673,11 @@
   #breakout .ctl.poppable {
     position: absolute; width: 244px; pointer-events: auto;
     margin: 0; padding: 12px 14px 12px 30px;
-    background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
+    /* 0.8, matching the other eleven translucent surfaces. This was the one left at 0.72
+       after they were raised "on all seven translucent surfaces at once so they stay a matched
+       set" -- and it is the surface carrying the smallest text in the app, over a canvas that
+       goes white-hot. */
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
   /* Which effect / filter the box belongs to. Controls are singletons reused across
@@ -824,7 +843,10 @@
      heading than .trig-t: those name a SECTION of the box, these name a group inside one. */
   #panel .trig-sub { display: none; }
   #breakout .trig-sub {
-    margin: 7px 0 1px; color: #ffb15a; opacity: .5;
+    /* .72, not .5: at 9px over this box these sub-headings measured about 3.4:1 against the
+       box alone -- already under WCAG AA for text this size -- and far worse wherever a bright
+       frame showed through. Still clearly secondary to the headings above them. */
+    margin: 7px 0 1px; color: #ffb15a; opacity: .72;
     font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
   }
   /* The ↺ sits on the Tuning heading, which is a plain block — float it right rather than
@@ -1759,6 +1781,8 @@
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #restoredlg.hidden { display: none; }
+  #restoredlg .rst-err { color: #ff9a6a; margin: 8px 0 0; }
+  #restoredlg .rst-err:empty { display: none; }
   #restoredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
@@ -2374,6 +2398,11 @@
       <button type="button" id="rst-go">Restore</button>
       <button type="button" id="rst-cancel">Cancel</button>
     </div>
+    <!-- Failure reporting for the restore itself. localStorage.setItem throws when storage is
+         full or blocked, and that throw happens one line before the reload -- so without somewhere
+         to say so the dialog just sat there and nothing happened. aria-live, because by then the
+         user is looking at the button they pressed, not at this line. -->
+    <p class="rst-sub rst-err" id="rst-msg" role="status" aria-live="polite"></p>
     <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
   </div>
 </div>
@@ -7671,17 +7700,11 @@
     // Put the framebuffer back the way every other pass expects to find it.
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
   }
-  function glDrawPoints() {
-    // The single-layer tick path: honour a stampAdd effect (Fractal flames) here too, or
-    // the density accumulation would only exist in a stack. Read the ITEM's effect, not
-    // the `effect` global — render paths take everything from the stack.
-    const L = stack[stackSel];
-    glBlitPoints(L && EFFECTS[L.fx].stampAdd ? "add" : undefined);
-    curHeat = pendingDst;
-  }
-  // Close a heat tick. Split out from glDrawPoints so the flip has a name that
-  // isn't about points — a shader effect will inject its output here too.
-  function glEndHeat() { glDrawPoints(); }
+  // glDrawPoints/glEndHeat lived here and are GONE. They were the single-layer GL tick close,
+  // but simulate() -- their only route in -- is called from exactly one site, inside the frame
+  // loop's `if (!useGL)` branch, so `if (useGL) glEndHeat()` could never fire. The GL point path
+  // closes its own tick inline (`curHeat = pendingDst` after every item has blitted), which is
+  // where the flip actually happens and the only place it should.
   // Generic per-effect fragment-shader pass: replace the current heat by running
   // glProg[name] over a fullscreen quad. Every effect shader takes uSize; `setU` sets
   // the rest. A shader effect = an FS_* source + `glProg.<id>` registered in initGL +
@@ -8223,7 +8246,10 @@
     if (e && e.prog) return e.prog;
     if (!e) {
         if (worldPar === null) worldPar = gl.getExtension("KHR_parallel_shader_compile") || false;
-      const vs = glCompile(gl.VERTEX_SHADER, worldVs);
+      // vsFor, not a fresh glCompile: VS_QUAD is one source shared by every program, and makeProg
+      // was changed to compile it exactly once for that reason. This was the one site still
+      // recompiling it per combination.
+      const vs = vsFor(worldVs);
       // Same rewrite camProg does, so the shared camera still applies.
       const fsSrc = worldSource(key).replace(/gl_FragCoord/g, "fragCam")
         .replace("void main(){", camGlsl() + WNL + "    void main(){ vec4 fragCam = camFrag4();");
@@ -8231,6 +8257,11 @@
       const p = gl.createProgram();
       gl.attachShader(p, vs); gl.attachShader(p, fs);
       gl.linkProgram(p);                 // do NOT read LINK_STATUS yet -- that is the stall
+      // Detach + delete the FRAGMENT shader only. The program keeps what it needs once linked,
+      // and the vertex shader is the shared cached one, which must outlive this program.
+      // (Deleting cannot be deferred past the async link -- deleteShader on an attached shader
+      // is a flag, and the driver frees it when the program releases it.)
+      gl.deleteShader(fs);
       e = worldProgs[key] = { p, pending: true };
     }
     // Poll. Without the extension there is no way to ask, so take the hit once, here, rather
@@ -9144,10 +9175,12 @@
   // canvas still repaints smoothly.
   // Today's whole-tick call: propagate, stamp the selected item, close. Kept for the
   // Canvas2D path, which renders one stack item only.
+  // CPU PATH ONLY — its one caller sits inside frame()'s `if (!useGL)` branch. The `if (useGL)
+  // glEndHeat()` that used to close this was therefore unreachable, and both it and glDrawPoints
+  // have been deleted; the GL point path closes its own tick inline after every item has blitted.
   function simulate(now) {
     beginHeatTick();                   // 1) propagate existing fire upward
     stampTick(stack[stackSel], now);
-    if (useGL) glEndHeat();
   }
   // The stamp half of a tick: advance this item's phase clocks and lay down its points.
   // Split out of simulate so the frame loop can run ONE propagation per tick and then
@@ -9225,7 +9258,9 @@
       TETRA_BOX[2] = 1.0;                         // x follows from the frame aspect below.
       TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // Box size is a whole-scene zoom (below),
       L.tetras = L.tetras || [];                 // per-LAYER bodies (salted by stack position), so two
-      ensureTetras(L.tetras, layerCount, stack.indexOf(L));   // Tetrahedron layers diverge instead of following
+      // L.salt, not stack.indexOf(L) -- indexOf is -1 for a DETACHED layer (the outgoing half of
+      // a crossfade), and the salt belongs to the layer, so it also survives a reorder.
+      ensureTetras(L.tetras, layerCount, layerSalt(L));       // Tetrahedron layers diverge instead of following
       const tetras = L.tetras;                   // this layer's bodies for the loop below
 
       const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
@@ -11180,7 +11215,7 @@
   }
   function installPhysarum(L) {
     L.physarum = L.physarum || {};
-    ensurePhy(L.physarum, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), stack.indexOf(L) + 1);
+    ensurePhy(L.physarum, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), layerSalt(L) + 1);
     phAgents = L.physarum;
   }
   function physarumStamp(xL, xR, yT, yB, n) {
@@ -11304,7 +11339,7 @@
   }
   function installCurl(L) {
     L.curl = L.curl || {};
-    ensureCurl(L.curl, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), stack.indexOf(L) + 1);
+    ensureCurl(L.curl, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), layerSalt(L) + 1);
     cuField = L.curl;
   }
   function curlStamp(xL, xR, yT, yB, n) {
@@ -11882,7 +11917,7 @@
   }
   function installBoids(L) {
     L.boids = L.boids || [];
-    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), stack.indexOf(L) + 1);
+    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), layerSalt(L) + 1);
     bdFlock = L.boids;
   }
   function boidsStamp(xL, xR, yT, yB, n) {
@@ -12355,7 +12390,7 @@
   // installStackItem for `solids` effects, the same hook installSeedPath uses.
   function installSolids(L) {
     L.solids = L.solids || [];
-    ensureSolids(L.solids, Math.max(1, Math.min(SD_MAX, Math.round(sdCount))), stack.indexOf(L));
+    ensureSolids(L.solids, Math.max(1, Math.min(SD_MAX, Math.round(sdCount))), layerSalt(L));
     sdBodies = L.solids;
   }
   // Keep them lively forever. The walls are near-elastic but not perfectly so, and the
@@ -15087,6 +15122,14 @@
   // added so two Glass ball layers would not draw the same balls; separating two layers that
   // share a palette is the same question with a different subject.
   function palTintRank(L) { return typeof L.salt === "number" ? L.salt : 0; }
+  // THE PER-LAYER SALT every ensure*() decorrelating two layers of the same effect should use.
+  // It replaced `stack.indexOf(L)` at five sites, which was wrong twice over: indexOf returns -1
+  // for a DETACHED layer -- and the outgoing half of a preset crossfade is exactly that, since
+  // renderPrevScene renders prevStack after installStack has replaced `stack` -- and a slot index
+  // also changes under a reorder, so two layers could swap arrangements by being dragged. `salt`
+  // belongs to the layer, is unique among the live ones, and returns to the pool when one is
+  // deleted. installStackItem already reads it this way for gbSalt; this is the same rule, named.
+  function layerSalt(L) { return typeof L.salt === "number" ? L.salt : 0; }
   // Editing a custom palette changes what its strong colour is, so the cache has to go.
   function palTintFlush() { for (const k in PAL_TINT) delete PAL_TINT[k]; }
   function layerTintIdx(L, slot) {
@@ -18273,10 +18316,15 @@
     // too — delete this copy and the outgoing half still draws, which is what proves the
     // live path is doing the work rather than this.
     if (useGL && glReady) {                  // snapshot glTex.scene → glTex.prev
-      gl.bindFramebuffer(gl.FRAMEBUFFER, glFbo.scene);
+      // Through bindFbo/bindDefault, not raw gl.bindFramebuffer: those two are what track
+      // curFbo/curW/curH, and glBloomPass restores the caller's target FROM curFbo. Binding
+      // behind their backs leaves that tracking stale. It happened to be safe here (glRender
+      // always exits with curFbo null and this runs before the frame's first bind), but "happens
+      // to be safe" is the state this pair exists to eliminate.
+      bindFbo(glFbo.scene, fw, fh);
       gl.bindTexture(gl.TEXTURE_2D, glTex.prev);
       gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, fw, fh);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      bindDefault(canvas.width, canvas.height);
     } else if (off && off.width) {
       if (!transOff) transOff = document.createElement("canvas");
       if (transOff.width !== off.width || transOff.height !== off.height) {
@@ -18600,10 +18648,6 @@
     // Same first-free rule for the salt: unique among the LIVE layers, so a salt released by
     // a deleted layer comes back into circulation rather than being burned for the session.
     L.salt = freeSalt(stack, L);
-    // Concrete palette from birth, for the same reason installStack resolves it: a null here
-    // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
-    { const px = extras[L.fx] || presetExtra(L.fx);
-      L.palette = String(px.palette); L.paletteRev = !!px.paletteRev; L.paletteBg = bgOk(px.paletteBg); }
     // A fresh item is seeded from its effect's shipped defaults, not from the item that
     // happened to be selected — mergeState against its OWN effect, or every key that
     // effect declares would be dropped.
@@ -18612,9 +18656,16 @@
     L.pulse = mergePulse(L.fx, presetPulse(L.fx));
     L.plen = mergePlen(L.fx, presetPlen(L.fx));
     L.btune = {};                            // a fresh layer inherits every threshold
-    L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
-    L.paletteRev = presetExtra(L.fx).paletteRev;
-    L.paletteBg = presetExtra(L.fx).paletteBg;
+    // CONCRETE FROM BIRTH, for the same reason installStack resolves it: a null here would follow
+    // extras[L.fx] at render time and re-tint whenever another same-effect layer was edited.
+    // The DESCRIPTOR default, not the runtime extras -- a new layer opens on its effect's shipped
+    // look. (There used to be a second, earlier block resolving these from `extras[L.fx] ||
+    // presetExtra(L.fx)`, which these three lines then silently overwrote three statements later.
+    // Two answers to one question; this is the one that was actually winning.)
+    { const px = presetExtra(L.fx);
+      L.palette = px.palette == null ? null : String(px.palette);
+      L.paletteRev = !!px.paletteRev;
+      L.paletteBg = bgOk(px.paletteBg); }
     { const px = presetExtra(L.fx); L.seedPath = px.seedPath; L.seedRide = px.seedRide; L.seedPts = px.seedPts; }
     L.filters = presetFilters(L.fx);
     stack.push(L);
@@ -22514,7 +22565,12 @@
     // point each layer owns its values and edits stay where they were made.
     for (const L of items) {
       const fx = extras[L.fx] || presetExtra(L.fx);
-      if (L.palette == null) L.palette = String(fx.palette);
+      // String(null) is "null", not null -- and "null" is truthy, so it defeats every downstream
+      // `== null` guard and layerPalIndex's `+"null" | 0` lands the layer on palette 0 instead of
+      // its effect's default. Reachable: palRemapIncoming deliberately writes palette = null for
+      // an imported custom ramp that did not survive PAL_MAX_CUSTOM, and mergeExtra copies it
+      // through, so extras[e].palette really can be null here.
+      if (L.palette == null) L.palette = fx.palette == null ? null : String(fx.palette);
       if (L.paletteRev == null) L.paletteRev = !!fx.paletteRev;
       if (L.paletteBg == null) L.paletteBg = bgOk(fx.paletteBg);
     }
@@ -23065,8 +23121,10 @@
       // carry curPreset, so this only fires for shared links.
       // Gated on `found`, NOT on out.curPreset: that is always >= 0 now, so testing it would
       // fire this one-shot for ordinary file restores too and yank them onto scene 0.
-      if (found >= 0) sessionStorage.setItem("btw.applyPreset", String(found));
-      else sessionStorage.removeItem("btw.applyPreset");
+      try {
+        if (found >= 0) sessionStorage.setItem("btw.applyPreset", String(found));
+        else sessionStorage.removeItem("btw.applyPreset");
+      } catch (e) {}
     }
     if (p.hasSettings && el("rst-settings").checked) {
       const s = p.parsed;
@@ -23086,7 +23144,7 @@
       // whole no-scratch-mode change rests on.
       if (!el("rst-presets").checked) {
         out.curPreset = 0;
-        sessionStorage.setItem("btw.applyPreset", "0");
+        try { sessionStorage.setItem("btw.applyPreset", "0"); } catch (e) {}
       }
     }
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
@@ -23098,7 +23156,20 @@
     // the selected preset (above) and then cycles the same way the sender's did.
     out.cycle = (!Array.isArray(p.parsed) && p.parsed.__link && typeof p.parsed.cycle === "boolean") ? p.parsed.cycle : false;
     // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
-    localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
+    // GUARDED, unlike every other storage write in the app, which this one was not. setItem throws
+    // QuotaExceededError when storage is full or disabled (Safari private mode, enterprise policy),
+    // and this is the last statement before the reload -- so a throw aborted the restore in silence:
+    // the dialog just sat there. Worse, the btw.applyPreset one-shot above had already been written,
+    // so the NEXT ordinary reload jumped to an index into the OLD library. Unlike persist()'s
+    // deliberate silence this is data loss, so say so rather than swallow it.
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
+    } catch (e) {
+      try { sessionStorage.removeItem("btw.applyPreset"); } catch (e2) {}    // don't strand the one-shot
+      const msg = el("rst-msg");
+      if (msg) msg.textContent = "Couldn't save — browser storage is full or blocked. Nothing was changed.";
+      return;
+    }
     location.reload();
   }
   el("rst-go").addEventListener("click", applyRestore);
@@ -24132,9 +24203,12 @@
   // same codec — so both transports describe a shared scene identically and the recipient
   // path is the one that already exists (installShared).
   function cloudShareScene() {
-    const json = JSON.stringify(sceneBlob());
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     if (!cloudOn() || !cloudSess) return shareUrl();          // signed out ⇒ the classic link
+    // BELOW the guard: sceneBlob() is not free -- it runs saveLiveMaps and stackOut, which does a
+    // full freeze/thaw round-trip on the selected layer -- and on the signed-out path the result
+    // was built and thrown away.
+    const json = JSON.stringify(sceneBlob());
     return zipToB64(json).then(payload => {
       if (payload == null || payload.length >= 200000) return shareUrl();
       const sceneName = (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]
@@ -25088,6 +25162,12 @@
     uiHint.classList.remove("fading");
   }
   function setUiHidden(h, quiet) {
+    // Hiding the chrome display:none's every dialog, INCLUDING the four modal ones -- but the
+    // focus trap dlgModal installed is a document listener and knew nothing about it. With a trap
+    // armed on an invisible box, dlgFocusable finds nothing (it filters on offsetWidth/Height,
+    // both 0), takes its "no focusable children" branch and swallows every Tab: the keyboard went
+    // dead page-wide with nothing on screen to explain it. Release the trap on the way down.
+    if (h) dlgRelease();
     document.body.classList.toggle("ui-hidden", h);
     if (h && !quiet) flashUiHint(); else hideUiHint();
   }
@@ -25755,6 +25835,14 @@
       .map((_, i) => '<span class="tut-dot' + (i <= tutStep ? " on" : "") + '"></span>').join("");
     // setOff, not a bare class: `.off` dims but leaves the tab stop and the Enter key live
     // (see boot-globals). Back on step 1 has to be genuinely dead, not just grey.
+    // MOVE FOCUS BEFORE disabling or hiding whatever holds it. Back going dead on step 1 and
+    // Skip disappearing on the last step both dropped document.activeElement to <body> when the
+    // key that triggered them was pressed on that very button — the modal's Tab handler pulls it
+    // back on the next Tab, so it self-heals, but the control vanishes from under your finger.
+    // Next is the safe target: it exists on every step and is never disabled.
+    const losing = (tutStep === 0 && document.activeElement === el("tut-back")) ||
+                   (last && document.activeElement === el("tut-skip"));
+    if (losing) el("tut-next").focus();
     setOff(el("tut-back"), tutStep === 0);
     el("tut-next").textContent = last ? "Done" : "Next →";
     el("tut-skip").hidden = last;              // nothing left to skip on the last step

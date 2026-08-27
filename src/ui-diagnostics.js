@@ -50,6 +50,12 @@
     uiHint.classList.remove("fading");
   }
   function setUiHidden(h, quiet) {
+    // Hiding the chrome display:none's every dialog, INCLUDING the four modal ones -- but the
+    // focus trap dlgModal installed is a document listener and knew nothing about it. With a trap
+    // armed on an invisible box, dlgFocusable finds nothing (it filters on offsetWidth/Height,
+    // both 0), takes its "no focusable children" branch and swallows every Tab: the keyboard went
+    // dead page-wide with nothing on screen to explain it. Release the trap on the way down.
+    if (h) dlgRelease();
     document.body.classList.toggle("ui-hidden", h);
     if (h && !quiet) flashUiHint(); else hideUiHint();
   }

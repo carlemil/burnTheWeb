@@ -46,10 +46,12 @@
   // canvas still repaints smoothly.
   // Today's whole-tick call: propagate, stamp the selected item, close. Kept for the
   // Canvas2D path, which renders one stack item only.
+  // CPU PATH ONLY — its one caller sits inside frame()'s `if (!useGL)` branch. The `if (useGL)
+  // glEndHeat()` that used to close this was therefore unreachable, and both it and glDrawPoints
+  // have been deleted; the GL point path closes its own tick inline after every item has blitted.
   function simulate(now) {
     beginHeatTick();                   // 1) propagate existing fire upward
     stampTick(stack[stackSel], now);
-    if (useGL) glEndHeat();
   }
   // The stamp half of a tick: advance this item's phase clocks and lay down its points.
   // Split out of simulate so the frame loop can run ONE propagation per tick and then
@@ -127,7 +129,9 @@
       TETRA_BOX[2] = 1.0;                         // x follows from the frame aspect below.
       TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // Box size is a whole-scene zoom (below),
       L.tetras = L.tetras || [];                 // per-LAYER bodies (salted by stack position), so two
-      ensureTetras(L.tetras, layerCount, stack.indexOf(L));   // Tetrahedron layers diverge instead of following
+      // L.salt, not stack.indexOf(L) -- indexOf is -1 for a DETACHED layer (the outgoing half of
+      // a crossfade), and the salt belongs to the layer, so it also survives a reorder.
+      ensureTetras(L.tetras, layerCount, layerSalt(L));       // Tetrahedron layers diverge instead of following
       const tetras = L.tetras;                   // this layer's bodies for the loop below
 
       const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];

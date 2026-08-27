@@ -211,6 +211,14 @@
       .map((_, i) => '<span class="tut-dot' + (i <= tutStep ? " on" : "") + '"></span>').join("");
     // setOff, not a bare class: `.off` dims but leaves the tab stop and the Enter key live
     // (see boot-globals). Back on step 1 has to be genuinely dead, not just grey.
+    // MOVE FOCUS BEFORE disabling or hiding whatever holds it. Back going dead on step 1 and
+    // Skip disappearing on the last step both dropped document.activeElement to <body> when the
+    // key that triggered them was pressed on that very button — the modal's Tab handler pulls it
+    // back on the next Tab, so it self-heals, but the control vanishes from under your finger.
+    // Next is the safe target: it exists on every step and is never disabled.
+    const losing = (tutStep === 0 && document.activeElement === el("tut-back")) ||
+                   (last && document.activeElement === el("tut-skip"));
+    if (losing) el("tut-next").focus();
     setOff(el("tut-back"), tutStep === 0);
     el("tut-next").textContent = last ? "Done" : "Next →";
     el("tut-skip").hidden = last;              // nothing left to skip on the last step

@@ -306,8 +306,10 @@
       // carry curPreset, so this only fires for shared links.
       // Gated on `found`, NOT on out.curPreset: that is always >= 0 now, so testing it would
       // fire this one-shot for ordinary file restores too and yank them onto scene 0.
-      if (found >= 0) sessionStorage.setItem("btw.applyPreset", String(found));
-      else sessionStorage.removeItem("btw.applyPreset");
+      try {
+        if (found >= 0) sessionStorage.setItem("btw.applyPreset", String(found));
+        else sessionStorage.removeItem("btw.applyPreset");
+      } catch (e) {}
     }
     if (p.hasSettings && el("rst-settings").checked) {
       const s = p.parsed;
@@ -327,7 +329,7 @@
       // whole no-scratch-mode change rests on.
       if (!el("rst-presets").checked) {
         out.curPreset = 0;
-        sessionStorage.setItem("btw.applyPreset", "0");
+        try { sessionStorage.setItem("btw.applyPreset", "0"); } catch (e) {}
       }
     }
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
@@ -339,7 +341,20 @@
     // the selected preset (above) and then cycles the same way the sender's did.
     out.cycle = (!Array.isArray(p.parsed) && p.parsed.__link && typeof p.parsed.cycle === "boolean") ? p.parsed.cycle : false;
     // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
-    localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
+    // GUARDED, unlike every other storage write in the app, which this one was not. setItem throws
+    // QuotaExceededError when storage is full or disabled (Safari private mode, enterprise policy),
+    // and this is the last statement before the reload -- so a throw aborted the restore in silence:
+    // the dialog just sat there. Worse, the btw.applyPreset one-shot above had already been written,
+    // so the NEXT ordinary reload jumped to an index into the OLD library. Unlike persist()'s
+    // deliberate silence this is data loss, so say so rather than swallow it.
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
+    } catch (e) {
+      try { sessionStorage.removeItem("btw.applyPreset"); } catch (e2) {}    // don't strand the one-shot
+      const msg = el("rst-msg");
+      if (msg) msg.textContent = "Couldn't save — browser storage is full or blocked. Nothing was changed.";
+      return;
+    }
     location.reload();
   }
   el("rst-go").addEventListener("click", applyRestore);

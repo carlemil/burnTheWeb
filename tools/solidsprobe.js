@@ -39,6 +39,12 @@ const prelude = `
   };
   let fw = 640, fh = 360, zoom = 1;
   let stack = [];
+  // The real layerSalt (stack-core.js). installSolids used to salt from stack.indexOf(L), which
+  // this probe's empty \`stack\` stub quietly turned into a constant -1 for every layer -- so the
+  // per-layer arrangement it claims to check was never actually varying. Salting from L.salt
+  // fixes that in the app AND makes it testable here, which is why the two layers below now
+  // carry distinct salts.
+  const layerSalt = L => typeof L.salt === "number" ? L.salt : 0;
 `;
 
 const api = `

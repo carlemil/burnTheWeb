@@ -1210,17 +1210,11 @@
     // Put the framebuffer back the way every other pass expects to find it.
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
   }
-  function glDrawPoints() {
-    // The single-layer tick path: honour a stampAdd effect (Fractal flames) here too, or
-    // the density accumulation would only exist in a stack. Read the ITEM's effect, not
-    // the `effect` global — render paths take everything from the stack.
-    const L = stack[stackSel];
-    glBlitPoints(L && EFFECTS[L.fx].stampAdd ? "add" : undefined);
-    curHeat = pendingDst;
-  }
-  // Close a heat tick. Split out from glDrawPoints so the flip has a name that
-  // isn't about points — a shader effect will inject its output here too.
-  function glEndHeat() { glDrawPoints(); }
+  // glDrawPoints/glEndHeat lived here and are GONE. They were the single-layer GL tick close,
+  // but simulate() -- their only route in -- is called from exactly one site, inside the frame
+  // loop's `if (!useGL)` branch, so `if (useGL) glEndHeat()` could never fire. The GL point path
+  // closes its own tick inline (`curHeat = pendingDst` after every item has blitted), which is
+  // where the flip actually happens and the only place it should.
   // Generic per-effect fragment-shader pass: replace the current heat by running
   // glProg[name] over a fullscreen quad. Every effect shader takes uSize; `setU` sets
   // the rest. A shader effect = an FS_* source + `glProg.<id>` registered in initGL +
@@ -1762,7 +1756,10 @@
     if (e && e.prog) return e.prog;
     if (!e) {
         if (worldPar === null) worldPar = gl.getExtension("KHR_parallel_shader_compile") || false;
-      const vs = glCompile(gl.VERTEX_SHADER, worldVs);
+      // vsFor, not a fresh glCompile: VS_QUAD is one source shared by every program, and makeProg
+      // was changed to compile it exactly once for that reason. This was the one site still
+      // recompiling it per combination.
+      const vs = vsFor(worldVs);
       // Same rewrite camProg does, so the shared camera still applies.
       const fsSrc = worldSource(key).replace(/gl_FragCoord/g, "fragCam")
         .replace("void main(){", camGlsl() + WNL + "    void main(){ vec4 fragCam = camFrag4();");
@@ -1770,6 +1767,11 @@
       const p = gl.createProgram();
       gl.attachShader(p, vs); gl.attachShader(p, fs);
       gl.linkProgram(p);                 // do NOT read LINK_STATUS yet -- that is the stall
+      // Detach + delete the FRAGMENT shader only. The program keeps what it needs once linked,
+      // and the vertex shader is the shared cached one, which must outlive this program.
+      // (Deleting cannot be deferred past the async link -- deleteShader on an attached shader
+      // is a flag, and the driver frees it when the program releases it.)
+      gl.deleteShader(fs);
       e = worldProgs[key] = { p, pending: true };
     }
     // Poll. Without the extension there is no way to ask, so take the hit once, here, rather

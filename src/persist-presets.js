@@ -643,7 +643,12 @@
     // point each layer owns its values and edits stay where they were made.
     for (const L of items) {
       const fx = extras[L.fx] || presetExtra(L.fx);
-      if (L.palette == null) L.palette = String(fx.palette);
+      // String(null) is "null", not null -- and "null" is truthy, so it defeats every downstream
+      // `== null` guard and layerPalIndex's `+"null" | 0` lands the layer on palette 0 instead of
+      // its effect's default. Reachable: palRemapIncoming deliberately writes palette = null for
+      // an imported custom ramp that did not survive PAL_MAX_CUSTOM, and mergeExtra copies it
+      // through, so extras[e].palette really can be null here.
+      if (L.palette == null) L.palette = fx.palette == null ? null : String(fx.palette);
       if (L.paletteRev == null) L.paletteRev = !!fx.paletteRev;
       if (L.paletteBg == null) L.paletteBg = bgOk(fx.paletteBg);
     }

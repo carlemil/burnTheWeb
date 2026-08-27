@@ -547,6 +547,11 @@
       <button type="button" id="rst-go">Restore</button>
       <button type="button" id="rst-cancel">Cancel</button>
     </div>
+    <!-- Failure reporting for the restore itself. localStorage.setItem throws when storage is
+         full or blocked, and that throw happens one line before the reload -- so without somewhere
+         to say so the dialog just sat there and nothing happened. aria-live, because by then the
+         user is looking at the button they pressed, not at this line. -->
+    <p class="rst-sub rst-err" id="rst-msg" role="status" aria-live="polite"></p>
     <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
   </div>
 </div>
