@@ -29,7 +29,7 @@ const seed = ["<script>",
   + "localStorage.setItem('burnTheWeb.credits.v1','off');"
   + "localStorage.setItem('burnTheWeb.sync.v1',JSON.stringify({shows:9,done:true}))}catch(e){}",
   // DOM-only run: let a few frames through so the app initialises, then stop the loop.
-  "var __n=0;requestAnimationFrame=function(f){return (++__n<6)?setTimeout(function(){f(performance.now())},16):0};",
+  "var __n=0;requestAnimationFrame=function(f){return (++__n<8)?setTimeout(function(){f(performance.now())},16):0};",
   "</" + "script>"].join(NL);
 
 const body = [
@@ -87,7 +87,9 @@ const body = [
   "console.log('\"DONE fails='+fails+'\"');",
 ].join(NL);
 
-const inject = ["<script>", "setTimeout(function(){", body, "},2200);", "</" + "script>"].join(NL);
+const inject = ["<script>",
+  "(function(){function go(){setTimeout(function(){", body, "},2200);}",
+  "if(window.__appReady)go(); else addEventListener('app:ready',go,{once:true});})();", "</" + "script>"].join(NL);
 let s = app.split("<head>").join("<head>" + NL + seed);
 s = s.split("</body>").join(inject + NL + "</body>");
 const out = path.join(outDir, "brkdrop.html");

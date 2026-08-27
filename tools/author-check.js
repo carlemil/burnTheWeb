@@ -26,7 +26,7 @@ const seed = ["<script>",
   // puts it on the banner, and with nobody to credit the check would prove nothing.
   + "localStorage.setItem('burnTheWeb.profile.v1','Testy');"
   + "localStorage.setItem('burnTheWeb.sync.v1',JSON.stringify({shows:9,done:true}))}catch(e){}",
-  "var __n=0;requestAnimationFrame=function(f){return (++__n<8)?setTimeout(function(){f(performance.now())},16):0};",
+  "var __n=0;requestAnimationFrame=function(f){return (++__n<10)?setTimeout(function(){f(performance.now())},16):0};",
   "</" + "script>"].join(NL);
 
 const body = [
@@ -62,7 +62,9 @@ const body = [
   "console.log('\"DONE fails='+fails+'\"');",
 ].join(NL);
 
-const inject = ["<script>", "setTimeout(function(){", body, "},2400);", "</" + "script>"].join(NL);
+const inject = ["<script>",
+  "(function(){function go(){setTimeout(function(){", body, "},2400);}",
+  "if(window.__appReady)go(); else addEventListener('app:ready',go,{once:true});})();", "</" + "script>"].join(NL);
 let s = app.split("<head>").join("<head>" + NL + seed);
 s = s.split("</body>").join(inject + NL + "</body>");
 const out = path.join(outDir, "author.html");

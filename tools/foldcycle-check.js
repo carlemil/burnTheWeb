@@ -50,7 +50,18 @@ const SEED_JS = [
 // Runs AFTER the app.
 const ASSERT_JS = [
   "// Runs after the app. Real rAF is left alone -- cyclePresets only ticks inside frame().",
+  "//",
+  "// WAITS FOR app:ready, and must. Boot is deferred past a paint now (the shader-compile",
+  "// splash has to be rendered before the main thread is taken away), so an end-of-body script",
+  "// runs BEFORE the app: restore() has not applied panelOpen and the cycle checkbox is still",
+  "// untouched markup. Asserting immediately reported four failures against a healthy build.",
+  "// Not a fixed delay -- cold shader compilation is seconds and varies by machine.",
   "(function () {",
+  "  function whenReady(fn) {",
+  "    if (window.__appReady) return fn();",
+  "    addEventListener(\"app:ready\", fn, { once: true });",
+  "  }",
+  "  whenReady(function () {",
   "  var CASE = __CASE__, fails = 0;",
   "  function ok(name, cond, extra) {",
   "    // NAME FIRST -- swapping the pair makes every assertion pass, because a name is a",
@@ -143,6 +154,7 @@ const ASSERT_JS = [
   "    ok(\"M hides the panel again\", hidden());",
   "    console.log(\"DONE \" + CASE + \" fails=\" + fails);",
   "  }, 6000);",
+  "  });",           // close whenReady
   "})();"
 ].join(NL);
 

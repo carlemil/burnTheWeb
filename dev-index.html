@@ -2038,10 +2038,14 @@
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check" title="Switch scene on the TTL timer. Paused while this panel is open, so nothing changes under you while you edit."><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
-  <!-- STATIC, not toggled: the note is only ever readable while the panel is open, which is
-       exactly when cycling is paused. A JS-driven "paused" badge would have nothing to say. -->
-  <div class="cycle-note">paused while this panel is open</div>
+  <label class="check" title="Switch scene on the TTL timer. Only runs with this panel closed (M) or all UI hidden (H), so nothing changes under you while you edit."><input type="checkbox" id="cycle" aria-describedby="cyclenote"> Auto-cycle scenes</label>
+  <!-- STATIC, not toggled: this is only ever readable while the panel is open, which is exactly
+       when cycling is paused, so a JS-driven "paused" badge would have nothing to say. Worded as
+       the condition that makes it RUN rather than the one that blocks it -- the checkbox reads as
+       broken otherwise, since ticking it appears to do nothing while you are looking at it.
+       The gate is editorOpen() in controls-breakout.js: panel visible AND not body.ui-hidden.
+       aria-describedby ties it to the checkbox, or a screen reader gets the tick with no caveat. -->
+  <div class="cycle-note" id="cyclenote">only runs with the panel closed (M) or UI hidden (H)</div>
   <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
        Auto-cycle, because that is when you see it most — every cycle tick draws one — even
        though it is drawn by the credits overlay and remembered per browser like the credits
@@ -2512,9 +2516,15 @@
   //     origin for anything but localhost.
   // Both failures name the wrong cause, which is what made them expensive to diagnose.
   //
-  // Here rather than in <head>: every probe takes the FIRST <script> in the document as the app
-  // (html.indexOf("<script>")), so a second tag above this one silently feeds twelve of them
-  // three lines of redirect instead of the program. This runs at end-of-body parse, before
+  // NEVER NAME A SCRIPT TAG IN THIS COMMENT, opening or closing. Every probe and every browser
+  // check finds the app by splitting the page on that exact literal, so writing it in prose is
+  // spliced into as if it were markup: the check's stub lands mid-comment and the whole app dies
+  // with 'Unexpected token'. Cost an hour of chasing phantom timing bugs. Same family as the
+  // no-backtick-inside-GLSL rule -- text in a comment is not inert if a tool parses the file.
+  //
+  // The point it used to make, safely: this lives here rather than in the document head because
+  // those same tools take the FIRST such tag to be the app, and a second one above it feeds them
+  // three lines of redirect instead of the program. Here it runs at end-of-body parse, before
   // boot() is scheduled — early enough, since nothing of the app has run yet.
   //
   // THE EXCLUSIONS ARE LOAD-BEARING, not politeness:
@@ -26332,6 +26342,15 @@
     try { boot(); } finally {
       const b = document.getElementById("boot");
       if (b) b.remove();          // ...even if boot threw: the crash overlay must not be hidden behind this
+      // READINESS SIGNAL. Boot is deferred past a paint now, so the app is NOT running when an
+      // end-of-body script executes -- which is a contract every browser check in tools/ was
+      // written against back when this ran synchronously. foldcycle-check asserted the panel
+      // state immediately and started reading a page where restore() had not run yet, reporting
+      // four failures against a perfectly healthy build. Rather than have each check guess a
+      // delay, the app says when it is up: a flag for anything that arrives late, an event for
+      // anything already waiting.
+      window.__appReady = true;
+      try { dispatchEvent(new Event("app:ready")); } catch (e) {}
     }
   };
   requestAnimationFrame(() => requestAnimationFrame(go));
