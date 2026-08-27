@@ -29,13 +29,18 @@
   // slices call this, and only declarations hoist across the one IIFE. `uiHintBack` is a
   // `var` filled lazily for the same reason — a const captured at slice time would be in the
   // TDZ for any caller above. Same rule as tutorialOpen.
-  function flashUiHint(msg) {
+  // `sticky` leaves the message up until the caller takes it down with hideUiHint(). For a
+  // wait whose LENGTH IS NOT KNOWN IN ADVANCE, the 2.2s timeout below is worse than nothing:
+  // the shared-3D-world link takes 3.5s for two effects and up to a minute for five, so the
+  // explanation vanished while the user was still staring at the thing it explained.
+  function flashUiHint(msg, sticky) {
     const n = document.getElementById("uihint");
     if (!n) return;
     clearTimeout(uiHintTimer);
     if (!uiHintBack) uiHintBack = n.innerHTML;          // capture before the first overwrite
     n.innerHTML = msg === undefined ? uiHintBack : String(msg);
     n.classList.remove("hidden", "fading");
+    if (sticky) return;                                  // the caller owns dismissal
     // Two stages: hold, then fade, then take it out of the layout entirely so it can never
     // catch a late screenshot.
     uiHintTimer = setTimeout(() => {

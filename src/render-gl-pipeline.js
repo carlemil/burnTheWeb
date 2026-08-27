@@ -1769,7 +1769,12 @@
       // aria-live, exempt from body.ui-hidden). It is a hoisted function declaration in a later
       // slice, which is what lets this call it. Once per combination -- this branch is the
       // cache MISS, so a world that is already built says nothing.
-      if (typeof flashUiHint === "function") flashUiHint("Building the shared 3D world \u2014 a few seconds the first time.");
+      // STICKY: held until the program is ready below, not for a fixed 2.2s. The link takes
+      // 3.5s for ocean+glass, ~25s once solids and quaternion Julia join, ~64s for all five --
+      // so a timed toast vanished long before the picture came right, which is the opposite of
+      // what it is for.
+      if (typeof flashUiHint === "function")
+        flashUiHint("Building the shared 3D world \u2014 this takes a few seconds the first time.", true);
       const vs = vsFor(worldVs);
       // Same rewrite camProg does, so the shared camera still applies.
       const fsSrc = worldSource(key).replace(/gl_FragCoord/g, "fragCam")
@@ -1791,12 +1796,14 @@
     if (!gl.getProgramParameter(e.p, gl.LINK_STATUS)) {
       console.error("world program link failed: " + gl.getProgramInfoLog(e.p));
       e.prog = { p: null, u: {} };       // remember the failure; never retry every frame
+      if (typeof hideUiHint === "function") hideUiHint();   // never strand a sticky message on a dead link
       return null;
     }
     const u = {};
     for (const n of WORLD_UNIFORMS.concat(["uCam", "uCamSize"])) u[n] = gl.getUniformLocation(e.p, n);
     e.prog = { p: e.p, u };
     e.pending = false;
+    if (typeof hideUiHint === "function") hideUiHint();   // the picture is correct from here
     return e.prog;
   }
 

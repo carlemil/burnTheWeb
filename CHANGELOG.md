@@ -15,6 +15,16 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.65.1] — 2026-08-27
+
+### Fixed
+- **The "building the shared 3D world" message now stays up until the world is actually
+  ready.** It was a timed toast that faded after 2.2 seconds, while the world itself takes
+  about three and a half seconds for two effects and considerably longer for more — so the
+  explanation disappeared while you were still looking at the thing it was explaining, which
+  is the opposite of what it is for. It is also cleared if the build fails, rather than being
+  left on screen for ever.
+
 ## [1.65.0] — 2026-08-27
 
 The app is now **Kicktro**, at **https://kicktro.com**. Everything else here comes from a
