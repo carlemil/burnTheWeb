@@ -210,7 +210,10 @@ it renders unchanged.
   **Two changes measured NOT to help, both reverted or left alone.** The ball loop bound (5→3)
   moved the five-way by less than the run-to-run noise. A bounding sphere on `glassDE` — the
   one CLAUDE.md used to list as missing — moved the sixteen-program total the WRONG way
-  (399 s → 472 s) and its frame benefit could not be demonstrated at all. Beware measuring that
+  the WRONG way, and the attribution is clean because it was measured three times: **399 s
+  baseline → 472 s with the sphere → 407 s with it reverted**, the material change (which
+  stayed) accounting for the ~8 s between first and last, i.e. nothing outside the noise.
+  Its frame benefit could not be demonstrated at all. Beware measuring that
   benefit on the standalone Glass ball: `FS_GLASS` is analytic and never calls `glassDE`, so a
   before/after there compares a shader to itself. Frame time has ~4× headroom anyway; link time
   does not, so the trade was backwards.

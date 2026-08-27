@@ -1579,7 +1579,8 @@
         // its case is FRAME time, and the frame has ~4x headroom (measured: worst case 4.2ms of a
         // 16.7ms budget at 4K), while glass already dominates the world program LINK time, which
         // is the thing that is actually too slow -- 7.7s alone, 133.8s for the five-way. Adding
-        // the branch moved the total link the wrong way (399s -> 472s across all sixteen) and the
+        // the branch moved the total link the wrong way -- 399s baseline, 472s with it, 407s once
+        // reverted, across all sixteen -- and the
         // frame benefit could not be shown at all. Optimising a non-problem at the cost of the
         // real one. If it comes back, measure the WORLD frame cost first, not the standalone one
         // -- FS_GLASS is analytic and never calls this.

@@ -1054,14 +1054,18 @@
   /* Drag handle: spans both rows like the old arrow column did. touch-action:none so a
      touch-drag reorders instead of scrolling the panel; the row it lives on live-moves
      among its siblings while held (see syncStackUI's pointerdown). */
+  /* A <button> now (it was a div), so it needs the button-chrome reset the other row
+     controls get -- and setOff's real `disabled` works on it, which it never did on a div. */
   #panel .lyr-grab {
+    appearance: none; -webkit-appearance: none; margin: 0; padding: 0;
+    background: none; border: 0;
     grid-row: 1 / 4; align-self: stretch; width: 15px;
     display: flex; align-items: center; justify-content: center;
     color: #ffb15a; opacity: .5; font: 13px/1 monospace;
     cursor: grab; user-select: none; touch-action: none; border-radius: 4px;
   }
-  #panel .lyr-grab:hover { opacity: 1; background: rgba(255, 140, 40, 0.18); }
-  #panel .lyr-grab.off { opacity: .18; cursor: default; background: none; }
+  #panel .lyr-grab:hover:not(:disabled) { opacity: 1; background: rgba(255, 140, 40, 0.18); }
+  #panel .lyr-grab.off, #panel .lyr-grab:disabled { opacity: .18; cursor: default; background: none; }
   #panel .lyr.dragging { position: relative; z-index: 3; opacity: .92; border-color: #ff8c28; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.55); }
   #panel .lyr.dragging .lyr-grab { cursor: grabbing; opacity: 1; }
   /* The insertion line shown while dragging — a bright rule between two rows. */
@@ -1671,6 +1675,13 @@
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #syncpop.hidden { display: none; }
+  /* The 'why am I seeing this' line, shown only when a beat trigger opened the dialog. */
+  #syncpop .sync-why {
+    margin: 0 0 12px; padding: 8px 10px; border-radius: 8px;
+    background: rgba(255, 122, 26, 0.14); border: 1px solid rgba(255, 140, 40, 0.4);
+    color: #ffcf87; font-size: 12px; line-height: 1.5;
+  }
+  #syncpop .sync-why[hidden] { display: none; }
   #syncpop .sync-box {
     position: relative; max-width: 440px; max-height: 82vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
@@ -1763,8 +1774,12 @@
      Deliberately NOT a modal — it's a floating panel at the same depth as the
      rest of the menu (below #panel, like #breakout), with no backdrop, so you can
      drag the orbit sliders and watch the seed path redraw at the same time. */
+  /* z-index 6, one above #breakout. Both sat at 5, and #breakout comes later in the markup,
+     so slider boxes painted over the Orbit editor -- including while the editor itself was being
+     dragged, since only #breakout .ctl.dragging gets raised and nothing raises this. The editor
+     is a tool you use WHILE reading the boxes, so it wins ties. */
   #carddlg {
-    position: fixed; right: 16px; bottom: 16px; z-index: 5;
+    position: fixed; right: 16px; bottom: 16px; z-index: 6;
     max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto;
     padding: 16px 18px 14px;
     background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.45); border-radius: 12px;
@@ -2038,10 +2053,14 @@
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check" title="Switch scene on the TTL timer. Paused while this panel is open, so nothing changes under you while you edit."><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
-  <!-- STATIC, not toggled: the note is only ever readable while the panel is open, which is
-       exactly when cycling is paused. A JS-driven "paused" badge would have nothing to say. -->
-  <div class="cycle-note">paused while this panel is open</div>
+  <label class="check" title="Switch scene on the TTL timer. Only runs with this panel closed (M) or all UI hidden (H), so nothing changes under you while you edit."><input type="checkbox" id="cycle" aria-describedby="cyclenote"> Auto-cycle scenes</label>
+  <!-- STATIC, not toggled: this is only ever readable while the panel is open, which is exactly
+       when cycling is paused, so a JS-driven "paused" badge would have nothing to say. Worded as
+       the condition that makes it RUN rather than the one that blocks it -- the checkbox reads as
+       broken otherwise, since ticking it appears to do nothing while you are looking at it.
+       The gate is editorOpen() in controls-breakout.js: panel visible AND not body.ui-hidden.
+       aria-describedby ties it to the checkbox, or a screen reader gets the tick with no caveat. -->
+  <div class="cycle-note" id="cyclenote">only runs with the panel closed (M) or UI hidden (H)</div>
   <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
        Auto-cycle, because that is when you see it most — every cycle tick draws one — even
        though it is drawn by the credits overlay and remembered per browser like the credits
@@ -2225,7 +2244,7 @@
   <p class="hint verline"><a id="verlink" href="#" target="_blank" rel="noopener"
      title="What changed in this and previous releases"><span class="ver-t">Release notes ↗</span><span class="ver-v" id="vernum">·</span></a></p>
 </div>
-<button id="toggle" type="button" aria-label="Open the menu" aria-haspopup="true" aria-expanded="false">☰</button>
+<button id="toggle" type="button" aria-label="Open the menu" aria-haspopup="menu" aria-expanded="false">☰</button>
 <!-- The fold-out application menu the ☰ opens: a traditional multi-level menubar. Its
      structure is built in JS (buildMenubar) and its leaf panels are filled by MOVING the
      #audiobox / #resbox / #cloudbox / #creditbox contents in, so nothing has to be re-wired. -->
@@ -2439,6 +2458,10 @@
   <div class="sync-box" role="dialog" aria-modal="true" aria-labelledby="sync-title">
     <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
     <h2 id="sync-title">🔊 Sync with your music</h2>
+    <!-- Filled in when this dialog is opened BY a click on a beat trigger rather than by the
+         startup nudge, so it answers the question the user actually asked. Cleared again by
+         showSyncPopup, or the timed nudge would inherit a reason that had nothing to do with it. -->
+    <p id="sync-why" class="sync-why" hidden></p>
     <p>Kicktro can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
     <dl>
       <dt>Capture</dt>
@@ -2512,9 +2535,15 @@
   //     origin for anything but localhost.
   // Both failures name the wrong cause, which is what made them expensive to diagnose.
   //
-  // Here rather than in <head>: every probe takes the FIRST <script> in the document as the app
-  // (html.indexOf("<script>")), so a second tag above this one silently feeds twelve of them
-  // three lines of redirect instead of the program. This runs at end-of-body parse, before
+  // NEVER NAME A SCRIPT TAG IN THIS COMMENT, opening or closing. Every probe and every browser
+  // check finds the app by splitting the page on that exact literal, so writing it in prose is
+  // spliced into as if it were markup: the check's stub lands mid-comment and the whole app dies
+  // with 'Unexpected token'. Cost an hour of chasing phantom timing bugs. Same family as the
+  // no-backtick-inside-GLSL rule -- text in a comment is not inert if a tool parses the file.
+  //
+  // The point it used to make, safely: this lives here rather than in the document head because
+  // those same tools take the FIRST such tag to be the app, and a second one above it feeds them
+  // three lines of redirect instead of the program. Here it runs at end-of-body parse, before
   // boot() is scheduled — early enough, since nothing of the app has run yet.
   //
   // THE EXCLUSIONS ARE LOAD-BEARING, not politeness:
@@ -2584,7 +2613,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.65.1",
+    version: "1.66.0",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -5406,8 +5435,19 @@
       // one glass layer link like four (12s against 3.5). One program per count instead.
       for (int g = 0; g < W_GBN; g++){
         vec3 pl = (p - uGbPlace[g].xyz)/uGbPlace[g].w;
+        // NO BOUNDING SPHERE HERE, and that is a measured decision rather than an oversight.
+        // CLAUDE.md lists glassDE as a missing one, and one was written and then taken out again:
+        // its case is FRAME time, and the frame has ~4x headroom (measured: worst case 4.2ms of a
+        // 16.7ms budget at 4K), while glass already dominates the world program LINK time, which
+        // is the thing that is actually too slow -- 7.7s alone, 133.8s for the five-way. Adding
+        // the branch moved the total link the wrong way -- 399s baseline, 472s with it, 407s once
+        // reverted, across all sixteen -- and the
+        // frame benefit could not be shown at all. Optimising a non-problem at the cost of the
+        // real one. If it comes back, measure the WORLD frame cost first, not the standalone one
+        // -- FS_GLASS is analytic and never calls this.
         float dg = 1e9;
-        for (int i = 0; i < 5; i++){
+        // 3 == the Balls slider max (controls-schema.js 'gbcount'); glassprobe pins the two together.
+        for (int i = 0; i < 3; i++){
           if (float(i) >= uGbCount[g]) break;
           dg = min(dg, length(pl - ballAt(i, uGbTime[g], uGbSalt[g])) - uGbRad[g]);
         }
@@ -5614,8 +5654,10 @@
       float sun = pow(max(0.0, dot(normalize(d), normalize(vec3(0.40, 0.62, -0.68)))), 60.0);
       return clamp(sky + 0.55*sun, 0.0, 1.0);
     }
-    // Shading with NO further bounce -- what a reflection ray sees. GLSL has no recursion,
-    // so the one bounce is unrolled into shade0 (sky as its environment) and shade1 below.
+    // Shading with NO further bounce -- what a reflection ray sees. GLSL has no recursion, so
+    // the single bounce is unrolled: main() shades the primary hit inline and calls envRay,
+    // envRay marches and ends here, and this function calls nothing further. (It used to say
+    // 'and shade1 below'. There is no shade1; the second half is the inline block in main().)
     float shade0(float id, vec3 p, vec3 rd, float t){
       if (id == uOcId){
         float hh; vec2 dd;
@@ -5641,10 +5683,31 @@
         return 0.20 + 0.72*max(0.0, dot(n, normalize(vec3(0.55, 0.75, -0.5)))) + uQjGlow*0.55*rim;
       if (id == uVbId && uVbOn > 0.5)
         return 0.14 + 0.78*max(0.0, dot(n, normalize(vec3(0.45, 0.6, -0.66)))) + uVbGlow*0.7*rim;
-      // glass, seen flat in someone else's reflection: no nested bounce, that group's glow
+      // GLASS SEEN INSIDE SOMEONE ELSE'S REFLECTION, or in the water. Still NO nested bounce --
+      // the environment here is the SKY, not the scene, so a ball reflected in a ball does not
+      // contain the scene -- but it is now the group's real MATERIAL rather than a flat lambert.
+      // Before this, Metal, Glass and Bubble all came back as the same featureless sphere and
+      // uGbMat/uGbIor were not consulted at all, so the Material slider changed the primary view
+      // and nothing about the reflections.
+      //
+      // It is free. The normal is the sdfNormal already computed above for the face term, and skyOf is loop-free
+      // arithmetic that touches no worldMap -- no march, no SDF evaluation, no new call site, so
+      // the world program's link time is unchanged (measured: flat inside the run-to-run band).
       int gg = gbGroupOf(id);
       float glow = gg >= 0 ? uGbGlow[gg] : 0.5;
-      return 0.10 + 0.55*face + (0.06 + glow*0.55)*rim;
+      float gmat = gg >= 0 ? uGbMat[gg]  : 1.0;
+      float gior = gg >= 0 ? uGbIor[gg]  : 1.45;
+      float gfres = pow(1.0 - face, 5.0);
+      float genv = skyOf(reflect(rd, n));
+      // refract INTO the denser medium (1/ior < 1) cannot total-internally-reflect, so the
+      // zero-vector guard main() needs at its exit interface is not needed here.
+      float gbody = gmat < 0.5
+        ? genv*0.90
+        : mix(skyOf(refract(rd, n, 1.0/gior))*0.78, genv, clamp(0.20 + gfres*2.0, 0.0, 1.0));
+      // A small ambient + face term stays: the sky alone carries far less energy than the
+      // 0.10 + 0.55*face it replaces, and a Metal ball turned away from the sun would otherwise
+      // sink into a dark ripple and disappear.
+      return gbody + 0.06 + 0.18*face + (0.06 + glow*0.55)*rim;
     }
     float envRay(vec3 ro, vec3 rd){
       float id;
@@ -5726,7 +5789,7 @@
           vec3 pl = (p - uGbPlace[gg].xyz)/uGbPlace[gg].w;
           vec3 cl = vec3(0.0);
           float bd = 1e9;
-          for (int i = 0; i < 5; i++){
+          for (int i = 0; i < 3; i++){          // == the Balls slider's max; see glassDE
             if (float(i) >= uGbCount[gg]) break;
             vec3 ci = ballAt(i, uGbTime[gg], uGbSalt[gg]);
             float di = abs(length(pl - ci) - uGbRad[gg]);
@@ -5865,7 +5928,7 @@
       float best = 1e9;
       vec3 nrm = vec3(0.0, 0.0, -1.0), ctr = vec3(0.0);
       bool hit = false;
-      for (int i = 0; i < 5; i++){
+      for (int i = 0; i < 3; i++){          // == the Balls slider's max; see glassDE in FS_WORLD
         if (i >= n) break;
         vec3 c = ballAt(i, uTime, uSalt);
         vec3 oc = ro - c;
@@ -11154,7 +11217,8 @@
   // not exist there at all. Shading them as plain lit balls is the honest version; faking a
   // reflection of nothing would just be noise.
   function glassCPU(dt) {
-    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(5, s.count));
+    // 3 == the Balls slider max, same bound the three GLSL loops carry (glassprobe pins them).
+    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(3, s.count));
     const cx = [], cy = [], cz = [];
     for (let i = 0; i < n; i++) {
       gbBallAt(i, s.t, s.salt);
@@ -13960,7 +14024,7 @@
     { key: "vbspin", host: "fx", group: "vballs", type: "dual", label: "Tumble", valId: "vVbSpin", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => vbSpin = v, durScale: 10 },
     { key: "vbglow", host: "fx", group: "vballs", type: "dual", label: "Edge glow", valId: "vVbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => vbGlow = v, durScale: 10 },
     // Glass ball. Material is an enum, Balls a count -- both single.
-    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
+    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 3, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
     { key: "gbsize", host: "fx", group: "glass", type: "dual", label: "Size", valId: "vGbSize", min: 0.2, max: 1.2, step: 0.01, lo: 0.62, hi: 0.62, fmt: v => sig3(v), apply: v => gbRad = v, durScale: 10 },
     { key: "gbmat", host: "fx", group: "glass", type: "dual", single: true, label: "Material", valId: "vGbMat", min: 0, max: 2, step: 1, lo: 1, hi: 1, fmt: v => ["Metal", "Glass", "Bubble"][Math.round(v)] || "Glass", apply: v => gbMat = Math.round(v), durScale: 10 },
     { key: "gbior", host: "fx", group: "glass", type: "dual", label: "Refraction", valId: "vGbIor", min: 1.02, max: 2.2, step: 0.01, lo: 1.45, hi: 1.45, fmt: v => sig3(v), apply: v => gbIor = v, durScale: 10 },
@@ -18956,12 +19020,61 @@
       // and a reorder moves the items under it, not the rows. So this is a live index into
       // `stack`, not a snapshot that a rebuild could stale.
       const from = j;
-      const grab = document.createElement("div");
+      // THE REORDER COMMIT, shared by the pointer drag and the keyboard. It was inline in the
+      // drag's pointerup, which is why reordering was mouse-only: there was no way to reach it
+      // without a pointer. Every caller must pass `to` as an index into the array WITH the
+      // dragged item already removed -- splice-out then splice-in at `to` directly.
+      function reorderStack(from, to) {
+        // The SELECTED layer, held by identity. `stackSel` is a slot index, and a reorder moves
+        // layers between slots — so unless it is remapped to follow the item, the very next
+        // freezeItem(stack[stackSel]) writes the selected layer's live DOM into whichever layer
+        // slid into that slot, destroying one layer's settings and leaving two identical.
+        // Dragging a layer past the selected one was enough to do it.
+        const sel = stack[stackSel];
+        freezeItem(sel);         // its live block into its record, while the maps still point there
+        stack.splice(to, 0, stack.splice(from, 1)[0]);
+        moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
+        moveSlotState(from, to);  // ...and so do its retained heat and palette clock
+        movePopped(from, to);    // ...and so do its open pop-out boxes
+        stackSel = stack.indexOf(sel);
+        pointMaps(stackSel);     // the wiring follows it to its new block
+        thawItem(sel);
+        loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx); loadBtune(sel.fx);   // ...and that block's DOM
+        repaintAllBlocks();      // every other slot holds a different layer now
+        syncPopOwners();
+      }
+      // A BUTTON, not a div. Reordering was the one layer operation with no keyboard path at
+      // all: mute, delete, blend and tint became buttons earlier, but this stayed a div whose
+      // only route in was a pointer drag. As a button it takes a tab stop, and setOff's real
+      // `disabled` finally bites here too (it was a no-op on a div, which is why the one-layer
+      // case relied on the pointerdown guard alone).
+      const grab = document.createElement("button");
+      grab.type = "button";
       grab.className = "lyr-grab";
       grab.textContent = "⠿";
-      grab.title = "Drag to reorder — layers higher in the list draw first (underneath)";
-      grab.setAttribute("aria-label", "Drag to reorder layer");
+      grab.title = "Drag, or focus and use \u2191\u2193, to reorder — layers higher in the list draw first (underneath)";
+      grab.setAttribute("aria-label", "Reorder layer: drag, or press up and down arrows");
       grab.addEventListener("click", e => e.stopPropagation());
+      // ARROWS MOVE THE LAYER. `from` is a live index into `stack` (see the note above), and
+      // `to` is passed the way reorderStack wants it: an index into the array with this item
+      // already removed. Moving UP by one is therefore from-1, and moving DOWN by one is
+      // from+1 -- which after the removal already means "one place later".
+      grab.addEventListener("keydown", e => {
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (stack.length < 2) return;
+        const to = e.key === "ArrowUp" ? from - 1 : from + 1;
+        if (to < 0 || to >= stack.length) return;
+        e.preventDefault();        // or the panel scrolls under the moving row
+        reorderStack(from, to);
+        persist(); autosavePreset();
+        syncStackUI();
+        // The rows are a fixed pool keyed by SLOT, so the button under the finger now belongs
+        // to a different layer -- follow the layer to its new row or the next arrow press moves
+        // the wrong one.
+        const moved = lyrRows[to] && lyrRows[to].grab;
+        if (moved) moved.focus();
+      });
       grab.addEventListener("pointerdown", e => {
         if (stack.length < 2) return;
         e.preventDefault(); e.stopPropagation();
@@ -19000,27 +19113,7 @@
           // Held by IDENTITY, not by index: a reorder moves it, so `from` no longer names it.
           const dragged = stack[from];
           const moved = to !== from;
-          if (moved) {
-            // The SELECTED layer, held by identity. `stackSel` is a slot index, and a reorder
-            // moves layers between slots — so unless it is remapped to follow the item, the
-            // very next freezeItem(stack[stackSel]) writes the selected layer's live DOM into
-            // whichever layer slid into that slot, destroying one layer's settings and leaving
-            // two identical. Dragging a layer past the selected one was enough to do it.
-            const sel = stack[stackSel];
-            freezeItem(sel);         // its live block into its record, while the maps still point there
-            // `to` indexes the array with the dragged item already removed, so splice-out
-            // then splice-in at `to` directly (no gap adjustment needed).
-            stack.splice(to, 0, stack.splice(from, 1)[0]);
-            moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
-            moveSlotState(from, to);  // ...and so do its retained heat and palette clock
-            movePopped(from, to);    // ...and so do its open pop-out boxes
-            stackSel = stack.indexOf(sel);
-            pointMaps(stackSel);     // the wiring follows it to its new block
-            thawItem(sel);
-            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx); loadBtune(sel.fx);   // ...and that block's DOM
-            repaintAllBlocks();      // every other slot holds a different layer now
-            syncPopOwners();
-          }
+          if (moved) reorderStack(from, to);
           const at = stack.indexOf(dragged);
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row
@@ -25694,6 +25787,47 @@
   // press whether or not the nudge is up, and an unguarded dismissSync would post a
   // sync_popup_dismiss event each time — analytics for a popup nobody was shown.
   function dismissSyncIfOpen() { if (!syncPop.classList.contains("hidden")) dismissSync(); }
+  function syncWhy(msg) {
+    const n = el("sync-why");
+    if (!n) return;
+    n.textContent = msg || "";
+    n.hidden = !msg;
+  }
+  // OPENED BY A CLICK, not by the timer. Deliberately NOT showSyncPopup: that one spends one
+  // of the three showings a visitor ever gets and posts sync_popup_shown, and neither is right
+  // for a dialog the user asked for by touching a control. Same dialog, same buttons -- the
+  // one the startup nudge shows -- with a line at the top saying what prompted it.
+  function openAudioDialog(why) {
+    if (tutorialOpen()) return false;
+    syncWhy(why);
+    syncPop.classList.remove("hidden");
+    dlgModal(syncPop.querySelector(".sync-box"));
+    track("audio_dialog_opened", { why: why ? "trigger" : "manual" });
+    return true;
+  }
+  // A BEAT TRIGGER TOUCHED WITH NO AUDIO RUNNING does nothing at all, and nothing on screen
+  // says why: the chips light, the slider sits still, and the feature reads as broken. So say it.
+  //
+  // IT DOES NOT BLOCK THE CLICK. Arming chips, picking a pulse shape and setting per-slider
+  // thresholds are all scene data you can legitimately author before turning audio on -- a
+  // modal that swallowed the click would make authoring a beat-reactive scene impossible
+  // without a microphone. The click goes through; this only explains.
+  //
+  // Once per page load. Authoring a scene means touching these controls dozens of times, and
+  // a dialog on every one of them would be a slideshow. `audioLive()` (not audio.on) so a
+  // MUTED source counts as off -- muted is exactly the state where nothing moves.
+  let audioHintShown = false;
+  {
+    const brk = el("breakout");
+    if (brk) brk.addEventListener("click", e => {
+      if (audioHintShown || audioLive()) return;
+      const t = e.target;
+      if (!t || !t.closest || !t.closest(".bandchips, .trig-body")) return;
+      audioHintShown = true;
+      openAudioDialog("Beat triggers need a live audio source \u2014 with audio off, arming a slider "
+        + "stores the setting but nothing will move. Turn one on below and it starts reacting.");
+    });
+  }
   // Returns whether it actually opened, and the caller only spends one of the three
   // allowed showings when it did. That is not pedantry: a refusal that still incremented
   // `shows` would silently use up a nudge nobody saw, and with only three ever, two
@@ -25704,6 +25838,7 @@
     // deliberately releases any existing trap before arming its own, so a nudge opening on
     // top would take the keyboard and leave the tutorial visible underneath and dead.
     if (tutorialOpen()) return false;
+    syncWhy("");                      // the TIMED nudge has no reason to give
     syncPop.classList.remove("hidden");
     // This one opens on a TIMER, not on a click, so taking focus is a real interruption — but
     // it is a full-screen modal that has already taken the pointer, and leaving the keyboard
@@ -26088,7 +26223,12 @@
     menuCloseFrom(depth);
     const p = document.createElement("div");
     p.className = "mb-panel";
-    p.setAttribute("role", "menu");
+    // GROUP, not a nested menu. role="menu" permits only menuitem/group/separator children,
+    // and these panels host adopted blocks -- the audio buttons, the resolution <select>, the
+    // whole cloud form -- which are none of those. Declaring "menu" made the tree invalid and
+    // told assistive tech to expect items it would never find. A group carries the same
+    // labelling and imposes no such contract.
+    p.setAttribute("role", "group");
     items.forEach(it => p.appendChild(menuItem(it, p, depth)));
     menubar.appendChild(p);
 
@@ -26137,7 +26277,11 @@
     const b = document.createElement("button");
     b.type = "button";
     b.className = "mb-item" + (it.sub ? " mb-sub" : "");
-    b.setAttribute("role", "menuitem");
+    // menuitemCHECKBOX for the ones that toggle, plain menuitem for the ones that act.
+    // A tick drawn as a text span is visible but says nothing to a screen reader -- the state
+    // has to be aria-checked on a role that admits it, and role="menuitem" does not.
+    b.setAttribute("role", it.check ? "menuitemcheckbox" : "menuitem");
+    if (it.check) b.setAttribute("aria-checked", it.check() ? "true" : "false");
     if (it.title) b.title = it.title;
     const lab = document.createElement("span");
     lab.className = "mb-lab";
@@ -26147,6 +26291,7 @@
       const t = document.createElement("span");
       t.className = "mb-tick";
       t.textContent = it.check() ? "✓" : "";
+      b.setAttribute("aria-checked", it.check() ? "true" : "false");
       b.appendChild(t);
     }
     if (it.sub) {
@@ -26186,7 +26331,11 @@
       b.addEventListener("click", e => {
         e.stopPropagation();
         if (it.run) it.run();
-        if (it.check) { b.querySelector(".mb-tick").textContent = it.check() ? "✓" : ""; }
+        if (it.check) {
+          const on = it.check();
+          b.querySelector(".mb-tick").textContent = on ? "✓" : "";
+          b.setAttribute("aria-checked", on ? "true" : "false");   // the tick alone is mute
+        }
         else if (!it.keep) menubarClose();
       });
     }
@@ -26253,7 +26402,8 @@
     if (first) first.focus();
   }
 
-  // Arrow-key navigation. The menu declares role="menu" / role="menuitem", so it has to
+  // Arrow-key navigation. The root declares role="menu" and its items menuitem /
+  // menuitemcheckbox, so it has to
   // behave like one — announcing a menu widget that only responds to the mouse is worse than
   // not announcing it at all. Delegated on #menubar, because the panels are created and
   // destroyed as you move between levels.
@@ -26328,6 +26478,15 @@
     try { boot(); } finally {
       const b = document.getElementById("boot");
       if (b) b.remove();          // ...even if boot threw: the crash overlay must not be hidden behind this
+      // READINESS SIGNAL. Boot is deferred past a paint now, so the app is NOT running when an
+      // end-of-body script executes -- which is a contract every browser check in tools/ was
+      // written against back when this ran synchronously. foldcycle-check asserted the panel
+      // state immediately and started reading a page where restore() had not run yet, reporting
+      // four failures against a perfectly healthy build. Rather than have each check guess a
+      // delay, the app says when it is up: a flag for anything that arrives late, an event for
+      // anything already waiting.
+      window.__appReady = true;
+      try { dispatchEvent(new Event("app:ready")); } catch (e) {}
     }
   };
   requestAnimationFrame(() => requestAnimationFrame(go));

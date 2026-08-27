@@ -15,6 +15,48 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.66.0] — 2026-08-27
+
+### Added
+- **Glass balls now look like their material inside each other's reflections.** Reflected
+  balls used to come back as identical featureless spheres whatever you set Material to
+  — Metal, Glass and Bubble were indistinguishable one bounce out, and the Material and
+  Refraction sliders changed the direct view only. They now carry a proper sheen, a sun
+  glint and a fresnel edge, and the sliders affect the reflections too. (They still show
+  the sky rather than the scene, so a ball does not contain the other balls.)
+- **Layers can be reordered from the keyboard.** Focus a layer's ⠿ handle and use ↑/↓.
+  It was the last layer control with no keyboard route at all.
+- **Beat triggers say why nothing is happening.** Touching a slider's L/M/H chips or its
+  trigger settings with no audio running now opens the audio panel with a line explaining
+  that triggers need a live source, and the Capture/Mic buttons right there. It does not
+  block the click — arming triggers before turning audio on is a perfectly good way to
+  build a scene.
+
+### Changed
+- **Glass ball's Balls slider now stops at 3** (it was 5). Every shipped scene already
+  used 3; a scene of your own storing 4 or 5 will render with 3.
+- The Auto-cycle note now says what makes it run — "only runs with the panel closed (M) or
+  UI hidden (H)" — rather than what stops it, which read as though the checkbox was broken.
+- The Orbit editor now draws above the slider boxes instead of under them.
+
+### Fixed
+- The menu announces itself correctly to screen readers: submenu panels are groups rather
+  than menus (they hold audio buttons and form controls, which a menu may not contain), and
+  ticked items report their state instead of drawing a ✓ that only sighted users can see.
+
+### Internal
+- **tools/worldlink-check.js** — links all sixteen shared-world shader combinations and
+  times each. Nothing measured this before: worldcompile-check compiles and deliberately
+  never links, and the startup gate cannot see a program built on demand. The numbers are
+  worse than the docs claimed (133.8s for the five-effect world against a recorded 64s),
+  and that figure now guards itself.
+- A bounding sphere for the glass distance field was written, measured and reverted: it
+  made the shader link 18% slower (399s → 472s → 407s reverted) to speed up a frame that
+  already has 4× headroom. A second reflection bounce was costed against the same table and
+  ruled out.
+- Seven browser checks now wait for an app-ready signal rather than a fixed delay, which
+  had become fragile once boot was deferred behind the shader-compile screen.
+
 ## [1.65.1] — 2026-08-27
 
 ### Fixed
