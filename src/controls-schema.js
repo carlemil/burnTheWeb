@@ -217,7 +217,7 @@
     { key: "vbspin", host: "fx", group: "vballs", type: "dual", label: "Tumble", valId: "vVbSpin", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => vbSpin = v, durScale: 10 },
     { key: "vbglow", host: "fx", group: "vballs", type: "dual", label: "Edge glow", valId: "vVbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => vbGlow = v, durScale: 10 },
     // Glass ball. Material is an enum, Balls a count -- both single.
-    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
+    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 3, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
     { key: "gbsize", host: "fx", group: "glass", type: "dual", label: "Size", valId: "vGbSize", min: 0.2, max: 1.2, step: 0.01, lo: 0.62, hi: 0.62, fmt: v => sig3(v), apply: v => gbRad = v, durScale: 10 },
     { key: "gbmat", host: "fx", group: "glass", type: "dual", single: true, label: "Material", valId: "vGbMat", min: 0, max: 2, step: 1, lo: 1, hi: 1, fmt: v => ["Metal", "Glass", "Bubble"][Math.round(v)] || "Glass", apply: v => gbMat = Math.round(v), durScale: 10 },
     { key: "gbior", host: "fx", group: "glass", type: "dual", label: "Refraction", valId: "vGbIor", min: 1.02, max: 2.2, step: 0.01, lo: 1.45, hi: 1.45, fmt: v => sig3(v), apply: v => gbIor = v, durScale: 10 },

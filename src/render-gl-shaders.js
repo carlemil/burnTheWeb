@@ -1575,7 +1575,10 @@
       for (int g = 0; g < W_GBN; g++){
         vec3 pl = (p - uGbPlace[g].xyz)/uGbPlace[g].w;
         float dg = 1e9;
-        for (int i = 0; i < 5; i++){
+        // 3 == the Balls slider's max (controls-schema.js 'gbcount'). glassprobe asserts the
+        // two agree: a loop shorter than the slider silently drops balls, and a loop longer
+        // than it leaves dead iterations in the shader the driver still optimises for.
+        for (int i = 0; i < 3; i++){
           if (float(i) >= uGbCount[g]) break;
           dg = min(dg, length(pl - ballAt(i, uGbTime[g], uGbSalt[g])) - uGbRad[g]);
         }
@@ -1894,7 +1897,7 @@
           vec3 pl = (p - uGbPlace[gg].xyz)/uGbPlace[gg].w;
           vec3 cl = vec3(0.0);
           float bd = 1e9;
-          for (int i = 0; i < 5; i++){
+          for (int i = 0; i < 3; i++){          // == the Balls slider's max; see glassDE
             if (float(i) >= uGbCount[gg]) break;
             vec3 ci = ballAt(i, uGbTime[gg], uGbSalt[gg]);
             float di = abs(length(pl - ci) - uGbRad[gg]);
@@ -2033,7 +2036,7 @@
       float best = 1e9;
       vec3 nrm = vec3(0.0, 0.0, -1.0), ctr = vec3(0.0);
       bool hit = false;
-      for (int i = 0; i < 5; i++){
+      for (int i = 0; i < 3; i++){          // == the Balls slider's max; see glassDE in FS_WORLD
         if (i >= n) break;
         vec3 c = ballAt(i, uTime, uSalt);
         vec3 oc = ro - c;

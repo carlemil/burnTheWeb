@@ -1410,7 +1410,8 @@
   // not exist there at all. Shading them as plain lit balls is the honest version; faking a
   // reflection of nothing would just be noise.
   function glassCPU(dt) {
-    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(5, s.count));
+    // 3 == the Balls slider max, same bound the three GLSL loops carry (glassprobe pins them).
+    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(3, s.count));
     const cx = [], cy = [], cz = [];
     for (let i = 0; i < n; i++) {
       gbBallAt(i, s.t, s.salt);

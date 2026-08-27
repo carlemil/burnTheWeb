@@ -166,5 +166,36 @@ const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
           "GB_SALT_ON = false, deliberate: see the note in effects-shader-mirrors.js");
 }
 
+// ---- THE BALL LOOPS AND THE SLIDER MUST AGREE -------------------------------------------
+// Three separate GLSL loops bound the ball count -- glassDE and the refraction-exit search in
+// FS_WORLD, and the analytic primary hit in FS_GLASS -- and none can read the slider's max, so
+// the number is written out four times across two files. Drift either way is silent:
+//   loop < slider  -> balls past the bound never appear, slider still reporting the higher count;
+//   loop > slider  -> dead iterations nobody can reach, which the driver still optimises for.
+// The second is not free: glassDE dominates the world program link time (measured, every
+// combination containing glass is 7.7-134s against under 3.4s for every one without it), so
+// the bound is a cost knob as much as a correctness one.
+//
+// Matched on GLASS specifically. Vector balls also has a slider labelled "Balls" (max 48) and
+// loops of the same shape, and a looser pattern reports 8 loops and a max of 48.
+{
+  const m = src.match(/key: "gbcount"[^}]*?max: (\d+)/);
+  ok("the glass Balls slider declares a max", !!m, m ? m[1] : "not found");
+  if (m) {
+    const want = +m[1];
+    const bounds = [];
+    // the two world loops, identified by the uGbCount test in their body
+    for (const l of src.matchAll(/for \(int i = 0; i < (\d+); i\+\+\)\{[\s\S]{0,200}?float\(i\) >= uGbCount/g))
+      bounds.push(+l[1]);
+    // the standalone analytic loop, identified by ballAt(i, uTime, uSalt) in its body
+    for (const l of src.matchAll(/for \(int i = 0; i < (\d+); i\+\+\)\{[\s\S]{0,200}?ballAt\(i, uTime, uSalt\)/g))
+      bounds.push(+l[1]);
+    ok("...and all three glass ball loops were found", bounds.length === 3, bounds.length + " found: " + bounds.join(", "));
+    const bad = bounds.filter(v => v !== want);
+    ok("...and every one is bounded by exactly that max", bounds.length === 3 && bad.length === 0,
+       bad.length ? "slider max " + want + " but loops bound " + bad.join(", ") : "all " + want);
+  }
+}
+
 console.log("\n" + passes + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

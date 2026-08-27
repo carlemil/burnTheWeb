@@ -5407,7 +5407,10 @@
       for (int g = 0; g < W_GBN; g++){
         vec3 pl = (p - uGbPlace[g].xyz)/uGbPlace[g].w;
         float dg = 1e9;
-        for (int i = 0; i < 5; i++){
+        // 3 == the Balls slider's max (controls-schema.js 'gbcount'). glassprobe asserts the
+        // two agree: a loop shorter than the slider silently drops balls, and a loop longer
+        // than it leaves dead iterations in the shader the driver still optimises for.
+        for (int i = 0; i < 3; i++){
           if (float(i) >= uGbCount[g]) break;
           dg = min(dg, length(pl - ballAt(i, uGbTime[g], uGbSalt[g])) - uGbRad[g]);
         }
@@ -5726,7 +5729,7 @@
           vec3 pl = (p - uGbPlace[gg].xyz)/uGbPlace[gg].w;
           vec3 cl = vec3(0.0);
           float bd = 1e9;
-          for (int i = 0; i < 5; i++){
+          for (int i = 0; i < 3; i++){          // == the Balls slider's max; see glassDE
             if (float(i) >= uGbCount[gg]) break;
             vec3 ci = ballAt(i, uGbTime[gg], uGbSalt[gg]);
             float di = abs(length(pl - ci) - uGbRad[gg]);
@@ -5865,7 +5868,7 @@
       float best = 1e9;
       vec3 nrm = vec3(0.0, 0.0, -1.0), ctr = vec3(0.0);
       bool hit = false;
-      for (int i = 0; i < 5; i++){
+      for (int i = 0; i < 3; i++){          // == the Balls slider's max; see glassDE in FS_WORLD
         if (i >= n) break;
         vec3 c = ballAt(i, uTime, uSalt);
         vec3 oc = ro - c;
@@ -11154,7 +11157,8 @@
   // not exist there at all. Shading them as plain lit balls is the honest version; faking a
   // reflection of nothing would just be noise.
   function glassCPU(dt) {
-    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(5, s.count));
+    // 3 == the Balls slider max, same bound the three GLSL loops carry (glassprobe pins them).
+    const s = glassSeed(dt), ar = fw / fh, R = s.rad, n = Math.max(1, Math.min(3, s.count));
     const cx = [], cy = [], cz = [];
     for (let i = 0; i < n; i++) {
       gbBallAt(i, s.t, s.salt);
@@ -13960,7 +13964,7 @@
     { key: "vbspin", host: "fx", group: "vballs", type: "dual", label: "Tumble", valId: "vVbSpin", min: 0, max: 2, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => vbSpin = v, durScale: 10 },
     { key: "vbglow", host: "fx", group: "vballs", type: "dual", label: "Edge glow", valId: "vVbGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => vbGlow = v, durScale: 10 },
     // Glass ball. Material is an enum, Balls a count -- both single.
-    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 5, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
+    { key: "gbcount", host: "fx", group: "glass", type: "dual", single: true, label: "Balls", valId: "vGbCount", min: 1, max: 3, step: 1, lo: 3, hi: 3, fmt: v => sig3(Math.round(v)), apply: v => gbCount = Math.round(v), durScale: 10 },
     { key: "gbsize", host: "fx", group: "glass", type: "dual", label: "Size", valId: "vGbSize", min: 0.2, max: 1.2, step: 0.01, lo: 0.62, hi: 0.62, fmt: v => sig3(v), apply: v => gbRad = v, durScale: 10 },
     { key: "gbmat", host: "fx", group: "glass", type: "dual", single: true, label: "Material", valId: "vGbMat", min: 0, max: 2, step: 1, lo: 1, hi: 1, fmt: v => ["Metal", "Glass", "Bubble"][Math.round(v)] || "Glass", apply: v => gbMat = Math.round(v), durScale: 10 },
     { key: "gbior", host: "fx", group: "glass", type: "dual", label: "Refraction", valId: "vGbIor", min: 1.02, max: 2.2, step: 0.01, lo: 1.45, hi: 1.45, fmt: v => sig3(v), apply: v => gbIor = v, durScale: 10 },
