@@ -373,6 +373,47 @@
   // press whether or not the nudge is up, and an unguarded dismissSync would post a
   // sync_popup_dismiss event each time — analytics for a popup nobody was shown.
   function dismissSyncIfOpen() { if (!syncPop.classList.contains("hidden")) dismissSync(); }
+  function syncWhy(msg) {
+    const n = el("sync-why");
+    if (!n) return;
+    n.textContent = msg || "";
+    n.hidden = !msg;
+  }
+  // OPENED BY A CLICK, not by the timer. Deliberately NOT showSyncPopup: that one spends one
+  // of the three showings a visitor ever gets and posts sync_popup_shown, and neither is right
+  // for a dialog the user asked for by touching a control. Same dialog, same buttons -- the
+  // one the startup nudge shows -- with a line at the top saying what prompted it.
+  function openAudioDialog(why) {
+    if (tutorialOpen()) return false;
+    syncWhy(why);
+    syncPop.classList.remove("hidden");
+    dlgModal(syncPop.querySelector(".sync-box"));
+    track("audio_dialog_opened", { why: why ? "trigger" : "manual" });
+    return true;
+  }
+  // A BEAT TRIGGER TOUCHED WITH NO AUDIO RUNNING does nothing at all, and nothing on screen
+  // says why: the chips light, the slider sits still, and the feature reads as broken. So say it.
+  //
+  // IT DOES NOT BLOCK THE CLICK. Arming chips, picking a pulse shape and setting per-slider
+  // thresholds are all scene data you can legitimately author before turning audio on -- a
+  // modal that swallowed the click would make authoring a beat-reactive scene impossible
+  // without a microphone. The click goes through; this only explains.
+  //
+  // Once per page load. Authoring a scene means touching these controls dozens of times, and
+  // a dialog on every one of them would be a slideshow. `audioLive()` (not audio.on) so a
+  // MUTED source counts as off -- muted is exactly the state where nothing moves.
+  let audioHintShown = false;
+  {
+    const brk = el("breakout");
+    if (brk) brk.addEventListener("click", e => {
+      if (audioHintShown || audioLive()) return;
+      const t = e.target;
+      if (!t || !t.closest || !t.closest(".bandchips, .trig-body")) return;
+      audioHintShown = true;
+      openAudioDialog("Beat triggers need a live audio source \u2014 with audio off, arming a slider "
+        + "stores the setting but nothing will move. Turn one on below and it starts reacting.");
+    });
+  }
   // Returns whether it actually opened, and the caller only spends one of the three
   // allowed showings when it did. That is not pedantry: a refusal that still incremented
   // `shows` would silently use up a nudge nobody saw, and with only three ever, two
@@ -383,6 +424,7 @@
     // deliberately releases any existing trap before arming its own, so a nudge opening on
     // top would take the keyboard and leave the tutorial visible underneath and dead.
     if (tutorialOpen()) return false;
+    syncWhy("");                      // the TIMED nudge has no reason to give
     syncPop.classList.remove("hidden");
     // This one opens on a TIMER, not on a click, so taking focus is a real interruption — but
     // it is a full-screen modal that has already taken the pointer, and leaving the keyboard

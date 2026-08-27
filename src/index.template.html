@@ -568,6 +568,10 @@
   <div class="sync-box" role="dialog" aria-modal="true" aria-labelledby="sync-title">
     <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
     <h2 id="sync-title">🔊 Sync with your music</h2>
+    <!-- Filled in when this dialog is opened BY a click on a beat trigger rather than by the
+         startup nudge, so it answers the question the user actually asked. Cleared again by
+         showSyncPopup, or the timed nudge would inherit a reason that had nothing to do with it. -->
+    <p id="sync-why" class="sync-why" hidden></p>
     <p>Kicktro can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
     <dl>
       <dt>Capture</dt>

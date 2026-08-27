@@ -1653,6 +1653,13 @@
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #syncpop.hidden { display: none; }
+  /* The 'why am I seeing this' line, shown only when a beat trigger opened the dialog. */
+  #syncpop .sync-why {
+    margin: 0 0 12px; padding: 8px 10px; border-radius: 8px;
+    background: rgba(255, 122, 26, 0.14); border: 1px solid rgba(255, 140, 40, 0.4);
+    color: #ffcf87; font-size: 12px; line-height: 1.5;
+  }
+  #syncpop .sync-why[hidden] { display: none; }
   #syncpop .sync-box {
     position: relative; max-width: 440px; max-height: 82vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
