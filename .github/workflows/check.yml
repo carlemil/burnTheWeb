@@ -1,0 +1,72 @@
+# Run the verification suite on every push and PR.
+#
+# WHY THIS EXISTS. There are ~380 KB of checks in tools/ -- 27 node probes, a dozen browser
+# checks, a startup wall-clock gate -- and until this workflow NOTHING ran any of them
+# automatically. They fired only when a human invoked the /deploy skill locally, so a direct push
+# to main deployed whatever index.html happened to contain: stale, red, or both. pages.yml does
+# `cp index.html dev-index.html _site/` and nothing else, by design -- it is a publisher, not a
+# gate. This is the gate.
+#
+# Deliberately node-only and dependency-free, matching the repo (there is no package.json and no
+# npm install step to keep working). Two things run here:
+#
+#   build.js --check   dev-index.html must match a fresh build of src/. Without it, editing src/
+#                      and forgetting to rebuild ships the OLD page with no warning -- and since
+#                      build.js now also parse-checks the concatenation and scans for top-level
+#                      name collisions, --check exercises both of those on CI too.
+#   tools/*probe.js    every node probe, by glob rather than a hand-kept list, so a probe added
+#                      later is picked up without editing this file. That list had already
+#                      drifted five behind the directory once.
+#
+# NOT here, on purpose: startup-check.sh, worldcompile-check.js, world-check.js, flipcheck.js and
+# the other browser checks. They need a real GPU and a real browser, which a CI runner does not
+# have -- SwiftShader would make the startup gate meaningless (it measures wall-clock seconds) and
+# the compile checks would be testing a different driver from the one users have. Those stay in
+# the /deploy checklist, run locally.
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Rebuilds from src/ and compares byte-for-byte. Also runs the parse + collision gates.
+      - name: dev-index.html matches src/
+        run: node tools/build.js --check
+
+      # index.html is the page GitHub Pages actually serves. /deploy promotes dev-index.html to it,
+      # so between releases the two legitimately differ -- this only reports, never fails.
+      - name: note whether the live page is a release behind
+        run: |
+          if cmp -s index.html dev-index.html; then
+            echo "index.html is level with dev-index.html"
+          else
+            echo "::notice::index.html differs from dev-index.html — the live page is behind src/ (expected between releases)"
+          fi
+
+      # Every node probe. Collect failures rather than stopping at the first, so one run tells you
+      # everything that is red.
+      - name: node probes
+        run: |
+          red=0
+          for f in tools/*probe.js; do
+            if node "$f" dev-index.html > /tmp/out.txt 2>&1; then
+              echo "PASS  $f"
+            else
+              red=1
+              echo "::error::$f failed"
+              echo "--- $f ---"
+              grep -E "FAIL|Error" /tmp/out.txt | head -20 || tail -20 /tmp/out.txt
+            fi
+          done
+          exit $red

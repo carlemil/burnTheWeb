@@ -705,12 +705,21 @@
       o = vec4(acc/wsum, 1.0);
     }`;
     // composite: base + 0.35*glow (additive), flip v so fire row 0 is on top
+    // uFlip IS LOAD-BEARING AND IT IS WHY THIS SHADER IS NOT USED TWICE UNGATED. The
+    // 'vUv.y' flip is the ONLY one in any shader in the app: it maps heat-buffer row 0 to the
+    // screen TOP, which is the convention the whole pipeline is written against, and it belongs
+    // to the FINAL PRESENT alone. When Bloom stopped being the whole-scene composite and became
+    // an ordinary per-layer chain entry, glBloomPass reused this same program mid-chain -- so a
+    // layer carrying Bloom went through the flip TWICE and rendered upside down against a layer
+    // without it. Symmetric effects (Kaleidoscope, Julia, Moire) hide it completely, which is how
+    // it survived; Ocean, Terrain, Aurora and anything with a horizon do not.
+    // uFlip: 1.0 at the present, 0.0 for the chain pass. tools/flipcheck.js measures it on the GPU.
     const FS_COMP = `#version 300 es
     precision highp float;
-    uniform sampler2D uScene; uniform sampler2D uGlow; uniform float uBloom;
+    uniform sampler2D uScene; uniform sampler2D uGlow; uniform float uBloom; uniform float uFlip;
     in vec2 vUv; out vec4 o;
     void main(){
-      vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+      vec2 uv = vec2(vUv.x, mix(vUv.y, 1.0 - vUv.y, uFlip));
       vec3 base = texture(uScene, uv).rgb;
       vec3 glow = texture(uGlow, uv).rgb;
       o = vec4(base + glow*uBloom, 1.0);
@@ -863,7 +872,7 @@
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
-    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow", "uBloom"]);
+    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow", "uBloom", "uFlip"]);
 
     glTex.heat = [
       createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE),
@@ -2051,6 +2060,7 @@
     // bloomRaw, NOT bloomAmt: this pass only runs when the DRAWING layer's own chain holds
     // Bloom, so it needs the slider, not the slider gated by whichever layer is selected.
     gl.uniform1f(glProg.comp.u.uBloom, bloomRaw);
+    gl.uniform1f(glProg.comp.u.uFlip, 0);       // MID-CHAIN: the present below owns the one flip
     drawQuad();
   }
   // Reaction–diffusion driver: seed the dish on demand, then K Gray–Scott steps
@@ -2375,6 +2385,7 @@
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
     gl.uniform1f(glProg.comp.u.uBloom, 0);
+    gl.uniform1f(glProg.comp.u.uFlip, 1);       // THE PRESENT: heat-buffer row 0 to the screen top
     drawQuad();
     // A FENCE BEFORE THE PRESENT. The clear above was not enough on its own: the ghost
     // survived v1.55.4 on the reporter's machine. A stale re-present is an ORDERING failure

@@ -1,3 +1,39 @@
+  // ---- LAST-RESORT ERROR REPORTING -------------------------------------------
+  // FIRST THING IN THE FIRST SLICE, deliberately: the app is one IIFE built from every file in
+  // the manifest, so a TDZ violation or a throw ANYWHERE aborts the whole program, and everything
+  // after that point simply never runs. That failure mode is all over CLAUDE.md -- "blank page",
+  // "fails silently", "black canvas", "a page that fails early looks exactly like a fast one to a
+  // wall-clock gate" -- and until now a visitor who hit it got a black screen with no explanation
+  // and nobody ever found out. Armed here, it survives a crash in any later slice.
+  //
+  // (A PARSE error is not catchable from inside; `node tools/build.js` gates that one instead.)
+  //
+  // It reports and gets out of the way: one line, dismissable, shown once. `track` is a hoisted
+  // function declaration in a much later slice, which is exactly why it can be called from here.
+  (function armCrashReport() {
+    let shown = false;
+    function report(what, err) {
+      try { if (typeof track === "function") track("js_error", { what: what, msg: String((err && err.message) || err).slice(0, 120) }); } catch (e) {}
+      if (shown || !document.body) return;
+      shown = true;
+      const d = document.createElement("div");
+      d.setAttribute("role", "alert");
+      d.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;padding:10px 14px;" +
+        "background:rgba(60,10,0,.94);color:#ffdcb0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;" +
+        "border-bottom:1px solid rgba(255,140,40,.5)";
+      d.textContent = "burnTheWeb hit an error and may not be running. Reloading usually fixes it. ";
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "Dismiss";
+      b.style.cssText = "margin-left:8px;background:transparent;color:inherit;border:1px solid currentColor;" +
+        "border-radius:4px;padding:1px 8px;cursor:pointer;font:inherit";
+      b.addEventListener("click", () => d.remove());
+      d.appendChild(b);
+      document.body.appendChild(d);
+    }
+    addEventListener("error", e => report("error", e && (e.error || e.message)));
+    addEventListener("unhandledrejection", e => report("rejection", e && e.reason));
+  })();
+
   // ============================================================================
   // CONFIG — every DEFAULT that is not part of a preset, in one place.
   //

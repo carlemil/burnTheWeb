@@ -138,6 +138,32 @@ to link at boot — the page looked hung, every probe was green, and the browser
 passed too, because `--virtual-time-budget` waits through a synchronous stall. Only the
 clock on the wall sees a hang.
 
+Then the **browser checks**, which are the only instrument for a whole class of defect: a draw
+the driver REJECTS produces no exception, no visible crash and a plausible-looking screenshot —
+only a console error. They are deliberately not named `*probe.js` (the glob above runs node
+probes; these need a real browser and a real GPU), which is exactly why they have to be listed
+here. `tools/world-check.js` was named nowhere for several releases and caught nothing in that
+time, despite CLAUDE.md calling it "the gate".
+
+Each prints the `msedge` line to run; every line is PASS/FAIL on stderr.
+
+```
+node tools/world-check.js <scratchdir> dev-index.html      # joining/leaving a shared world: 0 console errors
+node tools/flipcheck.js   <scratchdir> dev-index.html      # a Bloom layer lands the same way up as one without
+node tools/breakout-check.js <scratchdir> dev-index.html   # break-out box grid, drag, snap, ownership
+node tools/brkdrop-check.js  <scratchdir> dev-index.html   # a dropped box never lands off screen
+node tools/brkcolumn-check.js <scratchdir> dev-index.html
+node tools/corner-check.js   <scratchdir> dev-index.html
+node tools/foldcycle-check.js <scratchdir> dev-index.html  # auto-cycle is gated on the editor being hidden
+node tools/rndkeep-check.js  <scratchdir> dev-index.html
+node tools/tempoui-check.js  <scratchdir> dev-index.html
+node tools/tunedim-check.js  <scratchdir> dev-index.html
+node tools/author-check.js   <scratchdir> dev-index.html
+```
+
+If you are short of time, `world-check` and `flipcheck` are the two that guard silent-rendering
+defects; the rest guard UI behaviour and fail loudly when run.
+
 And the **world-shader compile check** — all sixteen `#if` combinations on the real GPU:
 
 ```
