@@ -15,6 +15,97 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.65.0] — 2026-08-27
+
+The app is now **Kicktro**, at **https://kicktro.com**. Everything else here comes from a
+full code review — including one bug that let a shared link hang your browser for good, and
+one that had been rendering half the effects upside down.
+
+### Changed
+- **burnTheWeb is now Kicktro**, served from its own domain. Your saved scenes live in the
+  browser and are tied to the address they were made at, so scenes created on the old
+  `carlemil.github.io` address are still there rather than here — sign in to the cloud
+  profile on the old address, save, then sign in here and load to bring them across.
+- **The tagline is "generative visuals that dance to your music"**, replacing "a fractal
+  bonfire". The fire was the whole app once; it is now one family out of fifty-two effects.
+- **The page now says what it is doing during the two long waits.** A "Compiling shaders"
+  screen while your GPU builds the effects on first load, and a line when a layer joins a
+  shared 3D world, which takes a few seconds the first time. Both were previously a frozen
+  or wrong-looking picture with nothing to explain it.
+- **Halftone's dots now grow with brightness**, as its description always claimed. They were
+  inverted: the brightest parts of the picture drew the biggest *black* dots.
+
+### Fixed
+- **A shared scene link could hang your browser permanently.** A crafted link, gallery scene
+  or cloud profile could set a layer's Points to an absurd value that no bounds check caught,
+  wedging the tab on the first frame — and because some of those routes save before they
+  reload, it came back every time you opened the page. The only escape was clearing site
+  data. Point counts are now bounded, and stored slider ranges are sanity-checked while still
+  allowing any widening you would actually make.
+- **Any layer using Bloom rendered upside down.** Bloom reused the pass that flips the
+  picture the right way up for the screen, so a layer carrying it was flipped twice. Invisible
+  on symmetric effects, which is how it survived; obvious on Ocean, Terrain, Aurora or
+  anything with a horizon. **Scenes that use Bloom on such an effect will look different —
+  the right way up.**
+- **Sharing a scene while signed in lost your palette and filters.** The recipient saw the
+  scene in *their* palette with *their* filter chain, and it was then saved that way. The
+  signed-out fallback link was unaffected, which is what made it look like a cloud problem.
+- **Starfield, Lens bubble, the Sun's surface grains and the Ocean's foam** all used a shader
+  construct that is undefined and can silently return zero — Starfield rendering black,
+  Lens bubble doing nothing at all. Fourteen instances fixed; the shipped look is unchanged
+  except for Halftone above.
+- **Layer mute, delete, blend and tint are reachable from the keyboard.** They were not
+  buttons, so Tab never reached them and a screen reader was not told they existed, with no
+  other way to do any of the four.
+- **Clicking beside the Public scenes, Filters, Palettes or Transitions dialogs** did nothing
+  — the click fell through to the canvas and paused the scene instead of closing the dialog.
+- **The palette inspector swallowed every click on the app** while it was open, so you could
+  not touch a slider while reading the ramp.
+- **Ctrl+F no longer throws the page fullscreen and Ctrl+S no longer mutes the music.** The
+  shortcuts ignored the modifier key.
+- **Escape works inside the Restore dialog's checkboxes**, which previously trapped the
+  keyboard with no way out but the mouse.
+- **Dragging a colour stop in the palette editor no longer adds a second stop** at the point
+  you let go.
+- **Ticking a filter no longer loses your place** in the picker when using the keyboard.
+- **Clicking the words "Scenes" or "Palette"** in the panel no longer opens a help dialog.
+- **Slime mould and Curl flow now build a network while their Agents/Count slider drifts.**
+  Every change restarted the entire population from scratch several times a second.
+- **Flying ribbons no longer smears** on machines without WebGL2.
+- **The flames no longer stay too fast** after the tab has been busy or backgrounded.
+- **Audio no longer switches itself off for good** when the microphone was merely busy in
+  another app at the moment you opened the page.
+- **After a graphics driver reset**, Flying ribbons and ASCII mosaic come back rather than
+  staying broken until a reload.
+- **Picking an ASCII script your system font lacks** no longer collapses the frame rate: it
+  falls back to Latin once instead of rebuilding the whole glyph atlas every frame.
+- **Deleting a layer mid-transition** no longer corrupts the outgoing half of the blend.
+- **Restoring a backup now reports failure** instead of silently doing nothing when browser
+  storage is full or blocked — and no longer strands a marker that sent the next reload to an
+  unrelated scene.
+- **The site forces HTTPS.** On a plain-HTTP address the browser withholds microphone and
+  screen-audio access entirely and blocks Google sign-in, which read as "audio isn't available
+  on this device" rather than as the address being wrong.
+- **Reduced-motion preference** now silences the whole interface, not the seven elements it
+  happened to name.
+- Credits no longer draw through the control panel on load.
+
+### Internal
+- The build now parse-checks the concatenated program and scans every slice for duplicate
+  top-level names — the two failure modes that produce a blank page and are invisible to
+  every other check.
+- A CI workflow runs the build check and all twenty-eight probes on every push. Until now
+  nothing ran them automatically; they fired only when a human typed `/deploy`.
+- New probes: `hangprobe` (payload-driven loop bounds), `smoothprobe` (the undefined shader
+  construct), `docsprobe` (every effect documented in README and CLAUDE.md, and the README's
+  own count correct), plus `flipcheck` for the Bloom orientation, verified against the bug.
+- The deploy checklist now names the browser checks, `world-check` included — it had been
+  listed nowhere for several releases despite being the only gate for a whole class of
+  silently-dropped draw.
+- Twelve effects that existed only in the code are now documented; the README said "thirty-
+  eight visuals" when there are fifty-two.
+- A global error handler reports a crash instead of leaving a black screen.
+
 ## [1.64.1] — 2026-08-26
 
 ### Removed

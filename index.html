@@ -4,18 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Title/description are the tab, the search result and the link preview — so they say what
-     it IS and what it does to you, not just its category. The app name stays burnTheWeb (it is
+     it IS and what it does to you, not just its category. The app name stays Kicktro (it is
      the h1, the og:site_name and the URL); it is the tagline that carries the personality. -->
-<title>burnTheWeb — a fractal bonfire that dances to your music</title>
-<meta name="description" content="Set your browser on fire. Twenty demoscene effects — rising fractal flame, tumbling 3D solids, animated Julia / Burning Ship / Multibrot / Newton fractals, plasma, tunnels, metaballs, kaleidoscopes and copper bars — stacked in layers and pulsing in time with whatever you are listening to. Tune every slider live, then share the exact scene as a link.">
+<title>Kicktro — generative visuals that dance to your music</title>
+<meta name="description" content="Fifty-two demoscene effects — rising fractal flame, raymarched solids and sponges, animated Julia / Burning Ship / Multibrot / Newton fractals, plasma, tunnels, kaleidoscopes, oceans and aurora — stacked in layers and pulsing in time with whatever you are listening to. Tune every slider live, then share the exact scene as a link.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='92'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="burnTheWeb">
-<meta property="og:title" content="burnTheWeb — a fractal bonfire that dances to your music">
-<meta property="og:description" content="Twenty demoscene effects — fractal flame, tumbling 3D solids, live Julia and Burning Ship fractals, plasma, tunnels and copper bars — stacked in layers and pulsing to whatever you are playing. Tune it live and share the exact scene as a link.">
-<meta property="og:url" content="https://carlemil.github.io/burnTheWeb/">
-<meta name="twitter:title" content="burnTheWeb — a fractal bonfire that dances to your music">
-<meta name="twitter:description" content="Twenty demoscene effects — fractal flame, tumbling 3D solids, live fractals, plasma and tunnels — all pulsing in time with your music.">
+<meta property="og:site_name" content="Kicktro">
+<meta property="og:title" content="Kicktro — generative visuals that dance to your music">
+<meta property="og:description" content="Fifty-two demoscene effects — fractal flame, raymarched solids, live Julia and Burning Ship fractals, plasma, tunnels, oceans and aurora — stacked in layers and pulsing to whatever you are playing. Tune it live and share the exact scene as a link.">
+<meta property="og:url" content="https://kicktro.com/">
+<meta name="twitter:title" content="Kicktro — generative visuals that dance to your music">
+<meta name="twitter:description" content="Fifty-two demoscene effects — fractals, plasmas, tunnels, raymarched solids and oceans — all pulsing in time with your music.">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -33,8 +33,38 @@
     position: fixed; inset: 0; z-index: 4;
     pointer-events: none; display: none;
   }
+  /* Boot splash — see the comment on #boot in the markup for why the boot is deferred at all.
+     Above everything except the crash overlay (99999), and removed the moment boot() returns. No
+     transition or fade-in: a CSS animation would have to run on the compositor to advance at all
+     while the main thread is compiling, and if it did not, the splash would sit at opacity 0 for
+     the whole block and show nothing. A plain paint cannot fail that way. */
+  #boot {
+    position: fixed; inset: 0; z-index: 99998;
+    display: flex; align-items: center; justify-content: center;
+    background: #0a0604; color: #ffb15a;
+    font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    text-align: center; padding: 24px;
+  }
+  #boot .boot-in { max-width: 34em; }
+  #boot .boot-t { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; }
+  /* The dots are the only motion, and they are compositor-friendly opacity steps. If the driver
+     never gives us a frame they simply sit still, which is no worse than plain text. */
+  #boot .boot-t::after {
+    content: "..."; display: inline-block; width: 1.2em; text-align: left;
+    animation: bootdots 1.2s steps(4, end) infinite;
+  }
+  @keyframes bootdots { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+  #boot .boot-s { margin-top: 10px; opacity: .6; font-size: 12px; }
+  @media (prefers-reduced-motion: reduce) { #boot .boot-t::after { animation: none; } }
+
   #panel {
     position: fixed;
+    /* EXPLICIT, because #creditcv above is z-index 4 and a positioned `z-index: auto` element
+       paints BELOW any positive-z-index sibling whatever the DOM order -- so for the first 8s of
+       every fresh load the credit text drew straight through the control panel. 5, not more: it
+       matches #carddlg and #breakout, which come later in the markup and so still paint over the
+       panel exactly as they did before. */
+    z-index: 5;
     top: 58px;
     left: 14px;
     padding: 14px 16px;
@@ -61,6 +91,13 @@
      so nothing needs null-guarding. The first .box supplies its own top margin. */
   #panel h1, #panel .sub { display: none; }
   #panel label, #menubar label, #breakout .lyr-box label { display: block; margin: 10px 0 3px; opacity: .85; }
+  /* A label that sits BESIDE its help button rather than wrapping it. A <label> with no `for`
+     takes its first labelable descendant as its control, and <button> is labelable -- so with the
+     button inside, clicking the word "Scenes" (a full-width block row) fired the button and threw
+     up the "What a scene saves" modal. Same for "Palette" and the palette inspector. The button
+     is a sibling now, and these two labels go inline so the pair still reads as one row. */
+  #panel .lbl-row, #breakout .lyr-box .lbl-row { display: inline; margin-right: 0; }
+  #panel .lbl-row + .lbl-help, #breakout .lyr-box .lbl-row + .lbl-help { margin-top: 10px; }
   /* Control appearance is scoped to both the menu and the pop-out column so a
      control keeps its styling after it moves into a break-out box (#breakout). */
   #panel .val, #breakout .val, #menubar .val { float: right; color: #ffcf87; opacity: 1; }
@@ -283,7 +320,22 @@
   /* keyboard focus rings (a11y) */
   #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #panel, #help, #syncpop, #toggle, #fs, #mute, #uihint { transition: none !important; } }
+  /* REDUCED MOTION covers the CHROME, not the visual. The old rule named seven elements and so
+     reached only about half the UI's own movement — the two keyframe animations, the chevron
+     rotations and the swatch fades all carried on. This is the whole of it: every transition and
+     animation on the interface, off.
+     The VISUAL is deliberately untouched. It is the entire content of the page, and stopping it
+     would leave a black rectangle that reads as a broken app rather than a respected preference;
+     the canvas already has a pause (click it) and Hide all UI for anyone who wants stillness. */
+  @media (prefers-reduced-motion: reduce) {
+    #panel, #menubar, #breakout, #help, #syncpop, #toggle, #fs, #mute, #uihint, #tutdlg,
+    #restoredlg, #galdlg, #carddlg, #paledlg, #paldlg, #fltdlg, #palpickdlg, #transpickdlg,
+    #panel *, #menubar *, #breakout *, #help *, #syncpop *, #tutdlg *, #restoredlg *, #galdlg * {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
   #frames {
     position: fixed;
     top: 14px;
@@ -456,9 +508,18 @@
      a shared class. Do not copy the block. The trap this project has hit three times is a
      widget rule scoped to one container, which silently leaves the next user of the same class
      as a raw browser default — a grey button in normal flow above the title. */
+  /* A REAL BACKDROP, like the other three modal dialogs (#help, #restoredlg, #syncpop). It is
+     one of the four that call dlgModal(), which installs a capture-phase Tab trap and sets
+     aria-modal="true" -- and boot-globals.js justifies that trap with "they already trap the
+     mouse (a full-screen backdrop that closes on click)", which was true of the other three and
+     false here: this shell was transparent AND pointer-transparent. So the keyboard was locked
+     inside the dialog while the mouse clicked straight through to the canvas (pausing the scene)
+     or the panel, and a screen reader was told the page behind was inert while it was still being
+     edited. It also made galdlg's own click-outside-closes handler unreachable, since a click on
+     the shell never targeted the shell. */
   #galdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: transparent; pointer-events: none;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #galdlg.hidden { display: none; }
   #galdlg .gal-box {
@@ -636,7 +697,11 @@
   #breakout .ctl.poppable {
     position: absolute; width: 244px; pointer-events: auto;
     margin: 0; padding: 12px 14px 12px 30px;
-    background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(255, 140, 40, 0.35);
+    /* 0.8, matching the other eleven translucent surfaces. This was the one left at 0.72
+       after they were raised "on all seven translucent surfaces at once so they stay a matched
+       set" -- and it is the surface carrying the smallest text in the app, over a canvas that
+       goes white-hot. */
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.35);
     border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
   /* Which effect / filter the box belongs to. Controls are singletons reused across
@@ -802,7 +867,10 @@
      heading than .trig-t: those name a SECTION of the box, these name a group inside one. */
   #panel .trig-sub { display: none; }
   #breakout .trig-sub {
-    margin: 7px 0 1px; color: #ffb15a; opacity: .5;
+    /* .72, not .5: at 9px over this box these sub-headings measured about 3.4:1 against the
+       box alone -- already under WCAG AA for text this size -- and far worse wherever a bright
+       frame showed through. Still clearly secondary to the headings above them. */
+    margin: 7px 0 1px; color: #ffb15a; opacity: .72;
     font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
   }
   /* The ↺ sits on the Tuning heading, which is a plain block — float it right rather than
@@ -952,9 +1020,8 @@
     --lyr-rgb: 216, 210, 196;
   }
   #breakout .ctl.poppable:not([data-slot]) .ctl-owner { color: #d8d2c4; }
-  /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the
-     other <b> row controls beside it (they are not buttons, so they need the explicit
-     cursor and the disabled-state handling `.lyr b.off` gives them). */
+  /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the other
+     .lyr-b controls beside it, and a real <button> like them. */
   #panel .lyr .lyr-tint {
     flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%;
     background: var(--lyr, #ffb15a); border: 1px solid rgba(0, 0, 0, 0.45);
@@ -1108,21 +1175,29 @@
      their rows, and it holds the two value-store <select>s. */
   #panel #fxbox.hidden { display: none; }
   #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
-  #panel .lyr b {
+  /* REAL BUTTONS. Mute, delete, the two blend steppers and the tint swatch were <b> with a
+     click listener and no role or tabindex, so none of them was reachable by keyboard and a
+     screen reader was not told they existed -- and the aria-label/aria-pressed set on them were
+     inert, because ARIA state on a role-less generic element is ignored. There was no other way
+     to mute, delete or re-blend a layer. The row's chevron, .filter-by and #mute were already
+     buttons; this family had just been missed. appearance/margin are reset because a <b> needed
+     no such thing. */
+  #panel .lyr .lyr-b {
+    appearance: none; -webkit-appearance: none; margin: 0; width: auto;
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
     background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
   }
   /* The layer's visibility eye (open = showing, closed = muted) — inline-flex so the SVG
      centres in the same 10px-font button frame the ✕ beside it uses. */
-  #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
-  #panel .lyr b.lyr-eye > svg { display: block; }
-  #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
-  /* The row's ✕ and grab handle are <b>, not <button>, so the `disabled` property setOff()
-     writes does nothing here and pointer-events has to do the blocking. It is exactly what
-     was missing: a dimmed ✕ stayed clickable and confirmed a layer removal that the
-     one-layer floor then refused. :hover is suppressed too, or a dead control still lights
-     up under the cursor. */
-  #panel .lyr b.off { opacity: .3; cursor: default; pointer-events: none; }
+  #panel .lyr .lyr-b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lyr .lyr-b.lyr-eye > svg { display: block; }
+  #panel .lyr .lyr-b:hover:not(:disabled) { background: rgba(255, 140, 40, 0.25); }
+  /* No pointer-events: none any more. setOff() writes the real `disabled`, which these now
+     honour -- it blocks the mouse AND drops the tab stop, which is what was wanted all along:
+     as <b> elements a dimmed ✕ kept its tab stop, fired on Enter, and raised a confirm() for a
+     removal the one-layer floor then refused. :hover stays suppressed, or a dead control still
+     lights up under the cursor. */
+  #panel .lyr .lyr-b.off, #panel .lyr .lyr-b:disabled { opacity: .3; cursor: default; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
   #panel .lyr input[type=range] { width: 38px; margin: 0; }
   /* Blend row: label · dropdown (grows) · ▲/▼ steppers. */
@@ -1307,8 +1382,6 @@
     border-radius: 4px; color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
-  #panel .filter-chk, #breakout .lyr-box .filter-chk { margin: 4px 0 0; }
-  #panel .filter-chk.off, #breakout .lyr-box .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
   #panel .ctl-grp, #breakout .lyr-box .ctl-grp {
     margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
@@ -1385,11 +1458,18 @@
   /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paldlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
-    background: transparent;   /* float over the scene like the other popups, not a dark modal */
+    /* `pointer-events: none` is the half that was missing, and without it the comment below was
+       a lie: a transparent full-screen z-index-20 shell that still RECEIVES clicks blocks the
+       whole app underneath it -- #panel, #breakout, #carddlg and the canvas. With the palette
+       inspector open, every click anywhere was swallowed by this shell and closed it, so you
+       could not drag a slider while reading the ramp, which is the entire point of a non-modal
+       tool panel. Its four siblings (#fltdlg, #transpickdlg, #palpickdlg, #paledlg) all had it. */
+    background: transparent; pointer-events: none;   /* float over the scene; only the box is interactive */
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
-    position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
+    position: relative; pointer-events: auto;   /* the shell is click-through; this is not */
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     margin: 58px 14px 14px 298px; max-width: calc(100vw - 312px);
     border-radius: 12px; padding: 18px 20px; max-height: calc(100vh - 72px); overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
@@ -1725,6 +1805,8 @@
     background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #restoredlg.hidden { display: none; }
+  #restoredlg .rst-err { color: #ff9a6a; margin: 8px 0 0; }
+  #restoredlg .rst-err:empty { display: none; }
   #restoredlg .rst-box {
     position: relative; max-width: 400px; max-height: 84vh; overflow-y: auto; margin: 16px;
     padding: 20px 22px; background: rgba(14, 8, 5, 0.97);
@@ -1824,7 +1906,7 @@
        wired — `sub` is written by setEffect on every effect change, and #help-btn opens the
        help panel — and the same help is reachable from the ☰ menu ("What the controls do…").
        Deleting them would mean null-guarding both call sites for no gain. -->
-  <h1>burnTheWeb <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
+  <h1>Kicktro <button id="help-btn" type="button" title="What the controls do" aria-label="What the controls do">?</button></h1>
   <p class="sub" id="sub">Sierpiński triangle · classic fire</p>
 
   <!-- System / Cloud profile / Credits are NOT boxes any more: their contents are ADOPTED
@@ -1937,7 +2019,7 @@
   <!-- Scenes: choose / manage saved scenes, and auto-cycle between them. The ids below still
        say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
        and link keeps loading. Only the wording the user reads is "scene". -->
-  <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
+  <label class="lbl-row"><span>Scenes</span></label><button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button>
   <!-- #preset is HIDDEN and remains the VALUE STORE, exactly the arrangement #palette has
        behind its swatches: applyPreset writes .value, applyBlob validates against it, and
        every pick in the list below dispatches its `change`. The visible control is
@@ -2105,7 +2187,7 @@
     <button type="button" data-k="rnd-pal" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-pal" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
   </div>
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <label class="lbl-row"><span>Palette</span></label><button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -2340,6 +2422,11 @@
       <button type="button" id="rst-go">Restore</button>
       <button type="button" id="rst-cancel">Cancel</button>
     </div>
+    <!-- Failure reporting for the restore itself. localStorage.setItem throws when storage is
+         full or blocked, and that throw happens one line before the reload -- so without somewhere
+         to say so the dialog just sat there and nothing happened. aria-live, because by then the
+         user is looking at the button they pressed, not at this line. -->
+    <p class="rst-sub rst-err" id="rst-msg" role="status" aria-live="polite"></p>
     <p class="rst-sub" style="margin:10px 0 0">Applying reloads the page.</p>
   </div>
 </div>
@@ -2352,7 +2439,7 @@
   <div class="sync-box" role="dialog" aria-modal="true" aria-labelledby="sync-title">
     <button id="sync-close" class="sync-close" type="button" aria-label="Close">×</button>
     <h2 id="sync-title">🔊 Sync with your music</h2>
-    <p>burnTheWeb can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
+    <p>Kicktro can pulse and flare in time with whatever you're listening to — turn on an audio source and the fire reacts to the beat.</p>
     <dl>
       <dt>Capture</dt>
       <dd>Shares the sound of your screen or a browser tab — e.g. Spotify or YouTube. In the picker that opens, pick a screen/tab and tick “Share audio”.</dd>
@@ -2377,7 +2464,7 @@
 <div id="tutdlg" class="hidden">
   <div class="tut-box" role="dialog" aria-modal="true" aria-labelledby="tut-title">
     <button id="tut-close" class="pal-close" type="button" aria-label="Close">×</button>
-    <h2 id="tut-title">Welcome to burnTheWeb <span id="tut-count"></span></h2>
+    <h2 id="tut-title">Welcome to Kicktro <span id="tut-count"></span></h2>
     <div id="tut-art" aria-hidden="true"></div>
     <h3 id="tut-head"></h3>
     <div id="tut-body"></div>
@@ -2398,9 +2485,87 @@
 <div id="brkgrid" aria-hidden="true"></div>
 <div id="breakout" class="empty"></div>
 
+<!-- THE BOOT SPLASH. initGL compiles ~72 shader programs SYNCHRONOUSLY -- measured at 114ms
+     to 2764ms on a 4090, longer on anything slower -- and during a synchronous block the browser
+     cannot paint. Measured: the first paint opportunity lands at 3650ms, AFTER the compile is
+     already finished, so an element sitting here would never have been seen. That is why the boot
+     below is deferred rather than the splash simply being added: the page has to be given a chance
+     to paint BEFORE the main thread is taken away.
+     Static markup, visible with no JS, so it is on screen from the very first paint. -->
+<div id="boot" role="status" aria-live="polite">
+  <div class="boot-in">
+    <div class="boot-t">Compiling shaders</div>
+    <div class="boot-s">First load takes a few seconds while your GPU builds the effects.</div>
+  </div>
+</div>
+
 <script>
 (() => {
-  "use strict";  // ============================================================================
+  "use strict";
+  // FORCE HTTPS. GitHub Pages' "Enforce HTTPS" does this properly, server-side, with a 301 —
+  // this is the backstop for the window before that is ticked or has propagated, and for any
+  // host that lacks it. Not cosmetic: on http:// the page is not a SECURE CONTEXT, so
+  //   * navigator.mediaDevices does not exist   -> both audio buttons hide and the panel says
+  //     "Tab/screen audio isn't available on this device" on a machine where it is;
+  //   * Google Identity Services refuses to run -> sign-in dies with Error 400 origin_mismatch,
+  //     which allow-listing CANNOT fix, because Google will not accept an http:// JavaScript
+  //     origin for anything but localhost.
+  // Both failures name the wrong cause, which is what made them expensive to diagnose.
+  //
+  // Here rather than in <head>: every probe takes the FIRST <script> in the document as the app
+  // (html.indexOf("<script>")), so a second tag above this one silently feeds twelve of them
+  // three lines of redirect instead of the program. This runs at end-of-body parse, before
+  // boot() is scheduled — early enough, since nothing of the app has run yet.
+  //
+  // THE EXCLUSIONS ARE LOAD-BEARING, not politeness:
+  //   localhost / 127.0.0.1 / [::1] are already secure contexts and are the documented dev flow
+  //     (python -m http.server); redirecting them points local work at a host serving nothing.
+  //   file:// is how every headless probe and browser check loads the built page. The protocol
+  //     test covers it (file: is not http:), which is why this must never be widened to
+  //     "anything that is not https".
+  // replace(), not assign(), or Back returns to http:// and bounces.
+  if (location.protocol === "http:" && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+    return;                       // do not boot a page we are already leaving
+  }
+  // Everything is inside boot(), called only once a frame has actually been painted.
+  function boot() {   // ---- LAST-RESORT ERROR REPORTING -------------------------------------------
+  // FIRST THING IN THE FIRST SLICE, deliberately: the app is one IIFE built from every file in
+  // the manifest, so a TDZ violation or a throw ANYWHERE aborts the whole program, and everything
+  // after that point simply never runs. That failure mode is all over CLAUDE.md -- "blank page",
+  // "fails silently", "black canvas", "a page that fails early looks exactly like a fast one to a
+  // wall-clock gate" -- and until now a visitor who hit it got a black screen with no explanation
+  // and nobody ever found out. Armed here, it survives a crash in any later slice.
+  //
+  // (A PARSE error is not catchable from inside; `node tools/build.js` gates that one instead.)
+  //
+  // It reports and gets out of the way: one line, dismissable, shown once. `track` is a hoisted
+  // function declaration in a much later slice, which is exactly why it can be called from here.
+  (function armCrashReport() {
+    let shown = false;
+    function report(what, err) {
+      try { if (typeof track === "function") track("js_error", { what: what, msg: String((err && err.message) || err).slice(0, 120) }); } catch (e) {}
+      if (shown || !document.body) return;
+      shown = true;
+      const d = document.createElement("div");
+      d.setAttribute("role", "alert");
+      d.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;padding:10px 14px;" +
+        "background:rgba(60,10,0,.94);color:#ffdcb0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;" +
+        "border-bottom:1px solid rgba(255,140,40,.5)";
+      d.textContent = "Kicktro hit an error and may not be running. Reloading usually fixes it. ";
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "Dismiss";
+      b.style.cssText = "margin-left:8px;background:transparent;color:inherit;border:1px solid currentColor;" +
+        "border-radius:4px;padding:1px 8px;cursor:pointer;font:inherit";
+      b.addEventListener("click", () => d.remove());
+      d.appendChild(b);
+      document.body.appendChild(d);
+    }
+    addEventListener("error", e => report("error", e && (e.error || e.message)));
+    addEventListener("unhandledrejection", e => report("rejection", e && e.reason));
+  })();
+
+  // ============================================================================
   // CONFIG — every DEFAULT that is not part of a preset, in one place.
   //
   // A preset (snapshotScene) carries a whole scene you hand to someone else. These
@@ -2419,8 +2584,8 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.64.1",
-    changelogUrl: "https://github.com/carlemil/burnTheWeb/blob/main/CHANGELOG.md",
+    version: "1.65.0",
+    changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
     stackMax: 4,          // max effects composited into one scene        (STACK_MAX)
@@ -2525,6 +2690,30 @@
     cloud: {
       apiKey: "AIzaSyB_VfQ6W0ui79rMzHrYvbe8f_1OkSSymRM",   // public identifier, see above ⇒ "" = feature off
       projectId: "burntheweb-3cd05",              // Firebase project id
+      // NOT renamed with the app, and it never can be: this is the real Firebase project id.
+      // Changing the string points the app at a project that does not exist and every cloud
+      // feature 404s. Same for apiKey and clientId above/below — they name the Google project,
+      // not the product.
+      //
+      // MOVING DOMAIN NEEDS THREE ALLOWLISTS UPDATED. Miss any one and the failure is an opaque
+      // console error with nothing on the page to explain it:
+      //
+      //   1. Firebase console -> Authentication -> Settings -> Authorized domains
+      //      add kicktro.com.  Gates sign-in; cloudSignIn sends requestUri: location.origin.
+      //   2. Google Cloud console -> APIs & Services -> Credentials -> the OAuth 2.0 client id
+      //      below -> Authorized JavaScript origins: add https://kicktro.com.  Google Identity
+      //      Services checks the PAGE ORIGIN before it will render the sign-in button at all.
+      //   3. Google Cloud console -> APIs & Services -> Credentials -> the API KEY above ->
+      //      Application restrictions -> HTTP referrers: add https://kicktro.com/*
+      //      THIS ONE IS THE EASY ONE TO MISS and it is the widest: the key is referrer-locked,
+      //      so from an un-listed host EVERY keyed call 403s with API_KEY_HTTP_REFERRER_BLOCKED
+      //      -- not just sign-in, but the gallery browse and every #c= share-link fetch too.
+      //
+      // Leave carlemil.github.io in all three while that host still serves the page.
+      //
+      // AND NOTE: all of this needs HTTPS anyway. Google Identity Services refuses to run in a
+      // non-secure context, the same rule that hides the audio buttons -- so none of it can be
+      // tested until the custom domain's certificate is issued.
       clientId: "180474887753-jf22fn1kgkecamc2inr2eoomh0e1e0j4.apps.googleusercontent.com",
       // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
       // Two separate intervals would let the Refresh button undercut the cache and make
@@ -2607,6 +2796,19 @@
       // 0.2 ms/frame at zoom 1, 4.4 ms at zoom 4 uncapped — which four stacked point
       // layers at max Points would have turned into a dropped frame all on its own.
       zoomPointCap: 8,
+      // ABSOLUTE ceiling on stamps per tick, applied at stampTick's single choke point. This is
+      // a SAFETY bound on a loop counter, not a tuning knob -- the largest `points` max any
+      // effect declares is 60000, and zoomPointCap multiplies that to 480k, so nothing shipped
+      // and nothing a user can reach through the range editor comes near it.
+      //
+      // It exists because `points` arrives from ATTACKER-AUTHORED JSON. mergeState does no
+      // bounds check (the DOM clamp in loadState is the net) and bandOf reads L.state directly
+      // for every NON-selected layer, so a share link, a gallery scene or a cloud profile
+      // carrying state:{points:[2e9,2e9]} on layer 2 reached this loop bound untouched and wedged
+      // the tab on the first rendered frame. Worse for the routes that persist before reloading:
+      // applyRestore had already written localStorage, so it re-hung on every later visit and the
+      // only way out was clearing site data.
+      pointCapHard: 1000000,
     },
   };
   // ==== end CONFIG ==== (probes slice `const CONFIG =` … this line; keep it)
@@ -2711,7 +2913,7 @@
   // Declared HERE rather than beside the cloud code because persist() -- the change signal
   // -- lives five slices earlier, and a const in the cloud slice would be in the TDZ for
   // any persist() that fires before that slice is evaluated.
-  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";
+  const AUTOSAVE_KEY = "burnTheWeb.autosave.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const AUTOSAVE_DELAY_MS = 2 * 60 * 60 * 1000;    // quiet time after the LAST change
   const AUTOSAVE_GAP_MS = 24 * 60 * 60 * 1000;     // at most one automatic save a day
   // A failed attempt is not a save, so it must not burn the daily slot -- but it must not
@@ -2761,6 +2963,9 @@
   // because the zoom slider's max is only a default the range editor can raise, and the
   // stacking multiplies it — up to 4 layers × ~2× for the Objects copies on top of this.
   const zoomPoints = () => zoom <= 1 ? 1 : Math.min(zoom * zoom, CONFIG.tuning.zoomPointCap);
+  // The absolute stamp-count ceiling stampTick clamps to. Declared beside zoomPoints because the
+  // two are applied on the same line; see CONFIG.tuning.pointCapHard for why it exists.
+  const POINT_CAP_HARD = CONFIG.tuning.pointCapHard;
   // Additive glow strength. Was a hardcoded 0.35 in FS_COMP and its CPU twin;
   // hoisted so the Bloom filter can drive it (0 = no glow). BLOOM_DEFAULT is what
   // every scene was authored under, so it stays the default everywhere.
@@ -4423,7 +4628,7 @@
           vec2 h = vec2(1.0, -1.0) * 0.5773;
           vec3 nrm = normalize(h.xyy * apolloDE(p + h.xyy * e, uScale, it) + h.yyx * apolloDE(p + h.yyx * e, uScale, it) + h.yxy * apolloDE(p + h.yxy * e, uScale, it) + h.xxx * apolloDE(p + h.xxx * e, uScale, it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65 * dif) * smoothstep(9.0, 0.6, t);
+          heat = (0.20 + 0.65 * dif) * (1.0 - smoothstep(0.6, 9.0, t));
           break;
         }
         t += d * 0.85;
@@ -4469,7 +4674,7 @@
           vec2 h = vec2(1.0, -1.0) * 0.5773;
           vec3 nrm = normalize(h.xyy * mboxDE(p + h.xyy * e, uScale, max(0.5, uFold), it) + h.yyx * mboxDE(p + h.yyx * e, uScale, max(0.5, uFold), it) + h.yxy * mboxDE(p + h.yxy * e, uScale, max(0.5, uFold), it) + h.xxx * mboxDE(p + h.xxx * e, uScale, max(0.5, uFold), it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65 * dif) * smoothstep(20.0, 0.6, t);
+          heat = (0.20 + 0.65 * dif) * (1.0 - smoothstep(0.6, 20.0, t));
           break;
         }
         t += d * 0.85;
@@ -4507,7 +4712,7 @@
           vec2 h = vec2(1.0, -1.0) * 0.5773;
           vec3 nrm = normalize(h.xyy * gyroidDE(p + h.xyy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yyx * gyroidDE(p + h.yyx * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yxy * gyroidDE(p + h.yxy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.xxx * gyroidDE(p + h.xxx * e, max(0.4, uFreq), uThick, uWarp, uTime));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65 * dif) * smoothstep(12.0, 0.6, t);
+          heat = (0.20 + 0.65 * dif) * (1.0 - smoothstep(0.6, 12.0, t));
           break;
         }
         t += d * 0.85;
@@ -4617,7 +4822,7 @@
       }
       float heat;
       if (hit < 0.0) {
-        heat = 0.06 + 0.16 * smoothstep(0.4, -0.1, uv.y);   // sky, brighter toward the horizon
+        heat = 0.06 + 0.16 * (1.0 - smoothstep(-0.1, 0.4, uv.y));   // sky, brighter toward the horizon
       } else {
         vec3 p = ro + rd * hit;
         float e = 0.02 * max(1.0, hit);
@@ -4757,7 +4962,7 @@
                            + e.yxy*map(p + e.yxy) + e.xxx*map(p + e.xxx));
           float dif = max(0.0, dot(n, L));
           float rim = pow(max(0.0, 1.0 - dot(n, -rd)), 2.5);   // bright silhouette edges
-          heat = (0.18 + 0.72*dif + uRim*rim) * smoothstep(7.0, 1.5, t);   // ...fading with depth
+          heat = (0.18 + 0.72*dif + uRim*rim) * (1.0 - smoothstep(1.5, 7.0, t));   // ...fading with depth
           break;
         }
         t += d;
@@ -4817,7 +5022,7 @@
       float hp = h21(lg + 3.3);
       vec2 fp = fract(p*3.0) - (0.25 + 0.5*h22(lg + 9.9));
       float blink = 0.5 + 0.5*sin(t*(0.3 + 0.5*hp) + hp*6.2831853);
-      heat = max(heat, (1.0 - lane) * step(0.93, hp) * blink * smoothstep(0.11, 0.0, length(fp)));
+      heat = max(heat, (1.0 - lane) * step(0.93, hp) * blink * (1.0 - smoothstep(0.0, 0.11, length(fp))));
       if (uSpot > 0.001) {
         float ru = uSpot*0.22;                             // umbra radius, screen halves
         float d = length(q);
@@ -5419,7 +5624,10 @@
         float fade = 1.0/(1.0 + t*t*0.0016);
         float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
         float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
-        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+        // Upper edge floored 0.02 ABOVE uFoam, mirroring oceanCPU's Math.max(0.02, ...) denominator.
+        // Foam reaches exactly 1.0, where min(0.995, 1.22) lands BELOW the lower edge -- undefined
+        // in GLSL, and it snapped the sea to solid white in one 0.01 step while the CPU kept ramping.
+        float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.22)), hh*0.65 + slope*0.55);
         return (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
       }
       vec3 n = sdfNormal(p);
@@ -5877,7 +6085,7 @@
               h.xxx*qjDE(qjLift(p + h.xxx*e, uSlice, kc, ks), c, it));
             float dif = max(0.0, dot(nrm, normalize(vec3(0.55, 0.75, -0.5))));
             float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
-            heat = (0.20 + 0.72*dif + uGlow*0.55*rim)*smoothstep(5.0, 1.6, t);
+            heat = (0.20 + 0.72*dif + uGlow*0.55*rim)*(1.0 - smoothstep(1.6, 5.0, t));
             break;
           }
           t += d;
@@ -6076,7 +6284,7 @@
           float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
           float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
           // Foam rides the CRESTS: high water and a steep face at once, which is where it breaks.
-          float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+          float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.22)), hh*0.65 + slope*0.55);
           heat = (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
           if (uHasBelow > 0.5 && uReflect > 0.0){
             // Fresnel: water is a mirror at a glancing angle and nearly clear straight down,
@@ -6210,7 +6418,9 @@
         float size = mix(0.04, 0.16, d);
         float blink = 1.0 - tw*0.5*(0.5 + 0.5*sin(t*(3.0 + 5.0*h21s(cell + 2.2)) + h21s(cell + 5.5)*6.2831853));
         float fade = smoothstep(0.0, 0.2, d)*(1.0 - smoothstep(0.85, 1.0, d));
-        heat = max(heat, g * blink * fade * smoothstep(size, 0.0, dist) * mix(0.45, 1.0, d));
+        // 1.0 - smoothstep(lo, hi, x), never smoothstep(hi, lo, x): reversed edges are undefined
+        // in GLSL and this GPU returns 0, which zeroed every star and rendered the whole effect black.
+        heat = max(heat, g * blink * fade * (1.0 - smoothstep(0.0, size, dist)) * mix(0.45, 1.0, d));
       }
       return heat;
     }
@@ -6308,7 +6518,7 @@
           vec3 nrm = normalize(h.xyy*mengerDE(p + h.xyy*e, it) + h.yyx*mengerDE(p + h.yyx*e, it)
                              + h.yxy*mengerDE(p + h.yxy*e, it) + h.xxx*mengerDE(p + h.xxx*e, it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65*dif)*smoothstep(9.0, 1.0, t) + uGlow*0.25*smoothstep(3.0, 0.4, t);
+          heat = (0.20 + 0.65*dif)*(1.0 - smoothstep(1.0, 9.0, t)) + uGlow*0.25*(1.0 - smoothstep(0.4, 3.0, t));
           break;
         }
         t += d;
@@ -6355,7 +6565,7 @@
       vec2 cell = floor(vUv*14.0);
       float g = step(0.82, rh(cell + uSalt));
       vec2 f = fract(vUv*14.0) - 0.5;
-      float blob = g*smoothstep(0.30, 0.05, length(f));
+      float blob = g*(1.0 - smoothstep(0.05, 0.30, length(f)));
       o = vec4(1.0 - blob*0.5, blob*0.25, 0.0, 1.0);
     }`;
     const FS_RDSHOW = `#version 300 es
@@ -6723,7 +6933,13 @@
       float s = sin(0.4), co = cos(0.4);
       vec2 p = mat2(co, -s, s, co) * (vUv * uSize) / max(1.5, uDot);
       float d = length(fract(p) - 0.5) * 2.0;
-      float cover = smoothstep(d + 0.35, d - 0.35, sqrt(l) * 1.25);
+      // Dot radius IS the brightness, so the ramp runs along 'd' with the edges placed at the
+      // brightness -- a brighter cell keeps more of itself lit and the dot grows, which is what
+      // the help text promises. Written 1.0 - smoothstep(lo, hi, x): the old form put the edges
+      // the other way round on both counts, which is undefined in GLSL (edge0 >= edge1, this GPU
+      // returns 0) AND inverted, so bright cells drew the BIGGEST black dots.
+      float b = sqrt(l) * 1.25;
+      float cover = 1.0 - smoothstep(b - 0.35, b + 0.35, d);
       o = vec4(mix(c, c * cover, clamp(uAmount, 0.0, 1.0)), 1.0);
     }`;
     // Solarize: invert everything above a luminance level, blended in by uAmount.
@@ -6830,11 +7046,15 @@
       float asp = uSize.x/uSize.y;
       vec2 d = vUv - uCenter; d.x *= asp;
       float r = length(d);
-      float inside = smoothstep(uRad, uRad*0.85, r);
+      float inside = 1.0 - smoothstep(uRad*0.85, uRad, r);   // 1 in the bubble, 0 outside it
       float m = mix(1.0, 1.0/uMag, inside);           // compress sampling = magnify
       vec2 p = uCenter + d*m/vec2(asp, 1.0);
       vec3 col = texture(uSrc, clamp(p, 0.0, 1.0)).rgb;
-      col *= 1.0 + 0.15*smoothstep(uRad, uRad*0.92, r)*step(r, uRad);   // rim glint
+      // Brightens the bubble's BODY by 15% and eases that off over the outer 8% -- which is not
+      // what "rim glint" describes, but it is what has always shipped, so the value is preserved
+      // exactly and only the undefined edge order is fixed. Swapping it to a true rim highlight
+      // is a look change, not a bug fix.
+      col *= 1.0 + 0.15*(1.0 - smoothstep(uRad*0.92, uRad, r))*step(r, uRad);
       o = vec4(col, 1.0);
     }`;
     // Droste zoom: the picture swallowing itself. Log-polar tiling — radius repeats in
@@ -7065,12 +7285,21 @@
       o = vec4(acc/wsum, 1.0);
     }`;
     // composite: base + 0.35*glow (additive), flip v so fire row 0 is on top
+    // uFlip IS LOAD-BEARING AND IT IS WHY THIS SHADER IS NOT USED TWICE UNGATED. The
+    // 'vUv.y' flip is the ONLY one in any shader in the app: it maps heat-buffer row 0 to the
+    // screen TOP, which is the convention the whole pipeline is written against, and it belongs
+    // to the FINAL PRESENT alone. When Bloom stopped being the whole-scene composite and became
+    // an ordinary per-layer chain entry, glBloomPass reused this same program mid-chain -- so a
+    // layer carrying Bloom went through the flip TWICE and rendered upside down against a layer
+    // without it. Symmetric effects (Kaleidoscope, Julia, Moire) hide it completely, which is how
+    // it survived; Ocean, Terrain, Aurora and anything with a horizon do not.
+    // uFlip: 1.0 at the present, 0.0 for the chain pass. tools/flipcheck.js measures it on the GPU.
     const FS_COMP = `#version 300 es
     precision highp float;
-    uniform sampler2D uScene; uniform sampler2D uGlow; uniform float uBloom;
+    uniform sampler2D uScene; uniform sampler2D uGlow; uniform float uBloom; uniform float uFlip;
     in vec2 vUv; out vec4 o;
     void main(){
-      vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+      vec2 uv = vec2(vUv.x, mix(vUv.y, 1.0 - vUv.y, uFlip));
       vec3 base = texture(uScene, uv).rgb;
       vec3 glow = texture(uGlow, uv).rgb;
       o = vec4(base + glow*uBloom, 1.0);
@@ -7223,7 +7452,7 @@
     glProg.zoom = makeProg(VS_QUAD, FS_ZOOM, ["uSrc", "uZoom"]);
     glProg.trans = makeProg(VS_QUAD, FS_TRANS, ["uNew", "uPrev", "uT", "uMode", "uSize"]);
     glProg.blur = makeProg(VS_QUAD, FS_BLUR, ["uSrc", "uDir"]);
-    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow", "uBloom"]);
+    glProg.comp = makeProg(VS_QUAD, FS_COMP, ["uScene", "uGlow", "uBloom", "uFlip"]);
 
     glTex.heat = [
       createTex(gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST, gl.CLAMP_TO_EDGE),
@@ -7561,17 +7790,11 @@
     // Put the framebuffer back the way every other pass expects to find it.
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
   }
-  function glDrawPoints() {
-    // The single-layer tick path: honour a stampAdd effect (Fractal flames) here too, or
-    // the density accumulation would only exist in a stack. Read the ITEM's effect, not
-    // the `effect` global — render paths take everything from the stack.
-    const L = stack[stackSel];
-    glBlitPoints(L && EFFECTS[L.fx].stampAdd ? "add" : undefined);
-    curHeat = pendingDst;
-  }
-  // Close a heat tick. Split out from glDrawPoints so the flip has a name that
-  // isn't about points — a shader effect will inject its output here too.
-  function glEndHeat() { glDrawPoints(); }
+  // glDrawPoints/glEndHeat lived here and are GONE. They were the single-layer GL tick close,
+  // but simulate() -- their only route in -- is called from exactly one site, inside the frame
+  // loop's `if (!useGL)` branch, so `if (useGL) glEndHeat()` could never fire. The GL point path
+  // closes its own tick inline (`curHeat = pendingDst` after every item has blitted), which is
+  // where the flip actually happens and the only place it should.
   // Generic per-effect fragment-shader pass: replace the current heat by running
   // glProg[name] over a fullscreen quad. Every effect shader takes uSize; `setU` sets
   // the rest. A shader effect = an FS_* source + `glProg.<id>` registered in initGL +
@@ -7713,20 +7936,29 @@
   // Moving the state rather than clearing it is what keeps a layer's trails ITS OWN across a
   // drag; clearing would swap one wrong picture for a blank one.
   const SLOT_ARRAYS = () => [glTex.heatL, glFbo.heatL, glTex.palL, layerCur, layerPal];
+  // THESE ARRAYS ARE STACK_MAX * 2 LONG -- live 0..STACK_MAX-1, the outgoing (transition) scene
+  // STACK_MAX..end. Only the live half ever moves; the outgoing half is a detached snapshot of a
+  // scene nobody is editing, and renderStackColor(plive, ..., STACK_MAX) reads it by slot.
   function moveSlotState(from, to) {
-    // Only the LIVE half (0..STACK_MAX-1). The outgoing half is a detached snapshot of a
-    // scene that is not being edited, and its slots are not what just moved.
     for (const a of SLOT_ARRAYS()) {
       if (!a || from >= a.length) continue;
+      // A remove plus an insert, both BELOW STACK_MAX, cancel out for every index above them --
+      // so the outgoing half is already left where it was. Nothing more to do here.
       a.splice(to, 0, a.splice(from, 1)[0]);
     }
   }
   function dropSlotState(j) {
-    // The removed layer's buffers go to the BACK rather than being thrown away: they are GL
-    // objects the pool still owns, and every survivor keeps the one it was using.
+    // The removed layer's buffers go to the BACK OF THE LIVE HALF rather than being thrown away:
+    // they are GL objects the pool still owns, and every survivor keeps the one it was using.
+    //
+    // Re-inserting at STACK_MAX-1, not push(). A push sends it past the outgoing half, so the
+    // remove shifted slots STACK_MAX..end down by one and never shifted them back: delete a layer
+    // during a 0.45-0.9s preset blend and the OUTGOING half of that blend renders another layer's
+    // retained heat, palette LUT and ping-pong parity for the rest of the transition.
     for (const a of SLOT_ARRAYS()) {
       if (!a || j >= a.length) continue;
-      a.push(a.splice(j, 1)[0]);
+      const at = Math.min(STACK_MAX - 1, a.length - 1);
+      a.splice(at, 0, a.splice(j, 1)[0]);
     }
   }
   function layerPalIndex(L) {
@@ -8104,7 +8336,21 @@
     if (e && e.prog) return e.prog;
     if (!e) {
         if (worldPar === null) worldPar = gl.getExtension("KHR_parallel_shader_compile") || false;
-      const vs = glCompile(gl.VERTEX_SHADER, worldVs);
+      // vsFor, not a fresh glCompile: VS_QUAD is one source shared by every program, and makeProg
+      // was changed to compile it exactly once for that reason. This was the one site still
+      // recompiling it per combination.
+      // SAY SO. This link is ASYNCHRONOUS and takes seconds the first time a combination is
+      // built -- the driver optimises everything worldMap can reach, which is exactly why it is
+      // not done at startup at all. Until it lands, worldProgFor returns null, planWorld's
+      // result is dropped, and the joined layers carry on drawing THEMSELVES: the scene looks
+      // wrong rather than busy, with nothing on screen to explain the pause.
+      //
+      // flashUiHint is the only reporter that works with no panel, menu or dialog open (fixed,
+      // aria-live, exempt from body.ui-hidden). It is a hoisted function declaration in a later
+      // slice, which is what lets this call it. Once per combination -- this branch is the
+      // cache MISS, so a world that is already built says nothing.
+      if (typeof flashUiHint === "function") flashUiHint("Building the shared 3D world \u2014 a few seconds the first time.");
+      const vs = vsFor(worldVs);
       // Same rewrite camProg does, so the shared camera still applies.
       const fsSrc = worldSource(key).replace(/gl_FragCoord/g, "fragCam")
         .replace("void main(){", camGlsl() + WNL + "    void main(){ vec4 fragCam = camFrag4();");
@@ -8112,6 +8358,11 @@
       const p = gl.createProgram();
       gl.attachShader(p, vs); gl.attachShader(p, fs);
       gl.linkProgram(p);                 // do NOT read LINK_STATUS yet -- that is the stall
+      // Detach + delete the FRAGMENT shader only. The program keeps what it needs once linked,
+      // and the vertex shader is the shared cached one, which must outlive this program.
+      // (Deleting cannot be deferred past the async link -- deleteShader on an attached shader
+      // is a flag, and the driver frees it when the program releases it.)
+      gl.deleteShader(fs);
       e = worldProgs[key] = { p, pending: true };
     }
     // Poll. Without the extension there is no way to ask, so take the hit once, here, rather
@@ -8402,6 +8653,7 @@
     // bloomRaw, NOT bloomAmt: this pass only runs when the DRAWING layer's own chain holds
     // Bloom, so it needs the slider, not the slider gated by whichever layer is selected.
     gl.uniform1f(glProg.comp.u.uBloom, bloomRaw);
+    gl.uniform1f(glProg.comp.u.uFlip, 0);       // MID-CHAIN: the present below owns the one flip
     drawQuad();
   }
   // Reaction–diffusion driver: seed the dish on demand, then K Gray–Scott steps
@@ -8569,8 +8821,18 @@
     // the same heavy blob -- worse than the missing glyphs, because they all measure the same.
     // A glyph whose coverage is EXACTLY the missing-character box's is that box.
     const keep = chars.map((_, i) => i).filter(i => cov[i] > 1e-6 && Math.abs(cov[i] - tofuCov) > 1e-9);
-    if (keep.length < 8) return setIdx === 0 ? buildAsciiAtlas0(chars, cov, chars.map((_, i) => i), font, G, cv)
-                                             : buildAsciiAtlas(0);
+    // Too few usable glyphs (a font with no Georgian / no Arabic / no Japanese) -- fall back to
+    // Latin. RECORD THE SET THE USER PICKED, not the one that was built: ensureAsciiAtlas compares
+    // asciiAtlasSet against `want`, so stamping 0 here left the two permanently unequal and the
+    // whole atlas -- two canvases, ~255 fillText calls, two getImageData reads over an 8160x32
+    // buffer, a sort and a texture upload -- was rebuilt on EVERY FRAME, for as long as the filter
+    // was on. It reads as the machine falling over, with nothing in the UI to explain it.
+    if (keep.length < 8) {
+      if (setIdx === 0) return buildAsciiAtlas0(chars, cov, chars.map((_, i) => i), font, G, cv);
+      const r = buildAsciiAtlas(0);
+      asciiAtlasSet = setIdx;
+      return r;
+    }
     keep.sort((a, b) => cov[a] - cov[b]);
     return buildAsciiAtlas0(chars, cov, keep, font, G, cv, setIdx);
   }
@@ -8650,7 +8912,15 @@
     // below produces glTex.scene instead — so the blend happens BEFORE the glow, and
     // the bloom follows the blend rather than a frozen glow fighting a live one.
     const tActive = transActive();
-    bindFbo(tActive ? glFbo.post[0] : glFbo.scene, fw, fh);
+    // WHICH post slot the zoom lands in has to depend on where the chain ENDED. glPostChain
+    // ping-pongs post[0]/post[1] and returns whichever it wrote last, so an ODD number of image
+    // filters leaves the result in post[0] -- and Bloom alone is odd, which is what DEFAULT_SCENE
+    // ships. Binding glFbo.post[0] while postSrc IS glTex.post[0] samples the draw's own colour
+    // attachment: a WebGL2 feedback loop, INVALID_OPERATION, and the draw is SILENTLY DROPPED.
+    // The zoom then did nothing for the whole blend -- the incoming scene drew at zoom 1 whatever
+    // its slider said and popped to the right size the frame the transition ended.
+    const tSlot = postSrc === glTex.post[0] ? 1 : 0;
+    bindFbo(tActive ? glFbo.post[tSlot] : glFbo.scene, fw, fh);
     gl.useProgram(glProg.zoom.p);
     bindTexUnit(0, postSrc); gl.uniform1i(glProg.zoom.u.uSrc, 0);
     gl.uniform1f(glProg.zoom.u.uZoom, z);
@@ -8658,7 +8928,7 @@
     if (tActive) {                    // B2) blend the frozen outgoing frame with this one
       bindFbo(glFbo.scene, fw, fh);
       gl.useProgram(glProg.trans.p);
-      bindTexUnit(0, glTex.post[0]); gl.uniform1i(glProg.trans.u.uNew, 0);
+      bindTexUnit(0, glTex.post[tSlot]); gl.uniform1i(glProg.trans.u.uNew, 0);
       bindTexUnit(1, glTex.prev); gl.uniform1i(glProg.trans.u.uPrev, 1);
       gl.uniform1f(glProg.trans.u.uT, trans.t);
       gl.uniform1i(glProg.trans.u.uMode, trans.mode);
@@ -8708,6 +8978,7 @@
     bindTexUnit(0, glTex.scene); gl.uniform1i(glProg.comp.u.uScene, 0);
     bindTexUnit(1, glTex.blur2); gl.uniform1i(glProg.comp.u.uGlow, 1);
     gl.uniform1f(glProg.comp.u.uBloom, 0);
+    gl.uniform1f(glProg.comp.u.uFlip, 1);       // THE PRESENT: heat-buffer row 0 to the screen top
     drawQuad();
     // A FENCE BEFORE THE PRESENT. The clear above was not enough on its own: the ghost
     // survived v1.55.4 on the reporter's machine. A stale re-present is an ORDERING failure
@@ -8734,8 +9005,21 @@
   if (useGL) {
     canvas.addEventListener("webglcontextlost", e => { e.preventDefault(); glReady = false; }, false);
     canvas.addEventListener("webglcontextrestored", () => {
+      // initGL rebuilds every program, texture, FBO, VAO and VBO -- but two caches live OUT here
+      // and would survive with handles belonging to the dead context. Both are guarded by an
+      // equality test, so a stale value means the rebuild is SKIPPED rather than redone:
+      //   ribDepthW/H still match fw/fh  => the ribbon depth renderbuffer is never reallocated
+      //     and an invalid object is attached, so glFbo.layer goes incomplete for that draw and
+      //     Flying ribbons stops drawing while spewing GL errors every frame.
+      //   asciiAtlasSet still matches ascSet => ensureAsciiAtlas no-ops and glTex.ascii stays the
+      //     fresh 1x1 zero texture, so every ASCII cell renders as glyph 0 (black at ascmix 1).
+      // Reset here rather than in initGL: these are `let`s in a LATER slice, so initGL -- called
+      // from palette.js during startup -- would hit their temporal dead zone.
+      ribDepthRb = null; ribDepthW = ribDepthH = 0;
+      asciiAtlasSet = -1;
       try { initGL(); glResize(); glClearHeat(); paletteDirty = true; }   // re-upload palette to the fresh texture
-      catch (err) { glReady = false; }
+      // Swallowing this leaves the canvas dark forever with no way to find out why.
+      catch (err) { glReady = false; console.error("Kicktro: WebGL context restore failed", err); }
     }, false);
   }
 
@@ -8992,10 +9276,12 @@
   // canvas still repaints smoothly.
   // Today's whole-tick call: propagate, stamp the selected item, close. Kept for the
   // Canvas2D path, which renders one stack item only.
+  // CPU PATH ONLY — its one caller sits inside frame()'s `if (!useGL)` branch. The `if (useGL)
+  // glEndHeat()` that used to close this was therefore unreachable, and both it and glDrawPoints
+  // have been deleted; the GL point path closes its own tick inline after every item has blitted.
   function simulate(now) {
     beginHeatTick();                   // 1) propagate existing fire upward
     stampTick(stack[stackSel], now);
-    if (useGL) glEndHeat();
   }
   // The stamp half of a tick: advance this item's phase clocks and lay down its points.
   // Split out of simulate so the frame loop can run ONE propagation per tick and then
@@ -9026,7 +9312,11 @@
     // blurring; this fills it in for real.
     // One choke point for all three point effects on purpose — the `stamp` hook, the 2D
     // chaos game and the tetrahedron branch all take `n` from here.
-    const n = Math.round(cfg.points * zoomPoints());
+    // Clamped to CONFIG.tuning.pointCapHard, and NOT because any legitimate setting gets near it
+    // -- see the note there. This is the one place every point effect's loop bound is decided, so
+    // it is the one place the bound has to be finite whatever a payload says.
+    const nRaw = Math.round(cfg.points * zoomPoints());
+    const n = nRaw > 0 ? Math.min(POINT_CAP_HARD, nRaw) : 0;   // `> 0` also catches NaN and -Inf
     // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
     if (EFFECTS[L.fx].stamp) {
@@ -9069,7 +9359,9 @@
       TETRA_BOX[2] = 1.0;                         // x follows from the frame aspect below.
       TETRA_BOX[0] = TETRA_BOX[1] * (fw / fh);   // Box size is a whole-scene zoom (below),
       L.tetras = L.tetras || [];                 // per-LAYER bodies (salted by stack position), so two
-      ensureTetras(L.tetras, layerCount, stack.indexOf(L));   // Tetrahedron layers diverge instead of following
+      // L.salt, not stack.indexOf(L) -- indexOf is -1 for a DETACHED layer (the outgoing half of
+      // a crossfade), and the salt belongs to the layer, so it also survives a reorder.
+      ensureTetras(L.tetras, layerCount, layerSalt(L));       // Tetrahedron layers diverge instead of following
       const tetras = L.tetras;                   // this layer's bodies for the loop below
 
       const bx = TETRA_BOX[0], by = TETRA_BOX[1], bz = TETRA_BOX[2];
@@ -10997,14 +11289,23 @@
   // Scatter 1. See the note where it is built.
   const SCAT_CW = 13, SCAT_CH = 8, SCAT_BITE = 0.85;
   let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phSize = 1, phAgents = null;
+  // GROW AND SHRINK IN PLACE, like ensureSolids/ensureTetras -- never reallocate and re-seed.
+  // Agents is an ordinary drift-able dual with step 50, so spreading its band or arming a beat
+  // chip lands Math.round() on a different count most ticks. Re-seeding on every length change
+  // teleported all 2500 agents back to their hashed start positions several times a second, so
+  // the network could never form: it read as a physics bug rather than an allocation one.
   function ensurePhy(P, n, salt) {
-    if (!P.a || P.a.length !== n * 3) {
+    const seed = (a, i) => {
+      const h = shHash21(i * 3.7 + salt, i * 1.3 + salt * 2.1);
+      const h2 = shHash21(i * 9.1 + salt * 5, i * 0.7 + salt);
+      a[i * 3] = h; a[i * 3 + 1] = h2; a[i * 3 + 2] = h * 6.2831;
+    };
+    if (!P.a) { P.a = new Float32Array(n * 3); for (let i = 0; i < n; i++) seed(P.a, i); }
+    else if (P.a.length !== n * 3) {
+      const old = P.a, keep = Math.min(old.length, n * 3);
       P.a = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) {
-        const h = shHash21(i * 3.7 + salt, i * 1.3 + salt * 2.1);
-        const h2 = shHash21(i * 9.1 + salt * 5, i * 0.7 + salt);
-        P.a[i * 3] = h; P.a[i * 3 + 1] = h2; P.a[i * 3 + 2] = h * 6.2831;
-      }
+      P.a.set(old.subarray(0, keep));                       // survivors keep their position + heading
+      for (let i = keep / 3 | 0; i < n; i++) seed(P.a, i);   // only the NEW agents are placed
     }
     // THE TRAIL MAP HAS ITS OWN FIXED RESOLUTION, not the heat grid's. At full resolution it
     // is ~1.4M cells, and stamping the lit ones meant millions of plot() calls against an
@@ -11015,7 +11316,7 @@
   }
   function installPhysarum(L) {
     L.physarum = L.physarum || {};
-    ensurePhy(L.physarum, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), stack.indexOf(L) + 1);
+    ensurePhy(L.physarum, Math.max(200, Math.min(PHY_MAX, Math.round(phCount))), layerSalt(L) + 1);
     phAgents = L.physarum;
   }
   function physarumStamp(xL, xR, yT, yB, n) {
@@ -11121,19 +11422,25 @@
   // difference between this and dragging points along a plain noise gradient, which drains.
   const CURL_MAX = 8000;
   let cuCount = 900, cuScale = 2.2, cuSpeed = 1, cuLife = 2.5, cuField = null;
+  // Grows and shrinks IN PLACE, for the reason spelled out above ensurePhy: Count is a
+  // drift-able dual, and re-seeding on every length change restarts every particle mid-flight.
   function ensureCurl(C, n, salt) {
-    if (!C.p || C.p.length !== n * 3) {
+    const seed = (p, i) => {
+      p[i * 3] = shHash21(i * 2.1 + salt, i * 5.7 + salt);
+      p[i * 3 + 1] = shHash21(i * 7.3 + salt * 3, i * 1.9 + salt);
+      p[i * 3 + 2] = shHash21(i * 4.4 + salt, i * 8.1) * cuLife;
+    };
+    if (!C.p) { C.p = new Float32Array(n * 3); for (let i = 0; i < n; i++) seed(C.p, i); }
+    else if (C.p.length !== n * 3) {
+      const old = C.p, keep = Math.min(old.length, n * 3);
       C.p = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) {
-        C.p[i * 3] = shHash21(i * 2.1 + salt, i * 5.7 + salt);
-        C.p[i * 3 + 1] = shHash21(i * 7.3 + salt * 3, i * 1.9 + salt);
-        C.p[i * 3 + 2] = shHash21(i * 4.4 + salt, i * 8.1) * cuLife;
-      }
+      C.p.set(old.subarray(0, keep));
+      for (let i = keep / 3 | 0; i < n; i++) seed(C.p, i);
     }
   }
   function installCurl(L) {
     L.curl = L.curl || {};
-    ensureCurl(L.curl, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), stack.indexOf(L) + 1);
+    ensureCurl(L.curl, Math.max(200, Math.min(CURL_MAX, Math.round(cuCount))), layerSalt(L) + 1);
     cuField = L.curl;
   }
   function curlStamp(xL, xR, yT, yB, n) {
@@ -11711,7 +12018,7 @@
   }
   function installBoids(L) {
     L.boids = L.boids || [];
-    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), stack.indexOf(L) + 1);
+    ensureBoids(L.boids, Math.max(2, Math.min(200, Math.round(bdCount))), layerSalt(L) + 1);
     bdFlock = L.boids;
   }
   function boidsStamp(xL, xR, yT, yB, n) {
@@ -12093,6 +12400,12 @@
     }
   }
   function ribbonCPU(dt) {
+    // EVERY CPU MIRROR WRITES EVERY CELL -- the fallback MAX-merges into a buffer nothing else
+    // clears on the shader path, so a mirror that touches only the pixels it covers leaves the
+    // rest holding the previous frame. rbTri fills triangles, so without this the bands MAX onto
+    // their own history and within seconds the frame is a saturated smear of every position a
+    // ribbon has ever occupied.
+    fire.fill(0);
     ribbonBuild(dt);
     for (let i = 0; i + 3 <= glRibCount; i += 3) {
       const a = i * 4, b = (i + 1) * 4, c = (i + 2) * 4;
@@ -12178,7 +12491,7 @@
   // installStackItem for `solids` effects, the same hook installSeedPath uses.
   function installSolids(L) {
     L.solids = L.solids || [];
-    ensureSolids(L.solids, Math.max(1, Math.min(SD_MAX, Math.round(sdCount))), stack.indexOf(L));
+    ensureSolids(L.solids, Math.max(1, Math.min(SD_MAX, Math.round(sdCount))), layerSalt(L));
     sdBodies = L.solids;
   }
   // Keep them lively forever. The walls are near-elastic but not perfectly so, and the
@@ -12548,6 +12861,13 @@
     const step = 1 / cfg.burn;
     let ticks = 0;
     while (acc >= step && ticks < 4) { acc -= step; ticks++; }
+    // DROP THE UNDRAINABLE DEBT. dt is clamped to 0.25s and added unconditionally, but at most
+    // four ticks ever come back out -- so whenever dt*cfg.burn > 4 (a 30fps frame at the Fire
+    // filter's shipped burn of 165 banks 5.5) the accumulator grows without bound. Once it has
+    // banked a few seconds the loop stays pinned at 4 ticks long AFTER the frame rate recovers,
+    // and the fire runs at its catch-up rate indefinitely: "the flames are permanently too fast
+    // after the tab was busy". Only setEffect ever cleared it.
+    if (acc > step * 4) acc = step * 4;
     // The Canvas2D fallback renders ONE item: every CPU mirror writes every cell with a
     // plain assignment, so a second mirror would simply erase the first, and each extra
     // mirror is a full per-pixel JS loop — an N× multiplier on the dominant cost of the
@@ -12935,8 +13255,15 @@
       // A refusal is an answer too. Without this the default mic arm would fire again on
       // every single load, and a blocked site answers the prompt instantly and invisibly —
       // so it would be a silent failed request forever, with the error line to match.
-      audio.settled = true;
-      audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
+      // ONLY A REFUSAL SETTLES IT. `settled` persists as audio:"off" and restore() then never
+      // re-arms the mic on ANY future visit, so it has to mean "the user answered the question".
+      // A refusal is an answer; a device being busy is not. NotReadableError (the mic held by
+      // Teams/Discord -- routine on Windows) and NotFoundError (no capture device attached yet)
+      // used to settle it too, so opening the page during a call permanently switched off the
+      // default arm for the feature nobody finds unaided.
+      const refused = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
+      if (refused) audio.settled = true;
+      audioMsg(refused ? "Permission denied." : "Couldn’t start audio.");
       persist();
     }
   }
@@ -14287,6 +14614,12 @@
   function buildFilterPicker() {
     const host = el("flt-pick");
     if (!host) return;
+    // KEEP THE KEYBOARD'S PLACE. This runs from setFilterOn -> syncFilterPicker, i.e. from
+    // inside the `change` of a checkbox that the next line destroys -- so Chromium blurred to
+    // <body> and the next Tab restarted from the top of the DOCUMENT. The picker is non-modal,
+    // so no focus trap pulled it back, and ticking five filters meant finding your place five
+    // times. Invisible with a mouse, which is why it survived.
+    const hadFocus = host.contains(document.activeElement) ? document.activeElement.dataset.fid : null;
     host.textContent = "";
     // Collect first, render second: the sub-captions keep REGISTRY order because they mirror
     // the pipeline (heat and trails, then the image), but the filters INSIDE each are listed
@@ -14324,6 +14657,7 @@
       cb.type = "checkbox";
       cb.checked = filterSetOf(f.id).has(f.id);
       cb.disabled = f.cpuOk === false && !useGL;
+      cb.dataset.fid = f.id;                 // so the rebuild below can put focus back on this row
       cb.addEventListener("change", () => setFilterOn(f.id, cb.checked));
       const nm = document.createElement("span");
       nm.className = "flt-opt-n"; nm.textContent = f.name;
@@ -14337,12 +14671,16 @@
       host.appendChild(lab);
       });
     });
+    // Put the keyboard back where it was (see the note at the top of this function).
+    if (hadFocus) {
+      const back = host.querySelector('[data-fid="' + hadFocus + '"]');
+      if (back) back.focus();
+    }
   }
   // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
   // ✕, a scene load, an effect switch). Cheap enough to just rebuild.
   function syncFilterPicker() { if (filterPickerOpen()) buildFilterPicker(); }
   if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
-  if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
   // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) { syncFilterSecIn(stackSel, id); }
   function syncFilterSecIn(slot, id) {
@@ -14885,6 +15223,14 @@
   // added so two Glass ball layers would not draw the same balls; separating two layers that
   // share a palette is the same question with a different subject.
   function palTintRank(L) { return typeof L.salt === "number" ? L.salt : 0; }
+  // THE PER-LAYER SALT every ensure*() decorrelating two layers of the same effect should use.
+  // It replaced `stack.indexOf(L)` at five sites, which was wrong twice over: indexOf returns -1
+  // for a DETACHED layer -- and the outgoing half of a preset crossfade is exactly that, since
+  // renderPrevScene renders prevStack after installStack has replaced `stack` -- and a slot index
+  // also changes under a reorder, so two layers could swap arrangements by being dragged. `salt`
+  // belongs to the layer, is unique among the live ones, and returns to the pool when one is
+  // deleted. installStackItem already reads it this way for gbSalt; this is the same rule, named.
+  function layerSalt(L) { return typeof L.salt === "number" ? L.salt : 0; }
   // Editing a custom palette changes what its strong colour is, so the cache has to go.
   function palTintFlush() { for (const k in PAL_TINT) delete PAL_TINT[k]; }
   function layerTintIdx(L, slot) {
@@ -15144,10 +15490,17 @@
       btn.type = "button";
       btn.textContent = k[0].toUpperCase();
       btn.title = k + " beat";
+      // The accessible name has to be the BAND, not the letter: the visible text is just "L".
+      // And aria-pressed, because armed-vs-not is otherwise carried only by fill colour --
+      // this was the one toggle family in the app without it, while #mute, the layer mute, the
+      // filter bypass eye and the transition ticks all set it.
+      btn.setAttribute("aria-label", k + " beat");
+      btn.setAttribute("aria-pressed", "false");
       btn.addEventListener("click", () => {
         if (chipEls[id] !== chips) return;      // not the live block
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
+        btn.setAttribute("aria-pressed", beatReact[id][k] ? "true" : "false");
         syncDots();              // the menu row shows the same armed state
         syncTrigTune();          // ...and this band's tuning rows appear/hide
         // A <button> click fires neither input nor change, so the delegated onEdit
@@ -15917,6 +16270,10 @@
   function buildPalPick() {
     const host = el("palpick-list");
     if (!host) return;
+    // Keep the keyboard's place: this runs from setPalUse, i.e. from inside the `change` of a
+    // checkbox the next line destroys, which drops focus to <body> in a non-modal dialog with no
+    // trap to pull it back. Same shape as buildFilterPicker.
+    const hadFocus = host.contains(document.activeElement) ? document.activeElement.dataset.pid : null;
     host.textContent = "";
     palByName().forEach(i => {
       const p = PALETTES[i];
@@ -15925,6 +16282,8 @@
       lab.className = "palpick-row";
       const cb = document.createElement("input");
       cb.type = "checkbox"; cb.checked = palInUse(i);
+      cb.dataset.pid = String(i);
+      cb.setAttribute("aria-label", p.name + (p.custom ? " (custom)" : ""));
       cb.addEventListener("change", () => setPalUse(i, cb.checked));
       const sw = document.createElement("span");
       sw.className = "palpick-sw"; sw.style.background = palGradientCss(i);
@@ -15945,6 +16304,10 @@
       lab.appendChild(del);
       host.appendChild(lab);
     });
+    if (hadFocus !== null && hadFocus !== undefined) {
+      const back = host.querySelector('[data-pid="' + hadFocus + '"]');
+      if (back) back.focus();
+    }
   }
   // The ONE deletion entry, confirm included — the per-row ✕ is its only caller now.
   // Customs really delete (indices remap); shipped ramps SOFT-delete into palGone — the
@@ -15989,7 +16352,13 @@
   }
   buildPalSwatches();
   el("palpick-close").addEventListener("click", closePalPick);
-  el("palpickdlg").addEventListener("click", e => { if (e.target === el("palpickdlg")) closePalPick(); });
+  // NO click-outside-closes here. These float over a running scene and their shell is
+  // `pointer-events: none`, so a click beside the box passes straight through and never
+  // targets the shell -- the guard `e.target === el(...)` was unreachable, and the click
+  // landed on the canvas (pausing the scene) or the panel instead. Making it reachable would
+  // mean the shell swallowing every click on the app, which is the bug #paldlg had. Escape
+  // and the close button are the ways out, which is right for a panel meant to be used
+  // WHILE you edit.
   el("palpick-all").addEventListener("click", () => setPalUseAll(true));
   el("palpick-none").addEventListener("click", () => setPalUseAll(false));
   // Create a NEW custom palette: a plain RGB ramp under a name the user must supply (no
@@ -16033,7 +16402,6 @@
   }
   const closePalDetail = () => el("paldlg").classList.add("hidden");
   el("pal-close").addEventListener("click", closePalDetail);
-  el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
   // These four are per-block controls whose one live value belongs to the selected layer, so
   // each is an accessor over ctl() rather than a captured node. Every read and write site —
   // including the render path's showBoxChk.checked — stays written exactly as it was.
@@ -16182,6 +16550,13 @@
       b.title = Math.round(s[0] * 100) + "% · " + paleHex(s[1]);
       b.setAttribute("aria-label", "Stop at " + Math.round(s[0] * 100) + " percent");
       b.addEventListener("pointerdown", ev => paleDragStart(ev, b, s));
+      // AND a click guard, because cancelling pointerdown does NOT suppress click: the Pointer
+      // Events compatibility mapping suppresses the mouse events only. Worse, the drag's pointerup
+      // calls paleRender(), which clears #pale-stops -- so this handle is detached by the time
+      // click dispatches and the event retargets to #pale-bar, whose handler ADDS a stop. Every
+      // drag of a colour stop was also inserting a new one at the release position. .filter-grab
+      // and .palpick-del already carry the same guard.
+      b.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); });
       host.appendChild(b);
     });
     if (paleSel) {
@@ -16400,6 +16775,10 @@
   el("pale-color").addEventListener("change", paleCommit);
   el("pale-pos").addEventListener("input", () => {
     if (!paleSel) return;
+    // An EMPTY field is not zero. `+"" === 0` and Number.isFinite(0) is true, so clearing the
+    // box to retype a position snapped the selected stop to 0% and re-sorted the list under the
+    // cursor. beatBandRow gets this right; this did not.
+    if (el("pale-pos").value.trim() === "") return;
     const v = +el("pale-pos").value;
     if (!Number.isFinite(v)) return;
     paleSel[0] = Math.max(0, Math.min(1, v / 100));
@@ -17236,13 +17615,13 @@
   const CREDIT_HOLD = CONFIG.credits.hold;   // seconds at full brightness
   const CREDIT_FADE = CONFIG.credits.fade;   // ...then this long ramping down to nothing
   const CREDIT_S = CREDIT_HOLD + CREDIT_FADE;
-  const CREDIT_KEY = "burnTheWeb.credits.v1";
+  const CREDIT_KEY = "burnTheWeb.credits.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // The scene title shares this canvas, this countdown style and this drawing treatment —
   // it IS the credits' typography, saying the name of the scene you just switched to and
   // who made it. Its own hold/fade because it fires on every scene change (see CONFIG).
   const TITLE_HOLD = CONFIG.credits.titleHold;
   const TITLE_FADE = CONFIG.credits.titleFade;
-  const TITLE_KEY = "burnTheWeb.scenetitle.v1";
+  const TITLE_KEY = "burnTheWeb.scenetitle.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   let creditLeft = 0, creditCv = null, creditCtx = null, creditPainted = false;
   let titleLeft = 0, titleName = "", titleAuthor = "";
   // The credits render on their OWN canvas above the effect, not stamped into the heat
@@ -17952,7 +18331,6 @@
   }
   if (el("transpick-open")) el("transpick-open").addEventListener("click", openTransPick);
   if (el("transpick-close")) el("transpick-close").addEventListener("click", closeTransPick);
-  if (el("transpickdlg")) el("transpickdlg").addEventListener("click", e => { if (e.target === el("transpickdlg")) closeTransPick(); });
   if (el("transpick-all")) el("transpick-all").addEventListener("click", () => setTransUseAll(true));
   if (el("transpick-none")) el("transpick-none").addEventListener("click", () => setTransUseAll(false));
   // 0 = same palette, 1 = maximally different. Cheap: the ramps are already in memory.
@@ -18039,10 +18417,15 @@
     // too — delete this copy and the outgoing half still draws, which is what proves the
     // live path is doing the work rather than this.
     if (useGL && glReady) {                  // snapshot glTex.scene → glTex.prev
-      gl.bindFramebuffer(gl.FRAMEBUFFER, glFbo.scene);
+      // Through bindFbo/bindDefault, not raw gl.bindFramebuffer: those two are what track
+      // curFbo/curW/curH, and glBloomPass restores the caller's target FROM curFbo. Binding
+      // behind their backs leaves that tracking stale. It happened to be safe here (glRender
+      // always exits with curFbo null and this runs before the frame's first bind), but "happens
+      // to be safe" is the state this pair exists to eliminate.
+      bindFbo(glFbo.scene, fw, fh);
       gl.bindTexture(gl.TEXTURE_2D, glTex.prev);
       gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, fw, fh);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      bindDefault(canvas.width, canvas.height);
     } else if (off && off.width) {
       if (!transOff) transOff = document.createElement("canvas");
       if (transOff.width !== off.width || transOff.height !== off.height) {
@@ -18366,10 +18749,6 @@
     // Same first-free rule for the salt: unique among the LIVE layers, so a salt released by
     // a deleted layer comes back into circulation rather than being burned for the session.
     L.salt = freeSalt(stack, L);
-    // Concrete palette from birth, for the same reason installStack resolves it: a null here
-    // would follow extras[L.fx] and re-tint with every same-effect edit elsewhere.
-    { const px = extras[L.fx] || presetExtra(L.fx);
-      L.palette = String(px.palette); L.paletteRev = !!px.paletteRev; L.paletteBg = bgOk(px.paletteBg); }
     // A fresh item is seeded from its effect's shipped defaults, not from the item that
     // happened to be selected — mergeState against its OWN effect, or every key that
     // effect declares would be dropped.
@@ -18378,9 +18757,16 @@
     L.pulse = mergePulse(L.fx, presetPulse(L.fx));
     L.plen = mergePlen(L.fx, presetPlen(L.fx));
     L.btune = {};                            // a fresh layer inherits every threshold
-    L.palette = presetExtra(L.fx).palette;   // a fresh layer opens on its effect's default look
-    L.paletteRev = presetExtra(L.fx).paletteRev;
-    L.paletteBg = presetExtra(L.fx).paletteBg;
+    // CONCRETE FROM BIRTH, for the same reason installStack resolves it: a null here would follow
+    // extras[L.fx] at render time and re-tint whenever another same-effect layer was edited.
+    // The DESCRIPTOR default, not the runtime extras -- a new layer opens on its effect's shipped
+    // look. (There used to be a second, earlier block resolving these from `extras[L.fx] ||
+    // presetExtra(L.fx)`, which these three lines then silently overwrote three statements later.
+    // Two answers to one question; this is the one that was actually winning.)
+    { const px = presetExtra(L.fx);
+      L.palette = px.palette == null ? null : String(px.palette);
+      L.paletteRev = !!px.paletteRev;
+      L.paletteBg = bgOk(px.paletteBg); }
     { const px = presetExtra(L.fx); L.seedPath = px.seedPath; L.seedRide = px.seedRide; L.seedPts = px.seedPts; }
     L.filters = presetFilters(L.fx);
     stack.push(L);
@@ -18673,8 +19059,9 @@
       // 3-column grid where every child is explicitly placed, and appending an unplaced one
       // lets auto-flow take a cell, which narrows the effect chooser and wraps the control
       // rows into column 2 — that is how the panel grew a horizontal scrollbar once before.
-      const tint = document.createElement("b");
-      tint.className = "lyr-tint";
+      const tint = document.createElement("button");
+      tint.type = "button";
+      tint.className = "lyr-b lyr-tint";
       tint.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
@@ -18697,8 +19084,9 @@
       });
       lyrctl.appendChild(tint);
 
-      const mute = document.createElement("b");
-      mute.className = "lyr-eye";
+      const mute = document.createElement("button");
+      mute.type = "button";
+      mute.className = "lyr-b lyr-eye";
       mute.setAttribute("aria-label", "Layer visibility");
       mute.addEventListener("click", e => {
         e.stopPropagation();
@@ -18716,7 +19104,8 @@
       gn.addEventListener("change", () => { persist(); autosavePreset(); });
       lyrctl.appendChild(gn);
 
-      const rm = document.createElement("b");
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "lyr-b";
       rm.textContent = "✕"; rm.title = "Remove this layer";
       rm.addEventListener("click", e => {
         e.stopPropagation();
@@ -18756,11 +19145,13 @@
         L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id;
         syncStackUI(); persist(); autosavePreset();
       };
-      const up = document.createElement("b");
-      up.className = "lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "lyr-b lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
       up.addEventListener("click", e => { e.stopPropagation(); cycleBlend(-1); });
-      const dn = document.createElement("b");
-      dn.className = "lyr-arrow"; dn.textContent = "▼"; dn.title = "Next blend mode";
+      const dn = document.createElement("button");
+      dn.type = "button";
+      dn.className = "lyr-b lyr-arrow"; dn.textContent = "▼"; dn.title = "Next blend mode";
       dn.addEventListener("click", e => { e.stopPropagation(); cycleBlend(1); });
       blendRow.appendChild(up); blendRow.appendChild(dn);
       row.appendChild(blendRow);
@@ -18896,7 +19287,11 @@
   function loadBeat(e) { for (const id in beatReact) beatReact[id] = { low: false, mid: false, high: false, ...beatStates[e][id] }; syncChips(); }
   function syncChips() {
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
-    for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
+    for (const id in chipEls) for (const k in chipEls[id]) {
+      const on = !!(beatReact[id] && beatReact[id][k]);
+      chipEls[id][k].classList.toggle("on", on);
+      chipEls[id][k].setAttribute("aria-pressed", on ? "true" : "false");   // armed state, not colour alone
+    }
     syncDots();
     syncTrigTune();
   }
@@ -19351,6 +19746,16 @@
       const single = SINGLE_KEYS.has(id.replace(/-(lo|hi)$/, ""));
       let mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
+      // A SANITY ENVELOPE, not a clamp back to the shipped bounds -- widening a slider is a real
+      // feature and a widened scene has to keep loading identically. `ranges` rides in the share
+      // URL, the bundle, the backup and the cloud profile, and applyBlob installs it FIRST, so
+      // its own ok() check then validates every value against whatever bounds the payload chose.
+      // Any finite pair used to be accepted. 100x the shipped span either side is far past any
+      // deliberate widening and still finite. CLAMPED rather than rejected so the scene loads.
+      const span = Math.max(1e-6, o.max - o.min), pad = span * 100;
+      const lim = (x) => Math.max(o.min - pad, Math.min(o.max + pad, x));
+      mn = lim(mn); mx = lim(mx);
+      if (mx <= mn) continue;
       // Widen a single control's stored bounds out to the integers so the grid stays whole.
       // FLOOR/CEIL, never round: widening can never re-clamp a value the scene already
       // stored, where rounding inward could.
@@ -19427,7 +19832,7 @@
   }
   function applyBeatTune(t) { if (t) installBeatTune(mergeBeatTune(t)); }
 
-  const STORE_KEY = "burnTheWeb.v1";
+  const STORE_KEY = "burnTheWeb.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data. See the note in config.js.
   // App version stamped into exported files (Backup) so you can tell which build wrote them.
   // Calendar-versioned (YYYY.MM.DD); bump it on a notable change or release. Distinct from the
   // per-file `version` field, which is the file-format schema version (still 1).
@@ -19487,7 +19892,7 @@
       const quota = e && (e.name === "QuotaExceededError" || e.name === "SecurityError");
       if (!quota && !persistWarned) {
         persistWarned = true;
-        console.error("burnTheWeb: persist() is failing — edits are NOT being saved", e);
+        console.error("Kicktro: persist() is failing — edits are NOT being saved", e);
       }
     }
   }
@@ -19768,7 +20173,17 @@
         // nowhere to put one (sceneBlob has no name field), so only this path gets a real one.
         if (!got || !got.json || !installShared(parse(got.json), got.name)) return;
         resize();
+        // The SAME stage/apply pair the ?z= branch below runs, and for the same reason: palette
+        // and the filter chain are per-layer, held live in the paletteSel/activeIds singletons
+        // for the SELECTED layer only. installStack writes L.palette/L.filters on the item
+        // objects and never touches those globals, and loadExtra deliberately does not either --
+        // so without these two calls the shared scene rendered in the RECIPIENT'S palette and
+        // filters, and then setEffect's persist() -> captureLayerExtras wrote the recipient's
+        // values back onto the shared layer, which adoptSharedScene saved. #c= is the link a
+        // signed-in Share mints, so this was the default path.
+        stageLayerExtras(stack[stackSel]);
         setEffect(+effectSel.value, false);
+        applyLayerExtras(stack[stackSel]);
         adoptSharedScene();
       });
       return;
@@ -21517,7 +21932,7 @@
   }
   async function shareUrl() {
     const json = JSON.stringify(sceneBlob());
-    // dir = the app's folder, e.g. https://carlemil.github.io/burnTheWeb/ — the link goes
+    // dir = the app's folder, e.g. https://kicktro.com/ — the link goes
     // straight to it and the scene rides in the ?z= (or legacy ?s=) param.
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     const z = await zipToB64(json);
@@ -21842,7 +22257,7 @@
   //
   // The key is deliberately its own, not part of cloudSess: this is what to call your local
   // library, so it outlives a sign-out. Same per-browser class as the credits preference.
-  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";
+  const PROFILE_NAME_KEY = "burnTheWeb.profile.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // TWO different defaults, because the two places had two different jobs and sharing one
   // string served neither well.
   //
@@ -21850,10 +22265,10 @@
   // it has to read as somebody's name in the public gallery, so it stays the app's name.
   //
   // DEFAULT_LIBRARY_LABEL is only the heading over your own group in the scene list before you
-  // have a profile name. "burnTheWeb" there just named the app back at you; "Default scenes"
+  // have a profile name. "Kicktro" there just named the app back at you; "Default scenes"
   // says what the group actually holds on a fresh install. Setting a profile name replaces it
   // either way, so this is the pre-account label and nothing more.
-  const DEFAULT_PROFILE_NAME = "burnTheWeb";
+  const DEFAULT_PROFILE_NAME = "Kicktro";
   const DEFAULT_LIBRARY_LABEL = "Default scenes";
   function storedProfileName() {
     try { return (localStorage.getItem(PROFILE_NAME_KEY) || "").trim(); } catch (e) { return ""; }
@@ -21895,7 +22310,7 @@
   function sceneTitleFor(i) {
     const p = presets[i]; if (!p) return;
     // myProfileName(), NOT myCollectionLabel(): with no profile there is no account to name,
-    // and crediting a scene to "burnTheWeb" is noise. The dash goes with the empty author.
+    // and crediting a scene to "Kicktro" is noise. The dash goes with the empty author.
     showSceneTitle(p.name, collectionOf(p) || myProfileName());
   }
   // Groups in a stable order: yours always first (and always present, even while empty, so
@@ -22251,7 +22666,12 @@
     // point each layer owns its values and edits stay where they were made.
     for (const L of items) {
       const fx = extras[L.fx] || presetExtra(L.fx);
-      if (L.palette == null) L.palette = String(fx.palette);
+      // String(null) is "null", not null -- and "null" is truthy, so it defeats every downstream
+      // `== null` guard and layerPalIndex's `+"null" | 0` lands the layer on palette 0 instead of
+      // its effect's default. Reachable: palRemapIncoming deliberately writes palette = null for
+      // an imported custom ramp that did not survive PAL_MAX_CUSTOM, and mergeExtra copies it
+      // through, so extras[e].palette really can be null here.
+      if (L.palette == null) L.palette = fx.palette == null ? null : String(fx.palette);
       if (L.paletteRev == null) L.paletteRev = !!fx.paletteRev;
       if (L.paletteBg == null) L.paletteBg = bgOk(fx.paletteBg);
     }
@@ -22540,7 +22960,7 @@
       used.add(base.toLowerCase());
       const one = serializeBlob({ presets: [p] }).presets[0];   // effect → stable id
       files.push({ name: base + ".json",
-                   text: JSON.stringify({ app: "burnTheWeb", kind: "preset", version: 1, appVersion: APP_VERSION, preset: one }, null, 2) });
+                   text: JSON.stringify({ app: "kicktro", kind: "preset", version: 1, appVersion: APP_VERSION, preset: one }, null, 2) });
     }
     // Everything that is not a preset. curPreset is deliberately left out: it is an index
     // into a list that no longer travels as a list, so it could only ever point at the
@@ -22548,7 +22968,7 @@
     const settings = serializeBlob(snap);
     delete settings.presets; delete settings.curPreset;
     files.push({ name: "_settings.json",
-                 text: JSON.stringify({ app: "burnTheWeb", kind: "settings", version: 1, appVersion: APP_VERSION, settings }, null, 2) });
+                 text: JSON.stringify({ app: "kicktro", kind: "settings", version: 1, appVersion: APP_VERSION, settings }, null, 2) });
     return files;
   }
   // ---- remembering the backup folder ----------------------------------------
@@ -22556,7 +22976,7 @@
   // handle the user picked. But a handle is structured-cloneable, so it can be kept
   // in IndexedDB and reused — the picker then appears once, ever, instead of on every
   // backup. (localStorage is no good here: it only stores strings.)
-  const BK_DB = "burnTheWeb.fs", BK_STORE = "handles", BK_KEY = "backupRoot";
+  const BK_DB = "burnTheWeb.fs", BK_STORE = "handles", BK_KEY = "backupRoot";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   function bkStore(mode, fn) {
     return new Promise((res, rej) => {
       if (!window.indexedDB) return res(null);
@@ -22614,11 +23034,11 @@
       try { root = await backupRoot(forcePick); }
       catch (e) { btn.textContent = "Backup"; return; }        // user cancelled the picker
       try {
-        // BurnTheWeb / <date-time>. No per-scene folder in between: a backup is *every*
+        // Kicktro / <date-time>. No per-scene folder in between: a backup is *every*
         // preset, so naming it after whichever one happened to be selected described the
         // wrong thing and split one backup's history across as many folders as you had
         // presets. One dated folder per backup, all of them siblings.
-        let dir = await root.getDirectoryHandle("BurnTheWeb", { create: true });
+        let dir = await root.getDirectoryHandle("Kicktro", { create: true });
         dir = await dir.getDirectoryHandle(stamp, { create: true });
         for (const f of files) {
           const fh = await dir.getFileHandle(f.name, { create: true });
@@ -22802,8 +23222,10 @@
       // carry curPreset, so this only fires for shared links.
       // Gated on `found`, NOT on out.curPreset: that is always >= 0 now, so testing it would
       // fire this one-shot for ordinary file restores too and yank them onto scene 0.
-      if (found >= 0) sessionStorage.setItem("btw.applyPreset", String(found));
-      else sessionStorage.removeItem("btw.applyPreset");
+      try {
+        if (found >= 0) sessionStorage.setItem("btw.applyPreset", String(found));
+        else sessionStorage.removeItem("btw.applyPreset");
+      } catch (e) {}
     }
     if (p.hasSettings && el("rst-settings").checked) {
       const s = p.parsed;
@@ -22823,7 +23245,7 @@
       // whole no-scratch-mode change rests on.
       if (!el("rst-presets").checked) {
         out.curPreset = 0;
-        sessionStorage.setItem("btw.applyPreset", "0");
+        try { sessionStorage.setItem("btw.applyPreset", "0"); } catch (e) {}
       }
     }
     if (p.hasRanges && el("rst-ranges").checked) out.ranges = p.parsed.ranges;
@@ -22835,7 +23257,20 @@
     // the selected preset (above) and then cycles the same way the sender's did.
     out.cycle = (!Array.isArray(p.parsed) && p.parsed.__link && typeof p.parsed.cycle === "boolean") ? p.parsed.cycle : false;
     // Write and reload, so the proven load path (restore → applyBlob → setEffect → resize) reapplies it all.
-    localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
+    // GUARDED, unlike every other storage write in the app, which this one was not. setItem throws
+    // QuotaExceededError when storage is full or disabled (Safari private mode, enterprise policy),
+    // and this is the last statement before the reload -- so a throw aborted the restore in silence:
+    // the dialog just sat there. Worse, the btw.applyPreset one-shot above had already been written,
+    // so the NEXT ordinary reload jumped to an index into the OLD library. Unlike persist()'s
+    // deliberate silence this is data loss, so say so rather than swallow it.
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(serializeBlob(out)));   // effect identity stored as stable ids
+    } catch (e) {
+      try { sessionStorage.removeItem("btw.applyPreset"); } catch (e2) {}    // don't strand the one-shot
+      const msg = el("rst-msg");
+      if (msg) msg.textContent = "Couldn't save — browser storage is full or blocked. Nothing was changed.";
+      return;
+    }
     location.reload();
   }
   el("rst-go").addEventListener("click", applyRestore);
@@ -23031,6 +23466,7 @@
   const CLOUD = CONFIG.cloud;
   const cloudOn = () => !!(CLOUD && CLOUD.apiKey && CLOUD.projectId);
   const CLOUD_KEY = "burnTheWeb.cloud.v1";     // its own localStorage key, NOT part of the scene blob
+  // FROZEN PREFIX (the old app name) — renaming it signs every existing user out.
   const IDP_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp";
   const TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
   const GIS_SRC = "https://accounts.google.com/gsi/client";
@@ -23656,7 +24092,7 @@
   // ---- gallery ----
   // Public profiles, readable WITHOUT signing in: the rules allow a `pub == true` query from
   // an unauthenticated caller (and deny an unfiltered one), so any visitor can browse.
-  const GAL_KEY = "burnTheWeb.gallery.v1";
+  const GAL_KEY = "burnTheWeb.gallery.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const galUrl = "https://firestore.googleapis.com/v1/projects/" + (CLOUD.projectId || "")
     + "/databases/(default)/documents";
   // Plain fetch with the api key, NOT cloudFetch: these documents are public, and gallery
@@ -23695,7 +24131,7 @@
           if (!galIndexWarned) {
             galIndexWarned = true;
             const m = /https:\/\/console\.firebase\.google\.com\S*/.exec(t);
-            console.info("[burnTheWeb] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
+            console.info("[Kicktro] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
           }
           return galQuery(false).then(r2 => (r2.ok ? r2.json().then(j => ({ rows: j, ordered: false }))
             : r2.text().then(t2 => Promise.reject(new Error(cloudErr(t2, r2.status))))));
@@ -23869,9 +24305,12 @@
   // same codec — so both transports describe a shared scene identically and the recipient
   // path is the one that already exists (installShared).
   function cloudShareScene() {
-    const json = JSON.stringify(sceneBlob());
     const dir = location.origin + location.pathname.replace(/[^/]*$/, "");
     if (!cloudOn() || !cloudSess) return shareUrl();          // signed out ⇒ the classic link
+    // BELOW the guard: sceneBlob() is not free -- it runs saveLiveMaps and stackOut, which does a
+    // full freeze/thaw round-trip on the selected layer -- and on the signed-out path the result
+    // was built and thrown away.
+    const json = JSON.stringify(sceneBlob());
     return zipToB64(json).then(payload => {
       if (payload == null || payload.length >= 200000) return shareUrl();
       const sceneName = (presetSel && presetSel.selectedIndex >= 0 && curPreset >= 0 && presets[curPreset]
@@ -23908,7 +24347,7 @@
   // blob: which links you shared is device history, like the session, not scene data.
   // Links shared before this record existed cannot be listed — only retracted by hand from a
   // kept URL — and that is the accepted cost of keeping /scenes unlistable.
-  const SHARELINKS_KEY = "burnTheWeb.sharelinks.v1";
+  const SHARELINKS_KEY = "burnTheWeb.sharelinks.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   function shareLinksLoad() {
     try {
       const a = JSON.parse(localStorage.getItem(SHARELINKS_KEY) || "[]");
@@ -24600,7 +25039,14 @@
     };
     cv.addEventListener("pointerdown", e => {
       if (seedPathMode !== "freehand") return;
-      e.preventDefault(); cv.setPointerCapture(e.pointerId); cardTouch();
+      // Left button only: a right-click used to start a stroke AND suppress the context menu.
+      if (e.button !== 0) return;
+      e.preventDefault();
+      // try/catch like the app's other two capture sites -- a synthetic probe event carries no
+      // live pointer and setPointerCapture throws, which used to abort this handler BEFORE
+      // seedDrawing was set and silently swallow the whole gesture.
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      cardTouch();
       if (seedEdit) {
         const idx = nearestPt(cardEventToC(e));
         if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }
@@ -24667,6 +25113,10 @@
     const row = document.createElement("div"); row.className = "beat-row";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const sl = document.createElement("input"); sl.type = "range"; sl.min = min; sl.max = max; sl.step = step; sl.value = val;
+    // The name comes from the row's <span>, which is NOT a <label> and has no `for` -- and these
+    // nodes deliberately carry no id (RNG_ORIG scans by id), so aria-label is the way to name
+    // them. wireRange does exactly this for the panel's own dual sliders.
+    sl.setAttribute("aria-label", label);
     const out = document.createElement("span"); out.className = "beat-val"; out.textContent = fmt(val);
     sl.addEventListener("input", () => { const v = +sl.value; out.textContent = fmt(v); set(v); beatChanged(false); });
     row.append(nm, sl, out);
@@ -24676,6 +25126,7 @@
     const row = document.createElement("div"); row.className = "beat-row";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!val;
+    cb.setAttribute("aria-label", label);
     cb.addEventListener("change", () => { set(cb.checked); beatChanged(false); });
     row.append(nm, cb);
     return row;
@@ -24685,6 +25136,8 @@
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const lo = document.createElement("input"), hi = document.createElement("input");
     for (const f of [lo, hi]) { f.type = "number"; f.className = "beat-f"; f.min = 1; f.step = 10; }
+    lo.setAttribute("aria-label", label + " lowest frequency, Hz");
+    hi.setAttribute("aria-label", label + " highest frequency, Hz");
     lo.value = beatCfg.bands[b][0]; hi.value = beatCfg.bands[b][1];
     const dash = document.createElement("span"); dash.className = "beat-dash"; dash.textContent = "–";
     const commit = () => {
@@ -24811,6 +25264,12 @@
     uiHint.classList.remove("fading");
   }
   function setUiHidden(h, quiet) {
+    // Hiding the chrome display:none's every dialog, INCLUDING the four modal ones -- but the
+    // focus trap dlgModal installed is a document listener and knew nothing about it. With a trap
+    // armed on an invisible box, dlgFocusable finds nothing (it filters on offsetWidth/Height,
+    // both 0), takes its "no focusable children" branch and swallows every Tab: the keyboard went
+    // dead page-wide with nothing on screen to explain it. Release the trap on the way down.
+    if (h) dlgRelease();
     document.body.classList.toggle("ui-hidden", h);
     if (h && !quiet) flashUiHint(); else hideUiHint();
   }
@@ -24820,6 +25279,24 @@
   }
 
   window.addEventListener("keydown", e => {
+    // A MODIFIED KEY IS A BROWSER SHORTCUT, NOT OURS. e.key is "f" for both f and Ctrl+F, so
+    // without this Ctrl+F (find) threw the page into fullscreen and Ctrl+S (save) muted the beat
+    // reaction while the save dialog opened. e.repeat likewise: holding a key toggled at the OS
+    // repeat rate.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    // ESCAPE IS HANDLED FIRST, ABOVE the typing guard below. That guard exists to stop m/f/s/h
+    // eating characters in a field -- it has no business swallowing Escape, and it did: tab onto
+    // any checkbox in the focus-trapped Restore dialog (six of them) and Escape stopped working,
+    // leaving a modal you could only leave by finding the × with more Tab presses.
+    // Keep this list complete — the gallery and the sync nudge were both missing from it for a
+    // release, closable by mouse only, which is the same way the .pal-close and ui-hidden
+    // selector lists have each rotted. tools/uiprobe.js asserts every dialog id turns up here.
+    if (e.key === "Escape") {
+      closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick();
+      closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial();
+      cardWanted = false; cardOpen(false);
+      return;
+    }
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
@@ -24828,11 +25305,6 @@
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    // Escape closes EVERY dialog. Keep this list complete — the gallery and the sync nudge
-    // were both missing from it for a release, closable by mouse only, which is the same way
-    // the .pal-close and ui-hidden selector lists have each rotted. tools/uiprobe.js now
-    // asserts that every dialog id turns up here.
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----
@@ -25062,7 +25534,7 @@
     const e = EFFECTS[effect];
     const rel = HELP.sliders.filter(s => e.helpTags.includes(s.w));   // which slider blurbs apply to this effect
     let html = HELP_HEAD;
-    html += '<h2 id="help-title">burnTheWeb — ' + e.name + "</h2><p>" + e.help + "</p>";
+    html += '<h2 id="help-title">Kicktro — ' + e.name + "</h2><p>" + e.help + "</p>";
     html += '<p class="help-intro">' + HELP.intro + '</p><dl class="help-cols">';
     for (const s of rel) html += "<dt>" + s.n + "</dt><dd>" + s.t + "</dd>";
     html += "</dl></div>";
@@ -25156,7 +25628,7 @@
     if (vn) vn.textContent = "v" + CONFIG.version;
     if (vl) {
       vl.href = CONFIG.changelogUrl;
-      vl.title = "burnTheWeb v" + CONFIG.version + " — what changed in this and previous releases";
+      vl.title = "Kicktro v" + CONFIG.version + " — what changed in this and previous releases";
       vl.addEventListener("click", () => track("release_notes_open", { version: CONFIG.version }));
     }
   }
@@ -25186,7 +25658,7 @@
   // Shown only to users who haven't successfully started an audio source, at three
   // growing gaps of *active* (tab-visible) time — 30s, then 5min, then 1h — and
   // never more than three times, ever. State persists across reloads.
-  const SYNC_KEY = "burnTheWeb.sync.v1";
+  const SYNC_KEY = "burnTheWeb.sync.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   const SYNC_DELAYS = CONFIG.sync.delays;
   let syncState = { shows: 0, sinceLast: 0, used: false };
   try {
@@ -25269,7 +25741,7 @@
   //   * Its "seen" flag is its OWN localStorage key, not scene data — the same treatment
   //     the credits and scene-banner preferences get. It is a property of this browser,
   //     not of a scene, and must not ride in a share link or a backup.
-  const TUT_KEY = "burnTheWeb.tutorial.v1";
+  const TUT_KEY = "burnTheWeb.tutorial.v1";   // FROZEN PREFIX: the old app name. Renaming the key orphans existing data.
   // Wall-clock backstop for the credits gate, in seconds of VISIBLE time. `?credits=600`
   // parks the credits deliberately and a paused scene stops the rendered clock dead, so
   // without this the tutorial could simply never arrive.
@@ -25354,7 +25826,7 @@
     { head: "A visual that runs in your browser", art: TUT_ART.canvas,
       // The count is real and worth keeping real — it is the one number here that dates the
       // tour. `node -e` over the EFFECTS literal in the built file gives it.
-      body: "burnTheWeb is a demoscene visual — fifty-odd effects (fractals, plasmas, tunnels, "
+      body: "Kicktro is a demoscene visual — fifty-odd effects (fractals, plasmas, tunnels, "
         + "raymarched solids, flocking birds, slime moulds) all sharing one palette, glow and "
         + "beat-reactive pipeline. Nothing is installed and nothing is uploaded; the whole thing is "
         + "this one page. <b>Click the picture to pause it</b>, and click again to carry on." },
@@ -25365,7 +25837,7 @@
     // answer to a question already asked. The audio nudge follows ~30s later as the actual
     // call to action, so this step deliberately explains rather than asks.
     { head: "It reacts to your music", art: TUT_ART.music,
-      body: "The thing to know first: burnTheWeb <b>pulses in time with whatever you are listening "
+      body: "The thing to know first: Kicktro <b>pulses in time with whatever you are listening "
         + "to</b>. Turn on an audio source from <b>☰ → Audio</b> — <b>Capture</b> shares the sound of a "
         + "tab (Spotify, YouTube), or use the <b>microphone</b> — and it is split into low, mid and high "
         + "beats. Any slider can then be armed with its <b>L / M / H</b> chips (a couple of steps from "
@@ -25465,6 +25937,14 @@
       .map((_, i) => '<span class="tut-dot' + (i <= tutStep ? " on" : "") + '"></span>').join("");
     // setOff, not a bare class: `.off` dims but leaves the tab stop and the Enter key live
     // (see boot-globals). Back on step 1 has to be genuinely dead, not just grey.
+    // MOVE FOCUS BEFORE disabling or hiding whatever holds it. Back going dead on step 1 and
+    // Skip disappearing on the last step both dropped document.activeElement to <body> when the
+    // key that triggered them was pressed on that very button — the modal's Tab handler pulls it
+    // back on the next Tab, so it self-heals, but the control vanishes from under your finger.
+    // Next is the safe target: it exists on every step and is never disabled.
+    const losing = (tutStep === 0 && document.activeElement === el("tut-back")) ||
+                   (last && document.activeElement === el("tut-skip"));
+    if (losing) el("tut-next").focus();
     setOff(el("tut-back"), tutStep === 0);
     el("tut-next").textContent = last ? "Done" : "Next →";
     el("tut-skip").hidden = last;              // nothing left to skip on the last step
@@ -25819,6 +26299,27 @@
   window.addEventListener("keydown", e => {
     if (e.key === "Escape" && menubarOpen()) menubarClose();
   });
+ }
+
+  // DOUBLE requestAnimationFrame: the first callback runs before the next paint, the second
+  // runs before the one after -- so by the time it fires, the splash above has been on screen
+  // once. A single rAF is not enough; it runs BEFORE that first paint, and we would block the
+  // thread again with nothing shown.
+  //
+  // The setTimeout is not belt-and-braces, it is the BACKGROUND TAB case: rAF does not fire in
+  // a hidden tab, so without it a page opened in a background tab would never start at all.
+  // Whichever gets there first wins; `started` makes sure that is exactly once.
+  let started = false;
+  const go = () => {
+    if (started) return;
+    started = true;
+    try { boot(); } finally {
+      const b = document.getElementById("boot");
+      if (b) b.remove();          // ...even if boot threw: the crash overlay must not be hidden behind this
+    }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(go));
+  setTimeout(go, 400);
 })();
 </script>
 </body>
