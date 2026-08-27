@@ -386,7 +386,17 @@
         // nowhere to put one (sceneBlob has no name field), so only this path gets a real one.
         if (!got || !got.json || !installShared(parse(got.json), got.name)) return;
         resize();
+        // The SAME stage/apply pair the ?z= branch below runs, and for the same reason: palette
+        // and the filter chain are per-layer, held live in the paletteSel/activeIds singletons
+        // for the SELECTED layer only. installStack writes L.palette/L.filters on the item
+        // objects and never touches those globals, and loadExtra deliberately does not either --
+        // so without these two calls the shared scene rendered in the RECIPIENT'S palette and
+        // filters, and then setEffect's persist() -> captureLayerExtras wrote the recipient's
+        // values back onto the shared layer, which adoptSharedScene saved. #c= is the link a
+        // signed-in Share mints, so this was the default path.
+        stageLayerExtras(stack[stackSel]);
         setEffect(+effectSel.value, false);
+        applyLayerExtras(stack[stackSel]);
         adoptSharedScene();
       });
       return;

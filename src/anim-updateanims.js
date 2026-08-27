@@ -80,7 +80,11 @@
     // blurring; this fills it in for real.
     // One choke point for all three point effects on purpose — the `stamp` hook, the 2D
     // chaos game and the tetrahedron branch all take `n` from here.
-    const n = Math.round(cfg.points * zoomPoints());
+    // Clamped to CONFIG.tuning.pointCapHard, and NOT because any legitimate setting gets near it
+    // -- see the note there. This is the one place every point effect's loop bound is decided, so
+    // it is the one place the bound has to be finite whatever a payload says.
+    const nRaw = Math.round(cfg.points * zoomPoints());
+    const n = nRaw > 0 ? Math.min(POINT_CAP_HARD, nRaw) : 0;   // `> 0` also catches NaN and -Inf
     // each layer/body re-seeds the PRNG below, so no global reset is needed here.
 
     if (EFFECTS[L.fx].stamp) {

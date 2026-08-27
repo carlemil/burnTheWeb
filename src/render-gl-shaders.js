@@ -796,7 +796,7 @@
           vec2 h = vec2(1.0, -1.0) * 0.5773;
           vec3 nrm = normalize(h.xyy * apolloDE(p + h.xyy * e, uScale, it) + h.yyx * apolloDE(p + h.yyx * e, uScale, it) + h.yxy * apolloDE(p + h.yxy * e, uScale, it) + h.xxx * apolloDE(p + h.xxx * e, uScale, it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65 * dif) * smoothstep(9.0, 0.6, t);
+          heat = (0.20 + 0.65 * dif) * (1.0 - smoothstep(0.6, 9.0, t));
           break;
         }
         t += d * 0.85;
@@ -842,7 +842,7 @@
           vec2 h = vec2(1.0, -1.0) * 0.5773;
           vec3 nrm = normalize(h.xyy * mboxDE(p + h.xyy * e, uScale, max(0.5, uFold), it) + h.yyx * mboxDE(p + h.yyx * e, uScale, max(0.5, uFold), it) + h.yxy * mboxDE(p + h.yxy * e, uScale, max(0.5, uFold), it) + h.xxx * mboxDE(p + h.xxx * e, uScale, max(0.5, uFold), it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65 * dif) * smoothstep(20.0, 0.6, t);
+          heat = (0.20 + 0.65 * dif) * (1.0 - smoothstep(0.6, 20.0, t));
           break;
         }
         t += d * 0.85;
@@ -880,7 +880,7 @@
           vec2 h = vec2(1.0, -1.0) * 0.5773;
           vec3 nrm = normalize(h.xyy * gyroidDE(p + h.xyy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yyx * gyroidDE(p + h.yyx * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.yxy * gyroidDE(p + h.yxy * e, max(0.4, uFreq), uThick, uWarp, uTime) + h.xxx * gyroidDE(p + h.xxx * e, max(0.4, uFreq), uThick, uWarp, uTime));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65 * dif) * smoothstep(12.0, 0.6, t);
+          heat = (0.20 + 0.65 * dif) * (1.0 - smoothstep(0.6, 12.0, t));
           break;
         }
         t += d * 0.85;
@@ -990,7 +990,7 @@
       }
       float heat;
       if (hit < 0.0) {
-        heat = 0.06 + 0.16 * smoothstep(0.4, -0.1, uv.y);   // sky, brighter toward the horizon
+        heat = 0.06 + 0.16 * (1.0 - smoothstep(-0.1, 0.4, uv.y));   // sky, brighter toward the horizon
       } else {
         vec3 p = ro + rd * hit;
         float e = 0.02 * max(1.0, hit);
@@ -1130,7 +1130,7 @@
                            + e.yxy*map(p + e.yxy) + e.xxx*map(p + e.xxx));
           float dif = max(0.0, dot(n, L));
           float rim = pow(max(0.0, 1.0 - dot(n, -rd)), 2.5);   // bright silhouette edges
-          heat = (0.18 + 0.72*dif + uRim*rim) * smoothstep(7.0, 1.5, t);   // ...fading with depth
+          heat = (0.18 + 0.72*dif + uRim*rim) * (1.0 - smoothstep(1.5, 7.0, t));   // ...fading with depth
           break;
         }
         t += d;
@@ -1190,7 +1190,7 @@
       float hp = h21(lg + 3.3);
       vec2 fp = fract(p*3.0) - (0.25 + 0.5*h22(lg + 9.9));
       float blink = 0.5 + 0.5*sin(t*(0.3 + 0.5*hp) + hp*6.2831853);
-      heat = max(heat, (1.0 - lane) * step(0.93, hp) * blink * smoothstep(0.11, 0.0, length(fp)));
+      heat = max(heat, (1.0 - lane) * step(0.93, hp) * blink * (1.0 - smoothstep(0.0, 0.11, length(fp))));
       if (uSpot > 0.001) {
         float ru = uSpot*0.22;                             // umbra radius, screen halves
         float d = length(q);
@@ -1792,7 +1792,10 @@
         float fade = 1.0/(1.0 + t*t*0.0016);
         float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
         float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
-        float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+        // Upper edge floored 0.02 ABOVE uFoam, mirroring oceanCPU's Math.max(0.02, ...) denominator.
+        // Foam reaches exactly 1.0, where min(0.995, 1.22) lands BELOW the lower edge -- undefined
+        // in GLSL, and it snapped the sea to solid white in one 0.01 step while the CPU kept ramping.
+        float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.22)), hh*0.65 + slope*0.55);
         return (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
       }
       vec3 n = sdfNormal(p);
@@ -2250,7 +2253,7 @@
               h.xxx*qjDE(qjLift(p + h.xxx*e, uSlice, kc, ks), c, it));
             float dif = max(0.0, dot(nrm, normalize(vec3(0.55, 0.75, -0.5))));
             float rim = pow(1.0 - abs(dot(nrm, -rd)), 2.0);
-            heat = (0.20 + 0.72*dif + uGlow*0.55*rim)*smoothstep(5.0, 1.6, t);
+            heat = (0.20 + 0.72*dif + uGlow*0.55*rim)*(1.0 - smoothstep(1.6, 5.0, t));
             break;
           }
           t += d;
@@ -2449,7 +2452,7 @@
           float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
           float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
           // Foam rides the CRESTS: high water and a steep face at once, which is where it breaks.
-          float foam = smoothstep(uFoam, min(0.995, uFoam + 0.22), hh*0.65 + slope*0.55);
+          float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.22)), hh*0.65 + slope*0.55);
           heat = (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
           if (uHasBelow > 0.5 && uReflect > 0.0){
             // Fresnel: water is a mirror at a glancing angle and nearly clear straight down,
@@ -2583,7 +2586,9 @@
         float size = mix(0.04, 0.16, d);
         float blink = 1.0 - tw*0.5*(0.5 + 0.5*sin(t*(3.0 + 5.0*h21s(cell + 2.2)) + h21s(cell + 5.5)*6.2831853));
         float fade = smoothstep(0.0, 0.2, d)*(1.0 - smoothstep(0.85, 1.0, d));
-        heat = max(heat, g * blink * fade * smoothstep(size, 0.0, dist) * mix(0.45, 1.0, d));
+        // 1.0 - smoothstep(lo, hi, x), never smoothstep(hi, lo, x): reversed edges are undefined
+        // in GLSL and this GPU returns 0, which zeroed every star and rendered the whole effect black.
+        heat = max(heat, g * blink * fade * (1.0 - smoothstep(0.0, size, dist)) * mix(0.45, 1.0, d));
       }
       return heat;
     }
@@ -2681,7 +2686,7 @@
           vec3 nrm = normalize(h.xyy*mengerDE(p + h.xyy*e, it) + h.yyx*mengerDE(p + h.yyx*e, it)
                              + h.yxy*mengerDE(p + h.yxy*e, it) + h.xxx*mengerDE(p + h.xxx*e, it));
           float dif = max(0.0, dot(nrm, normalize(vec3(0.5, 0.75, -0.4))));
-          heat = (0.20 + 0.65*dif)*smoothstep(9.0, 1.0, t) + uGlow*0.25*smoothstep(3.0, 0.4, t);
+          heat = (0.20 + 0.65*dif)*(1.0 - smoothstep(1.0, 9.0, t)) + uGlow*0.25*(1.0 - smoothstep(0.4, 3.0, t));
           break;
         }
         t += d;
@@ -2728,7 +2733,7 @@
       vec2 cell = floor(vUv*14.0);
       float g = step(0.82, rh(cell + uSalt));
       vec2 f = fract(vUv*14.0) - 0.5;
-      float blob = g*smoothstep(0.30, 0.05, length(f));
+      float blob = g*(1.0 - smoothstep(0.05, 0.30, length(f)));
       o = vec4(1.0 - blob*0.5, blob*0.25, 0.0, 1.0);
     }`;
     const FS_RDSHOW = `#version 300 es

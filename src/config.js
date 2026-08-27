@@ -205,6 +205,19 @@
       // 0.2 ms/frame at zoom 1, 4.4 ms at zoom 4 uncapped — which four stacked point
       // layers at max Points would have turned into a dropped frame all on its own.
       zoomPointCap: 8,
+      // ABSOLUTE ceiling on stamps per tick, applied at stampTick's single choke point. This is
+      // a SAFETY bound on a loop counter, not a tuning knob -- the largest `points` max any
+      // effect declares is 60000, and zoomPointCap multiplies that to 480k, so nothing shipped
+      // and nothing a user can reach through the range editor comes near it.
+      //
+      // It exists because `points` arrives from ATTACKER-AUTHORED JSON. mergeState does no
+      // bounds check (the DOM clamp in loadState is the net) and bandOf reads L.state directly
+      // for every NON-selected layer, so a share link, a gallery scene or a cloud profile
+      // carrying state:{points:[2e9,2e9]} on layer 2 reached this loop bound untouched and wedged
+      // the tab on the first rendered frame. Worse for the routes that persist before reloading:
+      // applyRestore had already written localStorage, so it re-hung on every later visit and the
+      // only way out was clearing site data.
+      pointCapHard: 1000000,
     },
   };
   // ==== end CONFIG ==== (probes slice `const CONFIG =` … this line; keep it)

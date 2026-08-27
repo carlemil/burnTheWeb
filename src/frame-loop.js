@@ -215,6 +215,13 @@
     const step = 1 / cfg.burn;
     let ticks = 0;
     while (acc >= step && ticks < 4) { acc -= step; ticks++; }
+    // DROP THE UNDRAINABLE DEBT. dt is clamped to 0.25s and added unconditionally, but at most
+    // four ticks ever come back out -- so whenever dt*cfg.burn > 4 (a 30fps frame at the Fire
+    // filter's shipped burn of 165 banks 5.5) the accumulator grows without bound. Once it has
+    // banked a few seconds the loop stays pinned at 4 ticks long AFTER the frame rate recovers,
+    // and the fire runs at its catch-up rate indefinitely: "the flames are permanently too fast
+    // after the tab was busy". Only setEffect ever cleared it.
+    if (acc > step * 4) acc = step * 4;
     // The Canvas2D fallback renders ONE item: every CPU mirror writes every cell with a
     // plain assignment, so a second mirror would simply erase the first, and each extra
     // mirror is a full per-pixel JS loop — an N× multiplier on the dominant cost of the

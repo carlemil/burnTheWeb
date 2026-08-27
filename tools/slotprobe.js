@@ -40,9 +40,10 @@ const glTex = { heatL: ["h0", "h1", "h2", "h3"], palL: ["p0", "p1", "p2", "p3"] 
 const glFbo = { heatL: ["f0", "f1", "f2", "f3"] };
 let layerCur = [0, 1, 0, 1, 9, 9, 9, 9];      // live 0-3, outgoing 4-7
 let layerPal = ["m0", "m1", "m2", "m3"];
-const api = new Function("glTex", "glFbo", "layerCur", "layerPal",
+const STACK_MAX = 4;                          // dropSlotState reads it to find the live/outgoing seam
+const api = new Function("glTex", "glFbo", "layerCur", "layerPal", "STACK_MAX",
   slice("const SLOT_ARRAYS", "function layerPalIndex(")
-  + "\nreturn { move: moveSlotState, drop: dropSlotState };")(glTex, glFbo, layerCur, layerPal);
+  + "\nreturn { move: moveSlotState, drop: dropSlotState };")(glTex, glFbo, layerCur, layerPal, STACK_MAX);
 
 console.log("--- per-slot render state follows its layer (" + file + ")\n");
 
@@ -78,6 +79,16 @@ console.log("--- per-slot render state follows its layer (" + file + ")\n");
   ok("...and the removed layer's buffer is kept, not dropped on the floor",
      glTex.heatL.indexOf(before[1]) === glTex.heatL.length - 1, glTex.heatL.join(","));
   ok("...so the pool still owns all four", new Set(glTex.heatL).size === 4, glTex.heatL.join(","));
+  // THE OUTGOING HALF SURVIVES A DELETE TOO, and this is the half that was wrong. A reorder is a
+  // remove plus an insert, both below STACK_MAX, so the shifts cancel and slots 4..7 land back
+  // where they were -- which is why the move assertion above passed all along. A delete is a
+  // remove with no matching insert below the seam: the old code push()ed the freed buffer past
+  // the outgoing half, so slots 4..7 were left shifted down by one and the outgoing side of a
+  // live crossfade rendered another layer's retained heat and ping-pong parity.
+  ok("...and the OUTGOING half is untouched by a delete", layerCur.slice(4).join(",") === "9,9,9,9",
+     layerCur.slice(4).join(","));
+  ok("...with the freed slot parked at the end of the LIVE half, not past it",
+     layerCur.length === 8, "len " + layerCur.length);
 }
 // ---- the wiring --------------------------------------------------------------------------
 {

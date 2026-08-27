@@ -274,8 +274,15 @@
       // A refusal is an answer too. Without this the default mic arm would fire again on
       // every single load, and a blocked site answers the prompt instantly and invisibly —
       // so it would be a silent failed request forever, with the error line to match.
-      audio.settled = true;
-      audioMsg(err && err.name === "NotAllowedError" ? "Permission denied." : "Couldn’t start audio.");
+      // ONLY A REFUSAL SETTLES IT. `settled` persists as audio:"off" and restore() then never
+      // re-arms the mic on ANY future visit, so it has to mean "the user answered the question".
+      // A refusal is an answer; a device being busy is not. NotReadableError (the mic held by
+      // Teams/Discord -- routine on Windows) and NotFoundError (no capture device attached yet)
+      // used to settle it too, so opening the page during a call permanently switched off the
+      // default arm for the feature nobody finds unaided.
+      const refused = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
+      if (refused) audio.settled = true;
+      audioMsg(refused ? "Permission denied." : "Couldn’t start audio.");
       persist();
     }
   }

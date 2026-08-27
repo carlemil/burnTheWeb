@@ -20,14 +20,23 @@
   // Scatter 1. See the note where it is built.
   const SCAT_CW = 13, SCAT_CH = 8, SCAT_BITE = 0.85;
   let phCount = 2500, phSense = 9, phTurn = 0.5, phDecay = 0.88, phSpeed = 1, phScatter = 0.3, phSize = 1, phAgents = null;
+  // GROW AND SHRINK IN PLACE, like ensureSolids/ensureTetras -- never reallocate and re-seed.
+  // Agents is an ordinary drift-able dual with step 50, so spreading its band or arming a beat
+  // chip lands Math.round() on a different count most ticks. Re-seeding on every length change
+  // teleported all 2500 agents back to their hashed start positions several times a second, so
+  // the network could never form: it read as a physics bug rather than an allocation one.
   function ensurePhy(P, n, salt) {
-    if (!P.a || P.a.length !== n * 3) {
+    const seed = (a, i) => {
+      const h = shHash21(i * 3.7 + salt, i * 1.3 + salt * 2.1);
+      const h2 = shHash21(i * 9.1 + salt * 5, i * 0.7 + salt);
+      a[i * 3] = h; a[i * 3 + 1] = h2; a[i * 3 + 2] = h * 6.2831;
+    };
+    if (!P.a) { P.a = new Float32Array(n * 3); for (let i = 0; i < n; i++) seed(P.a, i); }
+    else if (P.a.length !== n * 3) {
+      const old = P.a, keep = Math.min(old.length, n * 3);
       P.a = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) {
-        const h = shHash21(i * 3.7 + salt, i * 1.3 + salt * 2.1);
-        const h2 = shHash21(i * 9.1 + salt * 5, i * 0.7 + salt);
-        P.a[i * 3] = h; P.a[i * 3 + 1] = h2; P.a[i * 3 + 2] = h * 6.2831;
-      }
+      P.a.set(old.subarray(0, keep));                       // survivors keep their position + heading
+      for (let i = keep / 3 | 0; i < n; i++) seed(P.a, i);   // only the NEW agents are placed
     }
     // THE TRAIL MAP HAS ITS OWN FIXED RESOLUTION, not the heat grid's. At full resolution it
     // is ~1.4M cells, and stamping the lit ones meant millions of plot() calls against an
@@ -144,14 +153,20 @@
   // difference between this and dragging points along a plain noise gradient, which drains.
   const CURL_MAX = 8000;
   let cuCount = 900, cuScale = 2.2, cuSpeed = 1, cuLife = 2.5, cuField = null;
+  // Grows and shrinks IN PLACE, for the reason spelled out above ensurePhy: Count is a
+  // drift-able dual, and re-seeding on every length change restarts every particle mid-flight.
   function ensureCurl(C, n, salt) {
-    if (!C.p || C.p.length !== n * 3) {
+    const seed = (p, i) => {
+      p[i * 3] = shHash21(i * 2.1 + salt, i * 5.7 + salt);
+      p[i * 3 + 1] = shHash21(i * 7.3 + salt * 3, i * 1.9 + salt);
+      p[i * 3 + 2] = shHash21(i * 4.4 + salt, i * 8.1) * cuLife;
+    };
+    if (!C.p) { C.p = new Float32Array(n * 3); for (let i = 0; i < n; i++) seed(C.p, i); }
+    else if (C.p.length !== n * 3) {
+      const old = C.p, keep = Math.min(old.length, n * 3);
       C.p = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) {
-        C.p[i * 3] = shHash21(i * 2.1 + salt, i * 5.7 + salt);
-        C.p[i * 3 + 1] = shHash21(i * 7.3 + salt * 3, i * 1.9 + salt);
-        C.p[i * 3 + 2] = shHash21(i * 4.4 + salt, i * 8.1) * cuLife;
-      }
+      C.p.set(old.subarray(0, keep));
+      for (let i = keep / 3 | 0; i < n; i++) seed(C.p, i);
     }
   }
   function installCurl(L) {
@@ -1116,6 +1131,12 @@
     }
   }
   function ribbonCPU(dt) {
+    // EVERY CPU MIRROR WRITES EVERY CELL -- the fallback MAX-merges into a buffer nothing else
+    // clears on the shader path, so a mirror that touches only the pixels it covers leaves the
+    // rest holding the previous frame. rbTri fills triangles, so without this the bands MAX onto
+    // their own history and within seconds the frame is a saturated smear of every position a
+    // ribbon has ever occupied.
+    fire.fill(0);
     ribbonBuild(dt);
     for (let i = 0; i + 3 <= glRibCount; i += 3) {
       const a = i * 4, b = (i + 1) * 4, c = (i + 2) * 4;

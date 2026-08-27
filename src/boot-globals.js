@@ -147,6 +147,9 @@
   // because the zoom slider's max is only a default the range editor can raise, and the
   // stacking multiplies it — up to 4 layers × ~2× for the Objects copies on top of this.
   const zoomPoints = () => zoom <= 1 ? 1 : Math.min(zoom * zoom, CONFIG.tuning.zoomPointCap);
+  // The absolute stamp-count ceiling stampTick clamps to. Declared beside zoomPoints because the
+  // two are applied on the same line; see CONFIG.tuning.pointCapHard for why it exists.
+  const POINT_CAP_HARD = CONFIG.tuning.pointCapHard;
   // Additive glow strength. Was a hardcoded 0.35 in FS_COMP and its CPU twin;
   // hoisted so the Bloom filter can drive it (0 = no glow). BLOOM_DEFAULT is what
   // every scene was authored under, so it stays the default everywhere.

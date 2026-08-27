@@ -353,7 +353,13 @@
       float s = sin(0.4), co = cos(0.4);
       vec2 p = mat2(co, -s, s, co) * (vUv * uSize) / max(1.5, uDot);
       float d = length(fract(p) - 0.5) * 2.0;
-      float cover = smoothstep(d + 0.35, d - 0.35, sqrt(l) * 1.25);
+      // Dot radius IS the brightness, so the ramp runs along 'd' with the edges placed at the
+      // brightness -- a brighter cell keeps more of itself lit and the dot grows, which is what
+      // the help text promises. Written 1.0 - smoothstep(lo, hi, x): the old form put the edges
+      // the other way round on both counts, which is undefined in GLSL (edge0 >= edge1, this GPU
+      // returns 0) AND inverted, so bright cells drew the BIGGEST black dots.
+      float b = sqrt(l) * 1.25;
+      float cover = 1.0 - smoothstep(b - 0.35, b + 0.35, d);
       o = vec4(mix(c, c * cover, clamp(uAmount, 0.0, 1.0)), 1.0);
     }`;
     // Solarize: invert everything above a luminance level, blended in by uAmount.
@@ -460,11 +466,15 @@
       float asp = uSize.x/uSize.y;
       vec2 d = vUv - uCenter; d.x *= asp;
       float r = length(d);
-      float inside = smoothstep(uRad, uRad*0.85, r);
+      float inside = 1.0 - smoothstep(uRad*0.85, uRad, r);   // 1 in the bubble, 0 outside it
       float m = mix(1.0, 1.0/uMag, inside);           // compress sampling = magnify
       vec2 p = uCenter + d*m/vec2(asp, 1.0);
       vec3 col = texture(uSrc, clamp(p, 0.0, 1.0)).rgb;
-      col *= 1.0 + 0.15*smoothstep(uRad, uRad*0.92, r)*step(r, uRad);   // rim glint
+      // Brightens the bubble's BODY by 15% and eases that off over the outer 8% -- which is not
+      // what "rim glint" describes, but it is what has always shipped, so the value is preserved
+      // exactly and only the undefined edge order is fixed. Swapping it to a true rim highlight
+      // is a look change, not a bug fix.
+      col *= 1.0 + 0.15*(1.0 - smoothstep(uRad*0.92, uRad, r))*step(r, uRad);
       o = vec4(col, 1.0);
     }`;
     // Droste zoom: the picture swallowing itself. Log-polar tiling — radius repeats in
@@ -1343,20 +1353,29 @@
   // Moving the state rather than clearing it is what keeps a layer's trails ITS OWN across a
   // drag; clearing would swap one wrong picture for a blank one.
   const SLOT_ARRAYS = () => [glTex.heatL, glFbo.heatL, glTex.palL, layerCur, layerPal];
+  // THESE ARRAYS ARE STACK_MAX * 2 LONG -- live 0..STACK_MAX-1, the outgoing (transition) scene
+  // STACK_MAX..end. Only the live half ever moves; the outgoing half is a detached snapshot of a
+  // scene nobody is editing, and renderStackColor(plive, ..., STACK_MAX) reads it by slot.
   function moveSlotState(from, to) {
-    // Only the LIVE half (0..STACK_MAX-1). The outgoing half is a detached snapshot of a
-    // scene that is not being edited, and its slots are not what just moved.
     for (const a of SLOT_ARRAYS()) {
       if (!a || from >= a.length) continue;
+      // A remove plus an insert, both BELOW STACK_MAX, cancel out for every index above them --
+      // so the outgoing half is already left where it was. Nothing more to do here.
       a.splice(to, 0, a.splice(from, 1)[0]);
     }
   }
   function dropSlotState(j) {
-    // The removed layer's buffers go to the BACK rather than being thrown away: they are GL
-    // objects the pool still owns, and every survivor keeps the one it was using.
+    // The removed layer's buffers go to the BACK OF THE LIVE HALF rather than being thrown away:
+    // they are GL objects the pool still owns, and every survivor keeps the one it was using.
+    //
+    // Re-inserting at STACK_MAX-1, not push(). A push sends it past the outgoing half, so the
+    // remove shifted slots STACK_MAX..end down by one and never shifted them back: delete a layer
+    // during a 0.45-0.9s preset blend and the OUTGOING half of that blend renders another layer's
+    // retained heat, palette LUT and ping-pong parity for the rest of the transition.
     for (const a of SLOT_ARRAYS()) {
       if (!a || j >= a.length) continue;
-      a.push(a.splice(j, 1)[0]);
+      const at = Math.min(STACK_MAX - 1, a.length - 1);
+      a.splice(at, 0, a.splice(j, 1)[0]);
     }
   }
   function layerPalIndex(L) {
@@ -2199,8 +2218,18 @@
     // the same heavy blob -- worse than the missing glyphs, because they all measure the same.
     // A glyph whose coverage is EXACTLY the missing-character box's is that box.
     const keep = chars.map((_, i) => i).filter(i => cov[i] > 1e-6 && Math.abs(cov[i] - tofuCov) > 1e-9);
-    if (keep.length < 8) return setIdx === 0 ? buildAsciiAtlas0(chars, cov, chars.map((_, i) => i), font, G, cv)
-                                             : buildAsciiAtlas(0);
+    // Too few usable glyphs (a font with no Georgian / no Arabic / no Japanese) -- fall back to
+    // Latin. RECORD THE SET THE USER PICKED, not the one that was built: ensureAsciiAtlas compares
+    // asciiAtlasSet against `want`, so stamping 0 here left the two permanently unequal and the
+    // whole atlas -- two canvases, ~255 fillText calls, two getImageData reads over an 8160x32
+    // buffer, a sort and a texture upload -- was rebuilt on EVERY FRAME, for as long as the filter
+    // was on. It reads as the machine falling over, with nothing in the UI to explain it.
+    if (keep.length < 8) {
+      if (setIdx === 0) return buildAsciiAtlas0(chars, cov, chars.map((_, i) => i), font, G, cv);
+      const r = buildAsciiAtlas(0);
+      asciiAtlasSet = setIdx;
+      return r;
+    }
     keep.sort((a, b) => cov[a] - cov[b]);
     return buildAsciiAtlas0(chars, cov, keep, font, G, cv, setIdx);
   }
@@ -2280,7 +2309,15 @@
     // below produces glTex.scene instead — so the blend happens BEFORE the glow, and
     // the bloom follows the blend rather than a frozen glow fighting a live one.
     const tActive = transActive();
-    bindFbo(tActive ? glFbo.post[0] : glFbo.scene, fw, fh);
+    // WHICH post slot the zoom lands in has to depend on where the chain ENDED. glPostChain
+    // ping-pongs post[0]/post[1] and returns whichever it wrote last, so an ODD number of image
+    // filters leaves the result in post[0] -- and Bloom alone is odd, which is what DEFAULT_SCENE
+    // ships. Binding glFbo.post[0] while postSrc IS glTex.post[0] samples the draw's own colour
+    // attachment: a WebGL2 feedback loop, INVALID_OPERATION, and the draw is SILENTLY DROPPED.
+    // The zoom then did nothing for the whole blend -- the incoming scene drew at zoom 1 whatever
+    // its slider said and popped to the right size the frame the transition ended.
+    const tSlot = postSrc === glTex.post[0] ? 1 : 0;
+    bindFbo(tActive ? glFbo.post[tSlot] : glFbo.scene, fw, fh);
     gl.useProgram(glProg.zoom.p);
     bindTexUnit(0, postSrc); gl.uniform1i(glProg.zoom.u.uSrc, 0);
     gl.uniform1f(glProg.zoom.u.uZoom, z);
@@ -2288,7 +2325,7 @@
     if (tActive) {                    // B2) blend the frozen outgoing frame with this one
       bindFbo(glFbo.scene, fw, fh);
       gl.useProgram(glProg.trans.p);
-      bindTexUnit(0, glTex.post[0]); gl.uniform1i(glProg.trans.u.uNew, 0);
+      bindTexUnit(0, glTex.post[tSlot]); gl.uniform1i(glProg.trans.u.uNew, 0);
       bindTexUnit(1, glTex.prev); gl.uniform1i(glProg.trans.u.uPrev, 1);
       gl.uniform1f(glProg.trans.u.uT, trans.t);
       gl.uniform1i(glProg.trans.u.uMode, trans.mode);
@@ -2364,8 +2401,21 @@
   if (useGL) {
     canvas.addEventListener("webglcontextlost", e => { e.preventDefault(); glReady = false; }, false);
     canvas.addEventListener("webglcontextrestored", () => {
+      // initGL rebuilds every program, texture, FBO, VAO and VBO -- but two caches live OUT here
+      // and would survive with handles belonging to the dead context. Both are guarded by an
+      // equality test, so a stale value means the rebuild is SKIPPED rather than redone:
+      //   ribDepthW/H still match fw/fh  => the ribbon depth renderbuffer is never reallocated
+      //     and an invalid object is attached, so glFbo.layer goes incomplete for that draw and
+      //     Flying ribbons stops drawing while spewing GL errors every frame.
+      //   asciiAtlasSet still matches ascSet => ensureAsciiAtlas no-ops and glTex.ascii stays the
+      //     fresh 1x1 zero texture, so every ASCII cell renders as glyph 0 (black at ascmix 1).
+      // Reset here rather than in initGL: these are `let`s in a LATER slice, so initGL -- called
+      // from palette.js during startup -- would hit their temporal dead zone.
+      ribDepthRb = null; ribDepthW = ribDepthH = 0;
+      asciiAtlasSet = -1;
       try { initGL(); glResize(); glClearHeat(); paletteDirty = true; }   // re-upload palette to the fresh texture
-      catch (err) { glReady = false; }
+      // Swallowing this leaves the canvas dark forever with no way to find out why.
+      catch (err) { glReady = false; console.error("burnTheWeb: WebGL context restore failed", err); }
     }, false);
   }
 

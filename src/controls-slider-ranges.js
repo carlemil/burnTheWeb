@@ -168,6 +168,16 @@
       const single = SINGLE_KEYS.has(id.replace(/-(lo|hi)$/, ""));
       let mn = +v.min, mx = +v.max;
       if (!isFinite(mn) || !isFinite(mx) || mx <= mn) continue;
+      // A SANITY ENVELOPE, not a clamp back to the shipped bounds -- widening a slider is a real
+      // feature and a widened scene has to keep loading identically. `ranges` rides in the share
+      // URL, the bundle, the backup and the cloud profile, and applyBlob installs it FIRST, so
+      // its own ok() check then validates every value against whatever bounds the payload chose.
+      // Any finite pair used to be accepted. 100x the shipped span either side is far past any
+      // deliberate widening and still finite. CLAMPED rather than rejected so the scene loads.
+      const span = Math.max(1e-6, o.max - o.min), pad = span * 100;
+      const lim = (x) => Math.max(o.min - pad, Math.min(o.max + pad, x));
+      mn = lim(mn); mx = lim(mx);
+      if (mx <= mn) continue;
       // Widen a single control's stored bounds out to the integers so the grid stays whole.
       // FLOOR/CEIL, never round: widening can never re-clamp a value the scene already
       // stored, where rounding inward could.
