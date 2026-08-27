@@ -197,5 +197,64 @@ const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
   }
 }
 
+// ---- glassDE's BOUNDING SPHERE MUST ACTUALLY BOUND ---------------------------------------
+// The early-out returns the distance to a sphere of radius R around the local origin instead of
+// running the ball loop. If R is smaller than the furthest a ball centre can travel, a centre
+// sits OUTSIDE that sphere, the returned distance is too large, the marcher overshoots and the
+// balls come out with holes in them -- from one constant, with nothing on screen naming the
+// cause. The first draft used 2.0 against a true bound of 2.0322, which is why this derives the
+// number from the shader's own coefficients instead of trusting the literal.
+//
+// Each axis of ballAt is a sum of sinusoids, so its bound is the sum of their amplitudes.
+{
+  function topArgs(str) {
+    const out = []; let depth = 0, cur = "";
+    for (const ch of str) {
+      if (ch === "(") depth++;
+      else if (ch === ")") { if (depth === 0) break; depth--; }
+      else if (ch === "," && depth === 0) { out.push(cur); cur = ""; continue; }
+      cur += ch;
+    }
+    out.push(cur);
+    return out;
+  }
+  const fn = src.slice(src.indexOf("vec3 ballAt(int i, float t, vec2 salt)"));
+  const at = fn.indexOf("return vec3(") + "return vec3(".length;
+  const axes = topArgs(fn.slice(at));
+  ok("ballAt still has three axes to bound", axes.length === 3, axes.length + " found");
+  if (axes.length === 3) {
+    const amp = axes.map(x =>
+      [...x.matchAll(/([0-9]*\.?[0-9]+)\s*\*\s*(?:sin|cos)/g)]
+        .reduce((t, m) => t + parseFloat(m[1]), 0));
+    const bound = Math.sqrt(amp.reduce((t, v) => t + v * v, 0));
+    const lit = src.match(/length\(pl\) - \(([0-9]*\.?[0-9]+) \+ uGbRad\[g\]\)/);
+    // CONDITIONAL. There is no bounding sphere today -- one was written and reverted; see the
+    // note in glassDE for why. This does not demand one back. It guards the NEXT person to add
+    // one, which is the moment the radius can quietly be too small and punch holes in the balls.
+    if (!lit) ok("glassDE has no bounding sphere (deliberate) -- derived bound kept for when it returns",
+                 true, "any future R must be >= " + bound.toFixed(4));
+    if (lit) {
+      ok("glassDE has a bounding-sphere early-out", true, "R = " + lit[1]);
+      const R = parseFloat(lit[1]);
+      ok("...and R is at least ballAt's true reach", R >= bound,
+         "R = " + R + " vs derived " + bound.toFixed(4) + " (amplitudes " + amp.map(v => v.toFixed(2)).join(", ") + ")");
+      ok("...and not so loose that it culls nothing", R <= bound * 1.5,
+         "R = " + R + " vs " + (bound * 1.5).toFixed(3));
+    }
+  }
+  // The placement multiply must apply to the early-out too, or the marcher steps in local units
+  // through world space. CLAUDE.md calls this the easy one to miss: the early-out reads as a
+  // shortcut rather than as a distance.
+  const i0 = src.indexOf("vec2 glassDE(vec3 p)");
+  // Window has to reach past the early-out comment block to the multiply; -1 from indexOf is
+  // NOT the same as "before the branch" and must not be reported as it.
+  const de = src.slice(i0, i0 + 3000);
+  const gate = de.indexOf("gbb > 0.05"), mul = de.indexOf("dg*uGbPlace[g].w");
+  // The multiply itself is asserted either way -- dropping it is the classic placed-SDF bug.
+  ok("the placement multiply is present", mul >= 0, mul >= 0 ? "ok" : "MISSING -- placed-SDF bug");
+  if (gate >= 0) ok("...and still applies after the early-out", mul > gate,
+     mul > gate ? "ok" : "multiply sits before the branch");
+}
+
 console.log("\n" + passes + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

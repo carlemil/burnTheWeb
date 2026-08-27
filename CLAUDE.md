@@ -185,9 +185,39 @@ it renders unchanged.
     a wall-clock gate.
   - `vsCache` is a **`var` with no initialiser**, for the reason the next bullet gives.
 - **THE WORLD PROGRAM IS NEVER BUILT AT STARTUP.** The driver's backend optimises everything
-  `worldMap` can reach, not what a frame uses, and the cost compounds: ocean+glass links in
-  3.5 s, +solids+qjulia 25 s, all five **64 s** — synchronously, at boot, which is the hang
-  v1.37.0 shipped. (Not loop unrolling: rewriting every march bound as a uniform changed
+  `worldMap` can reach, not what a frame uses, and the cost compounds — synchronously, at boot,
+  which is the hang v1.37.0 shipped.
+  **MEASURED, cold cache, on the dev 4090** (`tools/worldlink-check.js`; the older 3.5/25/64 s
+  figures here predated the `W_GBN` and `#if` fixes and were never re-taken, so they were
+  understating it by half):
+
+  | combination | link | | combination | link |
+  |---|---|---|---|---|
+  | ocean only | 0.1 s | | glass+solids | 19.8 s |
+  | solids | 0.9 s | | glass+qjulia | 17.6 s |
+  | qjulia | 0.8 s | | glass+solids+qjulia | 47.6 s |
+  | vballs | 1.1 s | | glass+vballs | 28.5 s |
+  | solids+qjulia+vballs | 3.4 s | | glass+solids+vballs | 65.6 s |
+  | **glass alone** | **7.7 s** | | **all five** | **133.8 s** |
+
+  **GLASS IS THE WHOLE COST.** Every combination containing it is 7.7–134 s; every combination
+  without it is under 3.4 s. Anything that enlarges what `glassDE` or the glass material can
+  reach is paid sixteen times over, which is why **a second reflection bounce was costed
+  against this table and never attempted** — the combination it would target (glass alone) is
+  the one already at 7.7 s, and the bounce roughly doubles what the backend must inline.
+  `worldcompile-check` cannot see any of this: it compiles and deliberately never links.
+
+  **Two changes measured NOT to help, both reverted or left alone.** The ball loop bound (5→3)
+  moved the five-way by less than the run-to-run noise. A bounding sphere on `glassDE` — the
+  one CLAUDE.md used to list as missing — moved the sixteen-program total the WRONG way
+  (399 s → 472 s) and its frame benefit could not be demonstrated at all. Beware measuring that
+  benefit on the standalone Glass ball: `FS_GLASS` is analytic and never calls `glassDE`, so a
+  before/after there compares a shader to itself. Frame time has ~4× headroom anyway; link time
+  does not, so the trade was backwards.
+
+  **Run-to-run variation is large** — individual combinations swing ±15% and glass-bearing ones
+  further. Compare totals across a whole run, never single entries, and re-run before believing
+  a small movement in either direction. (Not loop unrolling: rewriting every march bound as a uniform changed
   nothing.) Two fixes, both needed. **`#if W_GB/W_SD/W_QJ/W_VB` gate every group** and
   `worldProgFor` assembles one program per COMBINATION, so two effects never pay for the other
   three; and the link is **asynchronous** via `KHR_parallel_shader_compile` —
@@ -245,6 +275,13 @@ it renders unchanged.
   `applyLayerExtras` repaints checkboxes from the incoming layer, so a freeze could capture a
   value another selection had just painted over and a tick silently unticked itself. The
   `worldChk` setter writes ONLY the selected block (`paintBlock` maintains the others).
+- **A reflected glass ball shows its MATERIAL but not the scene.** `shade0` — where a reflection
+  ray ends — used to return a flat lambert for glass, so Metal, Glass and Bubble came back as the
+  same featureless sphere and `uGbMat`/`uGbIor` were ignored one bounce out. It now does a
+  fresnel-weighted `skyOf(reflect(...))`, which is free: the normal is already computed for the
+  face term and `skyOf` touches no `worldMap`. Its environment is still the SKY, not the scene —
+  balls do not contain each other. That needs a second bounce; see the link table above for why
+  there is not one.
 - **Only the Glass ball traces secondary rays.** The others shade exactly as they do
   standalone; they are in the world to be SEEN in its reflections and to occlude it. Giving
   them reflection rays would double the trace for materials that never had one.
@@ -2127,7 +2164,8 @@ So, against the candidates that look obvious in the source:
 Hardware four times slower than this still holds 60 fps. Below that the bound is the SHADERS,
 not the JS — so if performance ever does matter, the work is in `FS_*` (the ocean march
 computing wave derivatives it discards, the doubled `pow` in `FS_OCEAN`/`FS_BULB`/`FS_BHOLE`,
-the missing bounding spheres on `glassDE`/`solidsDE`), never in the per-frame JS above.
+the missing bounding sphere on `solidsDE` — `glassDE` has one now, derived from `ballAt`'s
+amplitudes and asserted by `glassprobe`), never in the per-frame JS above.
 
 **A green logic probe is necessary, not sufficient**, for anything writing retained heat — drive a
 few hundred real frames and look at the screenshot.

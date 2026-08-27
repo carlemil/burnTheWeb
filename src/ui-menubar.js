@@ -68,7 +68,12 @@
     menuCloseFrom(depth);
     const p = document.createElement("div");
     p.className = "mb-panel";
-    p.setAttribute("role", "menu");
+    // GROUP, not a nested menu. role="menu" permits only menuitem/group/separator children,
+    // and these panels host adopted blocks -- the audio buttons, the resolution <select>, the
+    // whole cloud form -- which are none of those. Declaring "menu" made the tree invalid and
+    // told assistive tech to expect items it would never find. A group carries the same
+    // labelling and imposes no such contract.
+    p.setAttribute("role", "group");
     items.forEach(it => p.appendChild(menuItem(it, p, depth)));
     menubar.appendChild(p);
 
@@ -117,7 +122,11 @@
     const b = document.createElement("button");
     b.type = "button";
     b.className = "mb-item" + (it.sub ? " mb-sub" : "");
-    b.setAttribute("role", "menuitem");
+    // menuitemCHECKBOX for the ones that toggle, plain menuitem for the ones that act.
+    // A tick drawn as a text span is visible but says nothing to a screen reader -- the state
+    // has to be aria-checked on a role that admits it, and role="menuitem" does not.
+    b.setAttribute("role", it.check ? "menuitemcheckbox" : "menuitem");
+    if (it.check) b.setAttribute("aria-checked", it.check() ? "true" : "false");
     if (it.title) b.title = it.title;
     const lab = document.createElement("span");
     lab.className = "mb-lab";
@@ -127,6 +136,7 @@
       const t = document.createElement("span");
       t.className = "mb-tick";
       t.textContent = it.check() ? "✓" : "";
+      b.setAttribute("aria-checked", it.check() ? "true" : "false");
       b.appendChild(t);
     }
     if (it.sub) {
@@ -166,7 +176,11 @@
       b.addEventListener("click", e => {
         e.stopPropagation();
         if (it.run) it.run();
-        if (it.check) { b.querySelector(".mb-tick").textContent = it.check() ? "✓" : ""; }
+        if (it.check) {
+          const on = it.check();
+          b.querySelector(".mb-tick").textContent = on ? "✓" : "";
+          b.setAttribute("aria-checked", on ? "true" : "false");   // the tick alone is mute
+        }
         else if (!it.keep) menubarClose();
       });
     }
@@ -233,7 +247,8 @@
     if (first) first.focus();
   }
 
-  // Arrow-key navigation. The menu declares role="menu" / role="menuitem", so it has to
+  // Arrow-key navigation. The root declares role="menu" and its items menuitem /
+  // menuitemcheckbox, so it has to
   // behave like one — announcing a menu widget that only responds to the mouse is worse than
   // not announcing it at all. Delegated on #menubar, because the panels are created and
   // destroyed as you move between levels.

@@ -149,6 +149,7 @@ Each prints the `msedge` line to run; every line is PASS/FAIL on stderr.
 
 ```
 node tools/world-check.js <scratchdir> dev-index.html      # joining/leaving a shared world: 0 console errors
+node tools/worldlink-check.js <scratchdir> dev-index.html  # per-combination world LINK time (slow: minutes)
 node tools/flipcheck.js   <scratchdir> dev-index.html      # a Bloom layer lands the same way up as one without
 node tools/breakout-check.js <scratchdir> dev-index.html   # break-out box grid, drag, snap, ownership
 node tools/brkdrop-check.js  <scratchdir> dev-index.html   # a dropped box never lands off screen
@@ -163,6 +164,12 @@ node tools/author-check.js   <scratchdir> dev-index.html
 
 If you are short of time, `world-check` and `flipcheck` are the two that guard silent-rendering
 defects; the rest guard UI behaviour and fail loudly when run.
+
+`worldlink-check` is the slow one — it links all sixteen world programs and the total is minutes,
+not seconds (133.8 s of it is the five-way combination alone). Run it when you have touched
+`FS_WORLD`, `glassDE` or anything else `worldMap` can reach; skip it otherwise. It is the only
+thing that can see a link-time regression: `worldcompile-check` compiles and deliberately never
+links, and `startup-check.sh` cannot help because the world program is built lazily, not at boot.
 
 And the **world-shader compile check** — all sixteen `#if` combinations on the real GPU:
 

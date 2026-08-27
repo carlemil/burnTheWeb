@@ -325,12 +325,61 @@
       // and a reorder moves the items under it, not the rows. So this is a live index into
       // `stack`, not a snapshot that a rebuild could stale.
       const from = j;
-      const grab = document.createElement("div");
+      // THE REORDER COMMIT, shared by the pointer drag and the keyboard. It was inline in the
+      // drag's pointerup, which is why reordering was mouse-only: there was no way to reach it
+      // without a pointer. Every caller must pass `to` as an index into the array WITH the
+      // dragged item already removed -- splice-out then splice-in at `to` directly.
+      function reorderStack(from, to) {
+        // The SELECTED layer, held by identity. `stackSel` is a slot index, and a reorder moves
+        // layers between slots — so unless it is remapped to follow the item, the very next
+        // freezeItem(stack[stackSel]) writes the selected layer's live DOM into whichever layer
+        // slid into that slot, destroying one layer's settings and leaving two identical.
+        // Dragging a layer past the selected one was enough to do it.
+        const sel = stack[stackSel];
+        freezeItem(sel);         // its live block into its record, while the maps still point there
+        stack.splice(to, 0, stack.splice(from, 1)[0]);
+        moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
+        moveSlotState(from, to);  // ...and so do its retained heat and palette clock
+        movePopped(from, to);    // ...and so do its open pop-out boxes
+        stackSel = stack.indexOf(sel);
+        pointMaps(stackSel);     // the wiring follows it to its new block
+        thawItem(sel);
+        loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx); loadBtune(sel.fx);   // ...and that block's DOM
+        repaintAllBlocks();      // every other slot holds a different layer now
+        syncPopOwners();
+      }
+      // A BUTTON, not a div. Reordering was the one layer operation with no keyboard path at
+      // all: mute, delete, blend and tint became buttons earlier, but this stayed a div whose
+      // only route in was a pointer drag. As a button it takes a tab stop, and setOff's real
+      // `disabled` finally bites here too (it was a no-op on a div, which is why the one-layer
+      // case relied on the pointerdown guard alone).
+      const grab = document.createElement("button");
+      grab.type = "button";
       grab.className = "lyr-grab";
       grab.textContent = "⠿";
-      grab.title = "Drag to reorder — layers higher in the list draw first (underneath)";
-      grab.setAttribute("aria-label", "Drag to reorder layer");
+      grab.title = "Drag, or focus and use \u2191\u2193, to reorder — layers higher in the list draw first (underneath)";
+      grab.setAttribute("aria-label", "Reorder layer: drag, or press up and down arrows");
       grab.addEventListener("click", e => e.stopPropagation());
+      // ARROWS MOVE THE LAYER. `from` is a live index into `stack` (see the note above), and
+      // `to` is passed the way reorderStack wants it: an index into the array with this item
+      // already removed. Moving UP by one is therefore from-1, and moving DOWN by one is
+      // from+1 -- which after the removal already means "one place later".
+      grab.addEventListener("keydown", e => {
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (stack.length < 2) return;
+        const to = e.key === "ArrowUp" ? from - 1 : from + 1;
+        if (to < 0 || to >= stack.length) return;
+        e.preventDefault();        // or the panel scrolls under the moving row
+        reorderStack(from, to);
+        persist(); autosavePreset();
+        syncStackUI();
+        // The rows are a fixed pool keyed by SLOT, so the button under the finger now belongs
+        // to a different layer -- follow the layer to its new row or the next arrow press moves
+        // the wrong one.
+        const moved = lyrRows[to] && lyrRows[to].grab;
+        if (moved) moved.focus();
+      });
       grab.addEventListener("pointerdown", e => {
         if (stack.length < 2) return;
         e.preventDefault(); e.stopPropagation();
@@ -369,27 +418,7 @@
           // Held by IDENTITY, not by index: a reorder moves it, so `from` no longer names it.
           const dragged = stack[from];
           const moved = to !== from;
-          if (moved) {
-            // The SELECTED layer, held by identity. `stackSel` is a slot index, and a reorder
-            // moves layers between slots — so unless it is remapped to follow the item, the
-            // very next freezeItem(stack[stackSel]) writes the selected layer's live DOM into
-            // whichever layer slid into that slot, destroying one layer's settings and leaving
-            // two identical. Dragging a layer past the selected one was enough to do it.
-            const sel = stack[stackSel];
-            freezeItem(sel);         // its live block into its record, while the maps still point there
-            // `to` indexes the array with the dragged item already removed, so splice-out
-            // then splice-in at `to` directly (no gap adjustment needed).
-            stack.splice(to, 0, stack.splice(from, 1)[0]);
-            moveOpen(from, to);      // the fold state belongs to the LAYER, not to the slot
-            moveSlotState(from, to);  // ...and so do its retained heat and palette clock
-            movePopped(from, to);    // ...and so do its open pop-out boxes
-            stackSel = stack.indexOf(sel);
-            pointMaps(stackSel);     // the wiring follows it to its new block
-            thawItem(sel);
-            loadState(sel.fx); loadBeat(sel.fx); loadPulse(sel.fx); loadPlen(sel.fx); loadBtune(sel.fx);   // ...and that block's DOM
-            repaintAllBlocks();      // every other slot holds a different layer now
-            syncPopOwners();
-          }
+          if (moved) reorderStack(from, to);
           const at = stack.indexOf(dragged);
           if (at >= 0 && at !== stackSel) selectStack(at);   // ...which re-runs syncStackUI
           else syncStackUI();                                // a plain click on the selected row

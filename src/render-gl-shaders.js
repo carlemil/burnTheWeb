@@ -1574,10 +1574,17 @@
       // one glass layer link like four (12s against 3.5). One program per count instead.
       for (int g = 0; g < W_GBN; g++){
         vec3 pl = (p - uGbPlace[g].xyz)/uGbPlace[g].w;
+        // NO BOUNDING SPHERE HERE, and that is a measured decision rather than an oversight.
+        // CLAUDE.md lists glassDE as a missing one, and one was written and then taken out again:
+        // its case is FRAME time, and the frame has ~4x headroom (measured: worst case 4.2ms of a
+        // 16.7ms budget at 4K), while glass already dominates the world program LINK time, which
+        // is the thing that is actually too slow -- 7.7s alone, 133.8s for the five-way. Adding
+        // the branch moved the total link the wrong way (399s -> 472s across all sixteen) and the
+        // frame benefit could not be shown at all. Optimising a non-problem at the cost of the
+        // real one. If it comes back, measure the WORLD frame cost first, not the standalone one
+        // -- FS_GLASS is analytic and never calls this.
         float dg = 1e9;
-        // 3 == the Balls slider's max (controls-schema.js 'gbcount'). glassprobe asserts the
-        // two agree: a loop shorter than the slider silently drops balls, and a loop longer
-        // than it leaves dead iterations in the shader the driver still optimises for.
+        // 3 == the Balls slider max (controls-schema.js 'gbcount'); glassprobe pins the two together.
         for (int i = 0; i < 3; i++){
           if (float(i) >= uGbCount[g]) break;
           dg = min(dg, length(pl - ballAt(i, uGbTime[g], uGbSalt[g])) - uGbRad[g]);
@@ -1785,8 +1792,10 @@
       float sun = pow(max(0.0, dot(normalize(d), normalize(vec3(0.40, 0.62, -0.68)))), 60.0);
       return clamp(sky + 0.55*sun, 0.0, 1.0);
     }
-    // Shading with NO further bounce -- what a reflection ray sees. GLSL has no recursion,
-    // so the one bounce is unrolled into shade0 (sky as its environment) and shade1 below.
+    // Shading with NO further bounce -- what a reflection ray sees. GLSL has no recursion, so
+    // the single bounce is unrolled: main() shades the primary hit inline and calls envRay,
+    // envRay marches and ends here, and this function calls nothing further. (It used to say
+    // 'and shade1 below'. There is no shade1; the second half is the inline block in main().)
     float shade0(float id, vec3 p, vec3 rd, float t){
       if (id == uOcId){
         float hh; vec2 dd;
@@ -1812,10 +1821,31 @@
         return 0.20 + 0.72*max(0.0, dot(n, normalize(vec3(0.55, 0.75, -0.5)))) + uQjGlow*0.55*rim;
       if (id == uVbId && uVbOn > 0.5)
         return 0.14 + 0.78*max(0.0, dot(n, normalize(vec3(0.45, 0.6, -0.66)))) + uVbGlow*0.7*rim;
-      // glass, seen flat in someone else's reflection: no nested bounce, that group's glow
+      // GLASS SEEN INSIDE SOMEONE ELSE'S REFLECTION, or in the water. Still NO nested bounce --
+      // the environment here is the SKY, not the scene, so a ball reflected in a ball does not
+      // contain the scene -- but it is now the group's real MATERIAL rather than a flat lambert.
+      // Before this, Metal, Glass and Bubble all came back as the same featureless sphere and
+      // uGbMat/uGbIor were not consulted at all, so the Material slider changed the primary view
+      // and nothing about the reflections.
+      //
+      // It is free. The normal is the sdfNormal already computed above for the face term, and skyOf is loop-free
+      // arithmetic that touches no worldMap -- no march, no SDF evaluation, no new call site, so
+      // the world program's link time is unchanged (measured: flat inside the run-to-run band).
       int gg = gbGroupOf(id);
       float glow = gg >= 0 ? uGbGlow[gg] : 0.5;
-      return 0.10 + 0.55*face + (0.06 + glow*0.55)*rim;
+      float gmat = gg >= 0 ? uGbMat[gg]  : 1.0;
+      float gior = gg >= 0 ? uGbIor[gg]  : 1.45;
+      float gfres = pow(1.0 - face, 5.0);
+      float genv = skyOf(reflect(rd, n));
+      // refract INTO the denser medium (1/ior < 1) cannot total-internally-reflect, so the
+      // zero-vector guard main() needs at its exit interface is not needed here.
+      float gbody = gmat < 0.5
+        ? genv*0.90
+        : mix(skyOf(refract(rd, n, 1.0/gior))*0.78, genv, clamp(0.20 + gfres*2.0, 0.0, 1.0));
+      // A small ambient + face term stays: the sky alone carries far less energy than the
+      // 0.10 + 0.55*face it replaces, and a Metal ball turned away from the sun would otherwise
+      // sink into a dark ripple and disappear.
+      return gbody + 0.06 + 0.18*face + (0.06 + glow*0.55)*rim;
     }
     float envRay(vec3 ro, vec3 rd){
       float id;
