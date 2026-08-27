@@ -64,10 +64,15 @@ const DIALOGS = [
 ];
 
 // ---- 1. Escape closes every one of them ------------------------------------------------
-// The key handler is one line; slice it and look for each closer by name. There is more than
-// one `e.key === "Escape"` in the app (the cloud profile-name field commits on it, and it
-// comes FIRST in the built file), so pick the branch by content, not by position.
-const escLine = (js.match(/else if \(e\.key === "Escape"\)[^\n]*/g) || [])
+// Slice the branch and look for each closer by name. There is more than one
+// `e.key === "Escape"` in the app (the cloud profile-name field commits on it, and it comes
+// FIRST in the built file), so pick the branch by content, not by position.
+//
+// It spans several lines now, and NOT as an `else if`: Escape is handled ABOVE the
+// INPUT/TEXTAREA/SELECT typing guard, because that guard is there to stop m/f/s/h eating
+// characters in a field and was swallowing Escape inside the focus-trapped Restore dialog's
+// checkboxes. So match the block, not a single `else if` line.
+const escLine = (js.match(/if \(e\.key === "Escape"\) \{[\s\S]{0,400}?\n\s*\}/g) || [])
   .find(l => l.includes("closeHelp")) || "";
 ok(escLine.length > 0, "the Escape branch is present in the key handler");
 for (const d of DIALOGS) {
@@ -182,10 +187,20 @@ ok(rawOff.length === 1 && rawOff[0].includes("audio.on"),
    rawOff.length + ": " + rawOff.join(" | ").slice(0, 120));
 ok(/function setOff\(/.test(js), "setOff() is the shared disabled-state helper");
 ok(/node\.disabled = !!off/.test(js), "...and it sets the real `disabled`, not just the class");
-// The layer row's ✕ and grab handle are <b>, where `disabled` does nothing — those DO still
-// need pointer-events to block the click.
-ok(/#panel \.lyr b\.off\s*\{[^}]*pointer-events:\s*none/.test(cssNoComments),
-   "the <b> row controls still block pointer events (disabled does nothing on a <b>)");
+// THE LAYER ROW CONTROLS ARE REAL BUTTONS. They were <b> with a click listener and no role or
+// tabindex, so mute, delete, the blend steppers and the tint swatch were unreachable by keyboard
+// and invisible to assistive tech -- with no other way to do any of the four. That also made
+// `disabled` a no-op, which is why the CSS needed a pointer-events patch to stop a dimmed ✕
+// confirming a removal the one-layer floor then refused. As buttons, setOff's real `disabled`
+// does the blocking AND drops the tab stop, so the patch is gone. Assert the cause, not the
+// workaround: if these ever revert to <b>, this goes red.
+ok(/const (?:tint|mute|rm|up|dn) = document\.createElement\("b"\)/.test(js) === false,
+   "no layer-row control is created as a <b>");
+for (const nm of ["tint", "mute", "rm", "up", "dn"])
+  ok(new RegExp("const " + nm + " = document\\.createElement\\(\"button\"\\)").test(js),
+     "...the row's `" + nm + "` is a <button>");
+ok(/#panel \.lyr \.lyr-b\.off, #panel \.lyr \.lyr-b:disabled/.test(cssNoComments),
+   "...and the dimmed state is driven by :disabled, not a pointer-events patch");
 for (const sel of ["#panel #addlayer.off", "#paledlg .audbtn.off", "#carddlg .cardmode.off"]) {
   const rule = (cssNoComments.match(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\{[^}]*\\}")) || [""])[0];
   ok(rule && !/pointer-events:\s*none/.test(rule),

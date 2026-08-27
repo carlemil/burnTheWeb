@@ -22,6 +22,10 @@
     const row = document.createElement("div"); row.className = "beat-row";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const sl = document.createElement("input"); sl.type = "range"; sl.min = min; sl.max = max; sl.step = step; sl.value = val;
+    // The name comes from the row's <span>, which is NOT a <label> and has no `for` -- and these
+    // nodes deliberately carry no id (RNG_ORIG scans by id), so aria-label is the way to name
+    // them. wireRange does exactly this for the panel's own dual sliders.
+    sl.setAttribute("aria-label", label);
     const out = document.createElement("span"); out.className = "beat-val"; out.textContent = fmt(val);
     sl.addEventListener("input", () => { const v = +sl.value; out.textContent = fmt(v); set(v); beatChanged(false); });
     row.append(nm, sl, out);
@@ -31,6 +35,7 @@
     const row = document.createElement("div"); row.className = "beat-row";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!val;
+    cb.setAttribute("aria-label", label);
     cb.addEventListener("change", () => { set(cb.checked); beatChanged(false); });
     row.append(nm, cb);
     return row;
@@ -40,6 +45,8 @@
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const lo = document.createElement("input"), hi = document.createElement("input");
     for (const f of [lo, hi]) { f.type = "number"; f.className = "beat-f"; f.min = 1; f.step = 10; }
+    lo.setAttribute("aria-label", label + " lowest frequency, Hz");
+    hi.setAttribute("aria-label", label + " highest frequency, Hz");
     lo.value = beatCfg.bands[b][0]; hi.value = beatCfg.bands[b][1];
     const dash = document.createElement("span"); dash.className = "beat-dash"; dash.textContent = "–";
     const commit = () => {

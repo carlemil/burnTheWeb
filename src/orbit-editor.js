@@ -418,7 +418,14 @@
     };
     cv.addEventListener("pointerdown", e => {
       if (seedPathMode !== "freehand") return;
-      e.preventDefault(); cv.setPointerCapture(e.pointerId); cardTouch();
+      // Left button only: a right-click used to start a stroke AND suppress the context menu.
+      if (e.button !== 0) return;
+      e.preventDefault();
+      // try/catch like the app's other two capture sites -- a synthetic probe event carries no
+      // live pointer and setPointerCapture throws, which used to abort this handler BEFORE
+      // seedDrawing was set and silently swallow the whole gesture.
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      cardTouch();
       if (seedEdit) {
         const idx = nearestPt(cardEventToC(e));
         if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }

@@ -35,6 +35,12 @@
   }
   #panel {
     position: fixed;
+    /* EXPLICIT, because #creditcv above is z-index 4 and a positioned `z-index: auto` element
+       paints BELOW any positive-z-index sibling whatever the DOM order -- so for the first 8s of
+       every fresh load the credit text drew straight through the control panel. 5, not more: it
+       matches #carddlg and #breakout, which come later in the markup and so still paint over the
+       panel exactly as they did before. */
+    z-index: 5;
     top: 58px;
     left: 14px;
     padding: 14px 16px;
@@ -61,6 +67,13 @@
      so nothing needs null-guarding. The first .box supplies its own top margin. */
   #panel h1, #panel .sub { display: none; }
   #panel label, #menubar label, #breakout .lyr-box label { display: block; margin: 10px 0 3px; opacity: .85; }
+  /* A label that sits BESIDE its help button rather than wrapping it. A <label> with no `for`
+     takes its first labelable descendant as its control, and <button> is labelable -- so with the
+     button inside, clicking the word "Scenes" (a full-width block row) fired the button and threw
+     up the "What a scene saves" modal. Same for "Palette" and the palette inspector. The button
+     is a sibling now, and these two labels go inline so the pair still reads as one row. */
+  #panel .lbl-row, #breakout .lyr-box .lbl-row { display: inline; margin-right: 0; }
+  #panel .lbl-row + .lbl-help, #breakout .lyr-box .lbl-row + .lbl-help { margin-top: 10px; }
   /* Control appearance is scoped to both the menu and the pop-out column so a
      control keeps its styling after it moves into a break-out box (#breakout). */
   #panel .val, #breakout .val, #menubar .val { float: right; color: #ffcf87; opacity: 1; }
@@ -456,9 +469,18 @@
      a shared class. Do not copy the block. The trap this project has hit three times is a
      widget rule scoped to one container, which silently leaves the next user of the same class
      as a raw browser default — a grey button in normal flow above the title. */
+  /* A REAL BACKDROP, like the other three modal dialogs (#help, #restoredlg, #syncpop). It is
+     one of the four that call dlgModal(), which installs a capture-phase Tab trap and sets
+     aria-modal="true" -- and boot-globals.js justifies that trap with "they already trap the
+     mouse (a full-screen backdrop that closes on click)", which was true of the other three and
+     false here: this shell was transparent AND pointer-transparent. So the keyboard was locked
+     inside the dialog while the mouse clicked straight through to the canvas (pausing the scene)
+     or the panel, and a screen reader was told the page behind was inert while it was still being
+     edited. It also made galdlg's own click-outside-closes handler unreachable, since a click on
+     the shell never targeted the shell. */
   #galdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: transparent; pointer-events: none;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #galdlg.hidden { display: none; }
   #galdlg .gal-box {
@@ -952,9 +974,8 @@
     --lyr-rgb: 216, 210, 196;
   }
   #breakout .ctl.poppable:not([data-slot]) .ctl-owner { color: #d8d2c4; }
-  /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the
-     other <b> row controls beside it (they are not buttons, so they need the explicit
-     cursor and the disabled-state handling `.lyr b.off` gives them). */
+  /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the other
+     .lyr-b controls beside it, and a real <button> like them. */
   #panel .lyr .lyr-tint {
     flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%;
     background: var(--lyr, #ffb15a); border: 1px solid rgba(0, 0, 0, 0.45);
@@ -1108,21 +1129,29 @@
      their rows, and it holds the two value-store <select>s. */
   #panel #fxbox.hidden { display: none; }
   #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
-  #panel .lyr b {
+  /* REAL BUTTONS. Mute, delete, the two blend steppers and the tint swatch were <b> with a
+     click listener and no role or tabindex, so none of them was reachable by keyboard and a
+     screen reader was not told they existed -- and the aria-label/aria-pressed set on them were
+     inert, because ARIA state on a role-less generic element is ignored. There was no other way
+     to mute, delete or re-blend a layer. The row's chevron, .filter-by and #mute were already
+     buttons; this family had just been missed. appearance/margin are reset because a <b> needed
+     no such thing. */
+  #panel .lyr .lyr-b {
+    appearance: none; -webkit-appearance: none; margin: 0; width: auto;
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
     background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
   }
   /* The layer's visibility eye (open = showing, closed = muted) — inline-flex so the SVG
      centres in the same 10px-font button frame the ✕ beside it uses. */
-  #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
-  #panel .lyr b.lyr-eye > svg { display: block; }
-  #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
-  /* The row's ✕ and grab handle are <b>, not <button>, so the `disabled` property setOff()
-     writes does nothing here and pointer-events has to do the blocking. It is exactly what
-     was missing: a dimmed ✕ stayed clickable and confirmed a layer removal that the
-     one-layer floor then refused. :hover is suppressed too, or a dead control still lights
-     up under the cursor. */
-  #panel .lyr b.off { opacity: .3; cursor: default; pointer-events: none; }
+  #panel .lyr .lyr-b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lyr .lyr-b.lyr-eye > svg { display: block; }
+  #panel .lyr .lyr-b:hover:not(:disabled) { background: rgba(255, 140, 40, 0.25); }
+  /* No pointer-events: none any more. setOff() writes the real `disabled`, which these now
+     honour -- it blocks the mouse AND drops the tab stop, which is what was wanted all along:
+     as <b> elements a dimmed ✕ kept its tab stop, fired on Enter, and raised a confirm() for a
+     removal the one-layer floor then refused. :hover stays suppressed, or a dead control still
+     lights up under the cursor. */
+  #panel .lyr .lyr-b.off, #panel .lyr .lyr-b:disabled { opacity: .3; cursor: default; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
   #panel .lyr input[type=range] { width: 38px; margin: 0; }
   /* Blend row: label · dropdown (grows) · ▲/▼ steppers. */
@@ -1307,8 +1336,6 @@
     border-radius: 4px; color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
-  #panel .filter-chk, #breakout .lyr-box .filter-chk { margin: 4px 0 0; }
-  #panel .filter-chk.off, #breakout .lyr-box .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
   #panel .ctl-grp, #breakout .lyr-box .ctl-grp {
     margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
@@ -1385,11 +1412,18 @@
   /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paldlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
-    background: transparent;   /* float over the scene like the other popups, not a dark modal */
+    /* `pointer-events: none` is the half that was missing, and without it the comment below was
+       a lie: a transparent full-screen z-index-20 shell that still RECEIVES clicks blocks the
+       whole app underneath it -- #panel, #breakout, #carddlg and the canvas. With the palette
+       inspector open, every click anywhere was swallowed by this shell and closed it, so you
+       could not drag a slider while reading the ramp, which is the entire point of a non-modal
+       tool panel. Its four siblings (#fltdlg, #transpickdlg, #palpickdlg, #paledlg) all had it. */
+    background: transparent; pointer-events: none;   /* float over the scene; only the box is interactive */
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
-    position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
+    position: relative; pointer-events: auto;   /* the shell is click-through; this is not */
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     margin: 58px 14px 14px 298px; max-width: calc(100vw - 312px);
     border-radius: 12px; padding: 18px 20px; max-height: calc(100vh - 72px); overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
@@ -1937,7 +1971,7 @@
   <!-- Scenes: choose / manage saved scenes, and auto-cycle between them. The ids below still
        say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
        and link keeps loading. Only the wording the user reads is "scene". -->
-  <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
+  <label class="lbl-row"><span>Scenes</span></label><button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button>
   <!-- #preset is HIDDEN and remains the VALUE STORE, exactly the arrangement #palette has
        behind its swatches: applyPreset writes .value, applyBlob validates against it, and
        every pick in the list below dispatches its `change`. The visible control is
@@ -2105,7 +2139,7 @@
     <button type="button" data-k="rnd-pal" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-pal" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
   </div>
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <label class="lbl-row"><span>Palette</span></label><button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background
@@ -14444,6 +14478,12 @@
   function buildFilterPicker() {
     const host = el("flt-pick");
     if (!host) return;
+    // KEEP THE KEYBOARD'S PLACE. This runs from setFilterOn -> syncFilterPicker, i.e. from
+    // inside the `change` of a checkbox that the next line destroys -- so Chromium blurred to
+    // <body> and the next Tab restarted from the top of the DOCUMENT. The picker is non-modal,
+    // so no focus trap pulled it back, and ticking five filters meant finding your place five
+    // times. Invisible with a mouse, which is why it survived.
+    const hadFocus = host.contains(document.activeElement) ? document.activeElement.dataset.fid : null;
     host.textContent = "";
     // Collect first, render second: the sub-captions keep REGISTRY order because they mirror
     // the pipeline (heat and trails, then the image), but the filters INSIDE each are listed
@@ -14481,6 +14521,7 @@
       cb.type = "checkbox";
       cb.checked = filterSetOf(f.id).has(f.id);
       cb.disabled = f.cpuOk === false && !useGL;
+      cb.dataset.fid = f.id;                 // so the rebuild below can put focus back on this row
       cb.addEventListener("change", () => setFilterOn(f.id, cb.checked));
       const nm = document.createElement("span");
       nm.className = "flt-opt-n"; nm.textContent = f.name;
@@ -14494,12 +14535,16 @@
       host.appendChild(lab);
       });
     });
+    // Put the keyboard back where it was (see the note at the top of this function).
+    if (hadFocus) {
+      const back = host.querySelector('[data-fid="' + hadFocus + '"]');
+      if (back) back.focus();
+    }
   }
   // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
   // ✕, a scene load, an effect switch). Cheap enough to just rebuild.
   function syncFilterPicker() { if (filterPickerOpen()) buildFilterPicker(); }
   if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
-  if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
   // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) { syncFilterSecIn(stackSel, id); }
   function syncFilterSecIn(slot, id) {
@@ -15301,10 +15346,17 @@
       btn.type = "button";
       btn.textContent = k[0].toUpperCase();
       btn.title = k + " beat";
+      // The accessible name has to be the BAND, not the letter: the visible text is just "L".
+      // And aria-pressed, because armed-vs-not is otherwise carried only by fill colour --
+      // this was the one toggle family in the app without it, while #mute, the layer mute, the
+      // filter bypass eye and the transition ticks all set it.
+      btn.setAttribute("aria-label", k + " beat");
+      btn.setAttribute("aria-pressed", "false");
       btn.addEventListener("click", () => {
         if (chipEls[id] !== chips) return;      // not the live block
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
+        btn.setAttribute("aria-pressed", beatReact[id][k] ? "true" : "false");
         syncDots();              // the menu row shows the same armed state
         syncTrigTune();          // ...and this band's tuning rows appear/hide
         // A <button> click fires neither input nor change, so the delegated onEdit
@@ -16074,6 +16126,10 @@
   function buildPalPick() {
     const host = el("palpick-list");
     if (!host) return;
+    // Keep the keyboard's place: this runs from setPalUse, i.e. from inside the `change` of a
+    // checkbox the next line destroys, which drops focus to <body> in a non-modal dialog with no
+    // trap to pull it back. Same shape as buildFilterPicker.
+    const hadFocus = host.contains(document.activeElement) ? document.activeElement.dataset.pid : null;
     host.textContent = "";
     palByName().forEach(i => {
       const p = PALETTES[i];
@@ -16082,6 +16138,8 @@
       lab.className = "palpick-row";
       const cb = document.createElement("input");
       cb.type = "checkbox"; cb.checked = palInUse(i);
+      cb.dataset.pid = String(i);
+      cb.setAttribute("aria-label", p.name + (p.custom ? " (custom)" : ""));
       cb.addEventListener("change", () => setPalUse(i, cb.checked));
       const sw = document.createElement("span");
       sw.className = "palpick-sw"; sw.style.background = palGradientCss(i);
@@ -16102,6 +16160,10 @@
       lab.appendChild(del);
       host.appendChild(lab);
     });
+    if (hadFocus !== null && hadFocus !== undefined) {
+      const back = host.querySelector('[data-pid="' + hadFocus + '"]');
+      if (back) back.focus();
+    }
   }
   // The ONE deletion entry, confirm included — the per-row ✕ is its only caller now.
   // Customs really delete (indices remap); shipped ramps SOFT-delete into palGone — the
@@ -16146,7 +16208,13 @@
   }
   buildPalSwatches();
   el("palpick-close").addEventListener("click", closePalPick);
-  el("palpickdlg").addEventListener("click", e => { if (e.target === el("palpickdlg")) closePalPick(); });
+  // NO click-outside-closes here. These float over a running scene and their shell is
+  // `pointer-events: none`, so a click beside the box passes straight through and never
+  // targets the shell -- the guard `e.target === el(...)` was unreachable, and the click
+  // landed on the canvas (pausing the scene) or the panel instead. Making it reachable would
+  // mean the shell swallowing every click on the app, which is the bug #paldlg had. Escape
+  // and the close button are the ways out, which is right for a panel meant to be used
+  // WHILE you edit.
   el("palpick-all").addEventListener("click", () => setPalUseAll(true));
   el("palpick-none").addEventListener("click", () => setPalUseAll(false));
   // Create a NEW custom palette: a plain RGB ramp under a name the user must supply (no
@@ -16190,7 +16258,6 @@
   }
   const closePalDetail = () => el("paldlg").classList.add("hidden");
   el("pal-close").addEventListener("click", closePalDetail);
-  el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
   // These four are per-block controls whose one live value belongs to the selected layer, so
   // each is an accessor over ctl() rather than a captured node. Every read and write site —
   // including the render path's showBoxChk.checked — stays written exactly as it was.
@@ -16339,6 +16406,13 @@
       b.title = Math.round(s[0] * 100) + "% · " + paleHex(s[1]);
       b.setAttribute("aria-label", "Stop at " + Math.round(s[0] * 100) + " percent");
       b.addEventListener("pointerdown", ev => paleDragStart(ev, b, s));
+      // AND a click guard, because cancelling pointerdown does NOT suppress click: the Pointer
+      // Events compatibility mapping suppresses the mouse events only. Worse, the drag's pointerup
+      // calls paleRender(), which clears #pale-stops -- so this handle is detached by the time
+      // click dispatches and the event retargets to #pale-bar, whose handler ADDS a stop. Every
+      // drag of a colour stop was also inserting a new one at the release position. .filter-grab
+      // and .palpick-del already carry the same guard.
+      b.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); });
       host.appendChild(b);
     });
     if (paleSel) {
@@ -16557,6 +16631,10 @@
   el("pale-color").addEventListener("change", paleCommit);
   el("pale-pos").addEventListener("input", () => {
     if (!paleSel) return;
+    // An EMPTY field is not zero. `+"" === 0` and Number.isFinite(0) is true, so clearing the
+    // box to retype a position snapped the selected stop to 0% and re-sorted the list under the
+    // cursor. beatBandRow gets this right; this did not.
+    if (el("pale-pos").value.trim() === "") return;
     const v = +el("pale-pos").value;
     if (!Number.isFinite(v)) return;
     paleSel[0] = Math.max(0, Math.min(1, v / 100));
@@ -18109,7 +18187,6 @@
   }
   if (el("transpick-open")) el("transpick-open").addEventListener("click", openTransPick);
   if (el("transpick-close")) el("transpick-close").addEventListener("click", closeTransPick);
-  if (el("transpickdlg")) el("transpickdlg").addEventListener("click", e => { if (e.target === el("transpickdlg")) closeTransPick(); });
   if (el("transpick-all")) el("transpick-all").addEventListener("click", () => setTransUseAll(true));
   if (el("transpick-none")) el("transpick-none").addEventListener("click", () => setTransUseAll(false));
   // 0 = same palette, 1 = maximally different. Cheap: the ramps are already in memory.
@@ -18830,8 +18907,9 @@
       // 3-column grid where every child is explicitly placed, and appending an unplaced one
       // lets auto-flow take a cell, which narrows the effect chooser and wraps the control
       // rows into column 2 — that is how the panel grew a horizontal scrollbar once before.
-      const tint = document.createElement("b");
-      tint.className = "lyr-tint";
+      const tint = document.createElement("button");
+      tint.type = "button";
+      tint.className = "lyr-b lyr-tint";
       tint.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
@@ -18854,8 +18932,9 @@
       });
       lyrctl.appendChild(tint);
 
-      const mute = document.createElement("b");
-      mute.className = "lyr-eye";
+      const mute = document.createElement("button");
+      mute.type = "button";
+      mute.className = "lyr-b lyr-eye";
       mute.setAttribute("aria-label", "Layer visibility");
       mute.addEventListener("click", e => {
         e.stopPropagation();
@@ -18873,7 +18952,8 @@
       gn.addEventListener("change", () => { persist(); autosavePreset(); });
       lyrctl.appendChild(gn);
 
-      const rm = document.createElement("b");
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "lyr-b";
       rm.textContent = "✕"; rm.title = "Remove this layer";
       rm.addEventListener("click", e => {
         e.stopPropagation();
@@ -18913,11 +18993,13 @@
         L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id;
         syncStackUI(); persist(); autosavePreset();
       };
-      const up = document.createElement("b");
-      up.className = "lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "lyr-b lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
       up.addEventListener("click", e => { e.stopPropagation(); cycleBlend(-1); });
-      const dn = document.createElement("b");
-      dn.className = "lyr-arrow"; dn.textContent = "▼"; dn.title = "Next blend mode";
+      const dn = document.createElement("button");
+      dn.type = "button";
+      dn.className = "lyr-b lyr-arrow"; dn.textContent = "▼"; dn.title = "Next blend mode";
       dn.addEventListener("click", e => { e.stopPropagation(); cycleBlend(1); });
       blendRow.appendChild(up); blendRow.appendChild(dn);
       row.appendChild(blendRow);
@@ -19053,7 +19135,11 @@
   function loadBeat(e) { for (const id in beatReact) beatReact[id] = { low: false, mid: false, high: false, ...beatStates[e][id] }; syncChips(); }
   function syncChips() {
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
-    for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
+    for (const id in chipEls) for (const k in chipEls[id]) {
+      const on = !!(beatReact[id] && beatReact[id][k]);
+      chipEls[id][k].classList.toggle("on", on);
+      chipEls[id][k].setAttribute("aria-pressed", on ? "true" : "false");   // armed state, not colour alone
+    }
     syncDots();
     syncTrigTune();
   }
@@ -24777,7 +24863,14 @@
     };
     cv.addEventListener("pointerdown", e => {
       if (seedPathMode !== "freehand") return;
-      e.preventDefault(); cv.setPointerCapture(e.pointerId); cardTouch();
+      // Left button only: a right-click used to start a stroke AND suppress the context menu.
+      if (e.button !== 0) return;
+      e.preventDefault();
+      // try/catch like the app's other two capture sites -- a synthetic probe event carries no
+      // live pointer and setPointerCapture throws, which used to abort this handler BEFORE
+      // seedDrawing was set and silently swallow the whole gesture.
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      cardTouch();
       if (seedEdit) {
         const idx = nearestPt(cardEventToC(e));
         if (idx >= 0) { pushSeedHistory(); seedDragIdx = idx; }
@@ -24844,6 +24937,10 @@
     const row = document.createElement("div"); row.className = "beat-row";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const sl = document.createElement("input"); sl.type = "range"; sl.min = min; sl.max = max; sl.step = step; sl.value = val;
+    // The name comes from the row's <span>, which is NOT a <label> and has no `for` -- and these
+    // nodes deliberately carry no id (RNG_ORIG scans by id), so aria-label is the way to name
+    // them. wireRange does exactly this for the panel's own dual sliders.
+    sl.setAttribute("aria-label", label);
     const out = document.createElement("span"); out.className = "beat-val"; out.textContent = fmt(val);
     sl.addEventListener("input", () => { const v = +sl.value; out.textContent = fmt(v); set(v); beatChanged(false); });
     row.append(nm, sl, out);
@@ -24853,6 +24950,7 @@
     const row = document.createElement("div"); row.className = "beat-row";
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!val;
+    cb.setAttribute("aria-label", label);
     cb.addEventListener("change", () => { set(cb.checked); beatChanged(false); });
     row.append(nm, cb);
     return row;
@@ -24862,6 +24960,8 @@
     const nm = document.createElement("span"); nm.className = "beat-name"; nm.textContent = label;
     const lo = document.createElement("input"), hi = document.createElement("input");
     for (const f of [lo, hi]) { f.type = "number"; f.className = "beat-f"; f.min = 1; f.step = 10; }
+    lo.setAttribute("aria-label", label + " lowest frequency, Hz");
+    hi.setAttribute("aria-label", label + " highest frequency, Hz");
     lo.value = beatCfg.bands[b][0]; hi.value = beatCfg.bands[b][1];
     const dash = document.createElement("span"); dash.className = "beat-dash"; dash.textContent = "–";
     const commit = () => {
@@ -24997,6 +25097,24 @@
   }
 
   window.addEventListener("keydown", e => {
+    // A MODIFIED KEY IS A BROWSER SHORTCUT, NOT OURS. e.key is "f" for both f and Ctrl+F, so
+    // without this Ctrl+F (find) threw the page into fullscreen and Ctrl+S (save) muted the beat
+    // reaction while the save dialog opened. e.repeat likewise: holding a key toggled at the OS
+    // repeat rate.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    // ESCAPE IS HANDLED FIRST, ABOVE the typing guard below. That guard exists to stop m/f/s/h
+    // eating characters in a field -- it has no business swallowing Escape, and it did: tab onto
+    // any checkbox in the focus-trapped Restore dialog (six of them) and Escape stopped working,
+    // leaving a modal you could only leave by finding the × with more Tab presses.
+    // Keep this list complete — the gallery and the sync nudge were both missing from it for a
+    // release, closable by mouse only, which is the same way the .pal-close and ui-hidden
+    // selector lists have each rotted. tools/uiprobe.js asserts every dialog id turns up here.
+    if (e.key === "Escape") {
+      closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick();
+      closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial();
+      cardWanted = false; cardOpen(false);
+      return;
+    }
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
@@ -25005,11 +25123,6 @@
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    // Escape closes EVERY dialog. Keep this list complete — the gallery and the sync nudge
-    // were both missing from it for a release, closable by mouse only, which is the same way
-    // the .pal-close and ui-hidden selector lists have each rotted. tools/uiprobe.js now
-    // asserts that every dialog id turns up here.
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial(); cardWanted = false; cardOpen(false); }
   });
 
   // ---- help popup: effect-aware explanation of every control ----

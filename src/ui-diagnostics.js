@@ -59,6 +59,24 @@
   }
 
   window.addEventListener("keydown", e => {
+    // A MODIFIED KEY IS A BROWSER SHORTCUT, NOT OURS. e.key is "f" for both f and Ctrl+F, so
+    // without this Ctrl+F (find) threw the page into fullscreen and Ctrl+S (save) muted the beat
+    // reaction while the save dialog opened. e.repeat likewise: holding a key toggled at the OS
+    // repeat rate.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    // ESCAPE IS HANDLED FIRST, ABOVE the typing guard below. That guard exists to stop m/f/s/h
+    // eating characters in a field -- it has no business swallowing Escape, and it did: tab onto
+    // any checkbox in the focus-trapped Restore dialog (six of them) and Escape stopped working,
+    // leaving a modal you could only leave by finding the × with more Tab presses.
+    // Keep this list complete — the gallery and the sync nudge were both missing from it for a
+    // release, closable by mouse only, which is the same way the .pal-close and ui-hidden
+    // selector lists have each rotted. tools/uiprobe.js asserts every dialog id turns up here.
+    if (e.key === "Escape") {
+      closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick();
+      closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial();
+      cardWanted = false; cardOpen(false);
+      return;
+    }
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // don't eat typing in fields
     // The one menu (dev tools live inside it now). Hide the floating tool popups — the Orbit
     // editor and the Palette inspector — along with it, so M gives a clean view.
@@ -67,10 +85,5 @@
     // S for sound — M would be the video-player convention, but it is the menu here.
     else if (e.key === "s" || e.key === "S") toggleMute();
     else if (e.key === "h" || e.key === "H") setUiHidden(!document.body.classList.contains("ui-hidden"));   // hide/show all chrome
-    // Escape closes EVERY dialog. Keep this list complete — the gallery and the sync nudge
-    // were both missing from it for a release, closable by mouse only, which is the same way
-    // the .pal-close and ui-hidden selector lists have each rotted. tools/uiprobe.js now
-    // asserts that every dialog id turns up here.
-    else if (e.key === "Escape") { closeHelp(); closeRestore(); closePalDetail(); closePalEditor(); closePalPick(); closeFilterPicker(); closeTransPick(); galOpen(false); dismissSyncIfOpen(); closeTutorial(); cardWanted = false; cardOpen(false); }
   });
 

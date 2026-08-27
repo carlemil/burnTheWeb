@@ -147,7 +147,6 @@
   }
   if (el("transpick-open")) el("transpick-open").addEventListener("click", openTransPick);
   if (el("transpick-close")) el("transpick-close").addEventListener("click", closeTransPick);
-  if (el("transpickdlg")) el("transpickdlg").addEventListener("click", e => { if (e.target === el("transpickdlg")) closeTransPick(); });
   if (el("transpick-all")) el("transpick-all").addEventListener("click", () => setTransUseAll(true));
   if (el("transpick-none")) el("transpick-none").addEventListener("click", () => setTransUseAll(false));
   // 0 = same palette, 1 = maximally different. Cheap: the ramps are already in memory.

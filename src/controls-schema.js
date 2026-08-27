@@ -878,6 +878,12 @@
   function buildFilterPicker() {
     const host = el("flt-pick");
     if (!host) return;
+    // KEEP THE KEYBOARD'S PLACE. This runs from setFilterOn -> syncFilterPicker, i.e. from
+    // inside the `change` of a checkbox that the next line destroys -- so Chromium blurred to
+    // <body> and the next Tab restarted from the top of the DOCUMENT. The picker is non-modal,
+    // so no focus trap pulled it back, and ticking five filters meant finding your place five
+    // times. Invisible with a mouse, which is why it survived.
+    const hadFocus = host.contains(document.activeElement) ? document.activeElement.dataset.fid : null;
     host.textContent = "";
     // Collect first, render second: the sub-captions keep REGISTRY order because they mirror
     // the pipeline (heat and trails, then the image), but the filters INSIDE each are listed
@@ -915,6 +921,7 @@
       cb.type = "checkbox";
       cb.checked = filterSetOf(f.id).has(f.id);
       cb.disabled = f.cpuOk === false && !useGL;
+      cb.dataset.fid = f.id;                 // so the rebuild below can put focus back on this row
       cb.addEventListener("change", () => setFilterOn(f.id, cb.checked));
       const nm = document.createElement("span");
       nm.className = "flt-opt-n"; nm.textContent = f.name;
@@ -928,12 +935,16 @@
       host.appendChild(lab);
       });
     });
+    // Put the keyboard back where it was (see the note at the top of this function).
+    if (hadFocus) {
+      const back = host.querySelector('[data-fid="' + hadFocus + '"]');
+      if (back) back.focus();
+    }
   }
   // Mirror the live sets onto the picker's ticks whenever they change underneath it (a row's
   // ✕, a scene load, an effect switch). Cheap enough to just rebuild.
   function syncFilterPicker() { if (filterPickerOpen()) buildFilterPicker(); }
   if (el("flt-close")) el("flt-close").addEventListener("click", closeFilterPicker);
-  if (el("fltdlg")) el("fltdlg").addEventListener("click", e => { if (e.target === el("fltdlg")) closeFilterPicker(); });
   // Kept for the callers that only want the fold state refreshed.
   function syncFilterSec(id) { syncFilterSecIn(stackSel, id); }
   function syncFilterSecIn(slot, id) {

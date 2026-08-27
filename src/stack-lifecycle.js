@@ -432,8 +432,9 @@
       // 3-column grid where every child is explicitly placed, and appending an unplaced one
       // lets auto-flow take a cell, which narrows the effect chooser and wraps the control
       // rows into column 2 — that is how the panel grew a horizontal scrollbar once before.
-      const tint = document.createElement("b");
-      tint.className = "lyr-tint";
+      const tint = document.createElement("button");
+      tint.type = "button";
+      tint.className = "lyr-b lyr-tint";
       tint.addEventListener("click", e => {
         e.stopPropagation();
         const L = stack[j]; if (!L) return;
@@ -456,8 +457,9 @@
       });
       lyrctl.appendChild(tint);
 
-      const mute = document.createElement("b");
-      mute.className = "lyr-eye";
+      const mute = document.createElement("button");
+      mute.type = "button";
+      mute.className = "lyr-b lyr-eye";
       mute.setAttribute("aria-label", "Layer visibility");
       mute.addEventListener("click", e => {
         e.stopPropagation();
@@ -475,7 +477,8 @@
       gn.addEventListener("change", () => { persist(); autosavePreset(); });
       lyrctl.appendChild(gn);
 
-      const rm = document.createElement("b");
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "lyr-b";
       rm.textContent = "✕"; rm.title = "Remove this layer";
       rm.addEventListener("click", e => {
         e.stopPropagation();
@@ -515,11 +518,13 @@
         L.blend = BLEND_MODES[(i + dir + BLEND_MODES.length) % BLEND_MODES.length].id;
         syncStackUI(); persist(); autosavePreset();
       };
-      const up = document.createElement("b");
-      up.className = "lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "lyr-b lyr-arrow"; up.textContent = "▲"; up.title = "Previous blend mode";
       up.addEventListener("click", e => { e.stopPropagation(); cycleBlend(-1); });
-      const dn = document.createElement("b");
-      dn.className = "lyr-arrow"; dn.textContent = "▼"; dn.title = "Next blend mode";
+      const dn = document.createElement("button");
+      dn.type = "button";
+      dn.className = "lyr-b lyr-arrow"; dn.textContent = "▼"; dn.title = "Next blend mode";
       dn.addEventListener("click", e => { e.stopPropagation(); cycleBlend(1); });
       blendRow.appendChild(up); blendRow.appendChild(dn);
       row.appendChild(blendRow);
@@ -655,7 +660,11 @@
   function loadBeat(e) { for (const id in beatReact) beatReact[id] = { low: false, mid: false, high: false, ...beatStates[e][id] }; syncChips(); }
   function syncChips() {
     // !! is load-bearing — see loadBeat. toggle(cls, undefined) toggles.
-    for (const id in chipEls) for (const k in chipEls[id]) chipEls[id][k].classList.toggle("on", !!(beatReact[id] && beatReact[id][k]));
+    for (const id in chipEls) for (const k in chipEls[id]) {
+      const on = !!(beatReact[id] && beatReact[id][k]);
+      chipEls[id][k].classList.toggle("on", on);
+      chipEls[id][k].setAttribute("aria-pressed", on ? "true" : "false");   // armed state, not colour alone
+    }
     syncDots();
     syncTrigTune();
   }

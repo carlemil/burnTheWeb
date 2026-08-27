@@ -77,6 +77,13 @@
       b.title = Math.round(s[0] * 100) + "% · " + paleHex(s[1]);
       b.setAttribute("aria-label", "Stop at " + Math.round(s[0] * 100) + " percent");
       b.addEventListener("pointerdown", ev => paleDragStart(ev, b, s));
+      // AND a click guard, because cancelling pointerdown does NOT suppress click: the Pointer
+      // Events compatibility mapping suppresses the mouse events only. Worse, the drag's pointerup
+      // calls paleRender(), which clears #pale-stops -- so this handle is detached by the time
+      // click dispatches and the event retargets to #pale-bar, whose handler ADDS a stop. Every
+      // drag of a colour stop was also inserting a new one at the release position. .filter-grab
+      // and .palpick-del already carry the same guard.
+      b.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); });
       host.appendChild(b);
     });
     if (paleSel) {
@@ -295,6 +302,10 @@
   el("pale-color").addEventListener("change", paleCommit);
   el("pale-pos").addEventListener("input", () => {
     if (!paleSel) return;
+    // An EMPTY field is not zero. `+"" === 0` and Number.isFinite(0) is true, so clearing the
+    // box to retype a position snapped the selected stop to 0% and re-sorted the list under the
+    // cursor. beatBandRow gets this right; this did not.
+    if (el("pale-pos").value.trim() === "") return;
     const v = +el("pale-pos").value;
     if (!Number.isFinite(v)) return;
     paleSel[0] = Math.max(0, Math.min(1, v / 100));

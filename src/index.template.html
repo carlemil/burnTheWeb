@@ -144,7 +144,7 @@
   <!-- Scenes: choose / manage saved scenes, and auto-cycle between them. The ids below still
        say "preset" — that is the storage/wire name, unchanged so every saved scene, backup
        and link keeps loading. Only the wording the user reads is "scene". -->
-  <label>Scenes <button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button></label>
+  <label class="lbl-row"><span>Scenes</span></label><button type="button" id="preset-help-btn" class="lbl-help" title="What a scene saves — its data structure" aria-label="What a scene saves — its data structure">?</button>
   <!-- #preset is HIDDEN and remains the VALUE STORE, exactly the arrangement #palette has
        behind its swatches: applyPreset writes .value, applyBlob validates against it, and
        every pick in the list below dispatches its `change`. The visible control is
@@ -312,7 +312,7 @@
     <button type="button" data-k="rnd-pal" class="tab-rnd" title="Roll every slider on this tab to a random value in its range — and sometimes arm a beat trigger">⚄ Random</button>
     <button type="button" data-k="rst-pal" class="tab-rst" title="Put this tab's sliders — values, ranges and triggers — back to this effect's defaults">↺ Reset</button>
   </div>
-  <label>Palette <button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button></label>
+  <label class="lbl-row"><span>Palette</span></label><button type="button" data-k="pal-detail-btn" class="lbl-help lbl-eye" title="Inspect this palette — every colour, index 0–255" aria-label="Inspect this palette"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.8 14.8 20.5 20.5"/></svg></button>
   <div data-k="palswatches"><!-- gradient palette-preview swatches, built in JS from PALETTES --></div>
   <label class="check" title="Run this layer's palette the other way — the dark (background) end stays black"><input type="checkbox" data-k="palrev"> Reverse colours</label>
   <label class="check" title="What unlit pixels (heat 0) show for this layer">Background

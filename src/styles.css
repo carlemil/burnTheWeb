@@ -17,6 +17,12 @@
   }
   #panel {
     position: fixed;
+    /* EXPLICIT, because #creditcv above is z-index 4 and a positioned `z-index: auto` element
+       paints BELOW any positive-z-index sibling whatever the DOM order -- so for the first 8s of
+       every fresh load the credit text drew straight through the control panel. 5, not more: it
+       matches #carddlg and #breakout, which come later in the markup and so still paint over the
+       panel exactly as they did before. */
+    z-index: 5;
     top: 58px;
     left: 14px;
     padding: 14px 16px;
@@ -43,6 +49,13 @@
      so nothing needs null-guarding. The first .box supplies its own top margin. */
   #panel h1, #panel .sub { display: none; }
   #panel label, #menubar label, #breakout .lyr-box label { display: block; margin: 10px 0 3px; opacity: .85; }
+  /* A label that sits BESIDE its help button rather than wrapping it. A <label> with no `for`
+     takes its first labelable descendant as its control, and <button> is labelable -- so with the
+     button inside, clicking the word "Scenes" (a full-width block row) fired the button and threw
+     up the "What a scene saves" modal. Same for "Palette" and the palette inspector. The button
+     is a sibling now, and these two labels go inline so the pair still reads as one row. */
+  #panel .lbl-row, #breakout .lyr-box .lbl-row { display: inline; margin-right: 0; }
+  #panel .lbl-row + .lbl-help, #breakout .lyr-box .lbl-row + .lbl-help { margin-top: 10px; }
   /* Control appearance is scoped to both the menu and the pop-out column so a
      control keeps its styling after it moves into a break-out box (#breakout). */
   #panel .val, #breakout .val, #menubar .val { float: right; color: #ffcf87; opacity: 1; }
@@ -438,9 +451,18 @@
      a shared class. Do not copy the block. The trap this project has hit three times is a
      widget rule scoped to one container, which silently leaves the next user of the same class
      as a raw browser default — a grey button in normal flow above the title. */
+  /* A REAL BACKDROP, like the other three modal dialogs (#help, #restoredlg, #syncpop). It is
+     one of the four that call dlgModal(), which installs a capture-phase Tab trap and sets
+     aria-modal="true" -- and boot-globals.js justifies that trap with "they already trap the
+     mouse (a full-screen backdrop that closes on click)", which was true of the other three and
+     false here: this shell was transparent AND pointer-transparent. So the keyboard was locked
+     inside the dialog while the mouse clicked straight through to the canvas (pausing the scene)
+     or the panel, and a screen reader was told the page behind was inert while it was still being
+     edited. It also made galdlg's own click-outside-closes handler unreachable, since a click on
+     the shell never targeted the shell. */
   #galdlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: transparent; pointer-events: none;
+    background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
   #galdlg.hidden { display: none; }
   #galdlg .gal-box {
@@ -934,9 +956,8 @@
     --lyr-rgb: 216, 210, 196;
   }
   #breakout .ctl.poppable:not([data-slot]) .ctl-owner { color: #d8d2c4; }
-  /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the
-     other <b> row controls beside it (they are not buttons, so they need the explicit
-     cursor and the disabled-state handling `.lyr b.off` gives them). */
+  /* The swatch in the row: click to cycle this layer's colour. Sized and spaced like the other
+     .lyr-b controls beside it, and a real <button> like them. */
   #panel .lyr .lyr-tint {
     flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%;
     background: var(--lyr, #ffb15a); border: 1px solid rgba(0, 0, 0, 0.45);
@@ -1090,21 +1111,29 @@
      their rows, and it holds the two value-store <select>s. */
   #panel #fxbox.hidden { display: none; }
   #panel .lyr-ctl input[type=range] { flex: 1 1 auto; width: auto; min-width: 46px; }
-  #panel .lyr b {
+  /* REAL BUTTONS. Mute, delete, the two blend steppers and the tint swatch were <b> with a
+     click listener and no role or tabindex, so none of them was reachable by keyboard and a
+     screen reader was not told they existed -- and the aria-label/aria-pressed set on them were
+     inert, because ARIA state on a role-less generic element is ignored. There was no other way
+     to mute, delete or re-blend a layer. The row's chevron, .filter-by and #mute were already
+     buttons; this family had just been missed. appearance/margin are reset because a <b> needed
+     no such thing. */
+  #panel .lyr .lyr-b {
+    appearance: none; -webkit-appearance: none; margin: 0; width: auto;
     font: 10px/1 monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(255, 140, 40, 0.3);
     background: rgba(0, 0, 0, 0.3); color: #ffb15a; cursor: pointer; user-select: none;
   }
   /* The layer's visibility eye (open = showing, closed = muted) — inline-flex so the SVG
      centres in the same 10px-font button frame the ✕ beside it uses. */
-  #panel .lyr b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
-  #panel .lyr b.lyr-eye > svg { display: block; }
-  #panel .lyr b:hover { background: rgba(255, 140, 40, 0.25); }
-  /* The row's ✕ and grab handle are <b>, not <button>, so the `disabled` property setOff()
-     writes does nothing here and pointer-events has to do the blocking. It is exactly what
-     was missing: a dimmed ✕ stayed clickable and confirmed a layer removal that the
-     one-layer floor then refused. :hover is suppressed too, or a dead control still lights
-     up under the cursor. */
-  #panel .lyr b.off { opacity: .3; cursor: default; pointer-events: none; }
+  #panel .lyr .lyr-b.lyr-eye { display: inline-flex; align-items: center; justify-content: center; }
+  #panel .lyr .lyr-b.lyr-eye > svg { display: block; }
+  #panel .lyr .lyr-b:hover:not(:disabled) { background: rgba(255, 140, 40, 0.25); }
+  /* No pointer-events: none any more. setOff() writes the real `disabled`, which these now
+     honour -- it blocks the mouse AND drops the tab stop, which is what was wanted all along:
+     as <b> elements a dimmed ✕ kept its tab stop, fired on Enter, and raised a confirm() for a
+     removal the one-layer floor then refused. :hover stays suppressed, or a dead control still
+     lights up under the cursor. */
+  #panel .lyr .lyr-b.off, #panel .lyr .lyr-b:disabled { opacity: .3; cursor: default; }
   #panel .lyr select { font-size: 10px; padding: 1px 2px; width: auto; margin: 0; }
   #panel .lyr input[type=range] { width: 38px; margin: 0; }
   /* Blend row: label · dropdown (grows) · ▲/▼ steppers. */
@@ -1289,8 +1318,6 @@
     border-radius: 4px; color: #ffcf87; font: 11px/1 ui-monospace, monospace; cursor: pointer;
   }
   .palsw-add:hover { background: rgba(255, 122, 26, 0.26); border-style: solid; }
-  #panel .filter-chk, #breakout .lyr-box .filter-chk { margin: 4px 0 0; }
-  #panel .filter-chk.off, #breakout .lyr-box .filter-chk.off { opacity: .35; }        /* not available on the Canvas2D path */
   /* subheading over a run of related sliders (Camera, Banding) */
   #panel .ctl-grp, #breakout .lyr-box .ctl-grp {
     margin: 14px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 40, 0.14);
@@ -1367,11 +1394,18 @@
   /* Docked beside the panel like the pickers — it is a panel tool, not a reading dialog. */
   #paldlg {
     position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: flex-start;
-    background: transparent;   /* float over the scene like the other popups, not a dark modal */
+    /* `pointer-events: none` is the half that was missing, and without it the comment below was
+       a lie: a transparent full-screen z-index-20 shell that still RECEIVES clicks blocks the
+       whole app underneath it -- #panel, #breakout, #carddlg and the canvas. With the palette
+       inspector open, every click anywhere was swallowed by this shell and closed it, so you
+       could not drag a slider while reading the ramp, which is the entire point of a non-modal
+       tool panel. Its four siblings (#fltdlg, #transpickdlg, #palpickdlg, #paledlg) all had it. */
+    background: transparent; pointer-events: none;   /* float over the scene; only the box is interactive */
   }
   #paldlg.hidden { display: none; }
   #paldlg .pal-box {
-    position: relative; background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
+    position: relative; pointer-events: auto;   /* the shell is click-through; this is not */
+    background: rgba(10, 6, 4, 0.8); border: 1px solid rgba(255, 140, 40, 0.4);
     margin: 58px 14px 14px 298px; max-width: calc(100vw - 312px);
     border-radius: 12px; padding: 18px 20px; max-height: calc(100vh - 72px); overflow-y: auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);

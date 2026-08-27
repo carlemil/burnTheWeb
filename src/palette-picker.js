@@ -115,6 +115,10 @@
   function buildPalPick() {
     const host = el("palpick-list");
     if (!host) return;
+    // Keep the keyboard's place: this runs from setPalUse, i.e. from inside the `change` of a
+    // checkbox the next line destroys, which drops focus to <body> in a non-modal dialog with no
+    // trap to pull it back. Same shape as buildFilterPicker.
+    const hadFocus = host.contains(document.activeElement) ? document.activeElement.dataset.pid : null;
     host.textContent = "";
     palByName().forEach(i => {
       const p = PALETTES[i];
@@ -123,6 +127,8 @@
       lab.className = "palpick-row";
       const cb = document.createElement("input");
       cb.type = "checkbox"; cb.checked = palInUse(i);
+      cb.dataset.pid = String(i);
+      cb.setAttribute("aria-label", p.name + (p.custom ? " (custom)" : ""));
       cb.addEventListener("change", () => setPalUse(i, cb.checked));
       const sw = document.createElement("span");
       sw.className = "palpick-sw"; sw.style.background = palGradientCss(i);
@@ -143,6 +149,10 @@
       lab.appendChild(del);
       host.appendChild(lab);
     });
+    if (hadFocus !== null && hadFocus !== undefined) {
+      const back = host.querySelector('[data-pid="' + hadFocus + '"]');
+      if (back) back.focus();
+    }
   }
   // The ONE deletion entry, confirm included — the per-row ✕ is its only caller now.
   // Customs really delete (indices remap); shipped ramps SOFT-delete into palGone — the
@@ -187,7 +197,13 @@
   }
   buildPalSwatches();
   el("palpick-close").addEventListener("click", closePalPick);
-  el("palpickdlg").addEventListener("click", e => { if (e.target === el("palpickdlg")) closePalPick(); });
+  // NO click-outside-closes here. These float over a running scene and their shell is
+  // `pointer-events: none`, so a click beside the box passes straight through and never
+  // targets the shell -- the guard `e.target === el(...)` was unreachable, and the click
+  // landed on the canvas (pausing the scene) or the panel instead. Making it reachable would
+  // mean the shell swallowing every click on the app, which is the bug #paldlg had. Escape
+  // and the close button are the ways out, which is right for a panel meant to be used
+  // WHILE you edit.
   el("palpick-all").addEventListener("click", () => setPalUseAll(true));
   el("palpick-none").addEventListener("click", () => setPalUseAll(false));
   // Create a NEW custom palette: a plain RGB ramp under a name the user must supply (no
@@ -231,7 +247,6 @@
   }
   const closePalDetail = () => el("paldlg").classList.add("hidden");
   el("pal-close").addEventListener("click", closePalDetail);
-  el("paldlg").addEventListener("click", e => { if (e.target === el("paldlg")) closePalDetail(); });
   // These four are per-block controls whose one live value belongs to the selected layer, so
   // each is an accessor over ctl() rather than a captured node. Every read and write site —
   // including the render path's showBoxChk.checked — stays written exactly as it was.

@@ -432,10 +432,17 @@
       btn.type = "button";
       btn.textContent = k[0].toUpperCase();
       btn.title = k + " beat";
+      // The accessible name has to be the BAND, not the letter: the visible text is just "L".
+      // And aria-pressed, because armed-vs-not is otherwise carried only by fill colour --
+      // this was the one toggle family in the app without it, while #mute, the layer mute, the
+      // filter bypass eye and the transition ticks all set it.
+      btn.setAttribute("aria-label", k + " beat");
+      btn.setAttribute("aria-pressed", "false");
       btn.addEventListener("click", () => {
         if (chipEls[id] !== chips) return;      // not the live block
         beatReact[id][k] = !beatReact[id][k];
         btn.classList.toggle("on", beatReact[id][k]);
+        btn.setAttribute("aria-pressed", beatReact[id][k] ? "true" : "false");
         syncDots();              // the menu row shows the same armed state
         syncTrigTune();          // ...and this band's tuning rows appear/hide
         // A <button> click fires neither input nor change, so the delegated onEdit
