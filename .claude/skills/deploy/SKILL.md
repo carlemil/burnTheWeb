@@ -149,6 +149,9 @@ Each prints the `msedge` line to run; every line is PASS/FAIL on stderr.
 
 ```
 node tools/world-check.js <scratchdir> dev-index.html      # joining/leaving a shared world: 0 console errors
+node tools/worldbelow-check.js <scratchdir> dev-index.html # world glass really receives the filtered picture
+                                                           # (run BOTH printed lines, NO virtual-time budget;
+                                                           #  the negative control must go red)
 node tools/worldlink-check.js <scratchdir> dev-index.html  # per-combination world LINK time (slow: minutes)
 node tools/flipcheck.js   <scratchdir> dev-index.html      # a Bloom layer lands the same way up as one without
 node tools/breakout-check.js <scratchdir> dev-index.html   # break-out box grid, drag, snap, ownership

@@ -1492,6 +1492,7 @@
     const FS_WORLD = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform float uZoom;
+    uniform sampler2D uBelow; uniform float uHasBelow;
     uniform float uOcOn; uniform float uOcId; uniform float uTime; uniform float uSwell;
     uniform float uChop; uniform float uFoam; uniform float uWind; uniform float uHeight;
     uniform float uReflect;
@@ -1848,10 +1849,40 @@
       // sink into a dark ripple and disappear.
       return gbody + 0.06 + 0.18*face + (0.06 + glow*0.55)*rim;
     }
+    // THE PICTURE THE REFLECTIONS DRAPE -- the layers below the glass, already palette-mapped
+    // and already through their own filter chains, captured one frame ago (captureWorldBelow).
+    // Same crude directional projection the standalone glass shader uses on its own uBelow,
+    // and deliberately the same: PARITY ACROSS THE HANDOVER is the whole point. While the world
+    // program is still linking the joined layers draw themselves standalone and reflect this
+    // picture; once it landed they reflected procedurally shaded water instead, so a filter on
+    // the ocean visibly dropped out of the balls a few seconds after load.
+    // It is frankly a fake -- it drapes the whole picture by ray direction rather than
+    // reflecting the correct part of it -- and that is the point too. A true screen-space
+    // reflection is available here (the camera inverts cleanly) but a mirror ball reflects most
+    // of a hemisphere the camera never saw, so it would be filtered over the wedge that happens
+    // to be on screen and unfiltered everywhere else, with a moving seam between the two.
+    // Colour in, HEAT out: the world writes one channel, so luminance is all that can be taken
+    // and the reflecting layer's own palette colours it.
+    float belowAt(vec3 d){
+      // The +1.25 keeps the divisor off zero for a ray travelling across the screen plane,
+      // which would otherwise smear one texel over the whole ball.
+      vec2 uv = 0.5 + 0.5*d.xy/(abs(d.z) + 1.25);
+      vec3 c = texture(uBelow, clamp(uv, 0.002, 0.998)).rgb;
+      return dot(c, vec3(0.299, 0.587, 0.114));
+    }
     float envRay(vec3 ro, vec3 rd){
       float id;
       float t = traceWorld(ro + rd*0.02, rd, 48, 24, id);
+      // Water and empty sky both come from the real picture when there is one; a SOLID keeps
+      // its own shading, so a ball reflected in a ball still reads as a ball. The trace still
+      // decides which of the three a ray found, so occlusion, the horizon and every silhouette
+      // are unchanged -- only the brightness of the water and the sky comes from the picture.
+      // uOcId is 0 with no ocean joined, and 0 is the reserved 'nothing hit' id no layer holds,
+      // so the test cannot fire on a real hit in a world that has no water.
+      if (uHasBelow > 0.5 && (t < 0.0 || id == uOcId)) return belowAt(rd);
       if (t < 0.0) return skyOf(rd);
+      // NO distance fade here, matching standalone on both sides: the ocean's own reflection
+      // divides by its primary hit's fade at the call site, and glass applies none.
       return shade0(id, ro + rd*t, rd, t);
     }
     void main(){

@@ -285,6 +285,49 @@ it renders unchanged.
   face term and `skyOf` touches no `worldMap`. Its environment is still the SKY, not the scene —
   balls do not contain each other. That needs a second bounce; see the link table above for why
   there is not one.
+- **WORLD REFLECTIONS DRAPE THE FILTERED PICTURE, ONE FRAME LATE** (`uBelow`/`uHasBelow` on
+  `FS_WORLD`, texture unit 2). Standalone Glass and Ocean both read `glBelowTex`, so before the
+  world program finished linking the balls reflected the ocean WITH its filters — and the moment
+  the world landed they switched to procedurally shaded water and the filters dropped out. That
+  read as a bug and was reported as one. `FS_WORLD` had no sampler at all.
+  - **It has to be last frame's.** `glWorldDraw` runs BEFORE the layer loop (a joined layer's
+    heat is a slice of the world), and the accumulator is cleared four lines later, so nothing
+    is coloured or filtered yet when the ball is shaded. `captureWorldBelow` blits
+    `glTex.color[acc]` into `glTex.worldBelow` at the one moment it is right — where
+    `glBelowTex` is assigned for the LOWEST JOINED GLASS layer — and the world reads it next
+    frame. Capturing an accumulator that already contains the balls is a hall of mirrors.
+  - **`worldBelowOk` is reset to false every `renderStackColor`** and set only by a capture, so
+    a frame with no joined glass (or glass on the bottom, nothing beneath it) cannot reuse a
+    stale picture. `var` with no initialiser, the `worldProgs` rule — `glResize` writes it from
+    an earlier slice. Half res (`wbW`/`wbH`), RGBA8 LINEAR, its own texture: `glTex.prev` is the
+    transition's and `worldOwn`/`worldMix` are R8 heat.
+  - **The seam is `envRay`, NOT `shade0`.** `shade0`'s ocean branch also shades the PRIMARY
+    ocean hit, so sampling there repaints the water with the layers below it — the same
+    'hides it rather than reflecting it' trap `glBelowTex` already carries a rule about.
+    `envRay` is the reflection-only entry and sits outside every `#if` group, so all sixteen
+    programs get it and no brace can unbalance.
+  - **Water and empty sky come from the picture; SOLIDS keep their own shading**, so a ball
+    reflected in a ball still reads as a ball. The trace still decides which of the three a ray
+    found, so occlusion, the horizon and every silhouette are unchanged — only brightness moves.
+    `uOcId` is 0 with no ocean and 0 is the reserved 'nothing hit' id, so the test cannot fire
+    on a real hit in a waterless world. No distance fade in `envRay`: the ocean caller divides
+    by its own primary fade and glass applies none, which is what standalone does on both sides.
+  - **The projection is the CRUDE DIRECTIONAL one standalone uses**, deliberately. A true
+    screen-space reflection is available (the camera inverts cleanly) and is WORSE: a mirror
+    ball reflects a hemisphere the camera never saw, so it would be filtered over the wedge
+    that happens to be on screen and unfiltered everywhere else, with a moving seam between.
+    Parity with standalone is the goal; the fake is what produces the wanted look.
+  - **`tools/worldbelow-check.js` is the gate, and it needs REAL TIME.** The whole feature is
+    one identity test (`L === worldPlan.gbs[0]`); if it never matches, nothing errors, the
+    picture is plausible and `worldprobe`, `worldcompile-check` and `world-check` all stay
+    GREEN, because none of them can see whether a uniform was ever set to 1. It counts the
+    capture and the uniform and ships a NEGATIVE CONTROL page that neuters the capture call.
+    Run it with **no `--virtual-time-budget`**: until the program links there is no world and
+    no capture, and a virtual clock blows straight through any `setTimeout` while the driver
+    is still really linking — a timer version reported 0 captures against correct code.
+  - Link cost measured both ways under one command: **512.3 s baseline vs 582.9 s after**,
+    +13.8% on the total, inside the ±15% band, with individual combinations moving BOTH ways
+    (gb+sd 28% faster, gb 50% slower). Compare totals; single entries are noise.
 - **Only the Glass ball traces secondary rays.** The others shade exactly as they do
   standalone; they are in the world to be SEEN in its reflections and to occlude it. Giving
   them reflection rays would double the trace for materials that never had one.

@@ -964,6 +964,17 @@
     // The outgoing frame, frozen at the moment of the switch (see transBegin).
     glTex.prev = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.prev = createFbo(glTex.prev);
+    // WHAT THE SHARED WORLD'S REFLECTIONS DRAPE (see FS_WORLD's envRay). It is the OKLab
+    // accumulator as it stood immediately BELOW the first joined glass layer -- the same
+    // content standalone glass reads live through glBelowTex -- kept for ONE frame, because
+    // glWorldDraw traces the world before any layer has been coloured or filtered and so
+    // cannot see this frame's.
+    // HALF RES on purpose: a picture draped over a ball is low-frequency, and a full-size
+    // RGBA8 is what the retired screen stage cost 66 MB at 4K. LINEAR because it is sampled
+    // at an arbitrary uv, and its own texture because glTex.prev belongs to the transition
+    // and glTex.worldOwn/worldMix are R8 heat, not colour.
+    glTex.worldBelow = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    glFbo.worldBelow = createFbo(glTex.worldBelow);
     glFbo.post = [createFbo(glTex.post[0]), createFbo(glTex.post[1])];
     glTex.blur1 = createTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR, gl.CLAMP_TO_EDGE);
     glFbo.blur1 = createFbo(glTex.blur1);
@@ -1029,6 +1040,8 @@
     resizeTex(glTex.world, fw, fh);
     resizeTex(glTex.worldOwn, fw, fh);
     resizeTex(glTex.worldMix, fw, fh);
+    resizeTex(glTex.worldBelow, wbW(), wbH());
+    worldBelowOk = false;                  // the old contents are the wrong size now
   }
   function glClearHeat() {
     gl.disable(gl.BLEND);
@@ -1728,7 +1741,7 @@
   var worldProgs;                       // "gb|sd" -> { p, pending } | { p, prog }
   var worldPar;                         // the parallel-compile extension, looked up once
   var worldVs, worldFsBase;             // shader sources -- they are local to initGL
-  const WORLD_UNIFORMS = ["uSize", "uZoom", "uOcOn", "uOcId", "uTime",
+  const WORLD_UNIFORMS = ["uSize", "uZoom", "uBelow", "uHasBelow", "uOcOn", "uOcId", "uTime",
     "uSwell", "uChop", "uFoam", "uWind", "uHeight", "uReflect",
     "uGbOn", "uGbId", "uGbTime", "uGbCount", "uGbRad", "uGbMat", "uGbIor", "uGbGlow", "uGbPlace", "uGbSalt",
     "uSdOn", "uSdId", "uSdCount", "uSdRim", "uSdPos", "uSdQuat", "uSdShape", "uSdPlace",
@@ -1814,6 +1827,32 @@
     return e.prog;
   }
 
+  // Half of the render buffer, never zero -- a 1px canvas would otherwise ask for a 0-wide
+  // texture and the blit below would be rejected.
+  function wbW() { return Math.max(1, fw >> 1); }
+  function wbH() { return Math.max(1, fh >> 1); }
+  // ONE FRAME LATE, DELIBERATELY. glWorldDraw runs before the layer loop -- it has to, since a
+  // joined layer's heat is a slice of the world -- so the filtered picture a reflection ought
+  // to show does not exist yet when the ball is shaded. This copies it at the one moment it IS
+  // right, and FS_WORLD reads it on the next frame. At 60 fps the lag is not visible; on a
+  // paused, stepped scene it is.
+  // IT MUST BE THE STATE BELOW THE GLASS. An accumulator that already contains the balls makes
+  // them reflect themselves, one frame apart, forever.
+  // blitFramebuffer rather than a quad: it scales natively, so the downsample costs no program,
+  // no VAO and no pass. It rebinds BOTH the read and the draw target, hence rebindCur.
+  function captureWorldBelow(src) {
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, glFbo.color[src]);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, glFbo.worldBelow);
+    gl.blitFramebuffer(0, 0, fw, fh, 0, 0, wbW(), wbH(), gl.COLOR_BUFFER_BIT, gl.LINEAR);
+    rebindCur();
+    worldBelowOk = true;
+  }
+  // 'var' with no initialiser, the same rule worldProgs/worldPar follow: glResize assigns it
+  // and is called from an earlier slice than this one, so a 'let' here is in the temporal dead
+  // zone at that moment and a 'var' WITH an initialiser would be worse -- glResize's write
+  // would be silently wiped when this line finally ran.
+  var worldBelowOk;
+
   // `dt` is not optional. A joined layer's fx.draw(dt) never runs — that is the whole
   // point — so this is the ONLY place its clock still advances. Passing 0 here freezes the
   // effect: the waves stop moving and the balls stop drifting, on geometry that otherwise
@@ -1825,6 +1864,11 @@
     gl.uniform2f(P.u.uSize, fw, fh);
     if (P.u.uCam) { gl.uniform4f(P.u.uCam, camRX, camRY, camRZ, camFov); gl.uniform2f(P.u.uCamSize, fw, fh); }
     gl.uniform1f(P.u.uZoom, zoom);
+    // Bound to a COMPLETE texture even when the shader will not read it -- the same rule the
+    // standalone glBelowTex seam follows -- with the float switching the branch.
+    bindTexUnit(2, worldBelowOk ? glTex.worldBelow : glTex.native);
+    gl.uniform1i(P.u.uBelow, 2);
+    gl.uniform1f(P.u.uHasBelow, worldBelowOk ? 1 : 0);
     const oc = plan.oc, gbs = plan.gbs, sd = plan.sd, qj = plan.qj, vb = plan.vb;
     gl.uniform1f(P.u.uOcOn, oc ? 1 : 0);
     gl.uniform1f(P.u.uOcId, oc ? plan.ids.get(oc) : 0);
@@ -1968,6 +2012,9 @@
         glWorldDraw(worldPlan, dt, P);
       }
     }
+    // Stale until something captures this frame. If there is no joined glass, or it is the
+    // bottom layer with nothing beneath it, last frame's picture must not be reused.
+    worldBelowOk = false;
     let acc = 0;
     bindFbo(glFbo.color[0], fw, fh);
     gl.disable(gl.BLEND);
@@ -1992,6 +2039,9 @@
       // render because that is when the effect's draw() runs; the accumulator is not written
       // again until glOkMerge below, so it is safe to sample.
       glBelowTex = li > 0 ? glTex.color[acc] : null;
+      // The lowest joined glass layer is the one whose 'below' the whole world reflects; gbs[0]
+      // is undefined when nothing is joined, which no layer can equal.
+      if (glBelowTex && worldPlan && L === worldPlan.gbs[0]) captureWorldBelow(acc);
       const heatTex = renderLayerHeat(L, slot, fx, dt, now, ticks);   // installs L's params (feedback used them)
       // `ramp`, not `base` — it shadowed this function's own `base` parameter, which made
       // any reference to the parameter inside this loop a TDZ throw rather than a wrong
