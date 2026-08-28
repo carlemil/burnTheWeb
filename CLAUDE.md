@@ -1213,6 +1213,20 @@ COVERAGE, not brightness**: `FS_PAL`'s alpha is `heat > 0` (it was a constant 1 
 and `FS_OKMERGE` returns the layer where covered and the accumulator where not, ignoring the
 gain weight. With MAX a bright layer beneath showed straight through a metal ball, which read
 as "the metal is transparent" — it was not; the mode was additive.
+**`KEY` (`u: 21`) is the same idea keyed on BRIGHTNESS**, for the case `OVR` cannot serve: a
+full-screen pattern shader writes heat at every pixel, so its coverage is total and `OVR`
+hides everything beneath it. `KEY` ramps the layer in over `smoothstep(0.05, 0.40, L)` of
+**OKLab lightness** (not Rec.709 luma — that rates a saturated blue far darker than an
+equally bright red and punches a hole through it), so dark regions let the layers below
+show through. It is **still gated on `lay.a`**, and that is not redundant: heat 0 maps to
+palette index 0, which is a real and possibly WHITE colour, so keying on brightness alone
+would let a pale background cover everything — the exact opposite of the point. A ramp, not
+a step: a hard cut aliases every edge and makes the constant critical. Both modes share
+`OVR`'s empty-accumulator guard, so a lone layer is opaque rather than dimmed toward black.
+**Adding a mode is ONE `BLEND_MODES` row plus one `FS_OKMERGE` branch** — the dropdown, the
+steppers, `blendOk` and the uniform all derive from the registry, and ids are the wire
+format so list ORDER is free. There is no Canvas2D mirror to write: the fallback renders one
+layer and never merges.
 - **Every chevron in the app is 2x** (~20–22px); `::before` ones pin `line-height: 0`.
 - **`#effect` is hidden here, not deleted** — it stays the effect value store.
 - First *visible* group heading's top border via **`.grp-first`, set by `markFirstGroup()`** —

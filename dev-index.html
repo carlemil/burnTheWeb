@@ -4139,6 +4139,36 @@
         o = mix(acc, vec4(c, 1.0), a);
         return;
       }
+      // KEY (21): the same idea as OVER, but BRIGHTNESS decides how much this layer covers
+      // rather than the bare did-it-draw flag. OVER keys on heat being exactly non-zero,
+      // which is the right test for a stamped point cloud or a ray that missed -- and the
+      // wrong one for a full-screen pattern shader, which writes SOMETHING at every pixel
+      // and therefore covers the whole frame under OVER. Here its dark regions fall away
+      // and the layers below show through them.
+      //
+      // Still gated on lay.a, and that is not redundant: heat 0 maps to palette index 0,
+      // which is a real colour and can be BRIGHT (paletteBg defaults to the palette's own
+      // low end, and may be white). Keying on brightness alone would let a pale background
+      // cover everything beneath it -- the exact opposite of what the mode is for.
+      //
+      // OKLab L, not Rec.709 luma: L is perceptual lightness, so a saturated blue and a
+      // saturated red that look equally bright key the same. Luma would rate the blue far
+      // darker and punch a hole through it.
+      //
+      // A RAMP, not a hard cut. A step would alias every edge into a staircase and would
+      // make the exact threshold critical; a soft one degrades gracefully if it sits a
+      // little wrong for a given palette. The window is deliberately wide for that reason.
+      // The empty-accumulator guard is OVER's, for OVER's reason -- mixing toward nothing
+      // is mixing toward black, so a lone layer would render dimmed rather than as itself.
+      if (uBlend == 21) {
+        vec3 c = clamp(col * uGain, 0.0, 1.0);
+        float lum = srgb2oklab(col).x;
+        float a = lay.a > 0.5
+          ? (accW < 1.0e-4 ? 1.0 : smoothstep(0.05, 0.40, lum)*uCover)
+          : 0.0;
+        o = mix(acc, vec4(c, 1.0), a);
+        return;
+      }
       vec3 labC = srgb2oklab(col);
       float w = clamp(labC.x * uGain, 0.0, WMAX);        // weight = perceptual L · gain
       if (accW + w < 1.0e-4) { o = vec4(0.0); return; }  // nothing lit here yet
@@ -8315,6 +8345,7 @@
     { id: "avg",   label: "AVG", u: 17, tip: "Average — a plain 50/50 perceptual mean of both layers in OKLab. Soft and painterly, the calm opposite of the screen/add family." },
     { id: "cmp",   label: "CMP", u: 18, tip: "Complement push — overlaps rotate to the opposite hue of the dominant layer: reds bleed cyan, greens bleed magenta. Alien colour you can't get by mixing." },
     { id: "over",  label: "OVR", u: 20, tip: "Over — where this layer drew something it COVERS the layers below; where it drew nothing they show through. The one to use for a solid object (a metal ball, a raymarched solid) that should hide what is behind it rather than glow through it." },
+    { id: "key",   label: "KEY", u: 21, tip: "Key — like Over, but this layer's DARK areas let the layers below show through instead of covering them. Use it when the layer fills the whole frame (a pattern or fractal shader) and Over would simply hide everything underneath." },
     { id: "cmax",  label: "CMX", u: 19, tip: "Channel max (Lighten) — takes the brighter of the two layers in EACH of red, green and blue independently. Unlike MAX (which keeps whichever whole layer is brighter), this mixes channels, so a red layer over a green one yields yellow where they overlap." },
   ];
   const BLEND_BY_ID = Object.fromEntries(BLEND_MODES.map(m => [m.id, m]));
