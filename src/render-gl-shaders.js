@@ -1544,6 +1544,27 @@
     const float CAM_H = 3.4;
 
     // ---- geometry, lifted from the two effects' own shaders ----
+    // HEIGHT ONLY, for the MARCH. The march decides geometry from h alone and never reads
+    // dh, but waves() computes the derivative regardless -- a pow and a cos per octave, paid
+    // up to 32 steps per ray for a value that was thrown away. Same octave loop, same
+    // constants, same normalisation, so the height is bit-identical to what waves() returns
+    // and the picture cannot move; only the dead half is gone. waves() stays as it is for
+    // the shading normal, which is the one caller that wants dh.
+    float waveH(vec2 p, int oct){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+      float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0, h = 0.0;
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        float ph = dot(p, dir)*frq + uTime*spd;
+        float s = sin(ph)*0.5 + 0.5;
+        h += amp*pow(s, uChop);
+        norm += amp;
+        amp *= 0.62; frq *= 1.87; spd *= 1.21;
+        dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+      }
+      return h / max(norm, 1e-4);
+    }
     void waves(vec2 p, int oct, out float h, out vec2 dh){
       float wr = uWind*0.017453293;
       vec2 dir = vec2(cos(wr), sin(wr));
@@ -1802,8 +1823,8 @@
         if (i > steps) break;
         float t = 0.6*pow(1.24, float(i));
         vec3 p = ro + rd*t;
-        float hh; vec2 dd;
-        waves(p.xz, WAVE_OCT_MARCH, hh, dd);
+        float hh;
+        hh = waveH(p.xz, WAVE_OCT_MARCH);
         float d = p.y - hh*amp;
         if (d < 0.0) return tp + (t - tp)*dp/max(dp - d, 1e-4);
         tp = t; dp = d;
@@ -2481,6 +2502,27 @@
     const float CAM_H = 3.4;
     // Height (0..1) and its two slopes, summed over 'oct' wave trains whose directions fan
     // out from the wind so the sea interferes with itself instead of repeating.
+    // HEIGHT ONLY, for the MARCH. The march decides geometry from h alone and never reads
+    // dh, but waves() computes the derivative regardless -- a pow and a cos per octave, paid
+    // up to 32 steps per ray for a value that was thrown away. Same octave loop, same
+    // constants, same normalisation, so the height is bit-identical to what waves() returns
+    // and the picture cannot move; only the dead half is gone. waves() stays as it is for
+    // the shading normal, which is the one caller that wants dh.
+    float waveH(vec2 p, int oct){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+      float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0, h = 0.0;
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        float ph = dot(p, dir)*frq + uTime*spd;
+        float s = sin(ph)*0.5 + 0.5;
+        h += amp*pow(s, uChop);
+        norm += amp;
+        amp *= 0.62; frq *= 1.87; spd *= 1.21;
+        dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
+      }
+      return h / max(norm, 1e-4);
+    }
     void waves(vec2 p, int oct, out float h, out vec2 dh){
       float wr = uWind*0.017453293;
       vec2 dir = vec2(cos(wr), sin(wr));
@@ -2523,8 +2565,8 @@
         for (int i = 1; i <= 32; i++){
           float t = 0.6*pow(1.24, float(i));
           vec3 p = vec3(0.0, CAM_H, 0.0) + rd*t;
-          float hh; vec2 dd;
-          waves(p.xz, WAVE_OCT_MARCH, hh, dd);
+          float hh;
+          hh = waveH(p.xz, WAVE_OCT_MARCH);
           float d = p.y - hh*amp;
           if (d < 0.0){
             // One secant step between the last point above and this one below. A bisection

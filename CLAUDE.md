@@ -2224,8 +2224,10 @@ So, against the candidates that look obvious in the source:
 Hardware four times slower than this still holds 60 fps. Below that the bound is the SHADERS,
 not the JS — so if performance ever does matter, the work is in `FS_*` (the ocean march
 computing wave derivatives it discards, the doubled `pow` in `FS_OCEAN`/`FS_BULB`/`FS_BHOLE`,
-the missing bounding sphere on `solidsDE` — `glassDE` has one now, derived from `ballAt`'s
-amplitudes and asserted by `glassprobe`), never in the per-frame JS above.
+the missing bounding sphere on `solidsDE` — `glassDE` deliberately has NONE: one was
+added, measured to move the sixteen-program link total the wrong way with no demonstrable
+frame benefit, and reverted; the three-point measurement is inline at its definition), never
+in the per-frame JS above.
 
 **A green logic probe is necessary, not sufficient**, for anything writing retained heat — drive a
 few hundred real frames and look at the screenshot.
