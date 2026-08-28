@@ -15,6 +15,39 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.67.0] — 2026-08-28
+
+### Changed
+- **Glass balls in a shared 3D world now reflect the picture as you have filtered it.**
+  Load a scene with an Ocean under a Glass ball and the balls would reflect the water with
+  its filters for the first few seconds, then shift slightly and switch to reflecting plain,
+  unfiltered water — so a filter you had set on the ocean simply dropped out of the
+  reflections and stayed out. That moment was the shared world finishing its build: until it
+  is ready each layer draws itself and reflects the real picture, and the world renderer had
+  no way to see that picture at all. It does now, so the reflections keep their filters
+  instead of changing a few seconds after load.
+  - Reflected **water and sky** come from the picture; reflected **solid objects** keep their
+    own shading, so a ball reflected in a ball still reads as a ball. Silhouettes, occlusion
+    and the horizon are unchanged — only brightness moves.
+  - The reflection is one frame behind, which is invisible in motion and only shows on a
+    paused scene. As before, it is an impression of the picture rather than a physically
+    correct mirror.
+  - A saved scene loads exactly as it always did; ocean-and-glass world scenes will look
+    different, because that is the point.
+
+### Internal
+- **tools/worldbelow-check.js** — proves the world renderer actually receives the picture.
+  The whole feature hangs on one identity test, and if it never matched nothing would error:
+  the picture would stay plausible and worldprobe, worldcompile-check and world-check would
+  all stay green, because none of them can see whether a uniform was ever set. It counts the
+  two events that matter and ships a negative control that neuters the feature, so a green
+  run cannot be a run that measured nothing. It has to poll in real time — a virtual clock
+  runs straight past any timer while the driver is still linking, and a first version of the
+  check reported zero against correct code for exactly that reason.
+- Shared-world link time measured before and after under one command: 512.3s against 582.9s,
+  +13.8% on the total and inside the ±15% run-to-run band, with individual combinations
+  moving in both directions. Totals are the only comparable figure; single entries are noise.
+
 ## [1.66.1] — 2026-08-28
 
 ### Fixed
