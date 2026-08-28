@@ -470,11 +470,18 @@
       float m = mix(1.0, 1.0/uMag, inside);           // compress sampling = magnify
       vec2 p = uCenter + d*m/vec2(asp, 1.0);
       vec3 col = texture(uSrc, clamp(p, 0.0, 1.0)).rgb;
-      // Brightens the bubble's BODY by 15% and eases that off over the outer 8% -- which is not
-      // what "rim glint" describes, but it is what has always shipped, so the value is preserved
-      // exactly and only the undefined edge order is fixed. Swapping it to a true rim highlight
-      // is a look change, not a bug fix.
-      col *= 1.0 + 0.15*(1.0 - smoothstep(uRad*0.92, uRad, r))*step(r, uRad);
+      // A REAL RIM GLINT: dark through the body, brightening into the edge and cut off sharply
+      // at it. It used to be the exact inverse -- the whole bubble body lifted 15% and eased
+      // back down over the outer 8% -- which is a fill light, not a glint, and it made the lens
+      // read as a pale disc rather than as glass with an edge. The reversed smoothstep that
+      // shipped it was undefined in GLSL as well, so it was two bugs wearing one line.
+      //
+      // The amplitude goes UP because the light is now concentrated: 0.15 spread over the whole
+      // disc and 0.15 confined to the outer 8% are not the same brightness, and keeping the old
+      // number would have made the filter look like it does LESS than before rather than
+      // something different. step(r, uRad) keeps it strictly inside -- a glass edge is a hard
+      // boundary, and letting it bleed outward would draw a halo on the unmagnified picture.
+      col *= 1.0 + 0.40*smoothstep(uRad*0.92, uRad, r)*step(r, uRad);
       o = vec4(col, 1.0);
     }`;
     // Droste zoom: the picture swallowing itself. Log-polar tiling — radius repeats in

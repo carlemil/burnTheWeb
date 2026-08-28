@@ -15,6 +15,15 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.66.1] — 2026-08-28
+
+### Fixed
+- **Lens bubble has an actual rim glint.** The highlight was inside out: it lifted the whole
+  bubble by 15% and faded that away toward the edge, so the lens read as a pale disc laid over
+  the picture rather than as a piece of glass. It now runs the other way — nothing through the
+  body, brightening into the rim and cut off sharply at it — and is stronger, because the same
+  amount of light spread over a whole disc and confined to its edge are not the same thing.
+
 ## [1.66.0] — 2026-08-27
 
 ### Added
