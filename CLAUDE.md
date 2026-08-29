@@ -2243,8 +2243,28 @@ post filter is at the noise floor. **`tools/pixgate.js`** proves 'free': owned r
 REJECTED two of three planned free wins (pow folds are not bit-identical in float).
 **`tools/abshot.js`** takes a same-frame A/B per build, shipped out as base64 — headless
 `--screenshot` snapshots before the compositor presents a canvas drawn under an owned queue.
-A one-off timing can lie: the wave pow fold read 3.6× slower once and 12% faster on the
-shipped build. **Re-measure on the real build before writing a verdict down.**
+**TWO WAYS THE GPU TIMER LIES ON CHEAP SHADERS, both found chasing an Ocean 'regression'
+that did not exist.** (1) **Chrome's shader disk cache**: a source compiled before comes
+back as a program binary the driver optimised in an earlier session, a never-seen source
+runs the quick build — the SAME v1.68.0 Ocean read 0.257 ms cached and 0.907 cold. Pass
+`--disable-gpu-shader-disk-cache` (perf-check prints it) and compare cold with cold only.
+(2) **GPU power state**: a 0.25 ms shader is ~4% load, the clocks never boost, and a cheap
+effect measured ALONE reads 2–4× slow; the full sweep is continuous load and is fine, an
+`--only` run wants a heavy effect first. Ocean swung 0.24–0.9 ms across protocols with
+nothing changed. **The instrument resolves milliseconds, not tenths**; the wave pow fold is
+NEITHER 3.6× slower NOR 12% faster — cold-vs-cold it is 0.234 → 0.239, i.e. nothing, and
+the Mandelbulb fold is −4.5%, not −12%. Clouds (21 → 9 ms) was never in doubt: heavy shaders
+boost the clocks themselves.
+
+**THE OCEAN SURFACE IS A COMPILE-TIME DEFINE, ONE PROGRAM PER SURFACE** (`SURF_SINE` /
+`SURF_SEA` / `SURF_SWELL` / `SURF_NOISE`, `W_`-prefixed in the world and carried in the world
+key as `|s2`). Plain flags, never `SURF == n`: with every surface in one shader behind a
+uniform, surface 0 measured 4× slower, and deleting the three DEAD functions alone brought
+it back — past some source size the compiler stops unrolling the 32-step march whether the
+code runs or not. Changing Surface while joined relinks the world (async; ocean-only is
+~0.1 s). `worldprobe` balances braces over 16 groups × 4 surfaces, `worldcompile-check`
+compiles 19. The surface functions are hash-free on purpose (`fract(sin()*43758)` is a
+driver-build detector). `pixgate` holds surface 0 bit-identical to the pre-surface Ocean.
 
 **A green logic probe is necessary, not sufficient**, for anything writing retained heat — drive a
 few hundred real frames and look at the screenshot.

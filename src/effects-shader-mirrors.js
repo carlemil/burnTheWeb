@@ -935,12 +935,12 @@
   // ---- Gerstner ocean: rolling sea heightfield (shader effect) ----
   // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
   // 2x2 block and four octaves instead of six.
-  let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0;
+  let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0, goSurf = 0;
   let goHeight = 0.7, goReflect = 0.6;
   function oceanSeed(dt) {
     goTime += dt * goSpeed;
     return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind,
-             height: goHeight, reflect: goReflect, zoom };
+             height: goHeight, reflect: goReflect, surf: Math.max(0, Math.min(3, Math.round(goSurf))), zoom };
   }
   // CPU fallback. It keeps the ORIGINAL flat-plane intersection rather than mirroring the
   // march, and that is a deliberate simplification, not an oversight: 32 steps x 3 wave

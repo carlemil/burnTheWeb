@@ -18,10 +18,14 @@ const body = cut("const FS_WORLD = `", "`;");
 const vsq = cut("const VS_QUAD = `", "`;");
 const cam = cut("function camGlsl() { return `", "`; }");
 const variants = [];
-for (let m = 0; m < 16; m++) {
-  const on = b => (m >> b) & 1;
-  const key = ["gb", "sd", "qj", "vb"].filter((k, i) => on(i)).join("+") || "ocean-only";
-  const def = NL + "#define W_GB " + on(0) + NL + "#define W_SD " + on(1) + NL + "#define W_QJ " + on(2) + NL + "#define W_VB " + on(3) + NL + "#define W_GBN " + (on(0) ? 2 : 1) + NL; // glass COUNT, like worldSource() injects (>= 1 always); 2 when glass is present so the multi-group loops compile
+// 16 group combinations, each at surface 0, plus the other three surfaces on the ocean-only
+// program: 19 compiles. A surface only changes the wave functions, so one group set is
+// enough to catch a guard that breaks when it is selected.
+for (let m = 0; m < 19; m++) {
+  const on = b => m < 16 ? (m >> b) & 1 : 0;
+  const surf = m < 16 ? 0 : m - 15;
+  const key = (["gb", "sd", "qj", "vb"].filter((k, i) => on(i)).join("+") || "ocean-only") + (surf ? "+surf" + surf : "");
+  const def = NL + ["W_SURF_SINE", "W_SURF_SEA", "W_SURF_SWELL", "W_SURF_NOISE"].map((f, i) => "#define " + f + " " + (i === surf ? 1 : 0)).join(NL) + NL + "#define W_GB " + on(0) + NL + "#define W_SD " + on(1) + NL + "#define W_QJ " + on(2) + NL + "#define W_VB " + on(3) + NL + "#define W_GBN " + (on(0) ? 2 : 1) + NL; // glass COUNT, like worldSource() injects (>= 1 always); 2 when glass is present so the multi-group loops compile
   const fsSrc = body.replace("#version 300 es" + NL, "#version 300 es" + def)
     .replace(/gl_FragCoord/g, "fragCam").replace("void main(){", cam + NL + "    void main(){ vec4 fragCam = camFrag4();");
   variants.push({ key, fsSrc });

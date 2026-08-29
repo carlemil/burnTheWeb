@@ -824,7 +824,20 @@
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uSalt", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom", "uRot"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
-    glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"]);
+    // ONE OCEAN PROGRAM PER SURFACE. With every surface in one shader the standalone Ocean
+    // measured 1.03 ms at 4K on the shipped surface against 0.257 before -- and deleting the
+    // three DEAD functions alone, dispatch and branch intact, gave the 0.258 back. Past some
+    // source size the compiler stops unrolling the 32-step march, whether the code runs or
+    // not. So the surface is a compile-time define and the program is the surface.
+    const OCEAN_U = ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"];
+    // PLAIN FLAGS, one per surface, never "SURF == n": measured, the ==/!= forms cost surface 0
+    // 3.5x (0.257 -> 0.9 ms) with both present, and either alone was free. Flags are what the
+    // world uses (#if W_GB) and are known-free.
+    const SURF_NAMES = ["SURF_SINE", "SURF_SEA", "SURF_SWELL", "SURF_NOISE"];
+    const surfDefs = n => SURF_NAMES.map((f, i) => "#define " + f + " " + (i === n ? 1 : 0)).join("\n");
+    for (let sfi = 0; sfi < 4; sfi++)
+      glProg["ocean" + sfi] = camProg(VS_QUAD, FS_OCEAN.replace(surfDefs(0), surfDefs(sfi)), OCEAN_U);
+    glProg.ocean = glProg.ocean0;
     glProg.vballs = camProg(VS_QUAD, FS_VBALLS, ["uSize", "uPhase", "uCount", "uShape", "uRad", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
@@ -1761,18 +1774,33 @@
     // constant bound makes one glass layer link like one. W_GBN stays >= 1 with glass off;
     // the arrays are still declared either way.
     const gbm = key.match(/gb([0-9])/);
-    const def = WNL + "#define W_GB " + on("gb")
+    // The ocean SURFACE is baked in the same way (key carries 's2'): a uniform switch would
+    // put all four surface functions in every program, and even dead they cost the march
+    // its unrolling -- measured 4x on the standalone shader.
+    const sfm = key.match(/s([0-3])/), sfn = sfm ? +sfm[1] : 0;
+    const def = WNL + ["W_SURF_SINE", "W_SURF_SEA", "W_SURF_SWELL", "W_SURF_NOISE"].map((f, i) => "#define " + f + " " + (i === sfn ? 1 : 0)).join(WNL)
+              + WNL + "#define W_GB " + on("gb")
               + WNL + "#define W_GBN " + (gbm ? gbm[1] : "1")
               + WNL + "#define W_SD " + on("sd")
               + WNL + "#define W_QJ " + on("qj")
               + WNL + "#define W_VB " + on("vb") + WNL;
     return worldFsBase.replace("#version 300 es" + WNL, "#version 300 es" + def);
   }
+  // The Surface a layer renders with: the live global for the selected layer (its store is
+  // the DOM and L.state is null), the frozen record for any other. A single control's pair
+  // is collapsed lo-then-round, the way singlePair does it.
+  function layerSurf(L) {
+    const v = L && L.state && L.state.gosurf ? L.state.gosurf[0] : goSurf;
+    return Math.max(0, Math.min(3, Math.round(+v || 0)));
+  }
   // Returns the linked program, or null while it is still being built.
   function worldProgFor(plan) {
-    const key = ["gb", "sd", "qj", "vb"]
+    const key = (["gb", "sd", "qj", "vb"]
       .filter(k => k === "gb" ? plan.gbs.length : plan[k])
-      .map(k => k === "gb" ? "gb" + plan.gbs.length : k).join("|") || "oc";
+      .map(k => k === "gb" ? "gb" + plan.gbs.length : k).join("|") || "oc")
+      // Changing Surface while joined relinks the world (async; the joined layers draw
+      // themselves meanwhile, exactly as on first join). Ocean-only relinks in ~0.1 s.
+      + (plan.oc ? "|s" + layerSurf(plan.oc) : "");
     let e = worldProgs[key];
     if (e && e.prog) return e.prog;
     if (!e) {

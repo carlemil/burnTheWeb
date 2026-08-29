@@ -30,7 +30,10 @@ if (process.argv[2] === "--decode") {
   });
   return;
 }
-const [outDir, pageFile, tag, effect, framesArg] = process.argv.slice(2);
+// --set key=value (repeatable) sets a slider before the frames are pumped.
+const SET = {};
+const argv = process.argv.slice(2).filter(a => { const m = a.match(/^--set=?(.+?)=(.+)$/); if (m) { SET[m[1]] = m[2]; return false; } return true; });
+const [outDir, pageFile, tag, effect, framesArg] = argv;
 if (!outDir || !pageFile || !tag || !effect) {
   console.error("usage: node tools/abshot.js <outdir> <page.html> <tag> \"<Effect name>\" [frames]");
   process.exit(2);
@@ -75,6 +78,13 @@ const BODY = [
   "    var o = [].slice.call(sel.options).filter(function(x){ return x.textContent.trim() === " + JSON.stringify(effect) + "; })[0];",
   "    if (!o){ console.log(\"SHOT|MISSING\"); return; }",
   "    sel.value = o.value; sel.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+  "    // Optional slider overrides (--set key=value): both thumbs, dispatched as the user's own",
+  "    // input so apply() runs and a single control collapses the way it does for a person.",
+  "    var SET = " + JSON.stringify(SET) + ";",
+  "    Object.keys(SET).forEach(function(k){ [\"-lo\", \"-hi\"].forEach(function(t){",
+  "      var e = document.querySelector(\"[data-k=\" + JSON.stringify(k + t) + \"]\");",
+  "      if (e){ e.value = String(SET[k]); e.dispatchEvent(new Event(\"input\", { bubbles: true })); }",
+  "    }); });",
   "    // GRAYSCALE, deliberately. Heat is one channel, so luminance IS the difference between",
   "    // two builds -- and the shipped Fire palette is near-white at the top, where a dense",
   "    // effect (clouds at full cover) pins and every shot came back a flat yellow.",

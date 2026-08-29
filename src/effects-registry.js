@@ -395,11 +395,11 @@
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
-      help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
-      params: ["goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      help: "A rolling sea running out to a horizon. Surface picks the shape of the water: Sine chop is the original sharpened-sine sum, Seascape is the classic rolling shader sea, Long swell puts two big slow swells under the chop, and Rolling noise is an irregular, bending surface. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
+      params: ["gosurf", "goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "ocean", "band"], bakesOwnZoom: true,
       draw: dt => { const s = oceanSeed(dt);
-        if (useGL) glShaderDraw("ocean", u => {
+        if (useGL) glShaderDraw("ocean" + s.surf, u => {
           gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSwell, s.swell); gl.uniform1f(u.uChop, s.chop);
           gl.uniform1f(u.uFoam, s.foam); gl.uniform1f(u.uWind, s.wind); gl.uniform1f(u.uZoom, s.zoom);
           gl.uniform1f(u.uHeight, s.height); gl.uniform1f(u.uReflect, s.reflect);
@@ -409,7 +409,7 @@
           gl.uniform1f(u.uHasBelow, glBelowTex ? 1 : 0);
         });
         else oceanCPU(s); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0], goheight: [0.7, 0.7], goreflect: [0.6, 0.6],
+      defaults: { gosurf: [0, 0], palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0], goheight: [0.7, 0.7], goreflect: [0.6, 0.6],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",

@@ -26,6 +26,17 @@
 //     wall-clock fps is pinned to the cap and reports every effect as identical. CPU time is
 //     measured too and is NOT redundant: the point-accumulation effects stamp on the CPU, and
 //     a GPU-only number would report the expensive ones as free.
+//  4. DISABLE THE SHADER DISK CACHE (the printed commands do). A source Chrome has compiled
+//     before comes back as a program binary the driver optimised in an earlier session; a
+//     never-seen source runs the quick build. The same v1.68.0 Ocean read 0.257 ms cached and
+//     0.907 ms cold, and that 3.5x was mistaken for a regression -- twice -- before the cache
+//     was suspected. Compare only cold against cold.
+//  5. A CHEAP EFFECT MEASURED ALONE READS 2-4x SLOW. A 0.25 ms shader is ~4% GPU load, the
+//     GPU stays in a low power state and the timer reads at idle clocks; a heavy shader ahead
+//     of it boosts the clocks and they stay up. The full sweep is continuous load, so its
+//     numbers are fine; for --only runs put a heavy effect FIRST (--only=Mandelbulb,Ocean),
+//     and treat sub-millisecond differences between runs as noise -- Ocean swung 0.24-0.9 ms
+//     across protocols with nothing changed. This tool resolves milliseconds, not tenths.
 //
 // No backtick anywhere in the injected source; assembled from arrays joined by an explicit
 // newline, per the rule in CLAUDE.md.
@@ -38,6 +49,9 @@ const outDir = process.argv[2];
 const appFile = process.argv[3] || "dev-index.html";
 // Optional: --only=Name,Name times just those effects and skips the filter sweep; --tag=x
 // names the output page perf-x.html so several candidate builds can sit side by side.
+// --set key=value (repeatable) sets a slider after each effect switch, before sampling.
+const SET = {};
+process.argv.forEach(a => { const m = a.match(/^--set=?(.+?)=(.+)$/); if (m) SET[m[1]] = m[2]; });
 const optOnly = (process.argv.find(a => a.startsWith("--only=")) || "").slice(7);
 const ONLY = optOnly ? optOnly.split(",") : null;
 const FILTERS_ONLY = process.argv.includes("--filters-only");   // skip the effect sweep
@@ -193,6 +207,11 @@ const ASSERT = [
   "    eachSeries(names, function(nm, next){",
   "      var o = [].slice.call(sel.options).filter(function(x){ return x.textContent.trim() === nm; })[0];",
   "      sel.value = o.value; sel.dispatchEvent(new Event(\"change\", { bubbles: true }));",
+  "      var SET = " + JSON.stringify(SET) + ";",
+  "      Object.keys(SET).forEach(function(k){ [\"-lo\", \"-hi\"].forEach(function(t){",
+  "        var e = document.querySelector(\"[data-k=\" + JSON.stringify(k + t) + \"]\");",
+  "        if (e){ e.value = String(SET[k]); e.dispatchEvent(new Event(\"input\", { bubbles: true })); }",
+  "      }); });",
   "      measure(nm, \"effect\", function(){",
   "        // The effect under test must STILL be selected when the sample was taken -- an",
   "        // auto-cycle or a stray handler moving on would silently time the wrong thing.",
@@ -264,7 +283,7 @@ const abs = path.resolve(outDir).split(path.sep).join("/");
 console.log(NL + "run BOTH resolutions, with NO --virtual-time-budget (it would make every"
   + NL + "number meaningless while still looking like a successful run):");
 for (const r of [["1600,900", "hd"], ["3840,2160", "4k"]]) {
-  console.log(NL + "  [" + r[1] + "] msedge --headless=new --disable-extensions --enable-logging=stderr --v=0"
+  console.log(NL + "  [" + r[1] + "] msedge --headless=new --disable-extensions --disable-gpu-shader-disk-cache --enable-logging=stderr --v=0"
     + " --window-size=" + r[0]
     + " --user-data-dir=\"" + abs + "/ud-perf-" + r[1] + "\""
     + " \"file:///" + abs + "/perf.html\" 2>&1 | grep -a -oE " + Q + "\"PERF[^\"]*\"" + Q

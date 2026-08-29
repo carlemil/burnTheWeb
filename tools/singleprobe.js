@@ -63,7 +63,7 @@ const EXPECT = [
   "mbcount", "ksegments", "cbcount", "cosides", "bncount", "bnmix", "sdcount",
   "sdmix", "kfbars", "twcols", "ltbolts", "bpdetail", "flvar", "aucurtains", "rdspeed",
   "mgiter", "wedgeseg", "poster", "mirror", "pxdir", "cellstates", "kuwrad", "qjdetail",
-  "vbcount", "vbshape", "gxarms",
+  "vbcount", "vbshape", "gxarms", "gosurf",
   // Doughnut: both are single because the flute pattern cos(flute·(ang + twist·arc))
   // only closes across the atan2 branch cut when flute·twist is a whole number.
   "dnflute", "dntwist",

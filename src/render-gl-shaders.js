@@ -1567,9 +1567,21 @@
     // constants, same normalisation, so the height is bit-identical to what waves() returns
     // and the picture cannot move; only the dead half is gone. waves() stays as it is for
     // the shading normal, which is the one caller that wants dh.
-    float waveH(vec2 p, int oct){
-      float wr = uWind*0.017453293;
-      vec2 dir = vec2(cos(wr), sin(wr));
+    // FOUR SURFACES, chosen by the Surface slider (uSurf). All are HEIGHT FIELDS in [0,1] over
+    // the same wind-rotated frame, so the march, the secant step, the foam and the reflection
+    // work unchanged for every one of them; only the shape of the water differs.
+    //   0 Sine chop     -- the shipped sum of sharpened sines, byte-identical to before.
+    //   1 Seascape      -- Alekseev's octave (Seascape, 2014): 1-|sin| blended with |cos| by
+    //                      itself, raised to the chop. Round troughs, drawn-out crests.
+    //   2 Long swell    -- what the shipped one lacks: SCALE. Two long, slow, nearly-round
+    //                      swells a decade below the chop, with the sharpened chop riding on
+    //                      them. It reads as a sea because the big waves are big.
+    //   3 Rolling noise -- a hash-free noise: eight low sines at golden-angle directions and
+    //                      mismatched speeds, domain-warped by two more. NOT fract(sin()*43758):
+    //                      that hash is a driver-build detector (see the glass ball), and a sea
+    //                      that reshapes itself when the driver recompiles is the ghost bug again.
+#if W_SURF_SINE
+    float surfSine(vec2 p, vec2 dir, int oct){
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0, h = 0.0;
       for (int i = 0; i < 6; i++){
         if (i >= oct) break;
@@ -1582,7 +1594,94 @@
       }
       return h / max(norm, 1e-4);
     }
+#endif
+#if W_SURF_SEA
+    float surfSea(vec2 p, vec2 dir, int oct){
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      float amp = 1.0, frq = 0.16, spd = 0.8, norm = 0.0, h = 0.0;
+      float choppy = 0.6 + 0.35*uChop;
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        vec2 uv = (q + uTime*spd*vec2(1.0, 0.6))*frq;
+        vec2 wv = 1.0 - abs(sin(uv)), swv = abs(cos(uv));
+        wv = mix(wv, swv, wv);
+        h += pow(1.0 - pow(wv.x*wv.y, 0.65), choppy)*amp;
+        norm += amp;
+        q = mat2(1.6, 1.2, -1.2, 1.6)*q;
+        frq *= 1.9; amp *= 0.22; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+#if W_SURF_SWELL
+    float surfSwell(vec2 p, vec2 dir, int oct){
+      // Two long swells (wavelengths ~60 and ~40 units), almost round, then the chop.
+      vec2 d2 = normalize(vec2(dir.x*0.94 - dir.y*0.34, dir.x*0.34 + dir.y*0.94));
+      float a = sin(dot(p, dir)*0.105 + uTime*0.55)*0.5 + 0.5;
+      float b = sin(dot(p, d2)*0.160 + uTime*0.72)*0.5 + 0.5;
+      float h = 1.0*pow(a, 1.35) + 0.6*pow(b, 1.35), norm = 1.6;
+      // The chop rides the swell: the shipped octave loop, an octave up, at a third the weight.
+      float amp = 0.34, frq = 0.75, spd = 1.2;
+      vec2 dd = d2;
+      for (int i = 0; i < 6; i++){
+        if (i + 2 >= oct) break;
+        float ph = dot(p, dd)*frq + uTime*spd;
+        h += amp*pow(sin(ph)*0.5 + 0.5, uChop);
+        norm += amp;
+        amp *= 0.6; frq *= 1.9; spd *= 1.2;
+        dd = normalize(vec2(dd.x*0.62 - dd.y*0.78, dd.x*0.78 + dd.y*0.62));
+      }
+      return h / norm;
+    }
+#endif
+#if W_SURF_NOISE
+    float surfNoise(vec2 p, vec2 dir, int oct){
+      // Domain warp first, so the crests bend instead of running straight.
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      q += 1.8*vec2(sin(q.y*0.09 + uTime*0.31), sin(q.x*0.11 - uTime*0.27));
+      float h = 0.0, norm = 0.0, amp = 1.0, frq = 0.13;
+      float ang = 0.3;
+      for (int i = 0; i < 8; i++){
+        if (i >= oct + 2) break;
+        vec2 d = vec2(cos(ang), sin(ang));
+        float s = sin(dot(q, d)*frq + uTime*(0.5 + 0.13*float(i)))*0.5 + 0.5;
+        h += amp*pow(s, 1.0 + 0.25*uChop);
+        norm += amp;
+        ang += 2.39996; amp *= 0.68; frq *= 1.53;
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+    float waveH(vec2 p, int oct){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+#if W_SURF_SEA
+      return surfSea(p, dir, oct);
+#endif
+#if W_SURF_SWELL
+      return surfSwell(p, dir, oct);
+#endif
+#if W_SURF_NOISE
+      return surfNoise(p, dir, oct);
+#endif
+#if W_SURF_SINE
+      return surfSine(p, dir, oct);
+#endif
+    }
     void waves(vec2 p, int oct, out float h, out vec2 dh){
+#if !W_SURF_SINE
+        // The three new surfaces take their shading gradient by central differences: two
+        // extra height evaluations on the SHADING path only (the march uses waveH), which is
+        // cheaper to write and to link than three analytic gradients, and the step is well
+        // under the finest octave's wavelength.
+        h = waveH(p, oct);
+        const float e = 0.05;
+        dh = vec2(waveH(p + vec2(e, 0.0), oct) - waveH(p - vec2(e, 0.0), oct),
+                  waveH(p + vec2(0.0, e), oct) - waveH(p - vec2(0.0, e), oct)) / (2.0*e);
+        return;
+#endif
       float wr = uWind*0.017453293;
       vec2 dir = vec2(cos(wr), sin(wr));
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
@@ -2515,6 +2614,10 @@
     // down. That is how water behaves and it is why the horizon is the bright part. With no
     // layer beneath, uHasBelow is 0 and the sky term stands alone, exactly as before.
     const FS_OCEAN = `#version 300 es
+#define SURF_SINE 1
+#define SURF_SEA 0
+#define SURF_SWELL 0
+#define SURF_NOISE 0
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uSwell; uniform float uChop;
     uniform float uFoam; uniform float uWind; uniform float uZoom;
@@ -2531,9 +2634,21 @@
     // constants, same normalisation, so the height is bit-identical to what waves() returns
     // and the picture cannot move; only the dead half is gone. waves() stays as it is for
     // the shading normal, which is the one caller that wants dh.
-    float waveH(vec2 p, int oct){
-      float wr = uWind*0.017453293;
-      vec2 dir = vec2(cos(wr), sin(wr));
+    // FOUR SURFACES, chosen by the Surface slider (uSurf). All are HEIGHT FIELDS in [0,1] over
+    // the same wind-rotated frame, so the march, the secant step, the foam and the reflection
+    // work unchanged for every one of them; only the shape of the water differs.
+    //   0 Sine chop     -- the shipped sum of sharpened sines, byte-identical to before.
+    //   1 Seascape      -- Alekseev's octave (Seascape, 2014): 1-|sin| blended with |cos| by
+    //                      itself, raised to the chop. Round troughs, drawn-out crests.
+    //   2 Long swell    -- what the shipped one lacks: SCALE. Two long, slow, nearly-round
+    //                      swells a decade below the chop, with the sharpened chop riding on
+    //                      them. It reads as a sea because the big waves are big.
+    //   3 Rolling noise -- a hash-free noise: eight low sines at golden-angle directions and
+    //                      mismatched speeds, domain-warped by two more. NOT fract(sin()*43758):
+    //                      that hash is a driver-build detector (see the glass ball), and a sea
+    //                      that reshapes itself when the driver recompiles is the ghost bug again.
+#if SURF_SINE
+    float surfSine(vec2 p, vec2 dir, int oct){
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0, h = 0.0;
       for (int i = 0; i < 6; i++){
         if (i >= oct) break;
@@ -2546,7 +2661,94 @@
       }
       return h / max(norm, 1e-4);
     }
+#endif
+#if SURF_SEA
+    float surfSea(vec2 p, vec2 dir, int oct){
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      float amp = 1.0, frq = 0.16, spd = 0.8, norm = 0.0, h = 0.0;
+      float choppy = 0.6 + 0.35*uChop;
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        vec2 uv = (q + uTime*spd*vec2(1.0, 0.6))*frq;
+        vec2 wv = 1.0 - abs(sin(uv)), swv = abs(cos(uv));
+        wv = mix(wv, swv, wv);
+        h += pow(1.0 - pow(wv.x*wv.y, 0.65), choppy)*amp;
+        norm += amp;
+        q = mat2(1.6, 1.2, -1.2, 1.6)*q;
+        frq *= 1.9; amp *= 0.22; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+#if SURF_SWELL
+    float surfSwell(vec2 p, vec2 dir, int oct){
+      // Two long swells (wavelengths ~60 and ~40 units), almost round, then the chop.
+      vec2 d2 = normalize(vec2(dir.x*0.94 - dir.y*0.34, dir.x*0.34 + dir.y*0.94));
+      float a = sin(dot(p, dir)*0.105 + uTime*0.55)*0.5 + 0.5;
+      float b = sin(dot(p, d2)*0.160 + uTime*0.72)*0.5 + 0.5;
+      float h = 1.0*pow(a, 1.35) + 0.6*pow(b, 1.35), norm = 1.6;
+      // The chop rides the swell: the shipped octave loop, an octave up, at a third the weight.
+      float amp = 0.34, frq = 0.75, spd = 1.2;
+      vec2 dd = d2;
+      for (int i = 0; i < 6; i++){
+        if (i + 2 >= oct) break;
+        float ph = dot(p, dd)*frq + uTime*spd;
+        h += amp*pow(sin(ph)*0.5 + 0.5, uChop);
+        norm += amp;
+        amp *= 0.6; frq *= 1.9; spd *= 1.2;
+        dd = normalize(vec2(dd.x*0.62 - dd.y*0.78, dd.x*0.78 + dd.y*0.62));
+      }
+      return h / norm;
+    }
+#endif
+#if SURF_NOISE
+    float surfNoise(vec2 p, vec2 dir, int oct){
+      // Domain warp first, so the crests bend instead of running straight.
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      q += 1.8*vec2(sin(q.y*0.09 + uTime*0.31), sin(q.x*0.11 - uTime*0.27));
+      float h = 0.0, norm = 0.0, amp = 1.0, frq = 0.13;
+      float ang = 0.3;
+      for (int i = 0; i < 8; i++){
+        if (i >= oct + 2) break;
+        vec2 d = vec2(cos(ang), sin(ang));
+        float s = sin(dot(q, d)*frq + uTime*(0.5 + 0.13*float(i)))*0.5 + 0.5;
+        h += amp*pow(s, 1.0 + 0.25*uChop);
+        norm += amp;
+        ang += 2.39996; amp *= 0.68; frq *= 1.53;
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+    float waveH(vec2 p, int oct){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+#if SURF_SEA
+      return surfSea(p, dir, oct);
+#endif
+#if SURF_SWELL
+      return surfSwell(p, dir, oct);
+#endif
+#if SURF_NOISE
+      return surfNoise(p, dir, oct);
+#endif
+#if SURF_SINE
+      return surfSine(p, dir, oct);
+#endif
+    }
     void waves(vec2 p, int oct, out float h, out vec2 dh){
+#if !SURF_SINE
+        // The three new surfaces take their shading gradient by central differences: two
+        // extra height evaluations on the SHADING path only (the march uses waveH), which is
+        // cheaper to write and to link than three analytic gradients, and the step is well
+        // under the finest octave's wavelength.
+        h = waveH(p, oct);
+        const float e = 0.05;
+        dh = vec2(waveH(p + vec2(e, 0.0), oct) - waveH(p - vec2(e, 0.0), oct),
+                  waveH(p + vec2(0.0, e), oct) - waveH(p - vec2(0.0, e), oct)) / (2.0*e);
+        return;
+#endif
       float wr = uWind*0.017453293;
       vec2 dir = vec2(cos(wr), sin(wr));
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;

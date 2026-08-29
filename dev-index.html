@@ -5428,9 +5428,21 @@
     // constants, same normalisation, so the height is bit-identical to what waves() returns
     // and the picture cannot move; only the dead half is gone. waves() stays as it is for
     // the shading normal, which is the one caller that wants dh.
-    float waveH(vec2 p, int oct){
-      float wr = uWind*0.017453293;
-      vec2 dir = vec2(cos(wr), sin(wr));
+    // FOUR SURFACES, chosen by the Surface slider (uSurf). All are HEIGHT FIELDS in [0,1] over
+    // the same wind-rotated frame, so the march, the secant step, the foam and the reflection
+    // work unchanged for every one of them; only the shape of the water differs.
+    //   0 Sine chop     -- the shipped sum of sharpened sines, byte-identical to before.
+    //   1 Seascape      -- Alekseev's octave (Seascape, 2014): 1-|sin| blended with |cos| by
+    //                      itself, raised to the chop. Round troughs, drawn-out crests.
+    //   2 Long swell    -- what the shipped one lacks: SCALE. Two long, slow, nearly-round
+    //                      swells a decade below the chop, with the sharpened chop riding on
+    //                      them. It reads as a sea because the big waves are big.
+    //   3 Rolling noise -- a hash-free noise: eight low sines at golden-angle directions and
+    //                      mismatched speeds, domain-warped by two more. NOT fract(sin()*43758):
+    //                      that hash is a driver-build detector (see the glass ball), and a sea
+    //                      that reshapes itself when the driver recompiles is the ghost bug again.
+#if W_SURF_SINE
+    float surfSine(vec2 p, vec2 dir, int oct){
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0, h = 0.0;
       for (int i = 0; i < 6; i++){
         if (i >= oct) break;
@@ -5443,7 +5455,94 @@
       }
       return h / max(norm, 1e-4);
     }
+#endif
+#if W_SURF_SEA
+    float surfSea(vec2 p, vec2 dir, int oct){
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      float amp = 1.0, frq = 0.16, spd = 0.8, norm = 0.0, h = 0.0;
+      float choppy = 0.6 + 0.35*uChop;
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        vec2 uv = (q + uTime*spd*vec2(1.0, 0.6))*frq;
+        vec2 wv = 1.0 - abs(sin(uv)), swv = abs(cos(uv));
+        wv = mix(wv, swv, wv);
+        h += pow(1.0 - pow(wv.x*wv.y, 0.65), choppy)*amp;
+        norm += amp;
+        q = mat2(1.6, 1.2, -1.2, 1.6)*q;
+        frq *= 1.9; amp *= 0.22; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+#if W_SURF_SWELL
+    float surfSwell(vec2 p, vec2 dir, int oct){
+      // Two long swells (wavelengths ~60 and ~40 units), almost round, then the chop.
+      vec2 d2 = normalize(vec2(dir.x*0.94 - dir.y*0.34, dir.x*0.34 + dir.y*0.94));
+      float a = sin(dot(p, dir)*0.105 + uTime*0.55)*0.5 + 0.5;
+      float b = sin(dot(p, d2)*0.160 + uTime*0.72)*0.5 + 0.5;
+      float h = 1.0*pow(a, 1.35) + 0.6*pow(b, 1.35), norm = 1.6;
+      // The chop rides the swell: the shipped octave loop, an octave up, at a third the weight.
+      float amp = 0.34, frq = 0.75, spd = 1.2;
+      vec2 dd = d2;
+      for (int i = 0; i < 6; i++){
+        if (i + 2 >= oct) break;
+        float ph = dot(p, dd)*frq + uTime*spd;
+        h += amp*pow(sin(ph)*0.5 + 0.5, uChop);
+        norm += amp;
+        amp *= 0.6; frq *= 1.9; spd *= 1.2;
+        dd = normalize(vec2(dd.x*0.62 - dd.y*0.78, dd.x*0.78 + dd.y*0.62));
+      }
+      return h / norm;
+    }
+#endif
+#if W_SURF_NOISE
+    float surfNoise(vec2 p, vec2 dir, int oct){
+      // Domain warp first, so the crests bend instead of running straight.
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      q += 1.8*vec2(sin(q.y*0.09 + uTime*0.31), sin(q.x*0.11 - uTime*0.27));
+      float h = 0.0, norm = 0.0, amp = 1.0, frq = 0.13;
+      float ang = 0.3;
+      for (int i = 0; i < 8; i++){
+        if (i >= oct + 2) break;
+        vec2 d = vec2(cos(ang), sin(ang));
+        float s = sin(dot(q, d)*frq + uTime*(0.5 + 0.13*float(i)))*0.5 + 0.5;
+        h += amp*pow(s, 1.0 + 0.25*uChop);
+        norm += amp;
+        ang += 2.39996; amp *= 0.68; frq *= 1.53;
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+    float waveH(vec2 p, int oct){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+#if W_SURF_SEA
+      return surfSea(p, dir, oct);
+#endif
+#if W_SURF_SWELL
+      return surfSwell(p, dir, oct);
+#endif
+#if W_SURF_NOISE
+      return surfNoise(p, dir, oct);
+#endif
+#if W_SURF_SINE
+      return surfSine(p, dir, oct);
+#endif
+    }
     void waves(vec2 p, int oct, out float h, out vec2 dh){
+#if !W_SURF_SINE
+        // The three new surfaces take their shading gradient by central differences: two
+        // extra height evaluations on the SHADING path only (the march uses waveH), which is
+        // cheaper to write and to link than three analytic gradients, and the step is well
+        // under the finest octave's wavelength.
+        h = waveH(p, oct);
+        const float e = 0.05;
+        dh = vec2(waveH(p + vec2(e, 0.0), oct) - waveH(p - vec2(e, 0.0), oct),
+                  waveH(p + vec2(0.0, e), oct) - waveH(p - vec2(0.0, e), oct)) / (2.0*e);
+        return;
+#endif
       float wr = uWind*0.017453293;
       vec2 dir = vec2(cos(wr), sin(wr));
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
@@ -6376,6 +6475,10 @@
     // down. That is how water behaves and it is why the horizon is the bright part. With no
     // layer beneath, uHasBelow is 0 and the sky term stands alone, exactly as before.
     const FS_OCEAN = `#version 300 es
+#define SURF_SINE 1
+#define SURF_SEA 0
+#define SURF_SWELL 0
+#define SURF_NOISE 0
     precision highp float;
     uniform vec2 uSize; uniform float uTime; uniform float uSwell; uniform float uChop;
     uniform float uFoam; uniform float uWind; uniform float uZoom;
@@ -6392,9 +6495,21 @@
     // constants, same normalisation, so the height is bit-identical to what waves() returns
     // and the picture cannot move; only the dead half is gone. waves() stays as it is for
     // the shading normal, which is the one caller that wants dh.
-    float waveH(vec2 p, int oct){
-      float wr = uWind*0.017453293;
-      vec2 dir = vec2(cos(wr), sin(wr));
+    // FOUR SURFACES, chosen by the Surface slider (uSurf). All are HEIGHT FIELDS in [0,1] over
+    // the same wind-rotated frame, so the march, the secant step, the foam and the reflection
+    // work unchanged for every one of them; only the shape of the water differs.
+    //   0 Sine chop     -- the shipped sum of sharpened sines, byte-identical to before.
+    //   1 Seascape      -- Alekseev's octave (Seascape, 2014): 1-|sin| blended with |cos| by
+    //                      itself, raised to the chop. Round troughs, drawn-out crests.
+    //   2 Long swell    -- what the shipped one lacks: SCALE. Two long, slow, nearly-round
+    //                      swells a decade below the chop, with the sharpened chop riding on
+    //                      them. It reads as a sea because the big waves are big.
+    //   3 Rolling noise -- a hash-free noise: eight low sines at golden-angle directions and
+    //                      mismatched speeds, domain-warped by two more. NOT fract(sin()*43758):
+    //                      that hash is a driver-build detector (see the glass ball), and a sea
+    //                      that reshapes itself when the driver recompiles is the ghost bug again.
+#if SURF_SINE
+    float surfSine(vec2 p, vec2 dir, int oct){
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0, h = 0.0;
       for (int i = 0; i < 6; i++){
         if (i >= oct) break;
@@ -6407,7 +6522,94 @@
       }
       return h / max(norm, 1e-4);
     }
+#endif
+#if SURF_SEA
+    float surfSea(vec2 p, vec2 dir, int oct){
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      float amp = 1.0, frq = 0.16, spd = 0.8, norm = 0.0, h = 0.0;
+      float choppy = 0.6 + 0.35*uChop;
+      for (int i = 0; i < 6; i++){
+        if (i >= oct) break;
+        vec2 uv = (q + uTime*spd*vec2(1.0, 0.6))*frq;
+        vec2 wv = 1.0 - abs(sin(uv)), swv = abs(cos(uv));
+        wv = mix(wv, swv, wv);
+        h += pow(1.0 - pow(wv.x*wv.y, 0.65), choppy)*amp;
+        norm += amp;
+        q = mat2(1.6, 1.2, -1.2, 1.6)*q;
+        frq *= 1.9; amp *= 0.22; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+#if SURF_SWELL
+    float surfSwell(vec2 p, vec2 dir, int oct){
+      // Two long swells (wavelengths ~60 and ~40 units), almost round, then the chop.
+      vec2 d2 = normalize(vec2(dir.x*0.94 - dir.y*0.34, dir.x*0.34 + dir.y*0.94));
+      float a = sin(dot(p, dir)*0.105 + uTime*0.55)*0.5 + 0.5;
+      float b = sin(dot(p, d2)*0.160 + uTime*0.72)*0.5 + 0.5;
+      float h = 1.0*pow(a, 1.35) + 0.6*pow(b, 1.35), norm = 1.6;
+      // The chop rides the swell: the shipped octave loop, an octave up, at a third the weight.
+      float amp = 0.34, frq = 0.75, spd = 1.2;
+      vec2 dd = d2;
+      for (int i = 0; i < 6; i++){
+        if (i + 2 >= oct) break;
+        float ph = dot(p, dd)*frq + uTime*spd;
+        h += amp*pow(sin(ph)*0.5 + 0.5, uChop);
+        norm += amp;
+        amp *= 0.6; frq *= 1.9; spd *= 1.2;
+        dd = normalize(vec2(dd.x*0.62 - dd.y*0.78, dd.x*0.78 + dd.y*0.62));
+      }
+      return h / norm;
+    }
+#endif
+#if SURF_NOISE
+    float surfNoise(vec2 p, vec2 dir, int oct){
+      // Domain warp first, so the crests bend instead of running straight.
+      mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+      vec2 q = R*p;
+      q += 1.8*vec2(sin(q.y*0.09 + uTime*0.31), sin(q.x*0.11 - uTime*0.27));
+      float h = 0.0, norm = 0.0, amp = 1.0, frq = 0.13;
+      float ang = 0.3;
+      for (int i = 0; i < 8; i++){
+        if (i >= oct + 2) break;
+        vec2 d = vec2(cos(ang), sin(ang));
+        float s = sin(dot(q, d)*frq + uTime*(0.5 + 0.13*float(i)))*0.5 + 0.5;
+        h += amp*pow(s, 1.0 + 0.25*uChop);
+        norm += amp;
+        ang += 2.39996; amp *= 0.68; frq *= 1.53;
+      }
+      return h / max(norm, 1e-4);
+    }
+#endif
+    float waveH(vec2 p, int oct){
+      float wr = uWind*0.017453293;
+      vec2 dir = vec2(cos(wr), sin(wr));
+#if SURF_SEA
+      return surfSea(p, dir, oct);
+#endif
+#if SURF_SWELL
+      return surfSwell(p, dir, oct);
+#endif
+#if SURF_NOISE
+      return surfNoise(p, dir, oct);
+#endif
+#if SURF_SINE
+      return surfSine(p, dir, oct);
+#endif
+    }
     void waves(vec2 p, int oct, out float h, out vec2 dh){
+#if !SURF_SINE
+        // The three new surfaces take their shading gradient by central differences: two
+        // extra height evaluations on the SHADING path only (the march uses waveH), which is
+        // cheaper to write and to link than three analytic gradients, and the step is well
+        // under the finest octave's wavelength.
+        h = waveH(p, oct);
+        const float e = 0.05;
+        dh = vec2(waveH(p + vec2(e, 0.0), oct) - waveH(p - vec2(e, 0.0), oct),
+                  waveH(p + vec2(0.0, e), oct) - waveH(p - vec2(0.0, e), oct)) / (2.0*e);
+        return;
+#endif
       float wr = uWind*0.017453293;
       vec2 dir = vec2(cos(wr), sin(wr));
       float amp = 1.0, frq = 0.40, spd = 1.0, norm = 0.0;
@@ -7599,7 +7801,20 @@
     glProg.glass = camProg(VS_QUAD, FS_GLASS, ["uSize", "uTime", "uCount", "uRad", "uMat", "uIor", "uGlow", "uZoom", "uSalt", "uBelow", "uHasBelow"]);
     glProg.qjulia = camProg(VS_QUAD, FS_QJULIA, ["uSize", "uC", "uPhase", "uSlice", "uCut", "uIter", "uGlow", "uZoom", "uRot"]);
     glProg.bhole = camProg(VS_QUAD, FS_BHOLE, ["uSize", "uTime", "uOrbit", "uTilt", "uOuter", "uBeam", "uZoom"]);
-    glProg.ocean = camProg(VS_QUAD, FS_OCEAN, ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"]);
+    // ONE OCEAN PROGRAM PER SURFACE. With every surface in one shader the standalone Ocean
+    // measured 1.03 ms at 4K on the shipped surface against 0.257 before -- and deleting the
+    // three DEAD functions alone, dispatch and branch intact, gave the 0.258 back. Past some
+    // source size the compiler stops unrolling the 32-step march, whether the code runs or
+    // not. So the surface is a compile-time define and the program is the surface.
+    const OCEAN_U = ["uSize", "uTime", "uSwell", "uChop", "uFoam", "uWind", "uZoom", "uHeight", "uReflect", "uBelow", "uHasBelow"];
+    // PLAIN FLAGS, one per surface, never "SURF == n": measured, the ==/!= forms cost surface 0
+    // 3.5x (0.257 -> 0.9 ms) with both present, and either alone was free. Flags are what the
+    // world uses (#if W_GB) and are known-free.
+    const SURF_NAMES = ["SURF_SINE", "SURF_SEA", "SURF_SWELL", "SURF_NOISE"];
+    const surfDefs = n => SURF_NAMES.map((f, i) => "#define " + f + " " + (i === n ? 1 : 0)).join("\n");
+    for (let sfi = 0; sfi < 4; sfi++)
+      glProg["ocean" + sfi] = camProg(VS_QUAD, FS_OCEAN.replace(surfDefs(0), surfDefs(sfi)), OCEAN_U);
+    glProg.ocean = glProg.ocean0;
     glProg.vballs = camProg(VS_QUAD, FS_VBALLS, ["uSize", "uPhase", "uCount", "uShape", "uRad", "uGlow", "uZoom"]);
     glProg.stars = camProg(VS_QUAD, FS_STARS, ["uSize", "uTime", "uDensity", "uWarp", "uTwinkle", "uZoom"]);
     glProg.aurora = camProg(VS_QUAD, FS_AURORA, ["uSize", "uTime", "uCurtains", "uSway", "uShim", "uZoom"]);
@@ -8536,18 +8751,33 @@
     // constant bound makes one glass layer link like one. W_GBN stays >= 1 with glass off;
     // the arrays are still declared either way.
     const gbm = key.match(/gb([0-9])/);
-    const def = WNL + "#define W_GB " + on("gb")
+    // The ocean SURFACE is baked in the same way (key carries 's2'): a uniform switch would
+    // put all four surface functions in every program, and even dead they cost the march
+    // its unrolling -- measured 4x on the standalone shader.
+    const sfm = key.match(/s([0-3])/), sfn = sfm ? +sfm[1] : 0;
+    const def = WNL + ["W_SURF_SINE", "W_SURF_SEA", "W_SURF_SWELL", "W_SURF_NOISE"].map((f, i) => "#define " + f + " " + (i === sfn ? 1 : 0)).join(WNL)
+              + WNL + "#define W_GB " + on("gb")
               + WNL + "#define W_GBN " + (gbm ? gbm[1] : "1")
               + WNL + "#define W_SD " + on("sd")
               + WNL + "#define W_QJ " + on("qj")
               + WNL + "#define W_VB " + on("vb") + WNL;
     return worldFsBase.replace("#version 300 es" + WNL, "#version 300 es" + def);
   }
+  // The Surface a layer renders with: the live global for the selected layer (its store is
+  // the DOM and L.state is null), the frozen record for any other. A single control's pair
+  // is collapsed lo-then-round, the way singlePair does it.
+  function layerSurf(L) {
+    const v = L && L.state && L.state.gosurf ? L.state.gosurf[0] : goSurf;
+    return Math.max(0, Math.min(3, Math.round(+v || 0)));
+  }
   // Returns the linked program, or null while it is still being built.
   function worldProgFor(plan) {
-    const key = ["gb", "sd", "qj", "vb"]
+    const key = (["gb", "sd", "qj", "vb"]
       .filter(k => k === "gb" ? plan.gbs.length : plan[k])
-      .map(k => k === "gb" ? "gb" + plan.gbs.length : k).join("|") || "oc";
+      .map(k => k === "gb" ? "gb" + plan.gbs.length : k).join("|") || "oc")
+      // Changing Surface while joined relinks the world (async; the joined layers draw
+      // themselves meanwhile, exactly as on first join). Ocean-only relinks in ~0.1 s.
+      + (plan.oc ? "|s" + layerSurf(plan.oc) : "");
     let e = worldProgs[key];
     if (e && e.prog) return e.prog;
     if (!e) {
@@ -10932,12 +11162,12 @@
   // ---- Gerstner ocean: rolling sea heightfield (shader effect) ----
   // Closed form per pixel, so the mirror is nearly the real thing: every 2nd pixel into a
   // 2x2 block and four octaves instead of six.
-  let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0;
+  let goSwell = 1, goChop = 2.5, goSpeed = 1, goFoam = 0.45, goWind = 0, goTime = 0, goSurf = 0;
   let goHeight = 0.7, goReflect = 0.6;
   function oceanSeed(dt) {
     goTime += dt * goSpeed;
     return { t: goTime, swell: goSwell, chop: goChop, foam: goFoam, wind: goWind,
-             height: goHeight, reflect: goReflect, zoom };
+             height: goHeight, reflect: goReflect, surf: Math.max(0, Math.min(3, Math.round(goSurf))), zoom };
   }
   // CPU fallback. It keeps the ORIGINAL flat-plane intersection rather than mirroring the
   // march, and that is a deliberate simplification, not an oversight: 32 steps x 3 wave
@@ -14249,6 +14479,7 @@
     { key: "dntwist", host: "fx", group: "torus", type: "dual", single: true, label: "Twist", valId: "vDnTwist", min: -4, max: 4, step: 1, lo: 1, hi: 1, fmt: v => sig3(v), apply: v => dnTwist = Math.round(v), durScale: 10 },
     { key: "dnflute", host: "fx", group: "torus", type: "dual", single: true, label: "Flutes", valId: "vDnFlute", min: 0, max: 12, step: 1, lo: 6, hi: 6, fmt: v => Math.round(v) === 0 ? "smooth" : sig3(Math.round(v)), apply: v => dnFlute = Math.round(v), durScale: 10 },
     { key: "dnglow", host: "fx", group: "torus", type: "dual", label: "Glow", valId: "vDnGlow", min: 0, max: 1.5, step: 0.02, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => dnGlow = v, durScale: 10 },
+    { key: "gosurf", host: "fx", group: "ocean", type: "dual", single: true, label: "Surface", valId: "vGoSurf", min: 0, max: 3, step: 1, lo: 0, hi: 0, fmt: v => ["Sine chop", "Seascape", "Long swell", "Rolling noise"][Math.round(v)] || "?", apply: v => goSurf = Math.round(v), durScale: 10 },
     { key: "goswell", host: "fx", group: "ocean", type: "dual", label: "Swell", valId: "vGoSwell", min: 0, max: 2.5, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSwell = v, durScale: 10 },
     { key: "gochop", host: "fx", group: "ocean", type: "dual", label: "Chop", valId: "vGoChop", min: 1, max: 6, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => goChop = v, durScale: 10 },
     { key: "gospeed", host: "fx", group: "ocean", type: "dual", label: "Speed", valId: "vGoSpeed", min: 0, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => goSpeed = v, durScale: 10 },
@@ -17506,11 +17737,11 @@
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "4", morph: false, showBox: true, randSeed: true } },
     { id: "ocean", name: "Ocean", subtitle: "Ocean · Gerstner swell to the horizon",
-      help: "A rolling sea running out to a horizon. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
-      params: ["goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
+      help: "A rolling sea running out to a horizon. Surface picks the shape of the water: Sine chop is the original sharpened-sine sum, Seascape is the classic rolling shader sea, Long swell puts two big slow swells under the chop, and Rolling noise is an irregular, bending surface. Six wave trains are summed, each sharpened so the troughs stay round and the crests come to a point — that is Chop, and it is the difference between a real swell and a bland sine. The directions turn octave by octave, so the water interferes with itself and never repeats. Swell scales the whole surface (and with it the glint and the foam), Foam sets how high and how steep a crest has to be before it breaks white, and Wind turns the whole sea. Amber and Ember make it a sunset; the cold palettes make it the North Sea.",
+      params: ["gosurf", "goswell", "goheight", "gochop", "gospeed", "gofoam", "goreflect", "gowind", "world", "wldx", "wldy", "wldz", "wldscale", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"],
       helpTags: ["all", "ocean", "band"], bakesOwnZoom: true,
       draw: dt => { const s = oceanSeed(dt);
-        if (useGL) glShaderDraw("ocean", u => {
+        if (useGL) glShaderDraw("ocean" + s.surf, u => {
           gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uSwell, s.swell); gl.uniform1f(u.uChop, s.chop);
           gl.uniform1f(u.uFoam, s.foam); gl.uniform1f(u.uWind, s.wind); gl.uniform1f(u.uZoom, s.zoom);
           gl.uniform1f(u.uHeight, s.height); gl.uniform1f(u.uReflect, s.reflect);
@@ -17520,7 +17751,7 @@
           gl.uniform1f(u.uHasBelow, glBelowTex ? 1 : 0);
         });
         else oceanCPU(s); },
-      defaults: { palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0], goheight: [0.7, 0.7], goreflect: [0.6, 0.6],
+      defaults: { gosurf: [0, 0], palcycle: [0, 0], palhold: [0, 0], goswell: [1, 1], gochop: [2.5, 2.5], gospeed: [1, 1], gofoam: [0.45, 0.45], gowind: [0, 0], goheight: [0.7, 0.7], goreflect: [0.6, 0.6],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "1", morph: false, showBox: true, world: false, randSeed: true } },
     { id: "bhole", name: "Black hole", subtitle: "Black hole · lensed accretion disk",

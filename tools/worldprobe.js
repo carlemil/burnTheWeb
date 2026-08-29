@@ -268,18 +268,23 @@ const ok = (name, cond, detail) => {
   const body = slice("    const FS_WORLD = ", "    const FS_WORLDPICK = ");
   const src0 = body.slice(body.indexOf("#version 300 es"), body.lastIndexOf(String.fromCharCode(96)));
   function preprocess(flags) {
-    const out = [], stack = [];
+    const out = [], stack = [], taken = [];
     for (const line of src0.split(NL)) {
       const t = line.trim();
-      if (t.indexOf("#if ") === 0) {
-        const expr = t.slice(4).trim();
+      // Truth of one #if / #elif expression: a bare flag, !flag, or NAME == n / NAME != n
+      // (the surface guards). No regex literals -- see the note at the top of this file.
+      const truth = expr => {
+        const eq = expr.indexOf("=="), ne = expr.indexOf("!=");
+        if (eq > 0) return (flags[expr.slice(0, eq).trim()] | 0) === +expr.slice(eq + 2).trim();
+        if (ne > 0) return (flags[expr.slice(0, ne).trim()] | 0) !== +expr.slice(ne + 2).trim();
         const neg = expr.indexOf("!") === 0;
-        const name = neg ? expr.slice(1) : expr;
-        stack.push(flags[name] ? !neg : neg);
-        continue;
-      }
-      if (t === "#else") { stack.push(!stack.pop()); continue; }
-      if (t === "#endif") { stack.pop(); continue; }
+        return flags[neg ? expr.slice(1) : expr] ? !neg : neg;
+      };
+      if (t.indexOf("#if ") === 0) { stack.push(truth(t.slice(4).trim())); continue; }
+      // #elif: this arm is live only if no earlier arm was; taken[] remembers that per level.
+      if (t.indexOf("#elif ") === 0) { const was = stack.pop(); taken[stack.length] = taken[stack.length] || was; stack.push(!taken[stack.length] && truth(t.slice(6).trim())); continue; }
+      if (t === "#else") { const was = stack.pop(); taken[stack.length] = taken[stack.length] || was; stack.push(!taken[stack.length]); continue; }
+      if (t === "#endif") { taken[stack.length - 1] = false; stack.pop(); continue; }
       if (stack.every(Boolean)) out.push(line);
     }
     return out.join(NL);
@@ -287,14 +292,17 @@ const ok = (name, cond, detail) => {
   const stripComments = txt => txt.split(NL).map(l => { const i = l.indexOf("//"); return i < 0 ? l : l.slice(0, i); }).join(NL);
   const count = (txt, ch) => txt.split(ch).length - 1;
   let worst = null;
-  for (let m = 0; m < 16; m++) {
-    const flags = { W_GB: m & 1, W_SD: m & 2, W_QJ: m & 4, W_VB: m & 8 };
+  // 16 group combinations x 4 ocean surfaces: a surface guard that only unbalances when
+  // ANOTHER surface is selected is exactly the class of bug the group guards had.
+  for (let m = 0; m < 64; m++) {
+    const sf = m >> 4;
+    const flags = { W_GB: m & 1, W_SD: m & 2, W_QJ: m & 4, W_VB: m & 8, W_SURF_SINE: sf === 0, W_SURF_SEA: sf === 1, W_SURF_SWELL: sf === 2, W_SURF_NOISE: sf === 3 };
     const txt = stripComments(preprocess(flags));
     const open = count(txt, "{"), close = count(txt, "}");
     if (open !== close && !worst)
-      worst = "GB" + (m & 1 ? 1 : 0) + " SD" + (m & 2 ? 1 : 0) + " QJ" + (m & 4 ? 1 : 0) + " VB" + (m & 8 ? 1 : 0) + ": " + open + " open vs " + close + " close";
+      worst = "GB" + (m & 1 ? 1 : 0) + " SD" + (m & 2 ? 1 : 0) + " QJ" + (m & 4 ? 1 : 0) + " VB" + (m & 8 ? 1 : 0) + " SURF" + (m >> 4) + ": " + open + " open vs " + close + " close";
   }
-  ok("every #if combination of the world shader has balanced braces", !worst, worst || "16 of 16");
+  ok("every #if combination of the world shader has balanced braces", !worst, worst || "64 of 64");
 }
 
 // --- 8. Quaternion Julia's orientation reaches the world -------------------------------
