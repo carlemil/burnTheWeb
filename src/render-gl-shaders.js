@@ -1978,11 +1978,15 @@
         vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
         float fade = 1.0/(1.0 + t*t*0.0016);
         float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
-        float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
+        // Foam takes its slope from the COARSE gradient (3 octaves), not the shading one: the fine
+          // octaves are a lattice of ridges at pixel scale, and gating foam on them drew a crosshatch
+          // that read as a grid. Soft saturate instead of clamp so the gate has no hard edge either.
+          float hc; vec2 dc; waves(p.xz, 3, hc, dc);
+          float slope = 1.0 - exp(-length(dc)*uSwell*1.2);
         // Upper edge floored 0.02 ABOVE uFoam, mirroring oceanCPU's Math.max(0.02, ...) denominator.
         // Foam reaches exactly 1.0, where min(0.995, 1.22) lands BELOW the lower edge -- undefined
         // in GLSL, and it snapped the sea to solid white in one 0.01 step while the CPU kept ramping.
-        float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.22)), hh*0.65 + slope*0.55);
+        float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.38)), hh*0.65 + slope*0.55);
         return (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
       }
       vec3 n = sdfNormal(p);
@@ -2818,9 +2822,13 @@
           float fade = 1.0/(1.0 + tHit*tHit*0.0016);
           vec3 n = normalize(vec3(-dd.x*uSwell, 1.0, -dd.y*uSwell));
           float glint = pow(max(0.0, dot(n, normalize(vec3(0.35, 0.55, -0.75)))), 22.0);
-          float slope = clamp(length(dd)*uSwell*0.9, 0.0, 1.0);
+          // Foam takes its slope from the COARSE gradient (3 octaves), not the shading one: the fine
+          // octaves are a lattice of ridges at pixel scale, and gating foam on them drew a crosshatch
+          // that read as a grid. Soft saturate instead of clamp so the gate has no hard edge either.
+          float hc; vec2 dc; waves(p.xz, 3, hc, dc);
+          float slope = 1.0 - exp(-length(dc)*uSwell*1.2);
           // Foam rides the CRESTS: high water and a steep face at once, which is where it breaks.
-          float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.22)), hh*0.65 + slope*0.55);
+          float foam = smoothstep(uFoam, max(uFoam + 0.02, min(0.995, uFoam + 0.38)), hh*0.65 + slope*0.55);
           heat = (0.10 + 0.48*hh*hh + 0.45*glint + 0.55*foam)*fade;
           if (uHasBelow > 0.5 && uReflect > 0.0){
             // Fresnel: water is a mirror at a glancing angle and nearly clear straight down,

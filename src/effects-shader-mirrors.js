@@ -984,8 +984,8 @@
           const nl = Math.hypot(nx, 1, nz) || 1;
           const gl2 = Math.max(0, (nx / nl) * 0.35 + (1 / nl) * 0.55 + (nz / nl) * -0.75);
           const glint = Math.pow(gl2, 22);
-          const slope = Math.max(0, Math.min(1, Math.hypot(dhx, dhz) * s.swell * 0.9));
-          const foam = ss((h * 0.65 + slope * 0.55 - s.foam) / Math.max(0.02, Math.min(0.995, s.foam + 0.22) - s.foam));
+          const slope = 1 - Math.exp(-Math.hypot(dhx, dhz) * s.swell * 1.2); // ponytail: CPU mirror keeps the flat-plane gradient, so no coarse pass here
+          const foam = ss((h * 0.65 + slope * 0.55 - s.foam) / Math.max(0.02, Math.min(0.995, s.foam + 0.38) - s.foam));
           heat = (0.10 + 0.48 * h * h + 0.45 * glint + 0.55 * foam) * fade;
           heat += 0.16 * Math.exp(-Math.abs(ry + 0.004) * 260);
         }
