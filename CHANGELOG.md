@@ -15,6 +15,13 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.69.2] — 2026-08-29
+
+### Fixed
+- Ocean's Seascape surface no longer shows a net of polygon edges: its crests had a hard
+  crease along every cell boundary. They are now smooth, rounded ridges; the foam and
+  glint follow suit.
+
 ## [1.69.1] — 2026-08-29
 
 ### Fixed

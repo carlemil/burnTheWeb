@@ -2613,7 +2613,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.69.1",
+    version: "1.69.2",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -5465,12 +5465,19 @@
       for (int i = 0; i < 6; i++){
         if (i >= oct) break;
         vec2 uv = (q + uTime*spd*vec2(1.0, 0.6))*frq;
-        vec2 wv = 1.0 - abs(sin(uv)), swv = abs(cos(uv));
+        // SOFT abs: the classic 1-|sin| has a C0 crease along every cell edge, and with only
+        // ~6 octaves those creases shade as a visible tiling of squares. sqrt(x*x+k) rounds the
+        // crease off; the cell pattern stays, the polygon edges do not.
+        vec2 sn = sin(uv), cs = cos(uv);
+        vec2 wv = 1.0 - sqrt(sn*sn*0.78 + 0.22), swv = sqrt(cs*cs*0.78 + 0.22);
         wv = mix(wv, swv, wv);
-        h += pow(1.0 - pow(wv.x*wv.y, 0.65), choppy)*amp;
+        // exp(-c*P), NOT the classic 1-pow(P, 0.65): that has infinite slope where P hits 0,
+        // i.e. a hard crease along every cell edge, and the crests shaded as a net of polygons.
+        // exp is smooth at 0 and c sets the crest width (2.5 broad .. 6 sharp; 4 chosen by eye).
+        h += pow(exp(-4.0*wv.x*wv.y), choppy)*amp;
         norm += amp;
         q = mat2(1.6, 1.2, -1.2, 1.6)*q;
-        frq *= 1.9; amp *= 0.22; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
+        frq *= 1.9; amp *= 0.30; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
       }
       return h / max(norm, 1e-4);
     }
@@ -6536,12 +6543,19 @@
       for (int i = 0; i < 6; i++){
         if (i >= oct) break;
         vec2 uv = (q + uTime*spd*vec2(1.0, 0.6))*frq;
-        vec2 wv = 1.0 - abs(sin(uv)), swv = abs(cos(uv));
+        // SOFT abs: the classic 1-|sin| has a C0 crease along every cell edge, and with only
+        // ~6 octaves those creases shade as a visible tiling of squares. sqrt(x*x+k) rounds the
+        // crease off; the cell pattern stays, the polygon edges do not.
+        vec2 sn = sin(uv), cs = cos(uv);
+        vec2 wv = 1.0 - sqrt(sn*sn*0.78 + 0.22), swv = sqrt(cs*cs*0.78 + 0.22);
         wv = mix(wv, swv, wv);
-        h += pow(1.0 - pow(wv.x*wv.y, 0.65), choppy)*amp;
+        // exp(-c*P), NOT the classic 1-pow(P, 0.65): that has infinite slope where P hits 0,
+        // i.e. a hard crease along every cell edge, and the crests shaded as a net of polygons.
+        // exp is smooth at 0 and c sets the crest width (2.5 broad .. 6 sharp; 4 chosen by eye).
+        h += pow(exp(-4.0*wv.x*wv.y), choppy)*amp;
         norm += amp;
         q = mat2(1.6, 1.2, -1.2, 1.6)*q;
-        frq *= 1.9; amp *= 0.22; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
+        frq *= 1.9; amp *= 0.30; spd *= 1.1; choppy = mix(choppy, 1.0, 0.2);
       }
       return h / max(norm, 1e-4);
     }
