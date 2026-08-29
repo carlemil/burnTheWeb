@@ -15,6 +15,29 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.69.0] — 2026-08-29
+
+### Added
+- **Ocean has a Surface slider** — the shape of the water, at the top of its controls.
+  *Sine chop* is the original. *Seascape* is the classic rolling shader sea: round troughs,
+  drawn-out crests, a fine cross-hatch where the foam catches. *Long swell* puts two big,
+  slow, nearly round swells under the chop — the original's problem was that every wave was
+  the same size. *Rolling noise* is an irregular, bending, calmer surface. Chop, Swell, Foam,
+  Wind and the reflection work on all four, and a shared 3D world follows the choice.
+
+### Changed
+- **Correction to the 1.68.0 notes.** Ocean was reported at 0.275 → 0.241 ms and Mandelbulb
+  at −12%. Both compared a freshly compiled shader against one the browser had cached in an
+  optimised form; measured fairly (cache off, both sides) the Ocean change is neutral and
+  the Mandelbulb change is −4.5%. The clouds figure (21 → 9 ms) stands.
+
+### Internal
+- Each surface is its own compiled program: with all four in one shader, even the unused
+  ones made the shipped surface 4× slower, because the compiler stops unrolling the wave
+  march past a certain source size whether the code runs or not.
+- The profiling tool now disables the shader disk cache and documents that a cheap effect
+  measured alone reads 2–4× slow (the GPU never leaves its low power state).
+
 ## [1.68.0] — 2026-08-29
 
 ### Added
