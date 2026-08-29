@@ -2613,7 +2613,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.67.0",
+    version: "1.68.0",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -4809,11 +4809,24 @@
         vec3 p = ro + rd * t;
         float d = density(p, sc, uCover, oct, uTime);
         if (d > 0.01) {
-          // A SHORT LIGHT MARCH, not a shadow ray: five taps toward the sun is enough to make
+          // A SHORT LIGHT MARCH, not a shadow ray: a few taps toward the sun are enough to make
           // a cloud look lit from one side, and it is the whole difference between a volume
           // and a grey fog.
+          //
+          // THIS LOOP WAS THE WHOLE COST OF THE EFFECT -- measured, not guessed. Every dense
+          // step ran five more density() calls at the full octave count, and clouds was the
+          // one effect over the 60 fps budget on the dev 4090 at 4K: 21.3 ms, five times the
+          // next slowest. Two changes, both judged from a same-frame A/B (tools/abshot.js):
+          //   - the shadow samples run at HALF the octaves (min 1). A shadow is a soft
+          //     occlusion integral and does not need the detail the density itself needs;
+          //   - three taps instead of five over the same 0.80 reach, the sum rescaled by 5/3
+          //     so the exponent sees the same integral.
+          // Together: 21.3 -> 9.5 ms at 4K (-56%), a mean pixel difference of 3.7 in 255,
+          // invisible side by side at 800 px. Either alone is -40% / -32%.
+          int soct = max(1, oct / 2);
           float sh = 0.0;
-          for (int j = 1; j <= 5; j++) sh += density(p + sun * float(j) * 0.16, sc, uCover, oct, uTime);
+          for (int j = 1; j <= 3; j++) sh += density(p + sun * float(j) * 0.2667, sc, uCover, soct, uTime);
+          sh *= 1.6667;
           float lit = exp(-sh * 0.55 * uLight);
           acc += d * trans * (0.15 + 0.95 * lit) * 0.30;
           trans *= exp(-d * 0.55);
@@ -5264,8 +5277,12 @@
         if (r > 2.0) break;
         float th = acos(clamp(z.z/max(r, 1e-6), -1.0, 1.0));
         float ph = atan(z.y, z.x);
-        dr = pow(r, P - 1.0)*P*dr + 1.0;
+        // ONE pow, not two: pow(r, P-1) is pow(r, P)/r. Measured 4.11 -> 3.67 ms at 4K (-11%).
+        // Not bit-identical in float -- the pixel gate hash moves -- but the picture differs
+        // by 0.002 levels on average, on a handful of edge pixels, and nowhere past a 2-level
+        // threshold. The r guard matches the one acos() already needs above.
         float zr = pow(r, P);
+        dr = (zr/max(r, 1e-6))*P*dr + 1.0;
         th *= P; ph *= P;
         z = zr*vec3(sin(th)*cos(ph), sin(th)*sin(ph), cos(th)) + p;
       }
@@ -5437,7 +5454,13 @@
         float s = sin(ph)*0.5 + 0.5;
         h += amp*pow(s, uChop);
         norm += amp;
-        float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+        // ONE pow, not two: pow(s, c-1) is pow(s, c)/s. Not bit-identical in float (the pixel
+        // gate hash moves) but the picture differs by at most one level. A first isolated
+        // measurement read it 3.6x SLOWER (0.28 -> 0.99 ms at 4K); on the shipped build it
+        // re-measured at 0.241 against 0.275, so that reading was a one-off and did not
+        // reproduce. If Ocean ever regresses, this is the first line to A/B.
+        float sp = pow(max(s, 1e-4), uChop);
+        float dw = amp*uChop*(sp/max(s, 1e-4))*0.5*cos(ph)*frq;
         dh += dw*dir;
         amp *= 0.62; frq *= 1.87; spd *= 1.21;
         dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));
@@ -6395,7 +6418,13 @@
         float s = sin(ph)*0.5 + 0.5;
         h += amp*pow(s, uChop);
         norm += amp;
-        float dw = amp*uChop*pow(max(s, 1e-4), uChop - 1.0)*0.5*cos(ph)*frq;
+        // ONE pow, not two: pow(s, c-1) is pow(s, c)/s. Not bit-identical in float (the pixel
+        // gate hash moves) but the picture differs by at most one level. A first isolated
+        // measurement read it 3.6x SLOWER (0.28 -> 0.99 ms at 4K); on the shipped build it
+        // re-measured at 0.241 against 0.275, so that reading was a one-off and did not
+        // reproduce. If Ocean ever regresses, this is the first line to A/B.
+        float sp = pow(max(s, 1e-4), uChop);
+        float dw = amp*uChop*(sp/max(s, 1e-4))*0.5*cos(ph)*frq;
         dh += dw*dir;
         amp *= 0.62; frq *= 1.87; spd *= 1.21;
         dir = normalize(vec2(dir.x*0.62 - dir.y*0.78, dir.x*0.78 + dir.y*0.62));

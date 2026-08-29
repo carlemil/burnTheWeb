@@ -15,6 +15,38 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.68.0] — 2026-08-29
+
+### Added
+- **KEY blend mode**, next to Over in each layer's Blend row. Over covers what is beneath
+  wherever this layer drew anything — the right test for a point cloud or a raymarched
+  solid, and the wrong one for a full-screen pattern like Plasma, which draws at every pixel
+  and so hides everything under it. Key ramps the layer in by brightness instead, so its
+  dark areas let the layers below show through. Perceptual lightness, not luma, so a
+  saturated blue keys the same as an equally bright red; a soft ramp rather than a hard cut.
+
+### Changed
+- **Volumetric clouds is less than half the cost.** It was the one effect over the 60 fps
+  budget at 4K on the development machine (21.3 ms, five times the next slowest), and all
+  of it was the light march — five extra density samples toward the sun at every dense
+  step. The shadow now samples at half the noise detail with three taps over the same
+  reach: 21.3 → 9.3 ms. The picture differs by a mean of 3.7 levels in 255, judged from
+  a same-frame comparison.
+- **Mandelbulb is 12% cheaper** (4.1 → 3.6 ms at 4K): one `pow` per iteration instead of two.
+- **Ocean** folds the same doubled `pow` in its wave sum and no longer computes a wave
+  derivative its march never read; 0.275 → 0.241 ms at 4K. Neither change moves the
+  picture by more than one level.
+
+### Internal
+- **Every effect and filter is now measured, not guessed.** `tools/perf-check.js` times all
+  52 effects and 38 filters on the real GPU at two resolutions and ranks them by headroom;
+  `tools/pixgate.js` proves whether a change is pixel-identical (it rejected two of three
+  planned "free" wins); `tools/abshot.js` takes a deterministic same-frame A/B per build.
+  Findings: only clouds was over budget on a 4090, the seven feedback filters cost ~0.15 ms
+  each at 4K, and every post filter sits at the timer's noise floor.
+- CLAUDE.md no longer claims the glass ball's distance estimator has a bounding sphere; it
+  deliberately has none, and the line would have misdirected exactly this work.
+
 ## [1.67.0] — 2026-08-28
 
 ### Changed

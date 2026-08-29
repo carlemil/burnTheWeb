@@ -2229,6 +2229,23 @@ added, measured to move the sixteen-program link total the wrong way with no dem
 frame benefit, and reverted; the three-point measurement is inline at its definition), never
 in the per-frame JS above.
 
+**PER-EFFECT COST IS MEASURED, NOT GUESSED — `tools/perf-check.js`.** GPU via
+`EXT_disjoint_timer_query_webgl2` (headless caps at ~175 fps, so wall-clock fps is blind past
+it), CPU via `performance.now()`, median of a settled window, both resolutions, **real time**
+(`--virtual-time-budget` produced plausible zeros twice). Filters toggle through a spliced
+`window.__setFilterOn` hook — every UI route failed — and the base is measured at BOTH ends.
+First run (v1.67): **Volumetric clouds was the one effect over the 60 fps budget at 4K on the
+4090, 21.3 ms, 5× the next**; its shadow march (5 taps × full octaves per dense step) was the
+whole cost, and half-octave/3-tap shadowing took it to 9.3 ms for a 3.7/255 mean pixel diff.
+Everything else has 4×+ headroom; the 7 feedback filters cost ~0.15 ms each at 4K and every
+post filter is at the noise floor. **`tools/pixgate.js`** proves 'free': owned rAF queue, fixed
+1/60 step, stubbed `Math.random`, `readPixels` same task, shader effects only, bistable. It
+REJECTED two of three planned free wins (pow folds are not bit-identical in float).
+**`tools/abshot.js`** takes a same-frame A/B per build, shipped out as base64 — headless
+`--screenshot` snapshots before the compositor presents a canvas drawn under an owned queue.
+A one-off timing can lie: the wave pow fold read 3.6× slower once and 12% faster on the
+shipped build. **Re-measure on the real build before writing a verdict down.**
+
 **A green logic probe is necessary, not sufficient**, for anything writing retained heat — drive a
 few hundred real frames and look at the screenshot.
 
