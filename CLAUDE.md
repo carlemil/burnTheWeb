@@ -347,9 +347,12 @@ it renders unchanged.
 ### Doughnut / Trees (the two effects with a cheap invariant worth pinning)
 - **Doughnut** needs no DE-escape solver — unlike the Mandelbulb the free space is known, so the
   path is the tube's centre circle plus a wobble capped at `DN_WOB` 0.30 of the tube against a
-  wall floor of 0.743. **`dntwist`/`dnflute` are `single` because the pattern is
-  `cos(flute·(ang + twist·arc))` over an atan2 `arc`** — it only closes across the branch cut
-  when `flute·twist` is whole, and a fractional twist draws one hard seam. Heading is the
+  wall floor of 0.743. **`dnflute` is `single`; `dntwist` is a FREE float since 1.71.0.** The
+  pattern is `cos(flute·(ang + twist·arc))` over an atan2 `arc`, which only closes across the
+  branch cut when `flute·twist` is whole — a fractional twist drew one hard seam, so Twist was
+  pinned to integers and could not drift. Now the shortfall (≤ π/flute of tube angle) is
+  wound back over the last radian before the cut (`s`, `dlt` in `torusDE`), exactly zero at a
+  whole product, so integer scenes are unchanged. Heading is the
   CENTRE CIRCLE's tangent, not the wobbling path's (the path tangent swings the vanishing point
   off-frame and reads as drift). `tools/dnutprobe.js`.
 - **Trees**: segment count is `split^depth`, four million at the extremes, so **`trMaxDepth`

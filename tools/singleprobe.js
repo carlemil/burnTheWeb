@@ -66,7 +66,7 @@ const EXPECT = [
   "vbcount", "vbshape", "gxarms", "gosurf",
   // Doughnut: both are single because the flute pattern cos(flute·(ang + twist·arc))
   // only closes across the atan2 branch cut when flute·twist is a whole number.
-  "dnflute", "dntwist",
+  "dnflute",
   // Trees: all three COUNT something, and a fractional branch count is not a shape.
   "trcount", "trdepth", "trsplit",
   // ASCII mosaic: the Script picker is an enum -- eight named character sets.

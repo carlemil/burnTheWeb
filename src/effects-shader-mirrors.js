@@ -1485,14 +1485,18 @@
     let fx = -Math.sin(dnPhase) * dir, fy = Math.cos(dnPhase) * dir, fz = 0;
     const fl = Math.hypot(fx, fy, fz) || 1;
     return { px: p[0], py: p[1], pz: p[2], fx: fx / fl, fy: fy / fl, fz: fz / fl,
-             ring: dnRing, tube: dnTube, twist: Math.round(dnTwist), flute: Math.round(dnFlute),
+             ring: dnRing, tube: dnTube, twist: dnTwist, flute: Math.round(dnFlute),
              glow: dnGlow, zoom };
   }
   function torusDECPU(x, y, z, ring, tube, twist, flute) {
     const q = Math.hypot(x, y) - ring, arc = Math.atan2(y, x);
-    const rad = Math.hypot(q, z), ang = Math.atan2(z, q) + twist * arc;
+    const rad = Math.hypot(q, z), ang0 = Math.atan2(z, q);
+    const su = Math.max(0, Math.min(1, arc - 2.1415927)), s = su * su * (3 - 2 * su);   // seam closure, as FS_TORUS
+    const k = twist * flute, dlt = ((k + 0.5) - Math.floor(k + 0.5) - 0.5) / Math.max(flute, 1);
+    const ang = ang0 + twist * arc - 6.2831853 * dlt * s;
+    const angC = ang0 + twist * (arc - 6.2831853 * s);
     const wall = tube * (1 - 0.18 * Math.cos(flute * ang))
-               - tube * (0.055 * Math.cos(arc * 24) + 0.022 * Math.cos(arc * 97 + ang * 3));
+               - tube * (0.055 * Math.cos(arc * 24) + 0.022 * Math.cos(arc * 97 + angC * 3));
     return wall - rad;
   }
   function torusCPU(dt) {                 // CPU fallback — mirrors FS_TORUS, coarsely

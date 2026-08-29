@@ -2354,11 +2354,13 @@
     // than across it. So the march scales its step (MK below). Without that the ray steps
     // clean through a wall on the inside of the bend and the tunnel gains holes.
     //
-    // **uTwist and uFlute are INTEGERS, and that is load-bearing.** The flute pattern is
-    // cos(flute·(tubeAngle + twist·arc)) and `arc` is an atan2 — it jumps by 2π at the
-    // branch cut behind the camera. The pattern only closes across that jump when
-    // flute·twist is a whole number, and a fractional twist draws one hard seam down the
-    // tunnel. Both are `single: true` controls for exactly this reason; do not "free" them.
+    // **uTwist is a FREE FLOAT; the seam it would draw is unwound over a window.** The flute
+    // pattern is cos(flute·(tubeAngle + twist·arc)) and 'arc' is an atan2, so it jumps by 2π
+    // at the branch cut and only closes there when flute·twist is whole. Rather than pin
+    // Twist to integers (it was 'single' for that reason, and could not drift), the shortfall
+    // -- at most half a flute period, so at most π/flute of tube angle -- is wound back in
+    // over the last radian before the cut. At a whole flute·twist the correction is exactly
+    // zero and the picture is what it always was. uFlute stays an integer.
     const FS_TORUS = `#version 300 es
     precision highp float;
     uniform vec2 uSize; uniform vec3 uPos; uniform vec3 uFwd;
@@ -2370,11 +2372,17 @@
       float arc = atan(p.y, p.x);                  // how far round the doughnut
       vec2 c = vec2(q, p.z);
       float rad = length(c);
-      float ang = atan(c.y, c.x) + uTwist*arc;     // tube angle, wound along the arc
+      float ang0 = atan(c.y, c.x);
+      // Seam closure (see above): s ramps 0..1 over the last radian before the cut.
+      float s = smoothstep(2.1415927, 3.1415927, arc);
+      float k = uTwist*uFlute;
+      float dlt = (fract(k + 0.5) - 0.5)/max(uFlute, 1.0);
+      float ang = ang0 + uTwist*arc - 6.2831853*dlt*s;   // tube angle, wound along the arc
+      float angC = ang0 + uTwist*(arc - 6.2831853*s);    // fully unwound, for the corrugation
       // Scalloped wall + a fine corrugation along the arc. The corrugation is what gives
       // the flight a sense of speed at low twist, where the flutes slide past too slowly.
       float wall = uTube*(1.0 - 0.18*cos(uFlute*ang))
-                 - uTube*(0.055*cos(arc*24.0) + 0.022*cos(arc*97.0 + ang*3.0));
+                 - uTube*(0.055*cos(arc*24.0) + 0.022*cos(arc*97.0 + angC*3.0));
       return wall - rad;                           // positive inside the pipe
     }
     void main(){

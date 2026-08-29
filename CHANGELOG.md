@@ -15,6 +15,14 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.71.0] — 2026-08-29
+
+### Changed
+- Doughnut's **Twist** is a proper range now (step 0.05, drifts and takes triggers) instead
+  of whole numbers only. A fractional twist used to draw one hard seam down the tunnel; the
+  mismatch is now smoothed away over the last stretch before it, and whole-number scenes
+  render exactly as before.
+
 ## [1.70.0] — 2026-08-29
 
 ### Changed
