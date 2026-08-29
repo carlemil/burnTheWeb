@@ -381,7 +381,7 @@
       // NOT a `stamp`: this one rasterises triangles. There is no Points slider because
       // coverage is not stochastic here -- a surface is filled exactly, once.
       draw: dt => ribbonDraw(dt),
-      defaults: { palcycle: [0, 0], palhold: [0, 0], rbcount: [4, 4], rbwidth: [0.38, 0.38], rblen: [1.6, 1.6], rbtwist: [2.5, 2.5], rbwave: [0.55, 0.55], rbspeed: [1, 1],
+      defaults: { palcycle: [0, 0], palhold: [0, 0], rbcount: [4, 4], rbwidth: [0.38, 0.38], rblen: [0.5, 0.5], rbtwist: [2.5, 2.5], rbwave: [0.55, 0.55], rbspeed: [1, 1],
         zoom: [1, 1], band: [0, 0], bandsize: [1, 1], banddim: [0, 0] },
       beat: {}, extras: { palette: "2", morph: false, showBox: true, randSeed: true } },
     { id: "torus", name: "Doughnut", subtitle: "Doughnut · flight inside a torus",

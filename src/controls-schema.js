@@ -242,7 +242,7 @@
     // the band wind and unwind, which is the whole reason to drift it.
     { key: "rbcount", host: "fx", group: "ribbons", type: "dual", single: true, label: "Ribbons", valId: "vRbCount", min: 1, max: 8, step: 1, lo: 4, hi: 4, fmt: v => sig3(Math.round(v)), apply: v => rbCount = Math.round(v), durScale: 10 },
     { key: "rbwidth", host: "fx", group: "ribbons", type: "dual", label: "Width", valId: "vRbWidth", min: 0.02, max: 1.2, step: 0.01, lo: 0.38, hi: 0.38, fmt: v => sig3(v), apply: v => rbWidth = v, durScale: 10 },
-    { key: "rblen", host: "fx", group: "ribbons", type: "dual", label: "Length", valId: "vRbLen", min: 0.3, max: 3, step: 0.05, lo: 1.6, hi: 1.6, fmt: v => sig3(v) + "×", apply: v => rbLen = v, durScale: 10 },
+    { key: "rblen", host: "fx", group: "ribbons", type: "dual", label: "Length", valId: "vRbLen", min: 0.3, max: 3, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v) + "×", apply: v => rbLen = v, durScale: 10 },
     { key: "rbtwist", host: "fx", group: "ribbons", type: "dual", label: "Twist", valId: "vRbTwist", min: 0, max: 12, step: 0.05, lo: 2.5, hi: 2.5, fmt: v => sig3(v), apply: v => rbTwist = v, durScale: 10 },
     { key: "rbwave", host: "fx", group: "ribbons", type: "dual", label: "Waviness", valId: "vRbWave", min: 0, max: 3, step: 0.02, lo: 0.55, hi: 0.55, fmt: v => sig3(v), apply: v => rbWave = v, durScale: 10 },
     { key: "rbspeed", host: "fx", group: "ribbons", type: "dual", label: "Speed", valId: "vRbSpeed", min: -3, max: 3, step: 0.02, lo: 1, hi: 1, fmt: v => sig3(v) + "×", apply: v => rbSpeed = v, durScale: 10 },

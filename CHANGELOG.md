@@ -15,6 +15,18 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.70.0] — 2026-08-29
+
+### Changed
+- Flying ribbons ships much shorter bands (Length 0.5, was 1.6) spread across the frame,
+  with tips that fade out instead of ending in a hard cut.
+
+### Fixed
+- Flying ribbons no longer tear. Two causes: the band's frame flipped over in one step
+  whenever its heading neared vertical, and Twist and Waviness were per band, so a short
+  band corkscrewed through itself. Both are now continuous / per unit length — a scene
+  saved at the old Length renders exactly as it did.
+
 ## [1.69.2] — 2026-08-29
 
 ### Fixed
