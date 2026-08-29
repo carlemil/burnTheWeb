@@ -15,6 +15,13 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.69.1] — 2026-08-29
+
+### Fixed
+- Ocean foam no longer renders as a crosshatch grid. It was keyed on the finest wave
+  ridges; it now follows the broad slope of the swell, with a softer, wider ramp. Worst
+  on the Seascape surface, improved on all four.
+
 ## [1.69.0] — 2026-08-29
 
 ### Added
