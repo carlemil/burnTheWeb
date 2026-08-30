@@ -1566,9 +1566,10 @@ field is one `snapshotScene` captures *and* one the import mapping carries.
 `Date.now()` chaos seed, every accumulated phase.
 
 **First-visit library** built once when `presets.length === 0`: `defaultPresets()`, applied at index
-0, then `persist()` once. It is **`DEFAULT_LIBRARY` — THREE scenes** — `Fetingen` (Sierpiński, single
-layer), `Round and round` (Moiré, two layers), `Julia shapes` (Julia + Bouncing shapes, two
-layers, `xor` blend) — **plus `blankPreset()` APPENDED**: `Blank canvas`, one neutral Plasma layer,
+0, then `persist()` once. It is **`DEFAULT_LIBRARY` — FIFTEEN scenes since 1.72.0**: the whole
+published *Erbsman* cloud library (minus its own Blank canvas) plus *dyze*'s `Fetingen` as
+`Fetingen (dyze)`, pulled from Firestore and pasted in with every `collection` field STRIPPED
+(a stray one would file the scene under a borrowed collection) — **plus `blankPreset()` APPENDED**: `Blank canvas`, one neutral Plasma layer,
 no filters, built live from the shipped defaults via **`neutralPreset(e, name)`** (never a
 hand-frozen blob) and carrying **`rotate: false`** so the deliberately-still scene stays out of the
 auto-cycle show.

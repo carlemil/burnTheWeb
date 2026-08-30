@@ -15,6 +15,15 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.72.0] — 2026-08-30
+
+### Changed
+- A first visit now opens with fifteen scenes instead of seven: the whole published
+  *Erbsman* library — Fetingen, Round and round, Julia shapes, Balls of Steel, Big Drop,
+  Reflecting the sea, Matrix, Epilepsy, Hazy Tetrahedron, Rorschach, Delicious, Bouncy
+  Brot, Twisted, Spiraling — plus *dyze*'s Fetingen as "Fetingen (dyze)", and the Blank
+  canvas. Existing libraries are untouched; this is only what a new browser starts with.
+
 ## [1.71.2] — 2026-08-30
 
 ### Changed
