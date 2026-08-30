@@ -15,6 +15,13 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.71.2] — 2026-08-30
+
+### Changed
+- The scene list is alphabetical: scenes A→Z inside each collection (numbers in names
+  sort naturally, so Scene 2 comes before Scene 10), and borrowed collections A→Z after
+  your own. Selection and the auto-cycle are unaffected.
+
 ## [1.71.1] — 2026-08-30
 
 ### Changed

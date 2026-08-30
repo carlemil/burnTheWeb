@@ -301,6 +301,12 @@
     };
     add("");
     presets.forEach((p, i) => add(collectionOf(p)).items.push({ p, i }));
+    // Listed ALPHABETICALLY, by request: scenes within each collection, and the borrowed
+    // collections themselves after your own. Each item keeps its library index `i`, so the
+    // order is display-only -- curPreset, the auto-cycle and every blob are untouched.
+    const byName = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+    for (const g of groups) g.items.sort((a, b) => byName(a.p.name, b.p.name));
+    groups.sort((a, b) => (a.key === "") - (b.key === "") ? (a.key === "" ? -1 : 1) : byName(a.label, b.label));
     return groups;
   }
   // Which groups are expanded. Transient and starting EMPTY, so every collection is folded
