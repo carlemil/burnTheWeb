@@ -1583,16 +1583,14 @@ auto-cycle show.
 - **`function defaultPresets(` is a `presetprobe` slicing marker** — keep the name and keep it
   directly after `snapshotScene`.
 
-**AUTO-CYCLE IS GATED ON THE EDITOR BEING HIDDEN.** `cyclePresets` early-returns (and zeroes
-`nextSwitch`, so closing the panel starts a fresh hold) while `editorOpen()` — `#panel` not
-`.hidden` **and** `body` not `.ui-hidden`, so `H` and `?hideui` count as hidden. It **gates the
-tick and never writes `cycleOn` or `#cycle`**: toggling those would persist `cycle:false` into
-the blob and silently destroy the user's setting. The consequence is load-bearing in the other
-direction too — the panel ships OPEN and `CONFIG.scene.autoCycle` ships ON, so **`restore()`
-hides the panel when `saved.panelOpen` is ABSENT** (first visit only; a stored boolean always
-wins), or a new visitor lands on one still scene and the shipped library never runs as a show.
-The "paused while this panel is open" note under the checkbox is **static markup, not a JS
-badge** — it is only ever readable while the panel is open, which is exactly when it is true.
+**AUTO-CYCLE RUNS WHETHER OR NOT THE EDITOR IS SHOWING** (the panel gate of 1.5x–1.72 was
+reverted by request in 1.73.0 — do not put it back). `restore()` still hides the panel when
+`saved.panelOpen` is ABSENT (first visit only) so a new visitor lands on the show, not the
+editor. `tools/foldcycle-check.js` asserts the cycle switches with the panel open.
+
+**The ⚙ top button (`#panelbtn`) toggles the panel** through the same `setPanel` the M key
+and the ☰ entry use; `syncPanelBtn()` inside `setPanel` mirrors `aria-pressed`/`.on`. It is
+in every `#toggle, #fs, #mute` CSS list, `body.ui-hidden` included.
 
 **Creating a preset, adopting a shared scene and restoring a backup all `stopCycling()`.**
 `applyRestore` can't (it reloads), so it writes `out.cycle = false` **last**.
@@ -1810,10 +1808,13 @@ decode+validate half.
 `cloudFetch`, and Browse sits *outside* `#cloud-authed`. **`cloudPublish` re-saves the whole
 profile** rather than patching `pub` (the rules require name/payload/count).
 
-**The listing survives a missing composite index**: `pub == true` + `orderBy updated` needs one; a
-fresh project answers 400 `FAILED_PRECONDITION` with a creation URL. `galList` retries **unordered**,
-logs the URL once via `console.info`, and **sorts in both cases**. The query `select`s away
-`payload`. Cached for `CONFIG.cloud.galleryTtlMs`; `galBust()` clears it.
+**The listing is ONE unordered query a day** (`galleryLimit` 200 brings the whole list; a read
+is billed per document returned, so the daily cost is the published-profile count). Cached
+under `GAL_KEY` for `galleryTtlMs` (24h) and Refresh cannot undercut that; `galBust()` on your
+own publish/save is the deliberate exception. **Shuffle, name filter and 20-a-page pager are all
+client-side on the cache** (`galShow`/`galPaint`, `Math.random` — UI, not scene content); the
+ordered query and its index fallback are gone, since random order made them pointless.
+`tools/gallery-check.js` is the browser gate (cached ⇒ zero fetches; stale ⇒ exactly one).
 
 ### Audio & beat reactivity
 `audio` holds the WebAudio graph; `startAudio("capture"|"mic")` must run inside a user gesture.

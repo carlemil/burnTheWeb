@@ -653,7 +653,7 @@
   // `select` projects away the payload. Without it every listed profile drags its whole
   // compressed library down the wire — 20 profiles would be megabytes to render a list of
   // names. (It does not reduce the read quota, which is per document either way.)
-  function galQuery(ordered) {
+  function galQuery() {
     const q = {
       structuredQuery: {
         from: [{ collectionId: "profiles" }],
@@ -662,53 +662,29 @@
         limit: CLOUD.galleryLimit || 20,
       },
     };
-    if (ordered) q.structuredQuery.orderBy = [{ field: { fieldPath: "updated" }, direction: "DESCENDING" }];
     return galFetchJson(galUrl + ":runQuery", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(q),
     });
   }
-  // Ordered first, unordered as a fallback. `where pub == true` + `orderBy updated` needs a
-  // COMPOSITE INDEX, which a fresh project does not have — Firestore answers 400
-  // FAILED_PRECONDITION with a one-click creation URL. Rather than making the gallery dead
-  // until someone visits that URL, fall back to the unordered query (no index required) and
-  // sort client-side; the index simply makes it correct beyond the page limit later.
-  let galIndexWarned = false;
+  // ONE unordered query. It used to try 'orderBy updated' first and fall back when the
+  // composite index was missing -- two requests for one listing -- and the rendered order is
+  // random now anyway (galShow), so the ordered attempt bought nothing.
   function galList() {
-    return galQuery(true).then(r => {
-      if (r.ok) return r.json().then(j => ({ rows: j, ordered: true }));
-      return r.text().then(t => {
-        if (/FAILED_PRECONDITION|requires an index/i.test(t)) {
-          if (!galIndexWarned) {
-            galIndexWarned = true;
-            const m = /https:\/\/console\.firebase\.google\.com\S*/.exec(t);
-            console.info("[Kicktro] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
-          }
-          return galQuery(false).then(r2 => (r2.ok ? r2.json().then(j => ({ rows: j, ordered: false }))
-            : r2.text().then(t2 => Promise.reject(new Error(cloudErr(t2, r2.status))))));
-        }
-        return Promise.reject(new Error(cloudErr(t, r.status)));
-      });
-    }).then(res => {
-      const items = (res.rows || []).filter(x => x.document).map(x => {
+    return galQuery().then(r => (r.ok ? r.json()
+      : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status)))))).then(rows =>
+      (rows || []).filter(x => x.document).map(x => {
         const d = fsIn(x.document);
         return { uid: String(x.document.name).split("/").pop(), name: d.name || "Untitled",
                  count: d.count || 0, updated: d.updated || "" };
-      });
-      // Sort ALWAYS, not only on the fallback. The two paths differ in what they SELECT —
-      // an indexed query returns the genuinely newest `limit` documents, the unordered one
-      // returns an arbitrary `limit` — but neither is a reason for the rendered order to
-      // depend on which path ran. Sorting ≤20 items is free, and it means the list reads the
-      // same before and after the composite index exists.
-      items.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
-      return items;
-    });
+      }));
   }
-  // Cache the listing: 20 document reads per open against a 50k/day quota is fine on a
-  // button and wasteful if every glance re-queries.
+  // Cache the listing for a DAY: one query per browser per day however often the dialog
+  // opens. Filter, pages and the shuffle all work on this array and cost nothing.
+  const GAL_TTL = () => CLOUD.galleryTtlMs || 86400000;
   function galCached() {
     try {
       const c = JSON.parse(localStorage.getItem(GAL_KEY) || "null");
-      if (c && Date.now() - c.t < (CLOUD.galleryTtlMs || 300000)) return c.items;
+      if (c && Date.now() - c.t < GAL_TTL()) return c.items;
     } catch (e) { /* fall through to a live fetch */ }
     return null;
   }
@@ -718,12 +694,12 @@
   function galBust() { try { localStorage.removeItem(GAL_KEY); } catch (e) {} }
   // WHEN THE LISTING MAY BE FETCHED AGAIN. The cached entry carries the time it was fetched,
   // so this needs no second timestamp -- and using the same number for both means the Refresh
-  // button cannot undercut the cache, which is what would make "at most once an hour" untrue
+  // button cannot undercut the cache, which is what would make "at most once a day" untrue
   // while still reading as true.
   function galNextReloadAt() {
     try {
       const c = JSON.parse(localStorage.getItem(GAL_KEY) || "null");
-      if (c && c.t) return c.t + (CLOUD.galleryTtlMs || 3600000);
+      if (c && c.t) return c.t + GAL_TTL();
     } catch (e) { /* no cache, no limit */ }
     return 0;
   }
@@ -744,16 +720,42 @@
     const waiting = next > now;
     setOff(b, waiting);
     b.title = waiting
-      ? "The list reloads at most once an hour \u2014 next reload possible in " + galSpan(next - now)
+      ? "The list reloads at most once a day \u2014 next reload possible in " + galSpan(next - now)
       : "Fetch the list again";
     return waiting ? next : 0;
   }
 
+  // The listing as shown: the cached array shuffled ONCE per open (Math.random -- this is
+  // UI, not scene content), then a name filter and 20-a-page slices, all client-side.
+  let galItems = [], galFilter = "", galPage = 0;
+  function galShuffle(items) {
+    const a = items.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  function galMatches() {
+    const f = galFilter.trim().toLowerCase();
+    return f ? galItems.filter(p => String(p.name).toLowerCase().indexOf(f) >= 0) : galItems;
+  }
+  function galPaint() {
+    const all = galMatches(), n = CLOUD.galleryPage || 20, pages = Math.max(1, Math.ceil(all.length / n));
+    galPage = Math.max(0, Math.min(pages - 1, galPage));
+    galRender(all.slice(galPage * n, galPage * n + n));
+    if (galItems.length && !all.length) el("gal-hint").textContent = "No one matches “" + galFilter.trim() + "”.";
+    const pager = el("gal-pager");
+    if (pager) {
+      pager.classList.toggle("hidden", pages <= 1);
+      el("gal-page").textContent = (galPage + 1) + " / " + pages;
+      setOff(el("gal-prev"), galPage <= 0);
+      setOff(el("gal-next"), galPage >= pages - 1);
+    }
+  }
+  function galShow(items) { galItems = galShuffle(items); galPage = 0; galPaint(); }
   function galRender(items) {
     const host = el("gal-list");
     host.textContent = "";
     if (!items.length) {
-      el("gal-hint").textContent = "No one has published any scenes yet. Tick “Publish to gallery” to be the first.";
+      el("gal-hint").textContent = galItems.length ? "" : "No one has published any scenes yet. Tick “Publish to gallery” to be the first.";
       return;
     }
     el("gal-hint").textContent = "";
@@ -820,24 +822,26 @@
     const box = dlg.querySelector(".gal-box");
     if (!show) { dlgRelease(box); return; }
     dlgModal(box);
-    // AT MOST ONE LIVE FETCH AN HOUR, Refresh included. Reads are quota, and a listing of
+    // AT MOST ONE LIVE FETCH A DAY, Refresh included. Reads are quota, and a listing of
     // published profiles does not change minute to minute -- but the button existed to bypass
-    // the cache entirely, so it could be held down. Inside the hour it re-renders what is
+    // the cache entirely, so it could be held down. Inside the day it re-renders what is
     // already cached and says when a real reload becomes possible, rather than pretending.
     const now = Date.now(), next = galNextReloadAt();
     const fresh = galCached();
+    const fi = el("gal-filter");
+    if (fi && !force) { fi.value = ""; galFilter = ""; }
     if (fresh && (!force || next > now)) {
-      galRender(fresh);
+      galShow(fresh);
       if (force && next > now) {
         el("gal-hint").textContent =
-          "This list reloads at most once an hour. Next reload possible in " + galSpan(next - now) + ".";
+          "This list reloads at most once a day. Next reload possible in " + galSpan(next - now) + ".";
       }
       galSyncRefresh();
       return;
     }
     el("gal-list").textContent = "";
     el("gal-hint").textContent = "Loading…";
-    galList().then(items => { galStore(items); galRender(items); galSyncRefresh(); })
+    galList().then(items => { galStore(items); galShow(items); galSyncRefresh(); })
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
@@ -1167,5 +1171,8 @@
   // which calls galOpen(true) directly (see ui-menubar.js).
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
+  if (el("gal-filter")) el("gal-filter").addEventListener("input", e => { galFilter = e.target.value; galPage = 0; galPaint(); });
+  if (el("gal-prev")) el("gal-prev").addEventListener("click", () => { galPage--; galPaint(); });
+  if (el("gal-next")) el("gal-next").addEventListener("click", () => { galPage++; galPaint(); });
   if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
   cloudInit();

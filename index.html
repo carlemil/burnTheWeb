@@ -272,9 +272,8 @@
   #panel .check input, #menubar .check input, #breakout .lyr-box .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   /* Under "Auto-cycle scenes": the cycler is gated on the panel being hidden, and this is the
      one line that says so. Indented to the checkbox's label text (15px box + 8px gap). */
-  #panel .cycle-note { margin: 2px 0 0 23px; font-size: 10px; opacity: .5; font-style: italic; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
-  #toggle, #fs, #mute {
+  #toggle, #fs, #mute, #panelbtn {
     position: fixed;
     top: 14px;
     left: 14px;
@@ -295,14 +294,16 @@
   }
   #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
   #mute { left: 94px; font-size: 18px; }  /* mute the music reaction, right of fullscreen */
+  #panelbtn { left: 134px; font-size: 17px; }  /* controls panel open/closed, right of mute */
+  #panelbtn.on { background: rgba(255, 122, 26, 0.3); }
   /* The scene banner, continuing that row. It used to be drawn into the frame at ~1/26 of the
      viewport width; as chrome it can be small and quiet, because it no longer has to survive
      being composited under a bloom. Not a button — no border or background, so it reads as a
      caption on the row rather than a fourth control you could press. */
   #scenebanner {
-    position: fixed; top: 14px; left: 134px; z-index: 10;
+    position: fixed; top: 14px; left: 174px; z-index: 10;
     height: 34px; display: flex; align-items: center;
-    max-width: calc(100vw - 160px);
+    max-width: calc(100vw - 200px);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: #ffcf87; font: 12px/1 ui-monospace, Consolas, monospace; letter-spacing: .03em;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
@@ -316,9 +317,9 @@
   /* No source running: nothing to mute, so the button is visibly inert (a click only
      surfaces the hint in the menu's audio line — see toggleMute). */
   #mute.off { opacity: .38; cursor: default; }
-  #toggle:hover, #fs:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
+  #toggle:hover, #fs:hover, #panelbtn:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
   /* keyboard focus rings (a11y) */
-  #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
+  #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible, #panelbtn:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
   /* REDUCED MOTION covers the CHROME, not the visual. The old rule named seven elements and so
      reached only about half the UI's own movement — the two keyframe animations, the chevron
@@ -328,7 +329,7 @@
      would leave a black rectangle that reads as a broken app rather than a respected preference;
      the canvas already has a pause (click it) and Hide all UI for anyone who wants stillness. */
   @media (prefers-reduced-motion: reduce) {
-    #panel, #menubar, #breakout, #help, #syncpop, #toggle, #fs, #mute, #uihint, #tutdlg,
+    #panel, #menubar, #breakout, #help, #syncpop, #toggle, #fs, #mute, #panelbtn, #uihint, #tutdlg,
     #restoredlg, #galdlg, #carddlg, #paledlg, #paldlg, #fltdlg, #palpickdlg, #transpickdlg,
     #panel *, #menubar *, #breakout *, #help *, #syncpop *, #tutdlg *, #restoredlg *, #galdlg * {
       transition: none !important;
@@ -360,7 +361,7 @@
      further down and #help and #restoredlg had none at all, so "hide all UI" left the help
      panel and the restore dialog sitting on the capture. One list, so there is one place to
      add the tenth dialog; tools/uiprobe.js asserts none is missing. */
-  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
+  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #panelbtn, body.ui-hidden #frames,
   body.ui-hidden #scenebanner,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
@@ -530,6 +531,15 @@
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
+  #galdlg #gal-filter {
+    display: block; width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 6px 9px;
+    background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 6px;
+    color: #ffcf87; font: 12px/1.3 ui-monospace, Consolas, monospace;
+  }
+  #galdlg #gal-filter:focus { outline: none; border-color: rgba(255, 140, 40, 0.8); }
+  #galdlg .gal-pager { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  #galdlg .gal-pager.hidden { display: none; }
+  #galdlg .gal-pagenum { color: #ffcf87; font-size: 11px; min-width: 48px; text-align: center; }
   #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* ONE line: name, then the scene count / date centred between, then Load at the end.
      It used to wrap the buttons onto a second row spanning the full width, because there
@@ -2057,14 +2067,7 @@
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check" title="Switch scene on the TTL timer. Only runs with this panel closed (M) or all UI hidden (H), so nothing changes under you while you edit."><input type="checkbox" id="cycle" aria-describedby="cyclenote"> Auto-cycle scenes</label>
-  <!-- STATIC, not toggled: this is only ever readable while the panel is open, which is exactly
-       when cycling is paused, so a JS-driven "paused" badge would have nothing to say. Worded as
-       the condition that makes it RUN rather than the one that blocks it -- the checkbox reads as
-       broken otherwise, since ticking it appears to do nothing while you are looking at it.
-       The gate is editorOpen() in controls-breakout.js: panel visible AND not body.ui-hidden.
-       aria-describedby ties it to the checkbox, or a screen reader gets the tick with no caveat. -->
-  <div class="cycle-note" id="cyclenote">only runs with the panel closed (M) or UI hidden (H)</div>
+  <label class="check" title="Switch scene on the TTL timer, whether or not this panel is open."><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
   <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
        Auto-cycle, because that is when you see it most — every cycle tick draws one — even
        though it is drawn by the credits overlay and remembered per browser like the credits
@@ -2260,6 +2263,9 @@
      .muted class strikes it through, so this stays monochrome beside ☰ and ⛶ instead of
      swapping in a colour emoji. -->
 <button id="mute" type="button" aria-label="Mute the music reaction (S)" aria-pressed="false">♪</button>
+<!-- Show/hide the controls panel: the same setPanel the M key and the ☰ entry call, but a
+     button a first-time visitor can actually find. syncPanelBtn mirrors its state. -->
+<button id="panelbtn" type="button" aria-label="Show or hide the controls (M)" aria-pressed="false">⚙</button>
 <!-- Which scene just came up, and who made it. Sits in the top button row rather than being
      drawn into the frame: it is chrome, so it belongs with the chrome — immune to the filters
      and the camera for free, readable at any resolution, and it costs the render nothing.
@@ -2297,10 +2303,16 @@
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
     <h2 id="gal-title">Public scenes</h2>
     <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
+    <input type="search" id="gal-filter" placeholder="Filter by name" aria-label="Filter the list by name" autocomplete="off">
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
+    <div class="presetrow gal-pager hidden" id="gal-pager">
+      <button id="gal-prev" class="audbtn" type="button" aria-label="Previous page">‹ Prev</button>
+      <span id="gal-page" class="gal-pagenum" aria-live="polite">1 / 1</span>
+      <button id="gal-next" class="audbtn" type="button" aria-label="Next page">Next ›</button>
+    </div>
     <div class="presetrow">
-      <button id="gal-refresh" class="audbtn" type="button" title="Fetch the list again, ignoring the cached copy">Refresh</button>
+      <button id="gal-refresh" class="audbtn" type="button" title="Fetch the list again (at most once a day)">Refresh</button>
     </div>
   </div>
 </div>
@@ -2617,7 +2629,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.72.0",
+    version: "1.73.0",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2628,7 +2640,7 @@
     fire: { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 },
 
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
-    scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
+    scene: { autoCycle: true, ttl: [2, 8], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
 
     // --- the colour that says WHICH LAYER a box belongs to ---
     // With several layer boxes and their sliders scattered over the grid, "L2 · Plasma" in
@@ -2751,8 +2763,11 @@
       // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
       // Two separate intervals would let the Refresh button undercut the cache and make
       // "reloads once an hour" quietly untrue.
-      galleryTtlMs: 3600000,                      // cache the gallery listing, and reload at most, 1h
-      galleryLimit: 20,                           // profiles per gallery page
+      galleryTtlMs: 86400000,                     // cache the gallery listing, and reload at most, 24h
+      // ONE query brings the WHOLE listing (pages are cut client-side); a read is billed
+      // per document returned, so a day costs as many reads as there are published profiles.
+      galleryLimit: 200,
+      galleryPage: 20,                            // profiles per gallery page
       maxPayload: 300000,                         // must match the cap in firestore.rules
     },
 
@@ -20653,11 +20668,9 @@
     let saved;
     try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
     applyBlob(saved, false);
-    // FIRST VISIT STARTS WITH THE PANEL HIDDEN. Auto-cycle now pauses while the editor is on
-    // screen (cyclePresets), and the panel ships OPEN — so without this a new visitor would
-    // arrive at one still scene and never see the shipped library run as a show, which is how
-    // the site demonstrates itself. Only when nothing was ever stored: a saved panelOpen of
-    // either value always wins, so a returning user keeps their layout.
+    // FIRST VISIT STARTS WITH THE PANEL HIDDEN, so a new visitor sees the show, not the
+    // editor. Only when nothing was ever stored: a saved panelOpen of either value always
+    // wins, so a returning user keeps their layout.
     if (!saved || typeof saved.panelOpen !== "boolean") panel.classList.add("hidden");
     // NO SOURCE EVER CHOSEN ⇒ arm the MIC. Reacting to music is the point of the app and
     // the thing nobody discovers on their own, so the default is on rather than off.
@@ -22158,18 +22171,10 @@
     for (let i = 0; i < presets.length; i++) if (inRotation(presets[i])) pool.push(i);
     return pool;
   }
-  // AUTO-CYCLE PAUSES WHILE THE EDITOR IS ON SCREEN. Having a scene swapped out from under
-  // you mid-edit loses your place, and the cycler's whole job is to run a show at an unwatched
-  // screen. So the panel being visible gates the TICK — it never touches `cycleOn` or the
-  // checkbox, which stay the user's stored preference (writing them would persist cycle:false
-  // into the blob and silently lose that choice). `body.ui-hidden` counts as hidden too: H
-  // strips the panel along with the rest of the chrome, and ?hideui is how the headless
-  // screenshots run. Zeroing nextSwitch means closing the panel starts a FRESH TTL rather
-  // than switching the instant you hide it.
-  const editorOpen = () => !panel.classList.contains("hidden")
-    && !document.body.classList.contains("ui-hidden");
+  // Auto-cycle runs whether or not the editor is on screen. It WAS gated on the panel being
+  // hidden (1.5x-1.72), and that gate was reverted by request in 1.73.0: a show that stops
+  // the moment you open the panel reads as a broken checkbox.
   function cyclePresets(now) {
-    if (editorOpen()) { nextSwitch = 0; return; }
     const pool = rotationPool();
     // Something to switch TO: two or more ticked scenes, or exactly one that isn't the one
     // already on screen (having hand-picked an unticked scene, the cycle should still take
@@ -23984,8 +23989,19 @@
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);
+    syncPanelBtn();
     persist();                          // remember panel open/closed across reloads
   }
+  // The ⚙ top button reflects the panel whichever route toggled it (M key, menu, itself).
+  function syncPanelBtn() {
+    const b = el("panelbtn");
+    if (!b) return;
+    const open = !panel.classList.contains("hidden");
+    b.classList.toggle("on", open);
+    b.setAttribute("aria-pressed", open ? "true" : "false");
+  }
+  if (el("panelbtn")) el("panelbtn").addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
+  syncPanelBtn();                       // restore() ran two slices ago; paint the stored state
   // The ☰ hamburger opens the fold-out MENUBAR (ui-menubar.js), not the controls panel —
   // it is the app's application menu now, holding System / Cloud profile / Credits and a
   // Controls panel toggle. The "m" key still toggles the panel directly, so the fastest
@@ -24675,7 +24691,7 @@
   // `select` projects away the payload. Without it every listed profile drags its whole
   // compressed library down the wire — 20 profiles would be megabytes to render a list of
   // names. (It does not reduce the read quota, which is per document either way.)
-  function galQuery(ordered) {
+  function galQuery() {
     const q = {
       structuredQuery: {
         from: [{ collectionId: "profiles" }],
@@ -24684,53 +24700,29 @@
         limit: CLOUD.galleryLimit || 20,
       },
     };
-    if (ordered) q.structuredQuery.orderBy = [{ field: { fieldPath: "updated" }, direction: "DESCENDING" }];
     return galFetchJson(galUrl + ":runQuery", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(q),
     });
   }
-  // Ordered first, unordered as a fallback. `where pub == true` + `orderBy updated` needs a
-  // COMPOSITE INDEX, which a fresh project does not have — Firestore answers 400
-  // FAILED_PRECONDITION with a one-click creation URL. Rather than making the gallery dead
-  // until someone visits that URL, fall back to the unordered query (no index required) and
-  // sort client-side; the index simply makes it correct beyond the page limit later.
-  let galIndexWarned = false;
+  // ONE unordered query. It used to try 'orderBy updated' first and fall back when the
+  // composite index was missing -- two requests for one listing -- and the rendered order is
+  // random now anyway (galShow), so the ordered attempt bought nothing.
   function galList() {
-    return galQuery(true).then(r => {
-      if (r.ok) return r.json().then(j => ({ rows: j, ordered: true }));
-      return r.text().then(t => {
-        if (/FAILED_PRECONDITION|requires an index/i.test(t)) {
-          if (!galIndexWarned) {
-            galIndexWarned = true;
-            const m = /https:\/\/console\.firebase\.google\.com\S*/.exec(t);
-            console.info("[Kicktro] gallery is unsorted until this index exists:", m ? m[0].replace(/["\\].*$/, "") : "(see Firestore console)");
-          }
-          return galQuery(false).then(r2 => (r2.ok ? r2.json().then(j => ({ rows: j, ordered: false }))
-            : r2.text().then(t2 => Promise.reject(new Error(cloudErr(t2, r2.status))))));
-        }
-        return Promise.reject(new Error(cloudErr(t, r.status)));
-      });
-    }).then(res => {
-      const items = (res.rows || []).filter(x => x.document).map(x => {
+    return galQuery().then(r => (r.ok ? r.json()
+      : r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status)))))).then(rows =>
+      (rows || []).filter(x => x.document).map(x => {
         const d = fsIn(x.document);
         return { uid: String(x.document.name).split("/").pop(), name: d.name || "Untitled",
                  count: d.count || 0, updated: d.updated || "" };
-      });
-      // Sort ALWAYS, not only on the fallback. The two paths differ in what they SELECT —
-      // an indexed query returns the genuinely newest `limit` documents, the unordered one
-      // returns an arbitrary `limit` — but neither is a reason for the rendered order to
-      // depend on which path ran. Sorting ≤20 items is free, and it means the list reads the
-      // same before and after the composite index exists.
-      items.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
-      return items;
-    });
+      }));
   }
-  // Cache the listing: 20 document reads per open against a 50k/day quota is fine on a
-  // button and wasteful if every glance re-queries.
+  // Cache the listing for a DAY: one query per browser per day however often the dialog
+  // opens. Filter, pages and the shuffle all work on this array and cost nothing.
+  const GAL_TTL = () => CLOUD.galleryTtlMs || 86400000;
   function galCached() {
     try {
       const c = JSON.parse(localStorage.getItem(GAL_KEY) || "null");
-      if (c && Date.now() - c.t < (CLOUD.galleryTtlMs || 300000)) return c.items;
+      if (c && Date.now() - c.t < GAL_TTL()) return c.items;
     } catch (e) { /* fall through to a live fetch */ }
     return null;
   }
@@ -24740,12 +24732,12 @@
   function galBust() { try { localStorage.removeItem(GAL_KEY); } catch (e) {} }
   // WHEN THE LISTING MAY BE FETCHED AGAIN. The cached entry carries the time it was fetched,
   // so this needs no second timestamp -- and using the same number for both means the Refresh
-  // button cannot undercut the cache, which is what would make "at most once an hour" untrue
+  // button cannot undercut the cache, which is what would make "at most once a day" untrue
   // while still reading as true.
   function galNextReloadAt() {
     try {
       const c = JSON.parse(localStorage.getItem(GAL_KEY) || "null");
-      if (c && c.t) return c.t + (CLOUD.galleryTtlMs || 3600000);
+      if (c && c.t) return c.t + GAL_TTL();
     } catch (e) { /* no cache, no limit */ }
     return 0;
   }
@@ -24766,16 +24758,42 @@
     const waiting = next > now;
     setOff(b, waiting);
     b.title = waiting
-      ? "The list reloads at most once an hour \u2014 next reload possible in " + galSpan(next - now)
+      ? "The list reloads at most once a day \u2014 next reload possible in " + galSpan(next - now)
       : "Fetch the list again";
     return waiting ? next : 0;
   }
 
+  // The listing as shown: the cached array shuffled ONCE per open (Math.random -- this is
+  // UI, not scene content), then a name filter and 20-a-page slices, all client-side.
+  let galItems = [], galFilter = "", galPage = 0;
+  function galShuffle(items) {
+    const a = items.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  function galMatches() {
+    const f = galFilter.trim().toLowerCase();
+    return f ? galItems.filter(p => String(p.name).toLowerCase().indexOf(f) >= 0) : galItems;
+  }
+  function galPaint() {
+    const all = galMatches(), n = CLOUD.galleryPage || 20, pages = Math.max(1, Math.ceil(all.length / n));
+    galPage = Math.max(0, Math.min(pages - 1, galPage));
+    galRender(all.slice(galPage * n, galPage * n + n));
+    if (galItems.length && !all.length) el("gal-hint").textContent = "No one matches “" + galFilter.trim() + "”.";
+    const pager = el("gal-pager");
+    if (pager) {
+      pager.classList.toggle("hidden", pages <= 1);
+      el("gal-page").textContent = (galPage + 1) + " / " + pages;
+      setOff(el("gal-prev"), galPage <= 0);
+      setOff(el("gal-next"), galPage >= pages - 1);
+    }
+  }
+  function galShow(items) { galItems = galShuffle(items); galPage = 0; galPaint(); }
   function galRender(items) {
     const host = el("gal-list");
     host.textContent = "";
     if (!items.length) {
-      el("gal-hint").textContent = "No one has published any scenes yet. Tick “Publish to gallery” to be the first.";
+      el("gal-hint").textContent = galItems.length ? "" : "No one has published any scenes yet. Tick “Publish to gallery” to be the first.";
       return;
     }
     el("gal-hint").textContent = "";
@@ -24842,24 +24860,26 @@
     const box = dlg.querySelector(".gal-box");
     if (!show) { dlgRelease(box); return; }
     dlgModal(box);
-    // AT MOST ONE LIVE FETCH AN HOUR, Refresh included. Reads are quota, and a listing of
+    // AT MOST ONE LIVE FETCH A DAY, Refresh included. Reads are quota, and a listing of
     // published profiles does not change minute to minute -- but the button existed to bypass
-    // the cache entirely, so it could be held down. Inside the hour it re-renders what is
+    // the cache entirely, so it could be held down. Inside the day it re-renders what is
     // already cached and says when a real reload becomes possible, rather than pretending.
     const now = Date.now(), next = galNextReloadAt();
     const fresh = galCached();
+    const fi = el("gal-filter");
+    if (fi && !force) { fi.value = ""; galFilter = ""; }
     if (fresh && (!force || next > now)) {
-      galRender(fresh);
+      galShow(fresh);
       if (force && next > now) {
         el("gal-hint").textContent =
-          "This list reloads at most once an hour. Next reload possible in " + galSpan(next - now) + ".";
+          "This list reloads at most once a day. Next reload possible in " + galSpan(next - now) + ".";
       }
       galSyncRefresh();
       return;
     }
     el("gal-list").textContent = "";
     el("gal-hint").textContent = "Loading…";
-    galList().then(items => { galStore(items); galRender(items); galSyncRefresh(); })
+    galList().then(items => { galStore(items); galShow(items); galSyncRefresh(); })
       .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
@@ -25189,6 +25209,9 @@
   // which calls galOpen(true) directly (see ui-menubar.js).
   if (el("gal-close")) el("gal-close").addEventListener("click", () => galOpen(false));
   if (el("gal-refresh")) el("gal-refresh").addEventListener("click", () => galOpen(true, true));
+  if (el("gal-filter")) el("gal-filter").addEventListener("input", e => { galFilter = e.target.value; galPage = 0; galPaint(); });
+  if (el("gal-prev")) el("gal-prev").addEventListener("click", () => { galPage--; galPaint(); });
+  if (el("gal-next")) el("gal-next").addEventListener("click", () => { galPage++; galPaint(); });
   if (el("galdlg")) el("galdlg").addEventListener("click", e => { if (e.target === el("galdlg")) galOpen(false); });
   cloudInit();
   // ---- Orbit editor ----------------------------------------------------------

@@ -296,11 +296,9 @@
     let saved;
     try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) { saved = null; }
     applyBlob(saved, false);
-    // FIRST VISIT STARTS WITH THE PANEL HIDDEN. Auto-cycle now pauses while the editor is on
-    // screen (cyclePresets), and the panel ships OPEN — so without this a new visitor would
-    // arrive at one still scene and never see the shipped library run as a show, which is how
-    // the site demonstrates itself. Only when nothing was ever stored: a saved panelOpen of
-    // either value always wins, so a returning user keeps their layout.
+    // FIRST VISIT STARTS WITH THE PANEL HIDDEN, so a new visitor sees the show, not the
+    // editor. Only when nothing was ever stored: a saved panelOpen of either value always
+    // wins, so a returning user keeps their layout.
     if (!saved || typeof saved.panelOpen !== "boolean") panel.classList.add("hidden");
     // NO SOURCE EVER CHOSEN ⇒ arm the MIC. Reacting to music is the point of the app and
     // the thing nobody discovers on their own, so the default is on rather than off.

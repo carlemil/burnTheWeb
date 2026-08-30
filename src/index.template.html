@@ -163,14 +163,7 @@
   </div>
   <!-- Auto-cycle / Scene TTL / Transition defaults come from CONFIG.scene (set in JS at startup),
        not from value=/checked here — so they live in one place. -->
-  <label class="check" title="Switch scene on the TTL timer. Only runs with this panel closed (M) or all UI hidden (H), so nothing changes under you while you edit."><input type="checkbox" id="cycle" aria-describedby="cyclenote"> Auto-cycle scenes</label>
-  <!-- STATIC, not toggled: this is only ever readable while the panel is open, which is exactly
-       when cycling is paused, so a JS-driven "paused" badge would have nothing to say. Worded as
-       the condition that makes it RUN rather than the one that blocks it -- the checkbox reads as
-       broken otherwise, since ticking it appears to do nothing while you are looking at it.
-       The gate is editorOpen() in controls-breakout.js: panel visible AND not body.ui-hidden.
-       aria-describedby ties it to the checkbox, or a screen reader gets the tick with no caveat. -->
-  <div class="cycle-note" id="cyclenote">only runs with the panel closed (M) or UI hidden (H)</div>
+  <label class="check" title="Switch scene on the TTL timer, whether or not this panel is open."><input type="checkbox" id="cycle"> Auto-cycle scenes</label>
   <!-- The on-screen banner naming each scene as you land on it. It sits HERE, under
        Auto-cycle, because that is when you see it most — every cycle tick draws one — even
        though it is drawn by the credits overlay and remembered per browser like the credits
@@ -366,6 +359,9 @@
      .muted class strikes it through, so this stays monochrome beside ☰ and ⛶ instead of
      swapping in a colour emoji. -->
 <button id="mute" type="button" aria-label="Mute the music reaction (S)" aria-pressed="false">♪</button>
+<!-- Show/hide the controls panel: the same setPanel the M key and the ☰ entry call, but a
+     button a first-time visitor can actually find. syncPanelBtn mirrors its state. -->
+<button id="panelbtn" type="button" aria-label="Show or hide the controls (M)" aria-pressed="false">⚙</button>
 <!-- Which scene just came up, and who made it. Sits in the top button row rather than being
      drawn into the frame: it is chrome, so it belongs with the chrome — immune to the filters
      and the camera for free, readable at any resolution, and it costs the render nothing.
@@ -403,10 +399,16 @@
     <button type="button" class="pal-close" id="gal-close" aria-label="Close">×</button>
     <h2 id="gal-title">Public scenes</h2>
     <p class="pal-hint gal-help"><b>Load scenes</b> adds someone's scenes to your list as their own collection, named after them — your own scenes are never touched, and loading the same person again just refreshes their set. Collections start folded in the Scenes list; click a name to open it, or <b>✕</b> to remove the whole collection. The page reloads onto what you loaded.</p>
+    <input type="search" id="gal-filter" placeholder="Filter by name" aria-label="Filter the list by name" autocomplete="off">
     <div id="gal-list"></div>
     <p class="pal-hint" id="gal-hint"></p>
+    <div class="presetrow gal-pager hidden" id="gal-pager">
+      <button id="gal-prev" class="audbtn" type="button" aria-label="Previous page">‹ Prev</button>
+      <span id="gal-page" class="gal-pagenum" aria-live="polite">1 / 1</span>
+      <button id="gal-next" class="audbtn" type="button" aria-label="Next page">Next ›</button>
+    </div>
     <div class="presetrow">
-      <button id="gal-refresh" class="audbtn" type="button" title="Fetch the list again, ignoring the cached copy">Refresh</button>
+      <button id="gal-refresh" class="audbtn" type="button" title="Fetch the list again (at most once a day)">Refresh</button>
     </div>
   </div>
 </div>

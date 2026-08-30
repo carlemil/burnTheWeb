@@ -9,13 +9,8 @@
 //
 // (it prints the exact commands). Every line is PASS/FAIL on stderr via CONSOLE.
 //
-// THE ONE ASSERTION THAT BITES is case-open's "no switch while the editor is open".
-// Verified sensitive: delete `if (editorOpen())` from the built file and it goes red
-// (Fetingen -> Round and round). The mirror-image check -- open the panel mid-run and
-// watch the cycle stop -- was written, measured, and DELETED: it passes against a build
-// with the gate removed, because after a mid-run state change headless renders two frames
-// in twenty virtual seconds and nothing would have switched either way. A green assertion
-// that cannot go red is worse than none.
+// THE ONE ASSERTION THAT BITES is case-open's "auto-cycle runs while the editor is open" --
+// the panel gate was reverted in 1.73.0, and this is what proves it stayed reverted.
 //
 // No backtick anywhere in the injected source, and the two blocks are arrays joined by an
 // explicit newline rather than template literals -- both traps documented in CLAUDE.md.
@@ -100,14 +95,14 @@ const ASSERT_JS = [
   "    return;",
   "  }",
   "",
-  "  // case-open: the panel is up, so nothing may switch. Then hide it and it must.",
+  "  // case-open: the panel is up and the cycle must run anyway (the gate was reverted in 1.73.0).",
   "  ok(\"a stored panelOpen:true stays open\", !hidden());",
-  "  ok(\"the paused note is in the Scene box\", !!document.querySelector(\"#panel .cycle-note\"));",
+  "  ok(\"no paused note in the Scene box\", !document.querySelector(\"#panel .cycle-note\"));",
   "  ok(\"the cycle checkbox is still ticked\", document.getElementById(\"cycle\").checked);",
   "",
   "  var held = sceneName();",
   "  setTimeout(function () {",
-  "    ok(\"no switch while the editor is open\", sceneName() === held, held + \" -> \" + sceneName());",
+  "    ok(\"auto-cycle runs while the editor is open\", sceneName() !== held, held + \" -> \" + sceneName());",
   "    ok(\"the stored preference was not rewritten\", document.getElementById(\"cycle\").checked);",
   "",
   "    // ---- the three layer tabs, while the panel is still up ----",

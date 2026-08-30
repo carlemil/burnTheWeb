@@ -496,8 +496,19 @@
 
   function setPanel(hidden) {
     panel.classList.toggle("hidden", hidden);
+    syncPanelBtn();
     persist();                          // remember panel open/closed across reloads
   }
+  // The ⚙ top button reflects the panel whichever route toggled it (M key, menu, itself).
+  function syncPanelBtn() {
+    const b = el("panelbtn");
+    if (!b) return;
+    const open = !panel.classList.contains("hidden");
+    b.classList.toggle("on", open);
+    b.setAttribute("aria-pressed", open ? "true" : "false");
+  }
+  if (el("panelbtn")) el("panelbtn").addEventListener("click", () => setPanel(!panel.classList.contains("hidden")));
+  syncPanelBtn();                       // restore() ran two slices ago; paint the stored state
   // The ☰ hamburger opens the fold-out MENUBAR (ui-menubar.js), not the controls panel —
   // it is the app's application menu now, holding System / Cloud profile / Credits and a
   // Controls panel toggle. The "m" key still toggles the panel directly, so the fastest

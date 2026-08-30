@@ -15,6 +15,22 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.73.0] — 2026-08-30
+
+### Added
+- A ⚙ button in the top row opens and closes the controls panel — the same as the M key.
+- Public scenes: a "Filter by name" box, and pages of 20 with Prev/Next.
+
+### Changed
+- Public scenes are listed in random order, reshuffled each time the dialog opens.
+- The public list is fetched at most once a day per browser and cached; Refresh respects that.
+- Auto-cycle runs whether or not the controls panel is open (the panel no longer pauses it).
+- Default Scene TTL is now 2–8 seconds.
+
+### Internal
+- `tools/gallery-check.js` (browser): cache hit ⇒ zero fetches, stale ⇒ exactly one; filter, pager, shuffle, ⚙ button.
+- `foldcycle-check` now asserts the cycle runs with the panel open.
+
 ## [1.72.0] — 2026-08-30
 
 ### Changed

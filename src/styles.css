@@ -254,9 +254,8 @@
   #panel .check input, #menubar .check input, #breakout .lyr-box .check input { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
   /* Under "Auto-cycle scenes": the cycler is gated on the panel being hidden, and this is the
      one line that says so. Indented to the checkbox's label text (15px box + 8px gap). */
-  #panel .cycle-note { margin: 2px 0 0 23px; font-size: 10px; opacity: .5; font-style: italic; }
   #panel.hidden { opacity: 0; transform: translateX(-12px); pointer-events: none; visibility: hidden; }
-  #toggle, #fs, #mute {
+  #toggle, #fs, #mute, #panelbtn {
     position: fixed;
     top: 14px;
     left: 14px;
@@ -277,14 +276,16 @@
   }
   #fs { left: 54px; }                     /* fullscreen button, right of the panel toggle */
   #mute { left: 94px; font-size: 18px; }  /* mute the music reaction, right of fullscreen */
+  #panelbtn { left: 134px; font-size: 17px; }  /* controls panel open/closed, right of mute */
+  #panelbtn.on { background: rgba(255, 122, 26, 0.3); }
   /* The scene banner, continuing that row. It used to be drawn into the frame at ~1/26 of the
      viewport width; as chrome it can be small and quiet, because it no longer has to survive
      being composited under a bloom. Not a button — no border or background, so it reads as a
      caption on the row rather than a fourth control you could press. */
   #scenebanner {
-    position: fixed; top: 14px; left: 134px; z-index: 10;
+    position: fixed; top: 14px; left: 174px; z-index: 10;
     height: 34px; display: flex; align-items: center;
-    max-width: calc(100vw - 160px);
+    max-width: calc(100vw - 200px);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: #ffcf87; font: 12px/1 ui-monospace, Consolas, monospace; letter-spacing: .03em;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
@@ -298,9 +299,9 @@
   /* No source running: nothing to mute, so the button is visibly inert (a click only
      surfaces the hint in the menu's audio line — see toggleMute). */
   #mute.off { opacity: .38; cursor: default; }
-  #toggle:hover, #fs:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
+  #toggle:hover, #fs:hover, #panelbtn:hover, #mute:not(.off):hover { background: rgba(255, 122, 26, 0.3); }
   /* keyboard focus rings (a11y) */
-  #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible,
+  #panel button:focus-visible, #menubar button:focus-visible, #toggle:focus-visible, #fs:focus-visible, #mute:focus-visible, #panelbtn:focus-visible,
   #panel select:focus-visible, #panel input:focus-visible, #menubar select:focus-visible, #menubar input:focus-visible { outline: 2px solid #ffb15a; outline-offset: 2px; }
   /* REDUCED MOTION covers the CHROME, not the visual. The old rule named seven elements and so
      reached only about half the UI's own movement — the two keyframe animations, the chevron
@@ -310,7 +311,7 @@
      would leave a black rectangle that reads as a broken app rather than a respected preference;
      the canvas already has a pause (click it) and Hide all UI for anyone who wants stillness. */
   @media (prefers-reduced-motion: reduce) {
-    #panel, #menubar, #breakout, #help, #syncpop, #toggle, #fs, #mute, #uihint, #tutdlg,
+    #panel, #menubar, #breakout, #help, #syncpop, #toggle, #fs, #mute, #panelbtn, #uihint, #tutdlg,
     #restoredlg, #galdlg, #carddlg, #paledlg, #paldlg, #fltdlg, #palpickdlg, #transpickdlg,
     #panel *, #menubar *, #breakout *, #help *, #syncpop *, #tutdlg *, #restoredlg *, #galdlg * {
       transition: none !important;
@@ -342,7 +343,7 @@
      further down and #help and #restoredlg had none at all, so "hide all UI" left the help
      panel and the restore dialog sitting on the capture. One list, so there is one place to
      add the tenth dialog; tools/uiprobe.js asserts none is missing. */
-  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #frames,
+  body.ui-hidden #toggle, body.ui-hidden #fs, body.ui-hidden #mute, body.ui-hidden #panelbtn, body.ui-hidden #frames,
   body.ui-hidden #scenebanner,
   body.ui-hidden #menubar,
   body.ui-hidden #panel, body.ui-hidden #breakout, body.ui-hidden #syncpop,
@@ -512,6 +513,15 @@
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 40px rgba(255, 90, 20, 0.25);
   }
+  #galdlg #gal-filter {
+    display: block; width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 6px 9px;
+    background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 140, 40, 0.35); border-radius: 6px;
+    color: #ffcf87; font: 12px/1.3 ui-monospace, Consolas, monospace;
+  }
+  #galdlg #gal-filter:focus { outline: none; border-color: rgba(255, 140, 40, 0.8); }
+  #galdlg .gal-pager { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  #galdlg .gal-pager.hidden { display: none; }
+  #galdlg .gal-pagenum { color: #ffcf87; font-size: 11px; min-width: 48px; text-align: center; }
   #galdlg h2 { margin: 0 30px 14px 0; color: #ffb15a; font-size: 15px; text-shadow: 0 0 12px rgba(255, 120, 20, 0.6); }
   /* ONE line: name, then the scene count / date centred between, then Load at the end.
      It used to wrap the buttons onto a second row spanning the full width, because there

@@ -53,7 +53,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.72.0",
+    version: "1.73.0",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -64,7 +64,7 @@
     fire: { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 },
 
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
-    scene: { autoCycle: true, ttl: [10, 30], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
+    scene: { autoCycle: true, ttl: [2, 8], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
 
     // --- the colour that says WHICH LAYER a box belongs to ---
     // With several layer boxes and their sliders scattered over the grid, "L2 · Plasma" in
@@ -187,8 +187,11 @@
       // ONE number, and it is both the cache lifetime and the reload limit -- see galOpen.
       // Two separate intervals would let the Refresh button undercut the cache and make
       // "reloads once an hour" quietly untrue.
-      galleryTtlMs: 3600000,                      // cache the gallery listing, and reload at most, 1h
-      galleryLimit: 20,                           // profiles per gallery page
+      galleryTtlMs: 86400000,                     // cache the gallery listing, and reload at most, 24h
+      // ONE query brings the WHOLE listing (pages are cut client-side); a read is billed
+      // per document returned, so a day costs as many reads as there are published profiles.
+      galleryLimit: 200,
+      galleryPage: 20,                            // profiles per gallery page
       maxPayload: 300000,                         // must match the cap in firestore.rules
     },
 
