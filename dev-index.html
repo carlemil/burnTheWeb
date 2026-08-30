@@ -854,10 +854,14 @@
      the 26px field labels), the ↺ pushed to the right edge. */
   #breakout .ctl-reset .rng-lbl { width: auto; }
   #breakout .ctl-reset .rng-rst { margin-left: auto; }
-  /* Objects: name · − value + on one row, small steppers like every number field. */
-  #panel .obj-row { display: flex; align-items: center; gap: 5px; }
-  #panel .obj-row .obj-name { flex: 1 1 auto; }
-  #panel .obj-row .obj-val { min-width: 16px; text-align: center; }
+  /* Objects: name · value · − + on one row, the steppers pushed to the right with a clear
+     gap after the digit. The DOM stays name/−/value/+ (that is what the handlers and the
+     probes address); the order is CSS. Scoped to BOTH hosts -- the block lives in a layer
+     box inside #breakout, where a #panel-only rule never reached it. */
+  #panel .obj-row, #breakout .lyr-box .obj-row { display: flex; align-items: center; gap: 4px; }
+  #panel .obj-row .obj-name, #breakout .lyr-box .obj-row .obj-name { flex: 1 1 auto; order: 0; }
+  #panel .obj-row .obj-val, #breakout .lyr-box .obj-row .obj-val { min-width: 16px; text-align: center; order: 1; margin-right: 10px; }
+  #panel .obj-row .num-arrow, #breakout .lyr-box .obj-row .num-arrow { order: 2; }
   /* Refractory rows (per armed band, under Duration): band label · slider · readout. */
   #breakout .trig-ref { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
   #breakout .trig-ref .rng-lbl { flex: none; width: 26px; opacity: .55; font-size: 9px; letter-spacing: .06em; }
@@ -2613,7 +2617,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.71.0",
+    version: "1.71.1",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---

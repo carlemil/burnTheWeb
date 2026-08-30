@@ -15,6 +15,13 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.71.1] — 2026-08-30
+
+### Changed
+- The **Objects** row (Sierpiński, Tetrahedron and the other copy-count effects) reads
+  name · count · − + — the steppers sit at the right edge, in line with every other
+  row's +, with a clear gap after the digit.
+
 ## [1.71.0] — 2026-08-29
 
 ### Changed
