@@ -2241,7 +2241,13 @@ it), CPU via `performance.now()`, median of a settled window, both resolutions, 
 `window.__setFilterOn` hook — every UI route failed — and the base is measured at BOTH ends.
 First run (v1.67): **Volumetric clouds was the one effect over the 60 fps budget at 4K on the
 4090, 21.3 ms, 5× the next**; its shadow march (5 taps × full octaves per dense step) was the
-whole cost, and half-octave/3-tap shadowing took it to 9.3 ms for a 3.7/255 mean pixel diff.
+whole cost, and half-octave/3-tap shadowing took it to 9.3 ms for a 3.7/255 mean pixel diff. **Since 1.73.3 clouds
+renders at HALF RESOLUTION** (`halfRes: true` on the descriptor; `glShaderDraw` draws into
+`glTex.halfLayer` and blits up LINEAR): 9.3 → 2.4 ms at 4K, A/B mean ≤ 0.1/255 — the march is
+the whole cost and the picture has no edge that survives 2px. Two more rungs were tried and
+REVERTED, both A/B-failed: distance-tapered octaves INVENT far blobs at low Cover (fewer
+octaves lifts fbm over the coverage threshold), and a jittered 32×0.195 march reads as film
+grain on the app's softest picture — 0.6 ms was not worth either.
 Everything else has 4×+ headroom; the 7 feedback filters cost ~0.15 ms each at 4K and every
 post filter is at the noise floor. **`tools/pixgate.js`** proves 'free': owned rAF queue, fixed
 1/60 step, stubbed `Math.random`, `readPixels` same task, shader effects only, bistable. It
