@@ -130,7 +130,9 @@
       // Measured the other way first: at 3000 particles with no filter it rendered as static
       // noise and looked broken.
       beat: {}, extras: { palette: "12", morph: false, filters: ["fade"] } },
-    { id: "clouds", name: "Volumetric clouds", subtitle: "Clouds · marched participating media",
+    // halfRes: rendered at half resolution and upsampled (glShaderDraw) -- the march is
+    // the app's most expensive shader and the picture has no edge that survives 2px.
+    { id: "clouds", name: "Volumetric clouds", halfRes: true, subtitle: "Clouds · marched participating media",
       help: "Real volume: the ray does not look for a surface, it integrates DENSITY along its length and lets light through according to how much it has already passed — which is why the clouds have depth and a lit side rather than being a flat noise field. Every other 3D effect here answers *where does this ray stop*; this one answers *how much did it collect on the way*. **Cover** is how much of the sky is filled (low leaves scattered wisps, high closes it over), Scale the size of the formations, Detail the octaves (and most of the cost), Sun how hard the light falls off through the depth — turn it down for flat overcast, up for towering lit banks. Drift moves the field past you.",
       params: ["clcover", "clscale", "cloct", "cllight", "clspeed", "zoom", "camrx", "camry", "camrz", "fov", "palcycle", "palhold", "band", "bandsize", "banddim"], helpTags: ["all", "band"], bakesOwnZoom: true,
       draw: dt => { const s = cloudsSeed(dt); if (useGL) glShaderDraw("clouds", u => { gl.uniform1f(u.uTime, s.t); gl.uniform1f(u.uCover, s.cover); gl.uniform1f(u.uScale, s.scale); gl.uniform1f(u.uOct, s.oct); gl.uniform1f(u.uLight, s.light); gl.uniform1f(u.uZoom, s.zoom); }); else clouds(s); },
