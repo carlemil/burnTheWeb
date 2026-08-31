@@ -15,6 +15,11 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.73.1] — 2026-08-31
+
+### Changed
+- Default Scene TTL is now 4–8 seconds.
+
 ## [1.73.0] — 2026-08-30
 
 ### Added

@@ -2629,7 +2629,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.73.0",
+    version: "1.73.1",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -2640,7 +2640,7 @@
     fire: { points: 1500, speed: 0.92, decay: 129, scale: 1, burn: 120 },
 
     // --- scene knobs that are global, NOT per-preset (auto-cycle, TTL, transition) ---
-    scene: { autoCycle: true, ttl: [2, 8], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
+    scene: { autoCycle: true, ttl: [4, 8], transition: [0.45, 0.9] },   // ttl/transition in seconds [min,max]
 
     // --- the colour that says WHICH LAYER a box belongs to ---
     // With several layer boxes and their sliders scattered over the grid, "L2 · Plasma" in
