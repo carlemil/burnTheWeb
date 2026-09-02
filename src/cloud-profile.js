@@ -750,7 +750,10 @@
       setOff(el("gal-next"), galPage >= pages - 1);
     }
   }
-  function galShow(items) { galItems = galShuffle(items); galPage = 0; galPaint(); }
+  // The built-in rows (gallery-builtin.js) lead, unshuffled and never cached: they ship with
+  // the app, so they update with it rather than with the once-a-day listing.
+  const galBuiltin = () => BUILTIN_GALLERY.map(b => ({ uid: b.uid, name: b.name, count: b.count, updated: b.updated }));
+  function galShow(items) { galItems = galBuiltin().concat(galShuffle(items)); galPage = 0; galPaint(); }
   function galRender(items) {
     const host = el("gal-list");
     host.textContent = "";
@@ -789,14 +792,17 @@
   // and a second copy is how the two would drift. Rejects with a readable message at each
   // step; every caller turns that into a line of UI rather than a console trace.
   function galFetchLibrary(uid) {
-    return galFetchJson(galUrl + "/profiles/" + encodeURIComponent(uid)).then(r => {
-      if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
-      return r.json();
-    }).then(doc => {
-      const d = fsIn(doc);
-      if (!d.payload) throw new Error("that profile is empty");
-      return unzipFromB64(d.payload);
-    }).then(json => {
+    const builtin = BUILTIN_GALLERY.find(b => b.uid === uid);   // shipped in the app: no request
+    const payload = builtin ? Promise.resolve(builtin.payload)
+      : galFetchJson(galUrl + "/profiles/" + encodeURIComponent(uid)).then(r => {
+        if (!r.ok) return r.text().then(t => Promise.reject(new Error(cloudErr(t, r.status))));
+        return r.json();
+      }).then(doc => {
+        const d = fsIn(doc);
+        if (!d.payload) throw new Error("that profile is empty");
+        return d.payload;
+      });
+    return payload.then(unzipFromB64).then(json => {
       if (json == null) throw new Error("could not read that profile");
       try { return JSON.parse(json); } catch (e) { throw new Error("that profile is corrupt"); }
     });
@@ -842,7 +848,7 @@
     el("gal-list").textContent = "";
     el("gal-hint").textContent = "Loading…";
     galList().then(items => { galStore(items); galShow(items); galSyncRefresh(); })
-      .catch(e => { el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
+      .catch(e => { galShow([]); el("gal-hint").textContent = "Could not load the gallery: " + e.message; });
   }
 
   // ---- share the running scene through Firestore -------------------------------------

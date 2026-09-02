@@ -32,6 +32,7 @@ controls-breakout.js
 persist-share.js
 persist-presets.js
 persist-backup-restore.js
+gallery-builtin.js
 cloud-profile.js
 orbit-editor.js
 audio-tuning-ui.js
