@@ -15,6 +15,13 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.73.4] — 2026-09-02
+
+### Changed
+- The ♪ mute button (and the **S** key) now open the Capture / Mic dialog when no audio
+  source is running yet, instead of only flashing a hint about where to find one. With the
+  UI hidden (**H**) the hint is still what you get, since the dialog would be invisible there.
+
 ## [1.73.3] — 2026-08-31
 
 ### Changed
