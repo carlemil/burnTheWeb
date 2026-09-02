@@ -15,6 +15,12 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.74.0] — 2026-09-02
+
+### Added
+- The scene banner now credits a copied scene to its ORIGINAL author as well as you: `scene name · original author · you`. A scene made with **New** from a borrowed collection remembers who made it, and a scene received through a share link is credited to whoever shared it (or to the person they copied it from). The credit survives cloud save/load and shows the same way in the gallery.
+- `tools/ai-scenes.js`: the ten beat-synced scenes of the *AI-Generated* gallery collection, with a bundle-link generator and a real-GPU render check.
+
 ## [1.73.4] — 2026-09-02
 
 ### Changed
