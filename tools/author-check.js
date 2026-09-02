@@ -6,6 +6,9 @@
 // changed nothing whichever way you set it. And the banner is only ever armed when a scene is
 // SELECTED, so toggling it had no effect until the next time you picked one.
 //
+// Also `origin`: a scene copied from someone else keeps naming its first author, as
+// "name · original author · collection-or-you" (New from a borrowed scene stamps it).
+//
 // Browser check: the banner is DOM chrome on a rendered-time countdown, so it is about what
 // actually lands in #scenebanner. Deliberately NOT named *probe.js.
 "use strict";
@@ -19,7 +22,7 @@ const app = fs.readFileSync(appFile, "utf8");
 
 const seed = ["<script>",
   "try{localStorage.clear();"
-  + "localStorage.setItem('burnTheWeb.v1',JSON.stringify({panelOpen:true,cycle:false}));"
+  + "localStorage.setItem('burnTheWeb.v1',JSON.stringify({panelOpen:true,cycle:false,curPreset:0,presets:[{name:'Alpha',effect:'plasma',state:{},beat:{},extra:{}},{name:'Beta',collection:'Bob',origin:'Ann',effect:'plasma',state:{},beat:{},extra:{}},{name:'Gamma',collection:'Bob',origin:'Bob',effect:'plasma',state:{},beat:{},extra:{}}]}));"
   + "localStorage.setItem('burnTheWeb.tutorial.v1','1');"
   + "localStorage.setItem('burnTheWeb.credits.v1','off');"
   // A profile name, so there IS an author to show -- the whole question is whether the tick
@@ -59,6 +62,22 @@ const body = [
   "var hint=document.getElementById('sceneAuthorHint');",
   "ok('the hint names who the scene is credited to', !!hint && /Testy/.test(hint.textContent),",
   "   hint?hint.textContent:'missing');",
+  // ---- origin: a copied scene keeps its FIRST author ----------------------------------
+  // Seeded above: Beta is a borrowed scene (collection Bob) that Bob had copied from Ann.
+  "var ps=document.getElementById('preset');",
+  "function selScene(i){ ps.value=i; ps.dispatchEvent(new Event('change',{bubbles:true})); return ban.textContent.trim(); }",
+  "var b1=selScene(1);",
+  "ok('a borrowed scene names its ORIGINAL author between the name and the collection',",
+  "   /^Beta\\s*·\\s*Ann\\s*·\\s*Bob$/.test(b1), b1||'(empty)');",
+  "var b2=selScene(2);",
+  "ok('an origin equal to the collection is shown once', /^Gamma\\s*·\\s*Bob$/.test(b2), b2||'(empty)');",
+  "window.prompt=function(){return 'Beta copy'};",
+  "selScene(1); document.getElementById('newpreset').click();",
+  "var saved=JSON.parse(localStorage.getItem('burnTheWeb.v1')); var last=saved.presets[saved.presets.length-1];",
+  "ok('New from a borrowed scene records its first author as origin', !!last&&last.name==='Beta copy'&&last.origin==='Ann',",
+  "   JSON.stringify(last&&{name:last.name,origin:last.origin,collection:last.collection}));",
+  "var b3=selScene(saved.presets.length-1);",
+  "ok('...and the copy is credited to Ann AND you', /^Beta copy\\s*·\\s*Ann\\s*·\\s*Testy$/.test(b3), b3||'(empty)');",
   "console.log('\"DONE fails='+fails+'\"');",
 ].join(NL);
 

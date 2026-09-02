@@ -131,6 +131,11 @@
     const st = stackOut();
     if (st) blob.layers = st;
     const out = serializeBlob(blob);  // effect stored as a stable id
+    // Who made it: the scene's ORIGINAL author when it is itself a copy, else you. The recipient
+    // files it under "Shared with you" with this as its `origin`, so the banner keeps naming
+    // the person who actually made it. Signed out with no profile name ⇒ no field at all.
+    const by = (curPreset >= 0 && presets[curPreset] && originOf(presets[curPreset])) || myProfileName();
+    if (by) out.author = by;
     // ...and any custom ramp this scene names, so the link carries its own colours.
     const pal = palettesUsedBy(out);
     if (pal) out.palettes = pal;

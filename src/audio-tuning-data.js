@@ -343,7 +343,7 @@
     // this function synchronously while audio-tuning-data.js is still loading, before restore()
     // has populated `presets` at all. Pushing here would be thrown away by the load that
     // follows, quite apart from the TDZ on everything down there.
-    pendingShared = { name: name || "" };
+    pendingShared = { name: name || "", author: typeof d.author === "string" ? d.author : "" };
     return true;
   }
   // ?z= (deflated) or ?s= (legacy, uncompressed) — a single SCENE, never the presets.

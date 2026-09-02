@@ -1544,7 +1544,11 @@ its click `stopPropagation()`s. Every `.pl-scene` is a real saved scene.
 
 **`autosavePreset` must carry over every field that rides beside `name`** (it rebuilds from
 `snapshotScene()`, which captures none of them). Adding such a field means editing **three** places:
-`autosavePreset`, `validatePresetList`, and wherever it is set.
+`autosavePreset`, `validatePresetList`, and wherever it is set. The third such field is **`origin`**,
+the scene's ORIGINAL author, kept across a copy: `createPreset` stamps `originOf(cur)` (the source's
+`origin`, else its `collection` — never `"Shared with you"`), `adoptSharedScene` takes it from the
+share blob's `author` (`sceneBlob` writes yours, or the copied scene's), and `sceneTitleFor` shows
+`name · origin · collection-or-you`. `tools/author-check.js` pins it.
 
 ### Presets & persistence
 **User-facing word is "scene"; the code word is "preset".** Nothing in the code or wire format was
