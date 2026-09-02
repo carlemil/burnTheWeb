@@ -196,12 +196,14 @@
   function toggleMute() {
     if (!audio.on) {
       audioMsg("Nothing to mute yet — start Capture or Mic above.");
-      // ...and say it somewhere it can actually be READ. #audMsg lives inside #audiobox,
-      // which is hidden until the menu adopts it, so this branch had no visible effect at
-      // all: the S key and the dimmed ♪ both did nothing and explained nothing. The toast
-      // works with the panel closed and with the UI hidden, which is exactly when a key
-      // shortcut gets pressed.
-      flashUiHint("No audio yet — <b>☰ → Audio</b> to start Capture or Mic");
+      // No source yet, so there is nothing to mute: offer the source picker instead (the
+      // same Capture / Mic dialog the startup nudge shows). Not with the UI hidden, though:
+      // body.ui-hidden display:nones #syncpop, and an invisible modal still traps focus.
+      // There, and when the tutorial refuses it, the toast still says where to go — it
+      // works with the panel closed and the UI hidden, which is exactly when the S key
+      // gets pressed.
+      if (document.body.classList.contains("ui-hidden") || !openAudioDialog("Nothing to mute yet — pick an audio source and the visual starts reacting."))
+        flashUiHint("No audio yet — <b>☰ → Audio</b> to start Capture or Mic");
       return;
     }
     setMuted(!audio.muted);
