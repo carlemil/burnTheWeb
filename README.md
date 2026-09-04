@@ -534,6 +534,11 @@ the layers blend together.
   generalised to a kaleidoscope, available to every effect.
 - **Slice glitch** — tear horizontal slices sideways at random. Arm **Amount** to
   a beat and the picture rips on the hit.
+- **Noise warp** — push every pixel around by a drifting field of smooth noise, so
+  the picture wobbles like heat haze or water (**Amount** / **Scale** / **Speed**).
+  **Seed** picks the field: *Static* freezes one (the same displacement every frame),
+  *Drift* slides it at **Speed**, *Random* re-rolls it every frame for a shimmer.
+  Arm **Amount** to a beat for a jolt on the hit.
 - **Pixelate** — snap the picture to a coarse grid. **Block** is the cell size.
 - **Hex pixelate** — the same idea on a honeycomb: the picture snaps to hexagons instead
   of squares. **Cell** is the hex size.

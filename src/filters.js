@@ -123,6 +123,17 @@
       gl: src => postPass("glitch", src, u => {
         gl.uniform1f(u.uAmount, glitchAmt); gl.uniform1f(u.uRows, glitchRows); gl.uniform1f(u.uTime, postTime);
       }) },
+    // Seed: Static freezes ONE field (the same displacement every frame, so a still scene stays
+    // still and only the picture under it moves), Drift slides it at Speed, Random draws a fresh
+    // field every frame -- each frame lands on its own integer lattice layer (z steps of 1000,
+    // so no two frames share a corner), which reads as a shimmer rather than a wobble.
+    { id: "noise", cpuOk: false, name: "Noise warp", stage: "post", params: ["noise", "noisescale", "noiseseed", "noisespeed"],
+      help: "Push every pixel around by a field of smooth noise — the picture wobbles like heat haze or water. Seed picks whether that field is frozen, drifts at Speed, or is re-rolled every frame. Arm Amount to a beat for a jolt on the hit.",
+      defaults: { noise: [0.06, 0.06], noisescale: [4, 4], noiseseed: [1, 1], noisespeed: [0.5, 0.5] },
+      gl: src => postPass("noise", src, u => {
+        const t = noiseSeedMode === 0 ? 0 : noiseSeedMode === 2 ? (noiseFrame = (noiseFrame + 1) % 65536) * 1000 : postTime * noiseSpeed;
+        gl.uniform1f(u.uAmount, noiseAmt); gl.uniform1f(u.uScale, noiseScale); gl.uniform1f(u.uTime, t);
+      }) },
     { id: "pixelate", cpuOk: false, name: "Pixelate", stage: "post", params: ["pixel"],
       help: "Snap the image to a coarse grid of blocks.",
       defaults: { pixel: [14, 14] },

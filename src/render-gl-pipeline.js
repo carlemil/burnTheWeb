@@ -324,6 +324,35 @@
       p.x /= asp;
       o = vec4(texture(uSrc, clamp(p + 0.5, 0.0, 1.0)).rgb, 1.0);
     }`;
+    // Noise warp: every pixel samples from where an animated value-noise field points.
+    // Two octaves of smooth noise per axis (the second at a different phase, so x and y
+    // wander independently). The lattice hash is INTEGER arithmetic, never fract(sin()) --
+    // see the driver-build rule in CLAUDE.md -- and the field is scaled by aspect so the
+    // blobs are round on screen. Scale is cells across the width, Speed slides the field.
+    const FS_NOISE = `#version 300 es
+    precision highp float;
+    uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uScale;
+    uniform float uTime;
+    in vec2 vUv; out vec4 o;
+    float nh(ivec3 p){
+      uint h = uint(p.x) * 374761393u + uint(p.y) * 668265263u + uint(p.z) * 2246822519u;
+      h = (h ^ (h >> 13u)) * 1274126177u; h ^= h >> 16u;
+      return float(h & 0xffffffu) / 16777215.0;
+    }
+    float vnoise(vec3 p){
+      vec3 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
+      ivec3 c = ivec3(i);
+      float a = mix(nh(c), nh(c + ivec3(1,0,0)), f.x), b = mix(nh(c + ivec3(0,1,0)), nh(c + ivec3(1,1,0)), f.x);
+      float d = mix(nh(c + ivec3(0,0,1)), nh(c + ivec3(1,0,1)), f.x), e = mix(nh(c + ivec3(0,1,1)), nh(c + ivec3(1,1,1)), f.x);
+      return mix(mix(a, b, f.y), mix(d, e, f.y), f.z) * 2.0 - 1.0;
+    }
+    void main(){
+      float asp = uSize.x / uSize.y;
+      vec3 p = vec3(vUv.x * asp, vUv.y, uTime) * vec3(uScale, uScale, 1.0) + vec3(100.0);
+      vec2 d = vec2(vnoise(p) + 0.5 * vnoise(p * 2.0 + 37.0), vnoise(p + 71.0) + 0.5 * vnoise(p * 2.0 + 113.0));
+      d *= uAmount; d.x /= asp;
+      o = vec4(texture(uSrc, clamp(vUv + d, 0.0, 1.0)).rgb, 1.0);
+    }`;
     // Horizontal slice displacement. Rows are bucketed into slices, each slice hashed
     // to an offset, and the hash re-rolls in steps of uTime so it stutters rather than
     // sliding. Only the slices past the gate move, so the image tears instead of shearing.
@@ -863,6 +892,7 @@
     glProg.twist = makeProg(VS_QUAD, FS_TWIST, ["uSrc", "uSize", "uAmount"]);
     glProg.wedge = makeProg(VS_QUAD, FS_WEDGE, ["uSrc", "uSize", "uSeg", "uRot"]);
     glProg.glitch = makeProg(VS_QUAD, FS_GLITCH, ["uSrc", "uSize", "uAmount", "uRows", "uTime"]);
+    glProg.noise = makeProg(VS_QUAD, FS_NOISE, ["uSrc", "uSize", "uAmount", "uScale", "uTime"]);
     glProg.halftone = makeProg(VS_QUAD, FS_HALFTONE, ["uSrc", "uSize", "uDot", "uAmount"]);
     glProg.thresh = makeProg(VS_QUAD, FS_THRESH, ["uSrc", "uLevel", "uAmount"]);
     glProg.chroma = makeProg(VS_QUAD, FS_CHROMA, ["uSrc", "uAmount"]);

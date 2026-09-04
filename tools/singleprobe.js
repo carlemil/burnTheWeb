@@ -63,6 +63,7 @@ const EXPECT = [
   "mbcount", "ksegments", "cbcount", "cosides", "bncount", "bnmix", "sdcount",
   "sdmix", "kfbars", "twcols", "ltbolts", "bpdetail", "flvar", "aucurtains", "rdspeed",
   "mgiter", "wedgeseg", "poster", "mirror", "pxdir", "cellstates", "kuwrad", "qjdetail",
+  "noiseseed",   // Noise warp: Static / Drift / Random is a mode, not a quantity
   "vbcount", "vbshape", "gxarms", "gosurf",
   // Doughnut: both are single because the flute pattern cos(flute·(ang + twist·arc))
   // only closes across the atan2 branch cut when flute·twist is a whole number.
@@ -103,7 +104,7 @@ ok([...P.SINGLE_KEYS].every(k => by(k).step === 1), "every single control steps 
 // --- 3. the enums name every value they can hold -------------------------------
 // A single control can now only land on integers in [min,max], so the name table has to
 // cover all of them — an "?" fallback would mean a reachable value with no label.
-["flvar", "mirror", "pxdir"].forEach(k => {
+["flvar", "mirror", "pxdir", "noiseseed"].forEach(k => {
   const c = by(k);
   let bad = null;
   for (let v = c.min; v <= c.max; v++) {
