@@ -324,11 +324,12 @@
       p.x /= asp;
       o = vec4(texture(uSrc, clamp(p + 0.5, 0.0, 1.0)).rgb, 1.0);
     }`;
-    // Noise warp: every pixel samples from where an animated value-noise field points.
-    // Two octaves of smooth noise per axis (the second at a different phase, so x and y
-    // wander independently). The lattice hash is INTEGER arithmetic, never fract(sin()) --
-    // see the driver-build rule in CLAUDE.md -- and the field is scaled by aspect so the
-    // blobs are round on screen. Scale is cells across the width, Speed slides the field.
+    // Noise: a smooth value-noise field pushes each pixel's COLOUR, not its position --
+    // brightness is scaled by (1 + Amount * n), so black stays black and lit areas breathe
+    // with the field. (It displaced pixels first; asked for as a colour push.) Two octaves.
+    // The lattice hash is INTEGER arithmetic, never fract(sin()) -- see the driver-build rule
+    // in CLAUDE.md -- and the field is scaled by aspect so the blobs are round on screen.
+    // Scale is cells across the width, Speed slides the field.
     const FS_NOISE = `#version 300 es
     precision highp float;
     uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uScale;
@@ -349,9 +350,8 @@
     void main(){
       float asp = uSize.x / uSize.y;
       vec3 p = vec3(vUv.x * asp, vUv.y, uTime) * vec3(uScale, uScale, 1.0) + vec3(100.0);
-      vec2 d = vec2(vnoise(p) + 0.5 * vnoise(p * 2.0 + 37.0), vnoise(p + 71.0) + 0.5 * vnoise(p * 2.0 + 113.0));
-      d *= uAmount; d.x /= asp;
-      o = vec4(texture(uSrc, clamp(vUv + d, 0.0, 1.0)).rgb, 1.0);
+      float n = vnoise(p) + 0.5 * vnoise(p * 2.0 + 37.0);      // [-1.5, 1.5]
+      o = vec4(clamp(texture(uSrc, vUv).rgb * (1.0 + uAmount * n), 0.0, 1.0), 1.0);
     }`;
     // Horizontal slice displacement. Rows are bucketed into slices, each slice hashed
     // to an offset, and the hash re-rolls in steps of uTime so it stutters rather than

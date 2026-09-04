@@ -2629,7 +2629,7 @@
     // the /deploy skill bumps it here and writes the matching CHANGELOG.md section — so a
     // released build always names the version whose notes describe it. Semver: patch for
     // fixes, minor for a new effect/filter/control, major for a breaking scene format.
-    version: "1.76.0",
+    version: "1.76.1",
     changelogUrl: "https://github.com/carlemil/kicktro/blob/main/CHANGELOG.md",
 
     // --- effect stack / fractal layering ---
@@ -7351,11 +7351,12 @@
       p.x /= asp;
       o = vec4(texture(uSrc, clamp(p + 0.5, 0.0, 1.0)).rgb, 1.0);
     }`;
-    // Noise warp: every pixel samples from where an animated value-noise field points.
-    // Two octaves of smooth noise per axis (the second at a different phase, so x and y
-    // wander independently). The lattice hash is INTEGER arithmetic, never fract(sin()) --
-    // see the driver-build rule in CLAUDE.md -- and the field is scaled by aspect so the
-    // blobs are round on screen. Scale is cells across the width, Speed slides the field.
+    // Noise: a smooth value-noise field pushes each pixel's COLOUR, not its position --
+    // brightness is scaled by (1 + Amount * n), so black stays black and lit areas breathe
+    // with the field. (It displaced pixels first; asked for as a colour push.) Two octaves.
+    // The lattice hash is INTEGER arithmetic, never fract(sin()) -- see the driver-build rule
+    // in CLAUDE.md -- and the field is scaled by aspect so the blobs are round on screen.
+    // Scale is cells across the width, Speed slides the field.
     const FS_NOISE = `#version 300 es
     precision highp float;
     uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAmount; uniform float uScale;
@@ -7376,9 +7377,8 @@
     void main(){
       float asp = uSize.x / uSize.y;
       vec3 p = vec3(vUv.x * asp, vUv.y, uTime) * vec3(uScale, uScale, 1.0) + vec3(100.0);
-      vec2 d = vec2(vnoise(p) + 0.5 * vnoise(p * 2.0 + 37.0), vnoise(p + 71.0) + 0.5 * vnoise(p * 2.0 + 113.0));
-      d *= uAmount; d.x /= asp;
-      o = vec4(texture(uSrc, clamp(vUv + d, 0.0, 1.0)).rgb, 1.0);
+      float n = vnoise(p) + 0.5 * vnoise(p * 2.0 + 37.0);      // [-1.5, 1.5]
+      o = vec4(clamp(texture(uSrc, vUv).rgb * (1.0 + uAmount * n), 0.0, 1.0), 1.0);
     }`;
     // Horizontal slice displacement. Rows are bucketed into slices, each slice hashed
     // to an offset, and the hash re-rolls in steps of uTime so it stutters rather than
@@ -14679,7 +14679,7 @@
     { key: "wedgeseg", host: "filter", group: "f_wedge", type: "dual", single: true, label: "Segments", valId: "vWedgeSeg", min: 2, max: 16, step: 1, lo: 6, hi: 6, fmt: v => sig3(Math.round(v)), apply: v => wedgeSeg = Math.round(v), durScale: 10 },
     { key: "wedgerot", host: "filter", group: "f_wedge", type: "dual", label: "Spin", valId: "vWedgeRot", min: 0, max: 360, step: 1, lo: 0, hi: 0, fmt: v => sig3(v) + "°", apply: v => wedgeRot = v, durScale: 10 },
     { key: "glitch", host: "filter", group: "f_glitch", type: "dual", label: "Amount", valId: "vGlitch", min: 0, max: 0.5, step: 0.005, lo: 0.22, hi: 0.22, fmt: v => sig3(v * 100) + "%", apply: v => glitchAmt = v, durScale: 10 },
-    { key: "noise", host: "filter", group: "f_noise", type: "dual", label: "Amount", valId: "vNoise", min: 0, max: 0.3, step: 0.005, lo: 0.06, hi: 0.06, fmt: v => sig3(v * 100) + "%", apply: v => noiseAmt = v, durScale: 10 },
+    { key: "noise", host: "filter", group: "f_noise", type: "dual", label: "Amount", valId: "vNoise", min: 0, max: 1, step: 0.01, lo: 0.4, hi: 0.4, fmt: v => sig3(v * 100) + "%", apply: v => noiseAmt = v, durScale: 10 },
     { key: "noisescale", host: "filter", group: "f_noise", type: "dual", label: "Scale", valId: "vNoiseScale", min: 1, max: 24, step: 0.1, lo: 4, hi: 4, fmt: v => sig3(v), apply: v => noiseScale = v, durScale: 10 },
     { key: "noiseseed", host: "filter", group: "f_noise", type: "dual", single: true, label: "Seed", valId: "vNoiseSeed", min: 0, max: 2, step: 1, lo: 1, hi: 1, fmt: v => ["Static", "Drift", "Random"][Math.round(v)] || "Drift", apply: v => noiseSeedMode = Math.round(v), durScale: 10 },
     { key: "noisespeed", host: "filter", group: "f_noise", type: "dual", label: "Speed", valId: "vNoiseSpeed", min: 0, max: 4, step: 0.05, lo: 0.5, hi: 0.5, fmt: v => sig3(v), apply: v => noiseSpeed = v, durScale: 10 },
@@ -14859,11 +14859,11 @@
     { name: "Trails & feedback", desc: "what the previous frame leaves behind",
       ids: ["fire", "fade", "diffuse", "echo", "zoomfb", "swirl", "cellular"] },
     { name: "Warp & distort", desc: "move the pixels somewhere else",
-      ids: ["twist", "wedge", "noise", "polar", "lens", "droste", "mirror", "shock", "barrel"] },
+      ids: ["twist", "wedge", "polar", "lens", "droste", "mirror", "shock", "barrel"] },
     { name: "Stylise", desc: "redraw it as something else",
       ids: ["poster", "dither", "halftone", "ascii", "kuwahara", "edge", "emboss", "pixelate", "hexpix", "crt", "scanlines"] },
     { name: "Colour & tone", desc: "same shapes, different colour",
-      ids: ["thresh", "invert", "chroma", "vignette", "grain"] },
+      ids: ["thresh", "invert", "chroma", "noise", "vignette", "grain"] },
     { name: "Blur & light", desc: "spread it, streak it, glow it",
       ids: ["soften", "dblur", "rblur", "anamorph", "bloom", "glitch", "pixsort"] },
   ];
@@ -15459,7 +15459,7 @@
     f_fire: "Fire", f_fade: "Fade pixel", f_pixelate: "Pixelate", f_soften: "Blur / sharpen",
     f_edge: "Edge", f_poster: "Posterize", f_mirror: "Mirror", f_bloom: "Bloom",
     f_diffuse: "Diffuse", f_echo: "Echo", f_zoomfb: "Zoom feedback", f_swirl: "Swirl",
-    f_twist: "Twist", f_wedge: "Wedge fold", f_noise: "Noise warp", f_glitch: "Slice glitch", f_shock: "Shockwave",
+    f_twist: "Twist", f_wedge: "Wedge fold", f_noise: "Noise", f_glitch: "Slice glitch", f_shock: "Shockwave",
     f_pixsort: "Pixel sort", f_cell: "Cellular automaton",
     f_lens: "Lens bubble", f_droste: "Droste zoom", f_kuwahara: "Oil paint",
     f_halftone: "Halftone", f_thresh: "Solarize", f_chroma: "Chromatic aberration",
@@ -18541,9 +18541,9 @@
     // still and only the picture under it moves), Drift slides it at Speed, Random draws a fresh
     // field every frame -- each frame lands on its own integer lattice layer (z steps of 1000,
     // so no two frames share a corner), which reads as a shimmer rather than a wobble.
-    { id: "noise", cpuOk: false, name: "Noise warp", stage: "post", params: ["noise", "noisescale", "noiseseed", "noisespeed"],
-      help: "Push every pixel around by a field of smooth noise — the picture wobbles like heat haze or water. Seed picks whether that field is frozen, drifts at Speed, or is re-rolled every frame. Arm Amount to a beat for a jolt on the hit.",
-      defaults: { noise: [0.06, 0.06], noisescale: [4, 4], noiseseed: [1, 1], noisespeed: [0.5, 0.5] },
+    { id: "noise", cpuOk: false, name: "Noise", stage: "post", params: ["noise", "noisescale", "noiseseed", "noisespeed"],
+      help: "Push the colour with a field of smooth noise — brightness swells and sinks in soft patches, black stays black. Seed picks whether the field is frozen, drifts at Speed, or is re-rolled every frame. Arm Amount to a beat for a flash on the hit.",
+      defaults: { noise: [0.4, 0.4], noisescale: [4, 4], noiseseed: [1, 1], noisespeed: [0.5, 0.5] },
       gl: src => postPass("noise", src, u => {
         const t = noiseSeedMode === 0 ? 0 : noiseSeedMode === 2 ? (noiseFrame = (noiseFrame + 1) % 65536) * 1000 : postTime * noiseSpeed;
         gl.uniform1f(u.uAmount, noiseAmt); gl.uniform1f(u.uScale, noiseScale); gl.uniform1f(u.uTime, t);

@@ -15,6 +15,11 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.76.1] — 2026-09-04
+
+### Changed
+- The **Noise** filter (was *Noise warp*) now pushes the **colour**, not the pixels: brightness swells and sinks in soft patches of smooth noise, black stays black. Same Amount / Scale / Seed / Speed controls; it now lives under Colour & tone in the filter picker.
+
 ## [1.76.0] — 2026-09-04
 
 ### Added

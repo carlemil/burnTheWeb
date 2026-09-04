@@ -127,9 +127,9 @@
     // still and only the picture under it moves), Drift slides it at Speed, Random draws a fresh
     // field every frame -- each frame lands on its own integer lattice layer (z steps of 1000,
     // so no two frames share a corner), which reads as a shimmer rather than a wobble.
-    { id: "noise", cpuOk: false, name: "Noise warp", stage: "post", params: ["noise", "noisescale", "noiseseed", "noisespeed"],
-      help: "Push every pixel around by a field of smooth noise — the picture wobbles like heat haze or water. Seed picks whether that field is frozen, drifts at Speed, or is re-rolled every frame. Arm Amount to a beat for a jolt on the hit.",
-      defaults: { noise: [0.06, 0.06], noisescale: [4, 4], noiseseed: [1, 1], noisespeed: [0.5, 0.5] },
+    { id: "noise", cpuOk: false, name: "Noise", stage: "post", params: ["noise", "noisescale", "noiseseed", "noisespeed"],
+      help: "Push the colour with a field of smooth noise — brightness swells and sinks in soft patches, black stays black. Seed picks whether the field is frozen, drifts at Speed, or is re-rolled every frame. Arm Amount to a beat for a flash on the hit.",
+      defaults: { noise: [0.4, 0.4], noisescale: [4, 4], noiseseed: [1, 1], noisespeed: [0.5, 0.5] },
       gl: src => postPass("noise", src, u => {
         const t = noiseSeedMode === 0 ? 0 : noiseSeedMode === 2 ? (noiseFrame = (noiseFrame + 1) % 65536) * 1000 : postTime * noiseSpeed;
         gl.uniform1f(u.uAmount, noiseAmt); gl.uniform1f(u.uScale, noiseScale); gl.uniform1f(u.uTime, t);
