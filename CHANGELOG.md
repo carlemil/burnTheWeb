@@ -15,6 +15,11 @@ numbers follow [Semantic Versioning](https://semver.org/):
 The version shown at the foot of the menu is `CONFIG.version` in `src/config.js`, which is
 the single source of truth; `/deploy` bumps it and adds the section below in the same commit.
 
+## [1.76.0] — 2026-09-04
+
+### Added
+- **Noise warp** filter (Warp & distort): pushes every pixel around by a field of smooth noise, so the picture wobbles like heat haze or water. **Amount**, **Scale**, **Speed**, and a **Seed** switch: *Static* freezes one field (the same displacement every frame), *Drift* slides it at Speed, *Random* re-rolls it every frame for a shimmer. Arm Amount to a beat for a jolt on the hit.
+
 ## [1.75.0] — 2026-09-02
 
 ### Added
